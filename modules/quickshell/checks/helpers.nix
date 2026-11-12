@@ -37,7 +37,9 @@ let
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
   # whose imports aren't what imports.nix says fails the check instead,
-  # naming what differs, so the table can't drift from the files.
+  # naming what differs, so the table can't drift from the files. The
+  # launcher's words.json is the one its places' files join to
+  # (launcher/words.nix), as the shell reads it.
   copied =
     files:
     let
@@ -51,11 +53,13 @@ let
         && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
+      words = (import ../launcher/words.nix).file;
+      source = file: if file == "launcher/words.json" then words else ../. + "/${file}";
     in
     if wrong == [ ] then
       lib.concatStringsSep "\n" (
         lib.optional (folders != [ ]) "mkdir -p ${lib.concatStringsSep " " folders}"
-        ++ map (file: "cp ${../. + "/${file}"} ${file}") every
+        ++ map (file: "cp ${source file} ${file}") every
       )
     else
       ''
@@ -338,11 +342,11 @@ let
           # Machine's answers come from its daemon, as the account's do.
           "MACHINE=${lib.getExe machine}"
           # And the words it says Machine's rows in, as the account's has.
-          "MACHINE_WORDS=${../launcher/words.json}"
+          "MACHINE_WORDS=${(import ../launcher/words.nix).file}"
           # The windows come from theirs, hearing the nested niri, and the
           # screens' rows in the words the account's has too.
           "WINDOWS=${lib.getExe windows}"
-          "WINDOWS_WORDS=${../launcher/words.json}"
+          "WINDOWS_WORDS=${(import ../launcher/words.nix).file}"
           # And Programs' rows from the programs daemon, over the entries
           # here, given no program's lists, since none has any here.
           "PROGRAMS=${lib.getExe programs}"
@@ -440,7 +444,7 @@ let
         > $XDG_RUNTIME_DIR/whereabouts/here.json
       ${lib.getExe whereabouts} $XDG_RUNTIME_DIR/daemons/location.sock root \
         $XDG_RUNTIME_DIR/whereabouts/here.json $TMPDIR/pin.json $TMPDIR/moved.json \
-        --words ${../launcher/words.json} &
+        --words ${(import ../launcher/words.nix).file} &
       export FONTCONFIG_FILE=${noFonts}
       ${before}
       ${shellFolderLint}

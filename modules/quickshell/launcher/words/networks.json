@@ -1,0 +1,370 @@
+{
+  "things": [
+    {
+      "id": "networks:wifi",
+      "in": "networks",
+      "name": "Wi-Fi",
+      "term": "Network/Wi-Fi"
+    },
+    {
+      "id": "networks:wired",
+      "once": ["Wired"],
+      "in": "networks",
+      "name": "Ethernet",
+      "term": "Network/Ethernet"
+    },
+    {
+      "id": "networks:tunnel",
+      "once": ["Tunnel"],
+      "in": "networks",
+      "name": "VPN",
+      "term": "Network/VPN"
+    },
+    {
+      "id": "networks:bridge",
+      "in": "networks",
+      "name": "Virtual Bridge"
+    },
+    {
+      "id": "networks:virtual",
+      "in": "networks",
+      "name": "Virtual Network"
+    },
+    {
+      "id": "networks:address",
+      "in": "networks",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "networks:ipv6",
+      "in": "networks",
+      "name": "IPv6 Address"
+    },
+    {
+      "id": "networks:gateway",
+      "in": "networks",
+      "name": "Gateway",
+      "answers": [
+        "gateway"
+      ]
+    },
+    {
+      "id": "networks:dns",
+      "in": "networks",
+      "name": "DNS",
+      "answers": [
+        "dns"
+      ]
+    },
+    {
+      "id": "networks:hardware",
+      "in": "networks",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "networks:mtu",
+      "in": "networks",
+      "name": "MTU"
+    },
+    {
+      "id": "networks:state",
+      "in": "networks",
+      "name": "State"
+    },
+    {
+      "id": "networks:speed",
+      "in": "networks",
+      "name": "Speed",
+      "term": "Network/speed"
+    },
+    {
+      "id": "networks:duplex",
+      "in": "networks",
+      "name": "Duplex"
+    },
+    {
+      "id": "networks:lost",
+      "in": "networks",
+      "name": "Link Lost"
+    },
+    {
+      "id": "networks:errors",
+      "in": "networks",
+      "name": "Errors"
+    },
+    {
+      "id": "networks:errors-in",
+      "in": "networks:errors",
+      "name": "In",
+      "term": "Network/in"
+    },
+    {
+      "id": "networks:damaged",
+      "in": "networks:errors",
+      "name": "Damaged"
+    },
+    {
+      "id": "networks:misaligned",
+      "in": "networks:errors",
+      "name": "Misaligned"
+    },
+    {
+      "id": "networks:wrong-length",
+      "in": "networks:errors",
+      "name": "Wrong Length"
+    },
+    {
+      "id": "networks:overrun",
+      "in": "networks:errors",
+      "name": "Overrun"
+    },
+    {
+      "id": "networks:missed",
+      "in": "networks:errors",
+      "name": "Missed"
+    },
+    {
+      "id": "networks:queue-in",
+      "in": "networks:errors",
+      "name": "Queue In"
+    },
+    {
+      "id": "networks:errors-out",
+      "in": "networks:errors",
+      "name": "Out",
+      "term": "Network/out"
+    },
+    {
+      "id": "networks:aborted",
+      "in": "networks:errors",
+      "name": "Aborted"
+    },
+    {
+      "id": "networks:no-link",
+      "in": "networks:errors",
+      "name": "No Link"
+    },
+    {
+      "id": "networks:queue-out",
+      "in": "networks:errors",
+      "name": "Queue Out"
+    },
+    {
+      "id": "networks:heartbeat",
+      "in": "networks:errors",
+      "name": "Heartbeat"
+    },
+    {
+      "id": "networks:late",
+      "in": "networks:errors",
+      "name": "Late Collisions"
+    },
+    {
+      "id": "networks:collisions",
+      "in": "networks:errors",
+      "name": "Collisions"
+    },
+    {
+      "id": "networks:dropped-in",
+      "in": "networks:errors",
+      "name": "Dropped In"
+    },
+    {
+      "id": "networks:dropped-out",
+      "in": "networks:errors",
+      "name": "Dropped Out"
+    },
+    {
+      "id": "networks:lease",
+      "in": "networks",
+      "name": "Lease",
+      "term": "Network/lease"
+    },
+    {
+      "id": "networks:lease-server",
+      "in": "networks:lease",
+      "name": "Server"
+    },
+    {
+      "id": "networks:lease-lasts",
+      "in": "networks:lease",
+      "name": "Given For"
+    },
+    {
+      "id": "networks:lease-got",
+      "in": "networks:lease",
+      "name": "Got"
+    },
+    {
+      "id": "networks:lease-renews",
+      "in": "networks:lease",
+      "name": "Renews"
+    },
+    {
+      "id": "networks:lease-rebinds",
+      "in": "networks:lease",
+      "name": "Rebinds"
+    },
+    {
+      "id": "networks:lease-ends",
+      "in": "networks:lease",
+      "name": "Ends"
+    },
+    {
+      "id": "networks:lease-name-servers",
+      "in": "networks:lease",
+      "name": "Name Servers"
+    },
+    {
+      "id": "networks:lease-time-servers",
+      "in": "networks:lease",
+      "name": "Time Servers",
+      "term": "Desktop/time server"
+    },
+    {
+      "id": "networks:lease-domain",
+      "in": "networks:lease",
+      "name": "Domain"
+    },
+    {
+      "id": "networks:lease-hostname",
+      "in": "networks:lease",
+      "name": "Machine Name"
+    },
+    {
+      "id": "networks:neighbour",
+      "in": "networks",
+      "name": "Neighbour",
+      "term": "Network/neighbour"
+    },
+    {
+      "id": "networks:neighbour-system",
+      "in": "networks:neighbour",
+      "name": "System"
+    },
+    {
+      "id": "networks:neighbour-description",
+      "in": "networks:neighbour",
+      "name": "Description"
+    },
+    {
+      "id": "networks:neighbour-port",
+      "in": "networks:neighbour",
+      "name": "Port"
+    },
+    {
+      "id": "networks:neighbour-port-name",
+      "in": "networks:neighbour",
+      "name": "Port Name"
+    },
+    {
+      "id": "networks:neighbour-chassis",
+      "in": "networks:neighbour",
+      "name": "Chassis"
+    },
+    {
+      "id": "networks:neighbour-acts",
+      "in": "networks:neighbour",
+      "name": "Acts As"
+    },
+    {
+      "id": "networks:neighbour-vlan",
+      "in": "networks:neighbour",
+      "name": "VLAN"
+    },
+    {
+      "id": "networks:neighbour-profile",
+      "in": "networks:neighbour",
+      "name": "Maker's Profile"
+    },
+    {
+      "id": "networks:public",
+      "in": "networks",
+      "name": "Public Address"
+    },
+    {
+      "id": "networks:public6",
+      "in": "networks",
+      "name": "Public IPv6 Address"
+    },
+    {
+      "id": "networks:mask",
+      "in": "networks",
+      "name": "Mask"
+    },
+    {
+      "id": "networks:wildcard",
+      "in": "networks",
+      "name": "Wildcard"
+    },
+    {
+      "id": "networks:first",
+      "in": "networks",
+      "name": "First Address"
+    },
+    {
+      "id": "networks:last",
+      "in": "networks",
+      "name": "Last Address"
+    },
+    {
+      "id": "networks:hosts",
+      "in": "networks",
+      "name": "Addresses",
+      "term": "Network/address"
+    },
+    {
+      "id": "networks:size",
+      "in": "networks",
+      "name": "Size"
+    },
+    {
+      "id": "networks:subnets",
+      "in": "networks",
+      "name": "Subnets",
+      "term": "Network/subnet"
+    },
+    {
+      "id": "networks:broadcast",
+      "in": "networks",
+      "name": "Broadcast"
+    },
+    {
+      "id": "networks:network",
+      "in": "networks",
+      "name": "Network"
+    },
+    {
+      "id": "networks:range",
+      "in": "networks",
+      "name": "Range"
+    },
+    {
+      "id": "networks:full",
+      "in": "networks",
+      "name": "Written in Full"
+    },
+    {
+      "id": "networks:kind",
+      "in": "networks",
+      "name": "Kind"
+    },
+    {
+      "id": "networks:holder",
+      "in": "networks",
+      "name": "Held By"
+    },
+    {
+      "id": "networks:block",
+      "in": "networks",
+      "name": "Block"
+    },
+    {
+      "id": "networks:registered",
+      "in": "networks",
+      "name": "Registered Range"
+    }
+  ]
+}

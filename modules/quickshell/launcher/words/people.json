@@ -1,0 +1,130 @@
+{
+  "things": [
+    {
+      "id": "verb:person:call",
+      "command": "dial",
+      "in": "people",
+      "name": "Call Them",
+      "verb": "call",
+      "glyph": "call"
+    },
+    {
+      "id": "verb:person:join",
+      "command": "meet",
+      "in": "people",
+      "name": "Join Their Call",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:person:mail",
+      "command": "compose",
+      "argument": "mail",
+      "in": "people",
+      "name": "Write a Mail",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:person:page",
+      "command": "open",
+      "in": "people",
+      "name": "Open in {source}",
+      "verb": "open",
+      "glyph": "web",
+      "said": {
+        "looking": "looking in {source}"
+      }
+    },
+    {
+      "id": "verb:person:slack",
+      "command": "compose",
+      "argument": "slack",
+      "in": "people",
+      "name": "Write in Slack",
+      "verb": "write",
+      "glyph": "chat",
+      "said": {
+        "looking": "looking in Slack",
+        "missing": "no one at this address"
+      }
+    },
+    {
+      "id": "slack:person:status",
+      "in": "people",
+      "name": "Status"
+    },
+    {
+      "id": "slack:person:presence",
+      "in": "people",
+      "name": "Presence"
+    },
+    {
+      "id": "slack:person:zone",
+      "in": "people",
+      "name": "Time Zone"
+    },
+    {
+      "id": "slack:person:source",
+      "in": "people",
+      "name": "Slack"
+    },
+    {
+      "id": "verb:person:favourite",
+      "command": "favourite",
+      "in": "people",
+      "name": "Favourite",
+      "term": "People/favourite",
+      "verb": "star",
+      "glyph": "favourite",
+      "states": {
+        "favourite": {
+          "verb": "unstar"
+        }
+      }
+    },
+    {
+      "id": "person:recent",
+      "in": "people",
+      "name": "Recent",
+      "term": "Desktop/Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
+      }
+    },
+    {
+      "id": "person:unread",
+      "in": "people",
+      "name": "Unread",
+      "term": "Programs/unread",
+      "verb": "more",
+      "glyph": "unread"
+    },
+    {
+      "id": "people:email",
+      "in": "people",
+      "name": "Email"
+    },
+    {
+      "id": "people:there",
+      "in": "people",
+      "name": "Time There"
+    },
+    {
+      "id": "transcripts",
+      "in": "people",
+      "name": "Transcripts",
+      "term": "Programs/transcript",
+      "noun": "transcripts",
+      "what": "transcript",
+      "glyph": "lines",
+      "ask": "which transcript?",
+      "empty": "No calls written down yet."
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "things": [
+    {
+      "id": "verb:notice:open",
+      "command": "open",
+      "in": "notices",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:notice:goTo",
+      "command": "buffer",
+      "in": "notices",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:notice:copy",
+      "command": "yank",
+      "in": "notices",
+      "name": "Copy What It Said",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:notice:read",
+      "command": "delete",
+      "in": "notices",
+      "name": "Mark It Read",
+      "verb": "mark",
+      "glyph": "read",
+      "states": {
+        "read": {
+          "name": "Mark It Unread",
+          "glyph": "unread"
+        }
+      }
+    },
+    {
+      "id": "verb:notice:forget",
+      "command": "forget",
+      "in": "notices",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
+    },
+    {
+      "id": "verb:notices:forget",
+      "command": "forget",
+      "range": "%",
+      "in": "notices",
+      "name": "Forget Them All",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notices:done",
+      "command": "delete",
+      "range": "%",
+      "in": "notices",
+      "name": "Done With Them All",
+      "verb": "done",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "verb:notice:link",
+      "command": "open",
+      "argument": "link",
+      "in": "notices",
+      "name": "Open the Link",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:notices:all",
+      "command": "edit",
+      "argument": "Notices",
+      "in": "notices",
+      "name": "All the Notices",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:show",
+      "command": "edit",
+      "argument": "Waiting",
+      "in": "notices",
+      "name": "Show Them",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:notices:seen",
+      "command": "forget",
+      "argument": "seen",
+      "in": "notices",
+      "name": "Forget Them",
+      "verb": "forget",
+      "glyph": "dismiss"
+    },
+    {
+      "id": "notices:calls",
+      "in": "notices",
+      "name": "Calls",
+      "term": "Programs/call",
+      "glyph": "call"
+    },
+    {
+      "id": "notices:left",
+      "in": "notices",
+      "name": "Left",
+      "states": {
+        "expired": {
+          "said": "by itself at {at}"
+        },
+        "dismissed": {
+          "said": "put away at {at}"
+        },
+        "withdrawn": {
+          "said": "taken back by its sender at {at}"
+        },
+        "resting": {
+          "said": "off the screen \u00b7 still open"
+        },
+        "shown": {
+          "said": "still on the screen"
+        }
+      }
+    },
+    {
+      "id": "notices:urgency",
+      "in": "notices",
+      "name": "Urgency",
+      "states": {
+        "low": {
+          "said": "low"
+        },
+        "normal": {
+          "said": "normal"
+        },
+        "critical": {
+          "said": "critical"
+        }
+      }
+    },
+    {
+      "id": "notices:arrived",
+      "in": "notices",
+      "name": "Arrived"
+    },
+    {
+      "id": "notices:kind",
+      "in": "notices",
+      "name": "Kind",
+      "states": {
+        "im": {
+          "said": "message"
+        },
+        "email": {
+          "said": "mail"
+        },
+        "device": {
+          "said": "device"
+        },
+        "network": {
+          "said": "network"
+        },
+        "presence": {
+          "said": "status"
+        },
+        "transfer": {
+          "said": "transfer"
+        }
+      }
+    }
+  ]
+}

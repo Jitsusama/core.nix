@@ -1,0 +1,37 @@
+{
+  "things": [
+    {
+      "id": "waits:typical",
+      "in": "waits",
+      "name": "Desktop Answers"
+    },
+    {
+      "id": "waits:work",
+      "in": "waits",
+      "name": "Heavy Work",
+      "verb": "show",
+      "glyph": "timed"
+    },
+    {
+      "id": "waits:see:cpu",
+      "in": "waits",
+      "name": "Show What's Using the Processor",
+      "verb": "show",
+      "glyph": "processor"
+    },
+    {
+      "id": "waits:see:memory",
+      "in": "waits",
+      "name": "Show What's Using Memory",
+      "verb": "show",
+      "glyph": "memory"
+    },
+    {
+      "id": "waits:see:disk",
+      "in": "waits",
+      "name": "Show What's Filling the Disk",
+      "verb": "show",
+      "glyph": "disk"
+    }
+  ]
+}

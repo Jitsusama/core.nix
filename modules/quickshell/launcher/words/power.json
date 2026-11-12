@@ -1,0 +1,254 @@
+{
+  "things": [
+    {
+      "id": "power:charger",
+      "once": ["Mains"],
+      "in": "power",
+      "name": "Charger",
+      "term": "Machine/charger",
+      "said": {
+        "charging": "{watts} W on port {n}",
+        "on": "on port {n}",
+        "plugged": "plugged in",
+        "none": "none plugged in",
+        "port": "one USB-C port",
+        "ports": "{count} USB-C ports"
+      }
+    },
+    {
+      "id": "power:port",
+      "in": "power:charger",
+      "name": "Port {n}",
+      "said": {
+        "charging": "charging",
+        "giving": "powering what's plugged in",
+        "plugged": "plugged in, giving nothing",
+        "empty": "empty"
+      }
+    },
+    {
+      "id": "power:port:drawer",
+      "in": "power:port",
+      "said": {
+        "eyebrow": "on this machine \u00b7 charger",
+        "accessory": "{mode} accessory",
+        "range": "{from} to {to} V",
+        "at": "{offers} at {amps} A",
+        "mode:usb_power_delivery": "USB Power Delivery",
+        "mode:default": "USB default",
+        "mode:1.5A": "USB-C at 1.5 A",
+        "mode:3.0A": "USB-C at 3 A"
+      }
+    },
+    {
+      "id": "power:port:power-role",
+      "in": "power:port",
+      "name": "Power Role"
+    },
+    {
+      "id": "power:port:data-role",
+      "in": "power:port",
+      "name": "Data Role"
+    },
+    {
+      "id": "power:port:mode",
+      "in": "power:port",
+      "name": "Power Mode"
+    },
+    {
+      "id": "power:port:offers",
+      "in": "power:port",
+      "name": "Offers"
+    },
+    {
+      "id": "power:port:protocols",
+      "in": "power:port",
+      "name": "Protocols"
+    },
+    {
+      "id": "power:port:partner",
+      "in": "power:port",
+      "name": "Partner"
+    },
+    {
+      "id": "power:port:revision",
+      "in": "power:port",
+      "name": "PD Revision"
+    },
+    {
+      "id": "power:port:partner-revision",
+      "in": "power:port",
+      "name": "Partner's PD Revision"
+    },
+    {
+      "id": "power:port:supply",
+      "in": "power:port",
+      "name": "Supply"
+    },
+    {
+      "id": "power:charge",
+      "in": "power",
+      "name": "Charge",
+      "said": {
+        "level": "its level {level}"
+      }
+    },
+    {
+      "id": "power:rate",
+      "in": "power",
+      "name": "Drawing",
+      "states": {
+        "charging": {
+          "name": "Charging"
+        }
+      },
+      "answers": [
+        "power draw"
+      ],
+      "said": {
+        "into": "into the battery",
+        "from": "from the battery"
+      }
+    },
+    {
+      "id": "power:energy",
+      "in": "power",
+      "name": "Energy",
+      "said": {
+        "eyebrow": "on this machine \u00b7 battery",
+        "of": "{now} of {full} Wh",
+        "note": "now, of what it holds full",
+        "full": "what it holds full"
+      }
+    },
+    {
+      "id": "power:device",
+      "in": "power:energy",
+      "name": "Linux Name",
+      "term": "Machine/Linux name"
+    },
+    {
+      "id": "power:energy:charge",
+      "in": "power:energy",
+      "name": "Charge Now"
+    },
+    {
+      "id": "power:energy:full",
+      "in": "power:energy",
+      "name": "Charge Full"
+    },
+    {
+      "id": "power:energy:design",
+      "in": "power:energy",
+      "name": "Charge Designed"
+    },
+    {
+      "id": "power:energy:designed",
+      "in": "power:energy",
+      "name": "Energy Designed"
+    },
+    {
+      "id": "power:voltage",
+      "in": "power",
+      "name": "Voltage",
+      "answers": [
+        "battery voltage"
+      ],
+      "said": {
+        "designed": "{volts} V as designed"
+      }
+    },
+    {
+      "id": "power:health",
+      "in": "power",
+      "name": "Health",
+      "answers": [
+        "battery health"
+      ],
+      "said": {
+        "design": "{pct}% of design",
+        "cycle": "1 cycle",
+        "cycles": "{count} cycles",
+        "says": "the battery says it's {health}"
+      }
+    },
+    {
+      "id": "power:cycles",
+      "in": "power",
+      "name": "Cycles",
+      "answers": [
+        "battery cycles"
+      ]
+    },
+    {
+      "id": "power:type",
+      "in": "power",
+      "name": "Charge Type",
+      "answers": [
+        "charge type"
+      ],
+      "said": {
+        "of": "of {some} and {last}"
+      }
+    },
+    {
+      "id": "power:limit",
+      "in": "power",
+      "name": "Charge Limit",
+      "answers": [
+        "charge limit"
+      ],
+      "said": {
+        "full": "charges fully",
+        "stop": "stops at {stop}%",
+        "both": "stops at {stop}%, starts below {start}%",
+        "firmware": "set in the firmware's settings",
+        "refused": "the battery said no",
+        "refused:refused": "the battery wouldn't take it",
+        "refused:bad-act": "not a limit this battery takes"
+      }
+    },
+    {
+      "id": "power:limit:stop",
+      "in": "power:limit",
+      "name": "Stop at {n}%",
+      "verb": "set",
+      "said": {
+        "chosen": "chosen"
+      }
+    },
+    {
+      "id": "power:temperature",
+      "in": "power",
+      "name": "Temperature",
+      "answers": [
+        "battery temperature"
+      ],
+      "said": {
+        "of": "of the {most} \u00b0C it's made to run at"
+      }
+    },
+    {
+      "id": "power:model",
+      "in": "power",
+      "name": "Model",
+      "term": "Machine/model",
+      "said": {
+        "eyebrow": "from {maker} \u00b7 battery"
+      }
+    },
+    {
+      "id": "power:serial",
+      "in": "power:model",
+      "name": "Serial"
+    },
+    {
+      "id": "power:made",
+      "in": "power",
+      "name": "Made",
+      "answers": [
+        "battery made"
+      ]
+    }
+  ]
+}

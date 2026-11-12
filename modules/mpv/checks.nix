@@ -64,7 +64,6 @@ onLinux {
         "Recent.js"
         "Captured.js"
         "Ago.js"
-        "words.json"
       ];
       # An mpv window, its process playing now.mkv.
       niri = singleton "Niri.qml" ''
@@ -112,6 +111,7 @@ onLinux {
       ${lib.concatMapStrings (file: ''
         cp ${launcher + "/${file}"} launcher/${file}
       '') launched}
+      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./MpvProgram.qml} launcher/MpvProgram.qml
       cp ${./Mpv.js} launcher/Mpv.js
       cp ${../../tests/mpv-program.qml} shell.qml

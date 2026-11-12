@@ -1,0 +1,34 @@
+{
+  "things": [
+    {
+      "id": "asks:fact:runs",
+      "in": "asks",
+      "name": "Runs"
+    },
+    {
+      "id": "asks:fact:in",
+      "in": "asks",
+      "name": "In"
+    },
+    {
+      "id": "asks:fact:changes",
+      "in": "asks",
+      "name": "Changes"
+    },
+    {
+      "id": "asks:fact:given",
+      "in": "asks",
+      "name": "Given As"
+    },
+    {
+      "id": "asks:fact:ends",
+      "in": "asks",
+      "name": "Ends"
+    },
+    {
+      "id": "asks:fact:outcome",
+      "in": "asks",
+      "name": "Outcome"
+    }
+  ]
+}

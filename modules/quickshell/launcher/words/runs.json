@@ -1,0 +1,12 @@
+{
+  "things": [
+    {
+      "id": "verb:run:switch",
+      "command": "buffer",
+      "in": "runs",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    }
+  ]
+}

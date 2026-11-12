@@ -1,0 +1,24 @@
+{
+  "things": [
+    {
+      "id": "calculator:hex",
+      "in": "calculator",
+      "name": "Hex"
+    },
+    {
+      "id": "calculator:octal",
+      "in": "calculator",
+      "name": "Octal"
+    },
+    {
+      "id": "calculator:binary",
+      "in": "calculator",
+      "name": "Binary"
+    },
+    {
+      "id": "calculator:decimal",
+      "in": "calculator",
+      "name": "Decimal"
+    }
+  ]
+}

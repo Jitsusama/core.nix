@@ -21,7 +21,7 @@
     tests = ../../../tests/pastes-on-niri-test.py;
     given = [
       "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
-      "CLIPBOARD_WORDS=${../launcher/words.json}"
+      "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
     ];
   };
 

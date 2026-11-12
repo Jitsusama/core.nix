@@ -659,7 +659,7 @@ in
     means = "how hard an agent thinks, in its level's colour";
   };
   # The launcher's things, each by what it is, as its vocabulary names
-  # them (modules/quickshell/launcher/words.json).
+  # them (modules/quickshell/launcher/words/).
   category = {
     glyph = nerd "f04fc";
     console = "#";

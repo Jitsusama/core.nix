@@ -1,0 +1,38 @@
+{
+  "things": [
+    {
+      "id": "verb:recent:site:go",
+      "command": "buffer",
+      "in": "recent:site",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:recent:site:open",
+      "command": "open",
+      "in": "recent:site",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:recent:site:close",
+      "command": "close",
+      "in": "recent:site",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "verb:recent:site:link",
+      "command": "yank",
+      "in": "recent:site",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

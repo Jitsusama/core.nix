@@ -1234,7 +1234,7 @@ works the same way everywhere.
   would do, the field's end says so ("sl is enough"), so the habit gets
   quicker by itself, and there are no aliases to set up or remember.
 - **One word each.** Every name and word the launcher knows is said
-  once, in its vocabulary (`modules/quickshell/launcher/words.json`, the
+  once, in its vocabulary (`modules/quickshell/launcher/words/`, the
   option `jitsusama.quickshell.launcher.words`): each thing's name as
   shown, the place it's in and the glyph it wears. A thing is named by
   its context's one term for it, the glossary's (`docs/glossary.md`), and

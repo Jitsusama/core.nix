@@ -1,0 +1,245 @@
+{
+  "things": [
+    {
+      "id": "verb:sound-sent",
+      "command": "setlocal",
+      "argument": "output={value}",
+      "in": "program:sound",
+      "name": "{device}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "argument": "input={value}"
+        }
+      }
+    },
+    {
+      "id": "verb:spotify:sign-in",
+      "command": "open",
+      "in": "program:spotify",
+      "name": "Sign In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
+      "id": "program:media:position",
+      "in": "program:media",
+      "name": "Position"
+    },
+    {
+      "id": "program:media:volume",
+      "in": "program:media",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "program:media:shuffle",
+      "in": "program:media",
+      "name": "Shuffle"
+    },
+    {
+      "id": "program:media:loop",
+      "in": "program:media",
+      "name": "Loop"
+    },
+    {
+      "id": "program:media:speed",
+      "in": "program:media",
+      "name": "Speed",
+      "term": "Programs/speed"
+    },
+    {
+      "id": "program:media:fullscreen",
+      "in": "program:media",
+      "name": "Full Screen"
+    },
+    {
+      "id": "program:media:artist",
+      "in": "program:media",
+      "name": "Artist"
+    },
+    {
+      "id": "program:media:album",
+      "in": "program:media",
+      "name": "Album"
+    },
+    {
+      "id": "program:media:album-artist",
+      "in": "program:media",
+      "name": "Album Artist"
+    },
+    {
+      "id": "program:media:track",
+      "in": "program:media",
+      "name": "Track",
+      "term": "Programs/track"
+    },
+    {
+      "id": "program:media:genre",
+      "in": "program:media",
+      "name": "Genre"
+    },
+    {
+      "id": "program:media:rating",
+      "in": "program:media",
+      "name": "Rating"
+    },
+    {
+      "id": "program:media:link",
+      "in": "program:media",
+      "name": "Link",
+      "term": "Programs/link"
+    },
+    {
+      "id": "program:media:bus-name",
+      "in": "program:media",
+      "name": "Bus Name"
+    },
+    {
+      "id": "verb:program:play",
+      "command": "resume",
+      "in": "program:media",
+      "name": "Play",
+      "verb": "play",
+      "states": {
+        "playing": {
+          "name": "Pause",
+          "verb": "pause"
+        }
+      }
+    },
+    {
+      "id": "verb:program:next",
+      "command": "skip",
+      "in": "program:media",
+      "name": "Next",
+      "verb": "next"
+    },
+    {
+      "id": "verb:program:previous",
+      "command": "skip",
+      "bang": true,
+      "in": "program:media",
+      "name": "Previous",
+      "verb": "previous"
+    },
+    {
+      "id": "verb:program:mute",
+      "command": "setlocal",
+      "argument": "mute",
+      "in": "program:sound",
+      "name": "Muted",
+      "verb": "mute",
+      "glyph": "volume",
+      "states": {
+        "muted": {
+          "verb": "unmute",
+          "glyph": "silent",
+          "argument": "nomute"
+        }
+      }
+    },
+    {
+      "id": "verb:program:louder",
+      "command": "setlocal",
+      "argument": "volume+=5",
+      "in": "program:sound",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:program:quieter",
+      "command": "setlocal",
+      "argument": "volume-=5",
+      "in": "program:sound",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "program:volume",
+      "in": "program:sound",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "program:microphone",
+      "in": "program:sound",
+      "name": "Microphone",
+      "term": "Machine/microphone",
+      "verb": "more",
+      "states": {
+        "muted": {
+          "name": "Microphone",
+          "glyph": "muted"
+        }
+      }
+    },
+    {
+      "id": "path:file",
+      "in": "program:recent",
+      "name": "File",
+      "glyph": "path",
+      "verb": "open",
+      "said": {
+        "open": "open",
+        "windows": "open in {count} windows",
+        "closed": "closed"
+      }
+    },
+    {
+      "id": "recent:site",
+      "in": "program:recent",
+      "name": "Site",
+      "verb": "open",
+      "glyph": "web",
+      "said": {
+        "open": "open",
+        "tabs": "open in {count} tabs",
+        "closes": "closes {count} tabs",
+        "closed": "closed"
+      }
+    },
+    {
+      "id": "path:folder",
+      "in": "program:recent",
+      "name": "Folder",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "tuple:call",
+      "in": "program:recent",
+      "name": "Call",
+      "term": "Programs/call",
+      "verb": "call",
+      "glyph": "call",
+      "states": {
+        "busy": {
+          "verb": "join",
+          "glyph": "joinCall"
+        },
+        "unknown": {
+          "name": "Someone"
+        }
+      },
+      "said": {
+        "missed": "missed",
+        "two": "{first} and {second}",
+        "other": "{first} and one other",
+        "others": "{first} and {count} others",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min",
+        "youCalled": "you called",
+        "called": "{name} called",
+        "on": "on {program}",
+        "call": "call",
+        "missedCall": "missed call",
+        "missedCount": "{count} missed"
+      }
+    }
+  ]
+}

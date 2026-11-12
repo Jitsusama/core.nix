@@ -1,0 +1,792 @@
+{
+  "things": [
+    {
+      "id": "today",
+      "in": "on",
+      "name": "Date",
+      "answers": [
+        "date",
+        "today",
+        "week",
+        "day of the year",
+        "julian day",
+        "quarter",
+        "season",
+        "moon"
+      ],
+      "said": {
+        "from": "from the clock"
+      }
+    },
+    {
+      "id": "weather",
+      "in": "on",
+      "name": "Weather",
+      "answers": [
+        "weather"
+      ],
+      "started": [
+        "weather"
+      ],
+      "said": {
+        "wind": "{speed} from the {point}",
+        "uv": "{index}, {band}",
+        "low": "low",
+        "moderate": "moderate",
+        "high": "high",
+        "veryHigh": "very high",
+        "extreme": "extreme",
+        "daylight": "{hours} h {minutes} min",
+        "range": "{low} to {high}",
+        "wetHours": "over {hours} h",
+        "dayRain": "{chance} chance",
+        "at": "{day} \u00b7 {clock}"
+      }
+    },
+    {
+      "id": "time",
+      "in": "on",
+      "name": "Time",
+      "question": "time",
+      "answers": [
+        "time",
+        "utc",
+        "epoch",
+        "unix time",
+        "tai",
+        "gps time",
+        "sidereal time"
+      ]
+    },
+    {
+      "id": "location",
+      "in": "on",
+      "name": "Location",
+      "term": "Desktop/location",
+      "said": {
+        "via": "found \u00b7 location",
+        "viaHand": "set by hand \u00b7 location",
+        "via-wifi": "via Wi-Fi \u00b7 location",
+        "via-cell": "via cell towers \u00b7 location",
+        "via-wifi-and-cell": "via Wi-Fi and cell towers \u00b7 location",
+        "via-cdma": "via CDMA \u00b7 location",
+        "via-ip": "via a network's address \u00b7 location",
+        "via-gps": "via GPS \u00b7 location",
+        "via-file": "via a fixed file \u00b7 location",
+        "altitude": "{n} m",
+        "speed": "{n} km/h",
+        "heading": "{n}\u00b0",
+        "no-altitude": "altitude",
+        "no-speed": "speed",
+        "no-heading": "heading",
+        "or": "or",
+        "hand": "set by hand",
+        "metres": "within {n} m",
+        "kilometres": "within {n} km",
+        "yesterday": "yesterday",
+        "north": "N",
+        "south": "S",
+        "east": "E",
+        "west": "W",
+        "unknown": "unknown",
+        "unnamed": "not named yet",
+        "notFound": "not found yet",
+        "knows": "found, {within}",
+        "elsewhere": "keeps {zone} \u00b7 not following",
+        "nearEdge": "near a time zone's edge",
+        "foundWithin": "found {within}",
+        "finding": "finding {words}\u2026",
+        "nowhere": "no place is called {words}",
+        "unasked": "couldn't ask where {words} is",
+        "unkept": "{words} couldn't be set"
+      },
+      "tells": {
+        "leftOut": "Its source gives no {missing}.",
+        "leftOut-wifi": "Wi-Fi gives no {missing}.",
+        "leftOut-cell": "Cell towers give no {missing}.",
+        "leftOut-wifi-and-cell": "Wi-Fi and cell towers give no {missing}.",
+        "leftOut-cdma": "CDMA gives no {missing}.",
+        "leftOut-ip": "A network's address gives no {missing}.",
+        "leftOut-gps": "GPS gave no {missing}.",
+        "leftOut-file": "A fixed file gives no {missing}."
+      }
+    },
+    {
+      "id": "on:disk",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this machine \u00b7 disk",
+        "free": "{amount} free",
+        "day": "a day",
+        "days": "{count} days",
+        "hourly": "{amount} an hour",
+        "grew": "{path} +{amount}",
+        "cleared": "{amount} from {path} at {time}",
+        "silent": "not answering"
+      }
+    },
+    {
+      "id": "on:disk:filling",
+      "in": "on",
+      "name": "Filling"
+    },
+    {
+      "id": "on:disk:growing",
+      "in": "on",
+      "name": "Growing Most"
+    },
+    {
+      "id": "on:disk:cleared",
+      "in": "on",
+      "name": "Last Cleared"
+    },
+    {
+      "id": "on:notices",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 notices"
+      }
+    },
+    {
+      "id": "on:lag",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this machine \u00b7 lag",
+        "over": "{share} of the last {seconds} s",
+        "stall:cpu": "processor",
+        "stall:memory": "memory",
+        "stall:io": "disk"
+      },
+      "tells": {
+        "desktop": "The desktop waited on {what}.",
+        "programs": "Programs waited on {what}."
+      }
+    },
+    {
+      "id": "on:home-network",
+      "in": "on",
+      "said": {
+        "well": "connected",
+        "internetDown": "internet down",
+        "providerDown": "provider down",
+        "mesh": "home network {state}",
+        "nodeOffline": "{node} offline",
+        "oneOffline": "1 node offline",
+        "nodesOffline": "{count} nodes offline"
+      }
+    },
+    {
+      "id": "on:lag:waited",
+      "in": "on",
+      "name": "Time Waited"
+    },
+    {
+      "id": "on:lag:session",
+      "in": "on",
+      "name": "The Desktop"
+    },
+    {
+      "id": "on:lag:app",
+      "in": "on",
+      "name": "Its Programs"
+    },
+    {
+      "id": "on:lag:jobs",
+      "in": "on",
+      "name": "Jobs",
+      "term": "Machine/job"
+    },
+    {
+      "id": "on:lag:build",
+      "in": "on",
+      "name": "Builds"
+    },
+    {
+      "id": "on:lag:swap",
+      "in": "on",
+      "name": "Swap",
+      "term": "Machine/swap"
+    },
+    {
+      "id": "on:sharing",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 screen share",
+        "several": "{count} things",
+        "held": "held",
+        "shown": "still show",
+        "window": "window",
+        "screen": "screen"
+      }
+    },
+    {
+      "id": "on:sharing:what",
+      "in": "on",
+      "name": "Sharing"
+    },
+    {
+      "id": "on:sharing:notices",
+      "in": "on",
+      "name": "Notices",
+      "term": "Desktop/notice"
+    },
+    {
+      "id": "on:sharing:kind",
+      "in": "on",
+      "name": "Kind"
+    },
+    {
+      "id": "on:sharing:stream",
+      "in": "on",
+      "name": "Stream ID"
+    },
+    {
+      "id": "on:recording",
+      "in": "on",
+      "said": {
+        "eyebrow": "in {where} \u00b7 recording"
+      }
+    },
+    {
+      "id": "on:recording:showing",
+      "in": "on",
+      "name": "Records"
+    },
+    {
+      "id": "on:quiet",
+      "in": "on",
+      "said": {
+        "eyebrow": "on this desktop \u00b7 do not disturb",
+        "one": "1 notice",
+        "many": "{count} notices"
+      },
+      "tells": {
+        "kept": "Turned on by hand.",
+        "shared": "On while the screen is shared."
+      }
+    },
+    {
+      "id": "on:quiet:since",
+      "in": "on",
+      "name": "Since"
+    },
+    {
+      "id": "on:quiet:held",
+      "in": "on",
+      "name": "Held"
+    },
+    {
+      "id": "on:plate",
+      "in": "on",
+      "said": {
+        "seconds": "and {seconds} s",
+        "synchronised": "synchronised",
+        "unsynchronised": "not synchronised",
+        "unkept": "nothing keeps the time",
+        "day": "day {day}",
+        "byHand": "set by hand"
+      }
+    },
+    {
+      "id": "on:plate:next",
+      "in": "on:plate",
+      "name": "Next"
+    },
+    {
+      "id": "on:plate:here",
+      "in": "on:plate",
+      "name": "Here",
+      "term": "Desktop/here"
+    },
+    {
+      "id": "on:plate:clock",
+      "in": "on:plate",
+      "name": "Clock"
+    },
+    {
+      "id": "on:plate:week",
+      "in": "on:plate",
+      "name": "Week"
+    },
+    {
+      "id": "on:waiting",
+      "in": "on",
+      "name": "For You",
+      "term": "Desktop/For You",
+      "verb": "go to",
+      "glyph": "forYou",
+      "empty": "Nothing waits on you.",
+      "tells": {
+        "known": "Known done {how}.",
+        "person": "Only you can say it's done.",
+        "ready-to-deal": "I'm ready to deal with \"{title}\" now, if it's still valid. Check it's still true before you ask me anything."
+      },
+      "said": {
+        "first": "{title} \u00b7 {minutes} min",
+        "minutes": "{minutes} min",
+        "later": "nothing now, {count} later",
+        "more": "{count} more",
+        "none": "nothing now",
+        "toDo": "{count} to do",
+        "toLookAt": "{count} to look at",
+        "toTry": "{count} to try",
+        "nobody": "nobody's watching this",
+        "boot": "after the next boot",
+        "switch": "after the next switch",
+        "signin": "once signed in to {value}",
+        "device": "once the {value} is seen",
+        "file": "once its file is written",
+        "check": "once its check passes",
+        "from": "from {from} \u00b7 {kind}",
+        "blocks": "blocks {count} session",
+        "blocksMany": "blocks {count} sessions",
+        "due": "due {time}",
+        "overdue": "overdue since {time}",
+        "waitedFor": "waiting {span}",
+        "spanMinutes": "{count} min",
+        "spanHours": "{count} h",
+        "spanDays": "{count} d",
+        "todo": "to-do",
+        "look": "to look at",
+        "ended": "session ended",
+        "concluded": "quest concluded",
+        "takes": "{minutes} min",
+        "history": "{how} {time}",
+        "opened": "opened",
+        "cleared": "cleared",
+        "resolved": "resolved",
+        "openedHow": "opened",
+        "clearedHow": "cleared by you",
+        "doneByYou": "done by you",
+        "clearsLook": "you open or clear it",
+        "clearsPr": "it merges or closes",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
+        "moment": "{day} {time}"
+      }
+    },
+    {
+      "id": "on:waiting:weight",
+      "in": "on:waiting",
+      "name": "Weight"
+    },
+    {
+      "id": "on:waiting:heaviest",
+      "in": "on:waiting",
+      "name": "Heaviest"
+    },
+    {
+      "id": "on:waiting:since",
+      "in": "on:waiting",
+      "name": "Waiting Since"
+    },
+    {
+      "id": "on:waiting:clears",
+      "in": "on:waiting",
+      "name": "Clears When"
+    },
+    {
+      "id": "on:waiting:takes",
+      "in": "on:waiting",
+      "name": "Takes"
+    },
+    {
+      "id": "on:waiting:due",
+      "in": "on:waiting",
+      "name": "Due"
+    },
+    {
+      "id": "on:waiting:set-for",
+      "in": "on:waiting",
+      "name": "Set For"
+    },
+    {
+      "id": "on:waiting:machine",
+      "in": "on:waiting",
+      "name": "Machine",
+      "term": "Machine/machine"
+    },
+    {
+      "id": "on:waiting:where",
+      "in": "on:waiting",
+      "name": "Where"
+    },
+    {
+      "id": "on:waiting:address",
+      "in": "on:waiting",
+      "name": "Address",
+      "term": "Agents/address"
+    },
+    {
+      "id": "on:waiting:check",
+      "in": "on:waiting",
+      "name": "Check",
+      "term": "Desktop/check"
+    },
+    {
+      "id": "on:waiting:checked",
+      "in": "on:waiting",
+      "name": "Last Checked"
+    },
+    {
+      "id": "on:waiting:resolved",
+      "in": "on:waiting",
+      "name": "Resolved"
+    },
+    {
+      "id": "on:waiting:session",
+      "in": "on:waiting",
+      "name": "Session",
+      "term": "Agents/session"
+    },
+    {
+      "id": "on:waiting:look",
+      "in": "on:waiting",
+      "name": "Look",
+      "term": "Desktop/look"
+    },
+    {
+      "id": "on:waiting:target",
+      "in": "on:waiting",
+      "name": "Target"
+    },
+    {
+      "id": "on:waiting:item",
+      "in": "on:waiting",
+      "name": "Item"
+    },
+    {
+      "id": "for-you:kind:do",
+      "in": "on:waiting",
+      "name": "To-Dos",
+      "term": "Desktop/to-do"
+    },
+    {
+      "id": "for-you:kind:look",
+      "in": "on:waiting",
+      "name": "To Look At",
+      "term": "Desktop/to look at",
+      "glyph": "look"
+    },
+    {
+      "id": "for-you:kind:try",
+      "in": "on:waiting",
+      "name": "To Try",
+      "term": "Desktop/to try",
+      "glyph": "toTry"
+    },
+    {
+      "id": "for-you:source:sessions",
+      "in": "on:waiting",
+      "name": "Sessions",
+      "term": "Agents/session"
+    },
+    {
+      "id": "for-you:source:mail",
+      "in": "on:waiting",
+      "name": "Mail",
+      "term": "Programs/mail"
+    },
+    {
+      "id": "for-you:source:slack",
+      "in": "on:waiting",
+      "name": "Slack",
+      "verb": "more",
+      "glyph": "notifications"
+    },
+    {
+      "id": "for-you:source:calendar",
+      "in": "on:waiting",
+      "name": "Calendar",
+      "term": "Programs/calendar"
+    },
+    {
+      "id": "for-you:source:desktop",
+      "in": "on:waiting",
+      "name": "Desktop",
+      "term": "Desktop/desktop",
+      "verb": "more",
+      "glyph": "notifications",
+      "said": {
+        "count": "{count} to read",
+        "read": "read here",
+        "readInSlack": "read in Slack",
+        "withdrawn": "withdrawn",
+        "earlier": "read"
+      },
+      "empty": "Nothing unread from the desktop."
+    },
+    {
+      "id": "for-you:source:passwords",
+      "in": "on:waiting",
+      "name": "Passwords"
+    },
+    {
+      "id": "on:waiting:history",
+      "in": "on",
+      "name": "History",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing resolved yet.",
+      "said": {
+        "note": "what no longer needs you",
+        "count": "{count} kept",
+        "none": "none"
+      }
+    },
+    {
+      "id": "verb:on:look:open",
+      "command": "open",
+      "in": "on",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:on:look:clear",
+      "command": "delete",
+      "in": "on",
+      "name": "Clear It",
+      "verb": "clear",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "clear"
+    },
+    {
+      "id": "on:waiting:later",
+      "in": "on",
+      "name": "Later",
+      "verb": "more",
+      "glyph": "queued"
+    },
+    {
+      "id": "verb:on:waiting:go",
+      "command": "buffer",
+      "in": "on",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:on:waiting:deal",
+      "command": "talk",
+      "in": "on",
+      "name": "Deal With It",
+      "verb": "deal",
+      "glyph": "reply"
+    },
+    {
+      "id": "verb:on:waiting:done",
+      "command": "delete",
+      "in": "on",
+      "name": "Mark It Done",
+      "verb": "done",
+      "glyph": "done"
+    },
+    {
+      "id": "verb:on:waiting:quest",
+      "command": "open",
+      "in": "on",
+      "name": "Open Its Quest",
+      "verb": "open",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:on:waiting:notNow",
+      "command": "snooze",
+      "in": "on",
+      "name": "Put It Off",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
+      "id": "verb:on:layer:release",
+      "command": "release",
+      "in": "on",
+      "name": "Release It",
+      "verb": "release",
+      "glyph": "layerOff"
+    },
+    {
+      "id": "verb:on:awake:open",
+      "command": "set",
+      "argument": "awake=open",
+      "in": "on",
+      "name": "Only While the Lid Is Open",
+      "verb": "keep",
+      "glyph": "lidOpen"
+    },
+    {
+      "id": "verb:on:awake:shut",
+      "command": "set",
+      "argument": "awake=shut",
+      "in": "on",
+      "name": "With the Lid Shut Too",
+      "verb": "keep",
+      "glyph": "awake"
+    },
+    {
+      "id": "verb:on:quiet:more",
+      "command": "set",
+      "argument": "dnd+=60",
+      "in": "on",
+      "name": "An Hour More",
+      "verb": "extend",
+      "glyph": "timed"
+    },
+    {
+      "id": "verb:on:quiet:held",
+      "command": "edit",
+      "argument": "Held",
+      "in": "on",
+      "name": "Show What's Held",
+      "verb": "show",
+      "glyph": "notifications"
+    },
+    {
+      "id": "verb:on:low:save",
+      "command": "set",
+      "argument": "powersave",
+      "in": "on",
+      "name": "Save Power",
+      "verb": "save",
+      "glyph": "saver"
+    },
+    {
+      "id": "verb:on:device:show",
+      "command": "edit",
+      "argument": "Bluetooth",
+      "in": "on",
+      "name": "Show in Bluetooth",
+      "verb": "show",
+      "glyph": "bluetooth"
+    },
+    {
+      "id": "verb:on:timers:show",
+      "command": "edit",
+      "argument": "Timers",
+      "in": "on",
+      "name": "Show in Timers",
+      "verb": "open",
+      "glyph": "timer"
+    },
+    {
+      "id": "verb:on:muted:unmute",
+      "command": "set",
+      "argument": "nomute",
+      "in": "on",
+      "name": "Unmute It",
+      "verb": "unmute",
+      "glyph": "microphone"
+    },
+    {
+      "id": "verb:on:network:check",
+      "command": "retry",
+      "in": "on",
+      "name": "Check It Again",
+      "verb": "check",
+      "glyph": "retry"
+    },
+    {
+      "id": "verb:on:playing:pause",
+      "command": "pause",
+      "in": "on",
+      "name": "Pause",
+      "term": "Programs/pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:playing:next",
+      "command": "skip",
+      "in": "on",
+      "name": "Next Track",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:on:playing:previous",
+      "command": "skip",
+      "bang": true,
+      "in": "on",
+      "name": "Previous Track",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "verb:on:playing:show",
+      "command": "buffer",
+      "in": "on",
+      "name": "Go To {player}",
+      "verb": "go to"
+    },
+    {
+      "id": "verb:on:playing:pauseOther",
+      "command": "pause",
+      "argument": "{player}",
+      "in": "on",
+      "name": "Pause {player} Too",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:on:sharing:stop",
+      "command": "halt",
+      "in": "on",
+      "name": "Stop Sharing",
+      "verb": "stop",
+      "glyph": "displayOff",
+      "states": {
+        "all": {
+          "name": "Stop Sharing All of It"
+        }
+      }
+    },
+    {
+      "id": "passwords:todo",
+      "in": "on:waiting",
+      "name": "Change the Passwords the Check Found",
+      "verb": "more",
+      "glyph": "passwords",
+      "empty": "No login is breached or reused now.",
+      "said": {
+        "breached": "{count} breached",
+        "reused": "{count} reused",
+        "and": " and ",
+        "breachedLogin": "{count} breached login",
+        "breachedLogins": "{count} breached logins",
+        "reusedLogin": "{count} reused login",
+        "reusedLogins": "{count} reused logins",
+        "how": "checked clear",
+        "clears": "a later check finds none breached or reused"
+      },
+      "tells": {
+        "why": "The check at {at} found {found}.",
+        "steps": "Step in for each login the check found breached or reused. Change each one's password where you sign in, and save it in its password manager. Then check every password again, and this clears once none is breached or reused."
+      }
+    },
+    {
+      "id": "meet:call",
+      "in": "on",
+      "name": "Call",
+      "term": "Programs/call",
+      "glyph": "call",
+      "said": {
+        "eyebrow": "on Meet \u00b7 call",
+        "muted": "muted",
+        "live": "live",
+        "mute": "mute",
+        "unmute": "unmute",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min",
+        "inCall": "{count} in the call",
+        "signIn": "needs Google sign-in",
+        "unknown": "not known to Meet yet",
+        "since": "since {time}",
+        "left": "left {time}"
+      }
+    }
+  ]
+}

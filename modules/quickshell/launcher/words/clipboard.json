@@ -1,0 +1,27 @@
+{
+  "things": [
+    {
+      "id": "verb:copy:paste",
+      "command": "put",
+      "in": "clipboard",
+      "name": "Paste",
+      "verb": "paste",
+      "glyph": "paste"
+    },
+    {
+      "id": "verb:copy:copy",
+      "command": "yank",
+      "in": "clipboard",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "copies:forget",
+      "in": "clipboard",
+      "name": "Forget the Clipboard",
+      "verb": "forget",
+      "glyph": "forget"
+    }
+  ]
+}

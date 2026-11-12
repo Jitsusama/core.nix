@@ -1,0 +1,65 @@
+{
+  "things": [
+    {
+      "id": "drive:fact:changed",
+      "in": "drive:file",
+      "name": "Changed"
+    },
+    {
+      "id": "drive:fact:changer",
+      "in": "drive:file",
+      "name": "Changed By"
+    },
+    {
+      "id": "drive:fact:owner",
+      "in": "drive:file",
+      "name": "Owner"
+    },
+    {
+      "id": "drive:fact:yours",
+      "in": "drive:file",
+      "name": "You Changed"
+    },
+    {
+      "id": "drive:fact:created",
+      "in": "drive:file",
+      "name": "Created"
+    },
+    {
+      "id": "drive:fact:shared",
+      "in": "drive:file",
+      "name": "Shared"
+    },
+    {
+      "id": "drive:fact:sharer",
+      "in": "drive:file",
+      "name": "Shared By"
+    },
+    {
+      "id": "drive:fact:size",
+      "in": "drive:file",
+      "name": "Size"
+    },
+    {
+      "id": "drive:fact:id",
+      "in": "drive:file",
+      "name": "ID"
+    },
+    {
+      "id": "verb:drive:open",
+      "command": "open",
+      "in": "drive:file",
+      "name": "Open in Drive",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:drive:link",
+      "command": "yank",
+      "in": "drive:file",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

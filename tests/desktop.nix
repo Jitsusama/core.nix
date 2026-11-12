@@ -274,7 +274,7 @@ let
         state = "/nonexistent/state";
         zone = "UTC";
         notices.enable = false;
-        vocabulary = "${../modules/quickshell/launcher/words.json}";
+        vocabulary = "${(import ../modules/quickshell/launcher/words.nix).file}";
       }
     ))
     "serve"

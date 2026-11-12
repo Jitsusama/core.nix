@@ -1,0 +1,274 @@
+{
+  "things": [
+    {
+      "id": "warp:state",
+      "in": "warp",
+      "name": "State"
+    },
+    {
+      "id": "warp:health",
+      "in": "warp",
+      "name": "Health"
+    },
+    {
+      "id": "warp:error",
+      "in": "warp",
+      "name": "Error"
+    },
+    {
+      "id": "warp:through",
+      "in": "warp",
+      "name": "Through"
+    },
+    {
+      "id": "warp:settings",
+      "in": "warp",
+      "name": "Settings"
+    },
+    {
+      "id": "warp:settings:mode",
+      "in": "warp:settings",
+      "name": "Tunnel Mode",
+      "term": "Network/tunnel mode"
+    },
+    {
+      "id": "warp:settings:always-on",
+      "in": "warp:settings",
+      "name": "Always On"
+    },
+    {
+      "id": "warp:settings:split-tunnel",
+      "in": "warp:settings",
+      "name": "Split Tunnel"
+    },
+    {
+      "id": "warp:settings:switch-locked",
+      "in": "warp:settings",
+      "name": "Switch Locked"
+    },
+    {
+      "id": "warp:settings:auto-connect",
+      "in": "warp:settings",
+      "name": "Auto-Connect After"
+    },
+    {
+      "id": "warp:settings:organisation",
+      "in": "warp:settings",
+      "name": "Organisation"
+    },
+    {
+      "id": "warp:settings:tunnel-protocol",
+      "in": "warp:settings",
+      "name": "Tunnel Protocol"
+    },
+    {
+      "id": "warp:settings:post-quantum",
+      "in": "warp:settings",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:settings:doh",
+      "in": "warp:settings",
+      "name": "DoH Server"
+    },
+    {
+      "id": "warp:settings:local-domains",
+      "in": "warp:settings",
+      "name": "Local Domains"
+    },
+    {
+      "id": "warp:settings:sign-in-pages",
+      "in": "warp:settings",
+      "name": "Sign-In Pages",
+      "term": "Network/sign-in page"
+    },
+    {
+      "id": "warp:settings:path-mtu",
+      "in": "warp:settings",
+      "name": "Path MTU Discovery"
+    },
+    {
+      "id": "warp:settings:mode-switch",
+      "in": "warp:settings",
+      "name": "Mode Switch Allowed"
+    },
+    {
+      "id": "warp:settings:may-leave",
+      "in": "warp:settings",
+      "name": "Leaving Allowed"
+    },
+    {
+      "id": "warp:settings:support",
+      "in": "warp:settings",
+      "name": "Support"
+    },
+    {
+      "id": "warp:settings:local-network",
+      "in": "warp:settings",
+      "name": "Local Network Reach"
+    },
+    {
+      "id": "warp:settings:override",
+      "in": "warp:settings",
+      "name": "Override"
+    },
+    {
+      "id": "warp:emergency",
+      "in": "warp",
+      "name": "Emergency Disconnect"
+    },
+    {
+      "id": "warp:range",
+      "in": "warp",
+      "name": "Range"
+    },
+    {
+      "id": "warp:reads",
+      "in": "warp",
+      "name": "Reads",
+      "term": "Network/read"
+    },
+    {
+      "id": "warp:in",
+      "in": "warp:traffic",
+      "name": "In",
+      "term": "Network/in"
+    },
+    {
+      "id": "warp:out",
+      "in": "warp:traffic",
+      "name": "Out",
+      "term": "Network/out"
+    },
+    {
+      "id": "warp:power",
+      "command": "disconnect",
+      "in": "warp",
+      "name": "Disconnect WARP",
+      "verb": "disconnect",
+      "glyph": "tunnelOff",
+      "act": "ending",
+      "ends": "disconnect",
+      "states": {
+        "off": {
+          "command": "connect",
+          "name": "Connect WARP",
+          "verb": "connect",
+          "glyph": "tunnelOn"
+        }
+      }
+    },
+    {
+      "id": "warp:tunnel",
+      "in": "warp",
+      "name": "Tunnel"
+    },
+    {
+      "id": "warp:latency",
+      "in": "warp",
+      "name": "Round Trip"
+    },
+    {
+      "id": "warp:loss",
+      "in": "warp",
+      "name": "Loss"
+    },
+    {
+      "id": "warp:protocol",
+      "in": "warp",
+      "name": "Protocol"
+    },
+    {
+      "id": "warp:colo",
+      "in": "warp",
+      "name": "Data Centre"
+    },
+    {
+      "id": "warp:endpoint",
+      "in": "warp",
+      "name": "Endpoint"
+    },
+    {
+      "id": "warp:handshake",
+      "in": "warp",
+      "name": "Last Handshake"
+    },
+    {
+      "id": "warp:traffic",
+      "in": "warp",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "warp:tls",
+      "in": "warp",
+      "name": "TLS"
+    },
+    {
+      "id": "warp:tls:version",
+      "in": "warp:tls",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "warp:tls:curve",
+      "in": "warp:tls",
+      "name": "Curve"
+    },
+    {
+      "id": "warp:tls:cipher",
+      "in": "warp:tls",
+      "name": "Cipher"
+    },
+    {
+      "id": "warp:tls:post-quantum",
+      "in": "warp:tls",
+      "name": "Post-Quantum"
+    },
+    {
+      "id": "warp:tls:server-name",
+      "in": "warp:tls",
+      "name": "Server Name"
+    },
+    {
+      "id": "warp:dns",
+      "in": "warp",
+      "name": "DNS"
+    },
+    {
+      "id": "warp:dns:proxy",
+      "in": "warp:dns",
+      "name": "Proxy"
+    },
+    {
+      "id": "warp:dns:average",
+      "in": "warp:dns",
+      "name": "Average"
+    },
+    {
+      "id": "warp:dns:asked",
+      "in": "warp:dns",
+      "name": "Asked"
+    },
+    {
+      "id": "warp:dns:answered",
+      "in": "warp:dns",
+      "name": "Answered"
+    },
+    {
+      "id": "warp:dns:no-record",
+      "in": "warp:dns",
+      "name": "No Record"
+    },
+    {
+      "id": "warp:dns:timed-out",
+      "in": "warp:dns",
+      "name": "Timed Out"
+    },
+    {
+      "id": "warp:dns:failed",
+      "in": "warp:dns",
+      "name": "Failed"
+    }
+  ]
+}

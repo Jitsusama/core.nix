@@ -1,0 +1,58 @@
+{
+  "things": [
+    {
+      "id": "timer",
+      "in": "timers",
+      "name": "Timer",
+      "term": "Desktop/timer",
+      "glyph": "timer",
+      "states": {
+        "starting": {
+          "name": "Start {name}, a {span} Timer"
+        },
+        "startingUnnamed": {
+          "name": "Start a {span} Timer"
+        }
+      },
+      "said": {
+        "running": "of {span} \u00b7 ends {clock}",
+        "paused": "of {span}",
+        "pausedSide": "paused \u00b7 {left}",
+        "rung": "rang {clock}",
+        "late": "rang late, {clock}",
+        "unfit": "a timer counts more than nothing and a week at most",
+        "away": "the timers aren't answering",
+        "hours": "h",
+        "minutes": "min",
+        "seconds": "s",
+        "notice": "{span} timer",
+        "noticeLate": "{span} timer, rang late",
+        "from": "the timers",
+        "gone": "that timer is gone",
+        "pausesRunning": "only a running timer pauses",
+        "resumesPaused": "only a paused timer resumes",
+        "nothing": "a timer counts more than nothing",
+        "pastAWeek": "a timer counts a week at most"
+      }
+    },
+    {
+      "id": "stopwatch",
+      "in": "timers",
+      "name": "Stopwatch",
+      "term": "Desktop/stopwatch",
+      "glyph": "stopwatch",
+      "said": {
+        "running": "running",
+        "stopped": "paused",
+        "unstarted": "not started",
+        "lapsOne": "{state} \u00b7 1 lap",
+        "laps": "{state} \u00b7 {count} laps",
+        "at": "at {count}",
+        "runningAlready": "the stopwatch is running already",
+        "pausesRunning": "only a running stopwatch pauses",
+        "lapsRunning": "only a running stopwatch laps",
+        "lapsFull": "the stopwatch keeps 999 laps at most"
+      }
+    }
+  ]
+}

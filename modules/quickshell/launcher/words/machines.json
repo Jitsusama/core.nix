@@ -1,0 +1,61 @@
+{
+  "things": [
+    { "id": "machines:pressure:cpu", "in": "machines", "name": "Processor Pressure",
+      "term": "Machine/processor pressure" },
+    { "id": "machines:pressure:memory", "in": "machines", "name": "Memory Pressure",
+      "term": "Machine/memory pressure" },
+    { "id": "machines:pressure:io", "in": "machines", "name": "Disk Pressure",
+      "term": "Machine/disk pressure" },
+    { "id": "machines:memory", "in": "machines", "name": "Memory", "term": "Machine/memory" },
+    { "id": "machines:charge", "in": "machines", "name": "Charge" },
+    { "id": "machines:takes", "in": "machines", "name": "Takes" },
+    { "id": "machines:disk", "in": "machines", "name": "Disk", "term": "Disk/disk" },
+    { "id": "machines:commit", "in": "machines", "name": "Commit" },
+    { "id": "machines:core", "in": "machines", "name": "Core", "term": "The Library/core" },
+    { "id": "machines:step", "in": "machines", "name": "Last Update", "glyph": "update" },
+    { "id": "machines:reboot", "in": "machines", "name": "Reboot", "term": "Machine/reboot" },
+    { "id": "machines:measured", "in": "machines", "name": "Measured" },
+    {
+      "id": "machines:processor",
+      "in": "machines",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
+    { "id": "machines:accelerators", "in": "machines", "name": "Accelerators" },
+    { "id": "machines:system", "in": "machines", "name": "System" },
+    { "id": "machines:model", "in": "machines", "name": "Model", "term": "Machine/model" },
+    { "id": "machines:kind:macos", "in": "machines", "name": "Mac" },
+    { "id": "machines:kind:linux", "in": "machines", "name": "Linux" },
+    {
+      "id": "machines:kind:machine",
+      "in": "machines",
+      "name": "Machine",
+      "term": "Machine/machine"
+    },
+    {
+      "id": "verb:machines:start",
+      "command": "new",
+      "in": "machines",
+      "name": "Start a Session Here",
+      "verb": "start",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:machines:update",
+      "command": "install",
+      "in": "machines",
+      "name": "Update It",
+      "verb": "update",
+      "glyph": "update",
+      "asked": "Update {name}"
+    },
+    {
+      "id": "verb:machines:copy-name",
+      "command": "yank",
+      "in": "machines",
+      "name": "Copy the Name",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

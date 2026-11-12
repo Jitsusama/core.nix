@@ -1,0 +1,1101 @@
+{
+  "things": [
+    {
+      "id": "machine:memory:used",
+      "in": "machine:memory",
+      "name": "Used",
+      "said": {
+        "side": "{used} of {total}",
+        "note": "{available} available"
+      }
+    },
+    {
+      "id": "machine:memory:pressure",
+      "in": "machine:memory",
+      "name": "Pressure",
+      "answers": [
+        "memory pressure"
+      ],
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited for memory",
+        "pair": "{some}% something waited \u00b7 {full}% everything",
+        "some": "{some}% something waited"
+      }
+    },
+    {
+      "id": "machine:memory:pressure-10",
+      "in": "machine:memory:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:memory:pressure-60",
+      "in": "machine:memory:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:memory:pressure-300",
+      "in": "machine:memory:pressure",
+      "name": "Last 5 Minutes"
+    },
+    {
+      "id": "machine:memory:swap",
+      "in": "machine:memory",
+      "name": "Swap",
+      "term": "Machine/swap",
+      "said": {
+        "side": "{used} of {total}",
+        "cached": "{cached} of it also still in memory"
+      }
+    },
+    {
+      "id": "machine:memory:cached",
+      "in": "machine:memory",
+      "name": "Cached",
+      "said": {
+        "note": "files kept in memory, given up when it's wanted"
+      }
+    },
+    {
+      "id": "machine:memory:held",
+      "in": "machine:memory",
+      "name": "Held By",
+      "said": {
+        "note": "what holds the memory, biggest first"
+      }
+    },
+    {
+      "id": "machine:memory:held-programs",
+      "in": "machine:memory:held",
+      "name": "Programs",
+      "term": "Programs/program",
+      "said": {
+        "note": "programs' own memory"
+      }
+    },
+    {
+      "id": "machine:memory:held-files",
+      "in": "machine:memory:held",
+      "name": "Files",
+      "said": {
+        "note": "files kept from the disk"
+      }
+    },
+    {
+      "id": "machine:memory:held-shared",
+      "in": "machine:memory:held",
+      "name": "Shared",
+      "said": {
+        "note": "memory programs share"
+      }
+    },
+    {
+      "id": "machine:memory:held-kernel",
+      "in": "machine:memory:held",
+      "name": "System",
+      "said": {
+        "note": "the system's own: its caches, stacks and page tables"
+      }
+    },
+    {
+      "id": "machine:memory:held-buffers",
+      "in": "machine:memory:held",
+      "name": "Buffers",
+      "said": {
+        "note": "the disk's buffers"
+      }
+    },
+    {
+      "id": "machine:memory:held-unwritten",
+      "in": "machine:memory:held",
+      "name": "Waiting to Be Written",
+      "said": {
+        "note": "changes not yet written to the disk"
+      }
+    },
+    {
+      "id": "machine:memory:held-compressed",
+      "in": "machine:memory:held",
+      "name": "Compressed",
+      "said": {
+        "side": "{stored} in {pool}",
+        "note": "swapped into memory, {ratio} times smaller"
+      }
+    },
+    {
+      "id": "machine:memory:held-huge",
+      "in": "machine:memory:held",
+      "name": "Huge Pages",
+      "said": {
+        "note": "in pages of 2 MiB or more; {reserved} reserved"
+      }
+    },
+    {
+      "id": "machine:memory:committed",
+      "in": "machine:memory",
+      "name": "Committed",
+      "said": {
+        "note": "{committed} of {limit} committed"
+      }
+    },
+    {
+      "id": "machine:memory:paging",
+      "in": "machine:memory",
+      "name": "Paging",
+      "said": {
+        "note": "files read in \u00b7 written out"
+      }
+    },
+    {
+      "id": "machine:memory:counts",
+      "in": "machine:memory",
+      "name": "Every Count",
+      "said": {
+        "note": "each Linux keeps, by its own name"
+      }
+    },
+    {
+      "id": "machine:memory:faults",
+      "in": "machine:memory",
+      "name": "Faults",
+      "said": {
+        "note": "{major} from the disk"
+      }
+    },
+    {
+      "id": "machine:memory:swapping",
+      "in": "machine:memory",
+      "name": "Swapping",
+      "said": {
+        "compressed": "compressed {both}"
+      }
+    },
+    {
+      "id": "machine:memory:out-of-memory",
+      "in": "machine:memory",
+      "name": "Out of Memory",
+      "said": {
+        "note": "programs ended for memory since the machine started"
+      }
+    },
+    {
+      "id": "machine:memory:using",
+      "in": "machine:memory",
+      "name": "Using It",
+      "said": {
+        "note": "each program's processes together",
+        "processes": "{n} processes"
+      }
+    },
+    {
+      "id": "machine:memory:type",
+      "in": "machine:memory",
+      "name": "Type",
+      "answers": [
+        "memory type"
+      ],
+      "said": {
+        "speed": "{type} at {speed}",
+        "by": "by {maker}",
+        "module": "{count} module of {size}",
+        "modules": "{count} modules of {size}"
+      }
+    },
+    {
+      "id": "machine:cpu:spent",
+      "in": "machine:cpu",
+      "name": "Time Spent"
+    },
+    {
+      "id": "machine:cpu:spent-user",
+      "in": "machine:cpu:spent",
+      "name": "Programs",
+      "term": "Programs/program",
+      "said": {
+        "note": "programs' own work"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-system",
+      "in": "machine:cpu:spent",
+      "name": "System",
+      "said": {
+        "note": "the system's work for them"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-iowait",
+      "in": "machine:cpu:spent",
+      "name": "Waiting on Disk",
+      "said": {
+        "note": "idle, with a disk request out"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-interrupts",
+      "in": "machine:cpu:spent",
+      "name": "Interrupts",
+      "said": {
+        "note": "answering devices, and the work they put off"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-niced",
+      "in": "machine:cpu:spent",
+      "name": "Niced",
+      "said": {
+        "note": "programs set to give way"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-stolen",
+      "in": "machine:cpu:spent",
+      "name": "Stolen",
+      "said": {
+        "note": "taken by a machine this one runs inside"
+      }
+    },
+    {
+      "id": "machine:cpu:spent-guests",
+      "in": "machine:cpu:spent",
+      "name": "Guests",
+      "said": {
+        "note": "virtual machines this one runs, counted in User too"
+      }
+    },
+    {
+      "id": "machine:cpu:pressure",
+      "in": "machine:cpu",
+      "name": "Pressure",
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited for a processor"
+      }
+    },
+    {
+      "id": "machine:cpu:pressure-10",
+      "in": "machine:cpu:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:cpu:pressure-60",
+      "in": "machine:cpu:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:cpu:pressure-300",
+      "in": "machine:cpu:pressure",
+      "name": "Last 5 Minutes"
+    },
+    {
+      "id": "machine:cpu:running",
+      "in": "machine:cpu",
+      "name": "Running",
+      "said": {
+        "blocked": "{blocked} waiting on a disk",
+        "tasks": "of {tasks} tasks"
+      }
+    },
+    {
+      "id": "machine:cpu:switches",
+      "in": "machine:cpu",
+      "name": "Switches"
+    },
+    {
+      "id": "machine:cpu:interrupts",
+      "in": "machine:cpu",
+      "name": "Interrupts",
+      "said": {
+        "note": "{deferred} put off"
+      }
+    },
+    {
+      "id": "machine:cpu:started",
+      "in": "machine:cpu",
+      "name": "Started",
+      "said": {
+        "note": "processes started"
+      }
+    },
+    {
+      "id": "machine:cpu:cores",
+      "in": "machine:cpu",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "one": "core {n}",
+        "run": "cores {first} to {last}",
+        "list": "cores {list} and {last}"
+      }
+    },
+    {
+      "id": "machine:cpu:core",
+      "in": "machine:cpu:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "machine:cpu:maxed",
+      "in": "machine:cpu",
+      "name": "Maxed",
+      "answers": [
+        "maxed"
+      ],
+      "said": {
+        "none": "none",
+        "many": "{n} of {all}",
+        "note": "at 95% or more"
+      }
+    },
+    {
+      "id": "machine:cpu:clock",
+      "in": "machine:cpu",
+      "name": "Clock Speed",
+      "term": "Machine/clock speed",
+      "answers": [
+        "clock speed"
+      ],
+      "said": {
+        "of": "on average, of {most} at most",
+        "mean": "on average"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-range",
+      "in": "machine:cpu:clock",
+      "name": "Range",
+      "said": {
+        "side": "{low} to {high}",
+        "kinds": "its slowest cores top out at {least}"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-base",
+      "in": "machine:cpu:clock",
+      "name": "Base",
+      "said": {
+        "range": "{low} to {high}",
+        "note": "the clock it's sold at"
+      }
+    },
+    {
+      "id": "machine:cpu:clock-driver",
+      "in": "machine:cpu:clock",
+      "name": "Driver"
+    },
+    {
+      "id": "machine:cpu:clock-governor",
+      "in": "machine:cpu:clock",
+      "name": "Governor"
+    },
+    {
+      "id": "machine:cpu:clock-preference",
+      "in": "machine:cpu:clock",
+      "name": "Preference"
+    },
+    {
+      "id": "machine:cpu:clock-turbo",
+      "in": "machine:cpu:clock",
+      "name": "Turbo",
+      "said": {
+        "side-on": "on",
+        "side-off": "off",
+        "on": "it may clock past its base",
+        "off": "held to its base"
+      }
+    },
+    {
+      "id": "machine:cpu:held-back",
+      "in": "machine:cpu",
+      "name": "Held Back",
+      "term": "Machine/held back",
+      "said": {
+        "note": "by {limit}, over the last second",
+        "none": "nothing holds it back now",
+        "core": "by {limit}",
+        "limit-pl1": "its power limit, PL1",
+        "limit-pl2": "its short power limit, PL2",
+        "limit-pl3": "its peak power limit, PL3",
+        "limit-platformPl1": "the whole machine's power limit, PL1",
+        "limit-platformPl2": "the whole machine's short power limit, PL2",
+        "limit-platformPl3": "the whole machine's peak power limit, PL3",
+        "limit-prochot": "being told to slow down",
+        "limit-regulatorHot": "a regulator running hot",
+        "limit-heat": "heat",
+        "limit-power": "power",
+        "limit-current": "current",
+        "limit-other": "something else"
+      }
+    },
+    {
+      "id": "machine:cpu:held-back-core",
+      "in": "machine:cpu:held-back",
+      "name": "Core {n}"
+    },
+    {
+      "id": "machine:cpu:temperature",
+      "in": "machine:cpu",
+      "name": "Temperature",
+      "said": {
+        "degrees": "{n} °C",
+        "most": "at most {degrees}"
+      }
+    },
+    {
+      "id": "machine:cpu:using",
+      "in": "machine:cpu",
+      "name": "Using It",
+      "said": {
+        "note": "of the whole processor",
+        "processes": "{n} processes"
+      }
+    },
+    {
+      "id": "machine:cpu:load",
+      "in": "machine:cpu",
+      "name": "Load",
+      "said": {
+        "note": "over 1, 5 and 15 minutes"
+      }
+    },
+    {
+      "id": "machine:cpu:npu-load",
+      "in": "machine:cpu",
+      "name": "NPU Load",
+      "said": {
+        "at": "at {clock} of {most}",
+        "resting": "resting"
+      }
+    },
+    {
+      "id": "machine:cpu:kinds",
+      "in": "machine:cpu",
+      "name": "Kinds",
+      "answers": [
+        "core kinds"
+      ],
+      "said": {
+        "at": "{n} at {clock}"
+      }
+    },
+    {
+      "id": "machine:cpu:performance",
+      "in": "machine:cpu:kinds",
+      "name": "Performance"
+    },
+    {
+      "id": "machine:cpu:efficient",
+      "in": "machine:cpu:kinds",
+      "name": "Efficient"
+    },
+    {
+      "id": "machine:cpu:low-power",
+      "in": "machine:cpu:kinds",
+      "name": "Low-Power"
+    },
+    {
+      "id": "machine:cpu:model",
+      "in": "machine:cpu",
+      "name": "Model",
+      "term": "Machine/model",
+      "answers": [
+        "processor model"
+      ]
+    },
+    {
+      "id": "machine:cpu:model-name",
+      "in": "machine:cpu:model",
+      "name": "Name"
+    },
+    {
+      "id": "machine:cpu:vendor",
+      "in": "machine:cpu:model",
+      "name": "Vendor"
+    },
+    {
+      "id": "machine:cpu:family",
+      "in": "machine:cpu:model",
+      "name": "Family",
+      "said": {
+        "side": "family {family} \u00b7 model {model} \u00b7 stepping {stepping}"
+      }
+    },
+    {
+      "id": "machine:cpu:microcode",
+      "in": "machine:cpu:model",
+      "name": "Microcode"
+    },
+    {
+      "id": "machine:cpu:caches",
+      "in": "machine:cpu:model",
+      "name": "Caches",
+      "term": "Machine/cache",
+      "said": {
+        "note": "all of them together"
+      }
+    },
+    {
+      "id": "machine:cpu:cache",
+      "in": "machine:cpu:caches",
+      "name": "L{level} {type}",
+      "said": {
+        "own": "one a core",
+        "shared": "each shared by {n} cores",
+        "ways": "{ways}-way",
+        "line": "{line} B lines",
+        "times": "{size} × {count}"
+      }
+    },
+    {
+      "id": "machine:cpu:cache-data",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Data"
+    },
+    {
+      "id": "machine:cpu:cache-instruction",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Instruction"
+    },
+    {
+      "id": "machine:cpu:cache-unified",
+      "in": "machine:cpu:caches",
+      "name": "L{level} Unified"
+    },
+    {
+      "id": "machine:cpu:kept-from-resting",
+      "in": "machine:cpu",
+      "name": "Kept From Resting",
+      "term": "Machine/kept from resting",
+      "provider": "machine",
+      "question": "kept from resting",
+      "answers": [
+        "kept from resting"
+      ],
+      "said": {
+        "by": "by {keeper}",
+        "quiet": "nothing keeps it from resting now",
+        "spread": "by no one part for long",
+        "refused": "can't be read"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-npu",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "NPU",
+      "term": "Machine/NPU",
+      "said": {
+        "by": "the NPU"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-image-processor",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Image Processor",
+      "term": "Machine/image processor",
+      "said": {
+        "by": "the image processor"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-media-engine",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Media Engine",
+      "term": "Machine/media engine",
+      "said": {
+        "by": "the media engine"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-graphics",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Graphics",
+      "term": "Machine/graphics",
+      "said": {
+        "by": "the graphics"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-display-engine",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Display Engine",
+      "term": "Machine/display engine",
+      "said": {
+        "by": "the display engine"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-chipset",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Chipset",
+      "term": "Machine/chipset",
+      "said": {
+        "by": "the chipset's devices"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-cores",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "by": "busy cores"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-power-controller",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Power Controller",
+      "term": "Machine/power controller",
+      "said": {
+        "by": "the processor's own power controller"
+      }
+    },
+    {
+      "id": "machine:cpu:kept-by-other",
+      "in": "machine:cpu:kept-from-resting",
+      "name": "Something Else",
+      "said": {
+        "by": "something else"
+      }
+    },
+    {
+      "id": "machine:uptime:asleep",
+      "in": "machine:uptime",
+      "name": "Asleep",
+      "said": {
+        "never": "never",
+        "note": "{share} of the time since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:idle",
+      "in": "machine:uptime",
+      "name": "Idle",
+      "term": "Machine/idle",
+      "said": {
+        "note": "of the processors' time awake since it started"
+      }
+    },
+    {
+      "id": "machine:uptime:started",
+      "in": "machine:uptime",
+      "name": "Started"
+    },
+    {
+      "id": "machine:uptime:kernel",
+      "in": "machine:uptime",
+      "name": "Linux"
+    },
+    {
+      "id": "machine:uptime:release",
+      "in": "machine:uptime:kernel",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "machine:uptime:build",
+      "in": "machine:uptime:kernel",
+      "name": "Build"
+    },
+    {
+      "id": "machine:disk:space",
+      "in": "machine:disk",
+      "name": "Space",
+      "said": {
+        "free": "{free} free",
+        "on": "on {mount}, of {size}",
+        "clearing": "clearing old builds",
+        "clearingAll": "clearing all it can",
+        "cleared": "nothing left to clear"
+      }
+    },
+    {
+      "id": "machine:disk:size",
+      "in": "machine:disk:space",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:full-in",
+      "in": "machine:disk:space",
+      "name": "Full In"
+    },
+    {
+      "id": "machine:disk:filling",
+      "in": "machine:disk",
+      "name": "What's Filling It",
+      "said": {
+        "quest": "{name}",
+        "worktree": "{name}",
+        "cache": "{name} cache",
+        "containers": "containers",
+        "other": "{name}",
+        "clears": "some is builds or caches the guard clears once idle",
+        "clearing": "the guard is clearing it now",
+        "now": "measured just now",
+        "ago": "measured {minutes} min ago"
+      }
+    },
+    {
+      "id": "machine:disk:holder:size",
+      "in": "machine:disk:filling",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:holder:grew",
+      "in": "machine:disk:filling",
+      "name": "Grew"
+    },
+    {
+      "id": "machine:disk:holder:clears",
+      "in": "machine:disk:filling",
+      "name": "Clearable"
+    },
+    {
+      "id": "verb:disk:open",
+      "command": "open",
+      "argument": "folder",
+      "in": "machine:disk:filling",
+      "name": "Open Its Folder",
+      "verb": "open",
+      "glyph": "offer"
+    },
+    {
+      "id": "verb:disk:talk",
+      "command": "talk",
+      "in": "machine:disk:filling",
+      "name": "Talk to Its Session",
+      "verb": "talk",
+      "glyph": "reply",
+      "ask": "what to tell {name}?",
+      "said": {
+        "about": "(The disk guard says {path} holds {size}.)",
+        "sent": "told {name}"
+      }
+    },
+    {
+      "id": "verb:disk:keep",
+      "command": "snooze",
+      "in": "machine:disk:filling",
+      "name": "Keep",
+      "verb": "keep",
+      "glyph": "locked",
+      "ask": "why keep it?",
+      "states": {
+        "kept": {
+          "verb": "release"
+        }
+      }
+    },
+    {
+      "id": "verb:disk:clear",
+      "command": "delete",
+      "in": "machine:disk:filling",
+      "name": "Clear",
+      "verb": "clear",
+      "glyph": "forget",
+      "sure": "Clear {amount} of {name}"
+    },
+    {
+      "id": "verb:disk:copy-path",
+      "command": "yank",
+      "in": "machine:disk:filling",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "machine:disk:speed",
+      "in": "machine:disk",
+      "name": "Speed",
+      "term": "Machine/speed",
+      "answers": [
+        "disk speed"
+      ],
+      "said": {
+        "iops": "{n} requests/s",
+        "merged": "{n} merged/s"
+      }
+    },
+    {
+      "id": "machine:disk:discarding",
+      "in": "machine:disk:speed",
+      "name": "Discarding"
+    },
+    {
+      "id": "machine:disk:flushing",
+      "in": "machine:disk:speed",
+      "name": "Flushing",
+      "said": {
+        "note": "each a wait for the disk to keep what it holds"
+      }
+    },
+    {
+      "id": "machine:disk:reading",
+      "in": "machine:disk:speed",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:writing",
+      "in": "machine:disk:speed",
+      "name": "Writing"
+    },
+    {
+      "id": "machine:disk:busy",
+      "in": "machine:disk",
+      "name": "Busy"
+    },
+    {
+      "id": "machine:disk:latency",
+      "in": "machine:disk",
+      "name": "Latency",
+      "answers": [
+        "disk latency"
+      ],
+      "said": {
+        "ms": "{n} ms",
+        "note": "each request, on average",
+        "side-idle": "idle",
+        "idle": "none asked of it"
+      }
+    },
+    {
+      "id": "machine:disk:latency-reading",
+      "in": "machine:disk:latency",
+      "name": "Reading"
+    },
+    {
+      "id": "machine:disk:latency-writing",
+      "in": "machine:disk:latency",
+      "name": "Writing"
+    },
+    {
+      "id": "machine:disk:latency-discarding",
+      "in": "machine:disk:latency",
+      "name": "Discarding"
+    },
+    {
+      "id": "machine:disk:latency-flushing",
+      "in": "machine:disk:latency",
+      "name": "Flushing"
+    },
+    {
+      "id": "machine:disk:queue",
+      "in": "machine:disk",
+      "name": "Backlog",
+      "term": "Machine/backlog",
+      "said": {
+        "queued": "{queued} on average",
+        "depth": "{depth} at most"
+      }
+    },
+    {
+      "id": "machine:disk:pressure",
+      "in": "machine:disk",
+      "name": "Pressure",
+      "said": {
+        "side": "{pct}% held up",
+        "note": "something waited on a disk"
+      }
+    },
+    {
+      "id": "machine:disk:pressure-10",
+      "in": "machine:disk:pressure",
+      "name": "Last 10 Seconds"
+    },
+    {
+      "id": "machine:disk:pressure-60",
+      "in": "machine:disk:pressure",
+      "name": "Last Minute"
+    },
+    {
+      "id": "machine:disk:pressure-300",
+      "in": "machine:disk:pressure",
+      "name": "Last 5 Minutes"
+    },
+    {
+      "id": "machine:disk:temperature",
+      "in": "machine:disk",
+      "name": "Temperature",
+      "answers": [
+        "disk temperature"
+      ],
+      "said": {
+        "degrees": "{n} \u00b0C",
+        "most": "at most {degrees}"
+      }
+    },
+    {
+      "id": "machine:disk:health",
+      "in": "machine:disk",
+      "name": "Health",
+      "answers": [
+        "disk health"
+      ],
+      "said": {
+        "side": "{n}% worn",
+        "asked": "as its controller said at {time}",
+        "told": "as its controller says",
+        "failing": "its controller says it's failing"
+      }
+    },
+    {
+      "id": "machine:disk:file-systems",
+      "in": "machine:disk",
+      "name": "File Systems",
+      "said": {
+        "room": "{free} free of {size}",
+        "reserved": "{reserved} kept back",
+        "files": "{free} of {files} files free"
+      }
+    },
+    {
+      "id": "machine:disk:spare",
+      "in": "machine:disk:health",
+      "name": "Spare",
+      "term": "Disk/spare",
+      "said": {
+        "side": "{n}%",
+        "note": "it warns below {n}%"
+      }
+    },
+    {
+      "id": "machine:disk:written",
+      "in": "machine:disk:health",
+      "name": "Data Written"
+    },
+    {
+      "id": "machine:disk:read",
+      "in": "machine:disk:health",
+      "name": "Data Read"
+    },
+    {
+      "id": "machine:disk:powered",
+      "in": "machine:disk:health",
+      "name": "Powered For",
+      "said": {
+        "note": "over {cycles} times it was powered"
+      }
+    },
+    {
+      "id": "machine:disk:busy-for",
+      "in": "machine:disk:health",
+      "name": "Busy For",
+      "said": {
+        "note": "its controller's time at work"
+      }
+    },
+    {
+      "id": "machine:disk:errors",
+      "in": "machine:disk:health",
+      "name": "Errors",
+      "said": {
+        "note": "the disk couldn't read or write"
+      }
+    },
+    {
+      "id": "machine:disk:error-log",
+      "in": "machine:disk:health",
+      "name": "Error Log",
+      "said": {
+        "note": "entries its controller logged"
+      }
+    },
+    {
+      "id": "machine:disk:shutdowns",
+      "in": "machine:disk:health",
+      "name": "Unsafe Shutdowns",
+      "said": {
+        "note": "of {cycles} times it was powered"
+      }
+    },
+    {
+      "id": "machine:disk:too-hot",
+      "in": "machine:disk:health",
+      "name": "Too Hot For",
+      "said": {
+        "warning": "past {warning}",
+        "critical": "{lasted} past {critical}"
+      }
+    },
+    {
+      "id": "machine:disk:warnings",
+      "in": "machine:disk:health",
+      "name": "Warnings",
+      "said": {
+        "note": "what its controller warns of",
+        "none": "none",
+        "spare": "spare running out",
+        "temperature": "temperature",
+        "degraded": "reliability degraded",
+        "read-only": "read-only",
+        "volatile-memory": "its memory's backup failed",
+        "persistent-memory-read-only": "its persistent memory read-only"
+      }
+    },
+    {
+      "id": "machine:disk:model",
+      "in": "machine:disk",
+      "name": "Model",
+      "term": "Machine/model",
+      "answers": [
+        "disk model"
+      ]
+    },
+    {
+      "id": "machine:disk:model-name",
+      "in": "machine:disk:model",
+      "name": "Name"
+    },
+    {
+      "id": "machine:disk:firmware",
+      "in": "machine:disk:model",
+      "name": "Firmware",
+      "term": "Machine/firmware",
+      "said": {
+        "nvme": "speaks NVMe {revision}"
+      }
+    },
+    {
+      "id": "machine:disk:kind",
+      "in": "machine:disk:model",
+      "name": "Kind",
+      "said": {
+        "solid": "solid state",
+        "spinning": "spinning",
+        "fixed": "fixed",
+        "removable": "removable"
+      }
+    },
+    {
+      "id": "machine:disk:link",
+      "in": "machine:disk:model",
+      "name": "PCIe",
+      "said": {
+        "side": "{speed} \u00d7{width}",
+        "full": "as fast as it goes",
+        "slower": "of {most} at most"
+      }
+    },
+    {
+      "id": "machine:disk:capacity",
+      "in": "machine:disk:model",
+      "name": "Size"
+    },
+    {
+      "id": "machine:disk:block",
+      "in": "machine:disk:model",
+      "name": "Block Size",
+      "said": {
+        "one": "{n} B",
+        "both": "{logical} B logical \u00b7 {physical} B physical"
+      }
+    },
+    {
+      "id": "machine:disk:scheduler",
+      "in": "machine:disk:model",
+      "name": "Scheduler",
+      "said": {
+        "also": "also {all}"
+      }
+    }
+  ]
+}

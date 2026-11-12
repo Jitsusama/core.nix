@@ -1,0 +1,20 @@
+{
+  "things": [
+    {
+      "id": "verb:docs:open",
+      "command": "open",
+      "in": "docs:document",
+      "name": "Open in Docs",
+      "verb": "open",
+      "glyph": "googleDocument"
+    },
+    {
+      "id": "verb:docs:link",
+      "command": "yank",
+      "in": "docs:document",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

@@ -117,7 +117,8 @@
         {"name": "facts",
           "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]}]}
       EOF
-      export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json WORDS=${../launcher/words.json}
+      export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
+      export WORDS=${(import ../launcher/words.nix).file}
       $PEOPLE $XDG_RUNTIME_DIR/daemons/people.sock $SOURCES $WORDS &
       # The last steps stop the daemon and start it again, to see People
       # say so and then stop saying so.

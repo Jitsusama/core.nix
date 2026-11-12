@@ -1,0 +1,28 @@
+{
+  "things": [
+    {
+      "id": "verb:spotify:play",
+      "command": "resume",
+      "in": "spotify:context",
+      "name": "Play",
+      "verb": "play",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:spotify:open",
+      "command": "open",
+      "in": "spotify:context",
+      "name": "Open in Spotify",
+      "verb": "open",
+      "glyph": "program"
+    },
+    {
+      "id": "verb:spotify:link",
+      "command": "yank",
+      "in": "spotify:context",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "things": [
+    {
+      "id": "lap",
+      "in": "stopwatch",
+      "name": "Lap",
+      "term": "Desktop/lap",
+      "glyph": "lap",
+      "states": {
+        "numbered": {
+          "name": "Lap {number}"
+        }
+      }
+    },
+    {
+      "id": "verb:stopwatch:run",
+      "command": "resume",
+      "in": "stopwatch",
+      "name": "Start",
+      "verb": "start",
+      "glyph": "resume",
+      "states": {
+        "running": {
+          "command": "pause",
+          "name": "Pause",
+          "verb": "pause",
+          "glyph": "pause"
+        },
+        "stopped": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:stopwatch:lap",
+      "command": "lap",
+      "in": "stopwatch",
+      "name": "Lap",
+      "term": "Desktop/lap",
+      "verb": "lap",
+      "glyph": "lap"
+    },
+    {
+      "id": "verb:stopwatch:reset",
+      "command": "reset",
+      "in": "stopwatch",
+      "name": "Reset",
+      "verb": "reset",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "reset"
+    },
+    {
+      "id": "verb:stopwatch:copy",
+      "command": "yank",
+      "in": "stopwatch",
+      "name": "Copy the Time",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

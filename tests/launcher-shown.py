@@ -3,7 +3,7 @@
     launcher-shown GLOSSARY WORDS
 
 GLOSSARY is docs/glossary.md, WORDS the launcher's vocabulary
-(modules/quickshell/launcher/words.json). Everything a row shows of a thing,
+(modules/quickshell/launcher/words/, joined). Everything a row shows of a thing,
 a place or a command is read: its name, noun, what, ask, empty, said, sure,
 asked, part and verb, each state's name, and a command's form and what it says. Any
 that says a name the glossary replaces fails, printed with the word that

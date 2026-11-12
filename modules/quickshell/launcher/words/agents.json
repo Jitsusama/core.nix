@@ -1,0 +1,419 @@
+{
+  "things": [
+    {
+      "id": "agents:task",
+      "in": "agents",
+      "name": "Quest",
+      "term": "Agents/quest"
+    },
+    {
+      "id": "agents:to-reopen",
+      "in": "agents",
+      "name": "Sessions to Reopen",
+      "term": "Agents/Sessions to Reopen",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions",
+        "lastBoot": "from the last boot",
+        "carried": "carried from {machine}",
+        "machines": "{count} machines",
+        "givenBack": "given back by its host",
+        "counted": "{count} {from}",
+        "there": "{there} of {count}",
+        "goneOne": "1 folder gone",
+        "goneMany": "{count} folders gone",
+        "reopened": "reopened",
+        "folderGone": "folder gone",
+        "foldersGone": "folders gone"
+      }
+    },
+    {
+      "id": "verb:agents:to-reopen:all",
+      "command": "reopen",
+      "range": "%",
+      "in": "agents:to-reopen",
+      "name": "Reopen Them All",
+      "verb": "reopen",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agents:to-reopen:one",
+      "command": "reopen",
+      "in": "agents:to-reopen",
+      "name": "Reopen",
+      "term": "Agents/reopen",
+      "verb": "reopen",
+      "glyph": "resume",
+      "said": {
+        "gone": "{cwd} is gone",
+        "isGone": "is gone"
+      }
+    },
+    {
+      "id": "verb:agents:to-reopen:forget",
+      "command": "forget",
+      "in": "agents:to-reopen",
+      "name": "Forget It",
+      "verb": "forget",
+      "glyph": "dismiss",
+      "act": "ending",
+      "ends": "forget"
+    },
+    {
+      "id": "verb:agents:to-reopen:notNow",
+      "command": "snooze",
+      "in": "agents:to-reopen",
+      "name": "Not Now",
+      "verb": "later",
+      "glyph": "queued"
+    },
+    {
+      "id": "agents:landed",
+      "in": "agents",
+      "name": "Landed",
+      "term": "Agents/Landed",
+      "verb": "more",
+      "glyph": "done",
+      "said": {
+        "today": "{count} today",
+        "none": "none today",
+        "read": "read",
+        "kind": "landing",
+        "yesterday": "yesterday"
+      },
+      "tells": {
+        "holding": "What sessions landed in the past 30 days, newest first."
+      }
+    },
+    {
+      "id": "agents:repo",
+      "in": "agents",
+      "name": "Repository"
+    },
+    {
+      "id": "agents:change",
+      "in": "agents",
+      "name": "Change"
+    },
+    {
+      "id": "agents:item",
+      "in": "agents",
+      "name": "Item"
+    },
+    {
+      "id": "agents:recent",
+      "in": "agents",
+      "name": "Recent",
+      "term": "Desktop/Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
+      }
+    },
+    {
+      "id": "agents:budgets",
+      "in": "agents",
+      "name": "Budgets",
+      "term": "Agents/budget",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:agents:landed:change",
+      "command": "open",
+      "in": "agents:landed",
+      "name": "Open the Change",
+      "verb": "open",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:agents:landed:session",
+      "command": "buffer",
+      "in": "agents:landed",
+      "name": "Go To the Session",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:agents:landed:try",
+      "command": "yank",
+      "in": "agents:landed",
+      "name": "Copy What to Try",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:agents:landed:read",
+      "command": "delete",
+      "in": "agents:landed",
+      "name": "Read",
+      "term": "Agents/read",
+      "verb": "mark",
+      "glyph": "read"
+    },
+    {
+      "id": "agents:start",
+      "in": "agents",
+      "name": "Start a Session",
+      "verb": "more",
+      "glyph": "agent"
+    },
+    {
+      "id": "agents:address",
+      "in": "agents",
+      "name": "Address",
+      "term": "Agents/address",
+      "states": {
+        "several": {
+          "name": "Addresses"
+        }
+      }
+    },
+    {
+      "id": "agents:started",
+      "in": "agents",
+      "name": "Started"
+    },
+    {
+      "id": "agents:host",
+      "in": "agents",
+      "name": "Host"
+    },
+    {
+      "id": "agents:machine",
+      "in": "agents",
+      "name": "Machine",
+      "term": "Machine/machine",
+      "said": {
+        "on": "on {machine}",
+        "away": "{machine}, out of reach",
+        "unheld": "not joined \u00b7 {machine} can't hand it over",
+        "unreached": "not joined \u00b7 {machine} is out of reach",
+        "hosted": "not opened \u00b7 its host gave no way to view it",
+        "untold": "not told, {why}",
+        "unanswered": "not told, the node didn't answer"
+      }
+    },
+    {
+      "id": "agents:spent",
+      "in": "agents",
+      "name": "Spent Today"
+    },
+    {
+      "id": "agents:own",
+      "in": "agents",
+      "name": "Its Own"
+    },
+    {
+      "id": "agents:rebuilt",
+      "in": "agents",
+      "name": "Context Rebuilt"
+    },
+    {
+      "id": "agents:under",
+      "in": "agents",
+      "name": "Its Sessions"
+    },
+    {
+      "id": "agents:closed",
+      "in": "agents",
+      "name": "Closed"
+    },
+    {
+      "id": "agents:works",
+      "in": "agents",
+      "name": "Working On",
+      "term": "Agents/Working on"
+    },
+    {
+      "id": "agents:model",
+      "in": "agents",
+      "name": "Model",
+      "term": "Agents/model"
+    },
+    {
+      "id": "agents:context",
+      "in": "agents",
+      "name": "Context",
+      "term": "Agents/context"
+    },
+    {
+      "id": "agents:last-turn",
+      "in": "agents",
+      "name": "Last Turn"
+    },
+    {
+      "id": "agents:turns",
+      "in": "agents",
+      "name": "Turns Today"
+    },
+    {
+      "id": "agents:tokens",
+      "in": "agents",
+      "name": "Tokens",
+      "term": "Agents/tokens"
+    },
+    {
+      "id": "agents:cache",
+      "in": "agents",
+      "name": "Cache",
+      "term": "Agents/cache"
+    },
+    {
+      "id": "agents:session",
+      "in": "agents",
+      "name": "Session",
+      "term": "Agents/session"
+    },
+    {
+      "id": "agents:hears",
+      "in": "agents",
+      "name": "Hears"
+    },
+    {
+      "id": "agents:step",
+      "in": "agents",
+      "name": "Doing",
+      "term": "Agents/Doing"
+    },
+    {
+      "id": "agents:last-landing",
+      "in": "agents",
+      "name": "Last Landing"
+    },
+    {
+      "id": "agents:asked",
+      "in": "agents",
+      "name": "You Asked"
+    },
+    {
+      "id": "agents:answer",
+      "in": "agents",
+      "name": "Its Answer"
+    },
+    {
+      "id": "agents:wants",
+      "in": "agents",
+      "name": "Needs You For",
+      "term": "Agents/Needs You For",
+      "said": {
+        "question": "needs you",
+        "approval": "needs your yes",
+        "blocked": "needs you to unblock it"
+      }
+    },
+    {
+      "id": "agents:budget",
+      "in": "agents",
+      "name": "Budget",
+      "term": "Agents/budget"
+    },
+    {
+      "id": "verb:agent:switch",
+      "command": "buffer",
+      "in": "agents",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:agent:talk",
+      "command": "talk",
+      "in": "agents",
+      "name": "Talk",
+      "term": "Agents/talk",
+      "verb": "talk",
+      "glyph": "reply",
+      "ask": "what to talk about?"
+    },
+    {
+      "id": "verb:agent:pause",
+      "command": "pause",
+      "in": "agents",
+      "name": "Pause",
+      "term": "Agents/pause",
+      "verb": "pause",
+      "glyph": "pause"
+    },
+    {
+      "id": "verb:agent:resume",
+      "command": "resume",
+      "in": "agents",
+      "name": "Resume",
+      "term": "Agents/resume",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agent:wake",
+      "command": "wake",
+      "in": "agents",
+      "name": "Wake",
+      "term": "Machine/wake",
+      "verb": "wake",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:agent:stop",
+      "command": "interrupt",
+      "in": "agents",
+      "name": "Stop",
+      "verb": "stop",
+      "glyph": "stopped",
+      "act": "ending",
+      "ends": "stop"
+    },
+    {
+      "id": "verb:agent:close",
+      "command": "close",
+      "in": "agents",
+      "name": "Close",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "orchestrators",
+      "in": "agents",
+      "name": "Orchestrators",
+      "term": "Agents/orchestrator",
+      "glyph": "agent",
+      "said": {
+        "sent": "talked to {name}"
+      }
+    },
+    {
+      "id": "verb:orchestrator:reopen",
+      "command": "reopen",
+      "in": "agents",
+      "name": "Reopen",
+      "term": "Agents/reopen",
+      "verb": "reopen",
+      "glyph": "resume",
+      "said": {
+        "afresh": "started afresh in {folder}",
+        "isGone": "is gone",
+        "unfound": "not reopened, its last session's record not found"
+      }
+    },
+    {
+      "id": "verb:orchestrator:afresh",
+      "command": "new",
+      "in": "agents",
+      "name": "Start Afresh",
+      "verb": "start afresh",
+      "glyph": "resume",
+      "said": {
+        "gone": "{cwd} is gone \u00b7 starts in {folder}",
+        "nowhere": "{cwd} is gone"
+      }
+    }
+  ]
+}

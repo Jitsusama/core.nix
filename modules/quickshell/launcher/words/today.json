@@ -1,0 +1,243 @@
+{
+  "things": [
+    {
+      "id": "today:iso",
+      "in": "today",
+      "name": "ISO Date"
+    },
+    {
+      "id": "today:week",
+      "in": "today",
+      "name": "ISO Week Date",
+      "said": {
+        "week": "week {week}, Monday first"
+      }
+    },
+    {
+      "id": "today:ordinal",
+      "in": "today",
+      "name": "Ordinal Date",
+      "said": {
+        "left": "{left} left of {days}"
+      }
+    },
+    {
+      "id": "today:quarter",
+      "in": "today",
+      "name": "Quarter",
+      "said": {
+        "day": "day {day} of {days}"
+      }
+    },
+    {
+      "id": "today:unix-day",
+      "in": "today",
+      "name": "Unix Day",
+      "said": {
+        "since": "days since 1 January 1970"
+      }
+    },
+    {
+      "id": "today:julian",
+      "in": "today",
+      "name": "Julian Day",
+      "said": {
+        "noon": "from noon today"
+      }
+    },
+    {
+      "id": "today:mjd",
+      "in": "today",
+      "name": "Modified Julian Day",
+      "said": {
+        "since": "days since 17 November 1858"
+      }
+    },
+    {
+      "id": "today:season",
+      "in": "today",
+      "name": "Season",
+      "said": {
+        "spring": "spring",
+        "summer": "summer",
+        "autumn": "autumn",
+        "winter": "winter",
+        "left": "{days} days left, as the sun reckons it",
+        "of": "{day} of {days}",
+        "north": "northern",
+        "south": "southern",
+        "unknown": "northern, until the laptop is found"
+      }
+    },
+    {
+      "id": "today:season:began",
+      "in": "today:season",
+      "name": "Began"
+    },
+    {
+      "id": "today:season:ends",
+      "in": "today:season",
+      "name": "Ends"
+    },
+    {
+      "id": "today:season:day",
+      "in": "today:season",
+      "name": "Day"
+    },
+    {
+      "id": "today:season:hemisphere",
+      "in": "today:season",
+      "name": "Hemisphere"
+    },
+    {
+      "id": "today:moon",
+      "in": "today",
+      "name": "Moon",
+      "said": {
+        "new": "new moon",
+        "waxingCrescent": "waxing crescent",
+        "firstQuarter": "first quarter",
+        "waxingGibbous": "waxing gibbous",
+        "full": "full moon",
+        "waningGibbous": "waning gibbous",
+        "lastQuarter": "last quarter",
+        "waningCrescent": "waning crescent",
+        "lit": "{percent} lit",
+        "days": "{days} days"
+      }
+    },
+    {
+      "id": "today:moon:lit",
+      "in": "today:moon",
+      "name": "Lit"
+    },
+    {
+      "id": "today:moon:age",
+      "in": "today:moon",
+      "name": "Age"
+    },
+    {
+      "id": "today:moon:full",
+      "in": "today:moon",
+      "name": "Next Full Moon"
+    },
+    {
+      "id": "today:moon:new",
+      "in": "today:moon",
+      "name": "Next New Moon"
+    },
+    {
+      "id": "today:calendars",
+      "in": "today",
+      "name": "Calendars",
+      "term": "Programs/calendar",
+      "said": {
+        "atSunset": "at sunset",
+        "days": "{value} days",
+        "months": "{value} months",
+        "noSunset": "no sunset today",
+        "silent": "not answering"
+      }
+    },
+    {
+      "id": "today:calendars:chinese",
+      "in": "today:calendars",
+      "name": "Chinese"
+    },
+    {
+      "id": "today:calendars:japanese",
+      "in": "today:calendars",
+      "name": "Japanese"
+    },
+    {
+      "id": "today:calendars:hebrew",
+      "in": "today:calendars",
+      "name": "Hebrew"
+    },
+    {
+      "id": "today:calendars:islamic",
+      "in": "today:calendars",
+      "name": "Islamic"
+    },
+    {
+      "id": "today:calendars:year",
+      "in": "today:calendars",
+      "name": "Year"
+    },
+    {
+      "id": "today:calendars:animal",
+      "in": "today:calendars",
+      "name": "Animal"
+    },
+    {
+      "id": "today:calendars:month",
+      "in": "today:calendars",
+      "name": "Month"
+    },
+    {
+      "id": "today:calendars:day",
+      "in": "today:calendars",
+      "name": "Day"
+    },
+    {
+      "id": "today:calendars:dayBegins",
+      "in": "today:calendars",
+      "name": "Day Begins"
+    },
+    {
+      "id": "today:calendars:dayBegan",
+      "in": "today:calendars",
+      "name": "Day Began"
+    },
+    {
+      "id": "today:calendars:monthDays",
+      "in": "today:calendars",
+      "name": "Month Length"
+    },
+    {
+      "id": "today:calendars:yearDays",
+      "in": "today:calendars",
+      "name": "Year Length"
+    },
+    {
+      "id": "today:calendars:months",
+      "in": "today:calendars",
+      "name": "Months"
+    },
+    {
+      "id": "today:calendars:term",
+      "in": "today:calendars",
+      "name": "Solar Term"
+    },
+    {
+      "id": "today:calendars:termBegan",
+      "in": "today:calendars",
+      "name": "Term Began"
+    },
+    {
+      "id": "today:calendars:era",
+      "in": "today:calendars",
+      "name": "Era"
+    },
+    {
+      "id": "today:calendars:eraYear",
+      "in": "today:calendars",
+      "name": "Year of the Era"
+    },
+    {
+      "id": "today:calendars:eraBegan",
+      "in": "today:calendars",
+      "name": "Era Began"
+    },
+    {
+      "id": "today:calendars:rokuyo",
+      "in": "today:calendars",
+      "name": "Rokuy\u014d"
+    },
+    {
+      "id": "today:calendars:reckoning",
+      "in": "today:calendars",
+      "name": "Reckoning"
+    }
+  ]
+}

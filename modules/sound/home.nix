@@ -42,7 +42,7 @@ in
         (lib.getExe sound)
         "%t/daemons/sound.sock"
         "--vocabulary"
-        "${../quickshell/launcher/words.json}"
+        "${(import ../quickshell/launcher/words.nix).file}"
         "--marks"
         "${marks}"
       ];

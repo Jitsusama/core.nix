@@ -1,0 +1,263 @@
+{
+  "things": [
+    {
+      "id": "bluetooth:radio",
+      "command": "set",
+      "argument": "nobluetooth",
+      "in": "bluetooth",
+      "name": "Bluetooth Off",
+      "verb": "off",
+      "glyph": "bluetoothOff",
+      "states": {
+        "off": {
+          "name": "Bluetooth On",
+          "verb": "on",
+          "glyph": "bluetooth",
+          "argument": "bluetooth"
+        }
+      }
+    },
+    {
+      "id": "bluetooth:links",
+      "in": "bluetooth",
+      "name": "Bluetooth Performance",
+      "provider": "bluetooth",
+      "question": "bluetooth performance",
+      "answers": [
+        "bluetooth performance"
+      ]
+    },
+    {
+      "id": "bluetooth:signal",
+      "in": "bluetooth",
+      "name": "Signal",
+      "term": "Network/signal"
+    },
+    {
+      "id": "bluetooth:quality",
+      "in": "bluetooth",
+      "name": "Link Quality"
+    },
+    {
+      "id": "bluetooth:codec",
+      "in": "bluetooth",
+      "name": "Codec"
+    },
+    {
+      "id": "bluetooth:channels",
+      "in": "bluetooth",
+      "name": "Channels",
+      "term": "Network/channel"
+    },
+    {
+      "id": "bluetooth:battery",
+      "in": "bluetooth",
+      "name": "Battery"
+    },
+    {
+      "id": "bluetooth:rate",
+      "in": "bluetooth",
+      "name": "Sample Rate"
+    },
+    {
+      "id": "bluetooth:sound-channels",
+      "in": "bluetooth",
+      "name": "Audio Channels"
+    },
+    {
+      "id": "bluetooth:held",
+      "in": "bluetooth",
+      "name": "Connection",
+      "term": "Machine/connection"
+    },
+    {
+      "id": "bluetooth:input",
+      "in": "bluetooth",
+      "name": "Input"
+    },
+    {
+      "id": "bluetooth:id",
+      "in": "bluetooth",
+      "name": "Ids"
+    },
+    {
+      "id": "bluetooth:trusted",
+      "in": "bluetooth",
+      "name": "Reconnects by Itself"
+    },
+    {
+      "id": "bluetooth:wake",
+      "in": "bluetooth",
+      "name": "Wakes the Machine"
+    },
+    {
+      "id": "bluetooth:address",
+      "in": "bluetooth",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "bluetooth:nearby",
+      "in": "bluetooth",
+      "name": "Nearby",
+      "term": "Machine/Nearby",
+      "words": ["find a device", "pair a device"],
+      "glyph": "nearby",
+      "empty": "Nothing heard yet."
+    },
+    {
+      "id": "bluetooth:adapter",
+      "in": "bluetooth",
+      "name": "Adapter"
+    },
+    {
+      "id": "bluetooth:powered",
+      "in": "bluetooth",
+      "name": "Radio",
+      "term": "Network/radio"
+    },
+    {
+      "id": "bluetooth:discoverable",
+      "in": "bluetooth",
+      "name": "Visible to Others"
+    },
+    {
+      "id": "bluetooth:pairable",
+      "in": "bluetooth",
+      "name": "Pairable"
+    },
+    {
+      "id": "bluetooth:traffic",
+      "in": "bluetooth",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "bluetooth:name",
+      "in": "bluetooth",
+      "name": "Name"
+    },
+    {
+      "id": "bluetooth:version",
+      "in": "bluetooth",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "bluetooth:chip",
+      "in": "bluetooth",
+      "name": "Model",
+      "term": "Machine/model"
+    },
+    {
+      "id": "verb:bluetooth-trust",
+      "command": "set",
+      "argument": "reconnect",
+      "in": "bluetooth",
+      "name": "Let It Reconnect by Itself",
+      "verb": "reconnect"
+    },
+    {
+      "id": "verb:bluetooth-untrust",
+      "command": "set",
+      "argument": "noreconnect",
+      "in": "bluetooth",
+      "name": "Only Connect It When Asked",
+      "verb": "ask"
+    },
+    {
+      "id": "verb:bluetooth-wake",
+      "command": "set",
+      "argument": "wake",
+      "in": "bluetooth",
+      "name": "Let It Wake the Machine",
+      "verb": "wake"
+    },
+    {
+      "id": "verb:bluetooth-no-wake",
+      "command": "set",
+      "argument": "nowake",
+      "in": "bluetooth",
+      "name": "Keep It From Waking the Machine",
+      "verb": "refuse"
+    },
+    {
+      "id": "verb:bluetooth-radio-on",
+      "command": "set",
+      "argument": "bluetooth",
+      "in": "bluetooth",
+      "name": "Turn the Radio On"
+    },
+    {
+      "id": "verb:bluetooth-radio-off",
+      "command": "set",
+      "argument": "nobluetooth",
+      "in": "bluetooth",
+      "name": "Turn the Radio Off"
+    },
+    {
+      "id": "verb:bluetooth-visible",
+      "command": "set",
+      "argument": "discoverable",
+      "in": "bluetooth",
+      "name": "Let Others Find It",
+      "verb": "show"
+    },
+    {
+      "id": "verb:bluetooth-hidden",
+      "command": "set",
+      "argument": "nodiscoverable",
+      "in": "bluetooth",
+      "name": "Keep It Hidden",
+      "verb": "hide"
+    },
+    {
+      "id": "verb:bluetooth-pairable",
+      "command": "set",
+      "argument": "pairable",
+      "in": "bluetooth",
+      "name": "Let Others Pair with It",
+      "verb": "allow"
+    },
+    {
+      "id": "verb:bluetooth-unpairable",
+      "command": "set",
+      "argument": "nopairable",
+      "in": "bluetooth",
+      "name": "Refuse New Pairings"
+    },
+    {
+      "id": "verb:bluetooth-connect",
+      "command": "set",
+      "argument": "bluetooth+={name}",
+      "in": "bluetooth",
+      "name": "Connect It",
+      "states": {
+        "unpaired": {
+          "name": "Pair and Connect It"
+        }
+      }
+    },
+    {
+      "id": "verb:bluetooth-disconnect",
+      "command": "disconnect",
+      "in": "bluetooth",
+      "name": "Disconnect It",
+      "act": "ending",
+      "ends": "disconnect"
+    },
+    {
+      "id": "verb:bluetooth-passkey",
+      "command": "pair",
+      "in": "bluetooth",
+      "name": "Pair It with a Passkey"
+    },
+    {
+      "id": "verb:bluetooth-forget",
+      "command": "forget",
+      "in": "bluetooth",
+      "name": "Forget It",
+      "ends": "forget"
+    }
+  ]
+}

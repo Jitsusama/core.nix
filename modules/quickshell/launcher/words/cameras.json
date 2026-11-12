@@ -1,0 +1,109 @@
+{
+  "things": [
+    {
+      "id": "cameras:camera",
+      "in": "cameras",
+      "name": "Built-In Camera",
+      "verb": "open",
+      "said": "the camera"
+    },
+    {
+      "id": "cameras:ir-camera",
+      "in": "cameras",
+      "name": "IR Camera",
+      "term": "Machine/IR camera",
+      "said": "the infrared camera"
+    },
+    {
+      "id": "cameras:plugged",
+      "in": "cameras",
+      "name": "{name}"
+    },
+    {
+      "id": "cameras:holders",
+      "in": "cameras",
+      "name": "In Use",
+      "term": "Machine/in use"
+    },
+    {
+      "id": "cameras:privacy",
+      "in": "cameras",
+      "name": "Privacy Light",
+      "answers": [
+        "privacy light"
+      ]
+    },
+    {
+      "id": "cameras:flood",
+      "in": "cameras",
+      "name": "IR Light",
+      "answers": [
+        "ir light"
+      ]
+    },
+    {
+      "id": "cameras:streaming",
+      "in": "cameras",
+      "name": "Streaming"
+    },
+    {
+      "id": "cameras:sensor",
+      "in": "cameras",
+      "name": "Sensor"
+    },
+    {
+      "id": "cameras:sensor:ovti08f4",
+      "in": "cameras:sensor",
+      "name": "OmniVision OV08X40",
+      "camera": "camera"
+    },
+    {
+      "id": "cameras:sensor:himx1092",
+      "in": "cameras:sensor",
+      "name": "Himax HM1092",
+      "camera": "ir-camera"
+    },
+    {
+      "id": "cameras:where",
+      "in": "cameras",
+      "name": "Where"
+    },
+    {
+      "id": "cameras:powered",
+      "in": "cameras",
+      "name": "Powered"
+    },
+    {
+      "id": "cameras:modes",
+      "in": "cameras",
+      "name": "Formats",
+      "term": "Machine/format"
+    },
+    {
+      "id": "cameras:usb",
+      "in": "cameras",
+      "name": "Connection",
+      "term": "Machine/connection"
+    },
+    {
+      "id": "cameras:firmware",
+      "in": "cameras",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "cameras:field-of-view",
+      "in": "cameras",
+      "name": "Field of View"
+    },
+    {
+      "id": "cameras:drawer",
+      "in": "cameras",
+      "said": {
+        "builtIn": "built in \u00b7 camera",
+        "plugged": "on USB \u00b7 camera",
+        "powered": "{state} \u00b7 {lasted} since start"
+      }
+    }
+  ]
+}

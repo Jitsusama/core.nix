@@ -2,7 +2,7 @@
 
     launcher-commands WORDS LANGUAGE
 
-WORDS is the vocabulary (modules/quickshell/launcher/words.json), LANGUAGE
+WORDS is the vocabulary (modules/quickshell/launcher/words/, joined), LANGUAGE
 the key language (modules/keys/language.toml). Each verb, a thing whose id
 begins verb:, says its command by its whole name, one an act in the
 language has, and what follows it on the line where it needs more: an

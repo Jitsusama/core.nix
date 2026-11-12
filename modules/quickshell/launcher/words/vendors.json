@@ -1,0 +1,19 @@
+{
+  "things": [
+    {
+      "id": "vendors:kind",
+      "in": "vendors",
+      "name": "Kind"
+    },
+    {
+      "id": "vendors:colons",
+      "in": "vendors",
+      "name": "With Colons"
+    },
+    {
+      "id": "vendors:dotted",
+      "in": "vendors",
+      "name": "With Dots"
+    }
+  ]
+}

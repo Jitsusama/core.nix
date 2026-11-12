@@ -76,7 +76,7 @@ machine, one path through each connection.
 - [`launcher/`][launcher]: one provider per kind of thing the launcher finds,
   each starting from [`Provider.qml`][provider], whose header says what a
   row holds. Every name, word and glyph a provider shows or is found by is
-  said once, in [`launcher/words.json`][words], read through `Words.qml`:
+  said once, in its place's file under [`launcher/words/`][words], read through `Words.qml`:
   what sits beside a row in `said`, lowercase, and a sentence its drawer
   tells in `tells`;
   `the-launcher-means-one-thing-a-word` fails on a word that finds two
@@ -180,7 +180,7 @@ another.
 [maths]: maths/
 [pieces]: pieces/
 [provider]: launcher/Provider.qml
-[words]: launcher/words.json
+[words]: launcher/words/README.md
 [skill]: ../theme/SKILL.md
 [logic]: ../../docs/testing.md#the-desktops-logic
 [nested]: ../../docs/testing.md#the-desktop-on-niri

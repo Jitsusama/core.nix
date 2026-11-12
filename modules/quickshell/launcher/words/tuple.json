@@ -1,0 +1,34 @@
+{
+  "things": [
+    {
+      "id": "tuple:call:again",
+      "in": "tuple:call",
+      "name": "Call {name} Again",
+      "states": {
+        "all": {
+          "name": "Call Them Again"
+        }
+      }
+    },
+    {
+      "id": "tuple:call:rang",
+      "in": "tuple:call",
+      "name": "Who Rang"
+    },
+    {
+      "id": "tuple:call:with",
+      "in": "tuple:call",
+      "name": "With"
+    },
+    {
+      "id": "tuple:call:email",
+      "in": "tuple:call",
+      "name": "Email",
+      "states": {
+        "many": {
+          "name": "Emails"
+        }
+      }
+    }
+  ]
+}

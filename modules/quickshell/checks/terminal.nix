@@ -85,7 +85,7 @@
           pkgs.zsh
         ];
         LAUNCHER_QS = pkgs.writeShellScript "qs" (builtins.readFile ../in-a-terminal/tests/qs);
-        LAUNCHER_WORDS = ../launcher/words.json;
+        LAUNCHER_WORDS = (import ../launcher/words.nix).file;
       }
       ''
         export HOME=$PWD

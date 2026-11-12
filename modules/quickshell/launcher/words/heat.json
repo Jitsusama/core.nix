@@ -1,0 +1,309 @@
+{
+  "things": [
+    {
+      "id": "heat:processor",
+      "in": "heat",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
+    {
+      "id": "heat:cores",
+      "in": "heat:processor",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "hottest": "the hottest, core {n} at {degrees}"
+      }
+    },
+    {
+      "id": "heat:core",
+      "in": "heat:cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:throttled",
+      "in": "heat",
+      "name": "Throttled",
+      "term": "Machine/throttled",
+      "answers": [
+        "throttled"
+      ],
+      "said": {
+        "never": "never",
+        "once": "once",
+        "times": "{count} times",
+        "for": "for {time} in all, since the machine started",
+        "since": "since the machine started"
+      }
+    },
+    {
+      "id": "heat:package",
+      "in": "heat:throttled",
+      "name": "Whole Processor",
+      "said": {
+        "for": "for {time} in all",
+        "longest": "the longest {time}"
+      }
+    },
+    {
+      "id": "heat:throttled-cores",
+      "in": "heat:throttled",
+      "name": "Cores",
+      "term": "Machine/core",
+      "said": {
+        "most": "the most, core {n}, {times}",
+        "alone": "each on its own"
+      }
+    },
+    {
+      "id": "heat:throttled-core",
+      "in": "heat:throttled-cores",
+      "name": "Core {n}"
+    },
+    {
+      "id": "heat:graphics",
+      "in": "heat",
+      "name": "Graphics",
+      "term": "Machine/graphics"
+    },
+    {
+      "id": "heat:npu",
+      "in": "heat",
+      "name": "NPU",
+      "term": "Machine/NPU"
+    },
+    {
+      "id": "heat:image-processor",
+      "in": "heat",
+      "name": "Image Processor",
+      "term": "Machine/image processor"
+    },
+    {
+      "id": "heat:media-engine",
+      "in": "heat",
+      "name": "Media Engine",
+      "term": "Machine/media engine"
+    },
+    {
+      "id": "heat:display-engine",
+      "in": "heat",
+      "name": "Display Engine",
+      "term": "Machine/display engine"
+    },
+    {
+      "id": "heat:disk",
+      "in": "heat",
+      "name": "Disk",
+      "term": "Disk/disk"
+    },
+    {
+      "id": "heat:sensor",
+      "in": "heat:disk",
+      "name": "Sensor {n}",
+      "said": {
+        "hotter": "{sensor} hotter at {degrees}"
+      }
+    },
+    {
+      "id": "heat:memory",
+      "in": "heat",
+      "name": "Memory",
+      "term": "Machine/memory"
+    },
+    {
+      "id": "heat:wifi",
+      "in": "heat",
+      "name": "Wi-Fi Card"
+    },
+    {
+      "id": "heat:chipset",
+      "in": "heat",
+      "name": "Chipset",
+      "term": "Machine/chipset"
+    },
+    {
+      "id": "heat:board",
+      "in": "heat",
+      "name": "Board"
+    },
+    {
+      "id": "heat:battery",
+      "in": "heat",
+      "name": "Battery"
+    },
+    {
+      "id": "heat:air",
+      "in": "heat",
+      "name": "Air Inside"
+    },
+    {
+      "id": "heat:video-fan",
+      "in": "heat",
+      "name": "Video Fan"
+    },
+    {
+      "id": "heat:cpu-fan",
+      "in": "heat",
+      "name": "Processor Fan"
+    },
+    {
+      "id": "heat:fan",
+      "in": "heat",
+      "name": "Fan {n}",
+      "said": {
+        "stopped": "stopped",
+        "rated": "rated for {speed}",
+        "full": "at full power",
+        "share": "at {pct}% power"
+      }
+    },
+    {
+      "id": "heat:lately",
+      "in": "heat",
+      "name": "Last Reads",
+      "said": {
+        "range": "{least} to {most}",
+        "one": "one read so far, one a second while it's shown",
+        "many": "the last {count} reads, one a second while it's shown"
+      }
+    },
+    {
+      "id": "heat:high",
+      "in": "heat",
+      "name": "High",
+      "said": {
+        "below": "{by} \u00b0C below high",
+        "past": "{by} \u00b0C past high",
+        "note": "where it starts to warn"
+      }
+    },
+    {
+      "id": "heat:critical",
+      "in": "heat",
+      "name": "Critical",
+      "said": {
+        "below": "{by} \u00b0C below critical",
+        "past": "{by} \u00b0C past critical",
+        "note": "the most it's meant to reach"
+      }
+    },
+    {
+      "id": "heat:emergency",
+      "in": "heat",
+      "name": "Emergency",
+      "said": {
+        "note": "where it shuts itself off"
+      }
+    },
+    {
+      "id": "heat:low",
+      "in": "heat",
+      "name": "Low",
+      "said": {
+        "note": "the least it's meant to read"
+      }
+    },
+    {
+      "id": "heat:alarm",
+      "in": "heat",
+      "name": "Chip's Warning",
+      "said": {
+        "raised": "raised",
+        "note": "its chip says a limit was crossed"
+      }
+    },
+    {
+      "id": "heat:trip:passive",
+      "in": "heat",
+      "name": "Throttles At"
+    },
+    {
+      "id": "heat:trip:active",
+      "in": "heat",
+      "name": "Fans Up At"
+    },
+    {
+      "id": "heat:trip:hot",
+      "in": "heat",
+      "name": "Hot At"
+    },
+    {
+      "id": "heat:trip:critical",
+      "in": "heat",
+      "name": "Powers Off At"
+    },
+    {
+      "id": "heat:cooling",
+      "in": "heat",
+      "name": "Cooling Step",
+      "said": {
+        "of": "{state} of {most}"
+      }
+    },
+    {
+      "id": "heat:voltage",
+      "in": "heat",
+      "name": "Voltage"
+    },
+    {
+      "id": "heat:current",
+      "in": "heat",
+      "name": "Current"
+    },
+    {
+      "id": "heat:drawing",
+      "in": "heat",
+      "name": "Drawing"
+    },
+    {
+      "id": "heat:chip",
+      "in": "heat",
+      "name": "Linux Name",
+      "term": "Machine/Linux name",
+      "said": {
+        "sensor": "on this machine \u00b7 sensor",
+        "zone": "on this machine \u00b7 zone"
+      }
+    },
+    {
+      "id": "heat:zone",
+      "in": "heat",
+      "name": "Zone"
+    },
+    {
+      "id": "heat:power",
+      "in": "heat",
+      "name": "Power",
+      "said": {
+        "note": "how hard it's driven"
+      }
+    },
+    {
+      "id": "heat:aiming",
+      "in": "heat",
+      "name": "Aiming For",
+      "said": {
+        "note": "the speed it's asked for"
+      }
+    },
+    {
+      "id": "heat:least",
+      "in": "heat",
+      "name": "Least Speed",
+      "said": {
+        "note": "the slowest it turns while it turns"
+      }
+    },
+    {
+      "id": "heat:control",
+      "in": "heat",
+      "name": "Control",
+      "said": {
+        "automatic": "automatic",
+        "manual": "set by hand",
+        "full": "full speed",
+        "note": "what sets its speed"
+      }
+    }
+  ]
+}

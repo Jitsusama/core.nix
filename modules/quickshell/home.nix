@@ -377,7 +377,7 @@ let
     else if lib.hasInfix "monitor" action then
       mark "display"
     # A collection's own glyph, as its row in the launcher wears
-    # (launcher/words.json).
+    # (launcher/words/).
     else if program == "launcher-say" && lib.elem "collection" run then
       let
         named = lib.findFirst (thing: thing.id == lib.last run) { } launcher.words.things;
@@ -1080,10 +1080,11 @@ in
     };
     words = lib.mkOption {
       type = lib.types.attrsOf lib.types.anything;
-      default = lib.importJSON ./launcher/words.json;
-      defaultText = lib.literalExpression "lib.importJSON ./launcher/words.json";
+      default = (import ./launcher/words.nix).value;
+      defaultText = lib.literalExpression "(import ./launcher/words.nix).value";
       description = ''
-        The launcher's vocabulary, as launcher/words.json writes it: its
+        The launcher's vocabulary, as launcher/words.nix joins it from each
+        place's file: its
         categories in order and what each holds, every thing's name as
         shown, the other words and old names that find it and the glyph it
         wears, the commands that take something after them, and the words

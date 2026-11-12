@@ -1,0 +1,32 @@
+{
+  "things": [
+    {
+      "id": "orchestrators:talk",
+      "in": "orchestrators",
+      "name": "Talks",
+      "term": "Agents/talk",
+      "said": {
+        "delivered": "delivered",
+        "reading": "reading",
+        "replying": "replying",
+        "replied": "replied",
+        "failed": "not delivered"
+      }
+    },
+    {
+      "id": "orchestrators:talk:yours",
+      "in": "orchestrators",
+      "name": "You Said"
+    },
+    {
+      "id": "orchestrators:talk:went",
+      "in": "orchestrators",
+      "name": "How It Went"
+    },
+    {
+      "id": "orchestrators:talk:came",
+      "in": "orchestrators",
+      "name": "What Came of It"
+    }
+  ]
+}

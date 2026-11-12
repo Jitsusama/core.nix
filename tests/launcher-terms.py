@@ -3,7 +3,7 @@
     launcher-terms GLOSSARY WORDS
 
 GLOSSARY is docs/glossary.md, WORDS the launcher's vocabulary
-(modules/quickshell/launcher/words.json). A thing, a place or a command that
+(modules/quickshell/launcher/words/, joined). A thing, a place or a command that
 names a glossary thing says which with its term, "Context/word": the context
 a `## ` section of the glossary, the word one of its things. A place named
 for a context gives the context alone, as "Network". A term naming no thing

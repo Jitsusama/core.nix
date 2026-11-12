@@ -1,0 +1,152 @@
+{
+  "things": [
+    {
+      "id": "weather:temperature",
+      "in": "weather",
+      "name": "Temperature"
+    },
+    {
+      "id": "weather:feels",
+      "in": "weather",
+      "name": "Feels Like"
+    },
+    {
+      "id": "weather:humidity",
+      "in": "weather",
+      "name": "Humidity"
+    },
+    {
+      "id": "weather:dew",
+      "in": "weather",
+      "name": "Dew Point"
+    },
+    {
+      "id": "weather:chance",
+      "in": "weather",
+      "name": "Chance of Precipitation"
+    },
+    {
+      "id": "weather:precipitation",
+      "in": "weather",
+      "name": "Precipitation"
+    },
+    {
+      "id": "weather:gusts",
+      "in": "weather",
+      "name": "Gusts"
+    },
+    {
+      "id": "weather:cloud",
+      "in": "weather",
+      "name": "Cloud Cover"
+    },
+    {
+      "id": "weather:uv",
+      "in": "weather",
+      "name": "UV Index"
+    },
+    {
+      "id": "weather:visibility",
+      "in": "weather",
+      "name": "Visibility"
+    },
+    {
+      "id": "weather:pressure",
+      "in": "weather",
+      "name": "Pressure"
+    },
+    {
+      "id": "weather:day:high",
+      "in": "weather",
+      "name": "High"
+    },
+    {
+      "id": "weather:day:low",
+      "in": "weather",
+      "name": "Low"
+    },
+    {
+      "id": "weather:day:feels",
+      "in": "weather",
+      "name": "Feels Like Range"
+    },
+    {
+      "id": "weather:day:chance",
+      "in": "weather",
+      "name": "Highest Chance"
+    },
+    {
+      "id": "weather:day:precipitation",
+      "in": "weather",
+      "name": "Total Precipitation"
+    },
+    {
+      "id": "weather:day:wind",
+      "in": "weather",
+      "name": "Strongest Wind"
+    },
+    {
+      "id": "weather:day:gusts",
+      "in": "weather",
+      "name": "Strongest Gust"
+    },
+    {
+      "id": "weather:day:uv",
+      "in": "weather",
+      "name": "Highest UV Index"
+    },
+    {
+      "id": "weather:day:sunrise",
+      "in": "weather",
+      "name": "Sunrise"
+    },
+    {
+      "id": "weather:day:sunset",
+      "in": "weather",
+      "name": "Sunset"
+    },
+    {
+      "id": "weather:day:daylight",
+      "in": "weather",
+      "name": "Daylight"
+    },
+    {
+      "id": "weather:now",
+      "in": "weather",
+      "name": "Conditions",
+      "term": "Desktop/conditions"
+    },
+    {
+      "id": "weather:local-time",
+      "in": "weather",
+      "name": "Local Time",
+      "term": "Desktop/local time"
+    },
+    {
+      "id": "weather:rain",
+      "in": "weather",
+      "name": "Rain",
+      "answers": [
+        "rain"
+      ],
+      "started": [
+        "rain"
+      ]
+    },
+    {
+      "id": "weather:wind",
+      "in": "weather",
+      "name": "Wind"
+    },
+    {
+      "id": "weather:today",
+      "in": "weather",
+      "name": "Today"
+    },
+    {
+      "id": "weather:tomorrow",
+      "in": "weather",
+      "name": "Tomorrow"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "things": [
+    {
+      "id": "quests:id",
+      "in": "quests",
+      "name": "ID"
+    },
+    {
+      "id": "quests:status",
+      "in": "quests",
+      "name": "Status"
+    },
+    {
+      "id": "quests:updated",
+      "in": "quests",
+      "name": "Last Touched"
+    },
+    {
+      "id": "quests:parent",
+      "in": "quests",
+      "name": "Part Of"
+    },
+    {
+      "id": "quests:folder",
+      "in": "quests",
+      "name": "Folder"
+    },
+    {
+      "id": "verb:quest:switch",
+      "command": "buffer",
+      "in": "quests",
+      "name": "Go To Its Session",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:quest:wake",
+      "command": "wake",
+      "in": "quests",
+      "name": "Wake Its Session",
+      "verb": "wake",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:quest:open",
+      "command": "new",
+      "in": "quests",
+      "name": "Start Here",
+      "verb": "start",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:quest:orchestrate",
+      "command": "orchestrate",
+      "in": "quests",
+      "name": "Orchestrate",
+      "verb": "orchestrate",
+      "glyph": "agent"
+    }
+  ]
+}

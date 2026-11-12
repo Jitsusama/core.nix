@@ -77,7 +77,7 @@ onLinux {
       cp ${../quickshell/Fuzzy.js} Fuzzy.js
       cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
       cp ${../quickshell/Words.qml} Words.qml
-      cp ${../quickshell/launcher/words.json} launcher/words.json
+      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml
       cp ${../quickshell/launcher/Asking.js} launcher/Asking.js
       cp ${../quickshell/launcher/Numbers.js} launcher/Numbers.js

@@ -1,0 +1,172 @@
+{
+  "things": [
+    {
+      "id": "kitty:machine:connected",
+      "in": "kitty:machine",
+      "name": "Last Connected"
+    },
+    {
+      "id": "kitty:machine:times",
+      "in": "kitty:machine",
+      "name": "Times Connected"
+    },
+    {
+      "id": "kitty:machine:address",
+      "in": "kitty:machine",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "kitty:machine:also",
+      "in": "kitty:machine",
+      "name": "Also Named"
+    },
+    {
+      "id": "kitty:machine:keys",
+      "in": "kitty:machine",
+      "name": "Known Keys"
+    },
+    {
+      "id": "verb:kitty:machine:ssh",
+      "command": "new",
+      "in": "kitty:machine",
+      "name": "SSH to It",
+      "verb": "ssh",
+      "glyph": "sshMachine"
+    },
+    {
+      "id": "verb:kitty:machine:copy",
+      "command": "yank",
+      "in": "kitty:machine",
+      "name": "Copy the Name",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "kitty:tab",
+      "in": "kitty:tabs",
+      "name": "Tab",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:kitty:tab:go",
+      "command": "buffer",
+      "in": "kitty:tab",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:kitty:tab:close",
+      "command": "close",
+      "in": "kitty:tab",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "kitty:pane",
+      "in": "kitty:tab",
+      "name": "Pane",
+      "verb": "go to",
+      "glyph": "windows",
+      "said": {
+        "yes": "yes",
+        "no": "no",
+        "size": "{columns} columns, {lines} lines"
+      }
+    },
+    {
+      "id": "verb:kitty:pane:go",
+      "command": "buffer",
+      "in": "kitty:pane",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:kitty:pane:close",
+      "command": "close",
+      "in": "kitty:pane",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "kitty:pane:folder",
+      "in": "kitty:pane",
+      "name": "Folder"
+    },
+    {
+      "id": "kitty:pane:machine",
+      "in": "kitty:pane",
+      "name": "Machine",
+      "term": "Machine/machine"
+    },
+    {
+      "id": "kitty:pane:running",
+      "in": "kitty:pane",
+      "name": "Running"
+    },
+    {
+      "id": "kitty:pane:title",
+      "in": "kitty:pane",
+      "name": "Title"
+    },
+    {
+      "id": "kitty:pane:command",
+      "in": "kitty:pane",
+      "name": "Started As"
+    },
+    {
+      "id": "kitty:pane:last",
+      "in": "kitty:pane",
+      "name": "Last Command"
+    },
+    {
+      "id": "kitty:pane:status",
+      "in": "kitty:pane",
+      "name": "Exit Status"
+    },
+    {
+      "id": "kitty:pane:prompt",
+      "in": "kitty:pane",
+      "name": "At the Prompt"
+    },
+    {
+      "id": "kitty:pane:full",
+      "in": "kitty:pane",
+      "name": "Full Screen"
+    },
+    {
+      "id": "kitty:pane:size",
+      "in": "kitty:pane",
+      "name": "Size"
+    },
+    {
+      "id": "kitty:pane:opened",
+      "in": "kitty:pane",
+      "name": "Opened"
+    },
+    {
+      "id": "kitty:pane:session",
+      "in": "kitty:pane",
+      "name": "Kitty Session"
+    },
+    {
+      "id": "kitty:pane:process",
+      "in": "kitty:pane",
+      "name": "Process"
+    },
+    {
+      "id": "kitty:pane:vars",
+      "in": "kitty:pane",
+      "name": "Variables"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "things": [
+    {
+      "id": "verb:timer:pause",
+      "command": "pause",
+      "in": "timer",
+      "name": "Pause",
+      "term": "Desktop/pause",
+      "verb": "pause",
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Resume",
+          "verb": "resume",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:timer:again",
+      "command": "retry",
+      "in": "timer",
+      "name": "Start Again",
+      "verb": "start again",
+      "glyph": "timer"
+    },
+    {
+      "id": "verb:timer:add",
+      "command": "extend",
+      "in": "timer",
+      "name": "Add a Minute",
+      "verb": "add",
+      "glyph": "timer"
+    },
+    {
+      "id": "verb:timer:end",
+      "command": "delete",
+      "in": "timer",
+      "name": "End",
+      "verb": "end",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "end"
+    },
+    {
+      "id": "verb:timer:copy",
+      "command": "yank",
+      "in": "timer",
+      "name": "Copy the Time Left",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

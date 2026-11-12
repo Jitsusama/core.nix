@@ -29,7 +29,8 @@ let
     "modules/eero/contract/net.profiles.json"
     "modules/eero/contract/network.json"
     "modules/eero/home-network.json"
-    "modules/quickshell/launcher/words.json"
+    # Cut from the one words.json, each thing's lines as they were laid out.
+    "modules/quickshell/launcher/words/*.json"
     "modules/spend-watch/feeds/claude/tests/logins/expired.json"
     "modules/spend-watch/feeds/claude/tests/logins/no-profile-scope.json"
     "modules/spend-watch/feeds/claude/tests/logins/pro.json"

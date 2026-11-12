@@ -1,10 +1,10 @@
 """Check the launcher's vocabulary says each word of one thing only.
 
-    launcher-words WORDS GLYPHS SOURCE
+    launcher-words WORDS GLYPHS SOURCE...
 
 WORDS is the vocabulary as the account writes it, GLYPHS a JSON list of the
-theme's glyph names, and SOURCE the vocabulary's own file
-(modules/quickshell/launcher/words.json), read for a key given twice in one
+theme's glyph names, and each SOURCE one of the vocabulary's own files
+(modules/quickshell/launcher/words/), read for a key given twice in one
 entry, which the account's copy has already dropped all but the last of.
 
 A key given twice fails. So does a shown name, another word or an answer's
@@ -457,12 +457,16 @@ TITLES = [
 
 
 def main(argv: list[str]) -> None:
-    """Print every ambiguous word and stray name, and fail if there are any."""
+    """Print every ambiguous word and stray name, and fail if there are any.
+
+    The files after the glyphs are the vocabulary's own, each place's as
+    written (launcher/words/), read for a key given twice.
+    """
     vocabulary = json.loads(Path(argv[0]).read_text())
     glyphs = set(json.loads(Path(argv[1]).read_text()))
     found = (
         refuses()
-        + twice(Path(argv[2]).read_text())
+        + [said for written in argv[2:] for said in twice(Path(written).read_text())]
         + clashes(vocabulary)
         + misplaced(vocabulary, glyphs)
         + miscased(vocabulary)

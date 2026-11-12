@@ -16,12 +16,18 @@ rustPlatform.buildRustPackage rec {
       ./src
       ../../daemon-serve/Cargo.toml
       ../../daemon-serve/src
-      ../launcher/words.json
       ../../ready-rows/Cargo.toml
       ../../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/quickshell/clipboard";
+  # The launcher's words, joined from each place's file, put where its
+  # sources and tests read words.json (../quickshell/launcher/words.nix).
+  postUnpack = ''
+    chmod -R u+w ${src.name}
+    mkdir -p ${src.name}/quickshell/launcher
+    cp ${(import ../launcher/words.nix).file} ${src.name}/quickshell/launcher/words.json
+  '';
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
     description = "Keeps the clipboard's copies, text and pictures, for the launcher";
