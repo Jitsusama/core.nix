@@ -57,10 +57,19 @@ def shell() -> Iterator[Shell]:
     """Give the account's whole shell once its cat has said where it sits, started once.
 
     Every case reads the cat's reports, so none starts before the cat's surface is loaded.
+    Once they're done, nothing the cat did in any of them may have looped a binding or read
+    a place left unworked: Joel's shell logged loops on `column` five times from 16:52 to
+    16:59 on 2026-11-12, as a walk's handlers set where it sat while its column was said.
     """
     with launcher_on_niri.running() as started:
         heard(started, lambda _: True, 0)
         yield started
+        faults = [
+            line
+            for line in started.log.read_text(errors="replace").splitlines()
+            if ("Binding loop" in line or "TypeError" in line) and "MarginCat" in line
+        ]
+        assert not faults, f"the cat looped or read nothing: {faults}"
 
 
 @pytest.fixture(autouse=True)
