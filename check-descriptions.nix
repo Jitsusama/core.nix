@@ -1490,6 +1490,10 @@
     the account's 1Password entry offers Quick Access and then Lock 1Password, through switches the
     installed 1Password takes
   '';
+  onepassword-opens-its-window-after-a-restart = ''
+    1Password opened from its entry runs once while its unit stays up, and once more when the unit
+    restarted under the opening, as when the app dies making its window
+  '';
   onepassword-outlasts-a-switch = ''
     a switch leaves the running 1Password be rather than restarting it, which would lock it
   '';
