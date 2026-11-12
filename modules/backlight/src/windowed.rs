@@ -160,8 +160,12 @@ impl Sensor {
             return Err(io::Error::last_os_error());
         }
         let lux = moved(&self.dir, self.units)?;
+        // SAFETY: the File is moved into the AsyncFd, which owns it until
+        // it's dropped, and a File keeps one descriptor open for its life.
+        let events = unsafe { AsyncFd::register_with_interest(events, Interest::READABLE) }
+            .map_err(io::Error::from)?;
         let window = Window {
-            events: AsyncFd::with_interest(events, Interest::READABLE)?,
+            events,
             dir: self.dir,
             units: self.units,
         };
