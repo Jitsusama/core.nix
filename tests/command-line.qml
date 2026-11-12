@@ -140,6 +140,14 @@ QtObject {
             ["sort"]);
         holds("each line is listed once", shown("s"), ["see", "sort", "set", "setlocal"]);
         holds(":set's short form is its own", Commands.ran("se nowifi", menu).entry?.kind, "set");
+        // A line asking for words, as a talk line, leaves on what the command
+        // line reads as :quit, and gives every other line as it's typed.
+        const leaving = words => CommandBinding.leaves(words, commands);
+        holds(":q typed in a line asking words leaves it",
+            [":q", ":q!", ":quit", " :q "].map(leaving), [true, true, true, true]);
+        holds("words that only hold :q are given",
+            ["q", "hello :q", ":quiet please", ":qa", ":clo", ":", ""].map(leaving),
+            [false, false, false, false, false, false, false]);
         holds("case is ignored, as his ignorecase", shown("DISC"), ["disconnect"]);
         holds("a count shows where it goes", shown("12"), ["{n}"]);
         holds("a name and a space show that command alone", shown("disc "), ["disconnect"]);
