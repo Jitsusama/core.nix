@@ -43,31 +43,45 @@ pub const PAINFUL_MS: f64 = 1_000.0;
 /// How many of a day's interactions the day file keeps.
 pub const KEPT: usize = 10;
 
-/// How long each kind of pick usually takes Joel: the median of his
-/// picks of that kind over the trials it's given.
+/// How long each kind of pick usually takes Joel: the median of the picks
+/// of that kind he made without erasing, over the trials it's given.
+/// Usability research sets a task's limit from its runs that went well,
+/// and a kind he often struggles with would otherwise set its own bar:
+/// finding a person took him 36 s at the median over two weeks, but 10 s
+/// when he didn't erase.
 pub struct Usual {
-    by_kind: HashMap<String, Vec<i64>>,
+    clean: HashMap<String, Vec<i64>>,
+    every: HashMap<String, Vec<i64>>,
 }
 
 impl Usual {
     pub fn of(trials: &[Trial]) -> Usual {
-        let mut by_kind: HashMap<String, Vec<i64>> = HashMap::new();
+        let mut clean: HashMap<String, Vec<i64>> = HashMap::new();
+        let mut every: HashMap<String, Vec<i64>> = HashMap::new();
         for trial in trials.iter().filter(|t| t.picked_one() && t.ms >= 0) {
-            by_kind.entry(trial.trying()).or_default().push(trial.ms);
+            every.entry(trial.trying()).or_default().push(trial.ms);
+            if trial.keys.erased == 0 {
+                clean.entry(trial.trying()).or_default().push(trial.ms);
+            }
         }
-        for times in by_kind.values_mut() {
+        for times in clean.values_mut().chain(every.values_mut()) {
             times.sort_unstable();
         }
-        Usual { by_kind }
+        Usual { clean, every }
     }
 
-    /// His usual time for this kind of pick, in milliseconds, or the spec
-    /// where he hasn't made it often enough.
+    /// His usual time for this kind of pick, in milliseconds: from his
+    /// clean picks where there are enough, else from all of them, else
+    /// the spec where he hasn't made it often enough.
     pub fn ms(&self, kind: &str) -> f64 {
-        match self.by_kind.get(kind) {
-            Some(times) if times.len() >= USUAL_LEAST => float(times[times.len() / 2]),
-            _ => SPEC_MS,
-        }
+        let enough = |by: &HashMap<String, Vec<i64>>| {
+            by.get(kind)
+                .filter(|times| times.len() >= USUAL_LEAST)
+                .map(|times| float(times[times.len() / 2]))
+        };
+        enough(&self.clean)
+            .or_else(|| enough(&self.every))
+            .unwrap_or(SPEC_MS)
     }
 }
 
@@ -413,6 +427,37 @@ mod tests {
             SPEC_MS
         );
         assert_eq!(usual.ms("capture:window"), SPEC_MS);
+    }
+
+    #[test]
+    fn his_usual_comes_from_the_picks_he_made_without_erasing() {
+        let struggled = |ms| Trial {
+            keys: Keys {
+                letters: 9,
+                erased: 6,
+                ..Keys::default()
+            },
+            ..pick(AT - 86_400_000, "verb:person", ms)
+        };
+        let clean = |ms| pick(AT - 86_400_000, "verb:person", ms);
+        let trials = [
+            clean(9000),
+            clean(10_000),
+            clean(11_000),
+            struggled(40_000),
+            struggled(50_000),
+            struggled(60_000),
+        ];
+        assert_eq!(
+            Usual::of(&trials).ms("verb:person"),
+            10_000.0,
+            "a kind he often struggles with can't set its own bar"
+        );
+        assert_eq!(
+            Usual::of(&trials[2..]).ms("verb:person"),
+            50_000.0,
+            "with too few clean picks, every pick makes his usual"
+        );
     }
 
     #[test]
