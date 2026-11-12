@@ -58,11 +58,17 @@ Scope {
 
     // What a notice of a piece says, as one string to compare.
     function words(piece) {
-        return JSON.stringify([piece.hint, root.message(piece)]
+        return JSON.stringify([root.summary(piece), root.message(piece)]
             .concat(piece.actions.map(root.offered)));
     }
 
-    // What a piece's notice says beneath its hint.
+    // What a piece's notice says as its summary: its hint, unless it
+    // says otherwise, as pi's does of the one session it rang for.
+    function summary(piece) {
+        return piece.summary ?? piece.hint;
+    }
+
+    // What a piece's notice says beneath its summary.
     function message(piece) {
         return piece.message ?? piece.context;
     }
@@ -199,7 +205,8 @@ Scope {
                 .concat(piece.now ? ["--urgency=critical"] : [])
                 .concat(piece.withdraws ? [`--hint=string:x-arrival:${mark}`] : [])
                 .concat(actions.map((action, index) => `--action=${index}=${root.offered(action)}`))
-                .concat([piece.hint], root.message(piece) === "" ? [] : [root.message(piece)])
+                .concat([root.summary(piece)],
+                    root.message(piece) === "" ? [] : [root.message(piece)])
         });
         told[mark] = {
             key: root.key(fact),

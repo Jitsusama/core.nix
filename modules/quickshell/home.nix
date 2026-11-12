@@ -964,9 +964,10 @@ in
     defaultText = lib.literalExpression ''config.jitsusama.pi.chime.want, or "''${pkgs.sound-theme-freedesktop}/share/sounds/freedesktop/stereo/message.oga" without pi'';
     description = ''
       The one sound the shell makes, at half volume, when a pi session
-      first wants Joel, so he hears it from across the room, since it
-      posts no notice; never while notices are held, nor for a want he's
-      already looking at. Where the machine has pi it's pi's low bell
+      first stands stopped on Joel's keys, a question or a yes, so he hears
+      it from across the room, with a notice that takes him to it; never
+      for a blocked run or an item, while notices are held, nor for a want
+      he's already looking at. Where the machine has pi it's pi's low bell
       struck twice (modules/pi/chime.nix), since the theme's message sits
       at 840 Hz to 5 kHz, where it scared Joel's dog. Null makes none.
     '';

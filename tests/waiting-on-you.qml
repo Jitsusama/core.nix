@@ -303,6 +303,17 @@ QtObject {
             true);
         expect("no want is none", Waiting.asksJoel({ wants: null }, by), false);
 
+        // The bell says something needs Joel's keys now: a session stopped
+        // on a question or a yes (WCJQSG's pivot, 2026-11-12), never a run
+        // that ended blocked while he was away, nor an item of its own,
+        // which For You lists to do when he likes.
+        expect("a question and a yes ring",
+            ["question", "approval"].map(kind => Waiting.rings({ kind })), [true, true]);
+        expect("a run stuck and an item don't",
+            ["blocked", "action"].map(kind => Waiting.rings({ kind })), [false, false]);
+        expect("nor does no want", [null, undefined, {}].map(Waiting.rings),
+            [false, false, false]);
+
         // A want is who it is, whatever its words say as they count up.
         const since = "2026-11-06T21:00:00.000Z";
         expect("a want reworded is the same want",

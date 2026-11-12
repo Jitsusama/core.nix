@@ -14,7 +14,8 @@
 # away over about two seconds, and its peak sits just under full scale,
 # so it's heard from across the room.
 #
-# `want` is what the shell plays when a session first wants Joel: "make
+# `want` is what the shell plays when a session first stops on Joel's keys,
+# a question or a yes: "make
 # sure you make some loud dinging noises when you need me" (16 October).
 # It had been the freedesktop theme's message, the high sound that scared
 # his dog. It is the same bell struck twice and damped sooner, so it reads
