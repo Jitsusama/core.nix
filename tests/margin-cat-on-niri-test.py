@@ -69,16 +69,19 @@ def placed(said: str) -> Json | None:
 def sits_over(shell: Shell, window: Json, since: int) -> None:
     """Wait until the cat says it sits on this window's column, over its middle, its walk done.
 
-    It sits a cell of air above the column's top, so its feet stand clear of the border.
+    It sits a cell of air above the column's top, so its feet stand clear of the border. Each
+    report is held to the window and column it names itself, never to where the windows are
+    by the time it's read, since niri lays them out again as others open and close.
     """
 
     def over(said: str) -> bool:
         at = placed(said)
-        if at is None or at["walking"]:
+        if at is None or at["walking"] or at.get("window") != window["id"]:
             return False
-        now = next(shown for shown in shell.windows() if shown["id"] == window["id"])
-        left, top = now["layout"]["tile_pos_in_workspace_view"]
-        width = now["layout"]["tile_size"][0]
+        column = json.loads(said.split(" over ", 1)[1])
+        if column is None:
+            return False
+        left, top, width = column["left"], column["top"], column["width"]
         middle = at["x"] + at["size"] / 2
         return bool(left <= middle <= left + width and at["y"] + at["size"] + at["air"] == top)
 

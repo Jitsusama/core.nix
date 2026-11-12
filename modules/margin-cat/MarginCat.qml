@@ -205,7 +205,8 @@ Scope {
                     cells: root.drawing.length,
                     lit: root.drawing.join("").split("#").length - 1,
                     hue: `${Theme.voice}`,
-                    walking: stride !== null
+                    walking: stride !== null,
+                    window: sat
                 });
                 Report.say(`sits cat ${modelData.name} ${at} over ${JSON.stringify(column)}`);
             }
