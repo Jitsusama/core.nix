@@ -9,8 +9,8 @@ so the Home Network has a whole three-node network to show. A watch of rows, one
 row kind or a place, is answered with the records named as its third argument, those the daemon
 serves of that model, each row ordered (modules/eero/tests/rows.json, which a cargo test holds
 to the daemon's), or only those it names. Each such watch is said on its output, with the words
-it asks in, so a test sees the shell watch them. It never changes, so nothing is told after a watch's
-answer.
+it asks in, so a test sees the shell watch them. It never changes, so nothing is told after a
+watch's answer.
 """
 
 import json
