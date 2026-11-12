@@ -355,8 +355,9 @@ Scope {
     readonly property var typedHeld: ({})
     property string typedAsking: ""
 
-    // The rows made of `words` typed inside the row of `within`: none till
-    // it answers (`searched`), or null where it didn't or can't.
+    // The rows made of `words` typed inside the row of `within`, or null
+    // where it didn't or can't answer. Till it answers (`searched`), its
+    // last answer there stays, so a key typed on never blanks the list.
     function typedIn(within, words) {
         const asked = `${within}\n${words}`;
         if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
@@ -366,7 +367,7 @@ Scope {
             link.find({ ask: "search", place: ready.place, words: words, within: within },
                 answer => ready.typedAnswered(within, words, answer));
         }
-        if (typing.within !== within || typing.words !== words)
+        if (typing.within !== within)
             return [];
         return typing.refused ? null
             : typing.keys.map(key => rowAt(key)).filter(row => row !== null);

@@ -216,8 +216,8 @@ ShellRoot {
             // As a daemon that answers would be asked.
             borrower.typedAsking = `${move}\nthu 2pm`;
             borrower.typedAnswered(move, "thu 2", answer("thu 2"));
-            Expect.expect("an answer to words typed over is let go",
-                borrower.typedIn(move, "thu 2pm")?.length === 0, "");
+            Expect.expect("an answer to words typed over is let go, the last one standing",
+                borrower.typedIn(move, "thu 2pm") === null, "");
             borrower.typedAnswered(move, "thu 2pm", answer("thu 2pm"));
             const typed = borrower.typedIn(move, "thu 2pm");
             Expect.expect("what's typed is the daemon's rows",
@@ -230,6 +230,9 @@ ShellRoot {
             borrower.typedAnswered(move, "thu 2 pm", answer("thu 2 pm"));
             Expect.expect("the same time typed on is the same row",
                 borrower.typedIn(move, "thu 2 pm")?.[0] === typed[0], "");
+            borrower.typedAsking = `${move}\nthu 2 pm,`;
+            Expect.expect("and stays while what's typed on is asked",
+                borrower.typedIn(move, "thu 2 pm,")?.[0] === typed[0], "");
             borrower.typedAsking = `${move}\nsoon`;
             borrower.typedAnswered(move, "soon", { id: "no",
                 error: { code: "unknown-ask", message: "no" } });
