@@ -45,8 +45,11 @@ Piece {
     // Power's Energy part draws its drawer, of what it holds against its
     // design and the battery the kernel names (Piece.qml's drawnBy).
     drawnBy: ({ place: "power", key: "power:energy" })
-    // Running low, and then critical, is said as it happens.
+    // Running low, and then critical, is said as it happens, and taken
+    // back once it's charging: a "19% left" stayed open on Joel's desktop
+    // at 64% and charging (2026-11-11).
     arrives: true
+    withdraws: true
     app: "Battery"
     hint: battery.timeToEmpty > 0
         ? `${charge}% left, about ${Math.round(battery.timeToEmpty / 60)} minutes`

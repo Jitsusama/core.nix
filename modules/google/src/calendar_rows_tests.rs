@@ -54,6 +54,26 @@ fn keys(rows: &[Value]) -> Vec<&str> {
         .collect()
 }
 
+/// The rows a place lists, without those inside them.
+fn top(rows: &[Value]) -> Vec<Value> {
+    rows.iter()
+        .filter(|row| row["parent"].is_null())
+        .cloned()
+        .collect()
+}
+
+/// The rows inside the row keyed `parent`, in their order.
+fn within<'a>(rows: &'a [Value], parent: &str) -> Vec<&'a Value> {
+    rows.iter().filter(|row| row["parent"] == parent).collect()
+}
+
+/// The one row keyed `key`, since a key served twice would be a fault.
+fn at<'a>(rows: &'a [Value], key: &str) -> &'a Value {
+    let keyed: Vec<&Value> = rows.iter().filter(|row| row["key"] == key).collect();
+    assert_eq!(keyed.len(), 1, "not one row {key}: {keyed:?}");
+    keyed[0]
+}
+
 fn acted(row: &Value) -> Vec<&str> {
     row["acts"]
         .as_array()
@@ -96,13 +116,13 @@ fn meetings_to_come_are_listed_soonest_first_and_those_held_newest_first_a_serie
     standup_before.series = Some("standup".into());
     let mut declined = one("declined", MONDAY - 3 * HOUR);
     declined.answer = Some(Answer::No);
-    let rows = meetings(
+    let rows = top(&meetings(
         &[later, soon, on, standup.clone()],
         &[standup, standup_before, declined],
         MONDAY,
         &zone(),
         &words(),
-    );
+    ));
     assert_eq!(
         keys(&rows),
         [
@@ -135,7 +155,13 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     invited.link = Some("https://meet.google.com/abc-defg-hij".into());
     let tomorrow = one("tomorrow", MONDAY + 20 * HOUR);
     let over = one("over", MONDAY - HOUR);
-    let rows = meetings(&[invited, tomorrow, over], &[], MONDAY, &zone(), &words());
+    let rows = top(&meetings(
+        &[invited.clone(), tomorrow, over],
+        &[],
+        MONDAY,
+        &zone(),
+        &words(),
+    ));
     assert_eq!(
         rows[0]["side"],
         json!([{"at": MONDAY + HOUR, "as": "meeting", "until": MONDAY + HOUR + 30 * MINUTE,
@@ -143,15 +169,29 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     );
     assert_eq!(rows[0]["note"], "15:00 to 15:30 \u{b7} maybe");
     assert_eq!(rows[0]["today"], true);
+    let returns = |now: i64| {
+        top(&meetings(&[invited.clone()], &[], now, &zone(), &words()))[0]["acts"][0].clone()
+    };
+    let details = json!({"key": "verb:details", "step": "drawer"});
+    let join = json!({"key": "verb:calendar:join", "open": "https://meet.google.com/abc-defg-hij",
+        "in": "google-opens"});
     assert_eq!(
-        rows[0]["joins"],
-        json!({"from": MONDAY + 50 * MINUTE, "until": MONDAY + HOUR + 30 * MINUTE}),
-        "Return joins from ten minutes before it starts"
+        [
+            returns(MONDAY + 49 * MINUTE),
+            returns(MONDAY + 50 * MINUTE),
+            returns(MONDAY + HOUR + 29 * MINUTE),
+        ],
+        [details.clone(), join.clone(), join],
+        "Return joins from ten minutes before it starts until it ends, showing it before"
+    );
+    assert_eq!(
+        rows[0]["acts"][1],
+        json!({"key": "verb:more", "step": "rows"}),
+        "its acts are the rows inside it"
     );
     assert_eq!(rows[1]["today"], false);
     assert_eq!(
-        rows[1]["joins"],
-        Value::Null,
+        rows[1]["acts"][0], details,
         "nothing to join without a call"
     );
     assert_eq!(rows[2]["key"], "row:held:over");
@@ -161,8 +201,8 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     );
 }
 
-#[test]
-fn its_acts_come_in_the_one_order_each_with_what_it_asks_or_the_step_it_takes() {
+/// A call Ada holds, with Grace asked, a file on it and Joel going.
+fn planned() -> Meeting {
     let mut meeting = one("e1", MONDAY + HOUR);
     meeting.title = "Plan & Review".into();
     meeting.link = Some("https://meet.google.com/abc-defg-hij".into());
@@ -184,50 +224,247 @@ fn its_acts_come_in_the_one_order_each_with_what_it_asks_or_the_step_it_takes() 
         id: Some("agenda".into()),
         kind: None,
     }];
-    let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
-    let row = &rows[0];
+    meeting
+}
+
+#[test]
+fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
+    let rows = meetings(&[planned()], &[], MONDAY, &zone(), &words());
+    let inside = within(&rows, "row:calendar:e1");
+    let named: Vec<(&str, &str)> = inside
+        .iter()
+        .map(|row| {
+            (
+                row["name"].as_str().unwrap(),
+                row["glyph"].as_str().unwrap(),
+            )
+        })
+        .collect();
     assert_eq!(
-        acted(row),
+        named,
         [
-            "verb:calendar:join",
-            "verb:calendar:write",
-            "verb:calendar:see",
-            "verb:calendar:transcript",
-            "verb:calendar:yes",
-            "verb:calendar:maybe",
-            "verb:calendar:no",
-            "verb:calendar:move",
-            "verb:calendar:guests",
-            "verb:calendar:attachments",
-            "verb:calendar:link",
+            ("Join the Meeting", "joinCall"),
+            ("Write to the Guests", "writeMail"),
+            ("Show in Calendar", "meetingDetails"),
+            ("Going", "going"),
+            ("Maybe", "maybeGoing"),
+            ("Not Going", "notGoing"),
+            ("Move the Meeting", "moveMeeting"),
+            ("Guests", "people"),
+            ("Attachments", "attachment"),
+            ("Copy the Link", "link"),
         ],
-        "Cancel only for one Joel holds"
+        "Cancel only for one Joel holds, and the transcript call-transcripts' to serve"
     );
-    let acts = row["acts"].as_array().unwrap();
+    assert!(
+        inside.iter().all(|row| row["depth"] == 1
+            && row["thing"]
+                .as_str()
+                .unwrap()
+                .starts_with("calendar:meeting:e1:")),
+        "each is a row of the meeting's, one deep"
+    );
+    let first = |row: &Value| row["acts"][0].clone();
     assert_eq!(
-        acts[0],
+        first(inside[0]),
         json!({"key": "verb:calendar:join", "open": "https://meet.google.com/abc-defg-hij",
             "in": "google-opens"}),
-        "joining opens the link itself in Google's window, as ready-rows' open form"
+        "joining opens the link in Google's window, as ready-rows' open form"
     );
     assert_eq!(
-        acts[1]["open"],
+        first(inside[1])["open"],
         "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com%2Cgrace%40example.com\
          &su=Plan%20%26%20Review"
     );
     assert_eq!(
-        acts[4]["ask"],
-        json!({"answer": {"id": "e1", "with": "yes"}})
+        (first(inside[2]), inside[2]["drawer"].clone()),
+        (
+            json!({"key": "verb:more", "step": "rows"}),
+            json!("drawer:calendar:e1")
+        ),
+        "Show in Calendar steps in to what's known of it, beside the meeting's own drawer"
     );
-    assert_eq!(acts[4]["given"], true);
-    assert_eq!(acts[5]["given"], false);
-    assert_eq!(acts[7]["telling"], "Telling Ada Lovelace and Grace Hopper");
     assert_eq!(
-        acts[8]["emails"],
-        json!(["ada@example.com", "grace@example.com"])
+        first(inside[3]),
+        json!({"key": "verb:calendar:yes", "ask": {"answer": {"id": "e1", "with": "yes"}}}),
+        "Going asks the daemon to answer"
     );
-    assert_eq!(acts[9]["count"], 1);
-    assert_eq!(acts[10]["side"], "its call");
+    assert_eq!(
+        [inside[3]["side"].clone(), inside[4]["side"].clone()],
+        [json!([{"said": "your answer"}]), json!([])],
+        "only the answer given says so"
+    );
+    assert_eq!(
+        (
+            inside[6]["kind"].clone(),
+            first(inside[6]),
+            inside[6]["moves"]["telling"].clone()
+        ),
+        (
+            json!("move"),
+            json!({"key": "verb:more", "step": "rows"}),
+            json!("Telling Ada Lovelace and Grace Hopper")
+        ),
+        "Move steps into the times the shell makes, till they're served"
+    );
+    assert_eq!(
+        (first(inside[9]), inside[9]["side"].clone()),
+        (
+            json!({"key": "verb:calendar:link", "copy": "https://meet.google.com/abc-defg-hij"}),
+            json!([{"said": "its call"}])
+        ),
+        "with a call it copies the call's link"
+    );
+}
+
+#[test]
+fn show_in_calendar_steps_into_each_fact_copied_then_opens_its_page() {
+    let mut meeting = planned();
+    meeting.place = Some("Room 4".into());
+    meeting.about = Some("The plan,\n  and  the review.".into());
+    let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
+    let facts = within(&rows, "row:calendar:e1:see");
+    let named: Vec<(String, Value, Value)> = facts
+        .iter()
+        .map(|row| {
+            (
+                row["name"].as_str().unwrap().to_owned(),
+                row["side"].clone(),
+                row["acts"][0].clone(),
+            )
+        })
+        .collect();
+    let fact = |name: &str, side: &str, copy: &str| {
+        (
+            name.to_owned(),
+            json!([{"said": side}]),
+            json!({"key": "verb:copy", "copy": copy}),
+        )
+    };
+    let link = "https://meet.google.com/abc-defg-hij";
+    assert!(
+        named[0].0.starts_with("Monday 26 October") && named[0].1 == json!([{"said": "When"}]),
+        "first when it is, as the drawer says it: {:?}",
+        named[0]
+    );
+    assert_eq!(
+        named[1..4],
+        [
+            fact("Room 4", "Where", "Room 4"),
+            fact(link, "Call", link),
+            fact("going", "Your Answer", "going"),
+        ],
+        "each fact the drawer has, Return copying what it says"
+    );
+    let about = named
+        .iter()
+        .find(|(_, side, _)| side[0]["said"] == "what it's about");
+    assert_eq!(
+        about.cloned(),
+        Some(fact(
+            "The plan, and the review.",
+            "what it's about",
+            "The plan,\n  and  the review."
+        )),
+        "what it's about is one line, copied whole"
+    );
+    let last = facts.last().unwrap();
+    assert_eq!(
+        (
+            last["name"].clone(),
+            last["acts"].clone(),
+            last["depth"].clone()
+        ),
+        (
+            json!("Open in Calendar"),
+            json!([{"key": "verb:calendar:open", "in": "google-opens",
+                "open": "https://calendar.google.com/event?eid=e1"}]),
+            json!(2)
+        ),
+        "last, its page opens in Google's window"
+    );
+}
+
+#[test]
+fn guests_and_attachments_step_into_who_and_what_is_on_it() {
+    let guest = |name: &str, email: Option<&str>, answer| Guest {
+        name: name.into(),
+        email: email.map(str::to_owned),
+        answer,
+    };
+    let mut meeting = one("e1", MONDAY + HOUR);
+    meeting.holds = false;
+    meeting.answer = Some(Answer::Yes);
+    meeting.organizer = Some(Person {
+        name: "Ada Lovelace".into(),
+        email: Some("ada@example.com".into()),
+    });
+    meeting.guests = vec![
+        guest("Grace Hopper", Some("Grace@Example.com"), Answer::Maybe),
+        guest("", Some("grace@example.com"), Answer::Maybe),
+        guest("", Some("alan@example.com"), Answer::Waiting),
+        guest("A Room", None, Answer::Yes),
+    ];
+    meeting.attachments = vec![Attachment {
+        title: "Agenda".into(),
+        link: "https://docs.google.com/document/d/agenda".into(),
+        id: Some("agenda".into()),
+        kind: None,
+    }];
+    let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
+    let guests = at(&rows, "row:calendar:e1:guests");
+    assert_eq!(
+        (guests["acts"].clone(), guests["side"].clone()),
+        (
+            json!([{"key": "verb:more", "step": "rows"}]),
+            json!([{"said": "3"}])
+        ),
+        "Guests steps in, saying how many"
+    );
+    let who = within(&rows, "row:calendar:e1:guests");
+    let said: Vec<(&str, Value)> = who
+        .iter()
+        .map(|row| (row["name"].as_str().unwrap(), row["side"].clone()))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("Ada Lovelace", json!([])),
+            ("Grace Hopper", json!([{"said": "maybe"}])),
+            ("alan@example.com", json!([{"said": "not answered"}])),
+        ],
+        "who holds it, then each address once, as Guests counts them, a room with none left out"
+    );
+    assert_eq!(
+        who[1]["acts"],
+        json!([
+            {"key": "verb:person:mail", "in": "google-opens",
+                "open": "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=Grace%40Example.com\
+                         &su=Meeting%20e1"},
+            {"key": "verb:calendar:address", "copy": "Grace@Example.com"},
+        ]),
+        "Return writes to them, and their address is copied"
+    );
+    assert_eq!(
+        (who[1]["depth"].clone(), who[1]["hue"].clone()),
+        (json!(2), json!("person")),
+        "a guest is a person two deep"
+    );
+    let files = within(&rows, "row:calendar:e1:attachments");
+    assert_eq!(
+        (
+            files.len(),
+            files[0]["name"].clone(),
+            files[0]["acts"].clone()
+        ),
+        (
+            1,
+            json!("Agenda"),
+            json!([{"key": "calendar:attachment", "in": "google-opens",
+                "open": "https://docs.google.com/document/d/agenda"}])
+        ),
+        "each file opens in Google's window"
+    );
 }
 
 #[test]
@@ -241,22 +478,40 @@ fn one_joel_holds_cancels_once_sure_and_without_a_call_copies_its_page() {
         })
         .collect();
     let rows = meetings(&[meeting], &[], MONDAY, &zone(), &words());
-    let acts = rows[0]["acts"].as_array().unwrap();
+    let inside = within(&rows, "row:calendar:mine");
     assert_eq!(
-        acted(&rows[0]),
-        [
-            "verb:calendar:see",
-            "verb:calendar:cancel",
-            "verb:calendar:link"
-        ]
+        inside.iter().flat_map(|row| acted(row)).collect::<Vec<_>>(),
+        ["verb:more", "verb:more", "verb:calendar:link"],
+        "Show in Calendar steps in to its facts, and Cancel to be sure"
     );
-    assert_eq!(acts[1]["ask"], json!({"cancel": {"id": "mine"}}));
-    assert_eq!(acts[1]["sure"], "Cancel It Now, Telling 3 Guests");
+    let sure: Vec<(Value, Value, Value)> = within(&rows, "row:calendar:mine:cancel")
+        .iter()
+        .map(|row| {
+            (
+                row["name"].clone(),
+                row["sure"].clone(),
+                row["acts"].clone(),
+            )
+        })
+        .collect();
     assert_eq!(
-        acts[2]["copy"],
-        "https://calendar.google.com/event?eid=mine"
+        sure,
+        [(
+            json!("Cancel It Now, Telling 3 Guests"),
+            json!(true),
+            json!([{"key": "verb:calendar:cancel", "ask": {"cancel": {"id": "mine"}}}])
+        )],
+        "its one row asks the daemon to cancel once Joel's sure"
     );
-    assert_eq!(acts[2]["side"], "its page");
+    assert_eq!(
+        inside[2]["acts"][0]["copy"], "https://calendar.google.com/event?eid=mine",
+        "without a call it copies its page"
+    );
+    assert_eq!(
+        inside[2]["side"],
+        json!([{"said": "its page"}]),
+        "it says what it copies"
+    );
 }
 
 #[test]
@@ -388,7 +643,10 @@ fn meets_recent_is_each_call_held_on_a_meet_link_once_by_code_saying_who_it_was_
         &zone(),
         &words(),
     );
-    let calls: Vec<&Value> = rows.iter().filter(|row| row["place"] == "meet").collect();
+    let calls: Vec<&Value> = rows
+        .iter()
+        .filter(|row| row["place"] == "meet" && row["parent"].is_null())
+        .collect();
     let called: Vec<&str> = calls
         .iter()
         .map(|row| row["key"].as_str().unwrap())
@@ -512,14 +770,15 @@ fn guests_count_each_address_once_and_who_holds_it_unless_joel_does() {
         "not Ada, Grace once in any case, and the stranger, a room with no address left out"
     );
     let rows = meetings(&[meeting.clone()], &[], MONDAY, &zone(), &words());
-    let guests = rows[0]["acts"]
-        .as_array()
-        .and_then(|acts| acts.iter().find(|act| act["key"] == "verb:calendar:guests"))
-        .cloned();
     assert_eq!(
-        guests.map(|act| act["count"].clone()),
-        Some(json!(3)),
-        "the Guests act didn't carry its count"
+        at(&rows, "row:calendar:guested:guests")["side"],
+        json!([{"said": "3"}]),
+        "the Guests row didn't say its count"
+    );
+    assert_eq!(
+        within(&rows, "row:calendar:guested:guests").len(),
+        3,
+        "a row for each address counted"
     );
     meeting.holds = true;
     assert_eq!(

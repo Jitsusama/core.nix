@@ -195,7 +195,7 @@ def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_
         lambda shown: (shown["selected"] or {}).get("name") == "in use by chrome"
     )
     desktop.close_launcher()
-    # Let go, it lingers a moment, muted, then goes.
+    # Let go, it lingers a moment, muted, then goes, and its notice is taken back.
     since = desktop.mark()
     machine.succeed(
         ": > /run/camera-holders/.camera"
@@ -203,6 +203,7 @@ def test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_
     )
     desktop.reported("sets margin ", margin_sets(("camera", "onAir", "muted")), since)
     machine.wait_until_fails(desktop.in_session(MARGIN), timeout=timedelta(seconds=10))
+    machine.wait_until_succeeds(desktop.notice_kept('.app == "Camera" and .withdrawn'))
 
 
 def test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera(

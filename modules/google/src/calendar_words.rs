@@ -46,11 +46,34 @@ pub struct Words {
     pub with_two: String,
     /// "{first} and {count} others".
     pub with_others: String,
+    /// Each act's name and glyph role, by its id, for the rows inside a
+    /// meeting that do them.
+    pub acts: BTreeMap<String, (String, String)>,
 }
+
+/// Each act a row inside a meeting does, by its id in the vocabulary.
+const ACTS: [&str; 16] = [
+    "verb:calendar:join",
+    "verb:calendar:write",
+    "verb:calendar:see",
+    "verb:calendar:open",
+    "verb:calendar:transcript",
+    "verb:calendar:yes",
+    "verb:calendar:maybe",
+    "verb:calendar:no",
+    "verb:calendar:move",
+    "verb:calendar:guests",
+    "verb:calendar:attachments",
+    "verb:calendar:cancel",
+    "verb:calendar:link",
+    "verb:calendar:address",
+    "verb:person:mail",
+    "calendar:attachment",
+];
 
 /// The words a meeting's own `said` must hold, each one Calendar's rows
 /// say.
-const SAID: [&str; 43] = [
+const SAID: [&str; 45] = [
     "earlier",
     "eyebrow",
     "going",
@@ -94,6 +117,8 @@ const SAID: [&str; 43] = [
     "rd",
     "th",
     "and",
+    "yourAnswer",
+    "aboutSide",
 ];
 
 /// Each fact a drawer names, `calendar:<fact>` in the vocabulary, with the
@@ -163,6 +188,15 @@ impl Words {
             ("telling".to_owned(), "sure".to_owned()),
             word("calendar:telling", &["said", "sure"])?,
         );
+        let acts = ACTS
+            .iter()
+            .map(|id| {
+                Ok((
+                    (*id).to_owned(),
+                    (word(id, &["name"])?, word(id, &["glyph"])?),
+                ))
+            })
+            .collect::<Result<_, String>>()?;
         Ok(Words {
             said,
             facts,
@@ -177,6 +211,7 @@ impl Words {
             call_glyph: word("meet:held", &["glyph"])?,
             with_two: word("meet:held", &["said", "two"])?,
             with_others: word("meet:held", &["said", "others"])?,
+            acts,
         })
     }
 
@@ -190,6 +225,13 @@ impl Words {
         self.facts
             .get(&(fact.to_owned(), state.to_owned()))
             .map_or("", String::as_str)
+    }
+
+    /// An act's name and glyph role, which `read` made sure of.
+    pub(crate) fn act(&self, id: &str) -> (&str, &str) {
+        self.acts
+            .get(id)
+            .map_or(("", ""), |(name, glyph)| (name.as_str(), glyph.as_str()))
     }
 
     /// How Joel answered, as his calendar would say it to him.

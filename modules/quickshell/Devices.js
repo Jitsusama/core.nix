@@ -75,7 +75,9 @@ function low(devices, standing) {
                 value: `${charge(device)}%`,
                 hint: `${charge(device)}% left`,
                 context: critical ? "charge it now" : "charge it soon",
-                arrives: true
+                // Said as it runs low, and taken back once it's charged.
+                arrives: true,
+                withdraws: true
             };
         });
 }
