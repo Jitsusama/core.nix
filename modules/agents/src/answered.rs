@@ -138,10 +138,13 @@ pub fn read(steer: &Path, answer: &Answer, now: i64) -> std::io::Result<()> {
 
 /// What a drawer says first of a session that answered: what Joel asked,
 /// then its answer and when it came, each a sentence or more, so he
-/// reads it in place (`names`, the drawer's names for its facts).
-pub fn facts(answer: &Answer, names: &Said) -> Vec<Value> {
-    let mut answered = json!({"label": names.word("answer"), "value": answer.answer,
-        "words": true});
+/// reads it in place (`names`, the drawer's names for its facts). An
+/// answer that only passes his words on, as the void's "→ WCJQSG" does,
+/// names where they went as Agents does (`called`, a session's quest
+/// title, else its name, by an address it goes by), never an address.
+pub fn facts(answer: &Answer, names: &Said, called: &dyn Fn(&str) -> Option<String>) -> Vec<Value> {
+    let mut answered = json!({"label": names.word("answer"),
+        "value": passed_on(&answer.answer, called), "words": true});
     if let Some(at) = answer.at {
         answered["at"] = json!({"at": at, "as": "clock"});
     }
@@ -149,6 +152,18 @@ pub fn facts(answer: &Answer, names: &Said) -> Vec<Value> {
         json!({"label": names.word("asked"), "value": answer.asked, "words": true}),
         answered,
     ]
+}
+
+/// An answer as Joel reads it: as it came, unless it only passes his
+/// words on to one address the sessions know.
+fn passed_on(answer: &str, called: &dyn Fn(&str) -> Option<String>) -> String {
+    answer
+        .trim()
+        .strip_prefix('→')
+        .map(str::trim)
+        .filter(|to| !to.is_empty() && !to.contains(char::is_whitespace))
+        .and_then(called)
+        .map_or_else(|| answer.to_owned(), |name| format!("→ {name}"))
 }
 
 #[cfg(test)]
@@ -168,7 +183,7 @@ mod tests {
             read: true,
         };
         assert_eq!(
-            facts(&answer, &names),
+            facts(&answer, &names, &|_| None),
             [
                 json!({"label": "You Asked", "value": "is the beacon lit?", "words": true}),
                 json!({"label": "Its Answer", "value": "Yes, since nine.", "words": true,
@@ -176,6 +191,37 @@ mod tests {
             ],
             "what was asked, then the answer with its time"
         );
+    }
+
+    #[test]
+    fn an_answer_passing_joels_words_on_names_where_they_went() {
+        let called = |address: &str| (address == "LAMPLT").then(|| "Light the Lamps".to_owned());
+        let cases = [
+            (
+                "→ LAMPLT",
+                "→ Light the Lamps",
+                "one it knows reads by its name",
+            ),
+            (" →  LAMPLT ", "→ Light the Lamps", "however it's spaced"),
+            (
+                "→ GONEAW",
+                "→ GONEAW",
+                "one it doesn't know stays as it came",
+            ),
+            (
+                "→ LAMPLT and BEACON",
+                "→ LAMPLT and BEACON",
+                "more than an address is words",
+            ),
+            (
+                "Yes, LAMPLT",
+                "Yes, LAMPLT",
+                "an answer naming one isn't passing on",
+            ),
+        ];
+        for (said, read, why) in cases {
+            assert_eq!(passed_on(said, &called), read, "{why}");
+        }
     }
 
     fn talk(address: &str, id: &str, lines: &[Value]) -> Value {

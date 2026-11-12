@@ -44,6 +44,24 @@ impl<'a> Session<'a> {
             .unwrap_or("")
     }
 
+    /// Whether it goes by `name`: one of its addresses, or the short id
+    /// ending a quest it owns, as the mesh reaches a quest's session by.
+    pub fn goes_by(self, name: &str) -> bool {
+        let listed = |field: &str| {
+            self.presence()
+                .and_then(|presence| presence.get(field))
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+        };
+        !name.is_empty()
+            && (listed("addresses").any(|address| address == name)
+                || listed("owns").any(|owned| {
+                    owned.starts_with("QEST-") && owned.rsplit('-').next() == Some(name)
+                }))
+    }
+
     /// The address of the session orchestrating it, or none. One standing
     /// at the top is under none, whoever orchestrates it, since what it's
     /// for is being found there.
@@ -322,6 +340,15 @@ pub fn ordinal(place: u64) -> String {
     format!("{place}{suffix}")
 }
 
+/// What Joel calls the session going by `name`, as Agents names it: its
+/// quest's title, else its own name; none where no session goes by it.
+pub fn called(sessions: &[Session<'_>], name: &str) -> Option<String> {
+    sessions
+        .iter()
+        .find(|one| one.goes_by(name))
+        .map(|one| one.named().0)
+}
+
 /// The sessions listed in Sessions' order: those running, this machine's
 /// first, the one whose window was used last first (`used`, by address),
 /// then those elsewhere, the one that changed last first; then those
@@ -356,6 +383,19 @@ mod tests {
 
     fn can(names: &[&str]) -> JoelCan {
         JoelCan(names.iter().map(|name| (*name).to_owned()).collect())
+    }
+
+    #[test]
+    fn a_session_goes_by_its_addresses_and_its_quests_short_id() {
+        let record = json!({"presence": {"addresses": ["P", "Q"],
+            "owns": ["reef", "QEST-20261106-LAMPLT"]}});
+        let session = Session(&record);
+        for name in ["P", "Q", "LAMPLT"] {
+            assert!(session.goes_by(name), "it goes by {name}");
+        }
+        for name in ["", "reef", "20261106", "O"] {
+            assert!(!session.goes_by(name), "it doesn't go by {name:?}");
+        }
     }
 
     #[test]

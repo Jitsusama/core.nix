@@ -22,6 +22,8 @@ pub struct Member<'a> {
     /// The address of the session orchestrating it, or "".
     pub under: &'a str,
     pub stands: Stands,
+    /// Whether it stands at Agents' top by name, as the void does.
+    pub at_top: bool,
 }
 
 /// One entry of the laid-out list.
@@ -80,7 +82,7 @@ pub fn tree<'a>(sessions: &[Member<'a>], folds: bool) -> Vec<Laid<'a>> {
     let roots: Vec<_> = (0..sessions.len())
         .filter(|at| parent[*at].is_none())
         .collect();
-    for at in layer.in_order(&roots) {
+    for at in layer.roots_in_order(&roots) {
         layer.lay(&mut laid, at, 0);
     }
     laid
@@ -152,6 +154,26 @@ impl<'a> Layer<'_, 'a> {
     fn in_order(&self, list: &[usize]) -> Vec<usize> {
         let mut ordered = list.to_vec();
         ordered.sort_by_key(|at| self.best[*at]);
+        ordered
+    }
+
+    /// The top level's order: those needing Joel, then one standing at
+    /// the top by name, then the rest, so the void keeps one place as
+    /// others come and go (VKCF3Z, 2026-11-12, who found it at row 36 of
+    /// 40).
+    fn roots_in_order(&self, roots: &[usize]) -> Vec<usize> {
+        let mut ordered = roots.to_vec();
+        ordered.sort_by_key(|at| {
+            let (stands, _) = self.best[*at];
+            let rank = if stands == Stands::Needs {
+                0
+            } else if self.sessions[*at].at_top {
+                1
+            } else {
+                2
+            };
+            (rank, self.best[*at])
+        });
         ordered
     }
 
@@ -243,9 +265,27 @@ mod tests {
                     address,
                     under,
                     stands,
+                    at_top: false,
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn one_standing_at_the_top_follows_those_needing_joel_and_leads_the_rest() {
+        let mut list = sessions("A:working B:needs V:listening C:working>A D:paused");
+        list[2].at_top = true;
+        assert_eq!(
+            read(&list, &tree(&list, false)),
+            "B V A .C D",
+            "the void keeps one place, however it and the rest stand"
+        );
+        list[2].stands = Stands::Needs;
+        assert_eq!(
+            read(&list, &tree(&list, false)),
+            "B V A .C D",
+            "needing Joel itself, it stands among those that do, in its order"
+        );
     }
 
     /// The laid-out list as it reads: each address, a dot for each step
