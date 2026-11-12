@@ -693,6 +693,26 @@ mod tests {
     }
 
     #[test]
+    fn a_running_session_with_no_title_is_named_by_its_quest_never_its_address() {
+        let here = json!({"standing": "running",
+            "presence": {"session": "s-bare", "addresses": ["BARE01"], "landings": []}});
+        let sessions = [Session(&here)];
+        let landings = [kept(
+            "s-bare",
+            "core.nix#2141",
+            "2026-11-11T10:00:00Z",
+            "Try it.",
+        )];
+        let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
+        let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
+        drawn(&mut records, &words(), &titles);
+        assert_eq!(
+            records[0]["landed"]["drawer"]["eyebrow"][0]["said"], "The Lighthouse Quest",
+            "a session named only by its address is named by the quest it landed for"
+        );
+    }
+
+    #[test]
     fn a_landings_drawer_names_who_landed_it_and_folds_its_identifiers() {
         let here = session("s-here", "HERE01", &json!([]));
         let sessions = [Session(&here)];
