@@ -2,8 +2,9 @@
 # wide open and slammed, and watches what logind does. logind must hear
 # lid-hinge's switch and not the lid's own, which udev hides: a lid shut
 # with the hinge coming down sleeps; one shut with the hinge wide open and
-# the light on keeps running; and one slammed shut sleeps once the light
-# goes dark. The machine is on battery, from the kernel's test_power, with
+# the light on keeps running; one slammed shut sleeps once the light goes
+# dark; and one typed on keeps running in the dark until the typing stops.
+# The machine is on battery, from the kernel's test_power, with
 # no monitor, and its sleep stands in, leaving a file and returning at
 # once, as in lid.nix. The hinge and the light sensor stand in under /run:
 # their attributes are files, and the hinge's buffer a named pipe the test
@@ -21,6 +22,10 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         self.nixosModules.lid
         self.nixosModules.lid-hinge
       ];
+
+      # Keys sent reach the PS/2 keyboard, on i8042, as a laptop's own do,
+      # rather than QEMU's virtio one.
+      virtualisation.qemu.virtioKeyboard = false;
 
       boot.extraModulePackages = [
         (config.boot.kernelPackages.callPackage ../../stand-in-lid { })
