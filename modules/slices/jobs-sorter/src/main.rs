@@ -85,6 +85,7 @@
 mod calls;
 mod door;
 mod focus;
+mod holds;
 mod hosts;
 mod keep;
 mod kitty;
@@ -536,8 +537,10 @@ struct Windows<'a> {
 struct Ranks {
     weighing: low::Weighing,
     keeping: keep::Keeping,
-    holding: focus::Holding,
-    /// Each held window's scope, by niri's id for it, or when it was last
+    holding: holds::Holding,
+    /// The windows kept in memory beside those held ([`focus::KEEP`]).
+    in_memory: holds::Holding,
+    /// Each held or kept window's scope, by niri's id for it, or when it was last
     /// looked for and not found.
     found: HashMap<u64, Result<PathBuf, std::time::Instant>>,
     /// The window with the focus whose memory was last asked back, so
@@ -551,21 +554,48 @@ struct Ranks {
 
 /// The windows a sorter before this one held, to give back those not
 /// wanted now; none while focus isn't followed, as nothing would give
-/// them back ([`focus::Holding::left`]).
+/// them back ([`holds::Holding::left`]).
 fn left_held(
     following: Option<&focus::Following>,
     under: &[PathBuf],
     prefixes: &[String],
-) -> focus::Holding {
+) -> holds::Holding {
     if following.is_none() {
-        return focus::Holding::default();
+        return holds::Holding::default();
     }
     let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
-    focus::Holding::left(scopes, |scope| {
+    holds::Holding::left(scopes, |scope| {
         fs::read_to_string(scope.join("memory.low"))
             .ok()
             .and_then(|low| low.trim().parse().ok())
     })
+}
+
+/// The windows a sorter before this one kept in memory, as their
+/// writeback off says, to give back those not wanted now
+/// ([`focus::KEEP`]); a held window's is off too, and is wanted while it's
+/// held.
+fn left_in_memory(
+    following: Option<&focus::Following>,
+    under: &[PathBuf],
+    prefixes: &[String],
+) -> holds::Holding {
+    if following.is_none() {
+        return holds::Holding::default();
+    }
+    let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
+    holds::Holding::taken_up(scopes, |scope| {
+        fs::read_to_string(scope.join("memory.zswap.writeback")).is_ok_and(|on| on.trim() == "0")
+    })
+}
+
+/// Whether windows Joel left are kept in memory, unless the file at
+/// [`focus::KEEP_OFF`] under the account's config folder says not.
+fn keeping_in_memory() -> bool {
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
+    config.is_none_or(|config| !config.join(focus::KEEP_OFF).exists())
 }
 
 /// How long a window whose scope wasn't found waits to be looked for
@@ -591,7 +621,8 @@ fn started_with(scopes: &[PathBuf]) -> Vec<(String, Vec<String>)> {
 }
 
 /// Holds the scope of each window Joel is at or was at a moment ago, as
-/// niri's focus says, gives back each that aged out, and says which units
+/// niri's focus says, keeps in memory each he was at within
+/// [`focus::KEEP`], gives back each that aged out, and says which units
 /// are held. A failure is said once, and tried again on the next look.
 fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     let Some(following) = windows.focus else {
@@ -599,16 +630,30 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
     };
     let now = std::time::Instant::now();
     let wanted = following.held(now);
-    ranks
-        .found
-        .retain(|id, _| wanted.iter().any(|window| window.id == *id));
+    let in_memory = if keeping_in_memory() {
+        following.kept(now)
+    } else {
+        Vec::new()
+    };
+    ranks.found.retain(|id, _| {
+        wanted
+            .iter()
+            .chain(&in_memory)
+            .any(|window| window.id == *id)
+    });
     let mut scopes: Option<Vec<PathBuf>> = None;
     // What each kitty drawing a window not found by its app id says it
     // shows, asked once a look, as its answer runs to megabytes.
     let mut kitties: HashMap<u32, Vec<kitty::Shown>> = HashMap::new();
     let at = following.at().map(|window| window.id);
     let mut held = Vec::new();
-    for window in &wanted {
+    // A held window is kept in memory too, so keeping never undoes it.
+    let mut kept = Vec::new();
+    let each = wanted
+        .iter()
+        .map(|window| (window, true))
+        .chain(in_memory.iter().map(|window| (window, false)));
+    for (window, holds) in each {
         let known = match ranks.found.get(&window.id) {
             Some(Ok(scope)) if scope.exists() => Some(scope.clone()),
             Some(Err(when)) if now.saturating_duration_since(*when) < LOOK_AGAIN => None,
@@ -640,17 +685,31 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
                 scope
             }
         };
-        held.extend(known);
+        if holds {
+            held.extend(known.clone());
+        }
+        kept.extend(known);
     }
+    set_holds(&held, &kept, ranks);
+    set_in_memory(&kept, ranks);
+    read_back(following.at(), ranks);
+    held.iter()
+        .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
+        .collect()
+}
+
+/// Holds each of `held` not held yet and gives back each held no longer,
+/// keeping writeback off on one given back that's among `kept`.
+fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
-    for (scope, hold) in ranks.holding.changes(&held) {
+    for (scope, hold) in ranks.holding.changes(held) {
         let unit = scope
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
         let result = Command::new("busctl")
-            .args(focus::hold_call(&unit, hold))
+            .args(holds::hold_call(&unit, hold, kept.contains(&scope)))
             .stdout(Stdio::null())
             .output();
         match result {
@@ -677,10 +736,47 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
             }
         }
     }
-    read_back(following.at(), ranks);
-    held.iter()
-        .filter_map(|scope| Some(scope.file_name()?.to_str()?.to_owned()))
-        .collect()
+}
+
+/// Turns zswap writeback off on each of `kept` that hasn't it off yet,
+/// and back on for each kept no longer ([`focus::KEEP`]).
+fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
+    ranks.in_memory.keep_only(Path::exists);
+    for (scope, keep) in ranks.in_memory.changes(kept) {
+        let unit = scope
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let result = Command::new("busctl")
+            .args(holds::keep_call(&unit, keep))
+            .stdout(Stdio::null())
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {
+                ranks.in_memory.done(&scope, keep);
+                let says = if keep {
+                    "Keeping in memory"
+                } else {
+                    "Let go to disk"
+                };
+                eprintln!("{says} {unit}, a window Joel was at within two hours.");
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut ranks.in_memory.failed, true) {
+                    eprintln!(
+                        "Couldn't keep {unit} in memory: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut ranks.in_memory.failed, true) {
+                    eprintln!("Couldn't run busctl to keep {unit} in memory: {error}");
+                }
+            }
+        }
+    }
 }
 
 /// Asks, once each time the focus comes to a session window whose scope is
@@ -1385,6 +1481,7 @@ fn run() -> Result<(), String> {
     let following = follow_focus(settings.niri.as_deref(), watch.as_mut());
     let mut ranks = Ranks {
         holding: left_held(following.as_ref(), &under, &windows),
+        in_memory: left_in_memory(following.as_ref(), &under, &windows),
         ..Ranks::default()
     };
     let mut doorway = Doorway::new(settings.calls.as_deref());

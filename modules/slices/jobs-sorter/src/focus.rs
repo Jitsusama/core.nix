@@ -26,16 +26,28 @@
 //! for less than [`STAY`], wasn't one he was at. Focus comes before a
 //! mark saying nobody is at a window, as `src/low.rs` says.
 //!
+//! Past those, every session window Joel was at within [`KEEP`] keeps
+//! what of it is paged out compressed in memory too, with no floor and
+//! no weight of its own. On 11 November, with a held window's swap read
+//! back at once as the focus returns (`src/swap_in.rs`), 44.8% of the
+//! machine's swap-ins still read the disk, against 27.1% the evening
+//! before, and a window's read-back of a median 180 MiB took a second:
+//! a window he comes back to after ten minutes had gone to disk. A
+//! sorter started again, as each switch does, takes up the windows
+//! niri says he was at within [`KEEP`] from when each last had the focus.
+//! A file at [`KEEP_OFF`] under the account's config folder turns this
+//! off, as an experiment's switch.
+//!
 //! A window is found by the app id the shell opened it with, which the
 //! process the shell started in it is given as `MYCELIUM_APP_ID`
 //! (modules/quickshell's Sessions.qml), or else, for a kitty of its own,
 //! by the one scope that kitty has, or else by what the kitty drawing it
 //! says runs there (`src/kitty.rs`).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::UnixStream;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -54,6 +66,14 @@ pub const FLOOR: u64 = 3 << 30;
 
 /// How long a window Joel left stays held.
 pub const FOR: Duration = Duration::from_secs(600);
+
+/// How long a window Joel left keeps its paged-out memory compressed in
+/// memory rather than on the disk.
+pub const KEEP: Duration = Duration::from_hours(2);
+
+/// The file, under the account's config folder, whose being there turns
+/// [`KEEP`] off.
+pub const KEEP_OFF: &str = "memory/no-arm-c";
 
 /// The most windows held at once, the focused one among them.
 pub const MOST: usize = 3;
@@ -107,11 +127,24 @@ pub fn window(value: &Value) -> Option<(Window, bool)> {
     ))
 }
 
+/// When a window last had the focus, from niri's `focus_timestamp`, on
+/// the clock since boot.
+fn stamp(value: &Value) -> Option<Duration> {
+    let stamp = value.get("focus_timestamp")?;
+    Some(Duration::new(
+        stamp.get("secs")?.as_u64()?,
+        u32::try_from(stamp.get("nanos")?.as_u64()?).ok()?,
+    ))
+}
+
 /// niri's windows as its event stream says, and which has the focus.
 #[derive(Debug, Default)]
 pub struct Windows {
     all: HashMap<u64, Window>,
     focused: Option<u64>,
+    /// When each window last had the focus, on the clock since boot,
+    /// as niri's list of every window says.
+    stamps: HashMap<u64, Duration>,
 }
 
 impl Windows {
@@ -126,6 +159,11 @@ impl Windows {
             let windows = changed.get("windows").and_then(Value::as_array);
             self.all.clear();
             self.focused = None;
+            self.stamps = windows
+                .into_iter()
+                .flatten()
+                .filter_map(|value| Some((value.get("id")?.as_u64()?, stamp(value)?)))
+                .collect();
             for (window, focused) in windows.into_iter().flatten().filter_map(window) {
                 if focused {
                     self.focused = Some(window.id);
@@ -165,6 +203,16 @@ impl Windows {
     pub fn has(&self, id: u64) -> bool {
         self.all.contains_key(&id)
     }
+
+    /// Each window without the focus, with when it last had it, as niri's
+    /// last list of every window said.
+    pub fn stamped(&self) -> Vec<(Window, Duration)> {
+        self.all
+            .values()
+            .filter(|window| Some(window.id) != self.focused)
+            .filter_map(|window| Some((window.clone(), *self.stamps.get(&window.id)?)))
+            .collect()
+    }
 }
 
 /// The session window Joel is at, since when, and those he has been at,
@@ -173,6 +221,8 @@ impl Windows {
 pub struct Recent {
     at: Option<(Window, Instant)>,
     left: Vec<(Window, Instant)>,
+    /// Whether the windows from before this sorter are taken up.
+    seeded: bool,
 }
 
 impl Recent {
@@ -204,6 +254,39 @@ impl Recent {
     /// The session window with the focus, if one has it.
     pub fn at(&self) -> Option<&Window> {
         self.at.as_ref().map(|(window, _)| window)
+    }
+
+    /// Takes up, once, the session windows Joel was at within [`KEEP`]
+    /// before this sorter started, from when each last had the focus on
+    /// the clock since boot and that clock's time `since_boot`, as `now`.
+    /// A window's focus came before he left it, so each counts as left
+    /// a little early, never late.
+    pub fn seed(&mut self, stamped: &[(Window, Duration)], since_boot: Duration, now: Instant) {
+        if std::mem::replace(&mut self.seeded, true) {
+            return;
+        }
+        let mut left: Vec<(Window, Instant)> = stamped
+            .iter()
+            .filter(|(window, _)| window.session())
+            .filter_map(|(window, stamp)| {
+                let ago = since_boot.checked_sub(*stamp)?;
+                (ago < KEEP).then_some(())?;
+                Some((window.clone(), now.checked_sub(ago)?))
+            })
+            .collect();
+        left.retain(|(window, _)| self.left.iter().all(|(known, _)| known.id != window.id));
+        self.left.extend(left);
+        self.left.sort_by_key(|(_, when)| std::cmp::Reverse(*when));
+    }
+
+    /// The windows to keep in memory `now`: every session window left
+    /// within [`KEEP`], latest first, those [`Recent::held`] among them.
+    pub fn kept(&self, now: Instant) -> Vec<Window> {
+        self.left
+            .iter()
+            .filter(|(_, left)| now.saturating_duration_since(*left) < KEEP)
+            .map(|(window, _)| window.clone())
+            .collect()
     }
 
     /// The windows to hold `now`: the one with the focus, then those left
@@ -257,119 +340,6 @@ pub fn app_id(environ: &[u8]) -> Option<String> {
         .map(|id| String::from_utf8_lossy(id).into_owned())
 }
 
-/// What busctl is given to hold a window's unit with [`FLOOR`], no zswap
-/// writeback and systemd-oomd's avoid preference, or to give all three
-/// back, as runtime properties gone at the next boot.
-pub fn hold_call(unit: &str, hold: bool) -> Vec<String> {
-    let (floor, writeback, preference) = if hold {
-        (FLOOR.to_string(), "false", "avoid")
-    } else {
-        ("0".to_owned(), "true", "none")
-    };
-    [
-        "--user",
-        "--quiet",
-        "call",
-        "org.freedesktop.systemd1",
-        "/org/freedesktop/systemd1",
-        "org.freedesktop.systemd1.Manager",
-        "SetUnitProperties",
-        "sba(sv)",
-        unit,
-        "true",
-        "3",
-        "MemoryLow",
-        "t",
-        &floor,
-        "MemoryZSwapWriteback",
-        "b",
-        writeback,
-        "ManagedOOMPreference",
-        "s",
-        preference,
-    ]
-    .iter()
-    .map(|arg| (*arg).to_string())
-    .collect()
-}
-
-/// The scopes held, each by its path, so each is set once and given back
-/// once it ages out.
-#[derive(Debug, Default)]
-pub struct Holding {
-    held: HashSet<PathBuf>,
-    /// The holds taken up from a sorter before this one, set again the
-    /// first time each is wanted, as that sorter may have set fewer
-    /// properties than [`hold_call`] does now.
-    again: HashSet<PathBuf>,
-    /// Whether a failure to hold a window has been said.
-    pub failed: bool,
-}
-
-impl Holding {
-    /// The scopes a sorter before this one held, as their floor of
-    /// exactly [`FLOOR`] says, so the first look gives back those not
-    /// wanted. A hold is the user manager's, set at runtime, and outlives
-    /// the sorter that set it: otherwise each restart would leave up to
-    /// [`MOST`] stale floors sharing agents.slice's own until their windows
-    /// ended. An orchestrator's floor is smaller, and `src/keep.rs`'s.
-    /// Those still wanted are held again, once: on 11 November a switch
-    /// left three windows with their floor but without writeback held
-    /// off, which the sorter before had never set.
-    pub fn left(
-        scopes: impl IntoIterator<Item = PathBuf>,
-        floor: impl Fn(&Path) -> Option<u64>,
-    ) -> Self {
-        let held: HashSet<PathBuf> = scopes
-            .into_iter()
-            .filter(|scope| floor(scope) == Some(FLOOR))
-            .collect();
-        Self {
-            again: held.clone(),
-            held,
-            failed: false,
-        }
-    }
-
-    /// The scopes to change, each with whether to hold it, from those to
-    /// hold now.
-    pub fn changes(&self, wanted: &[PathBuf]) -> Vec<(PathBuf, bool)> {
-        let hold = wanted
-            .iter()
-            .filter(|scope| !self.held.contains(*scope) || self.again.contains(*scope))
-            .map(|scope| (scope.clone(), true));
-        let give_back = self
-            .held
-            .iter()
-            .filter(|scope| !wanted.contains(scope))
-            .map(|scope| (scope.clone(), false));
-        hold.chain(give_back).collect()
-    }
-
-    /// Notes a scope as held or given back.
-    pub fn done(&mut self, scope: &Path, hold: bool) {
-        self.again.remove(scope);
-        if hold {
-            self.held.insert(scope.to_path_buf());
-        } else {
-            self.held.remove(scope);
-        }
-    }
-
-    /// Whether a scope's unit is held.
-    pub fn holds(&self, unit: &str) -> bool {
-        self.held
-            .iter()
-            .any(|scope| scope.file_name().is_some_and(|name| name == unit))
-    }
-
-    /// Forgets the scopes that have gone.
-    pub fn keep_only(&mut self, there: impl Fn(&Path) -> bool) {
-        self.held.retain(|scope| there(scope));
-        self.again.retain(|scope| there(scope));
-    }
-}
-
 /// What niri says, as its stream comes in on a thread of its own, so the
 /// sorter's loop never waits on niri.
 pub struct Following {
@@ -406,6 +376,21 @@ impl Following {
         let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
         heard.1.at().cloned()
     }
+
+    /// The windows to keep in memory `now` beside those held.
+    pub fn kept(&self, now: Instant) -> Vec<Window> {
+        let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
+        heard.1.kept(now)
+    }
+}
+
+/// The time on the clock niri stamps a window's focus with, which counts
+/// from boot. `/proc/uptime` counts a suspend too, where niri's clock
+/// doesn't, so after one a window reads as left earlier than it was and
+/// is kept for less, never more.
+fn since_boot() -> Option<Duration> {
+    let uptime = std::fs::read_to_string("/proc/uptime").ok()?;
+    Duration::try_from_secs_f64(uptime.split_whitespace().next()?.parse().ok()?).ok()
 }
 
 /// niri's socket, from what the user manager hands the units it starts
@@ -447,6 +432,9 @@ fn follow(niri: &Path, heard: &Mutex<(Windows, Recent)>, wake: Option<&UnixStrea
                         let (windows, recent) = &mut *guard;
                         if windows.take(&line) {
                             recent.keep_only(|id| windows.has(id));
+                            if let Some(since_boot) = since_boot() {
+                                recent.seed(&windows.stamped(), since_boot, Instant::now());
+                            }
                             recent.focus(windows.focused(), Instant::now());
                             drop(guard);
                             if let Some(mut wake) = wake {
@@ -685,87 +673,66 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_held_with_a_floor_in_memory_and_avoided_or_given_all_back() {
-        let held = hold_call("kitty-1-9.scope", true);
+    fn every_window_left_within_two_hours_is_kept_in_memory() {
+        let start = Instant::now();
+        let at = |seconds| start + Duration::from_secs(seconds);
+        let mut recent = Recent::default();
+        for id in 1..=6 {
+            recent.focus(Some(&pi(id)), at(id * 10));
+        }
         assert_eq!(
-            held[8..],
-            [
-                "kitty-1-9.scope",
-                "true",
-                "3",
-                "MemoryLow",
-                "t",
-                "3221225472",
-                "MemoryZSwapWriteback",
-                "b",
-                "false",
-                "ManagedOOMPreference",
-                "s",
-                "avoid"
-            ]
+            recent.kept(at(60)),
+            [pi(5), pi(4), pi(3), pi(2), pi(1)],
+            "past the three held, all he left, latest first"
         );
-        let back = hold_call("kitty-1-9.scope", false);
-        assert_eq!(back[13], "0");
-        assert_eq!(back[16], "true");
-        assert_eq!(back[19], "none");
-    }
-
-    #[test]
-    fn a_scope_is_held_once_and_given_back_once_it_ages_out() {
-        let a = PathBuf::from("/a/kitty-1-1.scope");
-        let b = PathBuf::from("/a/kitty-1-2.scope");
-        let mut holding = Holding::default();
-        let only = std::slice::from_ref;
-        assert_eq!(holding.changes(only(&a)), [(a.clone(), true)]);
-        holding.done(&a, true);
-        assert!(holding.holds("kitty-1-1.scope"), "held once done");
-        assert_eq!(holding.changes(only(&a)), []);
         assert_eq!(
-            holding.changes(only(&b)),
-            [(b.clone(), true), (a.clone(), false)]
+            recent.kept(at(20 + 7199)),
+            [pi(5), pi(4), pi(3), pi(2), pi(1)]
         );
-        holding.done(&a, false);
-        assert!(!holding.holds("kitty-1-1.scope"), "given back once done");
-        holding.done(&b, true);
-        holding.keep_only(|_| false);
         assert_eq!(
-            holding.changes(&[]),
-            [],
-            "a scope gone is nobody's to give back"
+            recent.kept(at(20 + 7200)),
+            [pi(5), pi(4), pi(3), pi(2)],
+            "the first left goes to disk two hours after"
         );
     }
 
     #[test]
-    fn a_sorter_before_this_ones_holds_are_taken_up_so_they_are_given_back() {
-        let held = PathBuf::from("kitty-1-1.scope");
-        let kept = PathBuf::from("kitty-1-2.scope");
-        let bare = PathBuf::from("kitty-1-3.scope");
-        let floors = |scope: &Path| match scope.to_str() {
-            Some("kitty-1-1.scope") => Some(FLOOR),
-            Some("kitty-1-2.scope") => Some(1 << 30),
-            _ => Some(0),
-        };
-        let holding = Holding::left([held.clone(), kept, bare], floors);
-        assert!(holding.holds("kitty-1-1.scope"), "a held window's floor");
+    fn a_sorter_started_again_keeps_the_windows_niri_says_he_was_at_within_two_hours() {
+        let mut windows = Windows::default();
         assert!(
-            !holding.holds("kitty-1-2.scope"),
-            "an orchestrator's floor is keep.rs's"
+            windows.take(
+                r#"{"WindowsChanged":{"windows":[
+                {"id":1,"app_id":"pi-session.1","pid":5,"is_focused":false,
+                 "focus_timestamp":{"secs":9000,"nanos":0}},
+                {"id":2,"app_id":"pi-session.2","pid":5,"is_focused":false,
+                 "focus_timestamp":{"secs":2000,"nanos":0}},
+                {"id":3,"app_id":"slack","pid":6,"is_focused":false,
+                 "focus_timestamp":{"secs":9500,"nanos":0}},
+                {"id":4,"app_id":"pi-session.4","pid":5,"is_focused":true,
+                 "focus_timestamp":{"secs":9900,"nanos":0}},
+                {"id":5,"app_id":"pi-session.5","pid":5,"is_focused":false,
+                 "focus_timestamp":{"secs":9800,"nanos":5}},
+                {"id":6,"app_id":"pi-session.6","pid":5,"is_focused":false}]}}"#
+            ),
+            "a list of windows is a change"
         );
-        assert_eq!(holding.changes(&[]), [(held, false)]);
-    }
-
-    #[test]
-    fn a_hold_taken_up_and_still_wanted_is_set_again_once() {
-        let held = PathBuf::from("kitty-1-1.scope");
-        let mut holding = Holding::left([held.clone()], |_| Some(FLOOR));
-        let wanted = [held.clone()];
+        let now = Instant::now();
+        let mut recent = Recent::default();
+        recent.seed(&windows.stamped(), Duration::from_secs(10_000), now);
+        recent.focus(windows.focused(), now);
+        let ids = |found: Vec<Window>| found.iter().map(|window| window.id).collect::<Vec<_>>();
         assert_eq!(
-            holding.changes(&wanted),
-            [(held.clone(), true)],
-            "set again with every property this sorter sets"
+            ids(recent.kept(now)),
+            [5, 1],
+            "sessions left within two hours, not one left long ago, an app or one unstamped"
         );
-        holding.done(&held, true);
-        assert_eq!(holding.changes(&wanted), [], "once is enough");
+        assert_eq!(
+            ids(recent.held(now)),
+            [4, 5],
+            "one left 200 s ago is held too"
+        );
+        recent.seed(&windows.stamped(), Duration::from_secs(10_100), now);
+        assert_eq!(ids(recent.kept(now)), [5, 1], "taken up once");
     }
 
     #[test]
