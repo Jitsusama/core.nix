@@ -492,6 +492,18 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [one["act"] for one in told] == ["resume"], told
+    # A line told from anywhere, naming the quest, says who hears it before it's sent, then
+    # reaches that session's inbox as a talk does.
+    asked = {"ask": "tell", "window": None, "quest": "QEST-20261107-PAUSED"}
+    assert rows_answer(asked) == {"to": "PAUSED", "name": "Paused Quest", "why": "quest"}
+    sent = rows_answer({**asked, "words": "how goes it?"})
+    assert "steered" in sent["sent"], sent
+    deadline = time.monotonic() + 10
+    while not any("text" in json.loads(one.read_text()) for one in inbox.glob("*.json")):
+        assert time.monotonic() < deadline, "the line told never reached the session's inbox"
+        time.sleep(0.1)
+    talks = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
+    assert [one["text"] for one in talks if "text" in one] == ["how goes it?"], talks
 
 
 def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: Shell) -> None:
@@ -1005,6 +1017,17 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: "Arrived" in shown["rows"])
+
+
+def rows_answer(said: Json) -> Json:
+    """Give what the agents daemon answers an ask of its own, asked over its socket."""
+    with socket.socket(socket.AF_UNIX) as rows:
+        rows.settimeout(10)
+        rows.connect(str(ROWS))
+        rows.sendall(json.dumps({"id": 1, **said}).encode() + b"\n")
+        answer = json.loads(rows.makefile().readline())
+    answer.pop("id", None)
+    return cast("Json", answer)
 
 
 def agents_lines(shell: Shell) -> int:
