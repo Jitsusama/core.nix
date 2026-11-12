@@ -65,6 +65,9 @@ EDID says as desk-facts writes it (`$XDG_RUNTIME_DIR/desk/displays.json`,
 heard with inotify as it's written again), niri's size where the EDID
 gives none, and its serial last, which identifies it. Figures are said
 in the account's number settings (`--numbers`, `{ group, point }`).
+Each of a lit screen's settings, and Turn Every Screen Off, carries a
+drawer too: what it does, what a setting offers or which screens it
+turns off, and how the : line types it, as `:setlocal scale=1.5`.
 
 The screen holding the Brightness, the one its backlight lights or the
 monitor following the panel, leads its drawer with its light, read from

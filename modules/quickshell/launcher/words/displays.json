@@ -106,6 +106,9 @@
       "name": "Turn Every Screen Off",
       "verb": "turn off",
       "glyph": "displayOff",
+      "tells": {
+        "does": "Turns every screen's picture off at once, the windows staying where they are."
+      },
       "said": {
         "note": "a key wakes them \u00b7 hubs stay on"
       }
@@ -173,7 +176,10 @@
       "name": "Scale",
       "answers": [
         "screen scale"
-      ]
+      ],
+      "tells": {
+        "does": "Sets how large everything on this screen is drawn."
+      }
     },
     {
       "id": "displays:refresh",
@@ -181,7 +187,10 @@
       "name": "Refresh",
       "answers": [
         "refresh rate"
-      ]
+      ],
+      "tells": {
+        "does": "Sets how many times a second this screen draws a new picture."
+      }
     },
     {
       "id": "displays:resolution",
@@ -189,7 +198,10 @@
       "name": "Resolution",
       "answers": [
         "screen resolution"
-      ]
+      ],
+      "tells": {
+        "does": "Sets how many pixels this screen runs at, its rate following."
+      }
     },
     {
       "id": "displays:rotation",
@@ -198,6 +210,9 @@
       "answers": [
         "rotation"
       ],
+      "tells": {
+        "does": "Turns or mirrors the picture this screen shows."
+      },
       "said": {
         "90": "a quarter turn left",
         "180": "upside down",
@@ -366,6 +381,9 @@
           "verb": "turn on"
         }
       },
+      "tells": {
+        "does": "Lets this screen draw each frame as a game or video gives it, not at a fixed rate."
+      },
       "said": {
         "unsupported": "unsupported",
         "on": "on",
@@ -403,6 +421,25 @@
       "id": "displays:serial",
       "in": "displays",
       "name": "Serial"
+    },
+    {
+      "id": "displays:offers",
+      "in": "displays",
+      "name": "Offers"
+    },
+    {
+      "id": "displays:typed",
+      "in": "displays",
+      "name": "Typed",
+      "said": {
+        "line": ":{command} {argument}",
+        "not": "no{option}"
+      }
+    },
+    {
+      "id": "displays:turns-off",
+      "in": "displays",
+      "name": "Turns Off"
     }
   ]
 }

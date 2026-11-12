@@ -563,9 +563,11 @@ Provider {
         if (row.kind === "action" || row.kind === "fact")
             return ready.thing(row, key);
         // A setting with choices offers them, so what's typed from the
-        // screen finds them, as Sound's served settings do.
+        // screen finds them, as Sound's served settings do; one with
+        // nothing to choose only copies its value.
         if (row.kind === "setting")
-            return ready.thing(row, key, { offers: (row.acts ?? []).length > 0 });
+            return ready.thing(row, key,
+                { offers: (row.acts ?? []).some(one => one.step === "rows") });
         // A choice keeps its setting's name as a hidden word, so "scale
         // 1.5" finds 1.5\u00d7 from outside, and fills :setl's command as its
         // Return would type it; it's a choice, so it has no verbs of its own.

@@ -34,6 +34,7 @@ pub mod acts;
 mod facts;
 pub mod line;
 pub mod settings;
+mod tells;
 pub mod vocabulary;
 use acts::Act;
 
@@ -112,6 +113,8 @@ pub struct Words {
     ways: BTreeMap<&'static str, acts::Way>,
     sleep: Sleep,
     told: Told,
+    /// What a setting's drawer and Turn Every Screen Off's say.
+    tells: tells::Tells,
     pub(crate) light: light::Words,
     numbers: Numbers,
 }
@@ -212,6 +215,7 @@ impl Words {
             wakes: word("verb:display-off", &["said", "wakes"], "wakes"),
             moves: word("verb:display-unplug", &["said", "moves"], "moves"),
             ways: acts::Way::read(&word),
+            tells: tells::Tells::read(&word),
             sleep: Sleep {
                 name: word("displays:sleep", &["name"], "displays:sleep"),
                 glyph: word("displays:sleep", &["glyph"], ""),
@@ -699,6 +703,11 @@ pub fn rows(
         rows.extend(facts::rows(name, &screen, desk, words));
     }
     if lit > 0 {
+        let turned_off: Vec<String> = shown
+            .iter()
+            .filter(|(_, output)| standing(output) == "lit")
+            .map(|(name, output)| named(name, output, words))
+            .collect();
         rows.push(json!({
             "key": key("sleep"),
             "thing": "displays:sleep",
@@ -710,6 +719,7 @@ pub fn rows(
             "depth": 0,
             "side": [],
             "note": words.sleep.note,
+            "drawer": tells::sleep(&turned_off, words),
             "acts": [{"key": "displays:sleep", "ask": Act::Sleep.ask()}],
         }));
     }
