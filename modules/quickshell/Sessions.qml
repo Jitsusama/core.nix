@@ -384,12 +384,16 @@ Singleton {
     // it and exits at once, so it starts under its own id, with its quest
     // loaded as start() loads one, since only a record brings one back.
     // `told`, when given, is pi's first prompt, sent as it opens, as the
-    // shell's $0 so nothing in it is read as the shell's own.
+    // shell's $0 so nothing in it is read as the shell's own. One its
+    // decider kept out of a host starts told why, so its pi says so rather
+    // than asking again (decided below).
     function reopened(one, cwd, told, into) {
         const fresh = one.fresh === true;
         const quest = fresh && typeof one.quest === "string" && one.quest !== ""
             ? [`QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
-        const assigned = quest.concat(root.startedWith(one));
+        const stayed = typeof one.stayed === "string"
+            ? [`QUEST_WORKFLOW_SPAWN_STAYED=${one.stayed}`] : [];
+        const assigned = quest.concat(root.startedWith(one), stayed);
         const env = assigned.length > 0 ? ["env"].concat(assigned) : [];
         const model = one.model ? ` --model ${one.model}` : "";
         const pi = (fresh ? `pi --session-id ${one.id}` : `pi --session ${one.id}`) + model;
@@ -1343,10 +1347,98 @@ Singleton {
         if (given.length === 0)
             return "refused: no session with an id and a folder";
         console.info(`sessions: reopening ${given.length} handed over`);
-        reopenAll(given, (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
-            + `since its folder, ${cwd}, is gone`));
+        const gone = (one, cwd) => console.info(`sessions: ${one.id} not reopened, `
+            + `since its folder, ${cwd}, is gone`);
+        const now = given.filter(one => !one.fresh);
+        if (now.length > 0)
+            reopenAll(now, gone);
+        given.filter(one => one.fresh).forEach(one => deciding.createObject(root, { one, gone }));
         return given.length === listed.length ? "taken"
             : `taken ${given.length} of ${listed.length}`;
+    }
+
+    // What asks whether a session the harness starts afresh runs in one of
+    // pi's hosts rather than a window of its own (2QZBX9's spawn-decide,
+    // harness #1406), given `--session-id` and `--model` after it. It runs
+    // through Joel's login shell, as a terminal would, so node is found.
+    property var decider: ["zsh", "-lic", 'exec node --no-warnings "$0" "$@"',
+        `${home}/.local/share/pi-packages/github.com/Jitsusama/agentic-harness.pi/current`
+        + "/scripts/spawn-decide.ts"]
+    // How long a decider has to say it's opening one in a host before the
+    // window opens as it always did, so a decider that hangs, or isn't
+    // installed, costs a spawn three seconds at most (2QZBX9, [00cc6a34]).
+    readonly property int decidesWithin: 3000
+
+    // One fresh session's decision, in its folder with what it starts with.
+    // Hosted, it opens nothing, since its host runs it; kept out (exit 3),
+    // it opens told why on its last line; anything else, or no word of
+    // opening in time, opens it as before. Once it's said it's opening,
+    // no window opens unless it fails, however long the host takes.
+    Component {
+        id: deciding
+
+        Process {
+            id: decision
+
+            required property var one
+            required property var gone
+            property bool opening: false
+            property bool settled: false
+            property string last: ""
+
+            function settle(way) {
+                if (settled)
+                    return;
+                settled = true;
+                if (way === "hosted") {
+                    console.info(`sessions: ${one.id} started in pi's host, ${last}`);
+                    Report.say(`started session ${one.id} in the background`);
+                    return;
+                }
+                // Kept out with no reason after its word of opening says none.
+                const why = last.startsWith("opening ") ? "" : last;
+                const stayed = way === "stayed" ? { stayed: why } : {};
+                console.info(`sessions: ${one.id} opens in a window, since its decider `
+                    + (way === "stayed" ? `kept it out of a host: "${why}"`
+                        : way === "late" ? "said nothing in time" : "failed"));
+                root.reopenAll([Object.assign({}, one, stayed)], gone);
+            }
+
+            workingDirectory: one.cwd
+            command: {
+                const quest = one.quest !== "" ? [`QUEST_WORKFLOW_AUTOLOAD_ID=${one.quest}`] : [];
+                const model = one.model !== "" ? ["--model", one.model] : [];
+                return ["env"].concat(quest, root.startedWith(one), root.decider,
+                    ["--session-id", one.id], model);
+            }
+            running: true
+            stdout: SplitParser {
+                onRead: line => {
+                    decision.last = line.trim();
+                    if (decision.last.startsWith("opening "))
+                        decision.opening = true;
+                }
+            }
+            onExited: code => {
+                if (code === 0 && last.startsWith("hosted "))
+                    settle("hosted");
+                else
+                    settle(code === 3 ? "stayed" : "failed");
+                decision.destroy();
+            }
+
+            property Timer patience: Timer {
+                running: true
+                interval: root.decidesWithin
+                onTriggered: {
+                    if (decision.opening || decision.settled)
+                        return;
+                    decision.settle("late");
+                    // Ended by the terminate signal, so it opens nothing.
+                    decision.running = false;
+                }
+            }
+        }
     }
     function reopenNext() {
         if (!reopening) {

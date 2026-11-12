@@ -164,6 +164,11 @@
     the XPS 14's kernel drives an MST hub whose first branch didn't answer its link address as a
     single stream until the sink goes away, so the monitor behind it still lights
   '';
+  a-spawn-kept-in-the-background-opens-no-window = ''
+    a fresh session handed over is asked of the harness's spawn decider first: one it keeps in the
+    background opens no window, one it keeps out opens told why, one it says nothing of in three seconds is ended and
+    opens, one it fails on opens as before, and a saved one opens at once, never asked
+  '';
   a-stick-carries-apples-macos-apart = ''
     a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
