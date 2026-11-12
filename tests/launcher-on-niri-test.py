@@ -1346,6 +1346,53 @@ def test_the_drawers_fact_rows_are_kept_between_programs_and_steps(shell: Shell)
     assert made <= lacked, f"{made} fact rows made where {lacked} were missing, holding {held}"
 
 
+DRAWER_SAID = re.compile(
+    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
+    r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
+)
+DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
+
+
+def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -> None:
+    """A drawer an arrow brings says how long it took from that key to niri's screen.
+
+    Joel's 235 drawers on 2026-11-11 were timed only from their own work to their frame,
+    though each followed its key by 50 ms and more and reached the screen 25 to 46 ms after
+    that frame (Joel, 20:28: "the drawer in the launcher and its time to appear needs to be
+    kept to the same performance requirements as everything else"). So each is said from the
+    key, where its time went adding up to it, and the close says the drawers by place.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    title = shell.showing()["drawer"]["title"]
+    since = shell.mark()
+    shell.send_chars("j")
+    shell.launcher_until(functools.partial(drawer_moved, title))
+    said = said_once(shell, since, DRAWER_SAID)
+    drawn = DRAWER_SAID.search(said)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    assert drawn, f"the drawer the key brought was never said presented: {lines}"
+    took, following, framing, showing = (int(part) for part in drawn.groups()[1:])
+    assert abs(following + framing + showing - took) <= ROUNDED, (
+        f"{took} ms from the key, said as {following}, {framing} and {showing}"
+    )
+    stepped_out(shell)
+    shell.close_launcher()
+    closed = said_once(shell, since, DRAWERS_SAID)
+    assert DRAWERS_SAID.search(closed), "the close never said the drawers presented by place"
+
+
+def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
+    """Give the shell's log since `since` once it holds `line`, else as the wait ends."""
+    said = ""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while not line.search(said) and time.monotonic() < deadline:
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+        time.sleep(launcher_on_niri.POLL)
+    return said
+
+
 def stepped_into_programs(shell: Shell) -> int:
     """Step into Programs from home and give how many facts its first program's drawer holds."""
     shell.type_in("programs", selecting="Programs")

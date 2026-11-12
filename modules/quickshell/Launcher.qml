@@ -7169,7 +7169,16 @@ Scope {
     // Closed, it's let go at once.
     property var drawerRow: null
     readonly property int drawerFollows: 50
+    // When the key that selected the row the drawer is for was pressed, on
+    // KeyTimes's clock, or 0 where no key did, as when a daemon's rows move
+    // the selection, so each drawer is timed from Joel's key to the screen
+    // as a key is (Joel, 2026-11-11 20:28: "the drawer in the launcher and
+    // its time to appear needs to be kept to the same performance
+    // requirements as everything else"). A drawer made again for the same
+    // row, as one out is when its row changes, isn't from the key.
+    property real drawerKeyAt: 0
     onSelectedChanged: {
+        drawerKeyAt = KeyTimes.pressed();
         // Once the event that selected it has run, since a step selects
         // its first row and again the row its arriving rows put first, and
         // the first read was thrown away: 4 to 7 ms a step into Desktop in
@@ -7213,12 +7222,27 @@ Scope {
     // keys' lines in the journal (Trials.qml's drawerTimed). It's made off
     // the key's path, so the keys' own times never held it. One whose
     // launcher closes before its frame isn't timed, its frame never coming.
+    // One a key brought is timed too from that key to the frame niri
+    // presented with it, said as it's presented and by its place as the
+    // launcher closes (Presented.js), as a daemon's change is.
     function drawerMade(began, making) {
         if (!open)
             return;
         const key = drawerRow?.key ?? "";
         const made = KeyTimes.now();
+        const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
+            place: drawerRow?.from?.settings?.name ?? "home" } : null;
+        drawerKeyAt = 0;
+        if (presenting !== null) {
+            presentedAwait(presenting.from, at => {
+                const one = Object.assign(presenting, { at });
+                root.drawersPresented = root.drawersPresented.concat([one]).slice(-keysKept);
+                console.info(Presented.drawerSaid(one));
+            });
+        }
         afterFrame(begun => {
+            if (presenting !== null && begun !== undefined)
+                presenting.begun = begun;
             if (!root.open)
                 return;
             const now = KeyTimes.now();
@@ -9200,6 +9224,9 @@ Scope {
     // made from many daemons, says whose its changes were.
     readonly property var updatesBy: ({})
     property var updatesPresented: []
+    // Each drawer a key brought since the launcher opened, from that key to
+    // when niri presented it, said by place as it closes (drawerMade).
+    property var drawersPresented: []
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
     function updateDrawn(place, shown) {
@@ -9227,7 +9254,9 @@ Scope {
         // key that glided landed frames later.
         const first = Presented.keysSaid("presented", keysPresented, true);
         const landed = Presented.keysSaid("landed", keysLanded, false);
-        const updates = Presented.changesSaid(updatesPresented);
+        const updates = Presented.changesSaid(updatesPresented)
+            .concat(Presented.drawersSaid(drawersPresented));
+        drawersPresented = [];
         keysPresented = [];
         keysLanded = [];
         keysGliding = [];

@@ -2,22 +2,37 @@
 // journal says it as it closes: keys from their press, and a daemon's
 // changes from the line that made them, each place on its own (Y2YBTS,
 // 2026-11-11), so a slow update path is seen against Joel's 50 ms bar as
-// keys are. Apart from the shell, so tests/pacing.qml holds it in Qt's own
+// keys are, and a drawer from the key that selected its row (Joel,
+// 2026-11-11 20:28: "the drawer in the launcher and its time to appear
+// needs to be kept to the same performance requirements as everything
+// else"). Apart from the shell, so tests/pacing.qml holds it in Qt's own
 // engine.
 .pragma library
 
 const bar = 50;
 
 // How long each of a set took, from `from` to `at`: how many, the median,
-// the slowest and how many within the bar.
+// the slowest, the p99 by nearest rank and how many within the bar. The
+// daily loop reads a day's p99 from these lines, since one slow key in a
+// hundred is what a median hides and the slowest overstates (7QEY1S,
+// 2026-11-11).
 function took(times) {
     const ms = times.map(one => Math.round(one.at - one.from)).sort((a, b) => a - b);
     return {
         count: ms.length,
         median: median(ms),
         slowest: ms[ms.length - 1],
+        p99: ms[Math.max(0, Math.ceil(ms.length * 0.99) - 1)],
         within: ms.filter(each => each <= bar).length
     };
+}
+
+// How long a set took, as every line here says it after what it timed:
+// `verb` as it came, presented or landed, and `from` what it's timed from.
+function tookSaid(one, from, verb) {
+    return `${verb ?? "presented"} a median ${one.median} ms from ${from}, `
+        + `the slowest ${one.slowest} ms, `
+        + `the p99 ${one.p99} ms, ${one.within} within ${bar} ms`;
 }
 
 function median(ms) {
@@ -36,8 +51,7 @@ function keysSaid(verb, times, apart) {
     if (one.count === 0) {
         return "";
     }
-    const said = `launcher: ${one.count} keys ${verb} a median ${one.median} ms from the key, `
-        + `the slowest ${one.slowest} ms, ${one.within} within ${bar} ms`;
+    const said = `launcher: ${one.count} keys ${tookSaid(one, "the key", verb)}`;
     return apart ? said + wentTo(times) : said;
 }
 
@@ -45,14 +59,49 @@ function keysSaid(verb, times, apart) {
 // when the shell heard it and when its frame began, or "" where none
 // was: a key from its press, a change from its daemon's line.
 function wentTo(times) {
-    const split = times.filter(each => each.heard !== undefined && each.begun !== undefined);
+    return partsSaid(times, [["from", "heard", "before the shell heard it"],
+        ["heard", "begun", "in the shell"], ["begun", "at", "from its frame's start"]]);
+}
+
+// Each part's median, `[from, to, words]`, over those stamped with every
+// part's ends, or "" where none was, said as ": a median A ms <words>, B
+// <words> and C <words>".
+function partsSaid(times, parts) {
+    const split = times.filter(each => parts.every(([from, to]) => each[from] !== undefined
+        && each[to] !== undefined));
     if (split.length === 0) {
         return "";
     }
-    const part = (from, to) => median(split.map(each => Math.round(each[to] - each[from])));
-    return `: a median ${part("from", "heard")} ms before the shell heard it, `
-        + `${part("heard", "begun")} in the shell and ${part("begun", "at")} from its `
-        + "frame's start";
+    const said = parts.map(([from, to, words]) =>
+        `${median(split.map(each => Math.round(each[to] - each[from])))} ${words}`);
+    return `: a median ${said[0].replace(" ", " ms ")}`
+        + said.slice(1, -1).map(one => `, ${one}`).join("") + ` and ${said[said.length - 1]}`;
+}
+
+// Where a drawer's time went from the key that selected its row: waiting
+// for the selection to be followed, then until its frame began, which
+// holds making it, then from its frame's start to the screen.
+const drawerParts = [["from", "followed", "before it followed"],
+    ["followed", "begun", "until its frame began"], ["begun", "at", "from its frame's start"]];
+
+// A drawer presented, `{ key, place, from, followed, begun, at }`, said as
+// it's presented, as an opening is, so each one's time from Joel's key can
+// be read as he goes.
+function drawerSaid(one) {
+    return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
+        + `from the key${partsSaid([one], drawerParts)}`;
+}
+
+// The drawers presented since the launcher opened, a line a place, as a
+// place's changes are.
+function drawersSaid(drawers) {
+    const places = [...new Set(drawers.map(one => one.place))].sort();
+    return places.map(place => {
+        const its = drawers.filter(each => each.place === place);
+        const one = took(its);
+        return `launcher: ${one.count} ${one.count === 1 ? "drawer" : "drawers"} in ${place} `
+            + `${tookSaid(one, "the key")}${partsSaid(its, drawerParts)}`;
+    });
 }
 
 // A place's change heard from a line at `from`: the earliest line not yet
@@ -90,8 +139,7 @@ function changesSaid(changes) {
         const its = changes.filter(each => each.place === place);
         const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "change" : "changes"} in ${place} `
-            + `presented a median ${one.median} ms from the line, the slowest `
-            + `${one.slowest} ms, ${one.within} within ${bar} ms${whose(its)}${wentTo(its)}`;
+            + `${tookSaid(one, "the line")}${whose(its)}${wentTo(its)}`;
     });
 }
 
