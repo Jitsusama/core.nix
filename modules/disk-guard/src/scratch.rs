@@ -79,7 +79,8 @@ pub const QUEST_UNWRITTEN: f64 = 6.0 * 3_600.0;
 
 /// The candidate an entry of a quest at work's `tmp/` makes, once it's
 /// gone `QUEST_UNWRITTEN` awake with nothing written; none before.
-/// `size` is asked only then, as sizing is a walk of all of it.
+/// `size` is asked only then, as sizing is a walk of all of it. A link
+/// into the store is a root of a build, and goes by its own windows.
 pub fn quest_candidate(
     entry: &Entry,
     size: impl FnOnce() -> u64,
@@ -87,7 +88,16 @@ pub fn quest_candidate(
     now: f64,
 ) -> Option<Candidate> {
     let idle = idle(entry, awake, now);
-    (idle >= QUEST_UNWRITTEN).then(|| left(entry, Class::QuestTemp, size(), idle))
+    (idle >= QUEST_UNWRITTEN).then(|| {
+        let class = if std::fs::read_link(&entry.path)
+            .is_ok_and(|target| target.starts_with("/nix/store"))
+        {
+            Class::QuestRoot
+        } else {
+            Class::QuestTemp
+        };
+        left(entry, class, size(), idle)
+    })
 }
 
 /// How long what a quest at work left beside its `tmp/` must go unwritten,

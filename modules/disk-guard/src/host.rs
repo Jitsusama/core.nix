@@ -19,14 +19,21 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
-/// How long a scan of every process is trusted for. One takes about
-/// 117 ms on a desktop of 285 processes, so judging thousands of entries
-/// one scan each would take minutes.
+/// How long a scan of every process is trusted for, from when it ended.
+/// One takes about 117 ms on a desktop of 285 processes, so judging
+/// thousands of entries one scan each would take minutes.
 pub const FRESH: Duration = Duration::from_secs(1);
 
 /// Every process as last scanned, read again once something has been
 /// moved aside or the scan is older than its freshness: the judgement
 /// after a move has to see a process that arrived just before it.
+///
+/// A scan's age counts from its end. On 12 November one of 1,900
+/// processes took 1.8 s, so counted from its start it was stale before
+/// its first use, and every entry paid for two. Trusting it from its end
+/// risks only what the judgement before a move sees, and that judgement
+/// can only send something to be moved: the one after the move always
+/// scans afresh, and puts back what a process came to use.
 pub struct Scan {
     proc: PathBuf,
     locks: PathBuf,
@@ -158,7 +165,6 @@ impl Scan {
             None => true,
         };
         if stale {
-            let taken = Instant::now();
             let local = crate::sys::processes(&self.proc)?;
             let mut processes = self.vouched(local);
             // A process the system couldn't vouch for may have exited before
@@ -168,7 +174,7 @@ impl Scan {
                 process.readable
                     || crate::sys::started(&self.proc, process.pid) == Some(process.start_ticks)
             });
-            self.seen = Some((taken, processes));
+            self.seen = Some((Instant::now(), processes));
         }
         Ok(self.seen.as_ref().map_or(&[], |(_, processes)| processes))
     }

@@ -61,6 +61,47 @@ fn what_a_quest_at_work_left_in_its_tmp_is_offered_by_its_last_write() {
     assert_eq!(offered.action, Action::Entry { root: tmp.clone() });
 }
 
+// A build a quest linked into its tmp/ is a root of the store: on one
+// laptop on 12 November, 51 such links held 4.3 GiB, nothing a build
+// couldn't make again. It's offered as a root, so it goes by a root's
+// windows; a link anywhere else stays an ordinary entry.
+#[test]
+fn a_link_into_the_store_in_a_quests_tmp_is_offered_as_a_root() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let tmp = dir(&workspaces.join("QEST-20200101-ABCDEF/tmp"));
+    let linked = |name: &str, to: &str| {
+        let link = tmp.join(name);
+        std::os::unix::fs::symlink(to, &link).unwrap();
+        written_ago(&link, 2.0 * DAY);
+        link
+    };
+    let root = linked("result", "/nix/store/abc-app");
+    let other = linked("notes", "/home/u/notes");
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    let found = offers(&config, &[], &|_| false);
+    assert_eq!(
+        find(&found, &root).candidate.class,
+        Class::QuestRoot,
+        "a link into the store is a root"
+    );
+    assert_eq!(
+        find(&found, &other).candidate.class,
+        Class::QuestTemp,
+        "a link elsewhere is an ordinary entry"
+    );
+}
+
 // Beside tmp/, a quest at work keeps its labs, clones and runs, 53 GiB of
 // them on one laptop on 11 November, 11 GiB unwritten for a week. Those
 // are offered too, by their last write, but never tmp/ itself (its

@@ -35,6 +35,9 @@ pub enum Class {
     /// What a quest at work left in its workspace beside `tmp/`: a lab, a
     /// clone, a run, likelier than `tmp/`'s to be read again.
     QuestScratch,
+    /// A link in a quest at work's `tmp/` into the store, which keeps a
+    /// build from collection and holds nothing a build can't make again.
+    QuestRoot,
     /// A snapshot whose process is gone.
     Snapshot,
     /// What git staged in a repository no git works on now.
@@ -100,6 +103,7 @@ impl Class {
             Class::Scratch { .. } => "scratch",
             Class::QuestTemp => "quest-temp",
             Class::QuestScratch => "quest-scratch",
+            Class::QuestRoot => "quest-root",
             Class::Snapshot => "snapshot",
             Class::GitTemporary => "git-temporary",
             Class::Workspace => "workspace",
@@ -235,6 +239,11 @@ pub fn windows(candidate: &Candidate) -> (Group, Windows) {
         // laptop on 11 November, 53 GiB lay there, 11 GiB of it unwritten
         // for a week.
         Class::QuestScratch => (Group::Idle, [days(7.0), days(7.0), days(2.0), hours(12.0)]),
+        // A build a quest linked into its tmp/ is made again in minutes, or
+        // fetched, so a day unwritten is enough whatever the band. On one
+        // laptop on 12 November, 51 such links held 4.3 GiB of the store,
+        // some unwritten for eighteen days.
+        Class::QuestRoot => (Group::Idle, [days(1.0), days(1.0), hours(6.0), hours(6.0)]),
         // Of a log, what's trimmed is history nobody reads; the rest stays.
         Class::Snapshot | Class::GitTemporary | Class::NixBuild | Class::Log => {
             (Group::Waste, [AT_ONCE; 4])

@@ -333,11 +333,15 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     let argmax: c_int = sysctl_value(c"kern.argmax")?;
     // A negative maximum leaves no room, as it says nothing.
     let mut args = vec![0u8; usize::try_from(argmax).unwrap_or(0)];
-    Ok(pids()?
-        .into_iter()
-        .filter(|&pid| pid > 0)
-        .filter_map(|pid| process(pid, &mut args))
-        .collect())
+    let mut all = Vec::new();
+    for pid in pids()?.into_iter().filter(|&pid| pid > 0) {
+        // As on Linux, a stop ends the scan, and the judgement fails safe.
+        if crate::commands::stop_waiting() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
+        all.extend(process(pid, &mut args));
+    }
+    Ok(all)
 }
 
 /// What each process has in hand, for the store's runtime roots: its

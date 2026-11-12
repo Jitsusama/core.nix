@@ -26,6 +26,15 @@ const STALL_BATCHES: usize = 3;
 /// teaches.
 const STALL_FLOOR: u64 = 1 << 30;
 
+/// The longest a routine pass goes before it ends unfinished, leaving the
+/// rest due. Each entry is judged against every process, so a pass is as
+/// long as what's due: on 12 November a laptop's upkeep held 38,000 quest
+/// entries at 3.6 s each, a day and a half, and every switch restarted it
+/// within the hour, so its upkeep was never once recorded, its memory went
+/// unsaved, and every stop waited on an entry until systemd killed it.
+/// Twenty minutes keeps the survey each pass begins with a small share.
+pub const ROUTINE_LONGEST: f64 = 20.0 * 60.0;
+
 /// The filesystem a pass works on.
 pub trait Disk {
     fn space(&mut self) -> io::Result<Space>;
@@ -78,6 +87,9 @@ pub enum End {
     Stalled,
     /// A stop came, and what was left waits for the next start.
     Stopped,
+    /// A routine pass ran `ROUTINE_LONGEST`, and what was left is due again
+    /// at the next step.
+    Unfinished,
     Failed(String),
 }
 
@@ -269,6 +281,7 @@ pub fn pass(
     };
     let mut taken = vec![false; candidates.len()];
     let mut band = previous;
+    let began = disk.now();
     // Stalled batches running, by group, and the groups given up on.
     let mut stalls: BTreeMap<Group, usize> = BTreeMap::new();
     let mut given_up: BTreeSet<Group> = BTreeSet::new();
@@ -287,6 +300,11 @@ pub fn pass(
             }
             Goal::Reach => Some(thresholds.target - before.free),
         };
+        // Checked once a batch is measured, so what it freed is counted.
+        if goal == Goal::Upkeep && disk.now() - began >= ROUTINE_LONGEST {
+            report.end = End::Unfinished;
+            return report;
+        }
         let windows = match goal {
             Goal::Upkeep | Goal::Produce => Band::Healthy,
             Goal::Clear => Band::CriticallyFull,
