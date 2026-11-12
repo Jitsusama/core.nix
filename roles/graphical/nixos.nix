@@ -91,6 +91,7 @@
     homeModules.quests
     homeModules.quickshell
     homeModules.reader
+    homeModules.rhythm
     homeModules.screen-text
     homeModules.spotify
     homeModules.swayidle

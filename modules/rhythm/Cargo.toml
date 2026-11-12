@@ -1,0 +1,12 @@
+# rhythm: learns when Joel stops for the night, from when he's at the
+# machine, and says it (src/main.rs says how).
+[package]
+name = "rhythm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# The sun's reckoning, which the backlight's night light shares.
+sun = { path = "../sun" }
