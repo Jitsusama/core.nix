@@ -91,9 +91,9 @@ function choiceFacts(daemon, known, said) {
 function byProgram(windows, named) {
     const counted = Object.create(null);
     let open = 0;
-    for (const window of Object.values(windows ?? {})) {
+    for (const each of Object.values(windows ?? {})) {
         open += 1;
-        const id = String(window?.app_id ?? "");
+        const id = String(each?.app_id ?? "");
         if (id !== "") {
             const name = named(id);
             counted[name] = (counted[name] ?? 0) + 1;
@@ -123,6 +123,22 @@ function openSaid(open, said) {
     return {
         windows: open.open === 1 ? said.window : filled(said.windows, { count: open.open }),
         programs: named.join(" \u00b7 ")
+    };
+}
+
+// Lock's drawer, an act's as drawers.md has it (VKCF3Z, 37e49991): its
+// lead says what it does and what stays running behind it, "Locks the
+// screen; 9 windows keep running behind it.", then its facts by their
+// words' ids, its key as its chord says it, then whose windows stay open.
+// `open` is byProgram's, `chord` its keys' words, "Super L".
+function lockSaid(open, chord, said) {
+    const told = openSaid(open, said);
+    return {
+        lead: told.windows === "" ? said.alone : filled(said.lead, { windows: told.windows }),
+        facts: [
+            { id: "session:Lock:key", value: chord },
+            { id: "session:Lock:open", value: told.programs }
+        ].filter(fact => fact.value !== "")
     };
 }
 

@@ -118,22 +118,19 @@ Provider {
         };
     }
 
-    // What Lock's drawer says stays running behind the lock: how many
-    // windows, and whose, the most first (Power.js's openSaid). Worked out
-    // only as it's drawn, since niri's windows change all day.
+    // Lock's drawer, an act's (Power.js's lockSaid): what it does and what
+    // stays running behind the lock, its key, and whose windows stay open.
+    // Worked out only as it's drawn, since niri's windows change all day.
     function lockDrawer() {
         const words = Words.of("session:Lock").said ?? {};
-        const open = Power.openSaid(Power.byProgram(Niri.windows, provider.programNamed),
-            words);
+        const told = Power.lockSaid(Power.byProgram(Niri.windows, provider.programNamed),
+            provider.bound(provider.locks).map(key => key.text).join(" "), words);
         return {
             eyebrow: words.eyebrow ?? "",
             eyebrowNames: true,
             title: Words.name("session:Lock"),
-            facts: [
-                { label: Words.name("session:Lock:open"), value: open.windows },
-                { label: Words.name("session:Lock:programs"), value: open.programs }
-            ].filter(fact => fact.value !== ""),
-            body: ""
+            facts: told.facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
+            body: told.lead
         };
     }
 

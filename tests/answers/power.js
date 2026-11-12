@@ -79,6 +79,18 @@ function run(failures) {
         openWords), { windows: "1 window", programs: "kitty 1" });
     machine("none open says nothing", Power.openSaid(Power.byProgram({}, named), openWords),
         { windows: "", programs: "" });
+    // Lock's drawer leads with what it does and what keeps running, then
+    // its key and whose windows stay open; with none open, only that it
+    // locks, and no key where it has none.
+    const lockWords = Object.assign({ lead: "Locks the screen; {windows} keep running.",
+        alone: "Locks the screen." }, openWords);
+    machine("Lock's drawer", Power.lockSaid(Power.byProgram(windows(["kitty", "kitty"]), named),
+        "Super L", lockWords), { lead: "Locks the screen; 2 windows keep running.", facts: [
+        { id: "session:Lock:key", value: "Super L" },
+        { id: "session:Lock:open", value: "kitty 2" }] });
+    machine("Lock's drawer with nothing open and no key",
+        Power.lockSaid(Power.byProgram({}, named), "", lockWords),
+        { lead: "Locks the screen.", facts: [] });
     // How bright a room is, from the light sensor's lux.
     machine("a dark room", Power.roomLevel(0), 0);
     machine("daylight", Power.roomLevel(10000), 1);

@@ -11074,21 +11074,23 @@
       "verb": "lock",
       "glyph": "locked",
       "said": {
-        "eyebrow": "on this machine \u00b7 lock",
+        "eyebrow": "on this machine \u00b7 act",
+        "lead": "Locks the screen; {windows} keep running behind it.",
+        "alone": "Locks the screen.",
         "window": "1 window",
         "windows": "{count} windows",
         "more": "{count} more"
       }
     },
     {
+      "id": "session:Lock:key",
+      "in": "session:Lock",
+      "name": "Key"
+    },
+    {
       "id": "session:Lock:open",
       "in": "session:Lock",
       "name": "Stays Open"
-    },
-    {
-      "id": "session:Lock:programs",
-      "in": "session:Lock",
-      "name": "Programs"
     },
     {
       "id": "session:Suspend",
