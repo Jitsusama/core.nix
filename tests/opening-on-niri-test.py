@@ -681,6 +681,32 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     assert laid["listed"] == found, f"it listed {laid['listed']} of the {found} rows found"
 
 
+def test_a_backspace_to_a_kept_places_whole_list_lists_it_again(shell: Shell) -> None:
+    """A backspace back to kept Emoji's whole list is the list it showed, worked out once.
+
+    Each key walked all 1,914 of its rows again to key them, measure their sides and weigh their
+    keys, though they were the very rows it listed before the letter (H6EDLC, 2026-11-11).
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    settled(shell)
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "emoji"))
+    filled_after(shell, timed)
+    whole = settled(shell)
+    before = cast("int", shell.showing().get("listedAgain", 0))
+    shell.send_chars("h")
+    shell.launcher_until(lambda shown: shown["typed"] == "h")
+    shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    back = settled(shell)
+    assert back["keys"] == whole["keys"], f"the backspace listed {back}, not {whole}"
+    again = cast("int", shell.showing().get("listedAgain", 0)) - before
+    assert again == 1, f"the backspace listed the whole list again {again} times, not once"
+
+
 def test_no_frame_flashes_as_home_fills_in(shell: Shell) -> None:
     """From its first frame until it settles, no row is emptied and filled, nor a side put back.
 

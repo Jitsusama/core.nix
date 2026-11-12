@@ -124,6 +124,20 @@ QtObject {
         check(failures, "a run begins again after another row",
             named(["emoji", "emoji", "", "emoji", "copy", "copy", "emoji"], -1), "0 2 3 4 6");
         check(failures, "an empty list weighs none", named([], -1), "");
+        // A backspace back to Emoji's whole list weighed every row again,
+        // though the list was the one shown before (2026-11-11).
+        const mixed = ["emoji", "emoji", "", "emoji", "copy", "copy", "emoji", "emoji"]
+            .map((like, at) => ({ name: `${at}`, keysAlike: like }));
+        const at = Pacing.weighedAt(mixed);
+        // Each row whose kind differs from the one before it, and the
+        // selection, walked as the foot first walked them.
+        const walked = picked => mixed.filter((row, place) => row === picked
+            || row.keysAlike === "" || row.keysAlike !== mixed[place - 1]?.keysAlike);
+        const kept = [null].concat(mixed).every(picked => Pacing.weighedWith(mixed, at, picked)
+            .map(row => row.name).join(" ") === walked(picked).map(row => row.name).join(" "));
+        check(failures, "where rows are weighed is kept whatever is selected", kept, true);
+        check(failures, "and the selection goes in its place",
+            Pacing.weighedWith(mixed, at, mixed[5]).map(row => row.name).join(" "), "0 2 3 4 5 6");
     }
 
     // Going home and back weighed every one of Windows' rows again on each

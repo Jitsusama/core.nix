@@ -368,8 +368,9 @@ Scope {
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
-        matches = live((steadying && !ordering ? steadied(rows.concat(below)) : rows.concat(below))
-            .concat(ending));
+        const composed = live((steadying && !ordering ? steadied(rows.concat(below))
+            : rows.concat(below)).concat(ending));
+        matches = listedAs(composed);
         // An answer only started gives way to a name that starts the same,
         // its first word: "pow" is still Power Off. A later word starting
         // so is no name Joel was typing, and gave "batt" to a copy that
@@ -3033,7 +3034,10 @@ Scope {
             return weigh(row);
         };
         // A run of rows alike in their keys, as Emoji's, is weighed once.
-        const alike = Pacing.toWeigh(matches, selected);
+        // Where they stand is kept with a list shown again, as a backspace
+        // back to Emoji's whole list shows it (RowsKept.said).
+        const alike = Pacing.weighedWith(matches, RowsKept.said(listedLately, matches,
+            "weighedAt", () => Pacing.weighedAt(matches)), selected);
         const listed = asking ? alike.concat([asking]) : alike;
         const said = listed.map(row => row === selected || visual ? afresh(row)
             : Pacing.weighedRow(kept, row, weigh)).filter(one => one.keys.length > 0);
@@ -3134,6 +3138,20 @@ Scope {
     // from the rows let go, for the check that a step takes its rows from
     // those it let go.
     property int rowsBuilt: 0
+    // The lists shown lately, with what was worked out over their rows
+    // (RowsKept.lately), and how many times a key listed one again.
+    property var listedLately: []
+    property int listedAgain: 0
+
+    // The same rows listed lately are that list again, as a backspace back
+    // to a place's whole list lists them, so what was worked out over every
+    // one of them is kept (RowsKept.lately).
+    function listedAs(rows) {
+        const again = RowsKept.again(listedLately, rows, matches);
+        if (again !== rows)
+            listedAgain += 1;
+        return again;
+    }
 
     // Where the rows drawn stand, the glyph and hue an act of its own
     // without them wears and whether they're home's, told as their rows
@@ -3161,6 +3179,7 @@ Scope {
         // never move what d would take from what's tinted.
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
+        listedLately = RowsKept.lately(listedLately, matches);
         rowsMade += 1;
         noteKeys();
         noteFigures();
@@ -5539,7 +5558,7 @@ Scope {
             const lived = live(found);
             const livedAt = Date.now();
             list.keptLast = null;
-            matches = lived;
+            matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
             const kept = cleared ? matches.findIndex(row => steadyId(row) === cleared) : -1;
@@ -7354,6 +7373,8 @@ Scope {
             keys: root.open && prompt.Window.active,
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
+            // How many times a key listed a list shown lately again.
+            listedAgain: root.listedAgain,
             typed: root.typed,
             // The line's mode, find, insert or normal, and where its caret
             // is, between letters on a line and on one in normal.
@@ -10426,7 +10447,8 @@ Scope {
                             // and the new ones reach as far as what's left
                             // and what's added.
                             function keep(rows) {
-                                const keys = rows.map(row => root.pairedId(row));
+                                const keys = RowsKept.said(root.listedLately, rows, "keys",
+                                    () => rows.map(row => root.pairedId(row)));
                                 // More rows moving than the card shows are
                                 // listed afresh, which reads each row in view
                                 // once, where each move read them again.
