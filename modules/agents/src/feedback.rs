@@ -7,6 +7,7 @@
 //! 2026-11-11: "make it live, let me play and give feedback").
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -64,7 +65,7 @@ pub fn text_of(landing: &Value, words: &str) -> String {
     let mut text = format!("Joel, from the launcher, on {named} ({what}): \"{words}\"");
     let person = landing["person"].as_str().unwrap_or("");
     if !person.is_empty() {
-        text.push_str(&format!(" His line for it said: \"{person}\""));
+        let _ = write!(text, " His line for it said: \"{person}\"");
     }
     text
 }
@@ -114,7 +115,7 @@ pub fn answer(
     kept: &Path,
     at: &str,
 ) -> Value {
-    let words = said["words"].as_str().map(str::trim).unwrap_or("");
+    let words = said["words"].as_str().map_or("", str::trim);
     if words.is_empty() {
         return refused("not-an-ask", "feedback says some words");
     }
@@ -158,7 +159,7 @@ mod tests {
             "session": {"address": address}})
     }
 
-    fn held(one: Value) -> Landings {
+    fn held(one: &Value) -> Landings {
         let landings = Landings::default();
         let records = [
             json!({"key": "landed:agents:s 7 at", "kind": "landed", "landed": one}),
@@ -233,7 +234,7 @@ mod tests {
             "words": " too dim "});
         let answer = answer(
             &said,
-            &held(landing("QEST-1-KELP", "SKIFF")),
+            &held(&landing("QEST-1-KELP", "SKIFF")),
             Some(&socket),
             &kept,
             "2026-11-12T08:00:00Z",
@@ -269,10 +270,8 @@ mod tests {
         let folder = folder("unsent");
         let (socket, asked) = node(&folder, json!({"Err": "no such group"}));
         let kept = folder.join("feedback.jsonl");
-        let landings = held(landing("", "SKIFF"));
-        let ask = |landing: &str, words: &str| {
-            json!({"ask": "feedback", "landing": landing, "words": words})
-        };
+        let landings = held(&landing("", "SKIFF"));
+        let ask = |key: &str, words: &str| json!({"ask": "feedback", "landing": key, "words": words});
         let code = |answer: Value| answer["error"]["code"].clone();
         let at = "2026-11-12T08:00:00Z";
         assert_eq!(
