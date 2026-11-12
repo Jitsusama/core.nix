@@ -5,7 +5,9 @@
 // stand-in connections, as the machine daemon would tell them, with no
 // lookups, and Traffic over the sandbox's own /proc/net/dev, two reads of
 // it sparked; Ethernet holding its place with no card; and Wi-Fi's own
-// row's drawer (WirelessPlate.js). A row is drawn a drawer the way the
+// row's drawer (WirelessPlate.js); and a connection's drawer shown whole or
+// not at all, its facts made unasked and made again in place as it
+// changes, never growing under Joel's eye. A row is drawn a drawer the way the
 // launcher draws one (Launcher.qml's detailed): a thing, or a figure with
 // a history. It exits 0 once every case holds, and otherwise 1, saying
 // which case didn't.
@@ -55,25 +57,63 @@ ShellRoot {
     }]
 
     // Once the providers are made, so their bindings hold the stand-ins.
-    Component.onCompleted: Qt.callLater(root.asked)
+    Component.onCompleted: Qt.callLater(root.begun)
 
-    // Address's drawers asked for once, as the launcher's binding asks,
-    // and read the turn after, once their facts are made (keptGlance).
+    function begun() {
+        try {
+            asked();
+        } catch (error) {
+            Expect.fail(error.message ?? error);
+        }
+    }
+
+    // Each wait for the facts Network makes in a turn of their own, as the
+    // test library waits.
+    Until {
+        id: waits
+    }
+
+    // The facts the drawer of Address's row at `at` shows now, asked as
+    // the launcher asks, none where it shows no drawer: Wi-Fi's first, as
+    // the way out, then the cable's.
+    function glanced(at) {
+        const rows = networks.answer("address")?.rows ?? [];
+        return facts(drawerOf(rows[at] ?? {}));
+    }
+
+    // Address's drawers asked for as the connections first come, before
+    // their facts are made: none is shown rather than one part-made, which
+    // would grow under Joel's eye (VKCF3Z, 2026-11-12), and each says it's
+    // still to be read, so a terminal's show asks again.
     function asked() {
         networks.links = links;
         const address = networks.answer("address");
-        [address].concat(address?.rows ?? []).forEach(drawerOf);
-        Qt.callLater(root.held);
+        Expect.expect("before its facts are made, the address shows no drawer, never a part",
+            drawerOf(address) === null, JSON.stringify(drawerOf(address)));
+        Expect.expect("before its facts are made, a connection shows no drawer, never a part",
+            drawerOf(address.rows[0]) === null, JSON.stringify(drawerOf(address.rows[0])));
+        Expect.expect("a connection's drawer not yet made says it's still to be read",
+            address.rows[0].drawerUnread?.() === true, String(address.rows[0].drawerUnread));
+        waits.until("the connections' facts made unasked",
+            () => glanced(0).length > 0 && glanced(1).length > 0, root.made);
     }
 
-    function held() {
-        try {
-            run();
-        } catch (error) {
-            Expect.fail(error.message ?? error);
-            return;
-        }
-        Qt.callLater(Qt.exit, 0);
+    function made() {
+        run();
+        changed();
+    }
+
+    // A connection that changes keeps its drawer whole, saying what was
+    // made last, until its facts are made again in place.
+    function changed() {
+        networks.links = links.map(link => Object.assign({}, link,
+            { mtu: link.name === "wlan0" ? 1400 : link.mtu }));
+        const kept = facts(drawerOf(networks.answer("address")));
+        Expect.expect("as a connection changes, its drawer stays whole until made again",
+            kept.includes("MTU=1,500 bytes") && kept.includes("Address=192.168.4.37/22"),
+            kept.join("; "));
+        waits.until("the changed connection's facts made again",
+            () => glanced(0).includes("MTU=1,400 bytes"), () => Qt.exit(0));
     }
 
     // A row's drawer as the launcher would draw it, or null where it draws
