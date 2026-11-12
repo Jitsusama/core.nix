@@ -307,9 +307,9 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
         timeout=dt.timedelta(seconds=30),
     )
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
-    # In Now, the drawer is out for the meeting, which has details, and
-    # goes in once the selection rests on a row with none, as Time is: it's
-    # the selected row's, never the place's (docs/design.md, the drawer).
+    # In Now, the drawer is out for the meeting, and turns to Time's once
+    # the selection rests on Time: it's the selected row's, never the
+    # place's (docs/design.md, the drawer).
     desktop.answer("now")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("is") == "collection:on")
     desktop.step_in("ret")
@@ -325,12 +325,12 @@ def test_todays_meeting_is_said_in_now(desktop: Desktop) -> None:
     desktop.launcher_until(
         lambda shown: (
             (shown["selected"] or {}).get("name") == "Time"
-            and (shown.get("drawer") or {}).get("out") is False
-            and shown["drawer"]["drawn"] == ""
+            and (shown.get("drawer") or {}).get("out") is True
+            and shown["drawer"]["drawn"] == "Time"
         )
     )
-    # Back on the meeting, gone and let go of, the drawer draws the meeting
-    # again, though it's given the very details it was given before.
+    # Back on the meeting, let go of for Time's, the drawer draws the
+    # meeting again, though it's given the very details it was given before.
     desktop.down_to("Design Review")
     desktop.launcher_until(
         lambda shown: (
