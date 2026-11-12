@@ -2124,9 +2124,14 @@ in
     # single instance quits as its last window closes, and a session asked
     # of it as it quit was lost without a word: Reopen Them All asked for
     # one 0.07 s before the last session's kitty quit, and it never opened
-    # (2026-11-04). Started first, it's the instance; started beside one
-    # already running, its hidden window keeps that one instead, and it
-    # waits on that window either way, so the unit stays up. It runs in
+    # (2026-11-04), so its hidden window keeps it running. Windows are
+    # asked of it over remote control, on a socket in a runtime folder only
+    # Joel's login can open, rather than through kitty's single instance:
+    # that instance answers on a name any program can take first, a fenced
+    # command among them, which would then have every session's window
+    # opened in it (ISXEG8, 2026-11-11). The fence empties the runtime
+    # folder, so no fenced command reaches the socket, and kitty takes
+    # remote control only there, never through a window's terminal. It runs in
     # agents.slice, where kitty puts each session's scope. Its window is
     # classed pi-sessions-kept, so the shell, which numbers that kitty's
     # windows as niri lists them, leaves out the one niri never shows.
@@ -2181,10 +2186,13 @@ in
         # frame, 8.3 ms at 120 Hz.
         ExecStart = lib.concatStringsSep " " [
           "${config.home.profileDirectory}/bin/kitty"
-          "-1 --instance-group pi-sessions --wait-for-single-instance-window-close"
+          "--listen-on unix:%t/pi-sessions/kitty.sock -o allow_remote_control=socket-only"
           "-o sync_to_monitor=yes"
           "--class pi-sessions-kept --start-as=hidden ${lib.getExe' pkgs.coreutils "sleep"} infinity"
         ];
+        # The socket's folder, which only Joel's login may open.
+        RuntimeDirectory = "pi-sessions";
+        RuntimeDirectoryMode = "0700";
         Restart = "always";
         RestartSec = 5;
       };

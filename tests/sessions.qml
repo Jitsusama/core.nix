@@ -246,7 +246,7 @@ ShellRoot {
             Sessions.running.map(session => session.address).join(" "));
         Sessions.goTo(far);
         expect("Go To joins it by its node's words", inSessions(Niri.spawned.join(" "))
-            === "kitty -1 --instance-group pi-sessions zsh -lic mycelium attach r-far",
+            === "sessions zsh -lic mycelium attach r-far",
             Niri.spawned.join(" "));
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
@@ -268,11 +268,12 @@ ShellRoot {
         const before = Niri.spawns.length;
         Sessions.goTo(hosted);
         const viewed = Niri.spawned.join(" ");
+        const hostedAsk = asked(viewed);
         expect("a hosted one is viewed by its node's words, held, in a window named for it",
-            viewed.includes("MYCELIUM_APP_ID=pi-hosted.s-hosted")
-            && viewed.includes("--class pi-hosted.s-hosted mycelium --realm harbour hold -- "
-                + "mycelium --realm harbour attach --host harbour-attended --session s-hosted")
-            && viewed.endsWith("--session s-hosted"), viewed);
+            hostedAsk !== null && hostedAsk.classed === "pi-hosted.s-hosted"
+            && hostedAsk.words === "mycelium --realm harbour hold -- "
+                + "mycelium --realm harbour attach --host harbour-attended --session s-hosted",
+            viewed);
         Sessions.goTo(hosted);
         expect("viewed only once while its window comes", Niri.spawns.length === before + 1,
             Niri.spawns.slice(before).join("\n"));
@@ -407,34 +408,46 @@ ShellRoot {
         }
     }
 
-    readonly property string kitty: "kitty -1 --instance-group pi-sessions --directory"
-    // The sessions' kitty as the shell asks for it, past the scope that
-    // starts it in agents.slice and without its class or the app id its
-    // process is told, or "" for anything not started there.
-    readonly property string scope: "systemd-run --user --scope --collect --quiet "
-        + "--slice=agents.slice -- "
-    function inSessions(command) {
+    readonly property string kitty: "sessions --directory"
+    // Every window of the sessions' kitty is asked through the shell's one
+    // opening script, which tells its kitty and its process the same class,
+    // so a spawn reads as that script, the socket, the class and the words.
+    readonly property string scope: `sh -c ${Sessions.opening} sessions `
+    function asked(command) {
         const at = command.indexOf(scope);
-        return at < 0 ? "" : command.slice(at + scope.length).replace(/ --class \S+/, "")
-            .replace(/^env MYCELIUM_APP_ID=\S+ /, "");
+        if (at < 0)
+            return null;
+        const [socket, classed, ...words] = command.slice(at + scope.length).split(" ");
+        return { socket: socket, classed: classed, words: words.join(" ") };
+    }
+    // The words the sessions' kitty is asked to open, or "" for anything
+    // not asked of it.
+    function inSessions(command) {
+        const one = asked(command);
+        return one === null ? "" : `sessions ${one.words}`;
     }
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
-            .filter(command => command.startsWith("kitty ") && !command.includes("attach r-far")
+            .filter(command => command.startsWith("sessions ") && !command.includes("attach r-far")
                 && !command.includes("attach --host"));
         if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
             return;
         // Each window is opened with an app id of its own, which its process
         // is told, so the node's record of what it holds names it as niri
         // lists it; a hosted one's viewer, by its session's id.
-        const named = Niri.spawns.filter(command => command.includes(scope))
-            .map(command => [(/MYCELIUM_APP_ID=(\S+)/.exec(command) ?? [])[1],
-                (/ --class (\S+)/.exec(command) ?? [])[1]]);
-        expect("each window opened is told the app id it opens with, its own",
-            named.every(([told, classed]) => /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/
-                .test(told ?? "")
-                && told === classed) && new Set(named.map(([told]) => told)).size === named.length,
-            JSON.stringify(named));
+        const asks = Niri.spawns.map(command => asked(command)).filter(one => one !== null);
+        const named = asks.map(one => [one.classed]);
+        const socket = `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`;
+        expect("each window is asked of the sessions' socket with an app id of its own",
+            asks.every(one => one.socket === socket
+                && /^pi-((session|spawned)\.\d+|hosted\.s-hosted)$/.test(one.classed))
+            && new Set(named.map(([told]) => told)).size === named.length,
+            JSON.stringify(asks.map(one => [one.socket, one.classed])));
+        expect("the opening tells the window and its process the same class",
+            Sessions.opening.includes('--os-window-class "$class"')
+            && Sessions.opening.includes('--env "MYCELIUM_APP_ID=$class"')
+            && Sessions.opening.includes('"MYCELIUM_APP_ID=$class" kitty -1')
+            && Sessions.opening.includes('--class "$class"'), Sessions.opening);
         // Numbered on from when this shell started, so a shell started again,
         // as every switch does, names none as a window still open from before.
         const numbers = named.map(([told]) => /\.(\d+)$/.exec(told ?? ""))

@@ -33,7 +33,7 @@ ShellRoot {
     // walk goes on to the next rather than waiting out its patience.
     function openSpawned() {
         for (const command of Niri.spawns) {
-            const classed = / --class (\S+) /.exec(command)?.[1] ?? "";
+            const classed = /\/pi-sessions\/kitty\.sock (\S+) /.exec(command)?.[1] ?? "";
             if (classed === "" || root.opened[classed])
                 continue;
             const id = 100 + Object.keys(root.opened).length;

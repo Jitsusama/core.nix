@@ -2655,6 +2655,11 @@
     the kitty every session's window is drawn by draws only the frames niri asks for, so the
     session windows niri doesn't show aren't drawn
   '';
+  the-sessions-kitty-answers-only-its-own-socket = ''
+    the kitty every session's window is drawn by is asked for windows only over its own socket, in
+    a runtime folder only Joel's login opens, never as a single instance another program could
+    answer for
+  '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
     with a hard memory floor agents.slice keeps as large, so a session opening never starves the

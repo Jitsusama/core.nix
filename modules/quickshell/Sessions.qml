@@ -212,6 +212,34 @@ Singleton {
     // earlier one gave.
     readonly property real startedAt: Date.now()
     property real openings: startedAt
+    // How a window is asked of that kitty: over its remote-control socket
+    // in a runtime folder only Joel's login opens (sessions-kitty's unit),
+    // never through kitty's single instance, whose name any program could
+    // take first and so be handed every session's window (ISXEG8,
+    // 2026-11-11). The window gets kitty's own environment and only its
+    // app id beside it. A kitty started before its unit listened has no
+    // socket until the next login, so until then it's reached the old way,
+    // but only while the unit's own cgroup holds it, which nothing else can
+    // be in; with neither, nothing opens, and the journal says why. It's
+    // decided as the window opens, in what niri starts, so the shell waits
+    // on nothing.
+    readonly property string opening: [
+        'sock=$1; class=$2; shift 2; dir=$HOME',
+        'if [ "$1" = --directory ]; then dir=$2; shift 2; fi',
+        'if [ -S "$sock" ]; then',
+        '  exec kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \\',
+        '    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@"',
+        'fi',
+        'uid=${XDG_RUNTIME_DIR##*/}',
+        'unit=/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/agents.slice/sessions-kitty.service',
+        'if read -r _ < "$unit/cgroup.procs"; then',
+        '  exec systemd-run --user --scope --collect --quiet --slice=agents.slice -- \\',
+        '    env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \\',
+        '    --directory "$dir" "$@"',
+        'fi',
+        'echo "sessions: no sessions kitty to open $class in" >&2',
+        'exit 1'
+    ].join("\n")
     function inSessions(kind, rest, into, named) {
         openings++;
         const classed = named ?? `${kind}.${openings}`;
@@ -224,9 +252,8 @@ Singleton {
         }
         const untold = kind === "pi-spawned" || placed
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
-        Niri.spawn(untold.concat(["systemd-run", "--user", "--scope", "--collect", "--quiet",
-            "--slice=agents.slice", "--", "env", `MYCELIUM_APP_ID=${classed}`, "kitty", "-1",
-            "--instance-group", "pi-sessions", "--class", classed], rest));
+        Niri.spawn(untold.concat(["sh", "-c", opening, "sessions",
+            `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`, classed], rest));
         return classed;
     }
 
