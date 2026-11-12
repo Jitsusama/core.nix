@@ -44,7 +44,8 @@
       "argument": "dnd",
       "in": "session:quiet",
       "name": "Until It's Ended",
-      "glyph": "quiet"
+      "glyph": "quiet",
+      "key": "e"
     },
     {
       "id": "session:profile:drawer",

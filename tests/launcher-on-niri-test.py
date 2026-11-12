@@ -583,6 +583,32 @@ def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_do_not_disturbs_other_act_is_done_by_its_own_key(shell: Shell) -> None:
+    """Do Not Disturb holds notices for an hour on Return, and until they're ended on e.
+
+    Its acts lie on its row, with nothing under them, so it opens no step: Return does the
+    first and each other is pressed by its own key, which the foot names (VKCF3Z,
+    2026-11-12: "Return does For an Hour and Until It's Ended takes its key").
+    """
+
+    def selected(shown: Json) -> Json:
+        return cast("Json", shown["selected"] or {})
+
+    shell.answer("do not disturb")
+    shell.launcher_until(lambda shown: selected(shown).get("name") == "Do Not Disturb")
+    shell.normal()
+    told = selected(shell.showing())["told"]
+    assert "e until it's ended" in told, told
+    shell.send_chars("e")
+    shell.launcher_until(lambda shown: selected(shown).get("side") == "until it's ended")
+    held = shell.showing()["held"]
+    assert held == [], f"its key stepped into {held}"
+    # On, its Return ends it, so the next test finds notices shown.
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: selected(shown).get("side") == "for an hour")
+    shell.close_launcher()
+
+
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> None:
     """An answer asked for holds its row from the keystroke."""
     typed = "weather lima"

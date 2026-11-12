@@ -37,6 +37,8 @@ Provider {
             verb: Words.verb(key, state),
             name: Words.name(key, state),
             glyph: Words.glyph(key, state),
+            // The key normal mode does it by on its row, where it has one.
+            actKey: Words.actKey(key, state),
             // Its words' state, so the : line names the command for it.
             wordState: state
         }, fields));
@@ -271,11 +273,14 @@ Provider {
         }, { named: id => Words.name(id), said: words.said, tells: words.tells }));
     }
 
-    // Do not disturb (Quiet.qml): Return holds notices for an hour, and the
-    // right arrow offers holding them until it's ended. It's a thing, so
-    // its drawer says more than its line (Joel, 2026-11-11).
+    // Do not disturb (Quiet.qml): Return holds notices for an hour, and e
+    // holds them until it's ended, its acts on its row with nothing under
+    // them, so it opens no step (VKCF3Z, 2026-11-12: "Return does For an
+    // Hour and Until It's Ended takes its key"). It's a thing, so its
+    // drawer says more than its line (Joel, 2026-11-11).
     readonly property var quiet: said("session:quiet", Quiet.on ? "on" : "", {
         side: Quiet.on ? Quiet.lasts : "for an hour",
+        actsOnly: !Quiet.on,
         chord: bound(holds),
         hue: "voice",
         stays: true,
