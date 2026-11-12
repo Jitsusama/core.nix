@@ -80,6 +80,7 @@ onLinux {
       cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${../quickshell/launcher/Provider.qml} launcher/Provider.qml
       cp ${../quickshell/launcher/Asking.js} launcher/Asking.js
+      cp ${../quickshell/launcher/Member.js} launcher/Member.js
       cp ${../quickshell/launcher/Numbers.js} launcher/Numbers.js
       cp ${../quickshell/launcher/Ago.js} launcher/Ago.js
       cp ${./SpotifyProgram.qml} launcher/SpotifyProgram.qml

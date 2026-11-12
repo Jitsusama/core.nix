@@ -18,6 +18,26 @@
   ...
 }:
 {
+  # A collection's row made again from a row made keeps every field it's
+  # given, as tests/member.qml holds launcher/Member.js to, in Qt's engine.
+  a-row-made-again-keeps-every-field =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
+    pkgs.runCommandLocal "a-row-made-again-keeps-every-field" { } ''
+      mkdir launcher
+      cp ${../../../tests/member.qml} member.qml
+      ${copied [ "launcher/Member.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml member.qml
+      touch $out
+    '';
+
   # The shell's QML is given an activation token by niri when it asks
   # (tests/activation-token-on-niri.sh), as the notices daemon will need it
   # to hand a program with an action chosen, having no window to ask with.

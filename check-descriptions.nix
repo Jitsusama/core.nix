@@ -131,6 +131,11 @@
     a power profile the daemon refuses is said once as a warning, tried again at each change of the
     battery without repeating it, and said once it takes
   '';
+  a-row-made-again-keeps-every-field = ''
+    a collection's row made again from a row made, as For You makes a session's from Agents', keeps
+    every field it is given over 60 shapes grown from one another, and makes its own name ready to
+    match from its own name, once, only when it is read
+  '';
   a-row-kept-is-never-drawn-again = ''
     the launcher's list keeps a row listed before and now wherever it moves, a key listed twice as
     two rows, and draws afresh only a row new to the list, the same rows taking no step and a row

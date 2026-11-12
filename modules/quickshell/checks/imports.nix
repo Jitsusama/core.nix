@@ -238,6 +238,7 @@
     "Fuzzy.js"
     "ProgramGlyphs.js"
     "launcher/Asking.js"
+    "launcher/Member.js"
     "launcher/Numbers.js"
   ];
   "launcher/Quests.qml" = [
