@@ -72,8 +72,10 @@ impl Store {
     /// A store, and a nix and nix-store over it that log what they're asked
     /// to `log`, each with the scheduling policy it ran under. A path with
     /// `held` beside its `meta` is listed as dead every time and refused by
-    /// every delete, as what a build roots again after a listing; while
-    /// `listing-slow` is there, every listing after the first waits on it.
+    /// every delete, as what a build roots again after a listing; one with
+    /// `refused` can't be deleted, as a Mac's protected app, and stops a
+    /// delete there, the paths before it gone; while `listing-slow` is
+    /// there, every listing after the first waits on it.
     fn new() -> Store {
         let dir = tempfile::tempdir().unwrap();
         let root = fs::canonicalize(dir.path()).unwrap();
@@ -158,7 +160,12 @@ impl Store {
                    echo \"delete $*\" >> {log}\n\
                    for p in \"$@\"; do [ -e \"$p/alive\" ] || [ -e \"$p/held\" ] || continue\n\
                      echo \"error: Cannot delete path '$p' since it is still alive.\" >&2; exit 1\n\
-                   done; rm -r \"$@\" ;;\n\
+                   done\n\
+                   for p in \"$@\"; do\n\
+                     [ -e \"$p/refused\" ] && {{ echo \"error: fchmodat \\\"$p/Applications/X.app\\\": \
+                       Operation not permitted\" >&2; exit 1; }}\n\
+                     rm -r \"$p\"\n\
+                   done ;;\n\
                  'store gc') shift 2; echo \"gc $* {policy}\" >> {log} ;;\n\
                  'config show') [ \"$3\" = min-free ] || exit 9; cat {min_free} ;;\n\
                  *) exit 9 ;;\n\
@@ -375,11 +382,11 @@ fn routine_upkeep_lists_garbage_at_idle_and_takes_what_is_old() {
     assert_eq!(log.len(), 2, "{log:?}");
 }
 
-// The store's runtime roots are read from /proc, which a Mac doesn't
-// have, so a guard there saw no running program holding anything: on 12
-// November one deleted store files two running sessions had mapped.
-// Where they can't be read, as a Mac's config says by default, a nearly
-// full store is neither listed nor collected, by its own batches or Nix's.
+// The store's runtime roots were read from /proc alone, which a Mac
+// doesn't have, so a guard there saw no running program holding anything:
+// on 12 November one deleted store files two running sessions had mapped.
+// Where they can't be read, as a config may say, a nearly full store is
+// neither listed nor collected, by its own batches or Nix's.
 #[test]
 fn a_guard_that_cant_read_the_processes_leaves_the_store_alone() {
     let store = Store::new();
@@ -440,6 +447,74 @@ fn garbage_a_running_process_has_open_is_left_for_a_later_pass() {
         .collect();
     assert_eq!(deletes, [format!("delete {}", free.display())]);
     assert!(open.exists(), "a process has it open");
+}
+
+// A Mac's kernel names a file by whichever of its hard links it last
+// looked up, so a program running from a store path Nix has linked can
+// name only `.links/<hash>` in the store: on 12 November 29 files ruby,
+// git and the terminal had mapped were left only there.
+#[test]
+fn garbage_a_process_holds_by_a_hard_link_is_left_for_a_later_pass() {
+    let store = Store::new();
+    let linked = store.dead("aaa-linked", 10.0 * DAY, 4096);
+    let free = store.dead("bbb-free", 10.0 * DAY, 4096);
+    fs::create_dir_all(linked.join("lib")).unwrap();
+    fs::write(linked.join("lib/libruby.dylib"), "ruby").unwrap();
+    let links = store.root.join("store/.links");
+    fs::create_dir_all(&links).unwrap();
+    fs::hard_link(linked.join("lib/libruby.dylib"), links.join("0abc")).unwrap();
+    fs::create_dir_all(store.root.join("proc/4242")).unwrap();
+    fs::write(
+        store.root.join("proc/4242/maps"),
+        format!(
+            "7f00-7f01 r-xp 00000000 00:1f 42    {}\n",
+            links.join("0abc").display()
+        ),
+    )
+    .unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !free.exists());
+    let deletes: Vec<String> = store
+        .log()
+        .into_iter()
+        .filter(|line| line.starts_with("delete"))
+        .collect();
+    assert_eq!(
+        deletes,
+        [format!("delete {}", free.display())],
+        "a path a process maps by its hard link went"
+    );
+    assert!(linked.exists(), "a process has a file of it mapped");
+}
+
+// From 04:11 on 12 November a Mac's guard failed 33 passes of 87 on one
+// app in its store, which macOS forbade it to change, and freed nothing
+// beside it each time.
+#[test]
+fn garbage_the_system_refuses_to_delete_is_left_and_not_tried_again() {
+    let store = Store::new();
+    let refused = store.dead("aaa-refused", 12.0 * DAY, 4096);
+    fs::write(refused.join("refused"), "").unwrap();
+    let free = store.dead("bbb-free", 10.0 * DAY, 4096);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !free.exists());
+    // The next listing, six hours on, names it dead again.
+    let later = store.dead("ccc-later", 10.0 * DAY, 4096);
+    step_later_until(&store, &mut guard, 7.0 * 3600.0, &CALM, |_, _| {
+        !later.exists()
+    });
+    assert_eq!(lists(&store), 2, "{:?}", store.log());
+    let tried: Vec<String> = store
+        .log()
+        .into_iter()
+        .filter(|line| line.starts_with("delete") && line.contains("aaa-refused"))
+        .collect();
+    assert_eq!(
+        tried.len(),
+        1,
+        "what the system refused was tried again: {tried:?}"
+    );
+    assert!(refused.exists(), "the system refuses to let it go");
 }
 
 #[test]

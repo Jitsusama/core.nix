@@ -350,6 +350,11 @@ pub struct Guard {
     /// that would cure it waits on the lock those deletes take: none is
     /// offered until the next listing is heard.
     stale_listing: bool,
+    /// The store's dead paths the system refused a delete, left out of every
+    /// batch after: from 04:11 on 12 November a Mac's guard met one app
+    /// under App Management in 33 passes of 87 and freed nothing beside it.
+    /// Kept until the guard restarts, as a switch restarts it.
+    refused: BTreeSet<String>,
     /// What held the store at the last look: the processes with temporary
     /// roots, and the results Nix's roots link to that are still there.
     holding: Option<Holding>,
@@ -676,6 +681,7 @@ impl Guard {
             system_heard: false,
             relist: false,
             stale_listing: false,
+            refused: BTreeSet::new(),
             holding: None,
             owners_at: None,
             produced: Vec::new(),
@@ -1685,29 +1691,40 @@ impl Guard {
     /// The listing's garbage that is still there, in the batches and the
     /// order it goes in.
     fn batches(&self, listing: &Listing, now: f64) -> Vec<Batch> {
+        self.batches_and_links(listing, now).0
+    }
+
+    /// The listing's batches, with the files running programs hold known
+    /// only by Nix's hard link to them, which only a walk of a batch's
+    /// paths can place, so it's left for the delete of each.
+    fn batches_and_links(
+        &self,
+        listing: &Listing,
+        now: f64,
+    ) -> (Vec<Batch>, BTreeSet<crate::held::File>) {
         let Some((garbage, _)) = self.store() else {
-            return Vec::new();
+            return Default::default();
         };
         let Ok(space) = crate::sys::space(&self.config.nix.store) else {
-            return Vec::new();
+            return Default::default();
         };
         let keep = garbage.keep.0.as_secs_f64();
         let mut roots = crate::garbage::temp_roots(&self.config.nix.temp_roots);
-        roots.extend(crate::garbage::runtime_roots(
-            &self.processes,
-            &self.config.nix.store,
-        ));
+        let running = crate::garbage::runtime_roots(&self.processes, &self.config.nix.store);
+        roots.extend(running.paths);
         let held = listing.held_back(&roots);
-        listing.batches(
+        let batches = listing.batches(
             |dead| {
                 !held.contains(dead.path.as_str())
+                    && !self.refused.contains(&dead.path)
                     && Path::new(&dead.path).symlink_metadata().is_ok()
             },
             now,
             keep,
             garbage.budget.of(space.total),
             MOST_PER_BATCH,
-        )
+        );
+        (batches, running.links)
     }
 
     /// What Nix's garbage offers: the listing's batches in the policy's
@@ -1741,7 +1758,8 @@ impl Guard {
         if self.stale_listing {
             return vec![self.gc_offer(tick, device)];
         }
-        self.batches(listing, tick.wall)
+        let (batches, links) = self.batches_and_links(listing, tick.wall);
+        batches
             .into_iter()
             .enumerate()
             .map(|(order, batch)| Offer {
@@ -1759,6 +1777,7 @@ impl Guard {
                     nix: self.config.nix.bin.clone(),
                     roots: self.config.nix.temp_roots.clone(),
                     paths: batch.paths,
+                    links: links.clone(),
                 },
                 device,
             })
@@ -2161,6 +2180,7 @@ impl Guard {
             goal,
             &mut self.memory.learned,
         );
+        self.refused.extend(reclaim.inner.take_refused());
         if goal == Goal::Reach {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {

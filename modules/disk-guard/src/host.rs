@@ -13,7 +13,7 @@ use crate::survey::{Action, Offer};
 use crate::vouch::{self, Answer};
 use crate::{garbage, socket, workspaces};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -291,6 +291,8 @@ pub struct Reclaim<'a> {
     /// batch here, so its other batches would meet the same, each refused
     /// whole for a look for roots, and are kept for a fresh listing.
     stale: bool,
+    /// The store's paths the system refused to let a delete change.
+    refused: Vec<String>,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
 }
@@ -311,6 +313,7 @@ impl<'a> Reclaim<'a> {
             notes: Vec::new(),
             gentle: false,
             stale: false,
+            refused: Vec::new(),
             band: Band::Healthy,
             pacer: None,
         }
@@ -341,14 +344,47 @@ impl<'a> Reclaim<'a> {
 
     /// Deletes a batch of Nix's garbage, unless one this pass was refused
     /// for garbage come alive, which its listing's others would meet too.
-    fn collect(&mut self, nix: PathBuf, roots: PathBuf, paths: Vec<String>) -> Outcome {
+    /// A path holding a file a running program has by its hard link alone
+    /// is left for a later pass, as Nix can't tell it's held.
+    fn collect(
+        &mut self,
+        nix: PathBuf,
+        roots: PathBuf,
+        paths: Vec<String>,
+        links: &BTreeSet<crate::held::File>,
+    ) -> Outcome {
         if self.stale {
             return Outcome::Kept("its listing was found stale this pass".to_owned());
         }
+        let free: Vec<String> = paths
+            .into_iter()
+            .filter(|path| !crate::held::holds_linked(Path::new(path), links))
+            .collect();
+        if free.is_empty() {
+            return Outcome::Kept("running programs hold all of it".to_owned());
+        }
         let gentle = self.gentle;
-        let outcome = ended(self.waiting(move || garbage::delete(&nix, &roots, &paths, gentle)));
+        let tried = free.len();
+        let outcome = match self.waiting(move || garbage::delete(&nix, &roots, &free, gentle)) {
+            Ok(Ok(refused)) => {
+                let all = refused.len() == tried;
+                self.refused.extend(refused);
+                if all {
+                    return Outcome::Kept("the system refuses to let it go".to_owned());
+                }
+                Outcome::Reclaimed
+            }
+            Ok(Err(why)) => Outcome::Failed(why),
+            Err(Stopped) => stopped(),
+        };
         self.stale = matches!(&outcome, Outcome::Failed(why) if garbage::stale(why));
         outcome
+    }
+
+    /// The store's paths the system refused to let go this pass, which no
+    /// later pass need try.
+    pub fn take_refused(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.refused)
     }
 
     /// What went wrong after a reclaim that freed its space anyway.
@@ -448,10 +484,15 @@ impl Reclaimer for Reclaim<'_> {
                 )
             }
             Action::Collect {
-                nix, roots, paths, ..
+                nix,
+                roots,
+                paths,
+                links,
+                ..
             } => {
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
-                self.collect(nix, roots, paths)
+                let links = links.clone();
+                self.collect(nix, roots, paths, &links)
             }
             Action::Trim { .. } => reclaim::trimmed(&root, root_path, candidate),
             Action::Workspace { .. } => {

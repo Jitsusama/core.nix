@@ -491,16 +491,17 @@ pub struct Nix {
     pub generations: Generations,
     /// Whether what running programs have open, mapped or named can be
     /// read here, which holds it back from collecting: from `/proc` on
-    /// Linux. A Mac has no `/proc`, and on 12 November a guard there
-    /// deleted store files two running sessions had mapped, so where it
-    /// can't be read the store is never collected.
+    /// Linux and through libproc on a Mac. On 12 November a Mac's guard,
+    /// reading only `/proc`, which a Mac hasn't got, deleted store files
+    /// two running sessions had mapped, so where it can't be read the
+    /// store is never collected.
     #[serde(default = "Nix::runtime_roots")]
     pub runtime_roots: bool,
 }
 
 impl Nix {
     fn runtime_roots() -> bool {
-        cfg!(target_os = "linux")
+        true
     }
     fn bin() -> PathBuf {
         PathBuf::from("/run/current-system/sw/bin/nix")
