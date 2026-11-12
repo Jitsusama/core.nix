@@ -165,6 +165,60 @@ fn chromes_bookmarks_are_rows_of_their_own_but_for_a_page_open_now() {
 }
 
 #[test]
+fn chromes_pages_and_bookmarks_are_searched_by_name_and_site() {
+    let running = Running::new("chrome-searched");
+    sessioned(
+        &running,
+        1,
+        &["https://a.example.org/", "https://notes.example.net/"],
+    );
+    bookmarked(
+        &running,
+        "Bookmarks",
+        &[("Manual", "https://docs.example.com/")],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "tabs"}));
+    client.changed("row:tabs:https://notes.example.net/");
+    client.ask(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "bookmarks"}));
+    let search = |client: &mut daemon_client::Client, id: u64, place: &str, words: &str| {
+        client.ask(&json!({"id": id, "ask": "search", "place": place, "words": words}))
+    };
+    let said = search(&mut client, 3, "tabs", "tit");
+    assert_eq!(
+        said["keys"],
+        json!([
+            "row:tabs:https://a.example.org/",
+            "row:tabs:https://notes.example.net/"
+        ]),
+        "pages alike in score aren't kept in the order served: {said}"
+    );
+    assert_eq!(
+        said["marks"]["row:tabs:https://a.example.org/"],
+        json!([[0, 3]]),
+        "a page's name has its letters to bring forward: {said}"
+    );
+    let said = search(&mut client, 4, "tabs", "notes");
+    assert_eq!(
+        said["keys"],
+        json!(["row:tabs:https://notes.example.net/"]),
+        "a page isn't found by its site: {said}"
+    );
+    let said = search(&mut client, 5, "bookmarks", "docs");
+    assert_eq!(
+        said["keys"],
+        json!(["row:bookmarks:https://docs.example.com/"]),
+        "a bookmark isn't found by its site: {said}"
+    );
+    let said = search(&mut client, 6, "tabs", "manual");
+    assert_eq!(
+        said["keys"],
+        json!([]),
+        "a search of the pages finds a bookmark: {said}"
+    );
+}
+
+#[test]
 fn the_extensions_host_is_asked_first_on_its_socket() {
     let running = Running::new("chrome-host");
     sessioned(&running, 1, &["https://saved.example.org/"]);

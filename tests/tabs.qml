@@ -1,13 +1,15 @@
 // Drives the launcher's Chrome tabs (modules/chrome/Tabs.qml) through
 // Quickshell itself, with the real ReadyRows.qml making each row from the
 // one the programs daemon serves ready (src/tab_rows.rs), told through its
-// own Daemon.qml's took with no daemon to answer, and niri stood in. Each
-// page is a row named by its title and found by its site, in the daemon's
-// order, and its Return goes to the Chrome window it's in front of, else
-// Chrome's newest. Each bookmark served (src/bookmark_rows.rs) is a row
-// after them, found by its site too, and its Return runs Chrome with its
-// address. It exits 0 once every case holds, and otherwise 1, saying
-// which didn't.
+// own Daemon.qml's took with no daemon to answer, and niri stood in. The
+// pages are a collection, Tabs, each a row named by its title and found by
+// its site, in the daemon's order, and its Return goes to the Chrome
+// window it's in front of, else Chrome's newest. What's typed is ranked as
+// the daemon answers (src/search.rs), the tabs holding its letters
+// standing until then, and matched here only where it can't search. Each
+// bookmark served (src/bookmark_rows.rs) is a row of the main search,
+// found by its site too, and its Return runs Chrome with its address. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -61,6 +63,21 @@ ShellRoot {
         settings: ({ name: "tabs" })
     }
 
+    // Each time its search found more, as the daemon answers, and whether
+    // it came fresh.
+    property var foundMore: []
+    Connections {
+        target: tabs
+        function onFoundMore(fresh) {
+            root.foundMore = root.foundMore.concat([fresh]);
+        }
+    }
+
+    // The names of what a search of the tabs gives.
+    function searched(typed) {
+        return tabs.search(typed).rows.map(made => made.name).join(", ");
+    }
+
     // The cases run once each ReadyRows' Daemon.qml has made its link, which
     // its loader may make after the shell's own completion, and Quickshell
     // has read Chrome's entry, since a bookmark whose program is gone
@@ -106,23 +123,47 @@ ShellRoot {
                 bookmark("https://wiki.example.org/runbook", "Runbook", 1)
             ], []);
             standIn.open = true;
-            const names = tabs.things.map(made => made.name).join(", ");
+            Expect.expect("the tabs are a collection called Tabs",
+                tabs.collection?.title === "Tabs", tabs.collection?.title);
+            const names = tabs.everything().map(made => made.name).join(", ");
             Expect.expect("each page a row, in the daemon's order",
-                names === "core.nix, Inbox, Notes, Runbook", names);
-            const words = tabs.things.map(made => made.keywords?.text ?? "").join(", ");
+                names === "core.nix, Inbox, Notes", names);
+            const marks = tabs.things.map(made => made.name).join(", ");
+            Expect.expect("the bookmarks alone are the main search's", marks === "Runbook", marks);
+            const words = tabs.everything().concat(tabs.things)
+                .map(made => made.keywords?.text ?? "").join(", ");
             Expect.expect("each found by its site, a bookmark by its folder too",
                 words === "github.com, mail.google.com, docs.example.org, wiki.example.org Work",
                 words);
-            tabs.things[3].run();
+            const asked = tabs.served.link.asked;
+            const waiting = searched("doc");
+            Expect.expect("while the daemon's asked, the tabs holding the letters stand",
+                waiting === "Notes", waiting);
+            Expect.expect("what's typed is asked of the daemon",
+                tabs.served.link.asked === asked + 1, tabs.served.link.asked - asked);
+            tabs.served.answered("o", { id: 1, words: "o", marks: {}, keys: [
+                "row:tabs:https://docs.example.org/", "row:tabs:https://github.com/jitsusama/core.nix"
+            ] });
+            const ranked = searched("o");
+            Expect.expect("what's typed is ranked as the daemon answers it",
+                ranked === "Notes, core.nix", ranked);
+            Expect.expect("its answer has what's typed searched again",
+                root.foundMore.length === 1, JSON.stringify(root.foundMore));
+            tabs.served.answered("x", { id: 2, words: "x",
+                error: { code: "unknown-place", message: "no place here" } });
+            const matched = searched("inb");
+            Expect.expect("a daemon that can't search leaves them matched here",
+                matched === "Inbox", matched);
+            tabs.things[0].run();
             Expect.expect("a bookmark's Return runs Chrome with its address",
                 JSON.stringify(Niri.spawned)
                     === JSON.stringify([["google-chrome-stable", "https://wiki.example.org/runbook"]]),
                 JSON.stringify(Niri.spawned));
-            tabs.things[1].run();
+            tabs.everything()[1].run();
             Expect.expect("Return goes to Chrome's window it's in front of",
                 JSON.stringify(Niri.acted) === JSON.stringify([{ FocusWindow: { id: 7 } }]),
                 JSON.stringify(Niri.acted));
-            tabs.things[2].run();
+            tabs.everything()[2].run();
             Expect.expect("and one in front of none, Chrome's newest",
                 JSON.stringify(Niri.acted[1]) === JSON.stringify({ FocusWindow: { id: 9 } }),
                 JSON.stringify(Niri.acted));

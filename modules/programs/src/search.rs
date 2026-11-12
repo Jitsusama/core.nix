@@ -8,13 +8,17 @@
 //! of it written with a hyphen closed up, what it is, its comment, its
 //! entry's keywords and what its key binds do, which the shell's watch
 //! says (`also`), since niri's binds are the shell's. Those alike in score
-//! keep the order the rows are served in, open programs first. What was
-//! taken is searched by taken.rs, newest first as Capture's Recent lists
-//! it.
+//! keep the order the rows are served in, open programs first. Chrome's
+//! open pages and its bookmarks are found the same way, by their name or
+//! by their site and folder, so the shell ranks none of them either. What
+//! was taken is searched by taken.rs, newest first as Capture's Recent
+//! lists it.
 
 use std::collections::BTreeMap;
 
+use programs::{bookmark_rows, tab_rows};
 use ready_rows::fuzzy::{self, Item, Typed, runs};
+use ready_rows::kept::Kept;
 use serde_json::{Map, Value, json};
 
 use super::{Daemon, Shared, taken};
@@ -34,6 +38,8 @@ pub fn answer(
 ) -> Value {
     match place {
         PLACE => programs(daemon, id, words),
+        tab_rows::PLACE => sites(&daemon.tabs, id, words),
+        bookmark_rows::PLACE => sites(&daemon.bookmarks, id, words),
         taken::PLACE => taken::search(shared, daemon, id, words, most.unwrap_or(taken::FOUND)),
         _ => json!({
             "id": id, "words": words,
@@ -57,8 +63,33 @@ fn programs(daemon: &Daemon, id: &Value, words: &str) -> Value {
         .flat_map(|watch| watch.also.iter())
         .map(|(id, said)| (id.as_str(), said.as_str()))
         .collect();
-    let mut rows: Vec<&Value> = daemon
-        .rows
+    let (keys, marks) = found(&daemon.rows, &typed, |row| {
+        let id = text(&row["id"]);
+        called(text(&row["name"]), programs.get(id).copied(), also.get(id))
+    });
+    json!({"id": id, "words": words, "keys": keys, "marks": marks})
+}
+
+/// The open pages or bookmarks that what's typed finds, best first, each
+/// by its name or by its keywords: its site, and a bookmark's folder.
+fn sites(kept: &Kept, id: &Value, words: &str) -> Value {
+    let typed = Typed::of(words);
+    let (keys, marks) = found(kept, &typed, |row| {
+        format!("{} {}", text(&row["name"]), text(&row["keywords"]))
+    });
+    json!({"id": id, "words": words, "keys": keys, "marks": marks})
+}
+
+/// The keys of a place's rows that what's typed finds, best first, each
+/// by its name or by all `called` says it's called, with the letters of
+/// each name to bring forward. Those alike in score keep the order the
+/// rows are served in.
+fn found<'a>(
+    kept: &'a Kept,
+    typed: &Typed,
+    called: impl Fn(&Value) -> String,
+) -> (Vec<&'a str>, Map<String, Value>) {
+    let mut rows: Vec<&Value> = kept
         .all()
         .filter(|record| record["kind"] == "row")
         .collect();
@@ -66,14 +97,9 @@ fn programs(daemon: &Daemon, id: &Value, words: &str) -> Value {
     let mut found: Vec<(i32, &str, Item)> = Vec::new();
     for record in rows {
         let row = &record["row"];
-        let id = text(&row["id"]);
         let name = Item::of(text(&row["name"]));
-        let called = Item::of(&called(
-            text(&row["name"]),
-            programs.get(id).copied(),
-            also.get(id),
-        ));
-        if let Some(score) = name.score(&typed).max(called.score(&typed)) {
+        let also = Item::of(&called(row));
+        if let Some(score) = name.score(typed).max(also.score(typed)) {
             found.push((score, text(&record["key"]), name));
         }
     }
@@ -81,12 +107,11 @@ fn programs(daemon: &Daemon, id: &Value, words: &str) -> Value {
     found.sort_by_key(|(score, _, _)| std::cmp::Reverse(*score));
     let mut marks = Map::new();
     for (_, key, name) in &found {
-        if let Some((_, marked)) = name.marked(&typed) {
+        if let Some((_, marked)) = name.marked(typed) {
             marks.insert((*key).to_owned(), json!(runs(&marked)));
         }
     }
-    let keys: Vec<&str> = found.iter().map(|(_, key, _)| *key).collect();
-    json!({"id": id, "words": words, "keys": keys, "marks": marks})
+    (found.into_iter().map(|(_, key, _)| key).collect(), marks)
 }
 
 /// Everything a program is called, as the shell's Provider.thing joins

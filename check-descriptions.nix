@@ -475,8 +475,9 @@
     the loader for no library, so a chord reads one file, the one held in memory
   '';
   a-chrome-tab-is-found-by-its-site-and-goes-to-its-window = ''
-    each of Chrome's open pages the programs daemon serves is a launcher row named by its title
-    and found by its site, in the daemon's order, and its Return goes to the Chrome window it's in
+    Chrome's open pages the programs daemon serves are the launcher's Tabs collection, each named
+    by its title and found by its site, ranked as the daemon answers what's typed and matched in
+    the shell only where it can't search, and a page's Return goes to the Chrome window it's in
     front of, else Chrome's newest
   '';
   clipboard-history-passes-clippy = ''
