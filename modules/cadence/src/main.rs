@@ -39,6 +39,7 @@ mod card;
 mod daily;
 mod day;
 mod findings;
+mod gate;
 mod health;
 mod idle;
 mod judge;
