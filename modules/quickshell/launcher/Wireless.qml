@@ -32,6 +32,7 @@ import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
 import "Placed.js" as Placed
 import "ReadyRows.js" as Ready
+import "WirelessPlate.js" as Plate
 
 Provider {
     id: provider
@@ -589,6 +590,10 @@ Provider {
         // A row elsewhere drawing that row's drawer as its own, as Now's
         // Wi-Fi does (Now.qml's borrows), looks at it too.
         const selected = launcher.open ? launcher.selected : null;
+        // Wi-Fi's own row reads the network joined, for its drawer
+        // (placePlate).
+        if (selected?.key === `collection:${settings.name}` && Wifi.joined)
+            return Wifi.joined.network;
         const borrowed = selected?.borrows?.place === settings.name
             ? all.find(row => row.key === selected.borrows.key) : undefined;
         const chosen = network(selected) ? selected : borrowed;
@@ -796,5 +801,17 @@ Provider {
 
     function counted() {
         return !on ? "off" : `${all.length} in reach`;
+    }
+
+    // Wi-Fi's own row's drawer, at home or where Network lists it, leading
+    // with the network joined (WirelessPlate.js), whose drawer wifid
+    // serves once the row's selected (looking).
+    function placePlate() {
+        const joined = networks.find(network => network.connected) ?? null;
+        return Plate.plate(on, networks, joined === null ? null : {
+            name: joined.name,
+            side: sideOf(joined),
+            drawn: joined.served ? ready.drawerOf(joined.served) : null
+        }, Words.of("wifi").said ?? {}, [Words.name("wifi:signal"), Words.name("wifi:connected")]);
     }
 }

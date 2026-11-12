@@ -51,10 +51,11 @@
       touch $out
     '';
 
-  # Every row Network's Address and Speed show, and each answer as a row
+  # Every row Network's Address and Traffic show, and each answer as a row
   # of its own, has a drawer saying more than its line, each fact named by
   # the vocabulary (tests/network-drawers.qml): Address over two stand-in
-  # connections, Speed over the sandbox's own counters.
+  # connections, Traffic over the sandbox's own counters, Ethernet with no
+  # card, and Wi-Fi's own row's drawer.
   every-network-row-has-a-drawer = pkgs.runCommandLocal "every-network-row-has-a-drawer" { } ''
     mkdir -p launcher runtime && chmod 700 runtime
     ${copied [
@@ -63,6 +64,7 @@
       "launcher/Networks.qml"
       "launcher/Provider.qml"
       "launcher/Traffic.qml"
+      "launcher/WirelessPlate.js"
       "launcher/words.json"
     ]}
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml

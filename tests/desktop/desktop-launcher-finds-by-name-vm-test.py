@@ -498,14 +498,14 @@ def test_a_categorys_word_and_a_space_step_into_it_and_a_command_finishes_by_ctr
         lambda shown: (
             shown["held"] == ["network"]
             and shown["typed"] == ""
-            and {"Address", "Speed"} <= set(shown["rows"])
+            and {"Address", "Traffic"} <= set(shown["rows"])
         )
     )
     # What it holds is in its own order, Wi-Fi before what it's
     # connected by, then its typed commands, last, in theirs.
     held = desktop.showing()["rows"]
     ip = "ip \u27e8address or network\u27e9"
-    assert held.index("Address") < held.index("Speed") < held.index(ip), held
+    assert held.index("Address") < held.index("Traffic") < held.index(ip), held
     assert held.index(ip) < held.index("mac \u27e8hardware address\u27e9"), held
     desktop.shoot("launcher-category")
     desktop.type_in("add", selecting="Address")

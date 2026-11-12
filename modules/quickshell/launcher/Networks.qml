@@ -72,6 +72,13 @@ Provider {
         return Words.name(`networks:${id}`);
     }
 
+    // A drawer's eyebrow, where what it says is and what it is, as every
+    // drawer's says it (VKCF3Z, 2026-11-12): "on this machine \u00b7
+    // connection".
+    function eyebrow(key) {
+        return String((Words.of("networks").said ?? {})[key] ?? "");
+    }
+
     // The word that asks this machine's own addresses, Network's one word
     // for them (Words.qml), its start asking too.
     readonly property var own: Words.answers("networks")
@@ -364,7 +371,7 @@ Provider {
     // A connection's drawer: what it is, then its parts at a glance, the
     // whole list a step in.
     function linkDrawer(name, title, side) {
-        return { eyebrow: named("link:plate"), title: title, facts: glance(name, [side]) };
+        return { eyebrow: eyebrow("connection"), title: title, facts: glance(name, [side]) };
     }
 
     // The address answer's drawer, the way out's: named by the connection
@@ -375,7 +382,7 @@ Provider {
         const seen = publics.filter(row => row.side !== "\u2026" && row.side !== "asking\u2026")
             .map(row => ({ label: row.name, value: row.side }));
         return {
-            eyebrow: named("out:plate"),
+            eyebrow: eyebrow("wayOut"),
             title: title,
             facts: (name === "" ? [] : glance(name, [headline])).concat(seen)
         };
@@ -435,7 +442,7 @@ Provider {
         const held = at ? holderOf(at, at.text) : null;
         const facts = held ? held.rows.map(row => ({ label: row.name, value: row.side })) : [];
         return {
-            eyebrow: named("public:plate"),
+            eyebrow: eyebrow("public"),
             title: named(id),
             body: held ? held.note : "",
             facts: facts
@@ -683,8 +690,11 @@ Provider {
 
     // The cards on a cable, asked alone: one's parts, or several each
     // under its name, whatever their address, since a cable with no link
-    // is what's worth seeing. Nothing on a machine with no Ethernet card,
-    // so Network has no Ethernet row there.
+    // is what's worth seeing. With no Ethernet card, as once a USB adapter
+    // is pulled out, it holds its place in Network saying it's not plugged
+    // in, never gone, so a terminal's show finds the row Network's head
+    // names, as Heat's does (VKCF3Z, 2026-11-12); a card with no carrier
+    // says there's nothing at the other end.
     function cabled() {
         const now = standing();
         if (now === null)
@@ -699,7 +709,14 @@ Provider {
                 : stateSaid[cable.state];
         };
         if (cards.length === 0)
-            return { headline: "no Ethernet card", copy: "", rows: [], note: "" };
+            return {
+                headline: "",
+                copy: "",
+                glyph: Theme.glyph.wired,
+                rows: [],
+                note: String((Words.of("ethernet").said ?? {}).unplugged ?? ""),
+                parted: true
+            };
         if (cards.length === 1)
             return {
                 headline: said(cards[0]),

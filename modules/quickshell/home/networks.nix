@@ -14,4 +14,5 @@
   "launcher/Nearby.js"
   "launcher/Addresses.js"
   "launcher/Subnets.js"
+  "launcher/WirelessPlate.js"
 ]
