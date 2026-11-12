@@ -304,6 +304,13 @@ fn xdg(variable: &str, fallback: &str) -> Result<PathBuf, Box<dyn Error>> {
     Ok(Path::new(&home).join(fallback))
 }
 
+/// The session's runtime folder, which has no fallback: it's made for the
+/// session alone.
+fn runtime() -> Result<PathBuf, Box<dyn Error>> {
+    let dir = env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR isn't set")?;
+    Ok(PathBuf::from(dir))
+}
+
 /// Writes a file whole or not at all, so a reader never sees half of it.
 fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     let writing = path.with_extension("writing");
@@ -402,9 +409,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let (curve, knows_joel) = learned_curve(standard, &learned)?;
     // Beside the runtime folder's other files rather than in a folder of
     // its own, which the shell could start watching before it existed.
-    let runtime = env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .ok_or("XDG_RUNTIME_DIR isn't set")?;
+    let runtime = runtime()?;
 
     let bus = Connection::system().await?;
     let session = SessionProxy::new(&bus).await?;
