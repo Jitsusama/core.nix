@@ -10,9 +10,13 @@
 const DOT = " \u00b7 ";
 
 // A time in a form the drawer names: `clock`, the time itself as
-// `words.clock` says it, or `since`, when it began, in `words.since`'s
-// words ("since {at}").
+// `words.clock` says it; `since`, when it began, in `words.since`'s
+// words ("since {at}"); or `dated`, the whole moment a landing's drawer
+// says, "Saturday 7 November, 11:19", as `words.dated` says it.
 function worded(time, words) {
+    if (time.as === "dated") {
+        return words.dated(time.at);
+    }
     const clock = words.clock(time.at);
     return time.as === "since" ? words.since.replace("{at}", clock) : clock;
 }
@@ -46,6 +50,8 @@ function shown(drawer, words) {
         eyebrowNames: true,
         title: String(drawer.title ?? ""),
         facts,
-        body: String(drawer.body ?? "")
+        body: String(drawer.body ?? ""),
+        // Its identifiers, which Drawer.qml folds under z a.
+        nerd: drawer.nerd ?? []
     };
 }

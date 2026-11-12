@@ -263,7 +263,8 @@ pub fn drawn<S: BuildHasher>(
     titles: &HashMap<&str, &str, S>,
 ) {
     for record in records.iter_mut().filter(|one| one["kind"] == "landed") {
-        let _ = (drawer(&record["landed"], words, titles), "red");
+        let drawer = drawer(&record["landed"], words, titles);
+        record["landed"]["drawer"] = drawer;
     }
 }
 

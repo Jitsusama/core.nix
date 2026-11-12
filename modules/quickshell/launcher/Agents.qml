@@ -1160,8 +1160,9 @@ Provider {
         return ["collection:agents", "agents:landed", `agents:landed:${one.key}`];
     }
     // A landing as both its rows show it, in Landed and in For You, one
-    // component the same in both: when it landed at its side, and its
-    // drawer (Landed.js's landedWhen and landingDrawer). Its side is kept
+    // component the same in both: when it landed at its side (Landed.js's
+    // landedSide), and its drawer, which the daemon serves with all but
+    // its time said (modules/agents/src/landed.rs). Its side is kept
     // by its moment for the day Calendars' hourly clock names
     // (landedSides), and the whole moment said only as its drawer is
     // drawn, since saying both for over a thousand landings at every
@@ -1171,21 +1172,20 @@ Provider {
     readonly property var landedSides: ({ day: "", sides: new Map() })
     function landingShows(one) {
         const said = Words.of("agents:landed").said ?? {};
+        const clock = at => Moment.clock(new Date(at));
         const when = {
-            clock: at => Moment.clock(new Date(at)),
+            clock: clock,
             day: at => When.day(at, Date.now(), {
                 yesterday: String(said.yesterday ?? ""),
                 date: (date, format) => Qt.formatDate(date, format)
-            }),
-            date: at => Moment.day(new Date(at), Date.now())
+            })
         };
         return {
             side: Landed.landedSide(landedSides, one.at, String(Calendars.today ?? ""), when),
-            drawer: () => Landed.landingDrawer(one, {
-                kind: String(said.kind ?? ""),
-                when: Landed.landedWhen(one.at, when).fact,
-                session: one.session.title ?? "",
-                named: id => Words.name(`agents:${id}`)
+            drawer: () => SessionDrawer.shown(one.drawer ?? {}, {
+                clock: clock,
+                since: word("since"),
+                dated: at => `${Moment.day(new Date(at), Date.now())}, ${clock(at)}`
             })
         };
     }
