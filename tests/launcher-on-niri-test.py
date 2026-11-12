@@ -812,14 +812,17 @@ RESIZES = 20
 
 
 def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
-    """With the launcher shut, a window resized over and over is heard of not once.
+    """With the launcher shut, a window beside the keys' resized over and over is heard of not once.
 
     The shell's niri heard every event niri sent, each tile resized or scrolled among them, and
     Joel's shut shell woke for each (2026-11-10), though only a notice drawn beside its window
     reads a tile. It now hears the windows daemon, told only the fields it reads, and asks for
-    tiles only while a notice is drawn. What the shell reads of niri's windows is counted line
-    by line, the window's opening proving the count runs; a wake counted from /proc took in
-    whatever else the shell did then, such as the work a closing leaves for a moment after.
+    every tile only while a notice is drawn. The margin's cat sits over the window with the
+    keys, so that one tile is told, and a resize of it is heard; it watched every tile, and the
+    shell heard each of 20 resizes again (2026-11-12). So the window resized is one beside it.
+    What the shell reads of niri's windows is counted line by line, the windows' opening
+    proving the count runs; a wake counted from /proc took in whatever else the shell did then,
+    such as the work a closing leaves for a moment after.
     """
 
     def heard() -> dict[str, int]:
@@ -827,17 +830,21 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
 
     before = heard()
     window = shell.opened("Dunlin Notes")
+    # Opened right of the one with the keys, so resizing it moves nothing left of it.
+    beside = shell.opened("Godwit Notes")
     try:
         shell.as_account(f"niri msg action focus-window --id {window['id']}")
-        # The span measured, for the window's opening to reach the shell, not a wait for it.
+        # The span measured, for the windows' opening to reach the shell, not a wait for it.
         time.sleep(SETTLING.total_seconds())
         opening = heard()
         for one in range(RESIZES):
-            shell.as_account(f"niri msg action set-column-width {'+' if one % 2 else '-'}10%")
+            change = f"{'+' if one % 2 else '-'}10%"
+            shell.as_account(f"niri msg action set-window-width --id {beside['id']} {change}")
         # The span measured, for the resizes' events to reach the shell, not a wait for them.
         time.sleep(SETTLING.total_seconds())
         resized = heard()
     finally:
+        shell.close(beside)
         shell.close(window)
     assert opening["niri"] > before["niri"], (
         f"the shell heard nothing of a window opened: {before}, then {opening}"
