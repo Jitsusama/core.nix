@@ -435,3 +435,24 @@ function likeliest(counts, names) {
     return Object.keys(counts).filter(key => names[key] !== undefined).sort((a, b) =>
         counts[b] - counts[a] || alphabetically(names[a], names[b]));
 }
+
+// The rows found, each made by `copy` in its place, and the milliseconds
+// `clock` saw each kind take, `kindOf` naming it. Copying a row reads
+// every getter it has, and Joel's first "c" spent 11 ms making 112 rows
+// (2026-11-12), so a slow key says whose rows it spent on. Each kind is
+// made together and timed once, so timing costs nothing a row.
+function madeByKind(rows, kindOf, copy, clock) {
+    const made = new Array(rows.length);
+    const at = {};
+    rows.forEach((row, index) => {
+        (at[kindOf(row)] ??= []).push(index);
+    });
+    const took = {};
+    for (const kind of Object.keys(at)) {
+        const began = clock();
+        for (const index of at[kind])
+            made[index] = copy(rows[index]);
+        took[kind] = clock() - began;
+    }
+    return { made, took };
+}

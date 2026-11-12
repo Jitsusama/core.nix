@@ -103,11 +103,13 @@ Scope {
     }
 
     // The rows' time, where they took any: matching every choice looked at,
-    // ordering those found, making their rows and the spots and meanings
-    // beside them, so a slow key says which grows with what home holds.
+    // ordering those found, making their rows, by whose took any, and the
+    // spots and meanings beside them, so a slow key says which grows with
+    // what home holds.
     function matched(rows, within) {
         return rows > 0 && within ? ` (matching ${within.matching} of ${within.looked},`
-            + ` ordering ${within.ordering} of ${within.found}, making ${within.making},`
+            + ` ordering ${within.ordering} of ${within.found},`
+            + ` making ${within.making}${Trials.madeOfKinds(within.madeBy)},`
             + ` spots ${within.spots})` : "";
     }
 
