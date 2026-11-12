@@ -92,10 +92,6 @@ pub fn undimmed(level: f64, share: f64) -> f64 {
 /// glibc's broken-down time.
 #[repr(C)]
 #[derive(Default)]
-#[expect(
-    dead_code,
-    reason = "glibc writes every field; only the time of day is read"
-)]
 struct Tm {
     sec: i32,
     min: i32,
@@ -172,7 +168,10 @@ mod tests {
     #[test]
     fn dimming_halves_down_to_the_floor_and_no_further() {
         assert!((dimmed(0.6, SHARE) - 0.3).abs() < 1e-9, "halved");
-        assert!((dimmed(0.08, SHARE) - FLOOR).abs() < 1e-9, "held at the floor");
+        assert!(
+            (dimmed(0.08, SHARE) - FLOOR).abs() < 1e-9,
+            "held at the floor"
+        );
         assert!((dimmed(0.03, SHARE) - 0.03).abs() < 1e-9, "left under it");
         assert!((dimmed(0.6, 1.0) - 0.6).abs() < 1e-9, "by day");
     }
@@ -180,13 +179,22 @@ mod tests {
     #[test]
     fn an_evening_pick_teaches_what_the_day_would_want() {
         assert!((undimmed(0.3, SHARE) - 0.6).abs() < 1e-9, "doubled");
-        assert!((undimmed(0.7, SHARE) - 1.0).abs() < 1e-9, "held at the brightest");
-        assert!((undimmed(0.03, SHARE) - 0.03).abs() < 1e-9, "left under the floor");
+        assert!(
+            (undimmed(0.7, SHARE) - 1.0).abs() < 1e-9,
+            "held at the brightest"
+        );
+        assert!(
+            (undimmed(0.03, SHARE) - 0.03).abs() < 1e-9,
+            "left under the floor"
+        );
     }
 
     #[test]
     fn the_local_clock_reads_a_minute_of_the_day() {
         let minute = local_minute(0).expect("the epoch reads locally");
-        assert!((0.0..DAY).contains(&minute), "{minute} isn't a minute of a day");
+        assert!(
+            (0.0..DAY).contains(&minute),
+            "{minute} isn't a minute of a day"
+        );
     }
 }

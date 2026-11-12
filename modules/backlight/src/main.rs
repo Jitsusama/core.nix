@@ -358,7 +358,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let standard = Curve::read(&fs::read_to_string(&standard)?)
         .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
     let night_white = night_white()?;
-    let evening = evening()?;
 
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
@@ -407,8 +406,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
-        evening,
-        evening_due: evening.map(|_| Instant::now()),
+        evening: evening()?,
+        evening_due: Some(Instant::now()),
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
     let (_switch_bus, mut said, mut said_night) = backlight.serve_switch().await;

@@ -412,9 +412,9 @@ impl Backlight<'_> {
             night,
             self.evening_due,
         ]
-            .into_iter()
-            .flatten()
-            .min()
+        .into_iter()
+        .flatten()
+        .min()
     }
 
     /// What the evening leaves of the brightness by the local clock now,
@@ -423,6 +423,7 @@ impl Backlight<'_> {
     /// than at each minute's step.
     fn look_at_evening(&mut self, now: Instant) {
         let Some(evening) = self.evening else {
+            self.evening_due = None;
             return;
         };
         let share = local_minute(wall()).map_or(1.0, |minute| evening.share(minute));
