@@ -118,7 +118,7 @@ Scope {
     onActiveChanged: {
         if (active)
             return;
-        for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats]) {
+        for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats, lending]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -156,6 +156,7 @@ Scope {
                 continue;
             delete made[key];
             delete madeFrom[key];
+            delete lending[key];
             delete clocked[key];
             if (ticking[key] === "minute")
                 eachMinute -= 1;
@@ -204,11 +205,12 @@ Scope {
         return key !== undefined && made[key] === row ? Ready.stampOf(keys, held, key) : null;
     }
 
-    // What the place made of the row of `key`, made now if not yet.
+    // What the place made of the row of `key`, made now if not yet: the
+    // row another place lends for it, where one does, else its own.
     function rowAt(key) {
         if (!(key in made)) {
             const row = served(key);
-            made[key] = row ? ready.make(row, key) : null;
+            made[key] = row ? lentOf(row, key) ?? ready.make(row, key) : null;
             if (made[key])
                 madeOf[made[key].key] = key;
             madeFrom[key] = row;
@@ -216,6 +218,43 @@ Scope {
                 clocked[key] = clockSaid(row);
         }
         return made[key];
+    }
+
+    // A row served with `lends` is one thing another place makes the row
+    // of, as a meeting's guest is People's person (ready-rows.md's lends):
+    // the row the first place holding `lent` gives for it, so one thing
+    // has one row, made by its own place, or null where none does, and the
+    // served row stands. Asked once as the row is made, each lender
+    // answering from what it holds, never by asking anyone.
+    readonly property var lending: ({})
+    function lentOf(row, key) {
+        if (typeof row.lends !== "string" || row.lends === "")
+            return null;
+        lending[key] = true;
+        for (const source of lenders) {
+            const lent = source.lent(row.lends);
+            if (lent)
+                return lent;
+        }
+        return null;
+    }
+
+    // The launcher's places that lend rows, and what each says of what it
+    // lends, so a lender arriving, or what one lends changing, makes again
+    // only the rows lent, the rest kept as they were made.
+    readonly property var lenders: (maker?.launcher?.sources ?? [])
+        .filter(source => source && source !== maker && typeof source.lent === "function")
+    readonly property string lentSaid: lenders.map(source => source.lentRevision ?? 0).join(",")
+    onLentSaidChanged: {
+        const lent = Object.keys(lending);
+        if (lent.length === 0)
+            return;
+        for (const key of lent) {
+            delete lending[key];
+            delete made[key];
+            delete madeFrom[key];
+        }
+        placings += 1;
     }
 
     // What each row saying a time said of the clock as it was made, by key,
