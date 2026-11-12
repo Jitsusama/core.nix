@@ -120,9 +120,9 @@ fn a_message_wanting_joel_is_a_record_and_its_being_read_a_change_to_it() {
         at: "2024-10-30T14:53:20Z".to_owned(),
     }];
     let first = by_key(held.heard(Some(&said), 10));
-    let message = "slack-message:D1:1730300001.000100";
+    let key = "slack-message:D1:1730300001.000100";
     assert_eq!(
-        first[message]["slack-message"]["done"],
+        first[key]["slack-message"]["done"],
         Value::Null,
         "a message wanting him said done"
     );
@@ -138,12 +138,12 @@ fn a_message_wanting_joel_is_a_record_and_its_being_read_a_change_to_it() {
     // Read in Slack, the message and its mark change, and neither goes.
     assert_eq!(
         changed(&first, &second),
-        [message, "slack-read:D1"],
+        [key, "slack-read:D1"],
         "what reading it in Slack changed"
     );
-    assert!(second.contains_key(message), "a message read in Slack went");
+    assert!(second.contains_key(key), "a message read in Slack went");
     assert_eq!(
-        second[message]["slack-message"]["done"],
+        second[key]["slack-message"]["done"],
         json!({"how": "readInSlack", "at": "2024-10-31T18:40:00Z"}),
         "read in Slack, not said done"
     );
