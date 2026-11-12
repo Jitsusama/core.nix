@@ -143,6 +143,16 @@
       "name": "Next Meeting"
     },
     {
+      "id": "people:title",
+      "in": "people",
+      "name": "Title"
+    },
+    {
+      "id": "people:team",
+      "in": "people",
+      "name": "Team"
+    },
+    {
       "id": "transcripts",
       "in": "people",
       "name": "Transcripts",

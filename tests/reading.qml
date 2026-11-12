@@ -107,6 +107,18 @@ QtObject {
         // A sentence is no list of items: it gives way at a whole word.
         expect("a sentence at a whole word", noted("Example ISP down", 100) === "Example\u2026",
             noted("Example ISP down", 100));
+        // A person's title and team under their name: the team goes first,
+        // then the title is cut short, never said nowhere (VKCF3Z, a807ddcd).
+        const who = "Staff Developer \u00b7 Shell";
+        const headed = (words, room) => Reading.headItems(words, room, width);
+        expect("a title and team whole where they fit", headed(who, 230) === who,
+            headed(who, 230));
+        expect("the team gives way first", headed(who, 200) === "Staff Developer",
+            headed(who, 200));
+        expect("then the title is cut short", headed(who, 120) === "Staff\u2026",
+            headed(who, 120));
+        expect("a title alone is cut short too", headed("Staff Developer", 120) === "Staff\u2026",
+            headed("Staff Developer", 120));
         // A run of names gives way by whole names from its end, ending on
         // the last that fits, never an ellipsis (VKCF3Z, 2026-11-08).
         const run = "kitty, 1Password, btop++, Calendar";
