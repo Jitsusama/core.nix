@@ -16,7 +16,6 @@ import Quickshell
 import Quickshell.Services.Pipewire
 import QtQuick
 import "launcher" as Launcher
-import "launcher/Sounds.js" as Sounds
 import "launcher/Targets.js" as Targets
 
 ShellRoot {
@@ -140,9 +139,25 @@ ShellRoot {
         expect("so its Level is listened to", heard.side === sound.said("silent")
             && heard.note === sound.said("level-in"), `${heard.side}, ${heard.note}`);
 
-        drawers();
+        programs();
         gotten();
         partsKept();
+        downDrawn();
+    }
+
+    // With the daemon not answering, its one row's drawer says a little
+    // more than its line: what it serves, its service, and that the next
+    // ask starts it again (Y2YBTS's drawer sweep, 2026-11-12).
+    function downDrawn() {
+        const drawer = sound.downRow().drawer;
+        const facts = (drawer?.facts ?? []).map(fact => `${fact.label}=${fact.value}`);
+        const wanted = [`${Words.name("sound:state")}=${sound.said("down")}`,
+            `${Words.name("sound:down:serves")}=${sound.said("down-serves")}`,
+            `${Words.name("sound:down:service")}=sound.service`,
+            `${Words.name("sound:down:starts")}=${sound.said("down-starts")}`];
+        expect("the daemon down, its row's drawer says so and what it serves",
+            drawer?.title === Words.name("sound:down") && facts.join("; ") === wanted.join("; "),
+            `${drawer?.title}: ${facts.join("; ")}`);
     }
 
     // Shut, a device's parts asked for again with nothing moved, as its
@@ -173,116 +188,6 @@ ShellRoot {
         shutSound.verbs(deskSpeakers);
         expect("shown, they're made as they're asked for", shutSound.tally.rows > shown,
             `${shutSound.tally.rows - shown} made`);
-    }
-
-    // A device's drawer says where it is and which way it goes, then what
-    // pipewire says it's doing, each of its parts the step holds, what the
-    // kernel says, the format the graph moves where the card doesn't say
-    // the same, and what the sound server knows it by last; never whether
-    // it's muted, its row's, nor its Level, which reading would open a
-    // stream on it.
-    function drawers() {
-        const card = device("alsa_output.pci.speakers", true, { "alsa.id": "PCH",
-            "alsa.device": "1", "device.bus": "pci", "api.alsa.path": "hw:PCH,1",
-            "priority.session": "1000" });
-        card.id = 52;
-        card.state = "running";
-        card.audio.format = { rate: 48000, channels: 2, sample: "S32LE" };
-        const plate = sound.drawerOf(card);
-        expect("a built-in output says so over its name, as it's written",
-            plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames !== true,
-            plate.eyebrow);
-        const made = device("stand-in-speakers", true, {});
-        expect("one the machine makes is on this machine",
-            sound.drawerOf(made).eyebrow === "on this machine \u00b7 output",
-            sound.drawerOf(made).eyebrow);
-        const said = plate.facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
-        const labels = plate.facts.map(fact => fact.label).join(", ");
-        // Its Hardware, what the kernel says of its card and its Volume
-        // are served, so tests/sound-served.qml says them; with none, the
-        // format the graph moves is its Format.
-        expect("its state, its format, then what it's known by",
-            labels === "State, Format, Priority, ALSA Device, Graph ID", said);
-        expect("what identifies it is marked so, its Graph ID last", plate.facts
-            .filter(fact => fact.identifies).map(fact => fact.label).join(", ")
-            === "ALSA Device, Graph ID", said);
-        expect("its state is pipewire's word", plate.facts[0].value === "running", said);
-        const levels = [Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "100%"], "even"),
-            Sounds.channelLevels(["Front Left", "Front Right"], ["100%", "80%"], "even"),
-            Sounds.channelLevels(["Front Left", "Front Right", "Rear Left"], ["9%", "8%", "7%"],
-                "even"), Sounds.channelLevels([], [], "even")].map(each => each.join(", "));
-        expect("channels at one level are balanced, a pair's otherwise named without front",
-            levels.join("; ") === "even; left 100%, right 80%; "
-            + "front left 9%, front right 8%, rear left 7%; ", levels.join("; "));
-        const formats = node => sound.drawerOf(node).facts
-            .filter(fact => fact.label.endsWith("Format"))
-            .map(fact => `${fact.label}=${fact.value}`).join("; ");
-        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
-        expect("one the card doesn't say is its Format",
-            formats(card) === "Format=48 kHz \u00b7 32 bit float", formats(card));
-        card.state = "suspended";
-        card.audio.format = {};
-        expect("a suspended one says so, and no format", formats(card) === ""
-            && sound.drawerOf(card).facts[0].value === "suspended", formats(card));
-        expect("what it's known by is as the server says it",
-            said.endsWith("Priority=1000; ALSA Device=hw:PCH,1; Graph ID=52"), said);
-        card.audio.muted = true;
-        expect("a muted one doesn't say so again, nor its level", !sound.drawerOf(card).facts
-            .some(fact => fact.label === "Muted" || fact.label === "Level"), said);
-        // How it keeps time, as the sound daemon serves it: ahead of its
-        // Format, its Dropouts warned only past none.
-        card.state = "running";
-        card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
-        sound.timings = { 52: { id: 52, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
-            errors: 0 } };
-        const keeping = node => sound.drawerOf(node).facts
-            .filter(fact => ["Dropouts", "Load", "Cycle", "Format"].includes(fact.label));
-        expect("its timing, ahead of its format", keeping(card)
-            .map(fact => `${fact.label}=${fact.value}`).join("; ") === "Dropouts=none; "
-            + "Load=3.12% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
-            + "Format=48 kHz \u00b7 32 bit float", JSON.stringify(keeping(card)));
-        expect("its load a stroke, its dropouts calm at none", keeping(card)[1].figure?.values[0]
-            === 0.0312 && keeping(card)[0].warns === false, JSON.stringify(keeping(card)));
-        sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
-        expect("a dropout warns", keeping(card)[0].value === "2" && keeping(card)[0].warns,
-            JSON.stringify(keeping(card)[0]));
-        const dropouts = errors => {
-            sound.timings = { 52: Object.assign({}, sound.timings[52], { errors }) };
-            return keeping(card)[0].value;
-        };
-        expect("dropouts counted whole", [5, 12, 1500].map(dropouts).join("; ")
-            === "5; 12; 1,500", [5, 12, 1500].map(dropouts).join("; "));
-        sound.timings = { 52: Object.assign({}, sound.timings[52], { busy: 0.000938 }) };
-        expect("a light load keeps its three significant digits",
-            keeping(card)[1].value === "0.0938% of each cycle", JSON.stringify(keeping(card)[1]));
-        // A measure keeps its zeros, as every measure does (VKCF3Z,
-        // 2026-11-08): 960 frames at 48 kHz take 20.0 ms.
-        sound.timings = { 52: Object.assign({}, sound.timings[52],
-            { busy: 0.031, quantum: 960, ms: 20 }) };
-        const zeros = keeping(card).slice(1, 3).map(fact => fact.value).join("; ");
-        expect("a load and a cycle keep their zeros",
-            zeros === "3.10% of each cycle; 960 frames \u00b7 20.0 ms", zeros);
-        sound.timings = { 52: Object.assign({}, sound.timings[52],
-            { busy: null, unfinished: true }) };
-        expect("one that ran past its cycle is over all of it, its stroke full, warned",
-            keeping(card)[1].value === "over 100% of each cycle" && keeping(card)[1].warns
-            && keeping(card)[1].figure?.values[0] === 1 && keeping(card)[1].figure?.warn,
-            JSON.stringify(keeping(card)[1]));
-        // The daemon's records, held by key, are its timings by node.
-        const held = sound.timingsOf({
-            "timing:52": { key: "timing:52", kind: "timing", id: 52, quantum: 1024 },
-            "stream:90": { key: "stream:90", kind: "stream", id: 90 }
-        });
-        expect("each node's timing by its id, and nothing else",
-            JSON.stringify(Object.keys(held)) === "[\"52\"]" && held[52].quantum === 1024,
-            JSON.stringify(held));
-        sound.timings = {};
-        expect("none while the daemon doesn't say it runs", keeping(card).length === 1,
-            JSON.stringify(keeping(card)));
-        expect("a headset's microphone is over Bluetooth",
-            sound.drawerOf(calling()).eyebrow === "Bluetooth \u00b7 input",
-            sound.drawerOf(calling()).eyebrow);
-        programs();
     }
 
     // A program with no desktop entry is named as it names itself, for
@@ -327,9 +232,5 @@ ShellRoot {
         const ids = Targets.sendable([{ id: "90 -d" }, { id: 9.5 }, { id: -1 }, {}, ninety]);
         expect("only a stream with a whole id is sent", JSON.stringify(ids) === '["90"]',
             JSON.stringify(ids));
-    }
-
-    function calling() {
-        return microphone("headset-head-unit");
     }
 }

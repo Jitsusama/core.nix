@@ -287,9 +287,7 @@
     "launcher/Ago.js"
     "launcher/ByEar.js"
     "launcher/ForYou.js"
-    "launcher/Numbers.js"
     "launcher/Order.js"
-    "launcher/Plate.js"
     "launcher/Sounds.js"
     "launcher/Targets.js"
   ];

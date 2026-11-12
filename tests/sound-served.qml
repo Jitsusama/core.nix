@@ -101,7 +101,8 @@ ShellRoot {
     }
 
     // A device's row as the sound daemon's rows.rs lays one: its name, its
-    // order among the rest, which way it goes and its volume in its note.
+    // order among the rest, which way it goes, its volume in its note, and
+    // the drawer device_drawer.rs serves beside it.
     function served(name, called, order, sink, level) {
         const key = `row:sound:${name}`;
         return {
@@ -113,6 +114,7 @@ ShellRoot {
                 graph: { shape: "bar", values: [level], warn: false },
                 note: `volume ${Math.round(level * 100)}%`,
                 acts: [{ key: "verb:more", step: "rows" }],
+                drawer: `drawer:sound:${name}`,
                 held: { node: name, sink: sink }
             }
         };
@@ -132,13 +134,6 @@ ShellRoot {
     onTimersChanged: heardNow()
     property int unwatched: 0
     onUnwatchedChanged: heardNow()
-
-    function time(record) {
-        for (const timer of timers) {
-            timer.write(`${JSON.stringify({ id: "all", changed: [record], gone: [] })}\n`);
-            timer.flush();
-        }
-    }
 
     function tell(record) {
         records[record.key] = record;
@@ -573,27 +568,10 @@ ShellRoot {
                 === "Playing At=48 kHz \u00b7 32 bit; Offers=44.1, 48 kHz"
                 && sound.everything()[0].targets().slice(-2).every(one => facts.includes(one)),
             facts.map(one => `${one.key}=${one.side}`).join("; "));
-        const audio = deskSpeakers.audio;
-        const formats = sample => {
-            deskSpeakers.audio = Object.assign({}, audio,
-                { format: { rate: 48000, channels: 2, sample: sample } });
-            return sound.drawerOf(deskSpeakers).facts
-                .filter(one => one.label.endsWith("Format") || one.label === "Playing At")
-                .map(one => `${one.label}=${one.value}`).join("; ");
-        };
-        const float = formats("F32LE");
-        expect("a float graph over an integer card is the Graph Format beside it",
-            float === "Playing At=48 kHz \u00b7 32 bit; Graph Format=48 kHz \u00b7 32 bit float",
-            float);
-        const same = formats("S32LE");
-        expect("one the card already says isn't said again",
-            same === "Playing At=48 kHz \u00b7 32 bit", same);
-        deskSpeakers.audio = audio;
     }
 
     // Its Hardware is served, saying its first figure and holding each a
-    // step in; its drawer says each figure, a USB card's ids marked as
-    // what identifies it, last here, where the stand-in has no Graph ID.
+    // step in.
     function hardwareSaid() {
         const hardware = partOf("hardware");
         expect("its Hardware is served, saying its first figure, each inside",
@@ -601,18 +579,10 @@ ShellRoot {
                 .map(one => `${one.name} ${one.side}`).join(", ")
                 === "USB ID 0d8c:0014, Card Desk Speakers",
             `${hardware?.side}: ${hardware?.targets().map(one => one.name).join(", ")}`);
-        const facts = sound.drawerOf(deskSpeakers).facts;
-        const said = facts.map(one => `${one.label}=${one.value}`).join("; ");
-        const usb = facts[facts.length - 1];
-        expect("its drawer says its card, and its USB ID as what identifies it",
-            facts.some(one => one.label === "Card" && one.value === "Desk Speakers")
-                && usb?.label === "USB ID" && usb.value === "0d8c:0014"
-                && usb.identifies === true, said);
     }
 
     // Its Tuning is served, saying sound passes through it now, each
-    // filter and its level inside; its drawer says each filter at its
-    // level, and its spots know the filter by name.
+    // filter and its level inside, and its spots know the filter by name.
     function tuningSaid() {
         const tuning = partOf("tuning");
         expect("its Tuning is served, saying it's running, each filter inside",
@@ -620,11 +590,6 @@ ShellRoot {
                 .map(one => `${one.name} ${one.side}`).join(", ")
                 === "Filter Speech Clarity, Volume 50%",
             `${tuning?.side}: ${tuning?.targets().map(one => one.name).join(", ")}`);
-        const drawn = sound.drawerOf(deskSpeakers).facts
-            .find(one => one.label === "Tuning");
-        expect("its drawer says it's running, and each filter at its level",
-            String(drawn?.value ?? "").startsWith("running")
-                && String(drawn.value).endsWith("Speech Clarity 50%"), JSON.stringify(drawn));
         expect("its spots know the filter by name", sound.spotsStamp.includes('["clarity"]'),
             sound.spotsStamp);
     }
@@ -656,11 +621,6 @@ ShellRoot {
         expect("its Volume is a setting saying how it's set", volume.offers === true
             && volume.side === "50%" && names(volume.targets()) === "verb:sound-louder",
             `${volume.offers}, ${volume.side}, ${names(volume.targets())}`);
-        const drawn = sound.drawerOf(deskSpeakers).facts
-            .find(fact => fact.label === "Volume");
-        expect("its drawer says its decibels, drawing its share as a stroke",
-            drawn?.value === "-18.1 dB" && drawn?.figure?.shape === "stroke"
-            && drawn.figure.values[0] === 0.5, JSON.stringify(drawn));
         const channels = partOf("channels");
         expect("its Channels are served, saying stereo, each channel at its level inside",
             channels?.side === "stereo" && channels.targets().map(one => `${one.name} ${one.side}`)
@@ -714,8 +674,8 @@ ShellRoot {
                 ["send", "stream:94", deskSpeakers.name]];
             expect("each stream is sent, an ask of the daemon each",
                 sends === JSON.stringify(meant), sends);
-            // The drawer first, as the case runs once the rows are heard.
-            for (const record of [spotifyDrawn].concat(programsServed()))
+            // The drawers first, as the case runs once the rows are heard.
+            for (const record of [spotifyDrawn, speakersDrawn].concat(programsServed()))
                 tell(record);
             when("the programs served", () => partOf("programs")?.targets().length === 1,
                 programmed);
@@ -728,6 +688,18 @@ ShellRoot {
     readonly property string programs: `row:sound:${deskSpeakers.name}:programs`
     readonly property string spotify: `${programs}:program:Spotify`
     readonly property string spotifyDrawer: `drawer:sound:${deskSpeakers.name}:program:Spotify`
+
+    // The speakers' drawer, as device_drawer.rs serves it beside their row,
+    // its Volume's share a stroke and its Graph ID what identifies it.
+    readonly property var speakersDrawn: ({
+        key: `drawer:sound:${deskSpeakers.name}`, kind: "drawer",
+        drawer: { eyebrow: "USB \u00b7 output", title: "Desk Speakers", facts: [
+            { name: "State", said: "running" },
+            { name: "Volume", said: "-18.1 dB",
+                figure: { shape: "stroke", values: [0.5], warn: false } },
+            { name: "Playing", said: "Spotify 40%" },
+            { name: "Graph ID", said: "52", identifies: true }] }
+    })
 
     // Spotify's drawer, as drawer.rs serves it beside the row naming it.
     readonly property var spotifyDrawn: ({
@@ -773,10 +745,13 @@ ShellRoot {
         const playing = partOf("programs");
         expect("the programs playing through it are its Playing, as served",
             playing.side === "Spotify", playing.side);
-        const drawn = sound.drawerOf(deskSpeakers).facts
-            .find(fact => fact.label === "Playing");
-        expect("its drawer's Playing says how loud each plays, in the daemon's words",
-            drawn?.value === "Spotify 40%", JSON.stringify(drawn));
+        const drawn = sound.everything()[0].drawer?.();
+        const said = (drawn?.facts ?? []).map(fact => `${fact.label}=${fact.value}`).join("; ");
+        expect("a device's row draws the drawer served beside it, as served",
+            drawn?.eyebrow === "USB \u00b7 output" && drawn.title === "Desk Speakers"
+                && said === "State=running; Volume=-18.1 dB; Playing=Spotify 40%; Graph ID=52"
+                && drawn.facts[1].figure?.shape === "stroke" && drawn.facts[3].identifies === true,
+            `${drawn?.eyebrow}, ${drawn?.title}: ${said}`);
         const program = playing.targets()[0];
         const drawer = program.drawer?.();
         expect("a program's row is a thing, with the drawer served beside it", program.key
@@ -810,8 +785,8 @@ ShellRoot {
         });
     }
 
-    // The speakers' drawer out: how their node keeps time is watched, and
-    // drawn as the daemon's timing.rs serves it, until the drawer's in.
+    // The speakers' drawer out: how their node keeps time is watched, so
+    // the daemon times it in the drawer it serves, until the drawer's in.
     function timed() {
         expect("nothing's timed while no drawer is out", root.timers.length === 0,
             `${root.timers.length} watching`);
@@ -819,18 +794,8 @@ ShellRoot {
         asking.open = true;
         asking.drawerOut = true;
         when("the timings watched", () => root.timers.length === 1, () => {
-            time({ key: "timing:52", kind: "timing", id: 52, quantum: 1024, rate: 48000,
-                ms: 21.333, busy: 0.0312, unfinished: false, errors: 0, drives: true });
-            when("the timing served", () => sound.timings[52] !== undefined, () => {
-                const drawn = sound.keepingOf({ id: 52 })
-                    .map(fact => `${fact.label}=${fact.value}`).join("; ");
-                expect("a drawer's node keeps time as the daemon serves it", drawn
-                    === "Dropouts=none; Load=3.12% of each cycle; "
-                    + "Cycle=1,024 frames \u00b7 21.3 ms", drawn);
-                asking.drawerOut = false;
-                when("the timings let go", () => root.unwatched === 1
-                    && Object.keys(sound.timings).length === 0, optionsAsked);
-            });
+            asking.drawerOut = false;
+            when("the timings let go", () => root.unwatched === 1, optionsAsked);
         });
     }
 

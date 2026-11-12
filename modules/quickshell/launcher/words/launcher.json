@@ -711,6 +711,8 @@
         "paused-at": "paused at {level}",
         "balanced": "balanced",
         "down": "not answering",
+        "down-serves": "every output and input, and what plays through each",
+        "down-starts": "again as soon as something asks it",
         "cleaner-raw": "no noise cancelling",
         "cleaner-deepfilternet": "DeepFilterNet, full",
         "cleaner-deepfilternet-gentle": "DeepFilterNet, gentle",

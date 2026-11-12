@@ -1,5 +1,5 @@
-//! A program's drawer, served beside its row as a `drawer` record the row
-//! names by key (ready-rows.md's drawers), so what moves most in it, how
+//! A program's drawer, and each device's beside it (`device_drawer.rs`),
+//! served beside its row as a `drawer` record the row names by key (ready-rows.md's drawers), so what moves most in it, how
 //! its streams keep time each second, changes the drawer alone and never
 //! a row. It says what Sound.qml's `programPlate` said (VKCF3Z, 2026-11-08
 //! and 2026-11-09): each of the program's streams on the device, loudest
@@ -20,6 +20,7 @@ use std::cmp::Ordering;
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
+use crate::device_drawer;
 use crate::programs::{Naming, Program, aims, fraction, kilohertz, programs};
 use crate::rows::{APART, Device, PLACE, Words, named, rows};
 
@@ -32,18 +33,25 @@ pub(crate) fn key(device: &Device, program: &str) -> String {
     format!("drawer:{PLACE}:{}:program:{program}", device.name)
 }
 
-/// What a drawer is made from, besides the program it's of.
-struct Around<'a> {
+/// What a drawer is made from, besides the program or device it's of.
+pub(crate) struct Around<'a> {
     devices: &'a [Device<'a>],
     timings: &'a [Value],
-    words: &'a Words,
-    numbers: Numbers,
+    pub(crate) words: &'a Words,
+    pub(crate) numbers: Numbers,
 }
 
-/// The drawer of every program playing through a device Sound lists, or
-/// recording from one, worded from `words`, with how each stream keeps
-/// time where `timings` says it.
-pub fn served(records: &[Value], timings: &[Value], words: &Words, naming: Naming) -> Vec<Value> {
+/// The drawer of every device Sound lists, from the parts `ready` serves
+/// inside its row, and of every program playing through one or recording
+/// from one, worded from `words`, with how each node keeps time where
+/// `timings` says it.
+pub fn served(
+    records: &[Value],
+    ready: &[Value],
+    timings: &[Value],
+    words: &Words,
+    naming: Naming,
+) -> Vec<Value> {
     let devices: Vec<Device> = records.iter().filter_map(Device::of).collect();
     let around = Around {
         devices: &devices,
@@ -57,6 +65,7 @@ pub fn served(records: &[Value], timings: &[Value], words: &Words, naming: Namin
             continue;
         };
         let name = top["name"].as_str().unwrap_or(device.name);
+        drawers.push(device_drawer::drawer(device, name, ready, &around));
         for program in programs(device, records, &devices, naming) {
             drawers.push(drawer(device, name, &program, &around));
         }
@@ -99,7 +108,7 @@ fn drawer(device: &Device, name: &str, program: &Program, around: &Around) -> Va
 }
 
 /// A fact named by the vocabulary's `sound:<id>`, saying `said`.
-fn fact(words: &Words, id: &str, said: &str) -> Value {
+pub(crate) fn fact(words: &Words, id: &str, said: &str) -> Value {
     json!({"name": words.name(&format!("sound:{id}"), &[]), "said": said})
 }
 
@@ -183,8 +192,8 @@ fn stream_facts(
 /// timings: its Dropouts, warning past none; its Load, how much of each
 /// cycle it's busy, with a stroke beside it, and over the whole of it,
 /// warning, where it hadn't finished; and its Cycle. None while its time
-/// isn't told.
-fn keeping(stream: &Value, around: &Around) -> Vec<Value> {
+/// isn't told. A device keeps time as a stream does.
+pub(crate) fn keeping(stream: &Value, around: &Around) -> Vec<Value> {
     let (words, numbers) = (around.words, &around.numbers);
     let Some(timed) = around
         .timings
@@ -251,7 +260,7 @@ fn filter_of(stream: &Value, device: &Device, around: &Around) -> String {
 /// The format the sound server moves a stream's audio in, "48 kHz · 32
 /// bit float", its rate to three significant digits, as Sounds.js's
 /// `graphFormat`; "" while it has none. Its channels are said elsewhere.
-fn graph_format(format: &Value, numbers: &Numbers) -> String {
+pub(crate) fn graph_format(format: &Value, numbers: &Numbers) -> String {
     let Some(hertz) = format["rate"].as_f64().filter(|hertz| *hertz > 0.0) else {
         return String::new();
     };
@@ -285,4 +294,4 @@ fn sampled(name: &str) -> String {
 
 #[cfg(test)]
 #[path = "drawer_tests.rs"]
-mod tests;
+pub(crate) mod tests;

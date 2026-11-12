@@ -1,33 +1,12 @@
 // What the launcher's Sound makes of what a device and a stream say of
 // themselves, in plain JavaScript so a check can run it in Qt's own engine,
-// as the shell does: how much a stream asks for at once and at what rate,
-// a channel's name as it's said, a level in decibels, whether a device's
-// jack has anything plugged in and whether that's still current,
-// the ports its card offers it and how they're read, one at a time, and
-// what a Bluetooth device's sound is for. Sound.qml reads the nodes and
-// draws the rows.
+// as the shell does: a level in decibels and a step louder or quieter, a
+// program's streams together, what a device is called, and what a
+// Bluetooth device's sound is for. Sound.qml reads the nodes and draws the
+// rows; what a device's drawer says, its formats, channels and timing, is
+// the sound daemon's (modules/sound's device_drawer.rs).
 .pragma library
 
-// A stream's "frames/rate", as it asks for its latency or says its rate.
-const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
-const PERCENT = 100;
-// A channel's name runs its words together: FrontLeft.
-const WORD_START = /([a-z0-9])([A-Z])/g;
-const FRONT = /^front /;
-const HERTZ_PER_KILOHERTZ = 1000;
-const MILLISECONDS = 1000;
-// A rate names a format, as "44.1 kHz" or "176 kHz", in three significant
-// digits without the zeros a measure keeps, since a name keeps its own digits
-// (VKCF3Z, 2026-11-08) and the card's own figures say it so.
-const SIGNIFICANT = 3;
-// A sample format as the sound server names it short: signed, unsigned or
-// floating, its bits, then how it's laid out, S24_32LE or F32LE.
-const SAMPLE = /^([SUF])(\d+)/;
-// The units a figure is said in, as desk-facts says a card's.
-const KILOHERTZ = "kHz";
-const BITS = "bit";
-const FLOATING = "float";
-const APART = " \u00b7 ";
 // A level is a share of the whole cubed, as the sound server and wpctl
 // give it, so its gain in decibels is twenty times the log of the cube.
 const DECIBELS_CUBED = 60;
@@ -50,105 +29,6 @@ const BUILT_IN = [
 // A Bluetooth headset's microphone, which the sound server names as it
 // does the headset itself.
 const HEADSET_INPUT = /^bluez_input\./;
-
-// A rate in Hz as it's said: 44100 is "44.1 kHz", 48000 "48 kHz".
-function kilohertz(hertz) {
-    const whole = hertz % HERTZ_PER_KILOHERTZ === 0;
-    return `${(hertz / HERTZ_PER_KILOHERTZ).toFixed(whole ? 0 : 1)} kHz`;
-}
-
-// What a stream's "frames/rate" says: { frames, hertz, ms }, or null.
-function fraction(text) {
-    const found = FRACTION.exec(String(text ?? ""));
-    if (!found || Number(found[2]) === 0) {
-        return null;
-    }
-    const frames = Number(found[1]);
-    const hertz = Number(found[2]);
-    return { frames, hertz, ms: (frames / hertz) * MILLISECONDS };
-}
-
-// A sample format's bits, as desk-facts says a card's, a floating one said
-// so: S32LE is "32 bit", F32LE "32 bit float", one it can't read its
-// own short name. S24_32LE is "24 bit": the bits it holds are its
-// resolution, while its 32-bit container and its byte order are how
-// the graph lays them in memory, which no figure Joel reads turns on,
-// so they're left out, as desk-facts leaves a card's out.
-function sample(name) {
-    const found = SAMPLE.exec(String(name ?? ""));
-    if (!found) {
-        return String(name ?? "");
-    }
-    return [`${found[2]} ${BITS}`].concat(found[1] === "F" ? [FLOATING] : []).join(" ");
-}
-
-// The format the sound server moves a node's audio in, as pipewire's
-// Format says it: "48 kHz · 32 bit float", its rate to three significant
-// digits; "" while it has none. Its channels are its Channels' to say.
-function graphFormat(format) {
-    if (!format || !(format.rate > 0)) {
-        return "";
-    }
-    const measured = Number((format.rate / HERTZ_PER_KILOHERTZ).toPrecision(SIGNIFICANT));
-    return [`${measured} ${KILOHERTZ}`].concat(format.sample ? [sample(format.sample)] : [])
-        .join(APART);
-}
-
-// Whether the card already says the format the graph moves: its running
-// stream's figures, "48 kHz · 32 bit · period 21.3 ms (1024)", open with
-// the same rate and bits. They're compared whole, since a graph in float
-// over a card in integer is the difference Graph Format is there to show,
-// and desk-facts names a float card's format by ALSA's name, FLOAT_LE.
-function sameFormat(graph, card) {
-    return card === graph || String(card ?? "").startsWith(`${graph}${APART}`);
-}
-
-// How much of each cycle a node was busy, in percent: 0.0312 is 3.12.
-// It's said to three significant digits by Numbers.significant, the
-// one rule every measure keeps.
-function load(busy) {
-    return busy * PERCENT;
-}
-
-// A cycle's length in milliseconds, as the sound daemon serves it
-// (modules/sound's timing.rs), said by the same rule: a quantum of 1024
-// at 48 kHz is 21.333, said 21.3.
-function cycleMs(timed) {
-    return timed.ms;
-}
-
-// A stream's rate, from its "1/44100".
-function rate(text) {
-    const said = fraction(text);
-    return said && said.frames === 1 ? kilohertz(said.hertz) : "";
-}
-
-// A channel's name as the sound server spells it, said as words:
-// FrontLeft is "Front left".
-function channel(name) {
-    const words = String(name).replace(WORD_START, "$1 $2").toLowerCase();
-    return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-// A device's channels each at its level, as its drawer says them after
-// its layout (VKCF3Z, 2026-11-07): `balanced` alone where every one is
-// at the same level, since a part equal to the rest gives way; and
-// otherwise each by its name and level, a stereo pair's without "front",
-// as it has no back: ["left 100%", "right 80%"]. `names` are as channel()
-// says them, `levels` as shown.
-function channelLevels(names, levels, balanced) {
-    if (levels.length === 0) {
-        return [];
-    }
-    if (levels.every((level) => level === levels[0])) {
-        return [balanced];
-    }
-    const pair = names.length === 2;
-    return names.map((name, at) => {
-        const said = name.toLowerCase();
-        return `${pair ? said.replace(FRONT, "") : said} ${levels[at] ?? ""}`.trim();
-    });
-}
 
 // Each stream by the program it's of, in the order first heard, so a
 // program with two streams is one part.
