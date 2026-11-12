@@ -142,6 +142,22 @@ ShellRoot {
         programs();
         gotten();
         partsKept();
+        downDrawn();
+    }
+
+    // With the daemon not answering, its one row's drawer says a little
+    // more than its line: what it serves, its service, and that the next
+    // ask starts it again (Y2YBTS's drawer sweep, 2026-11-12).
+    function downDrawn() {
+        const drawer = sound.downRow().drawer;
+        const facts = (drawer?.facts ?? []).map(fact => `${fact.label}=${fact.value}`);
+        const wanted = [`${Words.name("sound:state")}=${sound.said("down")}`,
+            `${Words.name("sound:down:serves")}=${sound.said("down-serves")}`,
+            `${Words.name("sound:down:service")}=sound.service`,
+            `${Words.name("sound:down:starts")}=${sound.said("down-starts")}`];
+        expect("the daemon down, its row's drawer says so and what it serves",
+            drawer?.title === Words.name("sound:down") && facts.join("; ") === wanted.join("; "),
+            `${drawer?.title}: ${facts.join("; ")}`);
     }
 
     // Shut, a device's parts asked for again with nothing moved, as its

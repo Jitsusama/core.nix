@@ -129,6 +129,21 @@
       "name": "The Sound Daemon"
     },
     {
+      "id": "sound:down:serves",
+      "in": "sound:down",
+      "name": "Serves"
+    },
+    {
+      "id": "sound:down:service",
+      "in": "sound:down",
+      "name": "Service"
+    },
+    {
+      "id": "sound:down:starts",
+      "in": "sound:down",
+      "name": "Starts"
+    },
+    {
       "id": "sound:resolution",
       "in": "sound",
       "name": "Resolution"

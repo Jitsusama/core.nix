@@ -338,14 +338,26 @@ Provider {
 
     // With the daemon not answering, one row says so, since none listed
     // would read as the machine having no sound. Its socket is systemd's,
-    // so the next ask starts it again.
+    // so the next ask starts it again, as its drawer says, beside what it
+    // serves and its service, the name its log is read by.
     function downRow() {
+        const fact = (id, value) => ({ label: Words.name(id), value: value });
         return thing({
             key: "sound:down",
             name: Words.name("sound:down"),
             note: said("down"),
             glyph: Theme.glyph.caution,
-            hue: "warning"
+            hue: "warning",
+            drawer: {
+                eyebrow: said("joined-here"),
+                title: Words.name("sound:down"),
+                facts: [fact("sound:state", said("down")),
+                    fact("sound:down:serves", said("down-serves")),
+                    Object.assign(fact("sound:down:service", "sound.service"),
+                        { identifies: true }),
+                    fact("sound:down:starts", said("down-starts"))],
+                body: ""
+            }
         });
     }
 
