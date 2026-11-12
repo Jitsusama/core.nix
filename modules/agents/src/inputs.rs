@@ -6,6 +6,9 @@
 //! Joel said of those, and whether the shell says the screen is shared.
 //! Each source changes its own part, and `made` makes every record from
 //! all of them.
+//!
+//! Long because its cases are near half of it: each feeds several sources
+//! at once to show how they meet in one record, which only this file can.
 
 use std::collections::{HashMap, HashSet};
 
