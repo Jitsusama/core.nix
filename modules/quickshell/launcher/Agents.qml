@@ -543,21 +543,67 @@ Provider {
 
     function drawerOf(address) {
         const key = `drawer:agents:${address}`;
-        // A drawer opening is Joel reading what its session answered him,
-        // which the daemon says in the talk's own file, once a drawer.
         if (key !== drawerWanted)
             Qt.callLater(() => {
                 if (provider.drawerWanted === key)
                     return;
                 provider.drawerWanted = key;
-                rowsKind?.ask({ ask: "heard", address });
+                staying.stop();
+                staying.address = "";
             });
         void rowsKind?.revision;
         const made = rowsKind?.held?.[key]?.drawer ?? null;
+        // The stay is counted from when the drawer shows what it holds,
+        // which the daemon serves a moment after it's asked for.
+        if (made !== null && staying.address !== address)
+            Qt.callLater(() => {
+                if (provider.drawerWanted !== key || staying.address === address)
+                    return;
+                staying.address = address;
+                staying.restart();
+            });
         return made === null ? null : SessionDrawer.shown(made, {
             clock: at => started(at),
             since: word("since")
         });
+    }
+
+    // A drawer kept on its session's row is Joel reading what that session
+    // answered him, which the daemon says in the talk's own file. The
+    // drawer follows the cursor, so one only passed over on the way down
+    // isn't read: it must stay two seconds, as a window must before the
+    // sorter holds it (VKCF3Z, 2026-11-12, on #3547).
+    Timer {
+        id: staying
+
+        property string address: ""
+
+        interval: 2000
+        onTriggered: {
+            const launcher = provider.launcher;
+            if (launcher?.open && provider.drawerWanted === `drawer:agents:${address}`
+                && String(launcher.selected?.key ?? "") === `agent:${address}`)
+                provider.heard(address);
+        }
+    }
+    // The cursor leaving the row ends the stay, so coming back counts
+    // two seconds afresh.
+    Connections {
+        target: provider.launcher
+
+        function onSelectedChanged() {
+            const launcher = provider.launcher;
+            if (staying.address !== ""
+                && String(launcher?.selected?.key ?? "") !== `agent:${staying.address}`) {
+                staying.stop();
+                staying.address = "";
+            }
+        }
+    }
+
+    // Joel has read what a session answered him.
+    function heard(address) {
+        rowsKind?.ask({ ask: "heard", address });
     }
 
     // What the foot says once words have gone to a session.
@@ -677,7 +723,11 @@ Provider {
         }, fields));
         const steered = what => () => provider.actOn(current(), what);
         const made = {
-            switch: () => act("switch", { later: true, run: () => Sessions.goTo(current()) }),
+            // Going to the session is reading its answer there.
+            switch: () => act("switch", { later: true, run: () => {
+                provider.heard(session.address);
+                Sessions.goTo(current());
+            } }),
             talk: () => act("talk", {
                 ask: Words.of("verb:agent:talk").ask ?? "",
                 chip: session.title,
