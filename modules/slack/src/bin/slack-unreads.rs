@@ -16,7 +16,9 @@
 //! Slack's read mark passes it (lib's `messages`), so nothing more is
 //! asked of Slack than once a round, and nothing while nothing comes.
 //! The account says when those held are all there are, so one missing
-//! after a restart is known read.
+//! after a restart is known read. A few more of the conversations he's
+//! read are named each round too, so each one's read mark is said by its
+//! name and Slack's own notices of it are read once he's read past them.
 //!
 //! While Slack refuses the sign-in, signing in again waits on Joel in
 //! For You, through WAITING, a file of what waits on him as each
@@ -37,14 +39,14 @@
 //! can't read, it says so and serves no rows, and the shell makes its
 //! own.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use slack_people::messages::Messages;
 use slack_people::rows::Words;
 use slack_people::unreads::{
-    Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
+    self, Conversation, Counted, Counts, Kind, Said, State, link, sign_in_waits,
 };
 use slack_people::{Account, Refused, Slack};
 
@@ -54,6 +56,13 @@ const EVERY: Duration = Duration::from_secs(30);
 /// How many asks in a row may fail before Slack is said to be out of
 /// reach.
 const MISSES: u32 = 2;
+
+/// How many conversations he's read are named each round beyond those
+/// unread or recent, so their read marks can be said by name: a few
+/// hundred are named within some minutes of a start, while each round
+/// asks Slack at most twice this many more times, well within what
+/// `conversations.info` and `users.info` allow a minute.
+const NAMED_EACH_ROUND: usize = 10;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -82,6 +91,8 @@ fn main() {
         .map_or(EVERY, Duration::from_millis);
     let credentials = PathBuf::from(credentials);
     let mut names = HashMap::new();
+    // Those Slack named nothing, so each is asked once a run.
+    let mut nameless = HashSet::new();
     // Who each person is, shared with the daemon's searches.
     let mut messages = Messages::sharing(daemon.people());
     let mut misses = 0;
@@ -104,7 +115,8 @@ fn main() {
                 let conversations = named(&slack, &account, &mut names, unread)?;
                 let recent = named(&slack, &account, &mut names, recent)?;
                 messages.heard(&slack, &account, &conversations, &read, checked)?;
-                Ok((conversations, recent))
+                name_more(&slack, &account, &mut names, &mut nameless, &read)?;
+                Ok((conversations, recent, unreads::seen(&read, &names)))
             },
         );
         // The messages wanting Joel are kept through Slack refusing or out
@@ -116,10 +128,11 @@ fn main() {
             recent: Vec::new(),
             messages: messages.raised(),
             marks: messages.marks(),
+            seen: Vec::new(),
             whole: false,
         };
         let said = match asked {
-            Ok((conversations, recent)) => {
+            Ok((conversations, recent, seen)) => {
                 misses = 0;
                 Some(Said {
                     state: State::Ok,
@@ -127,6 +140,7 @@ fn main() {
                     recent,
                     messages: messages.raised(),
                     marks: messages.marks(),
+                    seen,
                     whole: messages.whole(),
                 })
             }
@@ -222,6 +236,44 @@ fn named(
         eprintln!("<4>{why}");
     }
     Ok(listed)
+}
+
+/// Names a few more of the conversations he's read each round, the last
+/// read first (lib's `unreads::unnamed`), so each one's read mark can be
+/// said by the name Slack's own notices give it. One Slack names nothing
+/// isn't asked again this run; Slack too busy ends this round's naming,
+/// said once, and it carries on next round.
+fn name_more(
+    slack: &Slack,
+    account: &Account,
+    names: &mut HashMap<String, String>,
+    nameless: &mut HashSet<String>,
+    read: &BTreeMap<String, String>,
+) -> Result<(), Refused> {
+    let next: Vec<String> = unreads::unnamed(
+        read,
+        |id| names.contains_key(id) || nameless.contains(id),
+        NAMED_EACH_ROUND,
+    )
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for id in next {
+        match slack.called(account, &id) {
+            Ok(name) if !name.is_empty() => {
+                names.insert(id, name);
+            }
+            Ok(_) => {
+                nameless.insert(id);
+            }
+            Err(Refused::SignedOut) => return Err(Refused::SignedOut),
+            Err(Refused::Unreachable(why)) => {
+                eprintln!("<4>{why}");
+                break;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Asks Joel to sign in again in For You, or stops asking, writing or

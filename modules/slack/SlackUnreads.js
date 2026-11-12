@@ -41,7 +41,7 @@ function listable(one) {
 // Each kind of record the daemon holds, by the part of what's gathered
 // it makes, and the one key the account is held by.
 const PARTS = { "slack-unread": "conversations", "slack-recent": "recent",
-    "slack-message": "messages", "slack-account": "account" };
+    "slack-message": "messages", "slack-seen": "seen", "slack-account": "account" };
 const ACCOUNT = "slack-account:slack";
 
 // What's kept of the daemon's records: the account, and each other kind's
@@ -49,7 +49,8 @@ const ACCOUNT = "slack-account:slack";
 // (Daemon.qml's heard) rather than walking all held, 400 on Joel's shell
 // at a change a minute, with the launcher shut too (RCTRF8, 2026-11-10).
 function keeping() {
-    return { account: null, "slack-unread": {}, "slack-recent": {}, "slack-message": {} };
+    return { account: null, "slack-unread": {}, "slack-recent": {}, "slack-message": {},
+        "slack-seen": {} };
 }
 
 // Takes what `held` (Daemon.qml's) says of these keys into `kept`, and
@@ -106,6 +107,12 @@ function recentOf(kept) {
 function messagesOf(kept) {
     return Object.values(kept["slack-message"]).filter(listable)
         .sort((one, other) => (other.at - one.at) || other.ts.localeCompare(one.ts));
+}
+
+// Slack's read mark for each conversation the daemon has named,
+// { id, name, read } (src/unreads.rs's Seen), in no order.
+function seenOf(kept) {
+    return Object.values(kept["slack-seen"]);
 }
 
 // Every part kept, listed.
@@ -286,7 +293,8 @@ const CUT_PAST = 360;
 // raise one within a second or so (median 0.3 s over 108 kept, the
 // slowest under two minutes), and its clock and the machine's may differ
 // by a few seconds either way.
-const NOTICED_WITHIN = 5 * 60 * 1000;
+const SECOND = 1000;
+const NOTICED_WITHIN = 5 * 60 * SECOND;
 const CLOCKS_APART = 10 * 1000;
 // The fewest words two texts must share where one is cut short, so a
 // greeting or a lone "ok" stands only for its own words.
@@ -422,6 +430,41 @@ function readInSlack(notices, all) {
     return matched.filter(each => each.unread && each.of.length === 1
         && claimed.get(keyOf(each.of[0])) === 1 && readAfter(each.of[0], each.at))
         .map(each => each.id);
+}
+
+// The ids of Slack's own notices still unread whose conversation Joel has
+// read in Slack past them, by Slack's read mark for it (`seen`, the
+// daemon's slack-seen records), for the notices no message it holds
+// stands for: a channel's that doesn't mention him above all, which
+// readInSlack can never read (2026-11-11: 416 of Joel's 417 open, in 32
+// conversations he'd read in Slack since). A notice names its
+// conversation as the daemon does, a channel by its name, with a # or for
+// a private one without, and a direct message by whose it is, so it's read
+// only where one conversation alone goes by that name. A group's never is,
+// since its notice names it by its title or its members' full names and
+// the daemon by their handles. One come within the seconds the clocks may
+// be apart after its mark is taken for the message the mark is at, since
+// Slack notices only of a conversation he isn't looking at.
+function seenRead(notices, seen) {
+    const bare = name => (name.startsWith("#") ? name.slice(1) : name);
+    const marks = Object.create(null);
+    for (const one of seen ?? []) {
+        if (typeof one?.name === "string" && typeof one.read === "string"
+            && !one.name.includes(", ")) {
+            const name = bare(one.name);
+            marks[name] = name in marks ? null : one;
+        }
+    }
+    const read = [];
+    for (const notice of notices ?? []) {
+        const said = notice?.read === true || !isSlacks(notice) ? null
+            : NOTICE.exec(String(notice.summary ?? ""));
+        const mark = said === null ? null : marks[bare(said[2])];
+        if (mark && Number(mark.read) * SECOND >= notice.at - CLOCKS_APART) {
+            read.push(notice.id);
+        }
+    }
+    return read;
 }
 
 // A message held with its words, and whether the daemon may have cut it,

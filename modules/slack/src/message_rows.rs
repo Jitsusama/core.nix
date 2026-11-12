@@ -198,6 +198,7 @@ mod tests {
             recent: Vec::new(),
             messages: messages.to_vec(),
             marks: Vec::new(),
+            seen: Vec::new(),
             whole: false,
         };
         let words = rows::Words {
