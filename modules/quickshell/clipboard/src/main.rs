@@ -1323,13 +1323,14 @@ fn settings() -> Result<Settings, String> {
     })
 }
 
-/// Emoji's rows, from the list `--emoji` names, or none without one.
-fn emoji_rows(list: Option<&Path>) -> Result<Vec<Value>, String> {
+/// Emoji's rows, from the list `--emoji` names, or none without one,
+/// their drawers worded from the launcher's vocabulary.
+fn emoji_rows(list: Option<&Path>, words: &Words) -> Result<Vec<Value>, String> {
     list.map_or_else(
         || Ok(Vec::new()),
         |list| {
             fs::read_to_string(list)
-                .map(|text| emoji::records(&text))
+                .map(|text| emoji::records(&text, words))
                 .map_err(|e| format!("can't read {}: {e}", list.display()))
         },
     )
@@ -1342,7 +1343,7 @@ fn lost(error: impl std::fmt::Display) -> String {
 fn run() -> Result<(), String> {
     let settings = settings()?;
     let words = worded(&settings.vocabulary)?;
-    let emoji = emoji_rows(settings.emoji.as_deref())?;
+    let emoji = emoji_rows(settings.emoji.as_deref(), &words)?;
     if let Some(dir) = &settings.pictures {
         prepared(dir).map_err(|e| format!("can't keep pictures in {}: {e}", dir.display()))?;
     }

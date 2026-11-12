@@ -15,6 +15,16 @@
       "name": "Copy",
       "verb": "copy",
       "glyph": "copy"
+    },
+    {
+      "id": "emoji:keywords",
+      "in": "emoji",
+      "name": "Keywords"
+    },
+    {
+      "id": "emoji:code",
+      "in": "emoji",
+      "name": "Code Points"
     }
   ]
 }
