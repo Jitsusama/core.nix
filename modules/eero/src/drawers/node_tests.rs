@@ -74,7 +74,10 @@ fn a_node_leads_with_what_its_row_lacks_then_which_it_is() {
 #[test]
 fn a_node_says_its_state_only_where_it_isnt_online() {
     let mut model = model();
-    assert!(named_fact(&drawn(&model, "2003"), "State").is_none());
+    assert!(
+        named_fact(&drawn(&model, "2003"), "State").is_none(),
+        "no state for a node online"
+    );
     model.nodes[0].state = Some("OFFLINE".to_owned());
 
     let hall = drawn(&model, &model.nodes[0].id);
@@ -151,7 +154,10 @@ fn a_nodes_devices_say_how_they_are_on() {
     );
     model.nodes[at].devices = given(0, 0, 0);
 
-    assert!(named_fact(&drawn(&model, "2002"), "Devices").is_none());
+    assert!(
+        named_fact(&drawn(&model, "2002"), "Devices").is_none(),
+        "no devices fact for a node eero counts none on"
+    );
 }
 
 #[test]
@@ -228,7 +234,10 @@ fn a_radio_with_no_history_is_busy_as_a_stroke_and_sparks_no_power() {
         under(&hall, "How Busy")[1]["figure"],
         json!({"shape": "stroke", "values": [0.41], "warn": false})
     );
-    assert!(under(&hall, "Transmit Power")[1].get("figure").is_none());
+    assert!(
+        under(&hall, "Transmit Power")[1].get("figure").is_none(),
+        "no figure for a power with no history"
+    );
 }
 
 #[test]
@@ -337,13 +346,15 @@ fn each_device_not_on_now_under_the_node_it_was_last_on() {
     assert!(
         off(&model, "2001")
             .iter()
-            .any(|fact| fact["name"] == "02:00:00:00:00:1b")
+            .any(|fact| fact["name"] == "02:00:00:00:00:1b"),
+        "a device off with no name, by its hardware address"
     );
     model.devices_off.clear();
     assert!(
         facts(&drawn(&model, "2001"))
             .iter()
-            .all(|fact| fact["heading"] != "Not on Now")
+            .all(|fact| fact["heading"] != "Not on Now"),
+        "no heading over no devices off"
     );
 }
 
@@ -399,5 +410,8 @@ fn every_node_has_its_drawer_served_and_its_row_names_it() {
             .map(|node| json!(key(&node.id)))
             .collect::<Vec<_>>()
     );
-    assert!(served.iter().all(|record| record["kind"] == DRAWER));
+    assert!(
+        served.iter().all(|record| record["kind"] == DRAWER),
+        "each is a drawer's record"
+    );
 }
