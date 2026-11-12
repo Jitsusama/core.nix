@@ -5,18 +5,21 @@
 //! steering its session through the node (acts.rs); and serves the
 //! sessions there are to reopen, keeping what Joel says of them
 //! (reopen.rs), what the sessions landed, keeping what of it he has
-//! read (landed.rs), and the closed orchestrators (closed.rs).
+//! read (landed.rs), the closed orchestrators (closed.rs), and what the
+//! sessions answered of his talks, saying where he read it (answered.rs).
 //!
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
-//! --kept KEPT --landed LANDED --shells SHELLS --socket SOCKET`, where
+//! --kept KEPT --landed LANDED --steer STEER --shells SHELLS --socket
+//! SOCKET`, where
 //! WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
 //! budgets.json read from beside it), ORCHESTRATORS the harness's list of
 //! them, RESTORE its list of sessions to reopen, KEPT the daemon's own
 //! file of what Joel said of those, LANDED its file of the landings he
-//! has read, and SHELLS the launcher's own folders, where it kept them
+//! has read, STEER the harness's steer folders, which keep each
+//! session's talks, and SHELLS the launcher's own folders, where it kept them
 //! before the daemon did. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
@@ -57,8 +60,8 @@ const DOMAIN: Domain = Domain {
 
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
                      --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
-                     --restore RESTORE --kept KEPT --landed LANDED --shells SHELLS \
-                     --socket SOCKET";
+                     --restore RESTORE --kept KEPT --landed LANDED --steer STEER \
+                     --shells SHELLS --socket SOCKET";
 
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
@@ -75,6 +78,7 @@ struct Args {
     restore: PathBuf,
     kept: PathBuf,
     landed: PathBuf,
+    steer: PathBuf,
     shells: PathBuf,
     socket: PathBuf,
 }
@@ -96,6 +100,7 @@ fn args() -> Option<Args> {
         restore: named("--restore")?,
         kept: named("--kept")?,
         landed: named("--landed")?,
+        steer: named("--steer")?,
         shells: named("--shells")?,
         socket: named("--socket")?,
     })
@@ -164,6 +169,17 @@ fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>) -> Own {
             let _ = told.send(Heard::Read(keys, i64::try_from(now).unwrap_or(0)));
             return Some(json!({"read": count}));
         }
+        // Joel opens a session's drawer, by its address, so he's read what
+        // it answered him, if anything.
+        if said["ask"] == "heard" {
+            let Some(address) = said["address"].as_str().filter(|one| !one.is_empty()) else {
+                return Some(json!({"error": {"code": "not-an-ask",
+                    "message": "a heard names no `address`"}}));
+            };
+            let now = i64::try_from(now).unwrap_or(0);
+            let _ = told.send(Heard::Opened(address.to_owned(), now));
+            return Some(json!({"heard": address}));
+        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -203,6 +219,7 @@ fn main() -> ExitCode {
         sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
         sources::follow(node.clone(), "job", Heard::Jobs, to.clone());
         sources::follow(node.clone(), "quest", Heard::Quests, to.clone());
+        sources::follow(node.clone(), "talk", Heard::Talks, to.clone());
         sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
@@ -214,6 +231,7 @@ fn main() -> ExitCode {
         restore: args.restore,
         kept: args.kept,
         landed: args.landed,
+        steer: args.steer,
         shells: args.shells,
     };
     if let Err(why) = sources::follow_files(&paths, to) {

@@ -242,10 +242,10 @@ def shell() -> Iterator[Shell]:
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     # It serves the harness's quests, as the account's node does (modules/mycelium/home.nix),
-    # which say how each closed orchestrator reopens.
+    # which say how each closed orchestrator reopens, and the talks in the steer inboxes.
     serves = logs / "serves.json"
     quest = {"file": str(WORKFLOW / "quests.json"), "records": "quests", "key": "id"}
-    serves.write_text(json.dumps({"quest": quest}))
+    serves.write_text(json.dumps({"quest": quest, "talk": {"talks": str(STEER)}}))
     with (logs / "mycelium.log").open("w") as log:
         # The node is the store's own, which the check names.
         node = subprocess.Popen(  # noqa: S603
@@ -273,7 +273,7 @@ def shell() -> Iterator[Shell]:
              "--orchestrators", str(WORKFLOW / "orchestrators.json"),
              "--restore", str(RESTORE),
              "--kept", str(STATE / "agents/reopen.json"),
-             "--landed", str(STATE / "agents/landed.json"),
+             "--landed", str(STATE / "agents/landed.json"), "--steer", str(STEER),
              "--shells", str(STATE / "quickshell/by-shell"), "--socket", str(ROWS)],
             stdout=log, stderr=log,
         )  # fmt: skip
@@ -716,6 +716,61 @@ def test_agents_says_how_its_sessions_stand_together_at_home_and_found_by_name(
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "1 working \u00b7 $215 today")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["agents"])
+
+
+def agents_at_home(shell: Shell) -> str:
+    """Give what home's Agents row says, the launcher opened at home."""
+    shown = shell.showing()
+    reads = [thing["reads"] for thing in shown["things"] if thing["is"] == "collection:agents"]
+    return reads[0] if reads else ""
+
+
+def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
+    shell: Shell,
+) -> None:
+    """A session that answered Joel's talk is counted at home, calmly, until he reads it.
+
+    Its drawer leads with what he asked and what came back; opening it is reading it, which
+    the daemon says in the talk's own file, so the count goes, but the drawer keeps it there
+    while he reads (Joel, 2026-11-11: "how do i know when a sessions answers a talk?").
+    """
+    asked, answer = "is the harbour light lit?", "Yes, since nine, and the fog has lifted."
+    replies = STEER / "LISTEN" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    talk = replies / "talk-1794414593809.jsonl"
+    lines = [
+        {"stage": "delivered", "at": "2026-11-11T21:00:00.000Z", "session": "s-listen",
+         "from": "joel", "text": asked},
+        {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": answer},
+    ]  # fmt: skip
+    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    try:
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
+        shell.close_launcher()
+        found(shell, "listening quest", "Listening Quest")
+        # The answer says when it came after it, as a landing does.
+        answered = f"{answer} \u00b7 Wed 11 Nov, 21:01"
+        shell.launcher_until(
+            lambda shown: (
+                (shown["drawer"] or {}).get("facts", [])[:2] == ["You Asked", "Its Answer"]
+                and shown["drawer"]["values"][:2] == [asked, answered]
+            )
+        )
+        deadline = time.monotonic() + 10
+        while '"stage":"read"' not in talk.read_text():
+            assert time.monotonic() < deadline, talk.read_text()
+            time.sleep(0.1)
+        # Read, it's still there to read on.
+        assert shell.showing()["drawer"]["values"][:2] == [asked, answered], shell.showing()
+        shell.close_launcher()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda _: "answer" not in agents_at_home(shell))
+    finally:
+        talk.unlink()
 
 
 def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_first(

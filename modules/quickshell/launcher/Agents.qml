@@ -527,9 +527,14 @@ Provider {
 
     function drawerOf(address) {
         const key = `drawer:agents:${address}`;
+        // A drawer opening is Joel reading what its session answered him,
+        // which the daemon says in the talk's own file, once a drawer.
         if (key !== drawerWanted)
             Qt.callLater(() => {
+                if (provider.drawerWanted === key)
+                    return;
                 provider.drawerWanted = key;
+                rowsKind?.ask({ ask: "heard", address });
             });
         void rowsKind?.revision;
         const made = rowsKind?.held?.[key]?.drawer ?? null;

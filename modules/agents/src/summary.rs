@@ -8,11 +8,13 @@ use crate::standing::Stands;
 /// all spent today as spend-watch sums it (`spent`, "" while it's unsaid
 /// or the screen is shared): those needing Joel first, as what waits on
 /// him comes first everywhere it's said, then those working, then the
-/// day's dollars, "1 needs you · 3 working · $214 today". With none
+/// day's dollars, "1 needs you · 3 working · $214 today", the answers
+/// to his talks he hasn't read (`answers`) just after those needing him,
+/// "1 needs you · 1 answer · 3 working" (Joel, 2026-11-11). With none
 /// needing him nor working, it names how the rest stand in the fold's
 /// words and order, "3 listening, 1 paused", the parked not among them,
 /// and nothing for what isn't there.
-pub fn summary(states: &[Stands], spent: &str, said: &Said) -> String {
+pub fn summary(states: &[Stands], answers: usize, spent: &str, said: &Said) -> String {
     let count = |stands: Stands| states.iter().filter(|one| **one == stands).count();
     let filled = |key: &str, many: usize| said.fill(key, &[("count", &many.to_string())]);
     let (needing, working) = (count(Stands::Needs), count(Stands::Working));
@@ -34,6 +36,11 @@ pub fn summary(states: &[Stands], spent: &str, said: &Said) -> String {
             0 => String::new(),
             1 => filled("needsCount", 1),
             _ => filled("needCount", needing),
+        },
+        match answers {
+            0 => String::new(),
+            1 => filled("answerCount", 1),
+            _ => filled("answersCount", answers),
         },
         if working > 0 {
             filled("workingCount", working)
@@ -87,7 +94,36 @@ mod tests {
                         .expect("a known state")
                 })
                 .collect();
-            assert_eq!(summary(&stands, spent, &said), want, "together, {states:?}");
+            assert_eq!(
+                summary(&stands, 0, spent, &said),
+                want,
+                "together, {states:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_answers_joel_hasnt_read_come_just_after_who_needs_him() {
+        let said =
+            Said::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read");
+        let cases = [
+            (
+                &[Stands::Needs, Stands::Working][..],
+                1,
+                "1 needs you · 1 answer · 1 working",
+            ),
+            (
+                &[Stands::Listening, Stands::Listening][..],
+                2,
+                "2 answers · 2 listening",
+            ),
+        ];
+        for (stands, answers, want) in cases {
+            assert_eq!(
+                summary(stands, answers, "", &said),
+                want,
+                "with {answers} answers"
+            );
         }
     }
 }

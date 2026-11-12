@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use daemon_serve::watch::Held;
 use serde_json::Value;
 
+use crate::answered::{self, Answer};
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -39,6 +40,8 @@ pub struct Inputs {
     pub quests: Held,
     /// What of those Joel has read.
     pub read: Reading,
+    /// The node's `talk` records, Joel's talks with each session.
+    pub talks: Held,
     /// The to-do daemon's `to-do` records.
     pub to_dos: Held,
     /// The windows daemon's `window` records.
@@ -246,6 +249,21 @@ impl Inputs {
         )
     }
 
+    /// What sessions running or parked answered of Joel's talks, read or
+    /// not, while each talk is the session's newest (answered.rs).
+    pub fn answers(&self) -> Vec<Answer> {
+        let live: HashSet<&str> = self
+            .sessions
+            .records()
+            .map(|(_, one)| Session(one))
+            .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
+            .map(Session::address)
+            .collect();
+        answered::answers(self.talks.records().map(|(_, one)| one), &|address| {
+            live.contains(address)
+        })
+    }
+
     /// Every closed orchestrator's record, the one last live first
     /// (closed.rs), each folder it names looked for as it's made.
     fn closed(&self) -> Vec<Value> {
@@ -273,6 +291,19 @@ impl Inputs {
             there: &there,
         };
         closed::closed(listed, &quests, &live, &known)
+    }
+
+    /// What the sessions spent today as spend-watch says, or nothing while
+    /// the screen is shared.
+    fn today_spent(&self) -> &str {
+        if self.sharing {
+            return "";
+        }
+        self.spend
+            .as_ref()
+            .and_then(|spend| spend.get("agentsToday"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
     }
 
     /// Every record served, made from what each source last said.
@@ -306,16 +337,14 @@ impl Inputs {
             .iter()
             .map(|one| one.stands(&joel_can, &jobs))
             .collect();
-        let today_spent = if self.sharing {
-            ""
-        } else {
-            self.spend
-                .as_ref()
-                .and_then(|spend| spend.get("agentsToday"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-        };
-        let rows = row::rows(&sessions, &known, &self.words);
+        let mut rows = row::rows(&sessions, &known, &self.words);
+        let answers = self.answers();
+        let answering: HashSet<&str> = answers
+            .iter()
+            .filter(|one| !one.read)
+            .map(|one| one.address.as_str())
+            .collect();
+        mark_answered(&mut rows, &answering, self.words.agents.word("answered"));
         let mut orchestrating = HashSet::new();
         orchestrators(&rows, &mut orchestrating);
         let needs = |quest: &str| self.needs(quest);
@@ -331,7 +360,13 @@ impl Inputs {
             .iter()
             .map(|one| {
                 let orchestrates = orchestrating.contains(one.address());
-                drawer::drawer(*one, orchestrates, &self.words, &drawn)
+                let mut drawn = drawer::drawer(*one, orchestrates, &self.words, &drawn);
+                if let Some(answer) = answers.iter().find(|said| said.address == one.address())
+                    && let Some(facts) = drawn["drawer"]["facts"].as_array_mut()
+                {
+                    facts.splice(0..0, answered::facts(answer, &self.words.names));
+                }
+                drawn
             })
             .collect();
         drawers.extend(top::drawers(&drawers));
@@ -358,7 +393,12 @@ impl Inputs {
         let top = top::rows(&rows, &known_top, &self.words);
         served::made(
             &rows,
-            &summary::summary(&states, today_spent, &self.words.agents),
+            &summary::summary(
+                &states,
+                answering.len(),
+                self.today_spent(),
+                &self.words.agents,
+            ),
         )
         .with_top(top)
         .with_drawers(drawers)
@@ -366,6 +406,21 @@ impl Inputs {
         .with_reopens(reopens)
         .with_landed(self.landed().0)
         .with_closed(closed)
+    }
+}
+
+/// Marks the rows of the sessions `answering` as having answered a talk
+/// Joel hasn't read, folded or not.
+fn mark_answered(shown: &mut [Shown], answering: &HashSet<&str>, said: &str) {
+    for one in shown {
+        match one {
+            Shown::Session(row) => {
+                if answering.contains(row.key.trim_start_matches("agent:")) {
+                    row.answered(said);
+                }
+            }
+            Shown::Fold(fold) => mark_answered(&mut fold.held, answering, said),
+        }
     }
 }
 
@@ -487,6 +542,49 @@ mod tests {
         assert!(
             served.get("row:agents:X").is_none(),
             "one closed is Recent's"
+        );
+    }
+
+    #[test]
+    fn an_answer_is_said_until_read_and_its_drawer_keeps_it_as_joel_reads_it() {
+        let mut inputs = inputs();
+        let lines = |read: bool| {
+            let mut lines = vec![
+                json!({"stage": "delivered", "from": "joel", "text": "still lit?"}),
+                json!({"stage": "replied", "at": "2026-11-11T21:01:00Z", "text": "Yes."}),
+            ];
+            if read {
+                lines.push(json!({"stage": "read", "by": "joel"}));
+            }
+            json!({"records": [{"key": "talk:P/talk-1", "address": "P", "id": "talk-1",
+                "lines": lines}]})
+        };
+        inputs.talks.took(&lines(false));
+        let served = served(&inputs);
+        assert_eq!(summary_of(&served), "1 answer · 1 working · $214 today");
+        assert_eq!(side(&served, "P"), "answered · working · $4");
+        let facts = |served: &served::Served| {
+            let drawer = &served.get("drawer:agents:P").expect("P's drawer")["drawer"];
+            let facts = drawer["facts"].as_array().expect("its facts");
+            facts
+                .iter()
+                .take(2)
+                .map(|fact| fact["value"].clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(facts(&served), [json!("still lit?"), json!("Yes.")]);
+        inputs.talks.took(&lines(true));
+        let served = served_of(&inputs);
+        assert_eq!(
+            summary_of(&served),
+            "1 working · $214 today",
+            "read, it's not counted"
+        );
+        assert_eq!(side(&served, "P"), "working · $4", "nor said on its row");
+        assert_eq!(
+            facts(&served),
+            [json!("still lit?"), json!("Yes.")],
+            "but its drawer keeps it"
         );
     }
 

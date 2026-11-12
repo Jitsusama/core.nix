@@ -3,7 +3,6 @@
 # to agree. The check fails on a daemon breaking a point it doesn't wait on,
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
-  agents = [ "shown" ];
   calls = [
     "held"
     "named"

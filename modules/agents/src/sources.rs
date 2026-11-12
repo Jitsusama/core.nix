@@ -13,6 +13,7 @@ use std::thread;
 pub use daemon_serve::watch::follow;
 use serde_json::Value;
 
+use crate::answered;
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
 
@@ -27,6 +28,8 @@ pub enum Heard {
     Landings(Value),
     /// An answer to the node's watch of the realm's quests.
     Quests(Value),
+    /// An answer to the node's watch of the talks Joel had with sessions.
+    Talks(Value),
     /// An answer to the to-do daemon's watch of its to-dos.
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
@@ -45,6 +48,9 @@ pub enum Heard {
     /// Joel reads these landings, by their keys, at this moment in
     /// milliseconds, as the shell says.
     Read(Vec<String>, i64),
+    /// Joel opened a session's drawer, by its address, at this moment in
+    /// milliseconds, as the shell says, so he's read what it answered.
+    Opened(String, i64),
 }
 
 /// Where the files the rows are made from are kept.
@@ -63,6 +69,9 @@ pub struct Paths {
     pub kept: PathBuf,
     /// What of the landings Joel has read, the daemon's alone too.
     pub landed: PathBuf,
+    /// The harness's steer folders, in which each session's inbox keeps
+    /// its talks, where the daemon says Joel read an answer.
+    pub steer: PathBuf,
     /// The shell's own folders, where the launcher kept what Joel read
     /// before the daemon did, read once while `landed` isn't there.
     pub shells: PathBuf,
@@ -111,6 +120,9 @@ impl Inputs {
             Heard::Quests(answer) => {
                 self.quests.took(&answer);
             }
+            Heard::Talks(answer) => {
+                self.talks.took(&answer);
+            }
             Heard::ToDos(answer) => {
                 self.to_dos.took(&answer);
             }
@@ -139,6 +151,18 @@ impl Inputs {
                 self.read.mark(&keys, now, &held);
                 if let Err(why) = self.read.write(&paths.landed) {
                     eprintln!("agents: can't keep {}: {why}", paths.landed.display());
+                }
+            }
+            // The node tells the read line back with the rest of the talk,
+            // which takes the answer away, so nothing is held here.
+            Heard::Opened(address, now) => {
+                let answers = self.answers();
+                if let Some(answer) = answers
+                    .iter()
+                    .find(|one| one.address == address && !one.read)
+                    && let Err(why) = answered::read(&paths.steer, answer, now)
+                {
+                    eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
             }
         }
@@ -183,6 +207,7 @@ mod tests {
             restore: folder.join("restore.json"),
             kept: folder.join("agents").join("reopen.json"),
             landed: folder.join("agents").join("landed.json"),
+            steer: folder.join("steer"),
             shells: folder.join("by-shell"),
         }
     }

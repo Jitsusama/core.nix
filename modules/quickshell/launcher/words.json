@@ -134,6 +134,9 @@
         "needs": "needs you",
         "needCount": "{count} need you",
         "needsCount": "1 needs you",
+        "answerCount": "1 answer",
+        "answersCount": "{count} answers",
+        "answered": "answered",
         "workingCount": "{count} working",
         "inLineCount": "{count} in line",
         "working": "working",
@@ -451,6 +454,16 @@
       "id": "agents:last-landing",
       "in": "agents",
       "name": "Last Landing"
+    },
+    {
+      "id": "agents:asked",
+      "in": "agents",
+      "name": "You Asked"
+    },
+    {
+      "id": "agents:answer",
+      "in": "agents",
+      "name": "Its Answer"
     },
     {
       "id": "agents:wants",

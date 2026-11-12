@@ -38,7 +38,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
     Service = {
       ExecStart = lib.escapeShellArgs (
         [
-          (lib.getExe package)
+          # Run by its name, so ps reads agents rather than a store path
+          # (docs/daemons.md, Shown).
+          "@${lib.getExe package}"
+          "agents"
           "--vocabulary"
           "${../quickshell/launcher/words.json}"
         ]
@@ -61,6 +64,10 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           "${config.xdg.stateHome}/agents/reopen.json"
           "--landed"
           "${config.xdg.stateHome}/agents/landed.json"
+          # The harness's steer folders, whose inboxes keep each session's
+          # talks, where the daemon says Joel read an answer.
+          "--steer"
+          "${config.xdg.stateHome}/pi/agentic-harness.pi/steer"
           # Where Quickshell keeps each shell's own state, in which the
           # launcher kept the landings Joel read before the daemon did.
           "--shells"
