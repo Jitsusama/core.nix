@@ -46,7 +46,7 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from launcher_on_niri import Json, Shell
 
@@ -106,6 +106,7 @@ def orchestrators_listed() -> None:
 STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
+ORCHESTRATING = "Orchestrating Quest"
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
 WORKS_ON = (
@@ -220,7 +221,7 @@ def held_by_node() -> list[str]:
 def shell() -> Iterator[Shell]:
     """Give the shell, started once a run after the realm's node and the two sessions."""
     PRESENCE.mkdir(parents=True, exist_ok=True)
-    lay("BOSSES", "Orchestrating Quest", {"busy": True, "state": "busy"})
+    lay("BOSSES", ORCHESTRATING, {"busy": True, "state": "busy"})
     under = {"orchestratedBy": "BOSSES", "busy": False}
     lay(
         "LISTEN",
@@ -554,6 +555,8 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
 
     What says what to try waits in For You's To Try, never counted in Landed too; its Return
     steps into it where it lives, in Landed, and reads it, so it goes to For You's History.
+    A session changing while Joel is in Landed makes none of its rows again: they were made
+    anew at each change, 1,683 a change on Joel's shell (LR3WMN, 2026-11-12).
     """
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
@@ -594,9 +597,35 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     assert re.fullmatch(r"read .+", shell.showing()["selected"]["side"]), shell.showing()
     shell.close_launcher()
     opened(shell)
+    boss = {"busy": True, "state": "busy"}
+    at_top = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, {**boss, "usage": FULL}))
     shell.down_to("Landed")
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
+    # The same row changing back costs no more held in Landed than it did at Agents' top.
+    inside = made_through(shell, lambda: lay("BOSSES", ORCHESTRATING, boss))
+    # Agents' top is laid out once for each source that hears a change, Sessions and the agents
+    # daemon, and the two land in one pass or two as they fall, so a change costs up to twice
+    # what one pass did; remaking Landed's landings cost 26 to the top's 9.
+    assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
+
+
+def made_through(shell: Shell, change: Callable[[], None]) -> int:
+    """Give how many rows Agents made as the shell heard what `change` changed, a second on."""
+    lines, before = agents_lines(shell), made_by_agents(shell)
+    change()
+    deadline = time.monotonic() + 10
+    while agents_lines(shell) == lines:
+        assert time.monotonic() < deadline, "the shell never heard the change"
+        time.sleep(0.1)
+    # A change can come as a few lines, its row's then its drawer's, so it's taken once a
+    # second passes with none.
+    lines, quiet = agents_lines(shell), time.monotonic()
+    while time.monotonic() - quiet < 1:
+        time.sleep(0.1)
+        if agents_lines(shell) != lines:
+            lines, quiet = agents_lines(shell), time.monotonic()
+    return made_by_agents(shell) - before
 
 
 def in_for_you(shell: Shell) -> None:

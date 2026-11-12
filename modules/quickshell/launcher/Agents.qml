@@ -71,6 +71,17 @@ Provider {
     // only while they're wanted (Provider.qml's wanted).
     readonly property var all: opened() && provider.wanted ? laidOut() : []
 
+    // Yet its sessions' rows are wrapped as the shell starts, in Agents'
+    // turn of it (Launcher.qml's warmNext), and kept by key (wrapped), so
+    // the first letter typed at home finds them wrapped and a change since
+    // wraps only the row it changed. Wrapped by that letter instead, 85
+    // rows held it on Joel's laptop (his journal, 2026-11-11 23:10;
+    // RCTRF8's d181771a).
+    onWarmingChanged: {
+        if (provider.warming)
+            laidOut();
+    }
+
     function opened() {
         const launcher = provider.launcher;
         return !!launcher && (launcher.open || launcher.cataloguing);
@@ -89,6 +100,11 @@ Provider {
             typing: launcher.typing, entering: launcher.entering ?? null },
             [provider, source("now")]);
     }
+    // Held as a bool, so a step made again while it stays readable remakes
+    // none of them: each change to Agents remakes the steps held
+    // (Launcher.qml's relive), and read as the function, every new step
+    // made Landed, Recent and Start again (LR3WMN, 2026-11-12).
+    readonly property bool readNow: readable()
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
     // and budgets), as each was last made while anything could read it
@@ -787,7 +803,7 @@ Provider {
     }
 
     readonly property var start: {
-        if (!readable())
+        if (!readNow)
             return madeBefore("start", null);
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
@@ -816,7 +832,7 @@ Provider {
     // name, which would change as he reopens them, and its note says where
     // they came from.
     readonly property var toReopen: {
-        if (!readable())
+        if (!readNow)
             return madeBefore("toReopen", null);
         const lost = Sessions.toReopen;
         if (lost.length === 0)
@@ -1037,8 +1053,16 @@ Provider {
             })
         };
     }
+    // Each landing's row kept while the landing, where its Return goes and
+    // the day read the same, so Landed's rows read again make none anew:
+    // while Joel is in Landed, every change to Agents reads them twice, to
+    // see what it shows and to remake the step (Provider.qml's says and
+    // Launcher.qml's relive), which made his 1,683 landings anew each time
+    // (LR3WMN, 2026-11-12). Kept by identity, since the daemon's record of
+    // an unchanged landing stays the same object.
+    readonly property var landedKeeping: keeper()
     readonly property var landed: {
-        if (!readable())
+        if (!readNow)
             return madeBefore("landed", null);
         const read = one => provider.readLanding(one.key);
         const act = (id, fields) => thing(Object.assign({
@@ -1108,7 +1132,14 @@ Provider {
             }),
             glyph: Words.glyph("agents:landed"),
             hue: "action"
-        }, () => landings.map(landing));
+        }, () => {
+            const today = String(Calendars.today ?? "");
+            provider.keepingBegun(landedKeeping);
+            const rows = landings.map(one => provider.keptAlike(landedKeeping, one.key,
+                [one, goes(one), today], () => landing(one)));
+            provider.keptOnly(landedKeeping);
+            return rows;
+        });
     }
 
     // A landing whose drawer was out is read, as Return on it makes it
@@ -1189,7 +1220,7 @@ Provider {
     // every closed session anew as any one changed, and compared nine of
     // Joel's, about 30,000 characters, each time (2026-11-10).
     readonly property var recent: {
-        if (!readable())
+        if (!readNow)
             return madeBefore("recent", null);
         void recentMoves;
         void Calendars.today;
@@ -1257,7 +1288,7 @@ Provider {
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
     readonly property var budgets: {
-        if (!readable())
+        if (!readNow)
             return madeBefore("budgets", null);
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
