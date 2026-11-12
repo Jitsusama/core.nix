@@ -364,3 +364,48 @@ fn a_no_refuses_and_reads_nothing() {
     );
     assert_eq!(setting.op_ran(), 0, "op ran for a no");
 }
+
+#[test]
+fn a_tree_s_own_settings_start_no_program_as_it_is_read() {
+    let setting = Setting::new("planted");
+    let tree = setting.folder.join("tree");
+    let planted = setting.folder.join("planted-ran");
+    // Named whole, since git runs it with no PATH.
+    let mark = format!(
+        "{} '{}'; {}",
+        on_path("touch").display(),
+        planted.display(),
+        on_path("cat").display()
+    );
+    // Whatever works in a tree writes its settings, so an agent could name
+    // a clean filter for every file, a file monitor, and an external diff.
+    std::fs::write(
+        tree.join(".git/info/attributes"),
+        "* filter=planted diff=planted\n",
+    )
+    .expect("the attributes are planted");
+    git(&tree, &["config", "filter.planted.clean", &mark]);
+    git(&tree, &["config", "diff.planted.textconv", &mark]);
+    git(&tree, &["config", "core.fsmonitor", &mark]);
+    // A file whose time moved but whose size didn't is one git must read
+    // through its filter to say whether it changed.
+    std::fs::File::options()
+        .write(true)
+        .open(tree.join("README"))
+        .and_then(|file| file.set_modified(std::time::UNIX_EPOCH))
+        .expect("the file's time is moved");
+    let read = secret_asks::tree::read(&on_path("git"), &tree);
+    assert!(
+        !planted.exists(),
+        "reading the tree ran its planted program"
+    );
+    assert!(
+        read.commit.is_some(),
+        "the tree's commit wasn't read: {read:?}"
+    );
+    assert_eq!(
+        read.uncommitted,
+        Some(0),
+        "the tree didn't read as clean: {read:?}"
+    );
+}
