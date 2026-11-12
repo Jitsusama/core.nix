@@ -46,6 +46,34 @@ function run(failures) {
         }
     }
 
+    // What a URL last said stands while it's asked again, and an answer
+    // saying the same again is nothing new, so its provider says nothing:
+    // a lookup of a public IPv6 address on a machine with no IPv6 route
+    // failed each time it was asked, and every closing made Network's 11
+    // rows again for it (2026-11-11, 20:08 to 20:19).
+    const failure = { pending: false, failed: true, at: 0 };
+    const retried = Asking.askedAgain(failure, 10000);
+    machine("a failure asked again still says it failed", [retried.pending, retried.failed],
+        [true, true]);
+    machine("the same failure again is nothing new",
+        Asking.heard(retried, { status: 0, text: "" }, 10050), false);
+    const address = { pending: false, failed: false, at: 0, value: { ip: "192.0.2.7" } };
+    machine("the same answer again is nothing new", Asking.heard(Asking.askedAgain(address, 1),
+        { status: 200, text: '{"ip": "192.0.2.7"}' }, 2), false);
+    machine("another answer is new", Asking.heard(Asking.askedAgain(address, 1),
+        { status: 200, text: '{"ip": "192.0.2.8"}' }, 2), true);
+    machine("a failure after an answer is new", Asking.heard(Asking.askedAgain(address, 1),
+        { status: 503, text: "" }, 2), true);
+    const first = Asking.askedAgain(undefined, 1);
+    machine("nothing said yet, while it's asked", [first.value, first.failed], [undefined,
+        false]);
+    machine("the first answer is new", Asking.heard(first, { status: 200, text: "{}" }, 2), true);
+    machine("an answer says when it came", [first.at, first.pending], [2, false]);
+    machine("giving up on a failure again is nothing new",
+        Asking.gaveUp(Asking.askedAgain(failure, 10000), 15000), false);
+    machine("giving up on an answer is new",
+        Asking.gaveUp(Asking.askedAgain(address, 1), 5001), true);
+
     // How things stand in the foot, as room runs short: the least of
     // each, then each its glyph by rank, and no glyph ever gives way,
     // each a character wide here, two between.

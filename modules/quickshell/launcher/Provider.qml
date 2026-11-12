@@ -641,7 +641,8 @@ Scope {
 
     // What a URL said as JSON, asking it again once `fresh` milliseconds
     // have passed, and only then: the value it last gave, if any, comes
-    // back at once, and `answered` says when a new one has arrived. One
+    // back at once, and `answered` says when one saying something new has
+    // arrived (Asking.js's heard). One
     // that hasn't answered in `patience` milliseconds has failed, and a
     // failure is asked again after ten seconds.
     function ask(url, fresh) {
@@ -649,12 +650,7 @@ Scope {
         const kept = asked[url];
         if (Asking.stands(kept, now, fresh, 10000))
             return kept;
-        const entry = {
-            pending: true,
-            value: kept ? kept.value : undefined,
-            failed: false,
-            at: now
-        };
+        const entry = Asking.askedAgain(kept, now);
         asked[url] = entry;
         const request = new XMLHttpRequest();
         request.onreadystatechange = () => {
@@ -662,17 +658,9 @@ Scope {
             if (request.readyState !== XMLHttpRequest.DONE || !entry.pending)
                 return;
             delete provider.requests[url];
-            entry.pending = false;
-            entry.at = Date.now();
-            entry.status = request.status;
-            try {
-                if (request.status !== 200)
-                    throw request.status;
-                entry.value = JSON.parse(request.responseText);
-            } catch (e) {
-                entry.failed = true;
-            }
-            provider.answered();
+            if (Asking.heard(entry, { status: request.status, text: request.responseText },
+                Date.now()))
+                provider.answered();
         };
         requests[url] = request;
         request.open("GET", url);
@@ -698,12 +686,10 @@ Scope {
             const entry = asked[url];
             const left = Asking.overdueIn(entry, now, patience);
             if (left === 0) {
-                entry.pending = false;
-                entry.failed = true;
-                entry.at = now;
+                if (Asking.gaveUp(entry, now))
+                    gaveUp = true;
                 requests[url]?.abort();
                 delete requests[url];
-                gaveUp = true;
             } else if (left !== null && (soonest === null || left < soonest)) {
                 soonest = left;
             }
