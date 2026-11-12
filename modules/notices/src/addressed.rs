@@ -81,53 +81,57 @@ impl Addressed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use To::{Batched, Him};
 
-    fn slack() -> Addressed {
-        Addressed {
+    /// How a notice stands to Ada, who set two channels to tell her every
+    /// message.
+    fn to(summary: &str, body: &str) -> To {
+        let ada = Addressed {
             names: vec!["ada".into(), "ada.l".into()],
             bots: vec!["Merge Bot".into()],
             every_message: vec!["busy".into(), "team chat".into()],
-        }
+        };
+        ada.to(summary, body)
     }
 
     #[test]
     fn a_persons_direct_message_is_to_him_and_a_bots_is_batched() {
-        assert_eq!(slack().to("[work] from Grace Hopper", "hi"), To::Him);
-        assert_eq!(slack().to("[work] from Merge Bot", "merged"), To::Batched);
+        assert_eq!(to("[work] from Grace Hopper", "hi"), Him);
+        assert_eq!(to("[work] from Merge Bot", "merged"), Batched);
     }
 
     #[test]
     fn a_channel_that_tells_every_message_is_batched_unless_it_names_him() {
-        assert_eq!(slack().to("[work] in #busy", "Grace: lunch?"), To::Batched);
-        assert_eq!(slack().to("[work] in team chat", "Grace: lunch?"), To::Batched);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @ada lunch?"), To::Him);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @ada.l, lunch?"), To::Him);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @here lunch"), To::Him);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @channel"), To::Him);
+        assert_eq!(to("[work] in #busy", "Grace: lunch?"), Batched);
+        assert_eq!(to("[work] in team chat", "Grace: lunch?"), Batched);
+        assert_eq!(to("[work] in #busy", "Grace: @ada lunch?"), Him);
+        assert_eq!(to("[work] in #busy", "Grace: @ada.l, lunch?"), Him);
+        assert_eq!(to("[work] in #busy", "Grace: @here lunch"), Him);
+        assert_eq!(to("[work] in #busy", "Grace: @channel"), Him);
     }
 
     #[test]
     fn a_longer_name_beginning_with_his_is_not_his() {
-        assert_eq!(slack().to("[work] in #busy", "Grace: @adam lunch?"), To::Batched);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @ada.lovelace"), To::Batched);
-        assert_eq!(slack().to("[work] in #busy", "Grace: @hereford"), To::Batched);
+        assert_eq!(to("[work] in #busy", "Grace: @adam lunch?"), Batched);
+        assert_eq!(to("[work] in #busy", "Grace: @ada.lovelace"), Batched);
+        assert_eq!(to("[work] in #busy", "Grace: @hereford"), Batched);
     }
 
     #[test]
     fn any_other_channels_notice_is_a_thread_he_follows_so_to_him() {
-        assert_eq!(slack().to("[work] in #quiet", "Grace: done"), To::Him);
+        assert_eq!(to("[work] in #quiet", "Grace: done"), Him);
     }
 
     #[test]
     fn a_shape_it_doesnt_know_is_to_him() {
-        assert_eq!(slack().to("Slack", "You have a new message"), To::Him);
-        assert_eq!(slack().to("[work] said something", "Grace: hi"), To::Him);
+        assert_eq!(to("Slack", "You have a new message"), Him);
+        assert_eq!(to("[work] said something", "Grace: hi"), Him);
     }
 
     #[test]
     fn with_nothing_given_only_a_bots_message_could_be_batched_and_none_is() {
         let none = Addressed::default();
-        assert_eq!(none.to("[work] in #busy", "Grace: lunch?"), To::Him);
-        assert_eq!(none.to("[work] from Merge Bot", "merged"), To::Him);
+        assert_eq!(none.to("[work] in #busy", "Grace: lunch?"), Him);
+        assert_eq!(none.to("[work] from Merge Bot", "merged"), Him);
     }
 }

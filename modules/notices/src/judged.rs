@@ -240,14 +240,9 @@ mod tests {
         addressing().judge(&mut direct, false);
         addressing().judge(&mut busy, false);
         // Level, held, missed and chimes, for each.
-        assert_eq!(
-            (direct.level.as_str(), direct.held, direct.missed, direct.chimes),
-            ("card", false, true, true)
-        );
-        assert_eq!(
-            (busy.level.as_str(), busy.held, busy.missed, busy.chimes),
-            ("count", true, true, false)
-        );
+        let judged = |one: &Notice| (one.level.clone(), one.held, one.missed, one.chimes);
+        assert_eq!(judged(&direct), ("card".into(), false, true, true));
+        assert_eq!(judged(&busy), ("count".into(), true, true, false));
     }
 
     #[test]

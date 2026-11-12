@@ -2199,8 +2199,14 @@ works the same way everywhere.
   program can be kept to how far its notices reach (`notices.senders`):
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less
-  far, and none reaches further than its program is kept to. The desktop
-  makes one sound, softly, and it means something needs him now: when a
+  far, and none reaches further than its program is kept to. A chat
+  program the machine says who he is in (`notices.senders.<name>.addressed`)
+  is shown only for what's to him: a person's direct message, a mention,
+  or a thread he follows; its every other post, and a bot's message, is
+  counted without a card. What's to him knocks once, a soft, short knock on
+  wood (`sounds.addressed`), once for a burst, never while notices are held
+  or a call is on, and never taken for the bell. The desktop
+  makes one other sound, softly, and it means something needs him now: when a
   pi session first stands stopped on his keys, a question or a yes
   (`sounds.wants`), never for a run that ended blocked while he was away
   or an item For You lists, and never while notices are held. Its notice
