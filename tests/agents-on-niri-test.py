@@ -599,9 +599,12 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2138"}, shell.showing()
     # Its side says when it landed; its drawer says what to try, a sentence, after its facts,
     # and its change is among the nerdy bits, never a fact (VKCF3Z, ee3bac47).
-    shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
-    drawer = shell.showing()["drawer"]
-    assert "core.nix#2138" not in drawer["values"] and "Change" in drawer["nerd"], drawer
+    shell.launcher_until(
+        lambda shown: (
+            (shown["drawer"] or {}).get("body") == TRY and "Change" in shown["drawer"]["nerd"]
+        )
+    )
+    assert "core.nix#2138" not in shell.showing()["drawer"]["values"], shell.showing()
     # Return steps into it where it lives, never a copy of it.
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
