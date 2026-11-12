@@ -299,6 +299,13 @@
     "launcher/Moment.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Traffic.qml" = [
+    "launcher/Interfaces.js"
+    "launcher/Machine.js"
+    "launcher/Numbers.js"
+    "launcher/Order.js"
+    "launcher/Traffic.js"
+  ];
   "launcher/Vendors.qml" = [ "launcher/Addresses.js" ];
   "launcher/Waits.qml" = [ "launcher/Numbers.js" ];
   "launcher/Weather.qml" = [

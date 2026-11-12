@@ -33,6 +33,46 @@
       "in": "traffic",
       "name": "Connections",
       "term": "Network/connection"
+    },
+    {
+      "id": "traffic:range",
+      "in": "traffic",
+      "name": "Range"
+    },
+    {
+      "id": "traffic:reads",
+      "in": "traffic",
+      "name": "Reads"
+    },
+    {
+      "id": "traffic:total",
+      "in": "traffic",
+      "name": "Since Startup"
+    },
+    {
+      "id": "traffic:busiest",
+      "in": "traffic",
+      "name": "Busiest"
+    },
+    {
+      "id": "traffic:full",
+      "in": "traffic",
+      "name": "How Full"
+    },
+    {
+      "id": "traffic:now",
+      "in": "traffic",
+      "name": "Carrying Now"
+    },
+    {
+      "id": "traffic:quickest",
+      "in": "traffic",
+      "name": "Quickest"
+    },
+    {
+      "id": "traffic:slowest",
+      "in": "traffic",
+      "name": "Slowest"
     }
   ]
 }

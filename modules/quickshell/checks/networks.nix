@@ -5,9 +5,11 @@
   account,
   bareNixos,
   copied,
+  graphical,
   holds,
   noFonts,
   pkgs,
+  qs,
   self,
   shellFolderLint,
   ...
@@ -48,4 +50,30 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml home-network.qml
       touch $out
     '';
+
+  # Every row Network's Address and Traffic show, and each answer as a row
+  # of its own, has a drawer saying more than its line, each fact named by
+  # the vocabulary (tests/network-drawers.qml): Address over two stand-in
+  # connections, Traffic over the sandbox's own counters, Ethernet with no
+  # card, and Wi-Fi's own row's drawer.
+  every-network-row-has-a-drawer = pkgs.runCommandLocal "every-network-row-has-a-drawer" { } ''
+    mkdir -p launcher runtime && chmod 700 runtime
+    ${copied [
+      "Daemon.qml"
+      "Words.qml"
+      "launcher/Networks.qml"
+      "launcher/Provider.qml"
+      "launcher/Traffic.qml"
+      "launcher/WirelessPlate.js"
+      "launcher/words.json"
+    ]}
+    cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+    cp ${../../../tests/network-drawers.qml} shell.qml
+    cp ${../../../tests/lib/Expect.js} Expect.js
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
 }

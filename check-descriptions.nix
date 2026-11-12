@@ -715,6 +715,13 @@
     every home, NixOS and nix-darwin module core offers is brought into an example machine by a
     role, a hardware model, the example or another module, so two that clash fail an example
   '';
+  every-network-row-has-a-drawer = ''
+    every row the launcher's Address and Traffic show, each answer as a row too, has a drawer
+    saying more than its line, each fact named by the vocabulary and each eyebrow saying where
+    and what: a connection's packet size, its link and its hardware, a rate's range over its
+    reads and what it carried since startup; Ethernet with no card holds its place, not plugged
+    in; and Wi-Fi's own row leads with the network joined, its signal and how long
+  '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a
     place turned on by a unit, option or package that was renamed is caught
@@ -2690,7 +2697,7 @@
     parts its places hold and adds one meant below what the letters found, saying where it lives,
     and warns of nothing it drew;
     WARP, read by the real warp from a stand-in warp-cli, says how its link stands in Network
-    after Speed, and its service not answering, and its :disconnect runs warp disconnect and
+    after Traffic, and its service not answering, and its :disconnect runs warp disconnect and
     says when WARP comes back, or, its switch held, leaves it and says who holds it;
     and the notices it holds, taken as Super+N takes them, turn, forget and step into their cards
     by vi's keys

@@ -96,8 +96,9 @@ Provider {
     // most, or a moment after a read with nothing recent before it, so a
     // rate stands for now as soon as it can.
     property var reads: null
-    // Each spark's reads, the newest last, and the read they last took.
-    property var series: ({ moved: [], in: [], out: [] })
+    // Each spark's reads, the newest last, when each was read, and the
+    // read they last took.
+    property var series: ({ moved: [], in: [], out: [], at: [] })
     property var sparked: null
     // What each interface is, asked of sysfs once a name while it stays:
     // forgotten once it's gone from the counters, or after a gap between
@@ -193,8 +194,58 @@ Provider {
         series = {
             moved: added(series.moved, now.in + now.out),
             in: added(series.in, now.in),
-            out: added(series.out, now.out)
+            out: added(series.out, now.out),
+            at: added(series.at, kept.last.at)
         };
+    }
+
+    // A word its drawers say, as the vocabulary has it, what's in braces
+    // filled in: "{low} to {high}".
+    function said(key, fill) {
+        let text = Words.of("traffic").said?.[key] ?? "";
+        for (const name of Object.keys(fill ?? {}))
+            text = text.replace(`{${name}}`, String(fill[name]));
+        return text;
+    }
+
+    // A sparked rate's low and high over the reads sparked, or steady once
+    // they read the same, and how many reads over how long, as WARP's
+    // tunnel says its own (WarpSeen.js). One read sparks nothing, so it
+    // says none.
+    function ranged(values, times) {
+        if (values.length < 2)
+            return [];
+        const low = bits(Math.min(...values));
+        const high = bits(Math.max(...values));
+        const span = Math.round((times[times.length - 1] - times[0]) / second);
+        return [{
+            label: named("range"),
+            value: low === high ? said("steady", { figure: low })
+                : said("range", { low: low, high: high }),
+            figure: spark(values)
+        }, {
+            label: named("reads"),
+            value: said("reads", { count: number(values.length, 0),
+                span: said("seconds", { figure: number(span, 0) }) })
+        }];
+    }
+
+    // What every card has carried since the machine started, each way,
+    // and dropped, from the counters' own totals, which no rate says.
+    function carried(kept, cards) {
+        const sum = key => cards.reduce((all, card) =>
+            all + (kept.last.all[card.name]?.[key] ?? 0), 0);
+        return { in: sum("in"), out: sum("out"), dropped: sum("dropped") };
+    }
+
+    function packets(count) {
+        return said(count === 1 ? "packet" : "packets", { count: number(count, 0) });
+    }
+
+    // A drawer of the figures behind a row, its eyebrow saying once whose
+    // they are: the machine's own cards, as the headline's are.
+    function plate(title, facts) {
+        return { eyebrow: said("eyebrow"), title: title, facts: facts };
     }
 
     function since(kept) {
@@ -238,45 +289,74 @@ Provider {
         const cards = now.each.filter(one => one.kind === "wifi" || one.kind === "wired");
         const shaped = cards.map(card => Traffic.line(status, card.name))
             .find(link => link !== null && link.follows === null) ?? null;
+        const total = carried(kept, cards);
+        // Each way's drawer says its range while shown and what it has
+        // carried since the machine started, the line saying only now.
+        const inward = series.in;
+        const outward = series.out;
+        const times = series.at;
         const rows = [figure({
             name: named("in"),
             side: bits(now.in),
-            graph: spark(series.in),
-            note: when
+            graph: spark(inward),
+            note: when,
+            drawer: () => plate(named("in"), ranged(inward, times).concat([
+                { label: named("total"), value: Machine.bytes(total.in) }]))
         }), figure({
             name: named("out"),
             side: bits(now.out),
-            graph: spark(series.out),
-            note: when
+            graph: spark(outward),
+            note: when,
+            drawer: () => plate(named("out"), ranged(outward, times).concat([
+                { label: named("total"), value: Machine.bytes(total.out) }]))
         })];
         if (shaped !== null) {
             const full = Math.max(shaped.in > 0 ? now.in / shaped.in : 0,
                 shaped.out > 0 ? now.out / shaped.out : 0);
+            const share = (rate, most) => most > 0
+                ? `${number(100 * rate / most, 0)}%` : "\u2013";
+            // A bar is a thing with more to say, the share each way of
+            // what the line carries at most, where the bar draws only the
+            // fuller.
             rows.push(figure({
                 name: named("line"),
                 side: `${bits(shaped.in)} in \u00b7 ${bits(shaped.out)} out`,
                 graph: bar(full),
-                note: finding[shaped.state] ?? "as measured"
+                note: finding[shaped.state] ?? "as measured",
+                thing: true,
+                drawer: () => plate(named("line"), [{
+                    label: named("full"),
+                    value: said("ways", { in: share(now.in, shaped.in),
+                        out: share(now.out, shaped.out) })
+                }, {
+                    label: named("now"),
+                    value: said("ways", { in: bits(now.in), out: bits(now.out) })
+                }])
             }));
             const typical = Traffic.typical(shaped.trips);
+            // The servers are kept quickest first (Traffic.line).
+            const quickest = shaped.trips[0] ?? null;
+            const slowest = shaped.trips[shaped.trips.length - 1] ?? null;
             if (typical !== null)
                 rows.push(holder({
                     name: named("trip"),
                     side: ms(typical),
                     note: "while the connection is quiet, the middle of "
-                        + `${shaped.trips.length} servers`
+                        + `${shaped.trips.length} servers`,
+                    thing: true,
+                    drawer: () => plate(named("trip"), [{
+                        label: named("quickest"),
+                        value: `${quickest.server} \u00b7 ${ms(quickest.ms)}`
+                    }, {
+                        label: named("slowest"),
+                        value: `${slowest.server} \u00b7 ${ms(slowest.ms)}`
+                    }])
                 }, () => shaped.trips.map(trip => figure({
                     name: trip.server,
                     side: ms(trip.ms),
                     note: "while the connection is quiet"
                 }))));
         }
-        rows.push(figure({
-            name: named("dropped"),
-            side: now.dropped === 0 ? "none"
-                : `${number(now.dropped, now.dropped < 10 ? 1 : 0)} packets/s`,
-            note: when
-        }));
         const listed = now.each.filter(one => one.kind === "wifi" || one.kind === "wired"
             || one.in + one.out > 0);
         // Numbered in the kernel's order, so a name stays as the busiest
@@ -284,24 +364,63 @@ Provider {
         const names = connectionNames(listed);
         const busiest = Order.amounts({ amount: each => each.one.in + each.one.out,
             name: each => each.name });
+        const byBusiest = Order.sorted(listed.map((one, at) => ({ one: one, name: names[at] })),
+            busiest);
+        const rate = one => said("ways", { in: bits(one.in), out: bits(one.out) });
+        const top = byBusiest[0] ?? null;
+        // Dropped says, beside its rate now, how many each card has
+        // dropped since the machine started, a card that dropped none
+        // left out.
+        const dropping = cards.map(card => ({
+            name: names[listed.indexOf(card)] ?? card.name,
+            count: kept.last.all[card.name]?.dropped ?? 0
+        })).filter(card => card.count > 0);
+        rows.push(figure({
+            name: named("dropped"),
+            side: now.dropped === 0 ? "none"
+                : `${number(now.dropped, now.dropped < 10 ? 1 : 0)} packets/s`,
+            note: when,
+            thing: true,
+            drawer: () => plate(named("dropped"), [{
+                label: named("total"),
+                value: packets(total.dropped)
+            }].concat(dropping.length > 1 ? dropping.map(card => ({
+                label: card.name,
+                value: packets(card.count)
+            })) : []))
+        }));
         if (listed.length > 1)
             rows.push(holder({
                 name: named("connections"),
                 side: String(listed.length),
-                note: "each card, VPN and bridge, busiest first"
-            }, () => Order.sorted(listed.map((one, at) => ({ one: one, name: names[at] })),
-                busiest).map(each => figure({
-                    name: each.name,
-                    keywords: each.one.name,
-                    side: `${bits(each.one.in)} in \u00b7 ${bits(each.one.out)} out`,
-                    note: when
-                }))));
+                note: "each card, VPN and bridge, busiest first",
+                thing: true,
+                drawer: () => plate(named("connections"), byBusiest.slice(0, 3)
+                    .map(each => ({ label: each.name, value: rate(each.one) })))
+            }, () => byBusiest.map(each => figure({
+                name: each.name,
+                keywords: each.one.name,
+                side: rate(each.one),
+                note: when
+            }))));
+        const headline = rate(now);
+        // The headline's drawer says what the line carries over the reads
+        // shown, the busiest connection, and what the cards have carried
+        // since the machine started, the parts inside saying the rest.
+        const behind = ranged(series.moved, times).concat(top !== null && listed.length > 1
+            ? [{ label: named("busiest"), value: `${top.name} \u00b7 ${rate(top.one)}` }] : [])
+            .concat([{
+                label: named("total"),
+                value: said("ways", { in: Machine.bytes(total.in), out: Machine.bytes(total.out) })
+            }]);
         return {
-            headline: `${bits(now.in)} in \u00b7 ${bits(now.out)} out`,
+            headline: headline,
             graph: spark(series.moved),
             glyph: Theme.glyph.traffic,
             note: when,
             rows: rows,
+            thing: true,
+            drawer: () => plate(headline, behind),
             live: provider
         };
     }

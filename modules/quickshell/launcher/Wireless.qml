@@ -26,12 +26,16 @@
 // among them, asks wifid on the same socket, and only acts its row lists.
 // The cards look for networks only while the launcher is open, and read a
 // link only while its network is ahead.
+//
+// Long because it's where wifid's rows meet what's done to them: joining's
+// stages, asking and acts; what needs no row is in WirelessPlate.js.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "Order.js" as Order
 import "Placed.js" as Placed
 import "ReadyRows.js" as Ready
+import "WirelessPlate.js" as Plate
 
 Provider {
     id: provider
@@ -589,6 +593,9 @@ Provider {
         // A row elsewhere drawing that row's drawer as its own, as Now's
         // Wi-Fi does (Now.qml's borrows), looks at it too.
         const selected = launcher.open ? launcher.selected : null;
+        // Wi-Fi's own row reads the network joined, for placePlate.
+        if (selected?.key === `collection:${settings.name}` && Wifi.joined)
+            return Wifi.joined.network;
         const borrowed = selected?.borrows?.place === settings.name
             ? all.find(row => row.key === selected.borrows.key) : undefined;
         const chosen = network(selected) ? selected : borrowed;
@@ -796,5 +803,16 @@ Provider {
 
     function counted() {
         return !on ? "off" : `${all.length} in reach`;
+    }
+
+    // Wi-Fi's own row's drawer (WirelessPlate.js), led by the network
+    // joined, whose drawer wifid serves once the row's selected (looking).
+    function placePlate() {
+        const joined = networks.find(network => network.connected);
+        return Plate.plate({ on: on, networks: networks, joined: joined ? {
+            name: joined.name, side: sideOf(joined),
+            drawn: joined.served ? ready.drawerOf(joined.served) : null } : null }, {
+            name: Words.name("wifi"), said: Words.of("wifi").said ?? {},
+            leading: [Words.name("wifi:signal"), Words.name("wifi:connected")] });
     }
 }

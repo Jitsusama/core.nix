@@ -302,13 +302,23 @@
     },
     {
       "id": "traffic",
-      "name": "Speed",
-      "term": "Network/speed",
+      "name": "Traffic",
+      "term": "Network/traffic",
       "question": "speed",
       "glyph": "traffic",
       "answers": [
         "speed"
-      ]
+      ],
+      "said": {
+        "eyebrow": "on this machine \u00b7 network card",
+        "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "ways": "{in} in \u00b7 {out} out",
+        "packet": "{count} packet",
+        "packets": "{count} packets"
+      }
     },
     {
       "id": "warp",
@@ -600,7 +610,12 @@
       "term": "Network/address",
       "answers": [
         "address"
-      ]
+      ],
+      "said": {
+        "connection": "on this machine \u00b7 connection",
+        "wayOut": "on this machine \u00b7 way out",
+        "public": "on the internet \u00b7 your address"
+      }
     },
     {
       "id": "ethernet",
@@ -611,7 +626,10 @@
       "glyph": "wired",
       "answers": [
         "ethernet"
-      ]
+      ],
+      "said": {
+        "unplugged": "not plugged in"
+      }
     },
     {
       "id": "sound",
@@ -817,7 +835,12 @@
       "term": "Network/Wi-Fi",
       "noun": "networks",
       "glyph": "wireless",
-      "ask": "which network?"
+      "ask": "which network?",
+      "said": {
+        "eyebrow": "on this machine \u00b7 wireless",
+        "unjoined": "not on a network",
+        "off": "turned off"
+      }
     },
     {
       "id": "bluetooth",
