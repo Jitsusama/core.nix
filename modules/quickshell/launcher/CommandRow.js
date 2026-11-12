@@ -14,7 +14,7 @@
 // place that lists it, from the vocabulary's categories, filled into
 // `said.in`, or `said.anywhere` for one offered wherever it's typed
 // (VKCF3Z on #3781, 2026-11-12).
-function eyebrow(command, categories, said) {
+function eyebrowOf(command, categories, said) {
     const place = categories.find(category => (category.commands ?? []).includes(command.id));
     return place ? String(said.in ?? "").replace("{place}", place.name) : said.anywhere ?? "";
 }

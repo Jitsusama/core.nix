@@ -194,8 +194,11 @@
   # Every command the launcher offers says a little more in its drawer than
   # its line: what it answers in a sentence, then one or two worked examples
   # typed as it starts, naming only documentation addresses
-  # (tests/command-drawers.qml), as launcher/CommandRow.js makes it from the
-  # vocabulary the account writes.
+  # (tests/command-drawers.qml), under an eyebrow naming the place that lists
+  # it, as launcher/CommandRow.js makes it from the vocabulary the account
+  # writes. What each example answers is held in the-launcher-answers-what-
+  # is-asked (tests/answers/command-examples.js), where the commands' own
+  # JavaScript runs with the shell's maths and Unicode's names.
   every-command-row-has-a-drawer =
     let
       qt = pkgs.qt6.qtdeclarative;

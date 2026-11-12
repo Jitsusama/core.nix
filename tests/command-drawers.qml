@@ -51,7 +51,7 @@ QtObject {
         const what = command.id;
         // Its eyebrow says where it's listed, then what it is, as every
         // drawer's does: "in Network · command", or "anywhere · command".
-        const eyebrow = CommandRow.eyebrow(command, words.categories,
+        const eyebrow = CommandRow.eyebrowOf(command, words.categories,
             words.field.drawer.command);
         const place = words.categories.find(category => (category.commands ?? [])
             .includes(what));
@@ -96,11 +96,12 @@ QtObject {
         for (const command of words.commands)
             held(command, words);
         Expect.same("a command Network lists is said in Network",
-            CommandRow.eyebrow(words.commands.find(command => command.id === "command:ip"),
+            CommandRow.eyebrowOf(words.commands.find(command => command.id === "command:ip"),
                 words.categories, words.field.drawer.command), "in Network · command");
+        // Every command is listed in a place today, so this one is made up.
         Expect.same("a command no place lists is said anywhere",
-            CommandRow.eyebrow(words.commands.find(command => command.id === "command:sum"),
-                words.categories, words.field.drawer.command), "anywhere · command");
+            CommandRow.eyebrowOf({ id: "command:nowhere" }, words.categories,
+                words.field.drawer.command), "anywhere · command");
 
         // One the vocabulary says nothing more of has none, so its row
         // draws no drawer that repeats it.

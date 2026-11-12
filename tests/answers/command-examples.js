@@ -15,6 +15,9 @@
 .import "../Subnets.js" as Subnets
 .import "../Units.js" as Units
 
+// The command's own start, before the hardware address it's given.
+const MAC = /^mac\s+(?=\S)/iu;
+
 // The providers whose answers change by the day or the place (money,
 // time, weather, the theme's colours) or act (timers, sound, the screen's
 // and the desk's light), whose examples describe what comes back.
@@ -32,7 +35,7 @@ function fixed(maths, names) {
         networks: typed => Subnets.answer(typed),
         units: typed => Units.answer(typed, undefined, maths),
         vendors: typed => {
-            const at = Addresses.mac(typed.trim().replace(/^mac\s+(?=\S)/i, ""));
+            const at = Addresses.mac(typed.trim().replace(MAC, ""));
             return at ? { headline: Addresses.maker(at, "") } : null;
         }
     };

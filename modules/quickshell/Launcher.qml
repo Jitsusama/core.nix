@@ -1997,7 +1997,7 @@ Scope {
                 // vocabulary's fixed words (CommandRow.js), made only once
                 // the drawer follows the selection onto it.
                 thing: true,
-                drawer: () => CommandRow.drawer(command, CommandRow.eyebrow(command,
+                drawer: () => CommandRow.drawer(command, CommandRow.eyebrowOf(command,
                     Words.categories, Words.field.drawer?.command ?? {}))
             };
             row.prepared = Fuzzy.prepare(row.name);

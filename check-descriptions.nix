@@ -2656,7 +2656,8 @@
     every figure of the record a part in its own unit and in words.json's words, its settings
     saying who set each, its TLS and DNS a step in; what it read while shown sparks Round Trip,
     Loss and Traffic, each with a drawer over the tunnel, one read sparking nothing; and its
-    switch says who holds it, when WARP always on comes back, and a switch held or refused
+    switch says who holds it, when WARP always on comes back, and a switch held or refused; and
+    each command's worked example with a fixed answer says the headline it gives
   '';
   the-sessions-kitty-outlives-a-switch = ''
     a switch never restarts the kitty every session's window is in, so no switch closes them
@@ -2735,8 +2736,8 @@
     asks again rather than closing, and each question is answered by a pi of its own
   '';
   every-command-row-has-a-drawer = ''
-    every command the launcher offers says in its drawer what it answers and one or two worked
-    examples, naming only documentation addresses
+    every command the launcher offers says in its drawer, under the place that lists it or
+    anywhere, what it answers and one or two worked examples, naming only documentation addresses
   '';
   the-launcher-catalogues-what-it-does = ''
     the launcher's catalogue tells a place from an action, offers what ends something rather than
