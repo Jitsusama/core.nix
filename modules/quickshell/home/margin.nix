@@ -11,6 +11,7 @@
   "Facts.qml"
   "Wallpaper.qml"
   "Wallpaper.js"
+  "ScreenPicture.qml"
   "Lifted.qml"
   "OpenBelow.qml"
   "pieces/Drawers.js"

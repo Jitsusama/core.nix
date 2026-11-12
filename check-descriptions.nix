@@ -3571,7 +3571,8 @@
   the-wallpaper-is-read-at-its-screens-pixels = ''
     the wallpaper's picture is read at its screen's own pixels, by niri's scale for the output
     where niri names one, 3840 by 2160 on a 4K screen at 1.5 rather than the 5120 by 2880 the
-    screen's whole-number ratio gives, and by that ratio where niri doesn't
+    screen's whole-number ratio gives, and by that ratio where niri doesn't, and never past the
+    size a PNG's header says, which Qt otherwise reads up to fill by crop
   '';
   the-web-kit-carries-the-theme = ''
     the web kit's CSS holds every role of the machine's theme as its dark look and of core's light
