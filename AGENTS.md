@@ -158,6 +158,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 - [docs/conventions.md][3]: the rules, with their reasons
 - [docs/modules.md][4]: adding a module or a role, and changing one from a
   machine repository
+- [docs/daemons.md][25]: the shape every daemon takes, its socket, names and
+  interface
 - [docs/machines.md][5]: building a machine from core.nix
 - [docs/kernel.md][7]: the kernel, its patches and settings, and changing
   them
@@ -197,3 +199,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [22]: modules/theme/web/skill/SKILL.md
 [23]: modules/eero/AGENTS.md
 [24]: modules/warp/AGENTS.md
+[25]: docs/daemons.md

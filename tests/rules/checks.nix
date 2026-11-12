@@ -2,6 +2,9 @@
 # lists, which checks.nix gathers with every other folder's; README.md beside
 # this says what each rule holds.
 {
+  account,
+  graphical,
+  onLinux,
   pkgs,
   self,
   ...
@@ -91,5 +94,18 @@
   every-test-function-lives-once = self.lib.everyTestFunctionLivesOnce pkgs {
     src = ../..;
     waiting = import ./every-test-function-lives-once-waiting.nix;
+  };
+}
+# A graphical machine's account is a NixOS one, which a Mac doesn't evaluate.
+// onLinux {
+  # Every daemon keeps docs/daemons.md's convention, so `ps`, systemctl and
+  # the socket all say one name and every client asks the same way. Those that
+  # broke a point before the rule wait in tests/rules/daemons-agree-waiting.nix,
+  # with the points each still breaks, and the check fails once one keeps a
+  # point it waits on, so the list only shrinks.
+  daemons-agree = self.lib.daemonsAgree pkgs {
+    src = ../..;
+    home = account graphical;
+    waiting = import ./daemons-agree-waiting.nix;
   };
 }
