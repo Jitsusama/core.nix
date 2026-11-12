@@ -67,6 +67,7 @@ pub struct Snapshot {
     pub round: Option<Round>,
     /// The net's hold on switching, while a test it broke is unfixed.
     pub net_hold: Option<NetHold>,
+    pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
     pub watcher_alive: bool,
@@ -137,6 +138,7 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = s.round.as_ref().and_then(|round| lag(round, s.now)) {
         out.push(breach);
     }
+    out.extend(s.net_hung.as_ref().map(crate::net::hang));
     if let Some(hold) = s.net_hold.as_ref().filter(|h| {
         let patience = if h.landing {
             REVERT_LANDING_MIN

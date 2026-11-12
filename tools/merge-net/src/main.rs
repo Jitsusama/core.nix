@@ -60,6 +60,7 @@ mod reach;
 mod ready;
 mod rules;
 mod running;
+mod stall;
 mod state;
 mod subtests;
 mod turn;
@@ -167,6 +168,9 @@ fn watching(rest: &[&str]) -> Result<ExitCode, String> {
         settler.start(scope);
         if !once {
             scope.spawn(|| watch::quick(&world, &state, &settler, &done));
+            // Never joined: it ends with the net, which it aborts if hung.
+            let guarded = State::at(state.root.clone());
+            std::thread::spawn(move || stall::guard(&guarded));
         }
         let ended = rounds(&world, &state, &start, &settler, once, follow.as_deref());
         done.store(true, Ordering::Relaxed);

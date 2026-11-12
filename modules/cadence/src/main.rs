@@ -472,6 +472,7 @@ fn gather(
         watched: args.watcher.is_some(),
         round,
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
+        net_hung: crate::net::hung(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()
         }),

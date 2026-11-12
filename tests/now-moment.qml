@@ -195,6 +195,11 @@ ShellRoot {
         && now.whereaboutsRows.keys.length > 0
     property bool started: false
     onReadyChanged: begin()
+
+    // When the cases' looks came: an hour before they run, as a look a
+    // session has just put up, since a fixed date grows three days old and
+    // goes quiet (Looks.js's QUIET_AFTER).
+    readonly property string lookedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
     Component.onCompleted: Qt.callLater(root.begin)
 
     function begin() {
@@ -235,7 +240,7 @@ ShellRoot {
             heldHears();
             bandedAtReads = now.bandsKept.times;
             ["e", "f", "g"].forEach(id => now.readLook(`${id}.json`, JSON.stringify({ v: 1,
-                id: id, kind: "page", at: "2026-11-09T12:00:00Z", title: id, why: "Because.",
+                id: id, kind: "page", at: root.lookedAt, title: id, why: "Because.",
                 target: "https://example.com", state: "waiting", session: "" })));
             expect("files read in one turn wait for its end", now.looks === looksBefore,
                 JSON.stringify(Object.keys(now.lookTexts)));
@@ -654,7 +659,7 @@ ShellRoot {
         // kept while its file reads the same: made anew each time, 105 of
         // them made 2,535 rows in one opening on Joel's shell (2026-11-09).
         const lookAt = (id, title, session) => JSON.stringify({ v: 1, id: id, kind: "page",
-            at: "2026-11-09T12:00:00Z", target: "https://example.com", title: title,
+            at: root.lookedAt, target: "https://example.com", title: title,
             why: "Because.", state: "waiting", session: session ?? "" });
         now.lookTexts = { "a.json": lookAt("a", "Read A", "s-a"), "b.json": lookAt("b", "Read B"),
             "c.json": lookAt("c", "Read C") };
