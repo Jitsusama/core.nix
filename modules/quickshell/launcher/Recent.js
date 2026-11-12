@@ -85,6 +85,17 @@ function takenSide(when, folder, usual) {
     return folder === usual || folder === "" ? when : `${when}${BETWEEN}${folder}`;
 }
 
+// Whether a source's `go` or `close` reaches each of a page's `tabs` by
+// the id it gave them. A tab read from Chrome's session file has none,
+// since a running Chrome may give that run's ids to other tabs, and a
+// managed Chrome refusing the extension gives only those (2026-11-11).
+// Without one Go To could bring only the page's window forward, which its
+// window's row does already, so neither it nor Close It is offered.
+function reaches(command, tabs) {
+    return Boolean(command) && tabs.length > 0
+        && tabs.every(tab => String(tab?.id ?? "") !== "");
+}
+
 // The eyebrow over a picture taken, as its drawer takes it: the folder
 // it's in, as its row no longer says, then what kind of file it is, a
 // picture or a video (`kind`), "in ~/Pictures/Screenshots \u00b7 picture". `words`

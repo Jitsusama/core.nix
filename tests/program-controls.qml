@@ -426,9 +426,10 @@ ShellRoot {
             same("a tab behind one left out goes to the window titled by that one", acted(),
                 '[{"FocusWindow":{"id":23}}]');
             // A tab its source said with no id, as Chrome's session file
-            // says each, has nothing to close it or bring it forward by.
-            same("a tab with no id holds no Close It", names(sites[4].verbs()),
-                "Go To, Another, Copy the Link");
+            // says each, has nothing to close it or bring it forward by, so
+            // its window's row leads rather than a Go To doing only that.
+            same("a tab with no id holds neither Go To nor Close It", names(sites[4].verbs()),
+                "Another, Copy the Link");
             Niri.acted = [];
             Niri.spawns = [];
             sites[4].run();
@@ -459,8 +460,8 @@ ShellRoot {
                 delete source.close;
                 const bare = program("browser").verbs()
                     .find(row => row.key === "site:https://another.example.com/b");
-                same("with only what's open said, a page holds Go To, its window, then Copy the Link",
-                    names(bare.verbs()), "Go To, Another, Copy the Link");
+                same("with only what's open said, a page holds its window, then Copy the Link",
+                    names(bare.verbs()), "Another, Copy the Link");
                 Niri.acted = [];
                 Niri.spawns = [];
                 bare.run();
