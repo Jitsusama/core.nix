@@ -52,6 +52,7 @@ mod lists;
 mod movers;
 mod owners;
 mod places;
+mod reach;
 mod ready;
 mod rules;
 mod running;
@@ -367,7 +368,8 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, so what it was \
              checked against isn't what it merges onto; rebase onto origin/main, push, and \
-             merge again, which needs no new run where main moved none of its files",
+             merge again, which needs no new run where main moved none of its files, nor a \
+             crate its crates are in, read or are read by",
             short(&commit),
             short(&main)
         );
@@ -378,7 +380,7 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         return by_change(&commit, &main, &on_main);
     }
     let files = lines(&git(&["diff", "--name-only", &main, &commit])?);
-    Ok(passed(
+    Ok(turn::passed(
         &[&commit],
         &files,
         &format!(
@@ -388,24 +390,18 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
     ))
 }
 
-/// Whether a change merging on the runs at `passes`, newest first, waits
-/// for an earlier gate sharing one of its `files`, which it says.
-fn waits(passes: &[&str], files: &[String]) -> bool {
-    let why = turn::waits(passes, files);
-    if let Some(why) = &why {
-        eprintln!("{why}");
-    }
-    why.is_some()
-}
-
-/// A change ready on the runs at `passes`, as `ready` says, once no
-/// earlier gate sharing its `files` still runs.
-fn passed(passes: &[&str], files: &[String], ready: &str) -> ExitCode {
-    if waits(passes, files) {
-        return ExitCode::FAILURE;
-    }
-    println!("{ready}");
-    ExitCode::SUCCESS
+/// What ready says of `commit`, the same change that passed at `newest`
+/// and `earlier`, where main since moved only `shared`.
+fn twice(commit: &str, newest: &str, earlier: &str, shared: &[String]) -> String {
+    format!(
+        "ready: {} sits on origin's main, and changed-checks built what it named at {} and \
+         {}, the same change, so a clean rebase needs no third run though main has since \
+         moved {}; the net tests it after it merges",
+        short(commit),
+        short(newest),
+        short(earlier),
+        shared.join(", ")
+    )
 }
 
 /// Whether `commit`, a head on `main` with no run of its own, is ready by
@@ -426,6 +422,9 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         Some((since, taken_away))
     };
     let id_of = |base: &str, candidate: &str| patch_id(Path::new("."), base, candidate);
+    // What main moved in a crate the change's crates are in, read or are
+    // read by, no run of an earlier base speaks for.
+    let crates = reach::Crates::at(commit);
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,
@@ -441,6 +440,9 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         let mut shared = ready::shared(&branch, &main_side);
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
         shared.retain(|file| !ready::stands_apart(file, &branch, &main_side, &at_base, &checked));
+        let beside = crates.beside(&files, &since);
+        shared.retain(|file| !beside.contains(file));
+        shared.extend(beside);
         Some(shared)
     };
     let same = |candidate: &str| {
@@ -458,22 +460,16 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
             gone: &taken_away,
             text: &at_main,
         };
-        Some(ready::names_gone(&branch, &main_side))
+        let mut naming = ready::names_gone(&branch, &main_side);
+        naming.extend(crates.beside(&files, &since));
+        Some(naming)
     };
     let candidates = candidates(commit, main, &files)?;
     let mut before = ready::checked_before(&candidates, &ready::record, on_main, &same);
     if let ready::Before::Twice(newest, earlier, shared) = before {
         if names_gone(&newest).is_some_and(|naming| naming.is_empty()) {
-            let said = format!(
-                "ready: {} sits on origin's main, and changed-checks built what it named at \
-                 {} and {}, the same change, so a clean rebase needs no third run though main \
-                 has since moved {}; the net tests it after it merges",
-                short(commit),
-                short(&newest),
-                short(&earlier),
-                shared.join(", ")
-            );
-            return Ok(passed(&[&newest, &earlier], &files, &said));
+            let said = twice(commit, &newest, &earlier, &shared);
+            return Ok(turn::passed(&[&newest, &earlier], &files, &said));
         }
         // Main renamed or deleted a path one side names, which neither
         // run saw, so it runs again as a change checked once would.
@@ -487,10 +483,11 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 short(commit),
                 short(&checked)
             );
-            return Ok(passed(&[&checked], &files, &said));
+            return Ok(turn::passed(&[&checked], &files, &said));
         }
         ready::Before::Shares(checked, shared) => {
-            if let Some(said) = lists_say(commit, &shared, &|| waits(&[commit, &checked], &files)) {
+            let waits = || turn::waiting(&[commit, &checked], &files);
+            if let Some(said) = lists_say(commit, &shared, &waits) {
                 return Ok(said);
             }
             // Its run again keeps the place this pass's gate had.

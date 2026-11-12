@@ -29,7 +29,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitCode};
 
 use crate::places::Places;
 
@@ -193,6 +193,26 @@ pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
         held.shared.join(", "),
         (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     ))
+}
+
+/// Whether a change merging on the runs at `passes`, newest first, waits
+/// for an earlier gate sharing one of its `files`, which it says.
+pub fn waiting(passes: &[&str], files: &[String]) -> bool {
+    let why = waits(passes, files);
+    if let Some(why) = &why {
+        eprintln!("{why}");
+    }
+    why.is_some()
+}
+
+/// A change ready on the runs at `passes`, as `ready` says, once no
+/// earlier gate sharing its `files` still runs.
+pub fn passed(passes: &[&str], files: &[String], ready: &str) -> ExitCode {
+    if waiting(passes, files) {
+        return ExitCode::FAILURE;
+    }
+    println!("{ready}");
+    ExitCode::SUCCESS
 }
 
 /// When the pass a change merges on was kept, in seconds since the epoch:
