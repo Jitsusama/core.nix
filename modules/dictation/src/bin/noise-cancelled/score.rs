@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use dictation::openvino::{Compiled, Core, Input};
 use serde_json::{Value, json};
@@ -215,7 +216,7 @@ pub fn every_way(
             return BTreeMap::new();
         }
     };
-    let started = crate::trial::spent();
+    let started = spent();
     let marks = heard
         .iter()
         .filter_map(|(way, samples)| match scorer.marks(samples) {
@@ -228,9 +229,19 @@ pub fn every_way(
         .collect();
     eprintln!(
         "noise-cancelled: scored the clips in {} ms of a core",
-        crate::trial::spent().saturating_sub(started).as_millis()
+        spent().saturating_sub(started).as_millis()
     );
     marks
+}
+
+/// The processor time this thread has spent, from the kernel's
+/// scheduler statistics, which count it to the nanosecond: what scoring
+/// and each way of cleaning costs.
+pub fn spent() -> Duration {
+    std::fs::read_to_string("/proc/thread-self/schedstat")
+        .ok()
+        .and_then(|stat| stat.split_whitespace().next()?.parse().ok())
+        .map_or(Duration::ZERO, Duration::from_nanos)
 }
 
 #[cfg(test)]

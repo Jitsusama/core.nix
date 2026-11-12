@@ -137,22 +137,34 @@ impl Offers {
 /// Takes the offer standing, as Joel took it or put it off: its
 /// microphone and spot are kept as offered, and it's withdrawn.
 pub fn taken(chosen: &Chosen) -> Result<(), String> {
-    let (Some(file), Some(kept)) = (chosen.beside("offer"), chosen.beside("offered")) else {
+    match standing_offer(chosen) {
+        Some(offer) => settled(chosen, &offer.node, &offer.spot.key),
+        None => Ok(()),
+    }
+}
+
+/// Settles Choose by Ear for `node` at the spot `key`, as a raw pick
+/// there does: kept as offered, so it's never offered there, and any offer
+/// standing for it withdrawn.
+pub fn settled(chosen: &Chosen, node: &str, key: &str) -> Result<(), String> {
+    let Some(kept) = chosen.beside("offered") else {
         return Ok(());
     };
-    let Some(offer) = std::fs::read_to_string(&file)
-        .ok()
-        .and_then(|said| read(&said))
-    else {
-        return Ok(());
-    };
-    if !offered(chosen, &offer.node, &offer.spot.key) {
+    if !offered(chosen, node, key) {
         let mut lines = std::fs::read_to_string(&kept).unwrap_or_default();
-        let _ = writeln!(lines, "{} {}", offer.node, offer.spot.key);
+        let _ = writeln!(lines, "{node} {key}");
         written(&kept, &lines)?;
     }
-    removed(chosen);
+    if standing_offer(chosen).is_some_and(|offer| offer.node == node && offer.spot.key == key) {
+        removed(chosen);
+    }
     Ok(())
+}
+
+/// The offer standing beside `chosen`'s picks, if one does.
+fn standing_offer(chosen: &Chosen) -> Option<Offer> {
+    let said = std::fs::read_to_string(chosen.beside("offer")?).ok()?;
+    read(&said)
 }
 
 /// Whether Choose by Ear was offered for `node` at the spot `key`.

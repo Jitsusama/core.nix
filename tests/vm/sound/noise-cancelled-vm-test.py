@@ -251,7 +251,7 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
     chosen = joel.run(f"pw-dump | jq -r {shlex.quote(CHOSEN)}").strip()
     kept = joel.run(f"cat {PICKED} 2>/dev/null || true").strip()
     if picked["picked"]["cleaner"] == "raw":
-        assert chosen != OFFERED
+        assert chosen == MICROPHONE, f"a raw pick left calls hearing {chosen!r}"
         assert kept == "", f"a raw pick kept {kept!r} for the service"
     else:
         assert chosen == OFFERED
@@ -283,5 +283,6 @@ def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict
     joel.wait_for(f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {told}", ANSWERS_WITHIN)
     assert joel.ask({"id": 6, "ask": "act", "act": "offered"}) == {"id": 6, "taken": True}
     assert joel.trial()["offer"] is None, "the offer taken is still told"
+    # A raw pick before settles the spot it was made at too, so the offer's is one line of those.
     kept = joel.run(f"cat {KEPT_OFFERED}").strip()
-    assert kept == f"{MICROPHONE} network=none", f"what's kept as offered: {kept!r}"
+    assert f"{MICROPHONE} network=none" in kept.splitlines(), f"what's kept as offered: {kept!r}"

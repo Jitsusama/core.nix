@@ -35,7 +35,7 @@ use crate::defaults::{default_microphone_is, default_output, dumped};
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
 use crate::refusals::Refusal;
-use crate::score::{self, Marks};
+use crate::score::{self, Marks, spent};
 use crate::spot::Spot;
 
 /// The record's key and kind.
@@ -491,12 +491,19 @@ impl Trial {
         }
         self.hush();
         let way = self.clips[letter].way;
-        if let (Way::Cleaned(cleaner), Some(microphone)) = (way, self.microphone.as_ref()) {
-            // Kept first, so the microphone calls hear is never the twin
-            // cleaning some other way than the one picked.
+        if let Some(microphone) = self.microphone.as_ref() {
             let spot = self.spot.clone().unwrap_or_else(|| self.running.spot());
-            self.running.choose(&microphone.name, &spot, cleaner)?;
-            default_microphone_is(&self.tools.metadata, &microphone.twin())?;
+            if let Way::Cleaned(cleaner) = way {
+                // Kept first, so the microphone calls hear is never the twin
+                // cleaning some other way than the one picked.
+                self.running.choose(&microphone.name, &spot, cleaner)?;
+                default_microphone_is(&self.tools.metadata, &microphone.twin())?;
+            } else {
+                // Calls hear the microphone itself, though a twin was chosen
+                // before, and Choose by Ear isn't offered for it there again.
+                default_microphone_is(&self.tools.metadata, &microphone.name)?;
+                crate::offer::settled(&self.running, &microphone.name, &spot.key)?;
+            }
         }
         eprintln!(
             "noise-cancelled: {} picked by ear, over {}",
@@ -726,15 +733,6 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
     let mut heard: Vec<&mut Vec<f32>> = clips.iter_mut().map(|(_, samples, _)| samples).collect();
     loudness::matched(&mut heard);
     Ok(clips)
-}
-
-/// The processor time this thread has spent, from the kernel's
-/// scheduler statistics, which count it to the nanosecond.
-pub fn spent() -> Duration {
-    std::fs::read_to_string("/proc/thread-self/schedstat")
-        .ok()
-        .and_then(|stat| stat.split_whitespace().next()?.parse().ok())
-        .map_or(Duration::ZERO, Duration::from_nanos)
 }
 
 /// Watches a clip play, and says so once it's done.
