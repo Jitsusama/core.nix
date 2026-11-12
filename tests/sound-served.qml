@@ -24,7 +24,8 @@
 // words, each program's :setl asking the daemon on its streams and its
 // Plays On choices sending it as Sound does; and with a device's drawer
 // out, how its node keeps time is watched and drawn as the daemon serves
-// it, and the watch let go once the drawer's in. (tests/sound.qml holds
+// it, and the watch let go once the drawer's in; and a device's :setl
+// and :set output= ask the daemon too. (tests/sound.qml holds
 // the parts and drawers made here.) It exits 0 once every case holds, and
 // otherwise 1, saying which didn't. Long because each case steps on from
 // the rows the one before it left, on one stand-in socket and one Sound,
@@ -828,8 +829,31 @@ ShellRoot {
                     + "Cycle=1,024 frames \u00b7 21.3 ms", drawn);
                 asking.drawerOut = false;
                 when("the timings let go", () => root.unwatched === 1
-                    && Object.keys(sound.timings).length === 0, () => Qt.exit(0));
+                    && Object.keys(sound.timings).length === 0, optionsAsked);
             });
+        });
+    }
+
+    // A device's :setl volume and mute, and :set output= choosing it, each
+    // ask the daemon, as its parts' acts do, setting nothing on the server.
+    function optionsAsked() {
+        const base = root.acted.length;
+        const options = sound.everything()[0].options;
+        options.volume.set(30, { how: "set" });
+        options.mute.set(true);
+        sound.setOptions.output.set(sound.setOptions.output.values[0]);
+        when("the device's options asked", () => root.acted.length === base + 3, () => {
+            const asks = JSON.stringify(root.acted.slice(base)
+                .map(ask => [ask.act, ask.key, ask.volume ?? null, ask.muted ?? null]));
+            const key = `device:${deskSpeakers.name}`;
+            const meant = JSON.stringify([["volume", key, 0.3, false],
+                ["mute", key, null, true], ["use", key, null, null]]);
+            expect(":setl and :set output= ask the daemon, the volume unmuting it",
+                asks === meant, asks);
+            expect("and set nothing on the device themselves",
+                deskSpeakers.audio.volume === 0.5 && deskSpeakers.audio.muted === false,
+                JSON.stringify(deskSpeakers.audio));
+            Qt.exit(0);
         });
     }
 }

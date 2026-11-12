@@ -145,22 +145,21 @@ Provider {
     readonly property var inputs: devices.filter(node => !node.isSink)
 
     // :set mute and :set volume=40 act on the output sound plays through,
-    // as its rows do, a volume set unmuting it as their levels do.
+    // as its rows do, a volume set unmuting it as their levels do, each an
+    // ask of the daemon.
     setOptions: ({
         mute: {
             kind: "switch",
             now: () => Pipewire.defaultAudioSink?.audio?.muted ?? false,
-            set: to => provider.toOut(out => out.audio.muted = to)
+            set: to => provider.toOut(out => provider.deviceAsked(out, "mute", { muted: to }))
         },
         volume: {
             kind: "number",
             least: 0,
             most: 100,
             now: () => Math.round((Pipewire.defaultAudioSink?.audio?.volume ?? 0) * 100),
-            set: to => provider.toOut(out => {
-                out.audio.volume = to / 100;
-                out.audio.muted = false;
-            })
+            set: to => provider.toOut(out => provider.deviceAsked(out, "volume",
+                { volume: to / 100, muted: false }))
         },
         // The output sound plays through and the input listened to, by the
         // names their rows give them, as Play Sound Through It and Listen
@@ -284,11 +283,17 @@ Provider {
         return node.isSink ? Theme.glyph.silent : Theme.glyph.muted;
     }
 
+    // Using a device, and setting its Muted or Volume, are asked of the
+    // sound daemon, as its parts' acts are, so the shell sets nothing on
+    // the sound server itself (modules/sound's acts.rs).
+    function deviceAsked(node, act, more) {
+        ready.link?.ask(Object.assign({ ask: "act", act: act, key: `device:${node.name}` },
+            more ?? {}), () => {});
+        return "";
+    }
+
     function use(node) {
-        if (node.isSink)
-            Pipewire.preferredDefaultAudioSink = node;
-        else
-            Pipewire.preferredDefaultAudioSource = node;
+        deviceAsked(node, "use");
     }
 
     // The sound server's node a served row stands for, as the server has
@@ -345,8 +350,8 @@ Provider {
     // :setl sets as Vim's :setlocal sets a buffer's (VKCF3Z, 2026-11-05):
     // whether it's muted, how loud, and a device's port where it has a
     // choice of them, on it alone, never the default output :set's are
-    // (setOptions). A level set or raised is meant to be heard, so it
-    // unmutes, as its rows' do.
+    // (setOptions), each an ask of the daemon. A level set or raised is
+    // meant to be heard, so it unmutes, as its rows' do.
     function nodeOptions(nodes) {
         const live = () => nodes.filter(node => !!node.audio);
         return {
@@ -355,7 +360,7 @@ Provider {
                 now: () => provider.hushed(nodes),
                 set: to => {
                     for (const node of live())
-                        node.audio.muted = to;
+                        provider.deviceAsked(node, "mute", { muted: to });
                     return "";
                 }
             },
@@ -365,11 +370,10 @@ Provider {
                 most: 100,
                 now: () => Math.round(provider.loudestOf(nodes) * 100),
                 set: (to, change) => {
-                    for (const node of live()) {
-                        node.audio.volume = to / 100;
-                        if (change?.how !== "subtract")
-                            node.audio.muted = false;
-                    }
+                    const more = change?.how === "subtract" ? { volume: to / 100 }
+                        : { volume: to / 100, muted: false };
+                    for (const node of live())
+                        provider.deviceAsked(node, "volume", more);
                     return "";
                 }
             }
@@ -1420,10 +1424,7 @@ Provider {
             verb: Words.command("command:volume").verb,
             glyph: worn(out),
             stays: true,
-            run: () => {
-                out.audio.volume = share / 100;
-                out.audio.muted = false;
-            },
+            run: () => deviceAsked(out, "volume", { volume: share / 100, muted: false }),
             rows: told().rows,
             note: said("now", { level: level(out) })
         };
