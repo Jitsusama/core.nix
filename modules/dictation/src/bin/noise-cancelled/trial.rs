@@ -258,6 +258,7 @@ impl Trial {
             "stage": self.stage.name(),
             "why": self.why,
             "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
+            "output": self.output,
             "seconds": SECONDS,
             "until": self.until,
             "clips": clips,
@@ -557,8 +558,24 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
 
 /// The default output in a dump, by its description: what the clips
 /// play on.
-pub const fn default_output(_dump: &Value) -> Option<String> {
-    None
+pub fn default_output(dump: &Value) -> Option<String> {
+    let objects = dump.as_array()?;
+    let default = objects
+        .iter()
+        .filter(|object| object["props"]["metadata.name"] == "default")
+        .filter_map(|object| object["metadata"].as_array())
+        .flatten()
+        .find(|entry| entry["key"] == "default.audio.sink")?;
+    let name = default["value"]["name"].as_str()?;
+    objects.iter().find_map(|object| {
+        let props = &object["info"]["props"];
+        (props["node.name"] == name && props["media.class"] == "Audio/Sink").then(|| {
+            props["node.description"]
+                .as_str()
+                .unwrap_or(name)
+                .to_owned()
+        })
+    })
 }
 
 /// Makes a node the default microphone, as choosing it in Sound does:
