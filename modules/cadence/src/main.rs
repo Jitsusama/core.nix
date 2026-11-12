@@ -18,11 +18,19 @@
 //! Given a steward, each tick also tells an orchestrator of any session of
 //! its that has sat idle two hours, once for each idle spell (idle.rs).
 //!
+//! `cadence day`, run each evening by a timer of its own, reads the day
+//! just ended against the days before it and sends the steward its note
+//! (daily.rs).
+//!
 //!     cadence tick [--watcher ADDRESS --steward ADDRESS]
 //!         [--restart WORDS [--orchestrator ADDRESS]... [--skip ADDRESS]...]
+//!     cadence day [--steward ADDRESS]
 
 mod card;
+mod daily;
+mod day;
 mod idle;
+mod judge;
 mod mesh;
 mod net;
 mod records;
@@ -63,12 +71,17 @@ struct Args {
 
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
-    if args.next().as_deref() != Some("tick") {
-        eprintln!(
-            "usage: cadence tick [--watcher ADDRESS --steward ADDRESS] [--restart WORDS \
-             [--orchestrator ADDRESS]... [--skip ADDRESS]...]"
-        );
-        return ExitCode::from(2);
+    match args.next().as_deref() {
+        Some("tick") => {}
+        Some("day") => return day(args),
+        _ => {
+            eprintln!(
+                "usage: cadence tick [--watcher ADDRESS --steward ADDRESS] [--restart WORDS \
+                 [--orchestrator ADDRESS]... [--skip ADDRESS]...]\n       \
+                 cadence day [--steward ADDRESS]"
+            );
+            return ExitCode::from(2);
+        }
     }
     let mut parsed = Args {
         watcher: None,
@@ -100,12 +113,39 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: &Args) -> io::Result<()> {
+fn day(mut args: impl Iterator<Item = String>) -> ExitCode {
+    let steward = match (args.next().as_deref(), args.next()) {
+        (None, _) => None,
+        (Some("--steward"), Some(address)) if args.next().is_none() => Some(address),
+        _ => {
+            eprintln!("usage: cadence day [--steward ADDRESS]");
+            return ExitCode::from(2);
+        }
+    };
+    let ran = folders().and_then(|(_, state_home, folder)| {
+        daily::run(&folder, &state_home, steward.as_deref(), now_ms() / 1000)
+    });
+    match ran {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("cadence: {err}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// The account's home, its state folder, and cadence's own in it.
+fn folders() -> io::Result<(PathBuf, PathBuf, PathBuf)> {
     let home = PathBuf::from(env::var_os("HOME").ok_or_else(|| io::Error::other("no HOME"))?);
     let state_home =
         env::var_os("XDG_STATE_HOME").map_or_else(|| home.join(".local/state"), PathBuf::from);
     let folder = state_home.join("cadence");
     fs::create_dir_all(&folder)?;
+    Ok((home, state_home, folder))
+}
+
+fn run(args: &Args) -> io::Result<()> {
+    let (home, state_home, folder) = folders()?;
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
