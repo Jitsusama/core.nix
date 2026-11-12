@@ -2288,13 +2288,16 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
     """
     said = warp_said()
     try:
+        # Its rows, not its side, say the link is read: the side says connected at once, from
+        # how the margin heard WARP stand.
         warp = terminal_shown_until(
             shell,
-            lambda shown: "connected" in (shown["row"] or {}).get("side", ""),
+            lambda shown: any(row["name"] == "Health" for row in shown.get("rows") or []),
             "network",
             "work network",
         )
         assert warp["in"] == ["Network", "Work Network"], warp
+        assert "connected" in warp["row"]["side"], warp["row"]
         health = next(row for row in warp["rows"] if row["name"] == "Health")
         assert health["side"] == "healthy", health
         trip = terminal_shown_until(
@@ -2306,6 +2309,37 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
         )
         assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
         assert not shell.showing()["open"]
+    finally:
+        warp_forgotten(said)
+
+
+def test_network_says_how_warp_stands_before_its_link_is_read(shell: Shell) -> None:
+    """The Work Network's row says how WARP stands at once, as the margin heard it, not "...".
+
+    The margin watches how WARP stands all the time (WarpState.qml), so the row waiting on
+    the link's first read says it rather than an ellipsis: degraded here, and with no round
+    trip beside it, since none is read yet. Opening and closing the launcher first forgets
+    what an earlier case's terminal ask kept (Warp.qml's onOpenChanged).
+    """
+    said = warp_said()
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.close_launcher()
+        mark = shell.mark()
+        status = json.loads((said / "status.json").read_text())
+        status["reason"] = "NetworkDegraded"
+        (said / "status.json").write_text(json.dumps(status))
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not any(
+            report.startswith("holds margin") and "tunnel" in report.split()
+            for report in shell.said_since(mark)[0]
+        ):
+            assert time.monotonic() < deadline, "the margin never heard WARP degraded"
+            time.sleep(ASKED_AGAIN)
+        network = shown_to_terminal(shell, "network")
+        work = next(row for row in network["rows"] if row["name"] == "Work Network")
+        assert work["side"] == "degraded", work
     finally:
         warp_forgotten(said)
 
