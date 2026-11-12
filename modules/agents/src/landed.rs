@@ -151,6 +151,21 @@ fn worth_reading(one: &Value) -> bool {
     is_change(&text(one, "ref")) || !text(one, "person").is_empty()
 }
 
+/// Whether a landing's line for Joel asks him to try something, so it
+/// waits in For You's To Try: any line but one opening with "Nothing",
+/// as "Nothing to try", "Nothing changes on screen" and "Nothing new to
+/// try" do, 639 of the 1,506 lines on 2026-11-11, each asking nothing of
+/// him (VKCF3Z, 2026-11-11). Read from the words until the harness says
+/// it of a landing itself.
+fn tries(line: &str) -> bool {
+    let first: String = line
+        .trim_start()
+        .chars()
+        .take_while(|letter| letter.is_alphabetic())
+        .collect();
+    !line.trim().is_empty() && !first.eq_ignore_ascii_case("nothing")
+}
+
 /// Who landed a landing, as its row and drawer say it.
 struct Lander {
     address: String,
@@ -200,6 +215,7 @@ fn landing(lander: &Lander, one: &Value) -> (String, Option<i64>, Value) {
         "ref": text(one, "ref"),
         "what": if what.is_empty() { text(one, "ref") } else { what },
         "person": text(one, "person"),
+        "tries": tries(&text(one, "person")),
         "url": if url.starts_with("https://") { url } else { String::new() },
         "quest": text(one, "quest"),
         "repo": text(one, "repo"),
@@ -377,6 +393,53 @@ mod tests {
         assert_eq!(
             records[0]["landed"]["what"], "o#1",
             "its ref where it says nothing"
+        );
+    }
+
+    #[test]
+    fn only_a_line_asking_joel_to_try_something_waits_for_him_to() {
+        let landings = [
+            kept(
+                "s",
+                "o#1",
+                "2026-11-11T01:00:00Z",
+                "Open Agents and press :q.",
+            ),
+            kept(
+                "s",
+                "o#2",
+                "2026-11-11T02:00:00Z",
+                "Nothing to try: the net is faster.",
+            ),
+            kept(
+                "s",
+                "o#3",
+                "2026-11-11T03:00:00Z",
+                "nothing changes on screen",
+            ),
+            kept(
+                "s",
+                "o#4",
+                "2026-11-11T04:00:00Z",
+                "Nothingness is a theme now; try it.",
+            ),
+            kept("s", "o#5", "2026-11-11T05:00:00Z", ""),
+        ];
+        let (records, _) = landed(landings.iter(), &[], &Reading::default());
+        let tries: Vec<&Value> = records[..5]
+            .iter()
+            .map(|one| &one["landed"]["tries"])
+            .collect();
+        assert_eq!(
+            tries,
+            [
+                &json!(false),
+                &json!(true),
+                &json!(false),
+                &json!(false),
+                &json!(true)
+            ],
+            "newest first: a line opening with nothing asks nothing, nor does no line"
         );
     }
 
