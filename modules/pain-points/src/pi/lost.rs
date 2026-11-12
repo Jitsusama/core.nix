@@ -1,20 +1,26 @@
 //! What a go at something in pi lost Joel, from the turns read from its
-//! log: the time the provider failed him and pi's own share (its queue,
-//! tools and the preparing of calls) past a second, the whole of a go he
-//! stopped or had to say again, and never the model's thinking or writing,
-//! which is no fault.
+//! log: the time the provider failed him, pi's queue and preparing of the
+//! first call past a second, a tool that held the session past pi's
+//! minute, and the whole of a go he stopped or had to say again. Never the
+//! model's thinking or writing, nor tools at the work he asked for, nor
+//! what a session he only set going again did after its first reply.
 
 use super::{Stop, Turn};
 use crate::pain::{Painful, PiSigns, Signs, tenths};
 
-/// Past a second of pi's own share of a turn (its queue, tools and the
-/// preparing of calls) his flow is broken; that second is the spec, and
-/// every one past it is lost. The model's thinking and writing isn't.
+/// Past a second of waiting for the first reply, in pi's queue or its
+/// preparing of the call, his flow is broken; that second is the spec,
+/// and every one past it is lost. The model's thinking and writing isn't.
 pub const REPLY_MS: i64 = 1_000;
 /// A go in pi lost him this at most: past two minutes he was most likely
 /// doing something else meanwhile, as with a search he left in the
 /// launcher, so a reply that hung for ten loses him two.
 pub const MOST_MS: i64 = 120_000;
+/// pi hands a command still running at a minute to the background, so
+/// the session is his again; a tool that holds it between calls longer
+/// than that is pi's fault past the minute, and what runs within it is
+/// the work he asked for.
+pub const HANDED_MS: i64 = 60_000;
 
 /// The day's turns that lost him at least a second, as the day file says
 /// them: each a turn, or turns in a row where each said the last again.
@@ -22,6 +28,9 @@ pub const MOST_MS: i64 = 120_000;
 /// [since, until) count.
 pub fn painful(logs: &[&[Turn]], since: i64, until: i64) -> Vec<Painful> {
     let mut named = Vec::new();
+    // A session carried on in a new log copies the old one's messages
+    // into it, and a message typed once was typed at one millisecond.
+    let mut seen = std::collections::HashSet::new();
     for turns in logs {
         let mut goes: Vec<Vec<&Turn>> = Vec::new();
         for turn in *turns {
@@ -33,6 +42,7 @@ pub fn painful(logs: &[&[Turn]], since: i64, until: i64) -> Vec<Painful> {
         named.extend(
             goes.iter()
                 .filter(|go| (since..until).contains(&go[0].enter))
+                .filter(|go| seen.insert(go[0].enter))
                 .map(|go| interaction(go))
                 .filter(|p| p.lost_seconds >= 1.0),
         );
@@ -60,7 +70,18 @@ fn interaction(go: &[&Turn]) -> Painful {
     // thinking or writing, which is no fault: the provider failing, and
     // pi's own share, its queue, tools and preparing of calls.
     let again: i64 = go.windows(2).map(|w| w[1].enter - w[0].enter).sum();
-    let calls = &last.calls;
+    // After a nudge he waits on its first reply alone; what the session
+    // goes on to do is work he handed it.
+    let calls = if last.nudge {
+        &last.calls[..last.calls.len().min(1)]
+    } else {
+        &last.calls[..]
+    };
+    let end = calls
+        .iter()
+        .map(|c| c.start + c.ms)
+        .max()
+        .unwrap_or(last.enter);
     let model: i64 = calls
         .iter()
         .filter(|c| c.stop != Stop::Error)
@@ -72,12 +93,21 @@ fn interaction(go: &[&Turn]) -> Painful {
         .filter(|(_, c)| c.stop == Stop::Error)
         .map(|(n, c)| calls.get(n + 1).map_or(c.start + c.ms, |next| next.start) - c.start)
         .sum();
-    let own = (last.end() - last.enter - model - error - last.his_ms).max(0);
-    let waiting = (own - REPLY_MS).max(0);
+    let own = (end - last.enter - model - error - last.his_ms).max(0);
+    let to_reply = calls.first().map_or(0, |c| c.start - last.enter);
+    // Between one call and the next its tools ran, the work he asked
+    // for, unless one held the session past the minute pi hands it back
+    // in; after an error the gap is the provider's.
+    let held: i64 = calls
+        .windows(2)
+        .filter(|w| w[0].stop != Stop::Error)
+        .map(|w| (w[1].start - w[0].start - w[0].ms - HANDED_MS).max(0))
+        .sum();
+    let waiting = (to_reply - REPLY_MS).max(0) + (held - last.his_ms).max(0);
     signs.model_ms = ms(model);
     signs.provider_ms = ms(error);
     signs.pi_ms = ms(own);
-    signs.tools_ms = ms(last.tools_ms);
+    signs.tools_ms = ms(if last.nudge { 0 } else { last.tools_ms });
     let stopped = calls
         .iter()
         .find(|c| c.stop == Stop::Aborted)
@@ -107,7 +137,7 @@ fn interaction(go: &[&Turn]) -> Painful {
         at: first.enter / 1000,
         place: "pi",
         trying: "a session".to_string(),
-        seconds: tenths(float(last.end() - first.enter)),
+        seconds: tenths(float(end - first.enter)),
         usual_seconds: tenths(float(REPLY_MS)),
         lost_seconds: tenths(float((again + waiting + error + stopped).min(MOST_MS))),
         rank: 0,
@@ -139,6 +169,64 @@ mod tests {
         assert!(
             painful(&[&quick], AT - 1, AT + 1).is_empty(),
             "a reply that began within a second lost him nothing, however long it ran"
+        );
+    }
+
+    #[test]
+    fn tools_between_calls_lose_only_what_they_hold_past_a_minute() {
+        let work = [turn(
+            AT,
+            &[
+                (AT + 500, 1000, Stop::Tool),
+                (AT + 51_500, 1000, Stop::Tool),
+                (AT + 52_900, 1000, Stop::Done),
+            ],
+        )];
+        assert!(
+            painful(&[&work], AT - 1, AT + 1).is_empty(),
+            "tools within a minute of a call are the work he asked for"
+        );
+        let held = [turn(
+            AT,
+            &[
+                (AT + 500, 1000, Stop::Tool),
+                (AT + 91_500, 1000, Stop::Done),
+            ],
+        )];
+        let p = &painful(&[&held], AT - 1, AT + 1)[0];
+        assert_eq!(
+            (p.lost_seconds, p.part),
+            (30.0, "pi"),
+            "held 30 s past the minute"
+        );
+        let mut asked = held[0].clone();
+        asked.his_ms = 90_000;
+        assert!(
+            painful(&[&[asked]], AT - 1, AT + 1).is_empty(),
+            "a question put to him is his time"
+        );
+    }
+
+    #[test]
+    fn a_nudge_loses_only_what_its_first_reply_kept_him_waiting() {
+        let mut nudge = turn(
+            AT,
+            &[
+                (AT + 5000, 1000, Stop::Tool),
+                (AT + 600_000, 1000, Stop::Aborted),
+            ],
+        );
+        nudge.nudge = true;
+        let p = &painful(&[&[nudge.clone()]], AT - 1, AT + 1)[0];
+        assert_eq!(
+            (p.lost_seconds, p.seconds, p.part),
+            (4.0, 6.0, "pi"),
+            "what the session went on to do was handed to it"
+        );
+        nudge.calls[0].start = AT + 500;
+        assert!(
+            painful(&[&[nudge]], AT - 1, AT + 1).is_empty(),
+            "answered within a second"
         );
     }
 
@@ -211,6 +299,16 @@ mod tests {
             panic!("a pi moment carries pi's signs");
         };
         assert_eq!((signs.corrections, signs.status), (1, 1));
+    }
+
+    #[test]
+    fn a_message_in_two_logs_counts_once() {
+        let turns = [turn(AT, &[(AT + 21_000, 4000, Stop::Done)])];
+        assert_eq!(
+            painful(&[&turns, &turns], AT - 1, AT + 1).len(),
+            1,
+            "a session carried on in a new log holds the old one's messages"
+        );
     }
 
     #[test]
