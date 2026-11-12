@@ -2854,8 +2854,8 @@
   '';
   the-launcher-places-the-time-only-when-now-is-wanted = ''
     an opening into a place that shows none of For You's rows places no time or date, so makes
-    none of Time's or Today's rows, until Now's rows are wanted, and an opening onto them places
-    them once
+    none of Time's or Today's rows, until Now's rows are wanted, and they place them once, only
+    once a minute has turned since they were placed
   '';
   the-launcher-plays-from-spotify = ''
     Spotify's program in the launcher reads Spotify only as it's stepped into, once an opening,

@@ -171,14 +171,13 @@ Provider {
                 // and one onto Now's rows places them only once a minute
                 // has turned since they were placed: each opening into For
                 // You made all 17 again with nothing changed (2026-11-11).
-                // Asleep as a kept opening fills in, it wakes a frame or two
-                // on and is wanted then (onWantedChanged), within the minute
-                // it was placed in, so it's kept: a chord into Now kept made
-                // all 17 again as it woke (2026-11-11).
+                // An opening elsewhere leaves them for when Now's rows are
+                // wanted (onWantedChanged), which asks the same: marking
+                // them stale as it opened made all 17 again within the
+                // minute, whenever it came before Now fell asleep, as a
+                // loaded machine's openings into For You did (2026-11-12).
                 if (provider.wanted)
                     provider.retimeIfStale();
-                else if (!provider.asleep)
-                    provider.timeStale = true;
             } else {
                 provider.openedAt = Number.POSITIVE_INFINITY;
             }
@@ -214,8 +213,8 @@ Provider {
         return Math.floor(Date.now() / 60000);
     }
 
-    // Whether a minute turned, or the launcher opened, while Now's rows
-    // weren't wanted, so it's read as they are again. Placing the time and
+    // Whether the clock said a minute turned while Now's rows weren't
+    // wanted, so it's read as they are again. Placing the time and
     // the date makes Time's and Today's rows, so an opening onto Now's
     // rows places them once, and only if they're stale or a minute has
     // turned since.
