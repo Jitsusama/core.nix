@@ -40,6 +40,7 @@ pub struct Measure {
     pub floor: f64,
 }
 
+const LAUNCHER: &str = "journalctl --user -u quickshell over the day, its launcher: lines";
 const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
 const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
@@ -126,6 +127,53 @@ pub const MEASURES: &[Measure] = &[
         unit: " min",
         bar: Some(60.0),
         floor: 10.0,
+    },
+    // The launcher's, against docs/design.md's 50 ms from a key or a
+    // chord to its frame.
+    Measure {
+        key: "launcher.opening.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's median opening, chord to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 10.0,
+    },
+    Measure {
+        key: "launcher.opening.usable",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's median opening, chord to answering keys",
+        unit: " ms",
+        bar: None,
+        floor: 30.0,
+    },
+    Measure {
+        key: "launcher.keys.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "a key's median time in the launcher, key to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 5.0,
+    },
+    Measure {
+        key: "launcher.keys.late",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's keys past 50 ms",
+        unit: "%",
+        bar: None,
+        floor: 5.0,
+    },
+    Measure {
+        key: "launcher.changes.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "a daemon's change's median time in the launcher, line to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 5.0,
     },
     // Only the pieces that aren't light: update-to-main leaves the light
     // ones, a written file or a folder of links, to the laptop by design,

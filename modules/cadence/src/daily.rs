@@ -17,6 +17,7 @@ use crate::day::{self, Day};
 use crate::findings::{self, Entry};
 use crate::judge;
 use crate::mesh::Mesh;
+use crate::speed;
 use crate::{DAY, command, message, write_whole};
 
 /// Whom the day is told to: the orchestrator its note, each owner its
@@ -110,6 +111,25 @@ fn kept(days: &Path, now: i64) -> Vec<Day> {
 
 /// The day from `from` to `to`, read from each source; a source that
 /// can't be read leaves its figures out rather than failing the day.
+/// The launcher's figures, from the lines the shell's unit writes.
+fn launcher(since: &str, until: &str) -> BTreeMap<String, f64> {
+    let shell = command(
+        "journalctl",
+        &[
+            "--user",
+            "-u",
+            "quickshell.service",
+            "-o",
+            "cat",
+            "--no-pager",
+            since,
+            until,
+            "--grep=launcher: ",
+        ],
+    );
+    speed::launcher(&shell.unwrap_or_default())
+}
+
 fn read(state_home: &Path, from: i64, to: i64) -> Day {
     let since = format!("--since=@{from}");
     let until = format!("--until=@{to}");
@@ -177,6 +197,8 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
             day.figures.insert(key, value);
         }
     }
+
+    day.figures.extend(launcher(&since, &until));
 
     let updates = command(
         "journalctl",

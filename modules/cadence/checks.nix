@@ -30,7 +30,9 @@ onLinux {
   # fifth and its floor and a crash or failure not seen before are found,
   # too few days before judge nothing, the note keeps to ten lines and
   # says a late finding first, pieces the laptop built for want of the
-  # builders are counted apart from the light ones; of the ledger, a
+  # builders are counted apart from the light ones, the launcher's
+  # openings, keys and changes are read from its lines, each key weighed
+  # alike, and a day without them has none; of the ledger, a
   # finding goes to the longest prefix's owner, is kept once and closes two
   # days after its last, each owner is told once in one message, and a
   # finding past its date is late once; and of the axes, each reading is

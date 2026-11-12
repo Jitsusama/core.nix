@@ -44,6 +44,7 @@ mod mesh;
 mod net;
 mod records;
 mod revive;
+mod speed;
 mod start;
 mod stats;
 mod watch;
