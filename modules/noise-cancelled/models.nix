@@ -1,5 +1,6 @@
 # Every model Choose by Ear reads, in one folder: DeepFilterNet 3 as
-# model.nix exports it, which cleans each clip, and DNSMOS P.835, which
+# model.nix exports it and rewrites it for half precision, which cleans
+# each clip, and DNSMOS P.835, which
 # scores how each sounds (score.rs says how). DNSMOS is Microsoft's, from
 # the DNS Challenge's repository, its code under MIT and the model under
 # CC BY 4.0. It's pinned at the commit the trial was measured with.
@@ -13,8 +14,12 @@ let
 in
 linkFarm "noise-cancelled-models" [
   {
-    name = "deepfilternet3-frame.onnx";
-    path = "${deepfilternet}/deepfilternet3-frame.onnx";
+    name = "deepfilternet3-frame-f16.xml";
+    path = "${deepfilternet}/deepfilternet3-frame-f16.xml";
+  }
+  {
+    name = "deepfilternet3-frame-f16.bin";
+    path = "${deepfilternet}/deepfilternet3-frame-f16.bin";
   }
   {
     name = "dnsmos-sig-bak-ovr.onnx";

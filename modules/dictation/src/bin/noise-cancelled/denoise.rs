@@ -2,7 +2,9 @@
 //! frame at a time (the glossary's noise cancelled):
 //!
 //! - `deepfilternet`: `DeepFilterNet` 3, through the graph
-//!   modules/noise-cancelled/model.nix exports. The frame and every state
+//!   modules/noise-cancelled/model.nix exports, as rewritten to hold in
+//!   half precision, the same maths in single, so the NPU can take it
+//!   over with the state the processor leaves. The frame and every state
 //!   the denoiser keeps go in, the cleaned frame and the next state come
 //!   out.
 //! - `deepfilternet-gentle`: the same, with the microphone's own sound
@@ -113,7 +115,7 @@ impl Model {
             Cleaner::RNNoise => None,
             Cleaner::DeepFilterNet | Cleaner::DeepFilterNetGentle => {
                 let core = Core::new(None)?;
-                let model = core.read(&folder.join("deepfilternet3-frame.onnx"))?;
+                let model = core.read(&folder.join("deepfilternet3-frame-f16.xml"))?;
                 let compiled = core.compile_on_one_thread(&model)?;
                 Some(Graph {
                     compiled,

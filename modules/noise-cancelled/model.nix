@@ -4,7 +4,9 @@
 # exported from the checkpoint DeepFilterNet publishes in its repository,
 # through grazder's torchDF, which holds the whole denoiser, its signal
 # processing too, in PyTorch, since the ONNX DeepFilterNet publishes takes
-# whole recordings and can't stream.
+# whole recordings and can't stream. Beside it is the same graph rewritten
+# to hold in half precision, as the NPU computes (export/f16.py says how and
+# checks it), which the program cleans with.
 {
   fetchFromGitHub,
   git,
@@ -63,4 +65,7 @@ runCommand "deepfilternet3-frame"
     # downloads rather than reads.
     HOME=$TMPDIR PYTHONPATH=${./export/stand-in}:${source}/DeepFilterNet:torchDF \
       python ${./export/export.py} "$PWD/DeepFilterNet3" $out/deepfilternet3-frame.onnx
+    python ${./export/f16.py} $out/deepfilternet3-frame.onnx \
+      ${source}/assets/clean_freesound_33711.wav ${source}/assets/noise_freesound_573577.wav \
+      $out/deepfilternet3-frame-f16.xml
   ''
