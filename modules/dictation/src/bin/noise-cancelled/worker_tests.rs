@@ -23,9 +23,11 @@ fn named(name: &str) -> (Microphone, Producer<f32>, Consumer<f32>) {
             cleaned,
             shared,
             microphone: name.to_owned(),
+            description: name.to_owned(),
         },
         cleaner: None,
         denoiser: None,
+        began: None,
     };
     (microphone, microphone_side, out)
 }
@@ -125,6 +127,12 @@ fn a_model_that_wont_load_is_refused() {
     );
 }
 
+/// Settles what each microphone cleans with, as the worker does, with no
+/// offer kept anywhere.
+fn settle(microphones: &mut HashMap<u32, Microphone>, chosen: &Chosen) -> Vec<Cleaner> {
+    settled(microphones, chosen, &mut Offers::new(chosen, Vec::new()))
+}
+
 /// Picks kept in a file of the test's own, as the trial writes them, on a
 /// machine that knows nothing of where it is, so its spot is
 /// `network=none`.
@@ -145,7 +153,7 @@ fn a_microphone_cleans_with_its_pick_at_the_spot_its_at() {
         "deepfilternet-gentle mv7 network=none\nrnnoise mv7 home=6366013\n",
     );
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
-    settled(&mut microphones, &chosen);
+    settle(&mut microphones, &chosen);
     assert_eq!(
         microphones[&1].cleaner,
         Some(Cleaner::DeepFilterNetGentle),
@@ -158,7 +166,7 @@ fn a_microphone_cleans_with_its_pick_at_the_spot_its_at() {
 fn each_microphone_cleans_with_its_own_pick() {
     let (chosen, file) = picked("own", "rnnoise mv7\ndeepfilternet-gentle laptop\n");
     let mut microphones = HashMap::from([(1, named("mv7").0), (2, named("laptop").0)]);
-    let wanted = settled(&mut microphones, &chosen);
+    let wanted = settle(&mut microphones, &chosen);
     assert_eq!(microphones[&1].cleaner, Some(Cleaner::RNNoise));
     assert_eq!(
         microphones[&2].cleaner,
@@ -173,11 +181,11 @@ fn each_microphone_cleans_with_its_own_pick() {
 fn a_pick_cleans_from_the_next_recording() {
     let (chosen, file) = picked("next", "rnnoise mv7\n");
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
-    settled(&mut microphones, &chosen);
+    settle(&mut microphones, &chosen);
     chosen
         .choose("mv7", &chosen.spot(), Cleaner::DeepFilterNetGentle)
         .expect("picked again");
-    settled(&mut microphones, &chosen);
+    settle(&mut microphones, &chosen);
     assert_eq!(
         microphones[&1].cleaner,
         Some(Cleaner::RNNoise),
@@ -186,11 +194,40 @@ fn a_pick_cleans_from_the_next_recording() {
     let shared = Arc::clone(&microphones[&1].ends.shared);
     shared.wanted.store(false, Ordering::Release);
     assert!(
-        settled(&mut microphones, &chosen).is_empty(),
+        settle(&mut microphones, &chosen).is_empty(),
         "nothing records"
     );
     shared.wanted.store(true, Ordering::Release);
-    settled(&mut microphones, &chosen);
+    settle(&mut microphones, &chosen);
     assert_eq!(microphones[&1].cleaner, Some(Cleaner::DeepFilterNetGentle));
     let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn a_call_that_ends_offers_choose_by_ear() {
+    let folder = std::env::temp_dir().join(format!("worker-offered-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet)
+        .within(Where::at(&folder.join("nowhere")));
+    let offer = chosen.beside("offer").expect("picks are kept");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    let mut microphones = HashMap::from([(1, named("mv7").0)]);
+    settled(&mut microphones, &chosen, &mut offers);
+    let call = Instant::now().checked_sub(Duration::from_mins(2));
+    let microphone = microphones.get_mut(&1).expect("the MV7 is there");
+    let began = microphone.began.as_mut().expect("its recording began");
+    began.0 = call.expect("the clock goes back 2 minutes");
+    microphone
+        .ends
+        .shared
+        .wanted
+        .store(false, Ordering::Release);
+    settled(&mut microphones, &chosen, &mut offers);
+    offers.stand(&chosen);
+    let said = std::fs::read_to_string(&offer).unwrap_or_default();
+    assert!(
+        said.contains("\"node\":\"mv7\""),
+        "the MV7 should be offered: {said:?}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
 }

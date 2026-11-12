@@ -1,8 +1,10 @@
 //! What keeps Choose by Ear from recording: commands Nix lists, each of
 //! which means nothing may be recorded while it exits 0, such as one
 //! saying a call is on or a meeting is near. The trial asks each before
-//! it records (trial.rs).
+//! it records (trial.rs), and the service before it offers Choose by Ear
+//! (offer.rs).
 
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use serde_json::Value;
@@ -15,6 +17,13 @@ pub struct Refusal {
 }
 
 impl Refusal {
+    /// Each refusal the file at `path` lists.
+    pub fn read(path: &Path) -> Result<Vec<Self>, String> {
+        std::fs::read_to_string(path)
+            .map_err(|why| format!("reading {}: {why}", path.display()))
+            .and_then(|text| Self::listed(&text))
+    }
+
     /// Each refusal a file's JSON lists, as `[{"command": [...], "why": "..."}]`.
     pub fn listed(text: &str) -> Result<Vec<Self>, String> {
         let listed: Value =

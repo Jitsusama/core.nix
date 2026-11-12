@@ -33,6 +33,11 @@
 # is scored by DNSMOS too (models.nix), its marks shown after the pick, and
 # the pick and every clip's marks, numbers alone and never the sound, kept
 # beside it in ~/.local/state/noise-cancelled/scored.
+#
+# After a call on a microphone never picked for at the spot it was made,
+# the service offers Choose by Ear there once, in Now, while no call is on
+# and nothing in refuseWhile holds (offer.rs): the offer stands in offer,
+# beside the picks, and each taken or put off is kept in offered.
 {
   config,
   lib,
@@ -139,7 +144,13 @@ in
       X-SwitchMethod = "restart";
     };
     Service = {
-      ExecStart = "${dictation}/bin/noise-cancelled serve ${model} ${cfg.cleaner} ${chosen}";
+      ExecStart = lib.concatStringsSep " " [
+        "${dictation}/bin/noise-cancelled serve"
+        "${model}"
+        cfg.cleaner
+        "${chosen}"
+        "${refusals}"
+      ];
       Environment = npu;
       Slice = "session.slice";
       Restart = "on-failure";

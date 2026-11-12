@@ -378,6 +378,7 @@ impl Trial {
                 Ok(())
             }
             "name" => self.name_spot(said["name"].as_str().unwrap_or_default()),
+            "offered" => crate::offer::taken(&self.running),
             other => Err(format!("no act {other:?}")),
         }
     }
@@ -750,9 +751,7 @@ pub fn shuffled(seed: u64) -> [usize; 4] {
 
 /// Answers the launcher until systemd stops it.
 pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> Result<(), String> {
-    let refusals = std::fs::read_to_string(refusals)
-        .map_err(|why| format!("reading {}: {why}", refusals.display()))
-        .and_then(|text| Refusal::listed(&text))?;
+    let refusals = Refusal::read(refusals)?;
     eprintln!(
         "noise-cancelled: choosing by ear, {} running",
         running.cleaner(None, None)

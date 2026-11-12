@@ -92,6 +92,15 @@ impl Chosen {
             .unwrap_or(self.configured)
     }
 
+    /// Whether Joel has picked by ear for `microphone`, by its node's
+    /// name, at the spot with `key`, or anywhere when that's `None`.
+    pub fn picked(&self, microphone: &str, key: Option<&str>) -> bool {
+        self.picks().iter().any(|pick| {
+            pick.microphone.as_deref() == Some(microphone)
+                && key.is_none_or(|key| pick.spot.as_deref() == Some(key))
+        })
+    }
+
     /// Whether Joel has named the spot with `key`.
     pub fn named(&self, key: &str) -> bool {
         self.names().iter().any(|(named, _)| named == key)
@@ -231,7 +240,7 @@ fn most_picked(picks: &[Pick]) -> Option<Cleaner> {
 
 /// Writes `said` to `file` whole beside it and moves it over, so nothing
 /// ever reads half.
-fn written(file: &Path, said: &str) -> Result<(), String> {
+pub fn written(file: &Path, said: &str) -> Result<(), String> {
     let beside = file.with_extension("picking");
     if let Some(folder) = file.parent() {
         std::fs::create_dir_all(folder).map_err(|why| saying(folder, &why))?;
@@ -241,7 +250,7 @@ fn written(file: &Path, said: &str) -> Result<(), String> {
 }
 
 fn saying(path: &Path, why: &std::io::Error) -> String {
-    format!("keeping the pick in {}: {why}", path.display())
+    format!("writing {}: {why}", path.display())
 }
 
 #[cfg(test)]

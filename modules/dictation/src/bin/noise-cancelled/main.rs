@@ -3,7 +3,7 @@
 //! "‹microphone›, Noise Cancelled" (the glossary's noise cancelled).
 //!
 //! ```text
-//! noise-cancelled serve MODELS [CLEANER [CHOSEN]]
+//! noise-cancelled serve MODELS [CLEANER [CHOSEN [REFUSALS]]]
 //! noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32
 //! noise-cancelled score MODELS < heard.f32
 //! noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]
@@ -19,7 +19,9 @@
 //! which hears its microphone only while something records from it, and
 //! loads the model only then (worker.rs). CHOSEN is the file a pick by ear
 //! is kept in (chosen.rs): each load cleans as it says, and as CLEANER or
-//! RUNNING says until it says a cleaner.
+//! RUNNING says until it says a cleaner. After a call on a microphone
+//! never picked for where it was made, it offers Choose by Ear beside
+//! CHOSEN once, while none of REFUSALS holds (offer.rs).
 //!
 //! `clean` cleans raw 32-bit float samples, one channel at 48 kHz, from
 //! standard input to standard output, as a check hears it.
@@ -39,6 +41,7 @@ mod defaults;
 mod denoise;
 mod lane;
 mod loudness;
+mod offer;
 mod pipe;
 mod refusals;
 mod score;
@@ -54,18 +57,18 @@ use std::process::ExitCode;
 
 use chosen::Chosen;
 use denoise::{Cleaner, FRAME, Model};
+use offer::Offers;
+use refusals::Refusal;
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let done = match arguments.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["serve", models] => {
-            pipe::serve(Path::new(models), Chosen::new(None, Cleaner::DeepFilterNet))
+        ["serve", models] => served(models, Cleaner::DeepFilterNet.name(), None, None),
+        ["serve", models, cleaner] => served(models, cleaner, None, None),
+        ["serve", models, cleaner, chosen] => served(models, cleaner, Some(chosen), None),
+        ["serve", models, cleaner, chosen, refusals] => {
+            served(models, cleaner, Some(chosen), Some(refusals))
         }
-        ["serve", models, cleaner] => Cleaner::named(cleaner)
-            .and_then(|cleaner| pipe::serve(Path::new(models), Chosen::new(None, cleaner))),
-        ["serve", models, cleaner, chosen] => Cleaner::named(cleaner).and_then(|cleaner| {
-            pipe::serve(Path::new(models), Chosen::new(Some(chosen.into()), cleaner))
-        }),
         ["clean", models] => clean(Path::new(models), Cleaner::DeepFilterNet),
         ["clean", models, cleaner] => {
             Cleaner::named(cleaner).and_then(|cleaner| clean(Path::new(models), cleaner))
@@ -83,7 +86,7 @@ fn main() -> ExitCode {
         }
         _ => {
             eprintln!(
-                "usage: noise-cancelled serve MODELS [CLEANER [CHOSEN]]\n       \
+                "usage: noise-cancelled serve MODELS [CLEANER [CHOSEN [REFUSALS]]]\n       \
                  noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32\n       \
                  noise-cancelled score MODELS < heard.f32\n       \
                  noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]"
@@ -98,6 +101,20 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Serves each microphone a cleaned twin, as `serve`'s arguments say.
+fn served(
+    models: &str,
+    cleaner: &str,
+    chosen: Option<&str>,
+    refusals: Option<&str>,
+) -> Result<(), String> {
+    let chosen = Chosen::new(chosen.map(Into::into), Cleaner::named(cleaner)?);
+    let refusals =
+        refusals.map_or_else(|| Ok(Vec::new()), |file| Refusal::read(Path::new(file)))?;
+    let offers = Offers::new(&chosen, refusals);
+    pipe::serve(Path::new(models), chosen, offers)
 }
 
 /// The listening socket systemd hands this process, as the first

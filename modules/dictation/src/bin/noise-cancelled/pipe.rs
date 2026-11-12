@@ -31,6 +31,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::chosen::Chosen;
 use crate::denoise::{FRAME, RATE};
+use crate::offer::Offers;
 use crate::worker::{Ends, Shared, Worker};
 
 /// What each source's node name starts with, so they're never taken for
@@ -71,7 +72,7 @@ impl Microphone {
 }
 
 /// Serves until PipeWire goes away.
-pub fn serve(models: &Path, chosen: Chosen) -> Result<(), String> {
+pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String> {
     pw::init();
     let main_loop = MainLoopRc::new(None).map_err(|why| format!("PipeWire's loop: {why}"))?;
     let context =
@@ -82,7 +83,7 @@ pub fn serve(models: &Path, chosen: Chosen) -> Result<(), String> {
     let registry = core
         .get_registry_rc()
         .map_err(|why| format!("PipeWire's registry: {why}"))?;
-    let worker = Rc::new(Worker::start(models.to_path_buf(), chosen)?);
+    let worker = Rc::new(Worker::start(models.to_path_buf(), chosen, offers)?);
     let pairs: Rc<RefCell<HashMap<u32, Pair>>> = Rc::default();
     // Each link from a source, by its id, to the microphone whose pair
     // the source is, so its going is known by its id alone.
@@ -247,6 +248,7 @@ impl Pair {
                 cleaned: cleaned_here,
                 shared: Arc::clone(&shared),
                 microphone: microphone.name.clone(),
+                description: microphone.description.clone(),
             },
         );
         let format = mono()?;
