@@ -1549,26 +1549,39 @@ impl Sent<'_> {
                 return None;
             }
         }
-        if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
+        // What changed-checks keeps of the run there comes home after it
+        // (`changed/runs.rs`).
+        let before = changed::runs::length_on(&lent, self.scratch);
+        let finished = if let (true, true, Some(system)) = (vm_apart, wanted.vm, &wanted.system) {
             let apart = Apart {
                 lent: &lent,
                 sent: self,
                 system,
             };
-            return apart.changed(arguments);
-        }
-        // What it names is read as it's passed on, so a run that passed
-        // is kept with it.
-        let sending = self.sending(arguments);
-        match there::teed_on(&lent, &sending, self.scratch, "ssh") {
-            Ok((ran, printed)) if ran.status != there::UNREACHED => {
-                Some(Finished::of(ran.status, Some(printed)))
+            apart.changed(arguments)
+        } else {
+            // What it names is read as it's passed on, so a run that
+            // passed is kept with it.
+            let sending = self.sending(arguments);
+            match there::teed_on(&lent, &sending, self.scratch, "ssh") {
+                Ok((ran, printed)) if ran.status != there::UNREACHED => {
+                    Some(Finished::of(ran.status, Some(printed)))
+                }
+                _ => {
+                    eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
+                    None
+                }
             }
-            _ => {
-                eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
-                None
-            }
+        };
+        // A run turned away never reached changed-checks.
+        if finished
+            .as_ref()
+            .is_some_and(|finished| finished.status != there::BUSY)
+        {
+            let home = state().join("nix-offload/changed-runs.jsonl");
+            changed::runs::bring(&lent, self.scratch, before, &home);
         }
+        finished
     }
 
     /// The run on a lent builder, the two taken in turn, then on a warm VM
