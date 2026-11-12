@@ -51,12 +51,12 @@ fn move_offers_its_later_times_each_saying_when_and_what_it_would_clash_with() {
         said,
         [
             (
-                "15 Minutes Later",
+                "Fifteen Minutes Later",
                 "Monday 26 October \u{b7} 15:15 to 15:45",
                 clashes.clone()
             ),
             (
-                "30 Minutes Later",
+                "Half an Hour Later",
                 "Monday 26 October \u{b7} 15:30 to 16:00",
                 clashes.clone()
             ),

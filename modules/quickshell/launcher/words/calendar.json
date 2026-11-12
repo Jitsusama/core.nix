@@ -190,10 +190,10 @@
       "sure": "Move It",
       "states": {
         "quarter": {
-          "name": "15 Minutes Later"
+          "name": "Fifteen Minutes Later"
         },
         "half": {
-          "name": "30 Minutes Later"
+          "name": "Half an Hour Later"
         },
         "hour": {
           "name": "An Hour Later"

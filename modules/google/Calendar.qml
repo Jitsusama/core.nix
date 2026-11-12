@@ -146,9 +146,12 @@ Singleton {
         return Said.movable(meeting);
     }
 
-    // Where Move the Meeting offers to take one: [{ name, start, end }].
+    // Where Move the Meeting offers to take one: [{ name, start, end }],
+    // named as the vocabulary names each.
     function later(meeting) {
-        return Said.later(meeting);
+        return Said.later(meeting).map(time => Object.assign({
+            name: Words.name("verb:calendar:move", time.state)
+        }, time));
     }
 
     // Which of his other meetings a meeting moved there would overlap.
@@ -464,8 +467,8 @@ Singleton {
             verb: Words.verb(key),
             glyph: Words.glyph(key),
             hue: "action",
-            side: clash === null ? "" : `clashes with ${clash.title
-                || Words.name("calendar:meeting", "untitled")}`,
+            side: clash === null ? "" : Words.of(key).said.clashes.replace("{title}",
+                clash.title || Words.name("calendar:meeting", "untitled")),
             // A typed time is named by its day and times already.
             note: name === dated ? "" : dated,
             targets: () => [provider.thing({

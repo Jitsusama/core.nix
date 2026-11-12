@@ -777,7 +777,7 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     desktop.follow()
     desktop.down_to("Move the Meeting")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "15 Minutes Later" in shown["rows"])
+    desktop.launcher_until(lambda shown: "Fifteen Minutes Later" in shown["rows"])
     # A time typed there is offered first, named by its day and times.
     day = machine.succeed("date -d tomorrow '+%A %-d %B'").strip()
     when = f"{day} \u00b7 10:00 to 10:30"
@@ -798,6 +798,38 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     )
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
+def test_a_later_time_the_daemon_serves_moves_the_meeting_once_joel_is_sure(
+    desktop: Desktop,
+) -> None:
+    """A later time google serves inside Move the Meeting asks google to move it, once sure."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.follow()
+    desktop.down_to("Move the Meeting")
+    desktop.step_in("ret")
+    desktop.down_to("Tomorrow, Same Time")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name", "").startswith("Move It to ")
+            and "Telling Ada Lovelace and Grace Hopper" in shown["selected"]["name"]
+        )
+    )
+    machine.fail(f"test -s {asked}")
+    machine.send_key("ret")
+    moved = '{"move":{"id":"standup","start":'
+    machine.wait_until_succeeds(
+        f"grep -qF {shlex.quote(moved)} {asked}", timeout=dt.timedelta(seconds=30)
+    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
