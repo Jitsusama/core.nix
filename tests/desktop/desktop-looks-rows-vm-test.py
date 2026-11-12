@@ -323,7 +323,8 @@ def says_until_the_next_key(desktop: Desktop, scale: str) -> None:
     told = desktop.showing()["selected"]["told"]
     assert told[1:2] == ["Tab in"], f"at {scale} kitty's foot: {told}"
     for chars, said, shot in [
-        ("z", ["z not here"], "not-here"),
+        # t, since z begins za's fold and so waits for its second letter (the vi spec).
+        ("t", ["t not here"], "not-here"),
         ("l", ["l not here", "\u21b5 open"], "l-not-here"),
         ("h", ["h not here", "- up"], "h-not-here"),
         ("q", ["q does nothing", ":q closes"], "q-does-nothing"),
