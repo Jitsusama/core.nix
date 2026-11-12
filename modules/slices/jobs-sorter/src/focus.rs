@@ -23,8 +23,11 @@
 //! under the account held Joel's own reads in the kernel's throttle, at
 //! up to 141 ms against 9.8 ms with none. Each
 //! gives all of it back once it ages out. A window he only passed over,
-//! for less than [`STAY`], wasn't one he was at. Focus comes before a
-//! mark saying nobody is at a window, as `src/low.rs` says.
+//! for less than [`STAY`], wasn't one he was at, so it's held once he
+//! stays or if he was at it before: on 11 November windows opening took
+//! the focus in turn, 364 holds in four hours, most given back within the
+//! second. Focus comes before a mark saying nobody is at a window, as
+//! `src/low.rs` says.
 //!
 //! Past those, every session window Joel was at within [`KEEP`] keeps
 //! what of it is paged out compressed in memory too, with no floor and
@@ -223,6 +226,9 @@ pub struct Recent {
     left: Vec<(Window, Instant)>,
     /// Whether the windows from before this sorter are taken up.
     seeded: bool,
+    /// Whether the next focus heard is the one taken up with them, a
+    /// window Joel was already at rather than one passed over.
+    taken_up: bool,
 }
 
 impl Recent {
@@ -240,7 +246,12 @@ impl Recent {
             self.left.retain(|(left, _)| left.id != was.id);
             self.left.insert(0, (was, now));
         }
-        self.at = window.map(|window| (window.clone(), now));
+        let since = if std::mem::take(&mut self.taken_up) {
+            now.checked_sub(STAY).unwrap_or(now)
+        } else {
+            now
+        };
+        self.at = window.map(|window| (window.clone(), since));
     }
 
     /// Forgets the windows `has` no longer knows, which have closed.
@@ -265,6 +276,7 @@ impl Recent {
         if std::mem::replace(&mut self.seeded, true) {
             return;
         }
+        self.taken_up = true;
         let mut left: Vec<(Window, Instant)> = stamped
             .iter()
             .filter(|(window, _)| window.session())
@@ -289,10 +301,18 @@ impl Recent {
             .collect()
     }
 
-    /// The windows to hold `now`: the one with the focus, then those left
-    /// within [`FOR`], latest first, [`MOST`] in all.
+    /// The windows to hold `now`: the one with the focus, once Joel has
+    /// stayed at it for [`STAY`] or at once if he was at it before, then
+    /// those left within [`FOR`], latest first, [`MOST`] in all.
     pub fn held(&self, now: Instant) -> Vec<Window> {
-        let at = self.at.as_ref().map(|(window, _)| window);
+        let at = self
+            .at
+            .as_ref()
+            .filter(|(window, since)| {
+                now.saturating_duration_since(*since) >= STAY
+                    || self.left.iter().any(|(left, _)| left.id == window.id)
+            })
+            .map(|(window, _)| window);
         at.into_iter()
             .chain(
                 self.left
@@ -519,16 +539,16 @@ mod tests {
         let at = |seconds| start + Duration::from_secs(seconds);
         let mut recent = Recent::default();
         recent.focus(Some(&pi(1)), at(0));
-        assert_eq!(recent.held(at(0)), [pi(1)]);
+        assert_eq!(recent.held(at(2)), [pi(1)]);
         recent.focus(Some(&pi(2)), at(10));
         recent.focus(Some(&pi(3)), at(20));
         recent.focus(Some(&pi(4)), at(30));
         assert_eq!(
-            recent.held(at(30)),
+            recent.held(at(32)),
             [pi(4), pi(3), pi(2)],
             "the focused first, then the latest left"
         );
-        // Going back to one moves it up rather than holding it twice.
+        // Going back to one moves it up at once rather than twice.
         recent.focus(Some(&pi(2)), at(40));
         assert_eq!(recent.held(at(40)), [pi(2), pi(4), pi(3)]);
         // Leaving for an app keeps the pi he left held, until it ages out.
@@ -559,22 +579,54 @@ mod tests {
         recent.focus(Some(&pi(4)), at(30_000));
         recent.focus(Some(&pi(5)), at(30_500));
         assert_eq!(
-            recent.held(at(30_500)),
+            recent.held(at(32_500)),
             [pi(5), pi(3), pi(2)],
             "4 had the focus for half a second, on the way to 5"
         );
         recent.focus(Some(&pi(2)), at(40_000));
         recent.focus(Some(&pi(6)), at(40_500));
         assert_eq!(
-            recent.held(at(40_500)),
+            recent.held(at(42_500)),
             [pi(6), pi(5), pi(3)],
             "passing over 2 again neither brings it up nor forgets it"
         );
         recent.keep_only(|id| id != 5 && id != 3);
         assert_eq!(
-            recent.held(at(40_500)),
+            recent.held(at(42_500)),
             [pi(6), pi(2), pi(1)],
             "2 and 1 are still those he was at before"
+        );
+    }
+
+    #[test]
+    fn a_window_that_takes_the_focus_as_it_opens_is_held_only_once_he_stays() {
+        let start = Instant::now();
+        let at = |millis| start + Duration::from_millis(millis);
+        let mut recent = Recent::default();
+        recent.focus(Some(&pi(1)), at(0));
+        // Three windows open in turn, each taking the focus for a moment,
+        // and the focus comes back to the one he was at.
+        for (n, id) in [7, 8, 9].into_iter().enumerate() {
+            let when = 10_000 + 200 * u64::try_from(n).unwrap();
+            recent.focus(Some(&pi(id)), at(when));
+            assert_eq!(
+                recent.held(at(when + 100)),
+                [pi(1)],
+                "{id} only passed by, so only 1 is held"
+            );
+        }
+        recent.focus(Some(&pi(1)), at(10_600));
+        assert_eq!(
+            recent.held(at(10_600)),
+            [pi(1)],
+            "he was at 1 before, so it's held the moment he's back"
+        );
+        recent.focus(Some(&pi(9)), at(20_000));
+        assert_eq!(recent.held(at(21_999)), [pi(1)], "not yet a stay");
+        assert_eq!(
+            recent.held(at(22_000)),
+            [pi(9), pi(1)],
+            "staying makes it one he's at"
         );
     }
 
@@ -583,8 +635,8 @@ mod tests {
         let now = Instant::now();
         let mut recent = Recent::default();
         recent.focus(Some(&pi(1)), now);
-        let now = now + STAY;
-        recent.focus(Some(&pi(2)), now);
+        recent.focus(Some(&pi(2)), now + STAY);
+        let now = now + STAY + STAY;
         assert_eq!(recent.held(now), [pi(2), pi(1)], "1 was left after a stay");
         recent.keep_only(|id| id != 1);
         assert_eq!(recent.held(now), [pi(2)]);
