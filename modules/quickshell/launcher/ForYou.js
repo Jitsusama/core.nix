@@ -416,6 +416,8 @@ function look(text) {
     }
     return Object.assign({}, read, {
         why: typeof read.why === "string" ? read.why : "",
+        // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
+        words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
         since: when(read.at),
         resolved: when(read.resolvedAt)
     });

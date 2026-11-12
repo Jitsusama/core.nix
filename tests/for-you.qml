@@ -271,6 +271,15 @@ QtObject {
         expect("a file that changed, parsed again", byId(again, "A").title, "Again");
         expect("a file gone, forgotten", ["e.json" in kept.by, "a.json" in kept.by], [false, true]);
 
+        // A look's drawer says why it's there, then what Joel is asked and
+        // his choices; an older look, saying no ask, gives only its why.
+        const askingLook = ForYou.looks([{ file: "q.json", text: lookOf({ id: "Q",
+            ask: "Merge it, or say what to change." }) }]).waiting[0];
+        expect("a look's words, its ask under its why", askingLook.words,
+            "it touches the launcher\n\nMerge it, or say what to change.");
+        expect("an older look's words, its why alone", read.waiting[0].words,
+            "it touches the launcher");
+
         // History's side: how it went and when.
         const side = id => ForYou.historySide(read.history.find(one => one.id === id), say);
         expect("one merged", side("E"), "merged 14:02");
