@@ -221,7 +221,7 @@ pub struct Signers {
 /// that last changed `directory` come from `user`, and none of them can
 /// change what's built.
 #[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Hosted {
     /// The account whose logins reach the host and the flake's private
     /// inputs, and whose checkout holds the repository's objects.
@@ -248,6 +248,22 @@ pub struct Hosted {
     /// that fails, and main is fetched.
     #[serde(default)]
     pub api: Option<String>,
+    /// A command run as `user` in `checkout` that says whether main may be
+    /// fetched into `checkout` now: a fetch that moves a large
+    /// repository's main takes minutes and gigabytes, which a machine may
+    /// only spare at night. When it fails, a head that isn't there yet is
+    /// left for a later ask, and the machine takes `fetched`'s commit or
+    /// stays where it is, its followed inputs moved on. None, and main is
+    /// fetched whenever it's needed.
+    #[serde(default)]
+    pub may_fetch: Option<Vec<String>>,
+    /// A command run as `user` in `checkout` that prints a commit of main
+    /// the checkout already holds, such as a ref another fetch keeps. It's
+    /// taken while main mayn't be fetched, only when the host says main
+    /// holds it and it descends from what the machine last switched to, so
+    /// its word can at most hold the machine behind main's head.
+    #[serde(default)]
+    pub fetched: Option<Vec<String>>,
     /// The folders `user`'s commands find their programs in.
     pub path: Vec<PathBuf>,
     /// The flake's inputs only `user` can fetch, fetched as them by their

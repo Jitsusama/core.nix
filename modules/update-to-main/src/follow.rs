@@ -473,6 +473,8 @@ pub(crate) mod tests {
             token: Vec::new(),
             changed: Some(vec!["sh".to_owned(), "-c".to_owned(), script.to_owned()]),
             api: None,
+            may_fetch: None,
+            fetched: None,
             path: std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect(),
             inputs: Vec::new(),
         }

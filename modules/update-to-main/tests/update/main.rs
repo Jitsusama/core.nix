@@ -324,6 +324,8 @@ impl World {
             token: vec![shell(), "-c".to_owned(), token],
             changed: None,
             api: None,
+            may_fetch: None,
+            fetched: None,
             path: std::env::split_paths(&path).collect(),
             inputs: Vec::new(),
         });
@@ -1575,6 +1577,159 @@ fn a_host_whose_api_doesnt_answer_is_fetched_from() {
     world.system(&head);
     assert_eq!(world.update().1, done(&head));
     assert!(world.checkout_has(&head), "main wasn't fetched");
+}
+
+/// A hosted world reading its folder through the host's API, whose account
+/// says main mayn't be fetched now, and names the commit its checkout
+/// holds at `refs/kept`.
+fn unfetchable() -> World {
+    let mut world = with_api();
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let hosted = world.config.hosted.as_mut().unwrap();
+    hosted.may_fetch = Some(vec![shell(), "-c".to_owned(), "exit 1".to_owned()]);
+    hosted.fetched = Some(vec![
+        shell(),
+        "-c".to_owned(),
+        format!("git -C {} rev-parse refs/kept", checkout.display()),
+    ]);
+    world
+}
+
+impl World {
+    /// Keeps main as it is now in the checkout at `refs/kept`, as another
+    /// fetch would.
+    fn keep_main(&self) {
+        let checkout = &self.config.hosted.as_ref().unwrap().checkout;
+        git(checkout, &["fetch", "--quiet", "origin", "+main:refs/kept"]);
+    }
+
+    /// Takes the host's API answer for `commit` away, so reading its
+    /// folder fails as the host's did on 12 November.
+    fn unanswer(&self, commit: &str) {
+        fs::remove_file(self.root.join("api/git/commits").join(commit)).unwrap();
+    }
+}
+
+/// A fetch that moves a large repository's main took 10 minutes and 17.7 GB
+/// on 12 November, by day, when reading the folder failed. While the
+/// account says main mayn't be fetched, a head the checkout holds nothing
+/// newer than is left for a later ask, and the machine stays where it is.
+#[test]
+fn a_head_that_mayn_t_be_fetched_leaves_the_machine_where_it_is() {
+    let world = unfetchable();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    world.keep_main();
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.unanswer(&two);
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: one.clone(),
+            followed: BTreeMap::new()
+        }
+    );
+    assert!(!world.checkout_has(&two), "main was fetched");
+    assert_eq!(world.builds(), 1);
+    // The next ask reads the folder again, and takes the head once it can.
+    world.answer();
+    assert_eq!(world.update().1, done(&two));
+    assert!(!world.checkout_has(&two), "main was fetched");
+}
+
+/// While main mayn't be fetched, the commit the checkout already holds is
+/// built, once the host says main holds it.
+#[test]
+fn a_head_that_mayn_t_be_fetched_takes_the_commit_the_checkout_holds() {
+    let world = unfetchable();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    let two = world.hosted_commit("two", None);
+    world.keep_main();
+    let three = world.hosted_commit("three", None);
+    world.answer();
+    world.unanswer(&three);
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert_eq!(world.read("seen"), "onetwo");
+    assert!(!world.checkout_has(&three), "main was fetched");
+}
+
+/// The checkout's commit is the account's word, so one main doesn't hold
+/// is never built: the machine stays where it is.
+#[test]
+fn a_commit_the_checkout_holds_that_main_doesnt_is_never_taken() {
+    let world = unfetchable();
+    let checkout = world.config.hosted.as_ref().unwrap().checkout.clone();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    world.keep_main();
+    git(&checkout, &["checkout", "--quiet", "refs/kept"]);
+    fs::write(checkout.join("machine/file"), "the account's own").unwrap();
+    git(
+        &checkout,
+        &["commit", "--quiet", "-am", "the account's own"],
+    );
+    let own = git(&checkout, &["rev-parse", "HEAD"]);
+    git(&checkout, &["update-ref", "refs/kept", &own]);
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.unanswer(&two);
+    world.system(&own);
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: one,
+            followed: BTreeMap::new()
+        }
+    );
+    assert_eq!(world.read("seen"), "one");
+}
+
+/// Whether main may be fetched is asked only once main must come from the
+/// checkout, so an ask whose folder the host reads runs nothing of the
+/// account's.
+#[test]
+fn a_head_the_host_reads_never_asks_whether_main_may_be_fetched() {
+    let mut world = unfetchable();
+    let asked = world.root.join("asked");
+    world.config.hosted.as_mut().unwrap().may_fetch = Some(vec![
+        shell(),
+        "-c".to_owned(),
+        format!("touch {}; exit 1", asked.display()),
+    ]);
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert!(!asked.exists(), "the account was asked whether to fetch");
+}
+
+/// A machine that has never switched has nowhere to stay, so its ask fails
+/// rather than fetching main.
+#[test]
+fn a_first_head_that_mayn_t_be_fetched_fails_the_ask() {
+    let world = unfetchable();
+    let one = world.hosted_commit("one", None);
+    world.system(&one);
+    let (_, ending) = world.update();
+    let Line::Failed { why, .. } = &ending else {
+        panic!("not failed: {ending:?}")
+    };
+    assert!(why.contains("mayn't be fetched now"), "{why}");
+    assert!(!world.checkout_has(&one), "main was fetched");
 }
 
 /// A main the host says doesn't descend from what the machine last ran is
