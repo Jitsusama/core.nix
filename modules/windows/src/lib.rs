@@ -3,7 +3,8 @@
 //! events say of the desktop and the records drawn from it ([`desktop`]),
 //! what's cast and shot of the screen ([`capture`]), which program each
 //! window is ([`entries`]), the mark each program wears ([`marks`]), the
-//! workspaces' order, put back when a screen comes or goes ([`order`]), and
+//! workspaces' order, put back when a screen comes or goes ([`order`]), how
+//! many windows are open and whose ([`open`]), and
 //! the launcher's Screens, served as rows ready to show ([`screens`]),
 //! their drawers saying the screen's light as the machine daemon serves
 //! it ([`light`]).
@@ -19,5 +20,6 @@ pub mod entries;
 pub mod interface;
 pub mod light;
 pub mod marks;
+pub mod open;
 pub mod order;
 pub mod screens;

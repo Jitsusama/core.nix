@@ -7,7 +7,7 @@
 use daemon_serve::asks::Domain;
 
 /// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 8] = [
+pub const KINDS: [&str; 9] = [
     "window",
     "workspace",
     "desktop",
@@ -16,18 +16,21 @@ pub const KINDS: [&str; 8] = [
     "layout",
     "screenshot",
     "row",
+    "windows-open",
 ];
 
 /// The kinds of which there's one record, keyed by its kind alone.
-const SOLE: [&str; 3] = ["desktop", "focus", "screenshot"];
+const SOLE: [&str; 4] = ["desktop", "focus", "screenshot", "windows-open"];
 
 /// The kinds an ask gets only by naming them: a window's tile moves at
 /// every resize and scroll, and the window niri says has the keys moves
 /// to none at every opening of the launcher, which would wake every watch
 /// that names no kind, where only the few that draw tiles, or follow the
 /// keys as niri does, want them. A row is the launcher's alone, ready to
-/// show, so only a watch of its place wants it.
-const NAMED_ONLY: [&str; 3] = ["focus", "layout", "row"];
+/// show, so only a watch of its place wants it. How many windows are open,
+/// and whose, moves at every window opened or closed, and only Lock's drawer
+/// says it.
+const NAMED_ONLY: [&str; 4] = ["focus", "layout", "row", "windows-open"];
 
 /// What daemon-serve serves it as.
 pub const DOMAIN: Domain = Domain {
@@ -91,6 +94,7 @@ mod tests {
         assert_eq!(DOMAIN.kind_of("focus"), Some("focus"));
         assert_eq!(DOMAIN.kind_of("cast:3"), Some("cast"));
         assert_eq!(DOMAIN.kind_of("layout:12"), Some("layout"));
+        assert_eq!(DOMAIN.kind_of("windows-open"), Some("windows-open"));
     }
 
     #[test]
