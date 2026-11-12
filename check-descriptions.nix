@@ -2381,6 +2381,10 @@
   the-sessions-kitty-outlives-a-switch = ''
     a switch never restarts the kitty every session's window is in, so no switch closes them
   '';
+  the-sessions-kitty-stays-off-the-disk = ''
+    the kitty every session's window is drawn by keeps what it swaps out compressed in memory, never
+    writing it to disk
+  '';
   the-sessions-kitty-keeps-niris-pace = ''
     the kitty every session's window is drawn by draws only the frames niri asks for, so the
     session windows niri doesn't show aren't drawn

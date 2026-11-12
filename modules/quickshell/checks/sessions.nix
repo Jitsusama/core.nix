@@ -38,6 +38,16 @@ in
       "The sessions' kitty draws as it pleases, so every hidden session's window is drawn too."
       (lib.any (lib.hasInfix "-o sync_to_monitor=yes") (lib.toList (service.ExecStart or [ ])));
 
+  # The sessions' kitty keeps what it swaps out compressed in memory, so a
+  # session's window Joel comes back to never draws from disk.
+  the-sessions-kitty-stays-off-the-disk =
+    holds "the-sessions-kitty-stays-off-the-disk"
+      "The sessions' kitty writes its swapped memory out to disk, so a window he comes back to reads it back."
+      (
+        ((account graphical).systemd.user.services.sessions-kitty.Service.MemoryZSwapWriteback or true)
+        == false
+      );
+
   # Reopen Them All puts each session back on its own screen, found by what
   # the screen is rather than its connector, a gone screen's workspaces
   # after the one in use's and to it once it's back, and each window that
