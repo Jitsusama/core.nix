@@ -381,7 +381,12 @@
         "mode:warp+dot": "the tunnel with DNS over TLS",
         "mode:proxy": "the tunnel as a SOCKS5 proxy",
         "mode:tunnel_only": "the tunnel alone",
-        "through": "WARP"
+        "through": "WARP",
+        "waiting": "{through} through it \u00b7 {rest} at rest",
+        "nothingWaiting": "none",
+        "unknown": "unknown",
+        "shaperOff": "the shaper isn't running",
+        "unheard": "its last question went unanswered"
       }
     },
     {

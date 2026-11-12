@@ -9,6 +9,8 @@
 // it, then its State and why, the network's Health as WARP judges it, its
 // Settings (the mode, always on and the split tunnel first, each saying
 // who set it), the tunnel's Round Trip and Loss as WARP estimates them,
+// what's Waiting on the way as the network's shaper hears it, after the
+// Round Trip (WarpWaiting.js),
 // its Protocol, the Data Centre it ends in, its Endpoint and Last
 // Handshake, its Traffic each way and its TLS, what its DNS proxy
 // answered, and Through, WARP, named once (Warp.js works each out,
@@ -36,6 +38,7 @@ import QtQuick
 import "Warp.js" as Warp
 import "WarpSeen.js" as WarpSeen
 import "WarpSwitch.js" as WarpSwitch
+import "WarpWaiting.js" as WarpWaiting
 
 Provider {
     id: provider
@@ -151,7 +154,8 @@ Provider {
         const linked = Warp.told(said, settings, words);
         if (linked === null)
             return null;
-        const parts = WarpSeen.drawn(linked.parts, seen, settings, words);
+        const parts = WarpSeen.drawn(
+            WarpWaiting.among(linked.parts, said.waiting, settings, words), seen, settings, words);
         return {
             headline: linked.headline,
             copy: linked.headline,

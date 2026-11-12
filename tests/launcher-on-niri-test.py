@@ -2052,6 +2052,11 @@ def test_a_terminal_does_an_act_unasked_and_an_ending_one_once_sure(shell: Shell
                 shell.close(window)
 
 
+def named_row(shown: Json, name: str) -> Json | None:
+    """Give the row a terminal's answer shows by this name, or None."""
+    return next((row for row in shown.get("rows") or [] if row["name"] == name), None)
+
+
 def reading(shown: Json, start: str) -> str:
     """Give how the first row starting so reads whole, or nothing."""
     reads = [str(thing["reads"]) for thing in shown["things"]]
@@ -2344,6 +2349,48 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
         assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
         assert not shell.showing()["open"]
     finally:
+        warp_forgotten(said)
+
+
+def test_the_work_network_says_whats_waiting_on_the_way_as_the_shaper_hears_it(
+    shell: Shell,
+) -> None:
+    """The Work Network's Waiting says what the shaper heard, and unknown once it stops.
+
+    warp reads the shaper's status.json with each read of the link (its waiting.rs), and the
+    place says how long past the way at rest a question through the VPN took, after the
+    Round Trip. The shaper's file goes as it stops, which is unknown, never none.
+    """
+    said = warp_said()
+    shaper = Path(os.environ["HOME"]) / "shaper"
+    shaper.mkdir()
+    status = shaper / "status.json"
+    shutil.copyfile(Path(os.environ["WARP_CONTRACT"]) / "shaper-status.json", status)
+    try:
+        warp = terminal_shown_until(
+            shell,
+            lambda shown: named_row(shown, "Waiting") is not None,
+            "network",
+            "work network",
+        )
+        names = [row["name"] for row in warp["rows"]]
+        assert names[names.index("Round Trip") + 1] == "Waiting", names
+        waiting = named_row(warp, "Waiting")
+        assert waiting is not None, names
+        assert waiting["side"] == "75 ms", waiting
+        assert waiting["note"] == "103 ms through it \u00b7 28 ms at rest", waiting
+        status.unlink()
+        stopped = terminal_shown_until(
+            shell,
+            lambda shown: (named_row(shown, "Waiting") or {}).get("side") == "unknown",
+            "network",
+            "work network",
+        )
+        waiting = named_row(stopped, "Waiting")
+        assert waiting is not None, stopped
+        assert waiting["note"] == "the shaper isn't running", waiting
+    finally:
+        shutil.rmtree(shaper, ignore_errors=True)
         warp_forgotten(said)
 
 

@@ -11,7 +11,9 @@
 //!                    switches it over SOCKET (serve.rs)
 //!
 //! `WARP_CLI` names the warp-cli to ask, as the shell names the one the
-//! system runs; without it, it's the one on the PATH.
+//! system runs; without it, it's the one on the PATH. Serving, `WARP_SHAPER`
+//! names the network shaper's status.json, so the link says what waits on
+//! the way through it (waiting.rs); without it, it says nothing of that.
 //!
 //! Run by hand, it asks warp-cli each time and keeps nothing: WARP's
 //! service keeps every figure itself, answering each question in about
@@ -35,6 +37,7 @@ mod page;
 mod read;
 mod serve;
 mod switch;
+mod waiting;
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -166,7 +169,8 @@ fn main() -> ExitCode {
     if let [serving, socket] = args.as_slice()
         && serving == "serve"
     {
-        return match serve::serve(std::path::Path::new(socket), WarpCli::from_env()) {
+        let shaper = std::env::var_os("WARP_SHAPER").map(std::path::PathBuf::from);
+        return match serve::serve(std::path::Path::new(socket), WarpCli::from_env(), shaper) {
             Ok(()) => ExitCode::SUCCESS,
             Err(why) => {
                 eprintln!("warp: {socket} couldn't be listened on: {why}");

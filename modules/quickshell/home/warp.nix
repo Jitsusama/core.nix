@@ -6,4 +6,5 @@
   "launcher/RealmMachines.js"
   "launcher/WarpSeen.js"
   "launcher/WarpSwitch.js"
+  "launcher/WarpWaiting.js"
 ]

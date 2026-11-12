@@ -35,7 +35,8 @@ in
   # (tests/desktop/stand-in-meaning.py). WARP stands in as warp-cli
   # answering from the files a test writes, the real warp reading them
   # (tests/warp-cli-stand-in.sh), and warp holds its link on the socket
-  # the account's systemd would, as WARP, and the clipboard's history
+  # the account's systemd would, as WARP, the shaper's status what a test
+  # writes in ~/shaper, and the clipboard's history
   # serves Copies' rows. The home network is the eero daemon's stand-in,
   # holding the contract's network and the rows the daemon serves of it
   # (tests/desktop/stand-in-eero.py), as EERO.
@@ -64,7 +65,7 @@ in
         "EERO_ROWS=${../../eero/tests/rows.json}"
         "WARP_CONTRACT=${../../warp/contract}"
         "WARP=${pkgs.writeShellScript "warp-serve" ''
-          WARP_CLI=${warpCli} exec ${warp} serve "$@"
+          WARP_CLI=${warpCli} WARP_SHAPER="$HOME/shaper/status.json" exec ${warp} serve "$@"
         ''}"
       ];
       shell.launcher.providers.eero.enable = true;
@@ -539,6 +540,7 @@ in
       cp ${../launcher/Warp.js} Warp.js
       cp ${../launcher/WarpSeen.js} WarpSeen.js
       cp ${../launcher/WarpSwitch.js} WarpSwitch.js
+      cp ${../launcher/WarpWaiting.js} WarpWaiting.js
       cp ${../launcher/HomeNetwork.js} HomeNetwork.js
       cp ${../launcher/Ago.js} Ago.js
       cp ${(import ../launcher/words.nix).file} words.json

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "wlan1",
+    "ifb": "shaper4",
+    "network": "02:00:00:00:00:02",
+    "up": 7416,
+    "down": 2000000,
+    "state": "holding",
+    "building": false,
+    "follows": null,
+    "live": false,
+    "heard": null
+  },
+  {
+    "name": "wlp0s20f3",
+    "ifb": "shaper3",
+    "network": "02:00:00:00:00:01",
+    "up": 7416,
+    "down": 2000000,
+    "held_up": 15404,
+    "held_down": 85298,
+    "state": "holding",
+    "building": false,
+    "baselines": [["1.0.0.1", 21.399870839136458], ["1.1.1.1", 21.947582238707284]],
+    "follows": null,
+    "live": false,
+    "heard": {
+      "t_s": 434.0,
+      "up_kbit": 6689.615086226204,
+      "down_kbit": 10818.910950354611,
+      "up_delay_ms": 30.0,
+      "down_delay_ms": 10.0,
+      "gateway_ms": 16.19432,
+      "ours": {
+        "queued": true,
+        "in_vpn": false,
+        "vpn_queued": true,
+        "link_wait_ms": 7,
+        "waiting": true,
+        "resent": 136,
+        "dropped": 79,
+        "sent": 6394
+      },
+      "vpn_ms": 103.12174000000002,
+      "vpn_base_ms": 27.66719,
+      "up_limit": 7416,
+      "plateau": 8068.16677578061
+    }
+  }
+]
