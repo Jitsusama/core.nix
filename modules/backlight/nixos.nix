@@ -2,7 +2,8 @@
 # hear. udev turns on each one's buffer with its illuminance in it, and its
 # colour temperature where it sees colour, and lets the seat's user read it,
 # so the daemon wakes only when a sample arrives, which a sensor hub sends
-# when the light changes. iio-sensor-proxy, where a
+# when the light changes. A colour sensor with no such buffer has its
+# threshold event turned on instead, for the daemon to move. iio-sensor-proxy, where a
 # machine runs it for its other sensors, is told to leave them alone: it
 # would turn their buffers off, and where it can't hear one it reads it on a
 # timer.
@@ -13,7 +14,12 @@
 # saver, so a shutdown with the lid shut loses nothing set since. The
 # session's bus starts
 # the program that warms the built-in panel when the daemon first asks it.
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   savesWhileOpen = pkgs.callPackage ./saves-while-open.nix {
     save = "${config.systemd.package}/lib/systemd/systemd-backlight";
@@ -21,6 +27,16 @@ let
 
   # A light sensor with a buffer.
   sensor = ''SUBSYSTEM=="iio", TEST=="scan_elements/in_illuminance_en", TEST=="buffer/enable"'';
+
+  # A colour sensor with no buffer for its light, such as an APDS-9960,
+  # whose clear channel says when its count leaves a window the daemon
+  # moves (src/windowed.rs).
+  windowed = ''SUBSYSTEM=="iio", TEST=="in_intensity_clear_raw", TEST=="events/in_intensity_clear_thresh_either_en"'';
+  # Its window's two thresholds, which the daemon sets as the seat's user.
+  thresholds = map (side: "/sys%p/events/in_intensity_clear_thresh_${side}_value") [
+    "falling"
+    "rising"
+  ];
 
   # Before the seat's rules, which give the user what's tagged.
   hear = pkgs.writeTextFile {
@@ -40,6 +56,20 @@ let
         ATTR{buffer/enable}="1"
       ACTION=="add|change", ${sensor}, ATTR{buffer/enable}=="0", \
         ATTR{scan_elements/in_illuminance_en}="1", ATTR{buffer/enable}="1"
+      # A tenth of a second at four times the gain counts a dim room's light
+      # finely and a bright one's short of the channel's top. Its event is
+      # turned on with a window no count leaves, so nothing wakes before
+      # the daemon sets its own, and its thresholds go to the users' group,
+      # which the seat's user is in from the start of the session, as a
+      # group added now would be only from the next.
+      ACTION!="remove", ${windowed}, TAG+="uaccess"
+      ACTION=="add|change", ${windowed}, ATTR{in_intensity_integration_time}="0.1", \
+        ATTR{in_intensity_scale}="4", \
+        ATTR{events/in_intensity_clear_thresh_falling_value}="0", \
+        ATTR{events/in_intensity_clear_thresh_rising_value}="65535", \
+        ATTR{events/in_intensity_clear_thresh_either_en}="1", \
+        RUN+="${pkgs.coreutils}/bin/chgrp users ${lib.concatStringsSep " " thresholds}", \
+        RUN+="${pkgs.coreutils}/bin/chmod g+w ${lib.concatStringsSep " " thresholds}"
     '';
   };
 
