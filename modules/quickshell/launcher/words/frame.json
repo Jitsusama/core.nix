@@ -19,6 +19,7 @@
       "holds": [
         "windows:this",
         "windows",
+        "tabs",
         "displays",
         "clipboard",
         "timers",
