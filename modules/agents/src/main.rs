@@ -56,8 +56,6 @@ const DOMAIN: Domain = Domain {
         "landed-days",
         "closed",
     ],
-    sole: &[],
-    named_only: &[],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \

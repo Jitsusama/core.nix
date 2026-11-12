@@ -37,8 +37,6 @@ use windows::entries::{self, Entries};
 const DOMAIN: Domain = Domain {
     name: "notices",
     kinds: &["notice", "row"],
-    sole: &[],
-    named_only: &[],
 };
 
 const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \

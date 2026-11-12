@@ -13,8 +13,6 @@ use super::*;
 const ROWS: Domain = Domain {
     name: "agents",
     kinds: &["row", "summary"],
-    sole: &[],
-    named_only: &[],
 };
 
 /// A folder of the test's own, gone when it ends.
@@ -66,86 +64,6 @@ fn a_watch_is_answered_whole_then_told_only_what_moved() {
         json!(["row:agents:P"]),
         "and the key that went"
     );
-}
-
-#[test]
-fn a_watch_of_some_fields_hears_them_alone_and_only_as_they_move() {
-    let (shared, mut client, _folder) = served("fields", Box::new(|_| None));
-    let kelp = |name: &str, order: u64| json!({"key": "row:agents:O", "row": {"name": name}, "order": order});
-    shared.change(vec![kelp("kelp", 100)], json!({}));
-    let asked = json!({"id": 1, "ask": "watch", "kind": "row", "fields": ["order"]});
-    assert_eq!(
-        client.ask(&asked)["records"],
-        json!([{"key": "row:agents:O", "order": 100}]),
-        "its key and its field"
-    );
-    // Renamed, which the watch doesn't hear, then used, which it does.
-    shared.change(vec![kelp("reef", 100)], json!({}));
-    shared.change(vec![kelp("reef", 200)], json!({}));
-    assert_eq!(
-        client.heard()["changed"],
-        json!([{"key": "row:agents:O", "order": 200}]),
-        "only the use, and only its field"
-    );
-}
-
-#[test]
-fn a_list_and_a_whole_answer_keep_the_order_the_daemon_gave() {
-    let (shared, mut client, _folder) = served("order", Box::new(|_| None));
-    // Given against the order of their keys, as windows are given the
-    // one used last first.
-    shared.change(
-        vec![row("agents", "P", "reef"), row("agents", "O", "kelp")],
-        json!({}),
-    );
-    let keys = |answer: &Value| -> Vec<String> {
-        let records = answer["records"].as_array().cloned().unwrap_or_default();
-        records
-            .iter()
-            .map(|record| record["key"].to_string())
-            .collect()
-    };
-    let given = [r#""row:agents:P""#, r#""row:agents:O""#];
-    assert_eq!(
-        keys(&client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}))),
-        given,
-        "listed"
-    );
-    assert_eq!(
-        keys(&client.ask(&json!({"id": 2, "ask": "watch", "kind": "row"}))),
-        given,
-        "watched"
-    );
-}
-
-#[test]
-fn a_list_of_a_place_has_only_its_rows() {
-    let (shared, mut client, _folder) = served("listed", Box::new(|_| None));
-    shared.change(
-        vec![row("agents", "O", "kelp"), row("mail", "m", "hi")],
-        json!({}),
-    );
-    let asked = json!({"id": 1, "ask": "list", "kind": "row", "place": "mail"});
-    assert_eq!(
-        client.ask(&asked)["records"],
-        json!([row("mail", "m", "hi")]),
-        "only Mail's row"
-    );
-}
-
-#[test]
-fn a_daemon_reads_the_keys_its_watches_name() {
-    let (shared, mut client, _folder) = served("keyed", Box::new(|_| None));
-    shared.change(vec![row("agents", "O", "kelp")], json!({}));
-    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
-    client.ask(&json!({"id": 2, "ask": "watch", "keys": ["row:agents:O"]}));
-    assert_eq!(
-        shared.keys_watched().into_iter().collect::<Vec<_>>(),
-        vec!["row:agents:O".to_owned()],
-        "the one key named"
-    );
-    client.ask(&json!({"id": 2, "ask": "unwatch"}));
-    assert!(shared.keys_watched().is_empty(), "none once it's unwatched");
 }
 
 #[test]

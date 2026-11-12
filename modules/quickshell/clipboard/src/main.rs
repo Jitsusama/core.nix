@@ -1204,8 +1204,6 @@ fn now() -> u128 {
 const DOMAIN: Domain = Domain {
     name: "clipboard",
     kinds: &["row", "summary", "now"],
-    sole: &[],
-    named_only: &[],
 };
 
 /// The shell's own asks, handed to the Wayland side, which is woken to do
