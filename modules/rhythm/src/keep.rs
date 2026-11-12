@@ -4,7 +4,11 @@
 //! one per line in seconds since 1970, kept for 120 days: swayidle-away's
 //! mark (`$XDG_RUNTIME_DIR/someone-at-the-machine`), there for two minutes
 //! after a key or a touch, is looked at each minute. The first run seeds
-//! the file from what the logs hold (seed.rs). The profile is written to
+//! the file from what the logs hold (seed.rs), and keeps the minute it
+//! began watching in `$XDG_STATE_HOME/rhythm/watched`, since a seeded
+//! minute is read differently (nights.rs); seen minutes kept without it
+//! were seeded by an older rhythm that read the harness's words as Joel's,
+//! so they're seeded afresh. The profile is written to
 //! `$XDG_STATE_HOME/rhythm/profile.json` whenever it changes, whole, by a
 //! rename, so a reader never sees half of it. Each look also asks whether
 //! a walk is due (walk.rs), and suggests it with a notice from Daylight;
@@ -30,6 +34,7 @@ const KEEP_DAYS: i64 = 120;
 /// Where rhythm reads and writes.
 pub struct Paths {
     pub seen: PathBuf,
+    pub watched: PathBuf,
     pub profile: PathBuf,
     pub walks: PathBuf,
     pub mark: PathBuf,
@@ -50,6 +55,7 @@ impl Paths {
             .join("rhythm");
         Some(Paths {
             seen: state.join("seen"),
+            watched: state.join("watched"),
             profile: state.join("profile.json"),
             walks: state.join("walks"),
             mark: runtime.join("someone-at-the-machine"),
@@ -262,9 +268,9 @@ fn call_on() -> bool {
 }
 
 /// The profile, the evening's weekday it's for, and the sun, as of now.
-fn reading(paths: &Paths, seen: &[i64], now: i64) -> (Profile, u32, Option<Sun>) {
+fn reading(paths: &Paths, seen: &[i64], watched: i64, now: i64) -> (Profile, u32, Option<Sun>) {
     let evening = local(now).map_or(now.div_euclid(86_400), evening_of);
-    let profile = Profile::of(&nights(seen, 0, local), evening);
+    let profile = Profile::of(&nights(seen, watched, local), evening);
     (profile, weekday_of(evening), sun_today(paths, now))
 }
 
@@ -272,26 +278,36 @@ fn reading(paths: &Paths, seen: &[i64], now: i64) -> (Profile, u32, Option<Sun>)
 /// nothing is kept yet.
 pub fn read(paths: &Paths) -> String {
     let now = now();
-    let seen = read_seen(&paths.seen).unwrap_or_else(|| seeded(paths, now));
-    let (profile, weekday, sun) = reading(paths, &seen, now);
+    let (seen, watched) = match (read_seen(&paths.seen), watched(paths)) {
+        (Some(seen), Some(watched)) => (seen, watched),
+        _ => (seeded(paths, now), now),
+    };
+    let (profile, weekday, sun) = reading(paths, &seen, watched, now);
     said(&profile, weekday, sun)
+}
+
+/// The minute rhythm began watching, where it's kept.
+fn watched(paths: &Paths) -> Option<i64> {
+    read_seen(&paths.watched)?.first().copied()
 }
 
 /// Keeps the minutes Joel is at the machine, and the profile they make,
 /// for as long as the session runs.
 pub fn keep(paths: &Paths) -> std::io::Result<()> {
-    let mut seen = if let Some(seen) = read_seen(&paths.seen) {
-        kept(seen, now())
-    } else {
-        let seen = seeded(paths, now());
-        eprintln!(
-            "<6>rhythm seeded {} minutes at the machine from the logs",
-            seen.len()
-        );
-        seen
-    };
+    let (mut seen, watched) =
+        if let (Some(seen), Some(watched)) = (read_seen(&paths.seen), watched(paths)) {
+            (kept(seen, now()), watched)
+        } else {
+            let seen = seeded(paths, now());
+            eprintln!(
+                "<6>rhythm seeded {} minutes at the machine from the logs",
+                seen.len()
+            );
+            (seen, minute(now()))
+        };
     let lines: Vec<String> = seen.iter().map(ToString::to_string).collect();
     write_whole(&paths.seen, &(lines.join("\n") + "\n"))?;
+    write_whole(&paths.watched, &format!("{watched}\n"))?;
     let mut written = fs::read_to_string(&paths.profile).unwrap_or_default();
     let mut walker = Walker::new(paths);
     loop {
@@ -304,7 +320,7 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
                 .open(&paths.seen)?;
             writeln!(file, "{}", minute(now))?;
         }
-        let (profile, weekday, sun) = reading(paths, &seen, now);
+        let (profile, weekday, sun) = reading(paths, &seen, watched, now);
         let json = profile_json(&profile, weekday, sun);
         if json != written {
             write_whole(&paths.profile, &json)?;

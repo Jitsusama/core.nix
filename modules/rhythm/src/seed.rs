@@ -6,12 +6,44 @@
 //!
 //! A pi log writes much in a person's place that no person typed, so only
 //! a message entry of the user's counts. Of those, one opening `[` is the
-//! harness's own word (`[Automated message ...]`), and a session's first
-//! is often the brief another session spawned it with, so neither does.
+//! harness's own word (`[Automated message ...]`), as is one opening as
+//! `NOT_TYPED` says, or as one session's to another (`From P9R1KI (window
+//! 4): ...`); and a session's first is often the brief another session
+//! spawned it with, so none of them does. The harness marks what's typed
+//! only from November 2026, so the logs before need telling apart by how
+//! they open.
 
 use std::path::Path;
 
 use crate::clock::iso;
+
+/// How what the harness writes in a person's place opens, in pi's logs.
+const NOT_TYPED: [&str; 9] = [
+    "[",
+    "The context was compacted",
+    "Compacting the context",
+    "You were restarted",
+    "You are a child of",
+    "Verification found",
+    "Load quest ",
+    "Run exactly this bash command",
+    "Reply with the single word",
+];
+
+/// Whether a user message's text is one a person typed, as far as how it
+/// opens can say.
+fn typed(text: &str) -> bool {
+    let from_a_session = text
+        .strip_prefix("From ")
+        .and_then(|rest| rest.split_once(" (window "))
+        .is_some_and(|(address, _)| {
+            address.len() == 6
+                && address
+                    .chars()
+                    .all(|letter| letter.is_ascii_uppercase() || letter.is_ascii_digit())
+        });
+    !from_a_session && !NOT_TYPED.iter().any(|opening| text.starts_with(opening))
+}
 
 /// The moments in zsh's history, each a command run, in seconds since
 /// 1970. Its extended form opens each entry `: SECONDS:ELAPSED;`.
@@ -36,7 +68,7 @@ pub fn pi_session(log: &str) -> Vec<i64> {
         .skip(1)
         .filter(|line| {
             line.split_once("\"text\":\"")
-                .is_some_and(|(_, text)| !text.starts_with('['))
+                .is_some_and(|(_, text)| typed(text))
         })
         .filter_map(|line| iso(line.split_once("\"timestamp\":\"")?.1))
         .collect()

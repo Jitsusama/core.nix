@@ -7,6 +7,9 @@
 //! minute, with others in the half hour before it, so a stray key on the
 //! way to bed, or a message an agent sent in his name, doesn't move it; a
 //! lone minute just before the gap gives way to the busy one before it.
+//! That holds only for the minutes rhythm watched: those seeded from the
+//! logs are a command or a message now and then, each typed, so a seeded
+//! night stops at its last.
 //!
 //! What's usual is the middle of the last four weeks' stops, each week back
 //! counting half as much as the one after it, so a change of habit shows
@@ -59,14 +62,19 @@ pub struct Night {
 /// Each night Joel stopped, oldest first, from the minutes he was seen at
 /// the machine, sorted, read by `local`; those before `watched` were
 /// seeded from the logs.
-pub fn nights(seen: &[i64], _watched: i64, local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
+pub fn nights(seen: &[i64], watched: i64, local: impl Fn(i64) -> Option<Local>) -> Vec<Night> {
     let mut found: Vec<(Night, i64)> = Vec::new();
     for (index, pair) in seen.windows(2).enumerate() {
         let gap = pair[1] - pair[0];
         if gap < SLEEP {
             continue;
         }
-        let Some(stop) = busy_before(seen, index) else {
+        let stop = if pair[0] < watched {
+            Some(pair[0])
+        } else {
+            busy_before(seen, index)
+        };
+        let Some(stop) = stop else {
             continue;
         };
         let Some(clock) = local(stop) else {
