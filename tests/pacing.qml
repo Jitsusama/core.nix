@@ -356,6 +356,19 @@ QtObject {
             + "10 in the shell and 25 from its frame's start\n"
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
             + "the slowest 70 ms, 0 within 50 ms");
+        // Joel's changes in Now missed 50 ms on both sides of the shell, and
+        // nothing said which daemons' lines they came from, Now being made
+        // from many (2026-11-11, 20:10). Each daemon is said with how many
+        // it set going, most first, then by name.
+        const whose = Presented.changesSaid([
+            { place: "on", from: 0, at: 60, by: "wifi" },
+            { place: "on", from: 100, at: 170, by: "machine" },
+            { place: "on", from: 200, at: 260, by: "machine" },
+            { place: "on", from: 300, at: 340 }
+        ]);
+        check(failures, "a change says whose line set it going", whose.join("\n"),
+            "launcher: 4 changes in on presented a median 60 ms from the line, "
+            + "the slowest 70 ms, 1 within 50 ms, from machine 2, wifi 1");
 
         // Joel's 12:06 keys each came to their frame in 10 to 53 ms but
         // were presented a median 101 ms from the key, and nothing said
