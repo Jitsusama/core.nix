@@ -81,14 +81,14 @@ function answer(one, choice, live, at) {
     if (address === "") {
         return null;
     }
-    return { address: address, steer: { act: "answer", look: one.id, value: choice.value,
+    return { address, steer: { act: "answer", look: one.id, value: choice.value,
         from: "joel", at: new Date(at).toISOString() } };
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {
-    const given = (answered ?? {})[one.id];
+    const given = answered?.[one.id];
     return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
 }
 
