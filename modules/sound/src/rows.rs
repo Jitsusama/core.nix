@@ -424,21 +424,38 @@ fn called_as(name: &str, own: &str, shared: bool, words: &Words) -> String {
 /// calls, as anything reading its microphone's stand-in does: an input
 /// that's `WirePlumber`'s stand-in, its headset's profile carrying music.
 pub(crate) fn switches(device: &Device, devices: &[Device]) -> bool {
-    if device.sink || device.property("bluez5.loopback") != "true" {
-        return false;
-    }
+    !device.sink
+        && device.property("bluez5.loopback") == "true"
+        && carried(device, devices) == "music"
+}
+
+/// What its Bluetooth headset's profile carries, as the vocabulary words
+/// it (Sounds.js's `carries`): A2DP's "music", a hands-free profile's
+/// "calls", LE Audio's "le-audio", or "" for none. A headset microphone's
+/// stand-in has no profile of its own, so it says its headset's.
+pub(crate) fn carried(device: &Device, devices: &[Device]) -> &'static str {
     let address = device.address();
     if address.is_empty() {
-        return false;
+        return "";
     }
-    let headset = if device.profile().is_empty() {
+    let profile = if device.profile().is_empty() {
         devices
             .iter()
             .find(|one| one.property("api.bluez5.address") == address && !one.profile().is_empty())
+            .map_or("", Device::profile)
     } else {
-        Some(device)
+        device.profile()
     };
-    headset.is_some_and(|headset| headset.profile().starts_with("a2dp"))
+    let calls = ["headset", "hfp", "hsp"];
+    if profile.starts_with("a2dp") {
+        "music"
+    } else if calls.iter().any(|one| profile.starts_with(one)) {
+        "calls"
+    } else if profile.starts_with("bap") {
+        "le-audio"
+    } else {
+        ""
+    }
 }
 
 /// The glyph it wears, struck through while it's muted.
