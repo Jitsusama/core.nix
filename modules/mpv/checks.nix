@@ -51,6 +51,7 @@ onLinux {
         "Applications.qml"
         "ReadyRows.qml"
         "ReadyRows.js"
+        "Moved.js"
         "Interfaces.js"
         "HeldWindows.js"
         "Order.js"

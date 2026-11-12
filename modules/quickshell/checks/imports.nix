@@ -252,7 +252,11 @@
     "launcher/Ago.js"
     "launcher/Interfaces.js"
   ];
-  "launcher/ReadyRows.qml" = [ "launcher/ReadyRows.js" ];
+  "launcher/ReadyRows.qml" = [
+    "Fuzzy.js"
+    "launcher/Moved.js"
+    "launcher/ReadyRows.js"
+  ];
   "launcher/RealmMachines.js" = [
     "launcher/Machine.js"
     "launcher/Order.js"

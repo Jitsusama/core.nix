@@ -17,6 +17,8 @@ import QtQuick
 import Quickshell
 import qs
 import "ReadyRows.js" as Ready
+import "Moved.js" as Moved
+import "../Fuzzy.js" as Fuzzy
 
 Scope {
     id: ready
@@ -69,7 +71,7 @@ Scope {
     // changes or its time is said anew.
     readonly property var made: ({})
     // Each row as it was served when it was last made, by key, so one told
-    // again with only its order moved keeps what was made (movedOnly).
+    // again with only its order moved keeps what was made (Moved.js).
     readonly property var madeFrom: ({})
     // The acts served in a form the launcher refuses, by key, each
     // journalled once (ReadyRows.js's misformed).
@@ -135,7 +137,7 @@ Scope {
         const moved = {};
         for (let at = 0; at < changed.length; at += 1) {
             const key = changed[at];
-            if (key in made && Ready.movedOnly(madeFrom[key], served(key))) {
+            if (key in made && Moved.movedOnly(madeFrom[key], served(key))) {
                 moved[key] = true;
                 madeFrom[key] = served(key);
             }
@@ -349,7 +351,16 @@ Scope {
             // Power's Charger is, isn't taken for a thing missing its say
             // (goes-places' undrawn, KP0L6A's 439b18d9).
             drawer: row.drawer ? () => drawerOf(row) : undefined
-        }, acting, asking, copying, fields ?? {}));
+        }, acting, asking, copying, fields ?? {}, {
+            // The words it's found by beyond its name, the daemon's and the
+            // place's, made ready to match as the search reads them
+            // (Launcher.qml's hiddenWords), once for each text.
+            keywords: keywordsMade(Ready.keywordsOf(row.keywords, fields?.keywords))
+        }));
+    }
+
+    function keywordsMade(words) {
+        return words === "" ? null : Fuzzy.kept(words);
     }
 
     // The acts of a row the launcher can do here: a step into the drawer

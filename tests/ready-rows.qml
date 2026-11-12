@@ -7,6 +7,7 @@
 // records made up here in the crate's wrapped form.
 import QtQuick
 import "launcher/ReadyRows.js" as Ready
+import "launcher/Moved.js" as Moved
 import "Expect.js" as Expect
 
 QtObject {
@@ -37,6 +38,7 @@ QtObject {
             insides();
             acting();
             moving();
+            keywording();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);
@@ -435,21 +437,38 @@ QtObject {
         const was = { thing: "sound:a", name: "Speakers", order: 1024,
             side: [{ said: "50%" }], held: { volume: 0.5, muted: false } };
         const moved = Object.assign({}, was, { order: 1536 });
-        Expect.same("a row whose order alone moved moved only", Ready.movedOnly(was, moved),
+        Expect.same("a row whose order alone moved moved only", Moved.movedOnly(was, moved),
             true);
-        Expect.same("one told alike moved only too", Ready.movedOnly(was,
+        Expect.same("one told alike moved only too", Moved.movedOnly(was,
             JSON.parse(JSON.stringify(was))), true);
-        Expect.same("one whose words moved did more", Ready.movedOnly(was,
+        Expect.same("one whose words moved did more", Moved.movedOnly(was,
             Object.assign({}, moved, { side: [{ said: "60%" }] })), false);
-        Expect.same("as one whose held facts moved did", Ready.movedOnly(was,
+        Expect.same("as one whose held facts moved did", Moved.movedOnly(was,
             Object.assign({}, moved, { held: { volume: 0.5, muted: true } })), false);
-        Expect.same("and one that gained a field", Ready.movedOnly(was,
+        Expect.same("and one that gained a field", Moved.movedOnly(was,
             Object.assign({}, moved, { note: "new" })), false);
-        Expect.same("or lost one", Ready.movedOnly(was, { thing: "sound:a", name: "Speakers",
+        Expect.same("or lost one", Moved.movedOnly(was, { thing: "sound:a", name: "Speakers",
             order: 1536, side: [{ said: "50%" }] }), false);
-        Expect.same("a list is not an object of its indexes", Ready.movedOnly({ side: ["a"] },
+        Expect.same("a list is not an object of its indexes", Moved.movedOnly({ side: ["a"] },
             { side: { 0: "a" } }), false);
-        Expect.same("a row never made moved nowhere", Ready.movedOnly(undefined, moved), false);
+        Expect.same("a row never made moved nowhere", Moved.movedOnly(undefined, moved), false);
+    }
+
+    // What a served row is found by beyond its name, from the daemon and
+    // its place, in one text the launcher makes ready to match once.
+    function keywording() {
+        Expect.same("a row with none is found by none", Ready.keywordsOf(undefined, undefined),
+            "");
+        Expect.same("a daemon's list is its words in turn",
+            Ready.keywordsOf(["grinning", "face"], undefined), "grinning face");
+        Expect.same("a place's text is searched, as a screen's name is",
+            Ready.keywordsOf(undefined, "Scale 100%"), "Scale 100%");
+        Expect.same("both are, the daemon's first", Ready.keywordsOf("radio", "DP-1"),
+            "radio DP-1");
+        Expect.same("words a place made ready already are read for their text",
+            Ready.keywordsOf(null, { text: "eDP-1", mask: 3 }), "eDP-1");
+        Expect.same("a list's other values say nothing",
+            Ready.keywordsOf(["fan", 3, null], ""), "fan");
     }
 
     function ticking() {

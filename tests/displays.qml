@@ -176,6 +176,10 @@ ShellRoot {
             first.map(row => row.name).join(", "));
         Expect.expect("and what it runs as its note",
             first[0].note === "2880 \u00d7 1800 \u00b7 60 Hz \u00b7 scale 2\u00d7", first[0].note);
+        // Its connector is among the words it's found by, made ready as the
+        // launcher's search reads them (Launcher.qml's hiddenWords).
+        Expect.expect("each screen is found by its connector",
+            first[1].keywords?.text === "DP-1", JSON.stringify(first[1].keywords));
         Expect.expect("Turn Every Screen Off follows them",
             displays.all[2]?.key === "displays:sleep", displays.all.map(row => row.key).join(", "));
         waiting = "the monitor's change";

@@ -62,6 +62,7 @@
   "launcher/Trials.js"
   "launcher/Traces.js"
   "launcher/ReadyRows.js"
+  "launcher/Moved.js"
   "launcher/NeedsYou.js"
   "launcher/Lately.js"
 ]

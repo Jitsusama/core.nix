@@ -254,10 +254,14 @@ ShellRoot {
     // made anew at any change, 488 on Joel's shell as he stepped into
     // Desktop (2026-11-10). Desktop's rows are watched while the launcher
     // is open, so it's open for these.
+    // Each notice came over an hour ago, so its time says the clock's
+    // hour and minute, words only the day's turning moves: one said in
+    // minutes is said again as the minute turns, which a busy builder
+    // let happen between a case's counts, so they read 4 for 1.
     function noticeOf(id, read) {
-        return { id: id, at: Date.now() - id * 60000, app: "Tester", summary: `Notice ${id}`,
-            body: "said", read: read, missed: false,
-            readAt: read ? Date.now() - id * 60000 : null };
+        const at = Date.now() - 3600000 - id * 60000;
+        return { id: id, at: at, app: "Tester", summary: `Notice ${id}`,
+            body: "said", read: read, missed: false, readAt: read ? at : null };
     }
     property var told: []
     property var madeBefore: []
