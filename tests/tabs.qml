@@ -67,9 +67,9 @@ ShellRoot {
                 "4": { id: 4, app_id: "kitty", title: "Inbox" }
             };
             tabs.served.link.took([
-                row("https://github.com/jitsusama/core.nix", "core.nix", "core.nix", 2048),
+                row("https://github.com/jitsusama/core.nix", "core.nix", "core.nix", 512),
                 row("https://mail.google.com/mail/u/0/", "Inbox", "Inbox", 1024),
-                row("https://docs.example.org/", "Notes", "Lost", 512)
+                row("https://docs.example.org/", "Notes", "Lost", 2048)
             ], []);
             standIn.open = true;
             const names = tabs.things.map(made => made.name).join(", ");
