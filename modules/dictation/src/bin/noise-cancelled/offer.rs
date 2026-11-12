@@ -19,15 +19,17 @@
 
 use std::fmt::Write as _;
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, UNIX_EPOCH};
 
+use dictation::daemon::Shared;
 use dictation::watch::{self, Change};
 use serde_json::{Value, json};
 
 use crate::chosen::{Chosen, written};
 use crate::refusals::Refusal;
 use crate::spot::Spot;
+use crate::trial::Trial;
 
 /// How long a microphone is recorded from before it counts as a call.
 pub const CALL: Duration = Duration::from_mins(1);
@@ -205,6 +207,21 @@ pub fn watched(file: &Path, moved: impl Fn() + Send + 'static) -> Result<(), Str
         }
     });
     Ok(())
+}
+
+/// Tells the trial each time its offer comes or goes, so the launcher hears it as it does.
+/// An offer that can't be heard is said once, and Choose by Ear carries on without it.
+pub fn told_to(trial: &Arc<Shared<Trial>>, offer: Option<&Path>) {
+    let Some(offer) = offer else { return };
+    let me = Arc::downgrade(trial);
+    let moved = move || {
+        if let Some(trial) = me.upgrade() {
+            trial.lock().offer_moved();
+        }
+    };
+    if let Err(why) = watched(offer, moved) {
+        eprintln!("noise-cancelled: an offer of Choose by Ear won't be heard: {why}");
+    }
 }
 
 /// The offer as `offer` holds it, one line.
