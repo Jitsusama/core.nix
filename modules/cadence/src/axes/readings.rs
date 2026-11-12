@@ -47,6 +47,8 @@ pub struct Sources {
     pub meminfo: String,
     /// What spend is judged by: the changes that reached him, and the bill.
     pub landings: landings::Sources,
+    /// The harness's changes, read the same way.
+    pub harness: landings::Sources,
     /// The active quests and whether they're worked on and planned.
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
@@ -120,6 +122,7 @@ fn resources(s: &Sources) -> Axis {
         vec![
             bill,
             changes,
+            landings::harness(&s.harness, s.now, &TimeZone::system()),
             Reading::new(
                 "spent on cache rewrites after compaction {}",
                 s.measures.last().and_then(|m| after_compaction(m)),
@@ -616,6 +619,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),
         landings: landings::gather(folder, &runtime, now),
+        harness: landings::gather_harness(now),
         plans: plans::gather(),
         counted: counted::gather(folder, state_home, now),
         now,

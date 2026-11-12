@@ -9,6 +9,11 @@
 //! when the first update that built a core holding it ended, and it stayed
 //! unless a later merge reverted it. The bill is the one paid, from
 //! spend-watch's settled days only, which run a day or two behind.
+//!
+//! The harness's changes are counted the same way and apart: a pull
+//! request merged to its main reached him when pi-packages first moved
+//! his install to a commit holding it. The bill stays per core change,
+//! the figure its owner agreed, since the bill pays for both.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -105,6 +110,80 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
     }
 }
 
+/// The harness's changes, read the way core's are: its mirror as
+/// pi-packages last fetched it, and each move of his install from
+/// pi-packages's journal, as a look that built the commit it moved to.
+pub fn gather_harness(now: i64) -> Sources {
+    let data = std::env::var_os("XDG_DATA_HOME").map_or_else(
+        || {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".local/share")
+        },
+        std::path::PathBuf::from,
+    );
+    let mirror = data.join("pi-packages/github.com/Jitsusama/agentic-harness.pi/mirror.git");
+    let mirror = mirror.to_string_lossy();
+    let since = format!("--since=@{}", now - DAYS * DAY);
+    let git = |args: &[&str]| {
+        let mut all = vec!["-C", &mirror];
+        all.extend_from_slice(args);
+        command("git", &all).unwrap_or_default()
+    };
+    Sources {
+        main: git(&[
+            "log",
+            "--first-parent",
+            &since,
+            "--format=%H %ct %s",
+            "main",
+        ]),
+        reverts: git(&[
+            "log",
+            &since,
+            "--grep=This reverts commit",
+            "--format=%b",
+            "main",
+        ]),
+        looks: moves(
+            &command(
+                "journalctl",
+                &[
+                    "--user",
+                    "-t",
+                    "pi-packages",
+                    &since,
+                    "-o",
+                    "short-unix",
+                    "--no-pager",
+                    "--grep=agentic-harness.pi: moved from",
+                ],
+            )
+            .unwrap_or_default(),
+        ),
+        bills: String::new(),
+    }
+}
+
+/// pi-packages's moves of the harness install, "<at> ... moved from <sha>
+/// to <sha>", each as a look at the commit it moved to.
+fn moves(journal: &str) -> Vec<Look> {
+    journal
+        .lines()
+        .filter(|line| line.contains("agentic-harness.pi: moved from "))
+        .filter_map(|line| {
+            let at: f64 = line.split(' ').next()?.parse().ok()?;
+            let core = line.rsplit(" to ").next()?.trim().to_owned();
+            #[expect(clippy::cast_possible_truncation, reason = "a time in seconds")]
+            let at = at as i64;
+            Some(Look {
+                at,
+                core,
+                switched: true,
+            })
+        })
+        .collect()
+}
+
 /// Each day's changes that reached the laptop, by the local day the first
 /// look that built them ended. A change merged before the first look is
 /// left out, since it may have been on before the looks begin.
@@ -135,7 +214,16 @@ pub fn reached(s: &Sources, tz: &TimeZone) -> BTreeMap<Date, Reached> {
     let mut days: BTreeMap<Date, Reached> = BTreeMap::new();
     let mut next = 0;
     for look in looks {
-        let Some(&upto) = position.get(look.core.as_str()) else {
+        // A core's looks name its full sha, the harness's moves a short one.
+        let Some(upto) = position.get(look.core.as_str()).copied().or_else(|| {
+            (look.core.len() >= 7)
+                .then(|| {
+                    merges
+                        .iter()
+                        .position(|(sha, _, _)| sha.starts_with(&look.core))
+                })
+                .flatten()
+        }) else {
             continue;
         };
         let Ok(day) = Timestamp::from_second(look.at).map(|t| t.to_zoned(tz.clone()).date()) else {
@@ -297,19 +385,14 @@ pub fn readings(s: &Sources, now: i64, tz: &TimeZone) -> (Reading, Reading, Read
             bill = bill.bar(Bar::AtMost(before));
         }
     }
-    let yesterday = today.yesterday().ok().filter(|d| whole(*d));
-    let mut changes = Reading::new(
-        "{} core changes reached you and stayed yesterday",
-        yesterday.map(|d| count(kept(d))),
-        "",
-        "80ECO2",
-    )
-    .from("core's main and update-to-main's journal");
-    if let Some(before) =
-        yesterday.and_then(|d| week_before(d, &|day| whole(day).then(|| count(kept(day)))))
-    {
-        changes = changes.bar(Bar::AtLeast(before));
-    }
+    let changes = stayed(
+        s,
+        &days,
+        today,
+        tz,
+        ("{} core changes reached you and stayed yesterday", "80ECO2"),
+        "core's main and update-to-main's journal",
+    );
     let week = (0..7)
         .filter_map(|back| today.checked_sub(jiff::Span::new().days(back)).ok())
         .filter_map(|d| days.get(&d).copied())
@@ -331,6 +414,60 @@ pub fn readings(s: &Sources, now: i64, tz: &TimeZone) -> (Reading, Reading, Read
     )))
     .from("core's main, merge-net's reverts and those by hand");
     (bill, changes, undone)
+}
+
+/// The harness's changes that reached him and stayed yesterday, against
+/// the seven days before.
+#[must_use]
+pub fn harness(s: &Sources, now: i64, tz: &TimeZone) -> Reading {
+    let today = Timestamp::from_second(now).map_or(Date::MIN, |t| t.to_zoned(tz.clone()).date());
+    stayed(
+        s,
+        &reached(s, tz),
+        today,
+        tz,
+        (
+            "{} harness changes reached you and stayed yesterday",
+            "85PKB2",
+        ),
+        "the harness's main and pi-packages's journal",
+    )
+}
+
+/// The changes that reached him and stayed yesterday, held to at least the
+/// mean of the seven days before. The day the looks begin, perhaps late in
+/// it, is no whole day, so counting starts the day after.
+fn stayed(
+    s: &Sources,
+    days: &BTreeMap<Date, Reached>,
+    today: Date,
+    tz: &TimeZone,
+    (says, owner): (&'static str, &'static str),
+    from: &'static str,
+) -> Reading {
+    let first = s
+        .looks
+        .iter()
+        .map(|look| look.at)
+        .min()
+        .and_then(|at| Timestamp::from_second(at).ok())
+        .and_then(|t| t.to_zoned(tz.clone()).date().tomorrow().ok());
+    let whole = |d: Date| first.is_some_and(|f| f <= d);
+    let kept = |d: Date| count(days.get(&d).map_or(0, |r| r.kept));
+    let yesterday = today.yesterday().ok().filter(|d| whole(*d));
+    let mut changes = Reading::new(says, yesterday.map(kept), "", owner).from(from);
+    let before = yesterday.and_then(|d| {
+        let week: Vec<f64> = (1..=7)
+            .filter_map(|back| d.checked_sub(jiff::Span::new().days(back)).ok())
+            .filter(|day| whole(*day))
+            .map(kept)
+            .collect();
+        (week.len() >= 3).then(|| week.iter().sum::<f64>() / count(week.len()))
+    });
+    if let Some(before) = before {
+        changes = changes.bar(Bar::AtLeast(before));
+    }
+    changes
 }
 
 #[cfg(test)]
@@ -499,5 +636,41 @@ mod tests {
         );
         assert_eq!(changes.now, Some(2.0), "two reached yesterday");
         assert_eq!(undone.now, Some(0.0), "none undone");
+    }
+
+    #[test]
+    fn a_move_of_the_install_is_a_look_at_the_commit_it_moved_to() {
+        let journal = "1794478400.5 here pi-packages[7]: github.com/Jitsusama/agentic-harness.pi: \
+            moved from 6f867474 to 32301441\n\
+            1794478401.0 here pi-packages[7]: github.com/Jitsusama/neovim.pi: at d5b46091\n";
+        assert_eq!(
+            moves(journal),
+            vec![Look {
+                at: 1_794_478_400,
+                core: "32301441".to_owned(),
+                switched: true
+            }]
+        );
+    }
+
+    #[test]
+    fn a_short_sha_finds_the_merge_it_names() {
+        let s = Sources {
+            main: main(&[PR; 3]),
+            looks: vec![
+                look(noon(8), 0),
+                Look {
+                    at: noon(10),
+                    core: sha(3)[..8].to_owned(),
+                    switched: true,
+                },
+            ],
+            ..Sources::default()
+        };
+        assert_eq!(
+            harness(&s, noon(11), &tz()).now,
+            Some(3.0),
+            "all three reached on the 10th through the short sha"
+        );
     }
 }
