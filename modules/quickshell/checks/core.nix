@@ -327,9 +327,9 @@ in
   # a source's rows are wanted only where they're shown or searched, and a
   # key's act is said shown by the first frame begun after its refresh, and
   # an opening weighs the foot's verbs only once its words or face change,
-  # and a daemon's changes are said presented by place, and keys with where
-  # their time went, and a closing makes again only the spots of things
-  # whose stamp moved, as tests/pacing.qml
+  # and a daemon's changes are said presented by place, and they and keys
+  # with where their time went, and a closing makes again only the spots of
+  # things whose stamp moved, as tests/pacing.qml
   # holds launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js and
   # launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =

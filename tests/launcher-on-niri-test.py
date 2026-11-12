@@ -2580,6 +2580,11 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     assert change["from"] <= change["at"] <= seen + lead, (
         f"said {change}; niri's screen showed it at {seen:.0f}"
     )
+    # Where its time went is said as a key's is, so each stamp is there and in order: the
+    # launcher took it after its line, and its frame began after that and before niri showed it.
+    assert change["from"] <= change.get("heard", -1) <= change.get("begun", -1) <= change["at"], (
+        f"said {change}, without when the launcher took it and its frame began, in order"
+    )
     presented_after_unchanged(change["at"], unchanged, "the change")
 
 

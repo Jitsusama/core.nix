@@ -38,12 +38,19 @@ function keysSaid(verb, times, apart) {
     }
     const said = `launcher: ${one.count} keys ${verb} a median ${one.median} ms from the key, `
         + `the slowest ${one.slowest} ms, ${one.within} within ${bar} ms`;
+    return apart ? said + wentTo(times) : said;
+}
+
+// Where a set's time went, each part's median over those stamped with
+// when the shell heard it and when its frame began, or "" where none
+// was: a key from its press, a change from its daemon's line.
+function wentTo(times) {
     const split = times.filter(each => each.heard !== undefined && each.begun !== undefined);
-    if (!apart || split.length === 0) {
-        return said;
+    if (split.length === 0) {
+        return "";
     }
     const part = (from, to) => median(split.map(each => Math.round(each[to] - each[from])));
-    return `${said}: a median ${part("from", "heard")} ms before the shell heard it, `
+    return `: a median ${part("from", "heard")} ms before the shell heard it, `
         + `${part("heard", "begun")} in the shell and ${part("begun", "at")} from its `
         + "frame's start";
 }
@@ -70,13 +77,18 @@ function drawn(waiting, place) {
 }
 
 // What the journal says of the changes presented, each `{place, from,
-// at}`: a line a place, in the places' order by name.
+// at}` and, once the launcher took it and its frame began, `heard` and
+// `begun`: a line a place, in the places' order by name, saying where its
+// time went as a key's does, so a slow update says whether it waited
+// before the launcher took it, in the shell, or after its frame began
+// (Joel's 20 changes in machine, 6 past 50 ms, 2026-11-11).
 function changesSaid(changes) {
     const places = [...new Set(changes.map(one => one.place))].sort();
     return places.map(place => {
-        const one = took(changes.filter(each => each.place === place));
+        const its = changes.filter(each => each.place === place);
+        const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "change" : "changes"} in ${place} `
             + `presented a median ${one.median} ms from the line, the slowest `
-            + `${one.slowest} ms, ${one.within} within ${bar} ms`;
+            + `${one.slowest} ms, ${one.within} within ${bar} ms${wentTo(its)}`;
     });
 }

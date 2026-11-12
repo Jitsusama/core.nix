@@ -4632,11 +4632,17 @@ Scope {
     property var refreshing: []
     // A change told from a daemon's line is timed from it, on the
     // monotonic clock, to the frame niri presents with it (Hearing.js).
+    // It's heard when the launcher takes the change its line is timed
+    // from, so a change put off to the turn's end says it waited there.
     function updatedFrom(source) {
         const line = Hearing.heardAt();
-        if (open && line > 0)
-            updatesWaiting = Presented.heard(updatesWaiting, source.settings.name,
-                line + KeyTimes.now() - Date.now());
+        if (!(open && line > 0))
+            return;
+        const place = source.settings.name;
+        const was = updatesWaiting[place];
+        updatesWaiting = Presented.heard(updatesWaiting, place, line + KeyTimes.now() - Date.now());
+        if (updatesWaiting[place] !== was)
+            updatesHeard[place] = KeyTimes.now();
     }
     function refreshed(source) {
         updatedFrom(source);
@@ -5465,12 +5471,23 @@ Scope {
             return;
         }
         if (category !== null) {
-            // What's typed searches only inside it, its answers first.
+            // What's typed searches only inside it, its answers first. Said
+            // as the top level's search is, before it, finding its rows and
+            // showing them, so a step into a category says where its time
+            // went: Machine's and Desktop's said it all as rows (2026-11-11).
+            const searchedAt = Date.now();
             gathered = [];
             root.found = words.length === 0 ? offered.slice() : inCategory(letters);
+            const foundAt = Date.now();
             compose(!steadying);
-            if (!steadying)
-                list.positionViewAtBeginning();
+            if (steadying)
+                return;
+            list.positionViewAtBeginning();
+            searchParts = { before: searchedAt - searchBegan, lists: foundAt - searchedAt,
+                rows: 0, answers: Date.now() - foundAt, each: {}, within: null,
+                composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
+                    typed: typedOn - countedAt, words: wordedAt - typedOn,
+                    readying: searchedAt - wordedAt } };
             return;
         }
         if (held.length > 0) {
@@ -9143,17 +9160,28 @@ Scope {
     // place as it closes. A change drawn where nothing shows it is let go,
     // since no frame carries it.
     property var updatesWaiting: ({})
+    // When the launcher took each place's waiting change, by place.
+    readonly property var updatesHeard: ({})
     property var updatesPresented: []
+    // Its frame's start is when the frame presentedAwait waits on began,
+    // the next to begin, as a key's is, so its line says where it went.
     function updateDrawn(place, shown) {
         const from = updatesWaiting[place];
         if (from === undefined)
             return;
+        const one = { place, from, heard: updatesHeard[place] };
         updatesWaiting = Presented.drawn(updatesWaiting, place);
-        if (shown && open)
-            presentedAwait(from, at => {
-                updatesPresented = updatesPresented.concat([{ place, from, at }])
-                    .slice(-keysKept);
-            });
+        delete updatesHeard[place];
+        if (!(shown && open))
+            return;
+        afterFrame(begun => {
+            if (begun !== undefined && one.heard !== undefined)
+                one.begun = begun;
+        });
+        presentedAwait(from, at => {
+            updatesPresented = updatesPresented.concat([Object.assign(one, { at })])
+                .slice(-keysKept);
+        });
     }
 
     function keysPresentedSaid() {
@@ -9168,6 +9196,8 @@ Scope {
         keysGlided = [];
         updatesPresented = [];
         updatesWaiting = {};
+        for (const place of Object.keys(updatesHeard))
+            delete updatesHeard[place];
         // A frame shut takes nothing a key changed to the screen.
         presentedWaiting = [];
         for (const said of [first, landed].filter(line => line !== "").concat(updates))
