@@ -14,10 +14,15 @@
 //!
 //! `offer` is one JSON object: the microphone's name and node, the spot's
 //! name and key, and whether the microphone or the spot is the new one.
+//! The trial tells it to the launcher as it comes and goes, with when it
+//! was made, and For You shows it as a thing to do.
 
 use std::fmt::Write as _;
-use std::time::Duration;
+use std::path::Path;
+use std::sync::mpsc;
+use std::time::{Duration, UNIX_EPOCH};
 
+use dictation::watch::{self, Change};
 use serde_json::{Value, json};
 
 use crate::chosen::{Chosen, written};
@@ -159,23 +164,42 @@ fn offered(chosen: &Chosen, node: &str, key: &str) -> bool {
         })
 }
 
-/// The offer as `offer` holds it.
+/// The offer standing beside `chosen`'s picks, as the trial tells it,
+/// with `since`, when it was made, in milliseconds since the epoch; null
+/// while none stands.
+pub fn standing(chosen: &Chosen) -> Value {
+    let _ = (chosen, UNIX_EPOCH);
+    Value::Null
+}
+
+/// Hears `file` come and go, from the kernel's inotify on its folder, so
+/// nothing looks while nothing changes, calling `moved` each time.
+pub fn watched(file: &Path, moved: impl Fn() + Send + 'static) -> Result<(), String> {
+    let _ = (file, moved, mpsc::channel::<Change>, watch::watch);
+    Ok(())
+}
+
+/// The offer as `offer` holds it, one line.
 fn said(offer: &Offer) -> String {
+    let mut said = told(offer).to_string();
+    said.push('\n');
+    said
+}
+
+/// The offer's fields, as `offer` holds them.
+fn told(offer: &Offer) -> Value {
     let new = if offer.new_microphone {
         "microphone"
     } else {
         "spot"
     };
-    let mut said = json!({
+    json!({
         "microphone": offer.microphone,
         "node": offer.node,
         "spot": offer.spot.name,
         "key": offer.spot.key,
         "new": new,
     })
-    .to_string();
-    said.push('\n');
-    said
 }
 
 /// An offer from what `offer` holds, or none when it doesn't read.

@@ -470,3 +470,18 @@ fn marks_that_land_after_the_pick_are_kept_then_and_once() {
     assert_eq!(trial.lock().record()["marks"]["raw"]["voice"], 3.0);
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn an_offer_standing_is_told_until_it_is_taken() {
+    let folder = std::env::temp_dir().join(format!("trial-offer-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    let offer = json!({"microphone": "Shure MV7", "node": "mv7", "spot": "the desk",
+                       "key": "home=6366013", "new": "microphone"});
+    std::fs::write(folder.join("offer"), format!("{offer}\n")).expect("the offer is written");
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    assert_eq!(trial.lock().record()["offer"]["microphone"], "Shure MV7");
+    let said = ask(&trial, r#"{"id":4,"ask":"act","act":"offered"}"#);
+    assert_eq!(said["taken"], true, "the offer wasn't taken: {said}");
+    assert_eq!(trial.lock().record()["offer"], Value::Null);
+}

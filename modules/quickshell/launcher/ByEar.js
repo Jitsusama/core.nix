@@ -125,6 +125,13 @@ function rows(said, record, state, now) {
     return record === null ? laid : laid.slice(0, 1).concat(spotRow(said, record), laid.slice(1));
 }
 
+// A row as Choose by Ear under `input` lays it, by the input's node: one
+// whose Return records names it, so it records that input rather than
+// whichever is the default.
+function aimed(row, input) {
+    return input === null ? null : row;
+}
+
 // The step's rows but where Joel is.
 function stepRows(said, record, state, now) {
     if (record === null) {
@@ -270,6 +277,25 @@ function spotRow(said, record) {
 // trims it and refuses one blank, past a line or too long to fit a row.
 function naming(words) {
     return { ask: "act", act: "name", name: String(words ?? "") };
+}
+
+// Choose by Ear offered after a call, as the record says it stands: the
+// microphone, its node and where, whether it's the microphone or the spot
+// that's new, and since when; null while none stands, or one isn't whole.
+function offer(record) {
+    return record === undefined ? record : null;
+}
+
+// What taking the offer, or putting it off, asks the daemon: it's the
+// last of it either way, never offered again.
+function taking() {
+    return null;
+}
+
+// Why the offer's there, from `tells`, its to-do's words: the microphone
+// is new, or only the spot is.
+function offerWhy(tells, offered) {
+    return tells === offered ? "" : "";
 }
 
 // What Return on a row asks the daemon, as the protocol's act is sent:

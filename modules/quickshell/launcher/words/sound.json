@@ -224,6 +224,13 @@
       "name": "Not Now"
     },
     {
+      "id": "sound:offer:no-thanks",
+      "in": "sound:offer",
+      "name": "No Thanks",
+      "verb": "put off",
+      "glyph": "dismiss"
+    },
+    {
       "id": "sound:by-ear:down",
       "in": "sound:by-ear",
       "name": "The Noise Cancelling Daemon"

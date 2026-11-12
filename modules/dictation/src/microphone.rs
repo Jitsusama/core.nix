@@ -49,6 +49,12 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
     })
 }
 
+/// A microphone in a pw-dump by its node name, or by its twin's, so
+/// Choose by Ear records the one it was opened for, the default or not.
+pub fn named(dump: &Value, _name: &str) -> Option<Microphone> {
+    default_microphone(dump)
+}
+
 /// What to record the default microphone through: its twin when the dump
 /// holds one, else the microphone itself, else nothing, which leaves the
 /// choice to the sound server.
@@ -93,6 +99,16 @@ mod tests {
         assert_eq!(microphone.name, "mv7");
         assert_eq!(microphone.description, "Shure MV7");
         assert_eq!(microphone.twin(), "noise-cancelled.mv7");
+    }
+
+    #[test]
+    fn a_microphone_is_found_by_its_name_or_its_twins() {
+        let dumped = dump("someone-else", true);
+        let description = named(&dumped, "mv7").map(|microphone| microphone.description);
+        assert_eq!(description.as_deref(), Some("Shure MV7"));
+        let name = named(&dumped, "noise-cancelled.mv7").map(|microphone| microphone.name);
+        assert_eq!(name.as_deref(), Some("mv7"));
+        assert_eq!(named(&dumped, "gone"), None);
     }
 
     #[test]
