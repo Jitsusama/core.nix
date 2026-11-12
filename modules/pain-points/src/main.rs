@@ -190,10 +190,14 @@ fn follow_pi(
     since: i64,
     reader: &str,
 ) -> Result<BTreeMap<String, Log>, String> {
-    let _ = reader;
+    // What a turn holds is the reading of the build that read it, so a
+    // state another build kept, or one from before builds were named, is
+    // read again from each log's start rather than gone on from.
     let mut logs: BTreeMap<String, Log> = fs::read(state)
         .ok()
-        .and_then(|kept| serde_json::from_slice(&kept).ok())
+        .and_then(|kept| serde_json::from_slice::<Kept>(&kept).ok())
+        .filter(|kept| kept.reader == reader)
+        .map(|kept| kept.logs)
         .unwrap_or_default();
     let mut present = Vec::new();
     for folder in fs::read_dir(sessions)
@@ -236,12 +240,26 @@ fn follow_pi(
     for log in logs.values_mut() {
         log.prune(since);
     }
-    let kept = serde_json::to_string(&logs).map_err(|e| e.to_string())?;
-    write_whole(state, &kept)?;
-    Ok(logs)
+    let kept = Kept {
+        reader: reader.to_string(),
+        logs,
+    };
+    write_whole(
+        state,
+        &serde_json::to_string(&kept).map_err(|e| e.to_string())?,
+    )?;
+    Ok(kept.logs)
 }
 
-/// This build of the program, as the path it runs from.
+/// The reading state, with the build that read it.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Kept {
+    reader: String,
+    logs: BTreeMap<String, Log>,
+}
+
+/// This build of the program, as the path it runs from, which in the Nix
+/// store changes with each build.
 fn reader() -> String {
     env::current_exe().map_or_else(|_| String::new(), |p| p.display().to_string())
 }
