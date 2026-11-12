@@ -196,11 +196,14 @@ const MEASURES: &[Measure] = &[
         bar: Some(60.0),
         floor: 10.0,
     },
-    // The launcher's, against docs/design.md's 50 ms from a key or a
-    // chord to its frame.
+    // The launcher's, against docs/design.md's Latency Budgets: 50 ms
+    // from a key or a chord to its frame, and 30 ms from a chord to the
+    // surface having the keys. They're read on responsiveness, where
+    // `cadence axes` reads the launcher, so a finding lists on the axis
+    // its reading does.
     Measure {
         key: "launcher.opening.presented",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "the launcher's median opening, chord to frame",
         unit: " ms",
@@ -209,16 +212,16 @@ const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "launcher.opening.usable",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "the launcher's median opening, chord to answering keys",
         unit: " ms",
-        bar: None,
+        bar: Some(30.0),
         floor: 30.0,
     },
     Measure {
         key: "launcher.keys.presented",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "a key's median time in the launcher, key to frame",
         unit: " ms",
@@ -227,7 +230,7 @@ const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "launcher.keys.late",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "the launcher's keys past 50 ms",
         unit: "%",
@@ -236,7 +239,7 @@ const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "launcher.changes.presented",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "a daemon's change's median time in the launcher, line to frame",
         unit: " ms",
@@ -245,7 +248,7 @@ const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "launcher.drawers.presented",
-        axis: "polish",
+        axis: "responsiveness",
         evidence: LAUNCHER,
         says: "a row's details' median time in the launcher, key to frame",
         unit: " ms",
@@ -573,6 +576,32 @@ mod tests {
             about("code..long-files"),
             None,
             "a figure naming no repository was taken for one"
+        );
+    }
+
+    #[test]
+    fn the_launchers_figures_list_where_axes_reads_the_launcher() {
+        // On 12 November a drawer's 66 ms was filed on polish, while
+        // `cadence axes` reads the launcher on responsiveness.
+        for key in [
+            "launcher.opening.presented",
+            "launcher.opening.usable",
+            "launcher.keys.presented",
+            "launcher.keys.late",
+            "launcher.changes.presented",
+            "launcher.drawers.presented",
+        ] {
+            assert_eq!(
+                about(key),
+                Some(("responsiveness", LAUNCHER)),
+                "{key} isn't read where the launcher is"
+            );
+        }
+        let usable = measures().find(|m| m.key == "launcher.opening.usable");
+        assert_eq!(
+            usable.and_then(|m| m.bar),
+            Some(30.0),
+            "an opening isn't held to design.md's 30 ms from a chord to the keys"
         );
     }
 
