@@ -24,9 +24,6 @@ pub const MOST: usize = 9;
 /// Recent's own record, what its place says of what it holds.
 pub const RECENT: &str = "recent:agents";
 
-/// Stubbed until its place is worded.
-const STUB: bool = true;
-
 /// What Recent leaves out, as Agents shows it elsewhere.
 pub struct Shown<'a> {
     /// The addresses of the sessions running or parked, and of every
@@ -140,9 +137,6 @@ pub fn recent<'a>(sessions: impl IntoIterator<Item = Session<'a>>, shown: &Shown
 /// Recent again as either moves, and it holds no `recent` of its own, so
 /// the shell never lists it as one.
 pub fn place(served: &[Value], words: &Said) -> Value {
-    if STUB {
-        return json!({"key": RECENT, "kind": "recent", "place": {}});
-    }
     let names: Vec<&str> = served
         .iter()
         .filter_map(|one| one["recent"]["name"].as_str())
