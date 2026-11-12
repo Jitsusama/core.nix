@@ -25,7 +25,8 @@ QtObject {
         downSince: "down since {time}",
         degraded: "degraded",
         connecting: "connecting since {time}",
-        notAnswering: "not answering"
+        notAnswering: "not answering",
+        slow: "slow \u00b7 {waiting} waiting"
     })
 
     // 21:50, as a clock reads it, and the time the cases are read at.
@@ -60,6 +61,17 @@ QtObject {
             ails({ status: "Disconnected", reason: "NoNetwork" }, null), ["down"]);
         Expect.same("a degraded link says so",
             ails({ status: "Connected", reason: "NetworkDegraded" }, began), ["degraded"]);
+        const slow = Object.assign(state({ status: "Connected", reason: "NetworkHealthy" },
+            null), { slow: { waiting_ms: 120 } });
+        Expect.same("a way the daemon judges slow says what waits",
+            WorkNetwork.ails(slow, said, now, clock), ["slow \u00b7 120 ms waiting"]);
+        const slowAndDegraded = Object.assign(state({ status: "Connected",
+            reason: "NetworkDegraded" }, null), { slow: { waiting_ms: 120 } });
+        Expect.same("degraded says more than slow",
+            WorkNetwork.ails(slowAndDegraded, said, now, clock), ["degraded"]);
+        Expect.same("a way not slow says nothing", WorkNetwork.ails(Object.assign(
+            state({ status: "Connected", reason: "NetworkHealthy" }, null), { slow: null }),
+            said, now, clock), []);
         Expect.same("connecting for a moment is how a link comes up",
             ails({ status: "Connecting", reason: "" }, began, began + 10000), []);
         Expect.same("connecting for long says since when",

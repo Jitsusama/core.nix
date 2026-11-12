@@ -260,6 +260,18 @@ function run(failures, fromRoot) {
         waiting({ running: true, through_ms: null, at_rest_ms: 27.5 }),
         figure("waiting", "unknown", "its last question went unanswered", ""));
     machine("no shaper read says nothing of waiting", waiting(undefined), null);
+    // The way judged slow by the warp daemon (modules/warp/src/slow.rs),
+    // which the row says in place of how WARP stands (VKCF3Z, 2026-11-12).
+    const slowed = (said, slow) =>
+        WarpWaiting.slowed({ key: "warp:state", said, slow }, {}, warpSaid);
+    const healthy = { status: "Connected", reason: "NetworkHealthy" };
+    machine("a way judged slow says what waits, and not that it's connected",
+        slowed(healthy, { waiting_ms: 120 }), "slow \u00b7 120 ms waiting");
+    machine("a way that isn't slow leaves the row as WARP stands", slowed(healthy, null), null);
+    machine("degraded says more than slow",
+        slowed({ status: "Connected", reason: "NetworkDegraded" }, { waiting_ms: 120 }), null);
+    machine("nor is a way down slow",
+        slowed({ status: "Disconnected", reason: "NoNetwork" }, { waiting_ms: 120 }), null);
     const shapedParts = WarpWaiting.among(linked.parts,
         { running: true, through_ms: 103, at_rest_ms: 28 }, {}, warpSaid)
         .map(each => each.id);

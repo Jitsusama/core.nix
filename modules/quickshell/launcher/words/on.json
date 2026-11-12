@@ -184,7 +184,8 @@
         "downSince": "down since {time}",
         "degraded": "degraded",
         "connecting": "connecting since {time}",
-        "notAnswering": "not answering"
+        "notAnswering": "not answering",
+        "slow": "slow \u00b7 {waiting} waiting"
       }
     },
     {

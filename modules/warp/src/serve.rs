@@ -43,6 +43,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use crate::ask::{Ask, Listening, Said, Unasked};
+use crate::slow::{Bars, Judge};
 
 /// The interface's version this speaks.
 const VERSION: u64 = 1;
@@ -92,6 +93,8 @@ struct Held {
     link: Option<(Value, Instant)>,
     /// How WARP stands, as last told or asked while anyone watched.
     state: Option<Value>,
+    /// What waits through the VPN while the way is slow, as last judged.
+    slow: Option<u64>,
     watches: Vec<Watch>,
     /// Whether it's to be read at once, rather than when it's next due.
     now: bool,
@@ -132,6 +135,28 @@ impl Held {
     }
 }
 
+/// The network's shaper, where this machine has one: its status.json,
+/// the bars a wait through the VPN is judged slow by, and how often it's
+/// read to judge it while how WARP stands is watched.
+pub struct Shaper {
+    pub status: PathBuf,
+    pub bars: Bars,
+    pub every: Duration,
+}
+
+impl Shaper {
+    /// The shaper whose status is this file, judged by the usual bars.
+    /// It's read every five seconds, so a minute's wait is judged to
+    /// within a twelfth of it, at a small file read each time.
+    pub fn at(status: PathBuf) -> Self {
+        Self {
+            status,
+            bars: Bars::default(),
+            every: Duration::from_secs(5),
+        }
+    }
+}
+
 /// What every connection shares with the reading loop.
 struct Shared<A> {
     held: Mutex<Held>,
@@ -139,8 +164,8 @@ struct Shared<A> {
     /// Held while warp-cli is asked, so two reads never run at once.
     reading: Mutex<()>,
     cli: A,
-    /// The shaper's status.json, where this machine has one to read.
-    shaper: Option<PathBuf>,
+    /// The network's shaper, where this machine has one to read.
+    shaper: Option<Shaper>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -171,13 +196,14 @@ fn printed(words: &[&str], cli: &impl Ask) -> Value {
 pub fn serve(
     socket: &Path,
     cli: impl Ask + Send + 'static,
-    shaper: Option<PathBuf>,
+    shaper: Option<Shaper>,
 ) -> std::io::Result<()> {
     let listener = listen(socket)?;
     let shared = Arc::new(Shared {
         held: Mutex::new(Held {
             link: None,
             state: None,
+            slow: None,
             watches: Vec::new(),
             now: false,
             listening: None,
@@ -195,6 +221,10 @@ pub fn serve(
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || listen_loop(&shared));
+    }
+    if shared.shaper.is_some() {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || slow_loop(&shared));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -374,6 +404,7 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
         "read_at_ms": now_ms(),
         "since_ms": since,
         "said": said,
+        "slow": slowly(held.slow),
     });
     held.tell(&state, |kinds| kinds.state);
     // Said in the journal as it changes, which is rarely, so how the work
@@ -384,6 +415,57 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
         .filter(|watch| watch.kinds.state)
         .count();
     eprintln!("warp: WARP stands {said}, told {watching} watching");
+    held.state = Some(state);
+}
+
+/// How the state says the way is slow: what waits, or null while it isn't.
+fn slowly(slow: Option<u64>) -> Value {
+    slow.map_or(Value::Null, |ms| json!({"waiting_ms": ms}))
+}
+
+/// Judges whether the way through the VPN is slow from the shaper's
+/// status, read every so often while how WARP stands is watched, as the
+/// margin always does, and tells each watch of the state as that changes,
+/// with what waits while it's slow. Nobody watching, nothing is judged,
+/// and the judgement starts afresh once someone does.
+fn slow_loop<A: Ask>(shared: &Shared<A>) {
+    let Some(shaper) = &shared.shaper else {
+        return;
+    };
+    let mut judge = Judge::new(shaper.bars);
+    loop {
+        {
+            let mut held = lock(&shared.held);
+            while !held.watches.iter().any(|watch| watch.kinds.state) {
+                judge = Judge::new(shaper.bars);
+                held.slow = None;
+                held = shared
+                    .woken
+                    .wait(held)
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+            }
+        }
+        let slow = judge.heard(&crate::waiting::heard(&shaper.status), now_ms());
+        slowed(shared, slow);
+        std::thread::sleep(shaper.every);
+    }
+}
+
+/// Holds how slow the way is, and tells each watch of the state when
+/// that's other than what's held, how WARP stands said beside it as it
+/// stood.
+fn slowed<A: Ask>(shared: &Shared<A>, slow: Option<u64>) {
+    let mut held = lock(&shared.held);
+    if held.slow == slow {
+        return;
+    }
+    held.slow = slow;
+    let Some(mut state) = held.state.clone() else {
+        return;
+    };
+    state["slow"] = slowly(slow);
+    state["read_at_ms"] = json!(now_ms());
+    held.tell(&state, |kinds| kinds.state);
     held.state = Some(state);
 }
 
@@ -425,10 +507,10 @@ fn read<A: Ask>(shared: &Shared<A>) {
     let reading = lock(&shared.reading);
     let mut said = printed(&[], &shared.cli);
     // Only a link read has a way through it to wait on.
-    if let (Some(status), Some(record)) = (&shared.shaper, said.as_object_mut())
+    if let (Some(shaper), Some(record)) = (&shared.shaper, said.as_object_mut())
         && record.contains_key("status")
     {
-        record.insert("waiting".to_owned(), crate::waiting::heard(status));
+        record.insert("waiting".to_owned(), crate::waiting::heard(&shaper.status));
     }
     let link = json!({
         "key": KEY,

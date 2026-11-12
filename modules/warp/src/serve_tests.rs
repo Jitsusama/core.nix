@@ -117,7 +117,7 @@ fn serving_shaped(
     listened: Option<std::io::PipeReader>,
     up: Arc<AtomicBool>,
     asked: Arc<AtomicUsize>,
-    shaper: Option<PathBuf>,
+    shaper: Option<Shaper>,
 ) -> std::path::PathBuf {
     let socket = std::env::temp_dir().join(format!("warp-{name}-{}.sock", std::process::id()));
     let cli = Switching {
@@ -133,6 +133,11 @@ fn serving_shaped(
 
 /// Served where the shaper's status is the file named.
 fn serving_with_shaper(name: &str, shaper: PathBuf) -> std::path::PathBuf {
+    serving_judged(name, Shaper::at(shaper))
+}
+
+/// Served where the shaper is as given, its bars among it.
+fn serving_judged(name: &str, shaper: Shaper) -> std::path::PathBuf {
     serving_shaped(
         name,
         None,
@@ -140,6 +145,24 @@ fn serving_with_shaper(name: &str, shaper: PathBuf) -> std::path::PathBuf {
         Arc::new(AtomicUsize::new(0)),
         Some(shaper),
     )
+}
+
+/// A shaper's status as it writes it, the link it holds waiting `ms` past
+/// the way at rest.
+fn shaper_waiting(status: &Path, ms: f64) {
+    let link = json!([{"name": "wlan0", "heard": {"vpn_ms": 30.0 + ms, "vpn_base_ms": 30.0}}]);
+    std::fs::write(status, link.to_string()).expect("the shaper's status is written");
+}
+
+/// What the client hears until a change says the state is as `wanted`.
+fn heard_until(client: &mut Client, wanted: impl Fn(&Value) -> bool) -> Value {
+    loop {
+        let heard = client.heard();
+        let state = heard["changed"][0].clone();
+        if wanted(&state) {
+            return state;
+        }
+    }
 }
 
 #[test]
@@ -392,5 +415,48 @@ fn a_shaper_named_but_not_running_is_said_so() {
     assert_eq!(
         client.heard()["records"][0]["said"]["waiting"],
         json!({"running": false})
+    );
+}
+
+#[test]
+fn a_state_watch_is_told_the_way_is_slow_while_it_waits_and_when_its_well() {
+    let status = std::env::temp_dir().join(format!("warp-slow-{}.json", std::process::id()));
+    shaper_waiting(&status, 120.0);
+    // Bars held for no time, so the test hears each judgement at once.
+    let bars = Bars {
+        slow_for: 0,
+        well_for: 0,
+        ..Bars::default()
+    };
+    let shaper = Shaper {
+        status: status.clone(),
+        bars,
+        every: Duration::from_millis(20),
+    };
+    let mut client = Client::new(&serving_judged("slow", shaper));
+    client.say(&json!({"id": "all", "ask": "watch", "kind": "warp-state"}));
+    client.heard();
+    let slow = heard_until(&mut client, |state| state["slow"].is_object());
+    assert_eq!(slow["slow"], json!({"waiting_ms": 120}), "{slow}");
+    assert_eq!(
+        slow["said"],
+        json!({"status": "Connected", "reason": "NetworkHealthy"}),
+        "how WARP stands is said beside it, as it stood"
+    );
+    shaper_waiting(&status, 10.0);
+    let well = heard_until(&mut client, |state| state.get("slow") == Some(&Value::Null));
+    assert_eq!(well["said"]["status"], "Connected", "{well}");
+}
+
+#[test]
+fn a_state_heard_first_says_the_way_isnt_slow() {
+    let mut client = Client::new(&serving("unslowed"));
+    client.say(&json!({"id": "all", "ask": "watch", "kind": "warp-state"}));
+    client.heard();
+    let state = heard_until(&mut client, Value::is_object);
+    assert_eq!(
+        state.get("slow"),
+        Some(&Value::Null),
+        "with no shaper, it's never slow: {state}"
     );
 }

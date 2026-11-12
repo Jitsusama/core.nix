@@ -324,6 +324,7 @@
       ],
       "said": {
         "notAnswering": "not answering",
+        "slow": "slow \u00b7 {waiting} waiting",
         "notRunning": "its service isn't running",
         "shutOut": "its service won't let you in",
         "tooSlow": "its service is too slow to answer",
