@@ -230,11 +230,35 @@ pub fn keys(journal: &str) -> Vec<Reading> {
 /// shutdown, and the minutes the day's worst moments cost him, each timed
 /// from his key to what he waited for, so each is his side. The bars are
 /// the ones docs/design.md holds the machine to; no minute lost is the
-/// bar for the last, since he asked for end to end perfection.
+/// bar for the last, since he asked for end to end perfection. Programs
+/// opening and ending follow, held to design.md's 300 ms and 200 ms at the
+/// 99th percentile, as for keys; the windows daemon times them from the
+/// process starting and its last window gone, since niri never says the
+/// key that asked, so they are our side's.
 #[must_use]
 pub fn responds(s: &Sources) -> Vec<Reading> {
     let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
     let from = "health's day file";
+    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
+        let spread = figure(&format!("health.launches.{name}.median-ms"))
+            .zip(figure(&format!("health.launches.{name}.slowest-ms")))
+            .map(|(median, slowest)| {
+                format!(
+                    "a median {}, the slowest {}; timed from {timed}",
+                    shown(median, " ms"),
+                    shown(slowest, " ms")
+                )
+            });
+        Reading::new(
+            says,
+            figure(&format!("health.launches.{name}.p99-ms")),
+            " ms",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(budget))
+        .detail(spread)
+        .from("health's day file, from the windows daemon")
+    };
     vec![
         Reading::new(
             "the slowest boot {} to a ready launcher, the password left out",
@@ -263,6 +287,18 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
         .bar(Bar::AtMost(0.0))
         .from("health's day file, from its feel of his tasks")
         .his(),
+        program(
+            "the slowest program in a hundred to its first window {}",
+            "opened",
+            300.0,
+            "the program starting",
+        ),
+        program(
+            "the slowest program in a hundred to end once closed {}",
+            "ended",
+            200.0,
+            "its last window closing",
+        ),
     ]
 }
 
@@ -501,6 +537,10 @@ qml: launcher: drawer for "Firefox" took 80 ms to its frame
             health: Some(BTreeMap::from([
                 ("health.boot.seconds".to_owned(), 27.0),
                 ("health.shutdown.seconds".to_owned(), 12.0),
+                ("health.launches.opened.p99-ms".to_owned(), 420.0),
+                ("health.launches.opened.median-ms".to_owned(), 90.0),
+                ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
+                ("health.launches.ended.p99-ms".to_owned(), 150.0),
             ])),
             ..Sources::default()
         };
@@ -512,12 +552,19 @@ qml: launcher: drawer for "Firefox" took 80 ms to its frame
                 "the slowest boot 27 s to a ready launcher, the password left out, at most 30 s",
                 "the slowest shutdown 12 s, at most 10 s",
                 "time lost in the day's worst moments: no reading yet",
+                "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
+                "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [false, true, false],
-            "only the shutdown is past its bar"
+            [false, true, false, true, false],
+            "only the shutdown and the openings are past their bars"
+        );
+        assert_eq!(
+            read[3].detail.as_deref(),
+            Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
+            "an opening says its spread and that it's timed from our side"
         );
     }
 
