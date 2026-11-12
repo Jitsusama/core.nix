@@ -4184,6 +4184,12 @@
     was swapped out for it on the disk and none in zswap's pool, zswap on again; and asked first,
     says a quiet machine's image fits, and with no room exits 1 saying not, plainly
   '';
+  vm-joel-comes-first = ''
+    with an account's slices holding what optimus's held at 12 November's 16:33 freeze, an eighth
+    the size, a stand-in shell in session.slice draws a frame every 16 ms within 50 ms of its time
+    through a fetch in agents.slice and a grep and three commands in jobs.slice wanting a quarter
+    more of memory within seconds
+  '';
   vm-idle-sleep-comes-only-on-battery = ''
     a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even
     as the last of a burst of twenty power supply events; on battery a session still in use keeps
