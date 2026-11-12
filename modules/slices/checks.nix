@@ -70,9 +70,10 @@
           >= mib niri.MemoryMin + mib shell.MemoryMin + 1024
       );
 
-  # Agents' sessions sit beside Joel's programs at their weight, not among
-  # them, where each of their wakeups preempted his. The sorter watches
-  # both, so a session's busy work still goes to jobs.
+  # Agents' sessions sit beside Joel's programs, not among them, where each
+  # of their wakeups preempted his, and at a tenth of their weight, where
+  # his programs waited on the processor less than a third as long. The
+  # sorter watches both, so a session's busy work still goes to jobs.
   sessions-sit-beside-the-programs =
     let
       inherit (graphical.config.systemd.user) slices services;
@@ -81,8 +82,8 @@
         slice: lib.hasInfix " --under ${slice} " "${services.jobs-sorter.serviceConfig.ExecStart} ";
     in
     holds "sessions-sit-beside-the-programs"
-      "Agents' sessions have no slice beside the apps at their weight, or the sorter doesn't watch it."
-      (weight slices.agents == weight slices.app && watches "app.slice" && watches "agents.slice");
+      "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
+      (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
 
   # The one kitty every session's window is drawn by comes before the
   # sessions it holds, on the processor and in memory, inside their slice:

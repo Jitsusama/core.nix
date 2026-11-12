@@ -2000,7 +2000,8 @@
     slice above them carries one hard and one soft floor, the same at each
   '';
   sessions-sit-beside-the-programs = ''
-    agents' sessions have a slice beside Joel's programs at their weight, and the sorter watches both
+    agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the
+    processor, and the sorter watches both
   '';
   shared-work-ranks-with-the-sessions = ''
     no slice inside the account holds a disk target, and work other sessions wait on has a
