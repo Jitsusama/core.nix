@@ -247,10 +247,11 @@ ShellRoot {
             expect("found", names(eli) === "Eli Fenwick", names(eli));
             expect("who stands unknown says nothing", eli[0].side === "", eli[0].side);
         }),
-        seeking("gus", "one with only an email, named by it", () => {
+        seeking("gus", "one with only an email, named from it", () => {
             const gus = found("gus");
-            expect("named by it", names(gus) === "gus@example.com" && gus[0].side === "",
-                `${names(gus)} ${gus[0]?.side}`);
+            expect("named from it, and saying it under", names(gus) === "Gus"
+                && gus[0].note === "gus@example.com" && gus[0].side === "",
+                `${names(gus)} ${gus[0]?.note} ${gus[0]?.side}`);
         }),
         seeking("quill", "a name with a quote and more than ASCII", () => {
             const zoe = found("quill");
@@ -262,12 +263,12 @@ ShellRoot {
                 `${names(ada)} ${ada[0]?.side}`);
         }),
         // Among equals, the daemon's order: those found by a name before
-        // those found by an address alone, gus being named by theirs, then
+        // those found by an address alone, as gus is, then
         // as Tuple lists them.
         seeking("example", "those listed first, then the rest, as the daemon finds them", () => {
             const all = found("example");
             expect("in order", names(all) === "Ada Brook, Ben Carrow, Cal Dunmore, Dee Ellery, "
-                + "gus@example.com, Eli Fenwick, Zo\u00eb \"Zed\" Quill", names(all));
+                + "Gus, Eli Fenwick, Zo\u00eb \"Zed\" Quill", names(all));
         }),
         seeking("ben", "the shell holds only those listed and those found", () => {
             expect("only those", people.persons().length === 4, names(people.persons()));

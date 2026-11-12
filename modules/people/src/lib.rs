@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 
 pub mod drawer;
 pub mod listing;
+pub mod name;
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
@@ -34,6 +35,19 @@ pub fn key(address: &str) -> String {
 pub fn address(key: &str) -> Option<&str> {
     key.strip_prefix("person:")
         .filter(|address| !address.is_empty())
+}
+
+/// Whether an address is a calendar's own rather than anyone's, as Google
+/// Calendar gives a shared calendar or a room that organizes a meeting.
+/// Nobody is reached there, so it's held as no one.
+pub fn calendar(address: &str) -> bool {
+    const CALENDARS: [&str; 4] = [
+        "@group.calendar.google.com",
+        "@group.v.calendar.google.com",
+        "@import.calendar.google.com",
+        "@resource.calendar.google.com",
+    ];
+    CALENDARS.iter().any(|domain| address.ends_with(domain))
 }
 
 /// What a client asked, one line of it.
@@ -478,6 +492,9 @@ impl Book {
                     .entry(key.clone())
                     .or_default()
                     .insert(source.to_owned());
+                if calendar(&address) {
+                    return None;
+                }
                 let record = self
                     .records
                     .entry(key.clone())
@@ -745,6 +762,22 @@ mod tests {
                    "sources": {"slack": {"name": "Ada"}, "vault": {"name": "Ada L"}}})
         );
         assert_eq!(book.everyone().count(), 1);
+    }
+
+    #[test]
+    fn a_calendars_address_is_no_one_and_answers_at_once() {
+        let mut book = Book::of(&["google".to_owned()]);
+        let dates = "c_1f@group.calendar.google.com";
+        let heard = Heard::Person {
+            address: dates.to_owned(),
+            entry: json!({"name": "Important Dates"}),
+        };
+        assert_eq!(book.take("google", heard, 1), None);
+        assert_eq!(book.everyone().count(), 0, "a calendar is held as no one");
+        assert!(
+            book.ready(&key(dates)),
+            "a step-in on it isn't left waiting"
+        );
     }
 
     #[test]
