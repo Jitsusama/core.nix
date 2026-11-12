@@ -10,8 +10,6 @@ license = "MIT"
 publish = false
 
 [dependencies]
-# The serving side every daemon of the shell shares (../daemon-serve).
-daemon-serve = { path = "../daemon-serve" }
 # The one form every daemon's rows take, its spaced order keeping each
 # row's where it can, so one conversation moving sends one row
 # (../ready-rows).
