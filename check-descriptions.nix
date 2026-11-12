@@ -1318,7 +1318,7 @@
     a declared night job is tried only at night and never caught up on by day, runs behind the
     account's work with the limits it names on the job's own cgroup, not its watcher's, stops by
     the apps', the desktop's and agents' slices, escapes its command for systemd, and an account
-    declaring none gets no unit
+    declaring none gets no unit but still has night-shift on its path, for a heavy job's turn
   '';
   night-shift-stops-for-joel = ''
     night-shift runs a job once a night on a quiet machine, starts nothing on a busy one or beside
