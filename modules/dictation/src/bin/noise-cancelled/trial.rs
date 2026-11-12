@@ -236,6 +236,7 @@ impl Trial {
             "why": self.why,
             "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
             "spot": self.spot.as_ref().map(|spot| &spot.name),
+            "spot_named": self.spot.as_ref().is_some_and(|spot| self.running.named(&spot.key)),
             "output": self.output,
             "seconds": SECONDS,
             "until": self.until,
@@ -376,8 +377,16 @@ impl Trial {
                 self.forget();
                 Ok(())
             }
+            "name" => self.name_spot(said["name"].as_str().unwrap_or_default()),
             other => Err(format!("no act {other:?}")),
         }
+    }
+
+    /// Names the spot the trial is at in Joel's words.
+    fn name_spot(&mut self, name: &str) -> Result<(), String> {
+        let spot = self.spot.clone().unwrap_or_else(|| self.running.spot());
+        self.spot = Some(self.running.name(&spot, name)?);
+        Ok(())
     }
 
     fn start_recording(&mut self) -> Result<(), String> {
