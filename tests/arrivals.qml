@@ -82,6 +82,9 @@ ShellRoot {
         property string app: "Camera"
         property string title: "Camera"
         property string hint: "Camera on"
+        // Its notice's own summary, as pi's names the one session it rang
+        // for where its hint counts them all.
+        property string summary: "Zoom has the camera"
         property string context: ""
         property var actions: []
     }
@@ -176,7 +179,10 @@ ShellRoot {
             const lines = root.said();
             if (root.waiting === "the camera said once" && lines.length === 1) {
                 expect("the camera is said as before", lines[0].includes("--app-name=Camera")
-                    && lines[0].includes("Camera on") && !lines[0].includes("x-arrival"), lines[0]);
+                    && !lines[0].includes("x-arrival"), lines[0]);
+                expect("by its own summary rather than its hint",
+                    lines[0].includes("Zoom has the camera") && !lines[0].includes("Camera on"),
+                    lines[0]);
                 // The meeting's earlier notice, one of nobody's, and one of
                 // the camera's, which still stands.
                 Notices.live = {

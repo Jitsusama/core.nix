@@ -2199,8 +2199,13 @@ works the same way everywhere.
   the history alone, counted as waiting but never shown, a card, or, when
   it's critical, a card that stays; a notice asking for less reaches less
   far, and none reaches further than its program is kept to. The desktop
-  makes one sound, softly: when a pi session first wants Joel and its
-  notice is said (`sounds.wants`), never while notices are held.
+  makes one sound, softly, and it means something needs him now: when a
+  pi session first stands stopped on his keys, a question or a yes
+  (`sounds.wants`), never for a run that ended blocked while he was away
+  or an item For You lists, and never while notices are held. Its notice
+  says that session and what it asks, its first act going to its window,
+  so Super+N and Return take him there, and goes once he's there or the
+  ask ends.
 - **Connecting waits to say how it went.** Return on a Wi-Fi network
   connects it and the launcher stays, its footer saying how far it has got,
   until the network takes it or says why not; connected, a password asked for

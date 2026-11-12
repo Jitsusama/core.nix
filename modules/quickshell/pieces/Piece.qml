@@ -62,8 +62,11 @@ Item {
     // timers, for the drawer every place's wears; it says nothing after
     // its title (VKCF3Z, 5fa2cbda). Null for any other.
     property var heldNames: null
-    // What its notice says beneath its hint, when it arrives: its context,
-    // unless it says more there.
+    // What its notice says as its summary, when it arrives: its hint,
+    // unless the notice is of one thing among those the hint counts.
+    property string summary: hint
+    // What its notice says beneath its summary, when it arrives: its
+    // context, unless it says more there.
     property string message: context
     property bool wants: false
     // How much it asks of Joel while it's true, which places its mark and

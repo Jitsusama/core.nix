@@ -4,14 +4,19 @@
 // a way to each one's window in What's On. The margin says a want by For
 // You's tray (ForYou.qml), which holds it.
 // Now has no row of its own for it: For You lists each session that wants
-// Joel, as what it asks (launcher/Now.qml's wantRow), and no notice says
-// it. With no pi running there's nothing to show.
+// Joel, as what it asks (launcher/Now.qml's wantRow). A session stopped on
+// his keys, the newest the bell rang for (Sessions.qml's ringing), is said
+// as a notice too, Go To its window first, so Super+N and Return take him
+// to it; it's taken back once he's there or the want ends, so it never
+// takes him to a session that has moved on (WCJQSG's pivot, 2026-11-12).
+// With no pi running there's nothing to show.
 import qs
 import QtQuick
 
 Piece {
     readonly property var wanting: Sessions.wanting
     readonly property var first: wanting.length > 0 ? wanting[0] : null
+    readonly property var ringing: Sessions.ringing
 
     // A parked one wanting Joel is shown too, with none running.
     present: Sessions.running.length > 0 || wanting.length > 0
@@ -42,20 +47,34 @@ Piece {
     context: !first ? "" : wanting.length === 1 ? (first.presence.wants.said ?? "")
         : `and ${wanting.length - 1} more`
     // Each one's window, the oldest want first, in What's On.
-    readonly property var every: wanting.map(session => ({
-        glyph: Theme.glyph.windows,
-        // Go To, where it goes at its side, as going to anything open is
-        // said everywhere, so the word never changes shape.
-        name: Words.name("verb:agent:switch"),
-        verb: Words.verb("verb:agent:switch"),
-        side: session.title,
-        // One parked is woken first, as its row in For You wakes it.
-        run: () => {
-            const resting = Sessions.parkedAs(session.address);
-            if (resting)
-                Sessions.wake(resting);
-            Sessions.goTo(session);
-        }
-    }))
-    actions: every.slice(0, 3)
+    function going(session) {
+        return {
+            glyph: Theme.glyph.windows,
+            // Go To, where it goes at its side, as going to anything open
+            // is said everywhere, so the word never changes shape.
+            name: Words.name("verb:agent:switch"),
+            verb: Words.verb("verb:agent:switch"),
+            side: session.title,
+            // One parked is woken first, as its row in For You wakes it.
+            run: () => {
+                const resting = Sessions.parkedAs(session.address);
+                if (resting)
+                    Sessions.wake(resting);
+                Sessions.goTo(session);
+            }
+        };
+    }
+    readonly property var every: wanting.map(session => going(session))
+    // The one rung for leads, so its notice's first act goes to it.
+    actions: ringing === null ? every.slice(0, 3)
+        : [going(ringing)].concat(wanting.filter(session => session !== ringing)
+            .map(session => going(session))).slice(0, 3)
+
+    // Its notice says the one rung for, by its session and what it asks,
+    // once for each, and goes as that one stops ringing.
+    arrives: ringing !== null
+    withdraws: true
+    telling: ringing === null ? "" : Sessions.key(ringing)
+    summary: ringing === null ? hint : `${ringing.title} ${Sessions.wanted(ringing.presence.wants)}`
+    message: ringing === null ? context : String(ringing.presence.wants.said ?? "")
 }
