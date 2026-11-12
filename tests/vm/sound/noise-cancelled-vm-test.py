@@ -28,6 +28,8 @@ CAPTURE = f"{OFFERED}.capture"
 # The program's capture of the microphone, by its state.
 RUNNING = f'.[] | select(.info.props["node.name"] == "{CAPTURE}") | .info.state'
 DESCRIPTION = "Desk Microphone"
+# The microphone's rank among the sources, as the session manager gives a plugged-in one.
+RANK = 1000
 # How long PipeWire and the program have to answer, and the model to load on the VM's CPU.
 ANSWERS_WITHIN = timedelta(minutes=1)
 LOADS_WITHIN = timedelta(minutes=3)
@@ -52,6 +54,27 @@ CHOSEN = (
     '.[] | select(.props["metadata.name"] == "default") | .metadata[]'
     ' | select(.key == "default.configured.audio.source") | .value.name'
 )
+
+
+def plug_in(joel: Joel, unit: str) -> None:
+    """Plug in a microphone that hears what's played into mic-in, as a unit of its own."""
+    # It carries a device's id, as the node of one plugged in does, and a rank.
+    joel.run(
+        f"systemd-run --user --unit={unit} pw-loopback"
+        " --capture-props='node.name=mic-in media.class=Audio/Sink audio.position=[MONO]'"
+        f" --playback-props='node.name={MICROPHONE} media.class=Audio/Source"
+        f" audio.position=[MONO] device.id=0 priority.session={RANK}"
+        f' node.description="{DESCRIPTION}"\''
+    )
+    joel.wait_for(f"pw-cli ls Node | grep -q 'node.name = \"{MICROPHONE}\"'", ANSWERS_WITHIN)
+
+
+def twin_rank(joel: Joel) -> str:
+    """Give the rank the program gives the microphone's twin, or null for none."""
+    query = (
+        f'.[] | select(.info.props["node.name"] == "{OFFERED}") | .info.props["priority.session"]'
+    )
+    return joel.run(f"pw-dump | jq -r {shlex.quote(query)}").strip()
 
 
 class Joel:
@@ -136,16 +159,12 @@ def joel(machine: BaseMachine, values: dict[str, Any]) -> Iterator[Joel]:
     joel = Joel(machine)
     joel.run("systemctl --user start pipewire.service")
     machine.wait_for_unit("wireplumber.service", "joel")
-    # A microphone that hears what's played into mic-in, carrying a device's id, as the node of
-    # one plugged in does.
+    plug_in(joel, "microphone")
+    # Keeping picks where the trial does, so a pick ranks the twin once it's made again.
     joel.run(
-        "systemd-run --user --unit=microphone pw-loopback"
-        " --capture-props='node.name=mic-in media.class=Audio/Sink audio.position=[MONO]'"
-        f" --playback-props='node.name={MICROPHONE} media.class=Audio/Source"
-        f' audio.position=[MONO] device.id=0 node.description="{DESCRIPTION}"\''
+        "systemd-run --user --unit=noise-cancelled noise-cancelled serve"
+        f" {values['model']} deepfilternet {PICKED}"
     )
-    joel.wait_for(f"pw-cli ls Node | grep -q 'node.name = \"{MICROPHONE}\"'", ANSWERS_WITHIN)
-    joel.run(f"systemd-run --user --unit=noise-cancelled noise-cancelled serve {values['model']}")
     try:
         joel.wait_until_said(f"offering {DESCRIPTION}", ANSWERS_WITHIN)
         yield joel
@@ -162,6 +181,7 @@ def test_the_microphone_is_offered_named_for_it(joel: Joel) -> None:
         ' | jq -r \'[."node.description", ."media.class"] | join("|")\''
     ).strip()
     assert props == f"{DESCRIPTION}, Noise Cancelled|Audio/Source"
+    assert twin_rank(joel) == "null", "before any pick, the twin outranks its microphone"
 
 
 def test_the_microphone_isnt_heard_while_nothing_records(joel: Joel) -> None:
@@ -286,3 +306,24 @@ def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict
     # A raw pick before settles the spot it was made at too, so the offer's is one line of those.
     kept = joel.run(f"cat {KEPT_OFFERED}").strip()
     assert f"{MICROPHONE} network=none" in kept.splitlines(), f"what's kept as offered: {kept!r}"
+
+
+def test_a_twin_outranks_its_microphone_once_a_cleaned_pick_is_kept(
+    joel: Joel, offered: dict[str, Any]
+) -> None:
+    """Plugged in again after a pick, the microphone's twin ranks above it for a cleaned pick."""
+    assert offered["microphone"] == DESCRIPTION
+    joel.run("systemctl --user stop microphone")
+    joel.wait_until_said(f"{DESCRIPTION}, Noise Cancelled is gone", ANSWERS_WITHIN)
+    plug_in(joel, "microphone-again")
+    joel.wait_for(
+        f"test $(journalctl --user -u noise-cancelled -o cat"
+        f" | grep -cF {shlex.quote(f'offering {DESCRIPTION}')}) -ge 2",
+        ANSWERS_WITHIN,
+    )
+    kept = joel.run(f"cat {PICKED} 2>/dev/null || true").strip()
+    rank = twin_rank(joel)
+    if kept:
+        assert rank == str(RANK + 1), f"after a cleaned pick, the twin ranks {rank!r}"
+    else:
+        assert rank == "null", f"after a raw pick alone, the twin ranks {rank!r}"
