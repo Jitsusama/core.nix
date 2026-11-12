@@ -35,6 +35,10 @@
 // while it's shown. The leases and neighbours are asked of networkd over
 // its varlink socket as the launcher opens and when what it said is five
 // seconds old, so nothing is spawned for them either.
+//
+// Long because each connection's parts, its drawer and its answer read the
+// same links, routes and leases as they stand, and split apart they would
+// each hold their own copy of what the daemon last said.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -298,28 +302,82 @@ Provider {
         if (now === null)
             return unknown;
         const shown = listed(now);
-        const rows = shown.map(link => thingRow({
-            thing: true,
-            key: `networks:${link.name}`,
-            name: linkName(link, shown),
-            side: addressOf(link) || stateSaid[link.state],
-            glyph: linkGlyph(link.kind),
-            keywords: link.name,
-            // What its kind was called, so "wired" still finds Ethernet.
-            once: Words.of(`networks:${link.kind}`).once ?? [],
-            note: link.name === now.out ? "where the machine's traffic leaves" : ""
-        }, () => provider.partsOf(link.name)));
+        const rows = shown.map(link => {
+            const name = linkName(link, shown);
+            const side = addressOf(link) || stateSaid[link.state];
+            return thingRow({
+                thing: true,
+                key: `networks:${link.name}`,
+                name: name,
+                side: side,
+                glyph: linkGlyph(link.kind),
+                keywords: link.name,
+                // What its kind was called, so "wired" still finds Ethernet.
+                once: Words.of(`networks:${link.kind}`).once ?? [],
+                note: link.name === now.out ? "where the machine's traffic leaves" : "",
+                drawer: () => provider.linkDrawer(link.name, name, side)
+            }, () => provider.partsOf(link.name));
+        });
         const out = shown.find(link => link.name === now.out) ?? shown[0] ?? null;
         const first = out ? out.four[0] ?? out.six[0] ?? null : null;
         const headline = first ? shortened(first.address) : "no address";
-        if (lookups)
-            rows.push(publicRow("https://api.ipify.org?format=json", "public"),
-                publicRow("https://api6.ipify.org?format=json", "public6"));
+        const publics = lookups ? [publicRow("https://api.ipify.org?format=json", "public"),
+            publicRow("https://api6.ipify.org?format=json", "public6")] : [];
+        rows.push(...publics);
         return {
             headline: headline,
             copy: first ? shortened(first.address) : "",
             rows: rows,
-            note: lookups ? "public addresses from ipify" : ""
+            note: lookups ? "public addresses from ipify" : "",
+            // A thing with more to say than its address: the way out's
+            // gateway and name servers, and the addresses the internet
+            // sees it by.
+            thing: true,
+            drawer: () => provider.addressDrawer(out ? out.name : "",
+                out ? linkName(out, shown) : headline, headline, publics)
+        };
+    }
+
+    // The facts of a connection's parts that a glance wants, by the part's
+    // id, in the order they're said: the address in full with its
+    // prefix, the gateway and name servers, the cable's speed, the lease,
+    // the packet size and state, then the hardware address, which
+    // identifies it, last.
+    readonly property var glanced: ["address", "ipv6", "gateway", "dns", "speed", "duplex",
+        "lease", "neighbour", "mtu", "state", "hardware"]
+
+    // A connection's facts, each part said once, one already said by
+    // `said` (its row's side or the headline) left out, as a drawer never
+    // repeats its row.
+    function glance(name, said) {
+        const parts = partsOf(name);
+        const facts = [];
+        for (const id of glanced) {
+            const found = parts.find(row => row.name === named(id)) ?? null;
+            if (found === null || found.side === "" || said.includes(found.side))
+                continue;
+            facts.push({ label: found.name, value: found.side, identifies: id === "hardware" });
+        }
+        return facts;
+    }
+
+    // A connection's drawer: what it is, then its parts at a glance, the
+    // whole list a step in.
+    function linkDrawer(name, title, side) {
+        return { eyebrow: named("link:plate"), title: title, facts: glance(name, [side]) };
+    }
+
+    // The address answer's drawer, the way out's: named by the connection
+    // the traffic leaves by, its parts at a glance, the address the row
+    // says left out, then the public addresses as ipify last saw them,
+    // or that it found no route there, as an IPv6 address may.
+    function addressDrawer(name, title, headline, publics) {
+        const seen = publics.filter(row => row.side !== "\u2026" && row.side !== "asking\u2026")
+            .map(row => ({ label: row.name, value: row.side }));
+        return {
+            eyebrow: named("out:plate"),
+            title: title,
+            facts: (name === "" ? [] : glance(name, [headline])).concat(seen)
         };
     }
 
@@ -361,8 +419,27 @@ Provider {
         const said = ask(url, minutes);
         const key = `networks:${id}`;
         if (said.value)
-            return part(key, id, said.value.ip);
+            return Object.assign(part(key, id, said.value.ip), {
+                // Who holds it, as the registry says, and the block it's
+                // in, asked of rdap.org once it's looked at.
+                thing: true,
+                drawer: () => provider.publicDrawer(id, said.value.ip)
+            });
         return part(key, id, said.failed ? "no route" : "asking\u2026", "", "");
+    }
+
+    // A public address's drawer: who holds it and the block it's in, as
+    // the registry says, or that it's still asking.
+    function publicDrawer(id, ip) {
+        const at = Addresses.read(ip);
+        const held = at ? holderOf(at, at.text) : null;
+        const facts = held ? held.rows.map(row => ({ label: row.name, value: row.side })) : [];
+        return {
+            eyebrow: named("public:plate"),
+            title: named(id),
+            body: held ? held.note : "",
+            facts: facts
+        };
     }
 
     // How a connection stands, in words.

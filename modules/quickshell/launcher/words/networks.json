@@ -365,6 +365,21 @@
       "id": "networks:registered",
       "in": "networks",
       "name": "Registered Range"
+    },
+    {
+      "id": "networks:link:plate",
+      "in": "networks",
+      "name": "Connection"
+    },
+    {
+      "id": "networks:out:plate",
+      "in": "networks",
+      "name": "Where Traffic Leaves"
+    },
+    {
+      "id": "networks:public:plate",
+      "in": "networks",
+      "name": "Seen From Outside"
     }
   ]
 }

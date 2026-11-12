@@ -308,7 +308,17 @@
       "glyph": "traffic",
       "answers": [
         "speed"
-      ]
+      ],
+      "said": {
+        "eyebrow": "the machine's own cards",
+        "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "ways": "{in} in \u00b7 {out} out",
+        "packet": "{count} packet",
+        "packets": "{count} packets"
+      }
     },
     {
       "id": "warp",
