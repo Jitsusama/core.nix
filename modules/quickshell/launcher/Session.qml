@@ -127,7 +127,7 @@ Provider {
         // Its leads are sentences of the drawer's own (`tells`), the rest
         // words beside them (`said`).
         const words = Object.assign({}, entry.said, entry.tells);
-        const told = Power.lockSaid(Power.byProgram(Niri.windows, provider.programNamed),
+        const told = Power.lockSaid(provider.windowsOpen,
             provider.bound(provider.locks).map(key => key.text).join(" "), words);
         return {
             eyebrow: words.eyebrow ?? "",
@@ -144,8 +144,7 @@ Provider {
     function endingDrawer(key) {
         const entry = Words.of(key);
         const words = Object.assign({}, Words.of("session:Lock").said, entry.said, entry.tells);
-        const told = Power.endingSaid(Power.byProgram(Niri.windows, provider.programNamed),
-            `${key}:ends`, words);
+        const told = Power.endingSaid(provider.windowsOpen, `${key}:ends`, words);
         return {
             eyebrow: words.eyebrow ?? "",
             eyebrowNames: true,
@@ -661,10 +660,31 @@ Provider {
         answersWhole: true
     }
 
+    // How many windows are open and whose, as the windows daemon counts
+    // them (Power.js's openOf), for Lock's drawer and those of the rows
+    // that end the session.
+    readonly property var windowsOpen: windowsOpenWatch.revision >= 0
+        ? Power.openOf(windowsOpenWatch.held["windows-open"] ?? null) : Power.openOf(null)
+
+    // Watched while the launcher is open, as Windows' are, so the drawers
+    // that say it have it before Joel rests on their rows, or while a
+    // terminal's show sees one of them.
+    Daemon {
+        id: windowsOpenWatch
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
+        kind: "windows-open"
+        live: provider.launcher?.open === true
+            || ["session:Lock", "session:Log Out", "session:Reboot", "session:Power Off"]
+                .some(key => provider.rowShown(key))
+        paced: provider.launcher
+        keptThroughGap: false
+        answersWhole: true
+    }
+
     // What ending the session closes, said before it's done.
     readonly property string closing: {
-        // Niri's windows are kept by id.
-        const open = Object.keys(Niri.windows).length;
+        const open = provider.windowsOpen.open;
         return open === 0 ? "" : `, Closing ${open === 1 ? "the Window" : `${open} Windows`}`;
     }
 

@@ -233,7 +233,6 @@
     "Fuzzy.js"
     "launcher/Notice.js"
   ];
-  "launcher/Power.js" = [ "launcher/Order.js" ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
