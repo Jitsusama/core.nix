@@ -52,6 +52,19 @@ pub fn meminfo(text: &str) -> (Map<String, Value>, Map<String, Value>) {
     (sized, counted)
 }
 
+/// The counts in `/proc/vmstat` Memory's rates are measured from.
+const SINCE_STARTUP: [&str; 9] = [
+    "pgpgin",
+    "pgpgout",
+    "pgfault",
+    "pgmajfault",
+    "pswpin",
+    "pswpout",
+    "zswpin",
+    "zswpout",
+    "oom_kill",
+];
+
 /// The memory's record, from this read's counters and the one before.
 /// `page_b` is the machine's page size, which swapping counts in.
 pub fn record(root: &Root, now: &Counters, before: Option<&Counters>, page_b: u64) -> Value {
@@ -75,6 +88,12 @@ pub fn record(root: &Root, now: &Counters, before: Option<&Counters>, page_b: u6
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
         .and_then(|said| said.get("modules").cloned())
         .unwrap_or(Value::Null);
+    // The counts since startup the rates are measured from, by their own
+    // names, for the drawers that say them.
+    let kept: serde_json::Map<String, Value> = SINCE_STARTUP
+        .iter()
+        .filter_map(|name| Some(((*name).to_owned(), json!(counter(name)?))))
+        .collect();
     json!({
         "key": "memory:main",
         "kind": "memory",
@@ -93,6 +112,7 @@ pub fn record(root: &Root, now: &Counters, before: Option<&Counters>, page_b: u6
         "paged_in_b_per_s": rate("pgpgin", 1024),
         "paged_out_b_per_s": rate("pgpgout", 1024),
         "oom_kills": counter("oom_kill"),
+        "vmstat": kept,
         "modules": modules,
         "over_ms": span,
         "since": since(over_ms),

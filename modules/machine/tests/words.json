@@ -107,6 +107,18 @@
       }
     },
     {
+      "id": "machine:read-from",
+      "in": "machine:memory",
+      "name": "Read From",
+      "said": {
+        "memory": "on this machine \u00b7 memory",
+        "cpu": "on this machine \u00b7 processor",
+        "disk": "on this machine \u00b7 disk",
+        "uptime": "on this machine \u00b7 uptime",
+        "more": "and {n} more, a step in"
+      }
+    },
+    {
       "id": "machine:memory:using",
       "in": "machine:memory",
       "name": "Using It",

@@ -25,7 +25,7 @@
 //! cases stay beside the private pieces they prove.
 
 use ready_rows::time::{self, Form};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::rows::{Made, Ready, bar, figure, item};
 use crate::telemetry::Heard;
@@ -42,6 +42,30 @@ const ROUNDS_UP: f64 = 999.5;
 const BYTES: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
 /// The parts of a run said in one, as "DDR5 · 2 modules".
 const DOT: &str = " \u{b7} ";
+/// The most rows a step in a holder's drawer says, the rest counted.
+const HOLDS: usize = 8;
+/// The memory's parts, by the fields `/proc/meminfo` keeps them in.
+const HELD_FROM: [(&str, &[&str]); 6] = [
+    ("programs", &["AnonPages", "Active(anon)", "Inactive(anon)"]),
+    (
+        "files",
+        &["Cached", "Shmem", "Active(file)", "Inactive(file)"],
+    ),
+    ("shared", &["Shmem"]),
+    (
+        "kernel",
+        &[
+            "Slab",
+            "KernelStack",
+            "PageTables",
+            "SecPageTables",
+            "Percpu",
+            "VmallocUsed",
+        ],
+    ),
+    ("buffers", &["Buffers"]),
+    ("unwritten", &["Dirty", "Writeback"]),
+];
 
 /// What Machine's rows are made of: the processor's record, the
 /// memory's, this boot's, the programs using each most, where they
@@ -184,13 +208,99 @@ impl Say<'_> {
         }
     }
 
-    /// A figure holding more, a step in, wearing its thing's glyph.
-    pub(crate) fn holder(&self, made: Made, glyph: &str, inside: Vec<Made>) -> Made {
+    /// A figure holding more, a step in, wearing its thing's glyph, its
+    /// drawer saying what's inside where it has none of its own.
+    pub(crate) fn holder(&self, mut made: Made, glyph: &str, inside: Vec<Made>) -> Made {
+        if made.drawer.is_none() {
+            made.drawer = Some(self.holding(glyph, &made.name, &inside));
+        }
         Made {
             glyph: self.words.glyph(&format!("machine:{glyph}")),
             inside,
             ..made
         }
+    }
+
+    /// A holder's drawer, so one key shows what's inside without stepping
+    /// in, as a place's row does (`PlaceRow.js`): each row a step in and
+    /// what it says, the first few, then how many more. A row saying a
+    /// time, which the shell words, is left to its step.
+    pub(crate) fn holding(&self, thing: &str, title: &str, inside: &[Made]) -> Value {
+        let mut facts: Vec<Value> = inside
+            .iter()
+            .filter_map(|row| {
+                let said = row.side.first()?["said"].as_str()?;
+                (!said.is_empty()).then(|| json!({ "name": row.name, "said": said }))
+            })
+            .collect();
+        let more = facts.len().saturating_sub(HOLDS);
+        facts.truncate(HOLDS);
+        let mut drawer = json!({ "eyebrow": self.says("read-from", thing, &[]),
+            "eyebrowNames": true, "title": title, "facts": facts });
+        if more > 0 {
+            let n = more.to_string();
+            drawer["body"] = json!(self.says("read-from", "more", &[("n", &n)]));
+        }
+        drawer
+    }
+
+    /// A row's drawer saying what Linux keeps behind it, by its own names
+    /// and as it says them, then the file it's read from (#2204's bar:
+    /// the kernel's own, never smoothed over).
+    pub(crate) fn as_linux_keeps(
+        &self,
+        made: Made,
+        thing: &str,
+        from: &str,
+        kept: Vec<(String, String)>,
+    ) -> Made {
+        let mut facts: Vec<Value> = kept
+            .into_iter()
+            .filter(|(_, said)| !said.is_empty())
+            .map(|(name, said)| json!({ "name": name, "said": said }))
+            .collect();
+        facts.push(json!({ "name": self.name("read-from"), "said": from, "identifies": true }));
+        let drawer = json!({ "eyebrow": self.says("read-from", thing, &[]),
+            "eyebrowNames": true, "title": made.name, "facts": facts });
+        Made {
+            drawer: Some(drawer),
+            ..made
+        }
+    }
+
+    /// A count of bytes as `/proc/meminfo` says it, "16,123,456 kB".
+    fn kb(&self, bytes: f64) -> String {
+        format!("{} kB", self.words.number((bytes / 1024.0).round(), 0))
+    }
+
+    /// A memory row's drawer from `/proc/meminfo`'s fields, those the
+    /// kernel counts by number (the huge pages) as numbers.
+    fn meminfo(&self, made: Made, m: &Value, fields: &[&str]) -> Made {
+        let kept = fields
+            .iter()
+            .filter_map(|field| {
+                let said = if let Some(bytes) = m["info_b"][*field].as_f64() {
+                    self.kb(bytes)
+                } else {
+                    self.words.number(m["huge_pages"][*field].as_f64()?, 0)
+                };
+                Some(((*field).to_owned(), said))
+            })
+            .collect();
+        self.as_linux_keeps(made, "memory", "/proc/meminfo", kept)
+    }
+
+    /// A rate's drawer from the counts since startup in `/proc/vmstat` it's
+    /// measured from.
+    fn vmstat(&self, made: Made, m: &Value, fields: &[&str]) -> Made {
+        let kept = fields
+            .iter()
+            .filter_map(|field| {
+                let count = m["vmstat"][*field].as_f64()?;
+                Some(((*field).to_owned(), self.words.number(count, 0)))
+            })
+            .collect();
+        self.as_linux_keeps(made, "memory", "/proc/vmstat", kept)
     }
 
     /// Held up waiting for something, the share of the last ten seconds,
@@ -200,6 +310,29 @@ impl Say<'_> {
     pub(crate) fn pressured(&self, id: &str, pressure: &Value, full: bool) -> Made {
         let some = &pressure["some"];
         let now = number(&some["avg10_pct"]);
+        let thing = id.split(':').next().unwrap_or(id);
+        // The kernel's own file, which names the disk's "io".
+        let file = format!(
+            "/proc/pressure/{}",
+            if thing == "disk" { "io" } else { thing }
+        );
+        let kept = |window: &str| {
+            let mut kept = Vec::new();
+            for line in ["some", "full"] {
+                let share = &pressure[line][format!("{window}_pct")];
+                if let Some(share) = share.as_f64().filter(|_| line == "some" || full) {
+                    kept.push((format!("{line} {window}"), format!("{share:.2}")));
+                }
+            }
+            for line in ["some", "full"] {
+                let total = &pressure[line]["total_us"];
+                if let Some(total) = total.as_f64().filter(|_| line == "some" || full) {
+                    let said = format!("{} \u{b5}s", self.words.number(total, 0));
+                    kept.push((format!("{line} total"), said));
+                }
+            }
+            kept
+        };
         let each = |window: &str, name: &str| {
             let share = number(&some[window]);
             let whole = number(&pressure["full"][window]);
@@ -215,7 +348,9 @@ impl Say<'_> {
                 self.says("memory:pressure", "some", &[("some", &some)])
             };
             let graph = bar(share / 100.0, share >= PRESSED_PCT);
-            self.figure(&format!("{id}-{name}"), said, Some(graph), String::new())
+            let made = self.figure(&format!("{id}-{name}"), said, Some(graph), String::new());
+            let avg = window.trim_end_matches("_pct");
+            self.as_linux_keeps(made, thing, &file, kept(avg))
         };
         let inside = vec![
             each("avg10_pct", "10"),
@@ -229,7 +364,6 @@ impl Say<'_> {
             Some(bar(now / 100.0, now >= PRESSED_PCT)),
             self.says(id, "note", &[]),
         );
-        let thing = id.split(':').next().unwrap_or(id);
         self.holder(made, thing, inside)
     }
 
@@ -244,16 +378,19 @@ impl Say<'_> {
                 ("share", &percent(used / total)),
             ],
         );
+        let name = self.words.name("machine:memory", &[]);
+        let inside = ordered(self.words, "machine:memory", self.memory_parts(m, using));
         Made {
             id: "memory".to_owned(),
             kind: "memory",
-            name: self.words.name("machine:memory", &[]),
             glyph: self.words.glyph("machine:memory"),
             hue: "machine",
             side: vec![item(&said)],
             copies: said,
             graph: Some(bar(used / total, false)),
-            inside: ordered(self.words, "machine:memory", self.memory_parts(m, using)),
+            drawer: Some(self.holding("memory", &name, &inside)),
+            name,
+            inside,
             ..Made::default()
         }
     }
@@ -262,7 +399,7 @@ impl Say<'_> {
         let info = &m["info_b"];
         let total = number(&m["total_b"]);
         let field = |name: &str| info[name].as_f64();
-        let mut rows = vec![self.figure(
+        let used = self.figure(
             "memory:used",
             self.says(
                 "memory:used",
@@ -278,14 +415,15 @@ impl Say<'_> {
                 "note",
                 &[("available", &self.bytes(number(&m["available_b"])))],
             ),
-        )];
+        );
+        let mut rows = vec![self.meminfo(used, m, &["MemTotal", "MemAvailable", "MemFree"])];
         if m["pressure"]["some"].is_object() {
             rows.push(self.pressured("memory:pressure", &m["pressure"], true));
         }
         if let Some(swap) = field("SwapTotal").filter(|swap| *swap > 0.0) {
             let swapped = swap - field("SwapFree").unwrap_or(0.0);
             let cached = field("SwapCached").unwrap_or(0.0);
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:swap",
                 self.says(
                     "memory:swap",
@@ -298,20 +436,23 @@ impl Say<'_> {
                 } else {
                     String::new()
                 },
-            ));
+            );
+            rows.push(self.meminfo(made, m, &["SwapTotal", "SwapFree", "SwapCached"]));
         }
         if let Some(cached) = field("Cached") {
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:cached",
                 self.bytes(cached),
                 Some(bar(cached / total, false)),
                 self.says("memory:cached", "note", &[]),
-            ));
+            );
+            let fields = ["Cached", "Active(file)", "Inactive(file)", "Shmem"];
+            rows.push(self.meminfo(made, m, &fields));
         }
-        rows.extend(self.held_by(info, &m["huge_pages"], total));
+        rows.extend(self.held_by(m, total));
         if let Some(limit) = field("CommitLimit").filter(|limit| *limit > 0.0) {
             let committed = field("Committed_AS").unwrap_or(0.0);
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:committed",
                 percent(committed / limit),
                 Some(bar(committed / limit, false)),
@@ -323,12 +464,13 @@ impl Say<'_> {
                         ("limit", &self.bytes(limit)),
                     ],
                 ),
-            ));
+            );
+            rows.push(self.meminfo(made, m, &["Committed_AS", "CommitLimit"]));
         }
         rows.extend(self.moving(m));
         rows.push(self.using(using, total));
         rows.extend(self.modules(&m["modules"]));
-        rows.extend(self.counts(info, &m["huge_pages"]));
+        rows.extend(self.counts(m));
         rows
     }
 
@@ -337,16 +479,17 @@ impl Say<'_> {
     fn moving(&self, m: &Value) -> Vec<Made> {
         let mut rows = Vec::new();
         if m["paged_in_b_per_s"].is_number() {
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:paging",
                 self.both(&m["paged_in_b_per_s"], &m["paged_out_b_per_s"]),
                 None,
                 self.says("memory:paging", "note", &[]),
-            ));
+            );
+            rows.push(self.vmstat(made, m, &["pgpgin", "pgpgout"]));
         }
         if let Some(faults) = m["faults_per_s"].as_f64() {
             let major = number(&m["major_faults_per_s"]);
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:faults",
                 self.often(faults),
                 None,
@@ -355,7 +498,8 @@ impl Say<'_> {
                 } else {
                     String::new()
                 },
-            ));
+            );
+            rows.push(self.vmstat(made, m, &["pgfault", "pgmajfault"]));
         }
         if m["swapped_in_b_per_s"].is_number() {
             let (inward, outward) = (&m["compressed_in_b_per_s"], &m["compressed_out_b_per_s"]);
@@ -369,45 +513,54 @@ impl Say<'_> {
             } else {
                 String::new()
             };
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:swapping",
                 self.both(&m["swapped_in_b_per_s"], &m["swapped_out_b_per_s"]),
                 None,
                 note,
-            ));
+            );
+            let fields = ["pswpin", "pswpout", "zswpin", "zswpout"];
+            rows.push(self.vmstat(made, m, &fields));
         }
         if let Some(kills) = m["oom_kills"].as_u64() {
-            rows.push(self.figure(
+            let made = self.figure(
                 "memory:out-of-memory",
                 kills.to_string(),
                 None,
                 self.says("memory:out-of-memory", "note", &[]),
-            ));
+            );
+            rows.push(self.vmstat(made, m, &["oom_kill"]));
         }
         rows
     }
 
     /// What the memory is held by, biggest first, and a step in, each
     /// part, what zswap holds compressed and the huge pages.
-    fn held_by(&self, info: &Value, counted: &Value, total: f64) -> Option<Made> {
+    fn held_by(&self, m: &Value, total: f64) -> Option<Made> {
+        let (info, counted) = (&m["info_b"], &m["huge_pages"]);
         let held = kept_by(info);
         let first = held.first()?;
         let mut inside: Vec<Made> = held
             .iter()
             .map(|(id, bytes)| {
                 let part = format!("memory:held-{id}");
-                self.figure(
+                let made = self.figure(
                     &part,
                     self.bytes(*bytes),
                     Some(bar(bytes / total, false)),
                     self.says(&part, "note", &[]),
-                )
+                );
+                let fields = HELD_FROM
+                    .iter()
+                    .find(|(held, _)| held == id)
+                    .map_or(&[][..], |(_, fields)| fields);
+                self.meminfo(made, m, fields)
             })
             .collect();
         let field = |name: &str| number(&info[name]);
         let (stored, pool) = (field("Zswapped"), field("Zswap"));
         if stored > 0.0 && pool > 0.0 {
-            inside.push(self.figure(
+            let made = self.figure(
                 "memory:held-compressed",
                 self.says(
                     "memory:held-compressed",
@@ -420,9 +573,18 @@ impl Say<'_> {
                     "note",
                     &[("ratio", &self.words.number(stored / pool, 1))],
                 ),
-            ));
+            );
+            inside.push(self.meminfo(made, m, &["Zswapped", "Zswap"]));
         }
-        inside.extend(self.huge(info, counted));
+        inside.extend(self.huge(info, counted).map(|made| {
+            let fields = [
+                "AnonHugePages",
+                "Hugetlb",
+                "HugePages_Total",
+                "HugePages_Free",
+            ];
+            self.meminfo(made, m, &fields)
+        }));
         let side = format!(
             "{} {}",
             self.name(&format!("memory:held-{}", first.0)),
@@ -485,7 +647,7 @@ impl Say<'_> {
                 } else {
                     String::new()
                 };
-                Made {
+                let made = Made {
                     name: each["name"].as_str().unwrap_or_default().to_owned(),
                     ..self.figure(
                         &format!("{id}:{}", at + 1),
@@ -493,7 +655,10 @@ impl Say<'_> {
                         Some(bar(resident / total, false)),
                         note,
                     )
-                }
+                };
+                // Each process's resident pages, the 24th field, summed.
+                let kept = vec![("rss".to_owned(), self.kb(resident))];
+                self.as_linux_keeps(made, "memory", "/proc/<pid>/stat", kept)
             })
             .collect();
         let first = &holders[0];
@@ -554,10 +719,23 @@ impl Say<'_> {
                     sized.clone()
                 };
                 let note = items(&[by(one), one.part.clone(), one.locators.join(DOT)]);
-                Made {
+                let made = Made {
                     name,
                     ..self.figure(&format!("memory:module:{}", at + 1), typed(one), None, note)
-                }
+                };
+                // The firmware's own fields for a memory device (SMBIOS
+                // type 17), as dmidecode names them.
+                let kept: Vec<(String, String)> = [
+                    ("Type", one.kind.clone()),
+                    ("Speed", one.speed.clone()),
+                    ("Size", one.size.clone()),
+                    ("Manufacturer", one.maker.clone()),
+                    ("Part Number", one.part.clone()),
+                    ("Locator", one.locators.join(", ")),
+                ]
+                .map(|(name, said)| (name.to_owned(), said))
+                .into();
+                self.as_linux_keeps(made, "memory", "/sys/firmware/dmi/entries/17-*", kept)
             })
             .collect();
         let made = self.figure("memory:type", typed(first), None, items(&[held, by(first)]));
@@ -567,16 +745,19 @@ impl Say<'_> {
     /// Every count the kernel keeps of its memory, by its own name, so
     /// none it gives is left unseen (#2204's bar): those in bytes, then
     /// the huge pages it counts by number.
-    fn counts(&self, info: &Value, huge: &Value) -> Option<Made> {
-        let sized = info.as_object()?;
+    fn counts(&self, m: &Value) -> Option<Made> {
+        let sized = m["info_b"].as_object()?;
         let empty = serde_json::Map::new();
-        let counted = huge.as_object().unwrap_or(&empty);
+        let counted = m["huge_pages"].as_object().unwrap_or(&empty);
         if sized.is_empty() {
             return None;
         }
-        let row = |name: &str, said: String| Made {
-            name: name.to_owned(),
-            ..self.figure(&format!("memory:count:{name}"), said, None, String::new())
+        let row = |name: &str, said: String| {
+            let made = Made {
+                name: name.to_owned(),
+                ..self.figure(&format!("memory:count:{name}"), said, None, String::new())
+            };
+            self.meminfo(made, m, &[name])
         };
         let inside = sized
             .iter()
@@ -605,14 +786,25 @@ impl Say<'_> {
             .unwrap_or(0)
             .saturating_mul(1000);
         let up_s = crate::float(now) / 1000.0;
+        let linux = |made: Made, from: &str, kept: &[(&str, Option<String>)]| {
+            let kept = kept
+                .iter()
+                .filter_map(|(name, said)| Some(((*name).to_owned(), said.clone()?)))
+                .collect();
+            self.as_linux_keeps(made, "uptime", from, kept)
+        };
+        let seconds = |field: &str| boot[field].as_f64().map(|s| format!("{s:.2}"));
         let mut inside = Vec::new();
         if let Some(idle) = boot["idle_ratio"].as_f64() {
-            inside.push(self.figure(
+            let made = self.figure(
                 "uptime:idle",
                 percent(idle),
                 Some(bar(idle, false)),
                 self.says("uptime:idle", "note", &[]),
-            ));
+            );
+            // `/proc/uptime`'s two fields, as proc(5) names them.
+            let kept = [("uptime", seconds("uptime_s")), ("idle", seconds("idle_s"))];
+            inside.push(linux(made, "/proc/uptime", &kept));
         }
         if let Some(asleep) = boot["asleep_s"].as_f64() {
             let said = if asleep > 0.0 {
@@ -630,20 +822,43 @@ impl Say<'_> {
                 String::new()
             };
             let graph = (up_s > 0.0).then(|| bar(asleep / up_s, false));
-            inside.push(self.figure("uptime:asleep", said, graph, note));
+            let made = self.figure("uptime:asleep", said, graph, note);
+            // The time asleep is how far the clock counting it has run
+            // ahead of the one that stops while the machine sleeps.
+            let kept = [("CLOCK_BOOTTIME - CLOCK_MONOTONIC", seconds("asleep_s"))];
+            inside.push(linux(made, "clock_gettime(2)", &kept));
         }
-        inside.push(Made {
+        let started = Made {
             side: vec![time::at(booted_ms, Form::Moment)],
             copies: String::new(),
             ..self.figure("uptime:started", String::new(), None, String::new())
-        });
+        };
+        let btime = boot["booted_at_s"].as_i64().map(|s| s.to_string());
+        inside.push(linux(started, "/proc/stat", &[("btime", btime)]));
         if let Some(kernel) = boot["kernel"].as_str() {
+            let build = boot["kernel_build"].as_str().map(str::to_owned);
             let made = self.figure("uptime:kernel", kernel.to_owned(), None, String::new());
-            inside.push(match boot["kernel_build"].as_str() {
+            let both = [
+                ("osrelease", Some(kernel.to_owned())),
+                ("version", build.clone()),
+            ];
+            let made = linux(made, "/proc/sys/kernel", &both);
+            inside.push(match build {
                 Some(build) => {
+                    let release =
+                        self.figure("uptime:release", kernel.to_owned(), None, String::new());
+                    let version = self.figure("uptime:build", build.clone(), None, String::new());
                     let parts = vec![
-                        self.figure("uptime:release", kernel.to_owned(), None, String::new()),
-                        self.figure("uptime:build", build.to_owned(), None, String::new()),
+                        linux(
+                            release,
+                            "/proc/sys/kernel/osrelease",
+                            &[("osrelease", Some(kernel.to_owned()))],
+                        ),
+                        linux(
+                            version,
+                            "/proc/sys/kernel/version",
+                            &[("version", Some(build))],
+                        ),
                     ];
                     self.holder(made, "cpu", parts)
                 }
@@ -654,14 +869,17 @@ impl Say<'_> {
         // shell says them as the time fills them.
         let mut lasted = time::at(booted_ms, Form::Lasted);
         lasted["said"] = Value::String(self.says("uptime", "head", &[]));
+        let name = self.words.name("machine:uptime", &[]);
+        let inside = ordered(self.words, "machine:uptime", inside);
         Made {
             id: "uptime".to_owned(),
             kind: "uptime",
-            name: self.words.name("machine:uptime", &[]),
             glyph: self.words.glyph("machine:cpu"),
             hue: "machine",
             side: vec![lasted],
-            inside: ordered(self.words, "machine:uptime", inside),
+            drawer: Some(self.holding("uptime", &name, &inside)),
+            name,
+            inside,
             ..Made::default()
         }
     }
@@ -990,5 +1208,136 @@ mod tests {
     #[test]
     fn nothing_held_makes_no_rows() {
         assert_eq!(read(Held::default(), 0, &words()), Ready::default());
+    }
+
+    /// The memory as a machine in use reads it: swapping, paging and
+    /// faulting, with something waiting to be written and huge pages.
+    fn memory_in_use() -> Value {
+        let mut m = memory();
+        for (field, bytes) in [
+            ("MemAvailable", 8.0 * GB),
+            ("MemFree", 1.024 * GB),
+            ("Buffers", 0.2 * GB),
+            ("Dirty", 0.01 * GB),
+            ("Slab", 0.5 * GB),
+            ("SwapTotal", 8.0 * GB),
+            ("SwapFree", 6.0 * GB),
+            ("SwapCached", 0.1 * GB),
+            ("Committed_AS", 12.0 * GB),
+            ("CommitLimit", 16.0 * GB),
+            ("AnonHugePages", 0.2 * GB),
+        ] {
+            m["info_b"][field] = json!(bytes);
+        }
+        m["pressure"]["some"]["total_us"] = json!(649_860_568);
+        for (field, rate) in [
+            ("paged_in_b_per_s", 4096.0),
+            ("paged_out_b_per_s", 0.0),
+            ("faults_per_s", 120.0),
+            ("major_faults_per_s", 2.0),
+            ("swapped_in_b_per_s", 0.0),
+            ("swapped_out_b_per_s", 8192.0),
+            ("compressed_in_b_per_s", 0.0),
+            ("compressed_out_b_per_s", 0.0),
+        ] {
+            m[field] = json!(rate);
+        }
+        m["oom_kills"] = json!(1);
+        m["vmstat"] = json!({ "pgpgin": 81_920, "pgpgout": 40_960, "pgfault": 1_234_567,
+            "pgmajfault": 89, "pswpin": 12, "pswpout": 345, "zswpin": 0, "zswpout": 0,
+            "oom_kill": 1 });
+        m
+    }
+
+    /// Every row Memory and the Uptime serve has a drawer giving a little
+    /// more than its line (Joel, 2026-11-11 22:00): a row holding more,
+    /// what each a step in says; any other, the fields Linux keeps it
+    /// from, by their own names, and the file it's read from.
+    #[test]
+    fn every_memory_and_uptime_row_has_a_drawer_saying_more() {
+        let using = [json!({ "key": "using:memory:1", "name": "firefox",
+            "resident_b": 2.0 * GB, "processes": 12 })];
+        let (m, b) = (memory_in_use(), boot());
+        let held = Held {
+            memory: Some(&m),
+            boot: Some(&b),
+            using: Some(&using),
+            ..Held::default()
+        };
+        let rows = read(held, 7_200_000, &words()).rows;
+        let bare: Vec<&Value> = rows
+            .iter()
+            .filter(|row| {
+                let drawer = &row["drawer"];
+                let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+                !(drawer["title"].is_string() && (facts || drawer["body"].is_string()))
+            })
+            .map(|row| &row["key"])
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "rows whose drawer says nothing more: {bare:?}"
+        );
+        let facts = |id: &str| -> Vec<String> {
+            row(&rows, id)["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .collect()
+        };
+        assert_eq!(
+            facts("memory:used"),
+            [
+                "MemTotal=15,625,000 kB",
+                "MemAvailable=7,812,500 kB",
+                "MemFree=1,000,000 kB",
+                "Read From=/proc/meminfo"
+            ],
+            "Used says the fields it's worked out from, as Linux says them"
+        );
+        assert_eq!(
+            facts("memory:pressure-10"),
+            [
+                "some avg10=12.00",
+                "full avg10=2.00",
+                "some total=649,860,568 \u{b5}s",
+                "Read From=/proc/pressure/memory"
+            ],
+            "a pressure's window says the kernel's own line"
+        );
+        assert_eq!(
+            facts("memory:faults"),
+            [
+                "pgfault=1,234,567",
+                "pgmajfault=89",
+                "Read From=/proc/vmstat"
+            ],
+            "a rate says the counts since startup it's measured from"
+        );
+        assert_eq!(
+            facts("memory:pressure")[0],
+            "Last 10 Seconds=12% something waited \u{b7} 2% everything",
+            "a row holding more says what each a step in says"
+        );
+        let drawer = &row(&rows, "memory:counts")["drawer"];
+        assert_eq!(
+            (
+                drawer["facts"].as_array().map(Vec::len),
+                drawer["body"].as_str()
+            ),
+            (Some(8), Some("and 10 more, a step in")),
+            "Every Count says its first eight and how many more"
+        );
+        assert_eq!(
+            row(&rows, "memory:used")["drawer"]["eyebrow"],
+            "on this machine \u{b7} memory"
+        );
+    }
+
+    fn text(value: &Value) -> String {
+        value
+            .as_str()
+            .map_or_else(|| value.to_string(), str::to_owned)
     }
 }
