@@ -118,6 +118,42 @@ function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
 }
 
+// A drawer coming the frame after its key's waited one whole refresh for
+// its swap, niri's callback for the key's frame: 16 ms of every drawer's
+// median of 69 from the key, against Joel's 50 (2026-11-12), where its
+// making took a median of 2. So one whose kind made in under 3 ms of late
+// comes in the key's own frame, decided from the makings kept before it's
+// made, never by timing it there; a kind not yet made, or dearer, comes
+// the frame after, as does any while a key is held, so the highlight never
+// waits on it (VKCF3Z, 2026-11-12, d4c660a6). `makings` holds each kind's
+// last eight, in ms, and is never changed.
+const drawerMakingsKept = 8;
+const drawerJoinsUnder = 3;
+
+function drawerMade(makings, kind, making) {
+    const kept = Object.assign({}, makings);
+    kept[kind] = (makings[kind] ?? []).concat([making]).slice(-drawerMakingsKept);
+    return kept;
+}
+
+function drawerJoinsKey(makings, kind, held) {
+    const made = makings[kind] ?? [];
+    if (held || made.length === 0) {
+        return false;
+    }
+    const sorted = made.slice().sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 1 ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+    return median < drawerJoinsUnder;
+}
+
+// Which frame a drawer came in, as its journal line says it, so the lines
+// show whether coming in the key's frame pays.
+function drawerCame(joined) {
+    return joined ? "in the key's frame" : "the frame after";
+}
+
 // The room the foot holds for Return's widest verb, as `kept` weighed it
 // for these words in this face, or weighed again by `weigh` once either
 // has changed: the words are the file as it was read, and the face what

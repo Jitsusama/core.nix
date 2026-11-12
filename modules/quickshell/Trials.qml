@@ -91,7 +91,7 @@ Scope {
         if (Trials.felt(drawn))
             console.info(`launcher: drawer for "${key}" took ${drawn} ms to its frame,`
                 + ` ${parts.making} ms making, ${parts.waiting} waiting for its frame,`
-                + ` ${parts.drawing} drawing it`);
+                + ` ${parts.drawing} drawing it, ${parts.came}`);
     }
 
     // The answers' time, as the answers asked, the rows placed and the list
