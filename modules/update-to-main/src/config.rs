@@ -204,6 +204,11 @@ pub struct Busy {
     /// still does; with none, it waits the whole hour a switch waits.
     #[serde(default)]
     pub follower_waits_at_most: Option<u64>,
+    /// Whether a switch a person asked for waits on it too, as a
+    /// follower's does: a person's ask is no reason to restart what
+    /// someone is typing into, though it is to switch once they pause.
+    #[serde(default)]
+    pub every_ask_waits: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
