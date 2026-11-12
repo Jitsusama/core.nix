@@ -6,7 +6,7 @@
 
 use programs::tab_rows::{self, PLACE};
 
-use super::{Daemon, Run, Shared, keep, lock, start};
+use super::{Daemon, Run, Shared, bookmarks, keep, lock, start};
 
 /// Whether a watch wants the tabs' rows, as a whole place.
 pub fn watched(daemon: &Daemon) -> bool {
@@ -17,15 +17,22 @@ pub fn watched(daemon: &Daemon) -> bool {
     })
 }
 
+/// Whether what Chrome has open is wanted for a place's rows: the tabs',
+/// or the bookmarks', which leave out a page open now.
+pub fn wanted(daemon: &Daemon) -> bool {
+    watched(daemon) || bookmarks::watched(daemon)
+}
+
 /// Reads what each program reading Chrome's session has open, as a watch
-/// begins while the tabs are watched, each on a thread of its own: only
+/// begins while the tabs or the bookmarks are watched, each on a thread
+/// of its own: only
 /// what isn't held yet, since what is was read again at every change of
 /// the session while they were watched, so a watch beginning reads
 /// nothing more.
 pub fn read(shared: &std::sync::Arc<Shared>) {
     let unread: Vec<usize> = {
         let daemon = lock(&shared.daemon);
-        if !watched(&daemon) {
+        if !wanted(&daemon) {
             return;
         }
         shared

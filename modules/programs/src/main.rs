@@ -36,13 +36,15 @@
 //! begins and as what was taken changes, worded from the launcher's
 //! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
 //! tells its lists changed has them read again (told.rs). Chrome's open
-//! tabs are rows of their own while watched (tabs.rs). kitty's open list
+//! tabs are rows of their own while watched (tabs.rs), and its bookmarks
+//! too, but for a page open now (bookmarks.rs). kitty's open list
 //! leaves out the panes the agents daemon names, and Programs counts
 //! their windows apart, as it tells (agents.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 mod agents;
+mod bookmarks;
 mod follow;
 mod heard;
 mod named;
@@ -132,6 +134,8 @@ struct Daemon {
     taken: Kept,
     tabs: Kept,
     agents: agents::Agents,
+    /// Chrome's bookmarks' rows as last told.
+    bookmarks: Kept,
 }
 
 struct Shared {
@@ -198,6 +202,7 @@ fn main() {
             taken: Kept::default(),
             tabs: Kept::default(),
             agents: agents::Agents::default(),
+            bookmarks: Kept::default(),
         }),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
@@ -450,6 +455,11 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             }
             if what == Run::Opened && source.session.is_some() && tabs::watched(&daemon) {
                 tabs::make(shared, &mut daemon);
+            }
+            // A page opened or shut leaves its bookmark's row or brings it
+            // back, so home never lists one page twice.
+            if what == Run::Opened && source.session.is_some() && bookmarks::watched(&daemon) {
+                bookmarks::make(shared, &mut daemon);
             }
         }
         Err(why) => {
@@ -708,6 +718,7 @@ fn answer(
                     match place.as_deref() {
                         Some("taken") => taken::make(shared, &mut daemon, &folders),
                         Some("tabs") => tabs::make(shared, &mut daemon),
+                        Some("bookmarks") => bookmarks::make(shared, &mut daemon),
                         _ => rows::make(shared, &mut daemon, &shown),
                     }
                 }

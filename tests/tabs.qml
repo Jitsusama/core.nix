@@ -4,8 +4,10 @@
 // own Daemon.qml's took with no daemon to answer, and niri stood in. Each
 // page is a row named by its title and found by its site, in the daemon's
 // order, and its Return goes to the Chrome window it's in front of, else
-// Chrome's newest. It exits 0 once every case holds, and otherwise 1,
-// saying which didn't.
+// Chrome's newest. Each bookmark served (src/bookmark_rows.rs) is a row
+// after them, found by its site too, and its Return runs Chrome with its
+// address. It exits 0 once every case holds, and otherwise 1, saying
+// which didn't.
 import qs
 import Quickshell
 import QtQuick
@@ -29,6 +31,20 @@ ShellRoot {
         } };
     }
 
+    // A bookmark's ready row, as the daemon serves it.
+    function bookmark(address, name, order) {
+        const key = `row:bookmarks:${address}`;
+        const site = address.split("/")[2];
+        return { key, kind: "row", row: {
+            key, thing: `bookmark:${address}`, place: "bookmarks", kind: "bookmark", name,
+            glyph: "web", hue: "program", side: [{ said: site, keep: 1 }],
+            keywords: `${site} Work`, held: { address, app: "google-chrome", folder: "Work" },
+            acts: [{ key: "verb:recent:site:open", open: address, in: "google-chrome" },
+                { key: "verb:recent:site:link", copy: address }],
+            order
+        } };
+    }
+
     QtObject {
         id: standIn
 
@@ -45,8 +61,10 @@ ShellRoot {
         settings: ({ name: "tabs" })
     }
 
-    // The cases run once ReadyRows' Daemon.qml has made its link, which its
-    // loader may make after the shell's own completion.
+    // The cases run once each ReadyRows' Daemon.qml has made its link, which
+    // its loader may make after the shell's own completion, and Quickshell
+    // has read Chrome's entry, since a bookmark whose program is gone
+    // offers no open.
     property bool begun: false
     Component.onCompleted: begin()
     Connections {
@@ -55,9 +73,22 @@ ShellRoot {
             root.begin();
         }
     }
+    Connections {
+        target: tabs.bookmarks
+        function onLinkChanged() {
+            root.begin();
+        }
+    }
+    Connections {
+        target: DesktopEntries.applications
+        function onValuesChanged() {
+            root.begin();
+        }
+    }
 
     function begin() {
-        if (begun || !tabs.served.link)
+        if (begun || !tabs.served.link || !tabs.bookmarks.link
+            || DesktopEntries.byId("google-chrome") === null)
             return;
         begun = true;
         try {
@@ -71,13 +102,22 @@ ShellRoot {
                 row("https://mail.google.com/mail/u/0/", "Inbox", "Inbox", 1024),
                 row("https://docs.example.org/", "Notes", "Lost", 2048)
             ], []);
+            tabs.bookmarks.link.took([
+                bookmark("https://wiki.example.org/runbook", "Runbook", 1)
+            ], []);
             standIn.open = true;
             const names = tabs.things.map(made => made.name).join(", ");
             Expect.expect("each page a row, in the daemon's order",
-                names === "core.nix, Inbox, Notes", names);
+                names === "core.nix, Inbox, Notes, Runbook", names);
             const words = tabs.things.map(made => made.keywords?.text ?? "").join(", ");
-            Expect.expect("each found by its site",
-                words === "github.com, mail.google.com, docs.example.org", words);
+            Expect.expect("each found by its site, a bookmark by its folder too",
+                words === "github.com, mail.google.com, docs.example.org, wiki.example.org Work",
+                words);
+            tabs.things[3].run();
+            Expect.expect("a bookmark's Return runs Chrome with its address",
+                JSON.stringify(Niri.spawned)
+                    === JSON.stringify([["google-chrome-stable", "https://wiki.example.org/runbook"]]),
+                JSON.stringify(Niri.spawned));
             tabs.things[1].run();
             Expect.expect("Return goes to Chrome's window it's in front of",
                 JSON.stringify(Niri.acted) === JSON.stringify([{ FocusWindow: { id: 7 } }]),

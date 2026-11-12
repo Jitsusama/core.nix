@@ -16,6 +16,7 @@
 //! null, never a guess. Words are the shell's.
 
 pub mod agent_panes;
+pub mod bookmark_rows;
 pub mod command;
 pub mod entry;
 pub mod folder;

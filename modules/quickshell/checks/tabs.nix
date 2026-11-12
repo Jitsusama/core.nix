@@ -17,17 +17,27 @@
   # launcher's, named by its title and found by its site in the daemon's
   # order, and its Return goes to the Chrome window it's in front of, else
   # Chrome's newest (tests/tabs.qml), through the real ReadyRows.qml and
-  # Daemon.qml, with niri stood in.
+  # Daemon.qml, with niri stood in. Each bookmark served is a row after
+  # them, found the same way, and its Return runs Chrome with its address.
   a-chrome-tab-is-found-by-its-site-and-goes-to-its-window =
     let
+      # Chrome's entry, which a bookmark opens through, shown here so the
+      # cases can wait for Quickshell to list it.
+      chrome = pkgs.writeText "google-chrome.desktop" ''
+        [Desktop Entry]
+        Type=Application
+        Name=Google Chrome
+        Exec=google-chrome-stable %U
+      '';
       # Kept in Nix because it only stands in for the niri windows a tab's
       # Return looks among, keeping what it was asked to do.
       niri = singleton "Niri.qml" ''
         property var windows: ({})
         property var byApp: ({ "google-chrome": { id: 9 } })
         property var acted: []
+        property var spawned: []
         function act(action) { acted = acted.concat([action]); }
-        function spawn(command) {}
+        function spawn(command) { spawned = spawned.concat([command]); }
       '';
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
@@ -46,7 +56,10 @@
       cp ${../../chrome/Tabs.qml} launcher/Tabs.qml
       cp ${niri} Niri.qml
       cp ${../../../tests/tabs.qml} shell.qml
+      mkdir -p share/applications
+      cp ${chrome} share/applications/google-chrome.desktop
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share
       export TZ=UTC FONTCONFIG_FILE=${noFonts}
       mkdir -m 700 $XDG_RUNTIME_DIR
       ${shellFolderLint}
