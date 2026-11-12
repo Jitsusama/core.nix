@@ -173,7 +173,11 @@ fn a_node_says_its_devices_and_how_it_reaches_the_one_before() {
 fn a_node_off_line_says_so_first() {
     let mut model = model();
     model.nodes[1].state = Some("OFFLINE".into());
-    assert!(joined(&named(&made(&model), "Study")["note"]).starts_with("offline \u{b7} Wi-Fi"));
+    let note = joined(&named(&made(&model), "Study")["note"]);
+    assert!(
+        note.starts_with("offline \u{b7} Wi-Fi"),
+        "an offline node says so first: {note}"
+    );
 }
 
 #[test]
@@ -229,7 +233,11 @@ fn a_device_says_the_profile_its_in_and_ethernet_where_its_cabled() {
         .expect("generic 3 is on");
     generic.ethernet = true;
     let rows = made(&model);
-    assert!(joined(&named(&rows, "printer 1")["note"]).ends_with("10.0.0.31 \u{b7} profile 2"));
+    let note = joined(&named(&rows, "printer 1")["note"]);
+    assert!(
+        note.ends_with("10.0.0.31 \u{b7} profile 2"),
+        "a device ends with where it is: {note}"
+    );
     let cabled = named(&rows, "generic 3");
     assert_eq!(
         side_and_note(cabled),

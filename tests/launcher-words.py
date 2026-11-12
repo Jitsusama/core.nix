@@ -268,9 +268,9 @@ STRAY_UNITS = [
 ]
 
 # Names cased as their own, which open a side word as they're written:
-# a network's generation reads "Wi-Fi 6", and a cleaner "DeepFilterNet,
-# gentle" or "RNNoise", as their makers write them.
-PROPER = {"Wi-Fi", "DeepFilterNet", "RNNoise"}
+# a network's generation reads "Wi-Fi 6", a node's link "Ethernet", and a
+# cleaner "DeepFilterNet, gentle" or "RNNoise", as their makers write them.
+PROPER = {"Wi-Fi", "Ethernet", "DeepFilterNet", "RNNoise"}
 
 # A verb of two words is a turn, which says the way it goes, or one whose
 # second word is part of it ("log out", "go to"), as the launcher's foot
