@@ -11074,13 +11074,14 @@
       "verb": "lock",
       "glyph": "locked",
       "said": {
-        "eyebrow": "on this machine \u00b7 act",
+        "eyebrow": "on this machine \u00b7 lock",
         "window": "1 window",
         "windows": "{count} windows",
         "more": "{count} more"
       },
       "tells": {
         "lead": "Locks the screen; {windows} keep running behind it.",
+        "one": "Locks the screen; {windows} keeps running behind it.",
         "alone": "Locks the screen."
       }
     },

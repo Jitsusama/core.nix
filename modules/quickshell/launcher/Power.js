@@ -132,11 +132,13 @@ function openSaid(open, said) {
 // lead says what it does and what stays running behind it, "Locks the
 // screen; 9 windows keep running behind it.", then its facts by their
 // words' ids, its key as its chord says it, then whose windows stay open.
+// One window keeps running where several keep, so it has its own line.
 // `open` is byProgram's, `chord` its keys' words, "Super L".
 function lockSaid(open, chord, said) {
     const told = openSaid(open, said);
+    const lead = open.open === 1 ? said.one : said.lead;
     return {
-        lead: told.windows === "" ? said.alone : filled(said.lead, { windows: told.windows }),
+        lead: told.windows === "" ? said.alone : filled(lead, { windows: told.windows }),
         facts: [
             { id: "session:Lock:key", value: chord },
             { id: "session:Lock:open", value: told.programs }
