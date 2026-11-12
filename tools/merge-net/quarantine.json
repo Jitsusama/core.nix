@@ -117,5 +117,12 @@
     "owner_pr": 3737,
     "reason": "failed, then passed, at 97b968eb6863",
     "test": "vm-desktop-captures"
+  },
+  {
+    "at": 1794511110,
+    "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
+    "owner_pr": 3734,
+    "reason": "has been broken since #3734, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "vm-desktop-launcher-keeps-up"
   }
 ]
