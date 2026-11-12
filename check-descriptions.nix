@@ -918,7 +918,8 @@
     line's repeats as one signature, counts a device dropped, reset or correcting its errors though
     the kernel says it only as information, times a boot to a ready launcher without the password's
     wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's
-    screen is on and its keys typed, keeps the pain-points detector's ranking, counts a tool call
+    screen is on and its keys typed, keeps the pain-points detector's ranking and says a pi go by
+    where its time went and a Chrome go by its reloads or way back, counts a tool call
     that failed, was refused or was made twice running and Joel's words that sound pained, reading
     each session's log on from where it stopped and never twice, keeps what pi and the shell hold
     by their copies' ages and the day's most through a restart, counts an agent whose presence says

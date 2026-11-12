@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub struct Pain {
     /// When it started, in seconds since the epoch.
     pub at: i64,
-    /// Where: the launcher, or pi.
+    /// Where: the launcher, pi or chrome.
     pub place: String,
     /// What Joel was after, as `program:slack`, `on:look` or `sound`.
     pub trying: String,
@@ -27,20 +27,23 @@ pub struct Pain {
     pub lost_seconds: f64,
     /// Its rank in the day, 1 the worst.
     pub rank: u32,
-    /// What slowed him: waiting, hunting, gave up or tried again.
+    /// What slowed him: waiting, hunting, gave up or tried again; in pi
+    /// also stopped it or an error, and in Chrome reloading or going back.
     pub slowed: String,
     /// Which part was at fault: opening, search and drawing are the
-    /// shell's speed, finding the launcher's ranking and names.
+    /// shell's speed, finding the launcher's ranking and names; in pi, pi
+    /// itself, the provider, stopped or again; in Chrome, reload or back.
     pub part: String,
     /// How many times he opened the place for it; in pi, the messages
-    /// he sent in the go.
+    /// he sent in the go; in Chrome, the reloads.
     pub openings: u32,
-    /// What his keys did meanwhile, in the launcher; pi's signs are its
-    /// own, and left out.
+    /// What the go showed, as its place tells it.
     pub signs: Signs,
 }
 
-/// What Joel's keys did during one interaction.
+/// What one interaction showed: in the launcher, what his keys did; in
+/// pi, where its last message's time went; in Chrome, how many reloads
+/// and visits back. A place's other signs are left out.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Signs {
@@ -48,6 +51,17 @@ pub struct Signs {
     pub letters: u32,
     /// Letters erased.
     pub erased: u32,
+    /// The model thinking and writing, which is no fault.
+    pub model_ms: u32,
+    /// The provider failing.
+    pub provider_ms: u32,
+    /// Pi's own share: its queue and the preparing of calls.
+    pub pi_ms: u32,
+    /// Tools running, the work he asked for.
+    pub tools_ms: u32,
+    /// Chrome's reloads and visits back.
+    pub reloads: u32,
+    pub backs: u32,
 }
 
 /// The day's pains from `folder`, worst first; a line that isn't one is
@@ -68,6 +82,9 @@ pub fn read(folder: &Path, date: &str) -> Vec<Pain> {
 /// again (18 letters typed, 13 erased)".
 #[must_use]
 pub fn said(pain: &Pain) -> String {
+    if pain.place == "chrome" {
+        return in_chrome(pain);
+    }
     let in_pi = pain.place == "pi";
     let doing = match pain.part.as_str() {
         _ if in_pi => "a pi session".to_owned(),
@@ -83,15 +100,21 @@ pub fn said(pain: &Pain) -> String {
     }
     // The detector counts two minutes at most a go, so past that it
     // can't say how much.
+    // In pi, waiting is on pi's own work, the model's being no fault.
+    let cause = match slowed(&pain.slowed) {
+        "waiting" if in_pi => "waiting on pi",
+        cause => cause,
+    };
     if pain.lost_seconds >= LOST_AT_MOST {
-        let _ = write!(line, ", 2 min or more lost to {}", slowed(&pain.slowed));
+        let _ = write!(line, ", 2 min or more lost to {cause}");
     } else if pain.lost_seconds > 0.0 {
-        let _ = write!(
-            line,
-            ", {} s lost to {}",
-            whole(pain.lost_seconds),
-            slowed(&pain.slowed)
-        );
+        let _ = write!(line, ", {} s lost to {cause}", whole(pain.lost_seconds));
+    }
+    if in_pi {
+        let spent = spent(&pain.signs);
+        if !spent.is_empty() {
+            let _ = write!(line, " ({spent})");
+        }
     }
     if pain.signs.letters > 0 {
         let _ = write!(
@@ -101,6 +124,48 @@ pub fn said(pain: &Pain) -> String {
         );
     }
     line
+}
+
+/// A go in Chrome: a run of reloads, or a page he went straight back from.
+fn in_chrome(pain: &Pain) -> String {
+    if pain.part == "back" {
+        return format!(
+            "going straight back from a page in Chrome lost {} s",
+            whole(pain.lost_seconds)
+        );
+    }
+    let reloads = pain.signs.reloads.max(pain.openings);
+    format!(
+        "reloading a page in Chrome took {} s over {reloads} reloads",
+        whole(pain.seconds)
+    )
+}
+
+/// Where a pi message's time went, the most first: "19 min on tools, 14
+/// min on the model". A cause that took none is left out.
+fn spent(signs: &Signs) -> String {
+    let mut went = [
+        (signs.tools_ms, "on tools"),
+        (signs.model_ms, "on the model"),
+        (signs.provider_ms, "on the provider's errors"),
+        (signs.pi_ms, "on pi's own work"),
+    ];
+    went.sort_by_key(|(ms, _)| std::cmp::Reverse(*ms));
+    went.iter()
+        .filter(|(ms, _)| *ms >= 1_000)
+        .map(|(ms, on)| format!("{} {on}", span(*ms)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Milliseconds as he'd say them: whole minutes from one, else seconds.
+fn span(ms: u32) -> String {
+    let seconds = ms / 1_000;
+    if seconds >= 60 {
+        format!("{} min", (seconds + 30) / 60)
+    } else {
+        format!("{seconds} s")
+    }
 }
 
 /// What he was after, in his words: `program:slack` is Slack, `on:look`
@@ -176,6 +241,7 @@ mod tests {
             signs: Signs {
                 letters: 18,
                 erased: 13,
+                ..Signs::default()
             },
             ..Pain::default()
         };
@@ -199,14 +265,42 @@ mod tests {
 
     #[test]
     fn a_pi_go_is_said_as_pi_and_its_cap_as_a_floor() {
-        let line = r#"{"at":3,"place":"pi","trying":"a session","seconds":300.0,
-            "lost_seconds":120.0,"slowed":"waiting","part":"reply","openings":3,
-            "signs":{"waited_ms":200000,"errors":0,"status":"ok"}}"#;
+        let line = r#"{"at":3,"place":"pi","trying":"a session","seconds":2100.0,
+            "lost_seconds":120.0,"slowed":"waiting","part":"pi","openings":3,
+            "signs":{"waited_ms":200000,"queued_ms":0,"model_ms":840000,
+            "provider_ms":0,"pi_ms":400,"tools_ms":1140000,"errors":0,"stopped":0}}"#;
         let pain: Pain = serde_json::from_str(line).expect("a pi line isn't read");
         assert_eq!(
             said(&pain),
-            "a pi session took 300 s over 3 messages, 2 min or more lost to waiting",
-            "a pi go reads as the launcher's, or its two-minute cap as exact"
+            "a pi session took 2100 s over 3 messages, 2 min or more lost to waiting on pi \
+             (19 min on tools, 14 min on the model)",
+            "a pi go reads as the launcher's, its cap as exact, or its time not by cause"
+        );
+    }
+
+    #[test]
+    fn a_go_in_chrome_says_its_reloads_or_its_way_back() {
+        let line = r#"{"at":4,"place":"chrome","trying":"a page","seconds":82.0,
+            "lost_seconds":82.0,"slowed":"reloading","part":"reload","openings":5,
+            "signs":{"profile":1,"reloads":5,"backs":0}}"#;
+        let reloaded: Pain = serde_json::from_str(line).expect("a Chrome line isn't read");
+        let back = Pain {
+            place: "chrome".into(),
+            trying: "a page".into(),
+            seconds: 6.2,
+            lost_seconds: 6.2,
+            slowed: "going back".into(),
+            part: "back".into(),
+            openings: 1,
+            ..Pain::default()
+        };
+        assert_eq!(
+            [said(&reloaded), said(&back)],
+            [
+                "reloading a page in Chrome took 82 s over 5 reloads",
+                "going straight back from a page in Chrome lost 6 s",
+            ],
+            "a go in Chrome read as a launcher's"
         );
     }
 }

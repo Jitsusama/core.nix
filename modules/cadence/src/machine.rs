@@ -136,7 +136,7 @@ pub const MEASURES: &[Measure] = &[
     // rare and read, and asked once: secret-asks's own readings.
     measure(
         "health.asks.shown",
-        "polish",
+        "security",
         "asks for a secret Joel was shown",
         "",
         Some(3.0),
@@ -144,7 +144,7 @@ pub const MEASURES: &[Measure] = &[
     ),
     measure(
         "health.asks.unread-yeses",
-        "polish",
+        "security",
         "asks said yes to sooner than they could be read",
         "",
         Some(0.0),
@@ -152,7 +152,7 @@ pub const MEASURES: &[Measure] = &[
     ),
     measure(
         "health.asks.again",
-        "polish",
+        "security",
         "asks for an item and command already asked for that day",
         "",
         Some(0.0),
@@ -160,7 +160,7 @@ pub const MEASURES: &[Measure] = &[
     ),
     measure(
         "health.asks.avoidable-percent",
-        "polish",
+        "security",
         "the share of asks a minted token would have spared",
         "%",
         Some(0.0),
@@ -222,6 +222,19 @@ mod tests {
                 ("health.disk.most-used-percent".to_owned(), 71.5),
             ]),
             "a figure of health's was lost, or one no measure holds was kept"
+        );
+    }
+
+    #[test]
+    fn asks_for_a_secret_are_on_the_security_axis() {
+        let off: Vec<&str> = MEASURES
+            .iter()
+            .filter(|m| m.key.starts_with("health.asks.") && m.axis != "security")
+            .map(|m| m.key)
+            .collect();
+        assert!(
+            off.is_empty(),
+            "asks were judged on another axis than security's readings of them: {off:?}"
         );
     }
 
