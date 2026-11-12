@@ -14,7 +14,7 @@ use crate::feel;
 use crate::memory::{self, Memory};
 
 /// The kinds, in the order they're shown when as bad as each other.
-const KINDS: [Kind; 6] = [
+pub const KINDS: [Kind; 6] = [
     Kind::Words,
     Kind::Programs,
     Kind::Services,

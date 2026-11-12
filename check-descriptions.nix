@@ -898,9 +898,9 @@
     each session's log on from where it stopped and never twice, keeps what pi and the shell hold
     by their copies' ages and the day's most through a restart, counts an agent whose presence says
     busy or listening though its process is gone and keeps the day's deaths after their presences
-    go, keeps a day by kind and writes it
-    every half minute however busy the journals, and shows the three worst pains in plain words,
-    then a line a kind, the gravest first
+    go, keeps a day by kind and writes it with the figures cadence holds it to every half minute
+    however busy the journals, and shows the three worst pains in plain words, pi's as pi's, then
+    a line a kind, the gravest first
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a

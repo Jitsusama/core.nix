@@ -109,12 +109,12 @@ pub const MEASURES: &[Measure] = &[
         2.0,
     ),
     measure(
-        "health.memory.pi.most-gib",
+        "health.memory.pi.most-mib",
         "resources",
         "the most pi held at once",
-        " GiB",
+        " MiB",
         None,
-        1.0,
+        1024.0,
     ),
     measure(
         "health.memory.quickshell.most-mib",

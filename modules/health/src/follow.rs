@@ -19,6 +19,7 @@ use jiff::tz::TimeZone;
 use crate::agents;
 use crate::day::{Day, Kind};
 use crate::feel;
+use crate::figures;
 use crate::journal::{
     self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
 };
@@ -300,7 +301,7 @@ fn write_day(day: &Day, into: &Path) -> io::Result<()> {
     fs::create_dir_all(into)?;
     let file = file_of(into, &day.date);
     let part = into.join(format!(".{}.json.part", day.date));
-    fs::write(&part, serde_json::to_vec(day).map_err(io::Error::other)?)?;
+    fs::write(&part, figures::written(day).map_err(io::Error::other)?)?;
     fs::rename(part, file)
 }
 
