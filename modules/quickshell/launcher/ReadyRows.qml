@@ -346,9 +346,8 @@ Scope {
         searched(words);
     }
 
-    // What the daemon made of words typed inside a step (ready-rows.md's
-    // within), its records read by `served` and `rows` beside the watch's,
-    // a key steady for one time keeping its row under the cursor.
+    // What the daemon made of words typed inside a step (ready-rows.md's within), read by
+    // `served` and `rows` beside the watch's, its keys steady so no row moves under the cursor.
     property var typing: ({ within: "", words: null, keys: [], refused: false })
     readonly property var typedHeld: ({})
     property string typedAsking: ""
