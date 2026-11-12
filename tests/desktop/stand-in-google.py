@@ -19,7 +19,10 @@ wants him once more. Lunch on Friday carries a menu, which a shell may ask to be
 open, kept in the runtime folder's google-files, or to save, where the shell says or else in
 Downloads, said as fetched as the program says it. Joel looked at two documents lately: Ada's
 Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive, each also served as
-Documents' ready row and drawer, as the daemon makes them, to a watch of their place. His
+Documents' ready row and drawer, as the daemon makes them, to a watch of their place. Each
+meeting is served as Calendar's ready rows and drawers too, made by the program's own code
+(src/bin/google-rows.rs, named after the socket, with the launcher's words), and made again
+each minute, as the program looks, so Return turns to joining ten minutes before. His
 sign-in grants Meet's
 scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
 Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
@@ -37,6 +40,7 @@ import copy
 import json
 import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -509,6 +513,14 @@ class Account:
             },
         }
 
+    def looks(self) -> None:
+        """Tell each watch what the clock moved each minute, as the program looks each minute."""
+        while True:
+            # A fixed wait, since the program's own look is a minute's tick (src/main.rs).
+            time.sleep(MINUTE / 1000)
+            with self.lock:
+                self.tell()
+
     def records(self) -> dict[str, dict[str, object]]:
         """Give each record the daemon would hold, by key, as src/daemon.rs makes them."""
         # A copy, since what's held changes in place, and what each watch was
@@ -532,6 +544,9 @@ class Account:
             made[str(row["key"])] = {"key": row["key"], "kind": "row", "row": row}
             key = str(row["drawer"])
             made[key] = {"key": key, "kind": "drawer", "drawer": document_drawer(document)}
+        # Calendar's rows and drawers, made by the program's own code.
+        for record in calendar_records(state["meetings"], state["held"]):
+            made[str(record["key"])] = record
         account = {name: state[name] for name in ("unread", "fetched", "meet", "drive")} | {
             "standing": state["account"]
         }
@@ -737,6 +752,15 @@ def keep(account: Account, shell: socket.socket) -> None:
         shell.close()
 
 
+def calendar_records(meetings: object, held: object) -> list[dict[str, object]]:
+    """Give Calendar's ready records as the program makes them, at this moment."""
+    asked = json.dumps({"meetings": meetings, "held": held, "now": int(time.time() * 1000)})
+    made = subprocess.run(
+        [sys.argv[2], sys.argv[3]], input=asked, capture_output=True, text=True, check=True
+    )
+    return cast("list[dict[str, object]]", json.loads(made.stdout))
+
+
 def listening(path: Path) -> socket.socket:
     """Give the socket systemd hands over, as it does google's, or else one bound at `path`."""
     if os.environ.get("LISTEN_PID") == str(os.getpid()) and os.environ.get("LISTEN_FDS"):
@@ -755,6 +779,7 @@ def main() -> None:
     path = Path(sys.argv[1])
     account = Account(path.parent.parent)
     server = listening(path)
+    threading.Thread(target=account.looks, daemon=True).start()
     while True:
         shell, _ = server.accept()
         threading.Thread(target=keep, args=(account, shell), daemon=True).start()

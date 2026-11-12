@@ -65,7 +65,7 @@
 //! kind of file its office program would write.
 
 use jiff::Timestamp;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::files::{Failed, How};
@@ -114,7 +114,7 @@ pub const FILE_FIELDS: &str = "id,name,mimeType,size,webViewLink,viewedByMeTime,
     shortcutDetails";
 
 /// What a document is, by the Google program that opens it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Kind {
     /// Google Docs.

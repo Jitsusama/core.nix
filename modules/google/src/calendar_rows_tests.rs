@@ -787,3 +787,33 @@ fn guests_count_each_address_once_and_who_holds_it_unless_joel_does() {
         "one Joel holds didn't count its guests alone"
     );
 }
+
+#[test]
+fn a_meeting_as_the_daemon_tells_it_reads_back_the_same() {
+    let mut meeting = planned();
+    meeting.series = Some("plan".into());
+    meeting.kind = Some(crate::link::Kind::Meet);
+    meeting.dial = Some(Dial {
+        number: "+1 555 0100".into(),
+        pin: Some("1234".into()),
+    });
+    meeting.repeats = Some(Repeats {
+        every: Every::Week,
+        interval: 2,
+        days: vec![Weekday { day: 1, nth: None }],
+        month_days: vec![-1],
+        times: Some(4),
+        until: None,
+    });
+    meeting.done = Some(crate::done::Done {
+        how: crate::done::Went::Ended,
+        at: MONDAY,
+    });
+    let mut told = serde_json::to_value(&meeting).expect("a meeting is told as JSON");
+    told["guestsCounted"] = json!(super::guests_counted(&meeting));
+    let read: Meeting = serde_json::from_value(told).expect("a told meeting reads back");
+    assert_eq!(
+        read, meeting,
+        "google-rows would make rows of another meeting"
+    );
+}

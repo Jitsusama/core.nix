@@ -6,12 +6,12 @@
 //! location or description, often among other links (an agenda, a doc),
 //! so only a call's own links count there, the first one found.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Which call a link joins, so the shell can join a Tuple call through
 /// Tuple and say what each is.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Meet,
