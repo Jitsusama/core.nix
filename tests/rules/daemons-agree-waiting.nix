@@ -20,6 +20,11 @@
     "shown"
     "speaks"
   ];
+  github-broker = [
+    "placed"
+    "shown"
+    "speaks"
+  ];
   google = [
     "shown"
     "speaks"
@@ -58,6 +63,7 @@
     "shown"
     "speaks"
   ];
+  slack-unreads = [ "speaks" ];
   sound = [
     "shown"
     "speaks"
@@ -68,6 +74,10 @@
     "speaks"
   ];
   timers = [
+    "shown"
+    "speaks"
+  ];
+  to-do = [
     "shown"
     "speaks"
   ];
