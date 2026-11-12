@@ -404,8 +404,9 @@ function rateOf(rate, settings) {
 // rate and how it's made and its speed now, first, as a narrow drawer has
 // room for those before its more; then what it is and which node it's on,
 // what had to be sent again, its network and addresses, when it was seen,
-// its profile, and where it moved over the last day. What moves sparks its
-// last hour, as the daemon keeps it.
+// its profile, where it moved over the last day, and what eero said and the
+// daemon told of it. What moves sparks its last hour, as the daemon keeps
+// it.
 // `asked` gives the launcher's number settings and the device's readings
 // since the shell started, { settings, readings }, each optional, which
 // spark its signal and speed only where the record keeps no history.
@@ -468,7 +469,7 @@ function device(model, one, now, asked) {
             fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
                 : null),
             fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ])).concat(History.roams(model, one, now), happened(model, (model?.events ?? [])
+        ])).concat(History.roams(model, one, now), happened(model, History.timeline(model)
             .filter((event) => about(event, one)), now)),
     };
 }

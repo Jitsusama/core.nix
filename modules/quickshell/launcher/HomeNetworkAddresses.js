@@ -2,11 +2,10 @@
 // drawer says it under Addressing: the public address, the lease, the
 // gateway and the resolvers, then each subnet and the range DHCP hands
 // out, and what's let in from outside; the address kept for a device, in
-// its own drawer; and each band's security, which the drawer's settings say. A list
-// that's empty says none, since none is the figure. Plain reading of the
-// record, held in Qt's own engine (tests/home-network.qml).
+// its own drawer; and each band's security, which the drawer's settings
+// say. A list that's empty says none, since none is the figure. Plain
+// reading of the record, held in Qt's own engine (tests/home-network.qml).
 .pragma library
-.import "HomeNetwork.js" as Home
 .import "HomeNetworkHistory.js" as History
 
 const DOT = " \u00b7 ";

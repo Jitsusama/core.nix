@@ -107,7 +107,7 @@ nodes' urls, so the mesh is joined by name.
 | `device_type`, `manufacturer`, `inferred_make`, `inferred_model` | what it is | place (its mark), device, `devices` |
 | `mac`, `is_private`, `eui64` | its hardware address, and whether that's a private one; this machine is the device with one of its own | device, `device`; this machine first in the place and `status` |
 | `ip`, `ips`, `ipv4`, `ipv6_addresses` | its addresses | place, device, `device` |
-| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever; for one not on now, when it last was | place, device, `devices`; a notice when a device first seen since eero's last answer joins; each not on now in `devices` and the internet's drawer |
+| `connected`, `last_active`, `first_active`, `first_seen` | on now, since when, first ever; for one not on now, when it last was | place, device, `devices`; a notice when a device first seen since eero's last answer joins; each not on now in `devices` and the drawer of the node it was last on |
 | `connection_type`, `wireless`, `source.{location,model,is_gateway}` | Ethernet or Wi-Fi, and through which node | place (under its node), device |
 | `ssid`, `auth`, `subnet_kind`, `vlan_name`, `is_guest` | which network it joined, how | device, `device` |
 | `channel`, `connectivity.frequency`, `interface.frequency`, `connectivity.bssid` | its radio: band, channel, which BSSID; `frequency` is 0 on Ethernet, read as none | place (band), device, `devices` |
