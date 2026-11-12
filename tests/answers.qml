@@ -31,6 +31,7 @@ import "answers/sound.js" as SoundCases
 import "answers/subnets.js" as SubnetsCases
 import "answers/sums.js" as SumsCases
 import "answers/times.js" as TimesCases
+import "answers/waits.js" as WaitsCases
 import "answers/warp.js" as WarpCases
 
 QtObject {
@@ -49,7 +50,7 @@ QtObject {
             ClockCases, ColoursCases, CommandExamplesCases, CoreCases, HeatCases,
             KeepAwakeCases, MachineCases, MeasuresCases, NetworksCases, NowDrawersCases,
             PowerCases, ShortcutsCases, SoundCases, SubnetsCases, SumsCases, TimesCases,
-            WarpCases];
+            WaitsCases, WarpCases];
         for (const place of places)
             asked += place.run(failures, fromRoot);
 

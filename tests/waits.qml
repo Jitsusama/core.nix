@@ -2,7 +2,8 @@
 // Quickshell itself, over lag-watch's status file as it writes one, which
 // the machine daemon tells the shell over a machine of the check's own
 // (MACHINE_ROOT): while
-// the processor held the desktop up, "lag" says so in lag-watch's words, then
+// the processor held the desktop up, "lag" and "slow" say so, the cause
+// first, as Machine shows it, then lag-watch's words, then
 // offers to show what's using the processor, which goes there from the top,
 // then says how fast the desktop answers in plain words, and how hard heavy
 // work runs, which goes to the queue; with nothing in the way, it says
@@ -104,7 +105,10 @@ ShellRoot {
     function slowed() {
         const slow = waits.answer("lag");
         expect("lag is answered", slow !== null, "nothing");
-        expect("the worst of what waited leads", slow.headline === line, slow.headline);
+        expect("what the worst wait was on leads", slow.headline === "slowed by the processor",
+            slow.headline);
+        expect("slow asks it too", waits.answer("slow")?.headline === slow.headline,
+            String(waits.answer("slow")?.headline));
         expect("then what to do about it, how fast the desktop answers, and heavy work",
             names(slow.rows) === `${line}, Show What's Using the Processor, Desktop Answers, `
                 + "Heavy Work", names(slow.rows));

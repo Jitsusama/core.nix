@@ -3,4 +3,5 @@
 [
   "launcher/Machine.js"
   "launcher/Power.js"
+  "launcher/Waits.js"
 ]
