@@ -2,17 +2,20 @@
 //! or says it loaded, the one before current, and nothing else.
 
 mod common;
+mod running;
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use common::Fixture;
+// A node session, or any process standing in a version, as a running pi does.
 use pi_packages::run::{self, Done};
 use pi_packages::version::Place;
+use running::Running as Session;
 use serde_json::json;
 
 impl Fixture {
@@ -59,17 +62,6 @@ fn files(dir: &Path) -> BTreeMap<PathBuf, (u64, Vec<u8>)> {
         }
     }
     found
-}
-
-/// A node session, stopped when the test ends, passed or failed: one
-/// left running holds the build's output open, and the build never ends.
-struct Session(Child);
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
 }
 
 /// A node that loaded the package's dependency through `current` and

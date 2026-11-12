@@ -4,33 +4,26 @@
 //! going with it.
 
 mod common;
+mod running;
 
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
-use common::Fixture;
+use common::{Fixture, program};
 use pi_packages::hold::{self, Hold};
 use pi_packages::jiti;
 use pi_packages::run::Done;
 use pi_packages::version::Place;
+use running::Running;
 use serde_json::{Value, json};
 
 /// A process that says, through a file like a pi's, that it loaded `root`
 /// and which pi it is. It ends with the test.
-struct Saying(Child);
-
-impl Drop for Saying {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
-
-fn saying(place: &Place, root: &Path, pi: &Value) -> Saying {
-    let sleeping = Saying(
+fn saying(place: &Place, root: &Path, pi: &Value) -> Running {
+    let sleeping = Running(
         Command::new("sleep")
             .arg("600")
             .spawn()
@@ -60,7 +53,7 @@ impl FakePi {
             fs::create_dir_all(folder).expect("a folder");
         }
         fs::write(bundle.join("cli.js"), "").expect("pi's entry");
-        let shell = which("sh");
+        let shell = program("sh");
         let node = scratch.path().join("node");
         let script = format!(
             "#!{shell}\n\
@@ -72,8 +65,8 @@ impl FakePi {
              exit {code}\n",
             shell = shell.display(),
             // The warm's PATH is the installer's, with no coreutils.
-            cp = which("cp").display(),
-            readlink = which("readlink").display(),
+            cp = program("cp").display(),
+            readlink = program("readlink").display(),
             seen = seen.display(),
             current = place.current().display(),
         );
@@ -96,16 +89,6 @@ impl FakePi {
     fn tmp(&self) -> PathBuf {
         PathBuf::from(self.said["tmp"].as_str().expect("a folder"))
     }
-}
-
-fn which(name: &str) -> PathBuf {
-    std::env::var_os("PATH")
-        .and_then(|path| {
-            std::env::split_paths(&path)
-                .map(|dir| dir.join(name))
-                .find(|candidate| candidate.is_file())
-        })
-        .unwrap_or_else(|| panic!("{name} is not on the PATH"))
 }
 
 #[test]
@@ -211,7 +194,7 @@ fn a_hold_put_while_the_warm_runs_stands() {
         0,
         &format!(
             "{} {} {}",
-            which("mv").display(),
+            program("mv").display(),
             aside.display(),
             hold::file(&fixture.config).display()
         ),

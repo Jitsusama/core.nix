@@ -15,7 +15,7 @@ use pi_packages::version::Place;
 use serde_json::json;
 
 /// A program on the PATH, by name.
-fn program(name: &str) -> PathBuf {
+pub fn program(name: &str) -> PathBuf {
     std::env::var_os("PATH")
         .and_then(|path| {
             std::env::split_paths(&path)
