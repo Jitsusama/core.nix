@@ -1878,7 +1878,9 @@ def reading(shown: Json, start: str) -> str:
 def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
     shell: Shell,
 ) -> None:
-    """WARP says how its link stands in Network after Speed, and a service down not answering.
+    """The Work Network says how WARP's link stands after the Home Network, and a service down.
+
+    It's Joel's word for his link to work (2026-11-11), so typing work finds it too.
 
     The shell runs the real warp, given the check's stand-in for warp-cli, which answers with
     the contract's files as they're written here (tests/warp-cli-stand-in.sh). What each
@@ -1890,14 +1892,23 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
     for question in ("status", "tunnel-stats", "settings", "dns-stats"):
         shutil.copyfile(contract / f"{question}.json", said / f"{question}.json")
     try:
-        # Network holds it after Speed, saying how its link stands.
+        # Network holds it after the Home Network, saying how its link stands.
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         shell.send_chars("network ")
-        stands = "WARP \u00b7 connected \u00b7 127 ms \u00b7 answer"
-        shell.launcher_until(lambda shown: reading(shown, "WARP") == stands)
+        stands = "Work Network \u00b7 connected \u00b7 127 ms \u00b7 answer"
+        shell.launcher_until(lambda shown: reading(shown, "Work Network") == stands)
         rows = shell.showing()["rows"]
-        assert rows.index("WARP") == rows.index("Speed") + 1, rows
+        assert rows.index("Work Network") == rows.index("Home Network") + 1, rows
+        shell.close_launcher()
+        # Joel's word for it answers how it stands, as warp and vpn do.
+        shell.answer("work")
+        shell.launcher_until(
+            lambda shown: (
+                ((shown["selected"] or {}).get("is"), (shown["selected"] or {}).get("name"))
+                == ("answer", "connected \u00b7 127 ms")
+            )
+        )
         shell.close_launcher()
         # Its service gone, WARP says so in its place, as "vpn" asks it too, and
         # what warp-cli's error means beside it rather than the error itself.
@@ -1917,7 +1928,7 @@ def test_warp_says_how_its_link_stands_in_network_and_when_it_isnt_answering(
         shell.launcher_until(
             lambda shown: (
                 shown["drawer"]["shown"]
-                and shown["drawer"]["title"] == "WARP"
+                and shown["drawer"]["title"] == "Work Network"
                 and shown["drawer"]["facts"][-1:] == ["Error"]
             )
         )
@@ -2043,7 +2054,9 @@ def terminal_shown_until(shell: Shell, test: Callable[[Json], object], *steps: s
 
 
 def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Shell) -> None:
-    """`launcher show network warp` says WARP's state and Health, and Round Trip's drawer.
+    """`launcher show network work network` says WARP's state and Health, and Round Trip's.
+
+    A terminal names it by its name, as every step is (Showing.js's step).
 
     What warp prints for a terminal's ask is kept for the next while the launcher stays
     closed, and each read after sparks as it does while shown, so once two are in, Round
@@ -2055,13 +2068,17 @@ def test_a_terminal_is_shown_warps_state_health_and_round_trips_drawer(shell: Sh
             shell,
             lambda shown: "connected" in (shown["row"] or {}).get("side", ""),
             "network",
-            "warp",
+            "work network",
         )
-        assert warp["in"] == ["Network", "WARP"], warp
+        assert warp["in"] == ["Network", "Work Network"], warp
         health = next(row for row in warp["rows"] if row["name"] == "Health")
         assert health["side"] == "healthy", health
         trip = terminal_shown_until(
-            shell, lambda shown: "drawer" in (shown["row"] or {}), "network", "warp", "round trip"
+            shell,
+            lambda shown: "drawer" in (shown["row"] or {}),
+            "network",
+            "work network",
+            "round trip",
         )
         assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
         assert not shell.showing()["open"]
@@ -2090,18 +2107,22 @@ def test_a_terminal_disconnects_warp_once_sure_and_connects_it_unasked(shell: Sh
     said = warp_said()
     (said / "connect.json").write_text('"Success"\n')
     try:
-        terminal_shown_until(shell, rows_say("Disconnect WARP"), "network", "warp")
-        asking = done("network", "warp", "disconnect warp")
-        assert asking["asks"].startswith("Disconnect WARP"), asking
+        terminal_shown_until(shell, rows_say("Disconnect WARP"), "network", "work network")
+        asking = done("network", "work network", "disconnect warp")
+        # The question names the place, in Joel's word for what he'd lose.
+        assert asking["asks"].startswith("Disconnect Work Network"), asking
         assert asking["asks"].endswith("? (y/n)"), asking
         assert "disconnect" not in asked(said), "warp-cli was told before the terminal was sure"
         disconnected = done(path=asking["path"], sure=True)
         assert disconnected["done"] is True, disconnected
-        assert disconnected["in"] == ["Network", "WARP", "Disconnect WARP"], disconnected
+        assert disconnected["in"] == ["Network", "Work Network", "Disconnect WARP"], disconnected
         shell.launcher_until(lambda _: "disconnect" in asked(said))
-        terminal_shown_until(shell, rows_say("Connect WARP"), "network", "warp")
-        connected = done("network", "warp", "connect warp")
-        assert connected == {"done": True, "in": ["Network", "WARP", "Connect WARP"]}, connected
+        terminal_shown_until(shell, rows_say("Connect WARP"), "network", "work network")
+        connected = done("network", "work network", "connect warp")
+        assert connected == {
+            "done": True,
+            "in": ["Network", "Work Network", "Connect WARP"],
+        }, connected
         shell.launcher_until(lambda _: "connect" in asked(said))
     finally:
         warp_forgotten(said)

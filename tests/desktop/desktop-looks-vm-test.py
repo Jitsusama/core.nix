@@ -432,7 +432,11 @@ def reading(shown: Json, start: str) -> str:
 def warp_error_drawn(shown: Json) -> bool:
     """Whether WARP's drawer is out, warp-cli's error as written its last fact."""
     drawer = shown["drawer"]
-    return bool(drawer["shown"]) and drawer["title"] == "WARP" and drawer["facts"][-1:] == ["Error"]
+    return (
+        bool(drawer["shown"])
+        and drawer["title"] == "Work Network"
+        and drawer["facts"][-1:] == ["Error"]
+    )
 
 
 def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
@@ -455,10 +459,12 @@ def warp_answers(desktop: Desktop, *answers: tuple[str, str]) -> None:
 
 
 def warp_opened_again(desktop: Desktop, state: str) -> None:
-    """Step out of WARP to Network, wait until its row says this state, and step in again."""
+    """Step out of the Work Network to Network, wait until its row says this, and step in."""
     desktop.step_out()
-    desktop.launcher_until(lambda shown: reading(shown, "WARP ").startswith(f"WARP \u00b7 {state}"))
-    desktop.down_to("WARP")
+    desktop.launcher_until(
+        lambda shown: reading(shown, "Work Network ").startswith(f"Work Network \u00b7 {state}")
+    )
+    desktop.down_to("Work Network")
     desktop.step_in()
     desktop.launcher_until(lambda shown: "State" in shown["rows"])
 
@@ -479,9 +485,11 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Network")
         desktop.step_in()
         desktop.launcher_until(
-            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 connected")
+            lambda shown: reading(shown, "Work Network ").startswith(
+                "Work Network \u00b7 connected"
+            )
         )
-        desktop.down_to("WARP")
+        desktop.down_to("Work Network")
         desktop.shoot(f"launcher-warp-in-network-at-{at}")
         desktop.step_in()
         desktop.launcher_until(lambda shown: "Round Trip" in shown["rows"])
@@ -532,7 +540,7 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         desktop.shoot(f"launcher-warp-degraded-at-{at}")
         desktop.step_out()
         desktop.launcher_until(
-            lambda shown: reading(shown, "WARP ").startswith("WARP \u00b7 degraded")
+            lambda shown: reading(shown, "Work Network ").startswith("Work Network \u00b7 degraded")
         )
         desktop.shoot(f"launcher-warp-degraded-in-network-at-{at}")
         # Its service gone, WARP says so in its place, and why beside it, its drawer
@@ -542,7 +550,7 @@ def warp_stands_in_network(desktop: Desktop, scale: str) -> None:
         warp_answers(desktop, ("daemon-down.json", "status.error.json"))
         desktop.launcher_until(
             lambda shown: (
-                reading(shown, "WARP ").startswith("WARP \u00b7 not answering")
+                reading(shown, "Work Network ").startswith("Work Network \u00b7 not answering")
                 and warp_error_drawn(shown)
             )
         )

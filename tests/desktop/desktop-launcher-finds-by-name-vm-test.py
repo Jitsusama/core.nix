@@ -1670,8 +1670,11 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
                 ("launcher show mahcine", "terminal-miss"),
                 ("launcher show desktop screens --drawers", "terminal-drawers"),
                 ("launcher do machine power reboot", "terminal-asks"),
-                ("launcher show network warp", "terminal-warp"),
-                ("launcher show network warp round-trip", "terminal-warp-round-trip"),
+                ("launcher show network work-network", "terminal-warp"),
+                (
+                    "launcher show network work-network round-trip",
+                    "terminal-warp-round-trip",
+                ),
             ]:
                 window = desktop.opened(
                     picture, f"sh -c {shlex.quote(f'echo {asked}; {asked}; exec sleep infinity')}"
@@ -1684,7 +1687,7 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
 
 
 def a_terminal_is_shown_warp(desktop: Desktop) -> None:
-    """Hold `launcher show network warp` to WARP's state and Health, as text and as JSON.
+    """Hold `launcher show network work-network` to WARP's state and Health, as text and JSON.
 
     A terminal's ask is answered at once, so the first says WARP is still asking, and the next
     says what warp printed for it (Warp.qml); once two reads are in, Round Trip's drawer says
@@ -1693,25 +1696,27 @@ def a_terminal_is_shown_warp(desktop: Desktop) -> None:
     machine = desktop.machine
     asking = dt.timedelta(seconds=30)
     machine.wait_until_succeeds(
-        desktop.in_session("launcher show network warp --json | grep -q connected"),
+        desktop.in_session("launcher show network work-network --json | grep -q connected"),
         timeout=asking,
     )
-    warp = json.loads(desktop.as_account("launcher show network warp --json"))
-    assert warp["in"] == ["Network", "WARP"], warp
+    warp = json.loads(desktop.as_account("launcher show network work-network --json"))
+    assert warp["in"] == ["Network", "Work Network"], warp
     assert warp["row"]["side"].startswith("connected"), warp["row"]
     health = next(row for row in warp["rows"] if row["name"] == "Health")
     assert health["side"] == "healthy", health
-    said = desktop.as_account("launcher show network warp")
+    said = desktop.as_account("launcher show network work-network")
     assert "connected" in said, said
     assert re.search(r"Health\s+healthy", said), said
     # Each word the program is given is a step, so a name of two is one with a hyphen.
     machine.wait_until_succeeds(
-        desktop.in_session("launcher show network warp round-trip --json | grep -q eyebrow"),
+        desktop.in_session(
+            "launcher show network work-network round-trip --json | grep -q eyebrow"
+        ),
         timeout=asking,
     )
-    trip = json.loads(desktop.as_account("launcher show network warp round-trip --json"))
+    trip = json.loads(desktop.as_account("launcher show network work-network round-trip --json"))
     assert trip["row"]["drawer"]["eyebrow"] == "via WARP \u00b7 tunnel", trip["row"]
-    said = desktop.as_account("launcher show network warp round-trip")
+    said = desktop.as_account("launcher show network work-network round-trip")
     assert "via WARP \u00b7 tunnel" in said, said
 
 

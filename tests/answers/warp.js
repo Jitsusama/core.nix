@@ -91,7 +91,10 @@ function run(failures, fromRoot) {
                 figure("dns:no-record", "4", "", "4"),
                 figure("dns:timed-out", "0", "", "0"),
                 figure("dns:failed", "0", "", "0")
-            ] })
+            ] }),
+        // The work network names what carries it once, last (VKCF3Z,
+        // 2026-11-11).
+        figure("through", "WARP", "", "WARP")
     ]);
     // Every part is named by the vocabulary, inside the part that holds
     // it, so none reads as its id.
@@ -149,7 +152,8 @@ function run(failures, fromRoot) {
         reason_figures: null }, tunnel: null, settings: null, dns: null });
     machine("WARP disconnected, its tunnel unknown", down && [down.headline, down.parts], [
         "disconnected",
-        [figure("state", "disconnected", "manual", "disconnected")]
+        [figure("state", "disconnected", "manual", "disconnected"),
+            figure("through", "WARP", "", "WARP")]
     ]);
     const connecting = warpTold({ status: { state: "Connecting",
         reason: "PerformingHappyEyeballs", reason_figures: null }, tunnel: null });
@@ -159,7 +163,7 @@ function run(failures, fromRoot) {
         loss_fraction: null, protocol: "WireGuard", edge: null, sent_bytes: null,
         received_bytes: null }, settings: null, dns: null }));
     machine("a figure warp didn't give is left out",
-        thin?.parts.map(part => part.id), ["state", "health", "protocol"]);
+        thin?.parts.map(part => part.id), ["state", "health", "protocol", "through"]);
     const off = warpTold(Object.assign({}, warp, { tunnel: { on: false, v4_endpoint: null,
         v6_endpoint: "2001:db8::2" } }));
     machine("a tunnel that's off, its one endpoint IPv6",
