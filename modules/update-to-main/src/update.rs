@@ -433,7 +433,7 @@ fn busy(config: &Config) -> Option<String> {
 /// two hours while he worked, with 26 merges waiting, so someone at the
 /// keys holds it for 45 minutes and an open launcher the whole hour. A
 /// person asking meanwhile, or a stop, ends the wait at once, but for what
-/// every ask waits on: on 12 November a switch Joel's steward asked for
+/// every ask waits on: on 12 November a switch Joel's orchestrator asked for
 /// restarted the shell while he typed into it, and the line was lost.
 fn quiet(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
     let began = Instant::now();

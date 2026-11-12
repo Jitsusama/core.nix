@@ -84,7 +84,7 @@ in
         followerWaits = true;
         followerWaitsAtMost = 45 * 60;
       }
-      # On 12 November a switch Joel's steward asked for restarted the shell
+      # On 12 November a switch Joel's orchestrator asked for restarted the shell
       # while he typed into the launcher, and the line was lost. So every
       # ask waits while it's open, and for 30 s after it closes
       # (./the-launcher-is-in-use.sh).
