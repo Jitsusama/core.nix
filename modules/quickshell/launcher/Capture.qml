@@ -165,7 +165,38 @@ Provider {
                 .map(id => provider.keptWindows[id].row);
     }
 
-    readonly property var stop: member({
+    // One of its acts, with a drawer saying what it does, its key, where
+    // what it takes lands and the last one there (Captured.js's act), as
+    // every act but a bare verb inside a thing has (VKCF3Z, 37e49991; Joel,
+    // 2026-11-11 22:00: every row has a drawer). A thing, so it's drawn.
+    function acting(fields, folder) {
+        return member(Object.assign(fields, {
+            thing: true,
+            drawer: () => provider.actDrawer(fields, folder)
+        }));
+    }
+
+    function actDrawer(fields, folder) {
+        // Where it lands is its folder, said from the home as the launcher
+        // says a folder, and the clipboard beside it where it's copied.
+        const words = Words.of(fields.key);
+        const lands = [folder.startsWith(home) ? `~${folder.slice(home.length)}` : folder,
+            (words.said ?? {}).also ?? ""].filter(said => said !== "").join(", ");
+        return Captured.act({ title: fields.name, does: (words.tells ?? {}).does ?? "",
+            lands: lands }, provider.launcher?.chordText(fields.chord ?? []) ?? "",
+        Captured.newest(Taken.files, folder), {
+            now: Date.now(),
+            named: id => Words.name(`capture:${id}`),
+            eyebrow: Words.name("capture"),
+            days: provider.factWords.days
+        });
+    }
+
+    // Where each act's picture or recording lands (modules/niri's
+    // screenshot-path, Recorder.qml, modules/camera).
+    readonly property string shots: `${home}/Pictures/Screenshots`
+
+    readonly property var stop: acting({
         key: "capture:stop",
         verb: "stop",
         name: Words.name("capture:stop"),
@@ -177,7 +208,7 @@ Provider {
         hue: "action",
         chord: chord("qs ipc call recording screen"),
         run: () => Recorder.stop()
-    })
+    }, Recorder.folder)
 
     function shootScreen() {
         Niri.act({ ScreenshotScreen: { write_to_disk: true, show_pointer: false } });
@@ -194,7 +225,7 @@ Provider {
         .reduce((shortest, one) => shortest === null || one.length < shortest.length ? one
             : shortest, null)
 
-    readonly property var wholeScreen: member({
+    readonly property var wholeScreen: acting({
         key: "capture:screen",
         verb: "take",
         name: Words.name("capture:screen"),
@@ -204,7 +235,7 @@ Provider {
         chord: opening ?? chord("niri msg action screenshot-screen"),
         later: true,
         run: () => provider.shootScreen()
-    })
+    }, shots)
 
     // Print or Super+P, pressed while the launcher shows, never changes
     // what's on the screen first (VKCF3Z, Joel's yes of 2026-11-03). Here
@@ -225,7 +256,7 @@ Provider {
     readonly property var fixed: (Recorder.recording ? [stop] : []).concat([
         wholeScreen
     ], here === null ? [] : [
-        member({
+        acting({
             key: "capture:window",
             verb: "take",
             name: Words.name("capture:window", "", { title: titled(here) }),
@@ -235,9 +266,9 @@ Provider {
             chord: chord("niri msg action screenshot-window"),
             later: true,
             run: () => provider.shoot(here)
-        })
+        }, shots)
     ], [
-        member({
+        acting({
             key: "capture:region",
             verb: "pick",
             name: Words.name("capture:region"),
@@ -246,9 +277,9 @@ Provider {
             hue: "action",
             later: true,
             run: () => Recorder.screenshot(provider.back)
-        })
+        }, shots)
     ], Recorder.recording ? [] : [
-        member({
+        acting({
             key: "capture:record-screen",
             verb: "record",
             name: Words.name("capture:record-screen"),
@@ -258,9 +289,9 @@ Provider {
             chord: chord("qs ipc call recording screen"),
             later: true,
             run: () => Recorder.screen()
-        })
+        }, Recorder.folder)
     ], Recorder.recording || here === null ? [] : [
-        member({
+        acting({
             key: "capture:record-window",
             verb: "record",
             name: Words.name("capture:record-window", "", { title: titled(here) }),
@@ -272,9 +303,9 @@ Provider {
             // The window its title names, as niri describes it, since the
             // recorder reads its size.
             run: () => Recorder.window(Niri.windows[provider.here.id] ?? null)
-        })
+        }, Recorder.folder)
     ], Recorder.recording ? [] : [
-        member({
+        acting({
             key: "capture:record-region",
             verb: "pick",
             name: Words.name("capture:record-region"),
@@ -283,9 +314,9 @@ Provider {
             hue: "action",
             later: true,
             run: () => Recorder.region(provider.back)
-        })
+        }, Recorder.folder)
     ], !provider.settings.camera ? [] : [
-        member({
+        acting({
             key: "capture:camera-picture",
             verb: "open",
             name: Words.name("capture:camera-picture"),
@@ -294,8 +325,8 @@ Provider {
             hue: "action",
             later: true,
             run: () => Niri.spawn(["camera", "picture"])
-        }),
-        member({
+        }, `${home}/Pictures/Camera`),
+        acting({
             key: "capture:camera-video",
             verb: "open",
             name: Words.name("capture:camera-video"),
@@ -304,7 +335,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => Niri.spawn(["camera", "video"])
-        })
+        }, `${home}/Videos/Camera`)
     ])
 
     // Every other window, found only by typing its title or program, since

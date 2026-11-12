@@ -2,7 +2,8 @@
 // mark its row wears, a picture's or a video's as files wear them, and the
 // drawer under it, where it is and what kind of file above, the picture
 // itself, then when it was taken, how big it is, and a picture's dimensions
-// or a recording's length (VKCF3Z, 2026-11-08). A fact nothing has said yet
+// or a recording's length (VKCF3Z, 2026-11-08); and the drawer under each
+// of its acts (`act`). A fact nothing has said yet
 // is left out rather than said as unknown. Plain JavaScript, held to it by
 // tests/captured.qml in Qt's own engine.
 .pragma library
@@ -91,6 +92,38 @@ function drawer(file, shown, told) {
         facts: facts(file, shown, now, days).concat(unanswered(file, shown, told))
             .map(fact => ({ label: named(fact.id), value: fact.value }))
     });
+}
+
+// The newest thing taken straight in `folder`, of Taken's files, each
+// { path, at }, or null where none is: the Last an act's drawer says.
+function newest(files, folder) {
+    const within = `${folder}/`;
+    return files.filter(file => typeof file.at === "number" && file.path.startsWith(within)
+        && !file.path.slice(within.length).includes("/"))
+        .reduce((last, file) => last === null || file.at > last.at ? file : last, null);
+}
+
+// The drawer under one of Capture's acts, Screen, Window, Region, Record
+// and Stop among them (drawers.md's Act kind, VKCF3Z, 37e49991): what it
+// does, in one sentence, then its Key, where it Lands In, and the Last one
+// taken there, with when; where it lands is said once, as a fact
+// (VKCF3Z, bc8cda12). `act` is its { title, does, lands }, `key` its chord
+// as words, "" for none, and `last` the newest thing where it lands, or
+// null; `told` as `drawer`'s, its `eyebrow` the place's name. A fact it
+// can't give, as a first screenshot's Last, is left out.
+function act(row, key, last, told) {
+    const { now, named, eyebrow, days } = told;
+    return {
+        eyebrow,
+        title: row.title,
+        body: row.does,
+        facts: [
+            { id: "key", value: key },
+            { id: "lands", value: row.lands },
+            { id: "last", value: last === null ? "" : taken(last.at, now, days) }
+        ].filter(fact => fact.value !== "")
+            .map(fact => ({ label: named(fact.id), value: fact.value }))
+    };
 }
 
 // The fact file-preview would have said, where it's silent and hasn't.

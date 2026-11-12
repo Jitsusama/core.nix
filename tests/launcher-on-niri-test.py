@@ -2890,6 +2890,27 @@ def test_desktops_windows_row_has_a_drawer_holding_none_or_some(shell: Shell) ->
         shell.close(lark)
 
 
+def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
+    """Each of Capture's acts has a drawer saying what it does and where that lands.
+
+    Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00), an act's
+    saying what it does, its key, where it lands and the last one there (VKCF3Z, 37e49991).
+    """
+    path = shlex.quote("\u203adesktop\u203acapture")
+    asked = f"qs -p {shell.folder} ipc call -- launcher drawers {path}"
+    rows = cast("list[Json]", json.loads(shell.as_account(asked)).get("rows", []))
+    drawers = {str(row.get("name")): cast("Json", row.get("drawer", {})) for row in rows}
+    screen = drawers.get("The Whole Screen", {})
+    assert str(screen.get("body", "")).startswith("Takes a picture of the whole screen"), screen
+    facts = {
+        str(fact.get("label")): str(fact.get("value"))
+        for fact in cast("list[Json]", screen.get("facts", []))
+    }
+    assert facts.get("Lands In") == "~/Pictures/Screenshots, and on the clipboard", facts
+    region = drawers.get("Record a Region", {})
+    assert str(region.get("body", "")).startswith("Records the part of the screen"), region
+
+
 def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
     """Desktop's Windows lists agents' windows as one Agents row, where the one used last was.
 
