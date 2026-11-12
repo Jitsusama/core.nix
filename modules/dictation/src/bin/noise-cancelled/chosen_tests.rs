@@ -248,7 +248,10 @@ fn a_spot_takes_the_name_joel_gives_it() {
         "the couch",
         "another process reads the name"
     );
-    assert!(somewhere(&folder).named(&away.key));
+    assert!(
+        somewhere(&folder).named(&away.key),
+        "another process thinks the spot unnamed"
+    );
 }
 
 #[test]
