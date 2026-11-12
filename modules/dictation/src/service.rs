@@ -21,8 +21,8 @@
 //!   throughout; or `unclear`, Whisper found no words.
 //!
 //! One thread holds the state and hears every event, so a press is always
-//! answered at once. The microphone is read by pw-record into memory on a
-//! thread of its own, and Whisper runs on another, which loads the models
+//! answered at once. The microphone, through its noise-cancelled twin, is
+//! read by pw-record into memory on a thread of its own, and Whisper runs on another, which loads the models
 //! as listening starts and lets them go after ten minutes unused.
 //!
 //! A first load compiles the encoder for the NPU, which took 44 s on a
@@ -43,6 +43,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use dictation::mel::{RATE, SAMPLES};
+use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
 
@@ -403,6 +404,7 @@ fn muted() -> bool {
 /// of what was said. What it hears is thrown away.
 fn open_the_microphone() {
     let Ok(mut child) = Command::new("pw-record")
+        .args(target())
         .args(["--raw", "--rate", "16000", "--channels", "1", "-"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -418,10 +420,29 @@ fn open_the_microphone() {
     let _ = child.wait();
 }
 
-/// Starts pw-record on the default microphone, its samples read into
-/// memory until it stops or Whisper's window is full.
+/// What pw-record is pointed at: the default microphone's noise-cancelled
+/// twin, so dictation hears what a call hears, cleaned as Joel chose by
+/// ear, rather than the room. Asking PipeWire takes about 20 ms, inside
+/// the press. Where there's no twin it's the microphone, and where
+/// PipeWire can't be asked, nothing, which leaves it the sound server's.
+fn target() -> Vec<String> {
+    let dump = Command::new("pw-dump")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()
+        .and_then(|out| serde_json::from_slice(&out.stdout).ok());
+    dump.as_ref()
+        .and_then(microphone::to_record)
+        .map(|node| vec!["--target".to_owned(), node])
+        .unwrap_or_default()
+}
+
+/// Starts pw-record on the default microphone's twin, its samples read
+/// into memory until it stops or Whisper's window is full.
 fn listen(events: &Sender<Event>, generation: u64) -> Result<Recording, String> {
     let mut child = Command::new("pw-record")
+        .args(target())
         .args([
             "--raw",
             "--rate",

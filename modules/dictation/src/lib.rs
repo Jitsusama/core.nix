@@ -9,7 +9,8 @@
 //! they mean, share its OpenVINO calls, its reading of pictures
 //! (picture.rs) and its hearing of the folders they're kept in
 //! (watch.rs), and they and call-transcripts serve the shell alike
-//! (daemon.rs).
+//! (daemon.rs). Dictation and noise-cancelled find the microphone Joel
+//! picked, and its noise-cancelled twin, alike (microphone.rs).
 
 pub mod cache;
 pub mod daemon;
@@ -17,6 +18,7 @@ pub mod genai;
 pub mod graph;
 pub mod language;
 pub mod mel;
+pub mod microphone;
 pub mod openvino;
 pub mod parakeet;
 pub mod picture;

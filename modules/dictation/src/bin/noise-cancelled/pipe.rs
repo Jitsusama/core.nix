@@ -35,7 +35,7 @@ use crate::worker::{Ends, Shared, Worker};
 
 /// What each source's node name starts with, so they're never taken for
 /// microphones of their own, and each is known by its microphone's name.
-pub const OURS: &str = "noise-cancelled.";
+pub const OURS: &str = dictation::microphone::OURS;
 
 /// How many samples each ring holds: 16 frames, 160 ms.
 const RING: usize = 16 * FRAME;
