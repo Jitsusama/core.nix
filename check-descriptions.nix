@@ -1534,7 +1534,9 @@
     `there --changed` runs a tree's own changed-checks on the lent builder, else only
     evaluates on the first evaluator that answers and takes the repository's owner, and
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
-    takes it, else tells changed-checks to run here; and `relay` dials a far side again
+    takes it, else tells changed-checks to run here, and after a run gives the other lent
+    builder the checks and reads its base kept, whole and never over its own; and `relay`
+    dials a far side again
     while it closes before saying its first line, passes that line and everything after
     both ways, and hangs up once, without dialling again, on one that says nothing in time,
     and ends once its far side has answered no caller for long enough, never while idle; and
