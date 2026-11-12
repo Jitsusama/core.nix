@@ -59,10 +59,10 @@ onLinux {
         fi
       '';
     in
-    # Kept in Nix because each line runs the script Nix gives it with the
-    # stand-ins Nix makes above, or reads what they wrote.
     pkgs.runCommandLocal "onepassword-opens-its-window-when-its-unit-starts-again"
       { nativeBuildInputs = [ systemctl ]; }
+      # Kept in Nix because each line runs the script Nix gives it with the
+      # stand-ins Nix makes above, or reads what they wrote.
       ''
         fail() { echo "$1"; exit 1; }
         { echo 'app=${app}'; cat ${./in-its-unit.sh}; } > in-its-unit
