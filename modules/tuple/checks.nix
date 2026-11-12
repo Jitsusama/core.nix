@@ -33,12 +33,12 @@ onLinux {
       tuple = lib.findFirst (package: lib.getName package == "tuple") null home.home.packages;
     in
     holds "tuple-call-runs-on-the-daemons-socket"
-      "tuple-call doesn't run on systemd's socket at %t/daemons/tuple.sock with the installed tuple."
+      "tuple-call doesn't run on systemd's socket at %t/daemons/tuple-call.sock with the installed tuple."
       (
-        lib.hasInfix (plain "%t/daemons/tuple.sock ${lib.getExe tuple}") started
+        lib.hasInfix (plain "%t/daemons/tuple-call.sock ${lib.getExe tuple}") started
         && service.Unit.X-SwitchMethod == "restart"
         && lib.elem "tuple-call.socket" service.Unit.Requires
-        && home.systemd.user.sockets.tuple-call.Socket.ListenStream == "%t/daemons/tuple.sock"
+        && home.systemd.user.sockets.tuple-call.Socket.ListenStream == "%t/daemons/tuple-call.sock"
       );
 
   # The people daemon's Tuple source reads Tuple's contacts, says only who

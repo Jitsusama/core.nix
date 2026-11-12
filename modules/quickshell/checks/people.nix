@@ -241,7 +241,7 @@
       # Tuple's daemon answers before tuple-call first looks, which would
       # otherwise look again only five seconds on.
       timeout 10 sh -c 'until [ -S "$0" ]; do sleep 0.05; done' $XDG_RUNTIME_DIR/tuple-0
-      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple.sock ${tuple} &
+      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple-call.sock ${tuple} &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

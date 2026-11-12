@@ -32,7 +32,7 @@ pub struct Meeting {
 /// The call on at `now`, from what's in `runtime`; a Tuple call first,
 /// since it has people only while one is on, and a meeting otherwise.
 pub fn on(runtime: &Path, now: u64) -> Meeting {
-    tuple_call(&runtime.join("daemons/tuple.sock"))
+    tuple_call(&runtime.join("daemons/tuple-call.sock"))
         .as_ref()
         .and_then(tuple)
         .or_else(|| meeting(&meetings(&runtime.join("daemons/google.sock")), now))
@@ -222,7 +222,7 @@ mod tests {
         std::fs::create_dir_all(runtime.join("daemons")).unwrap();
         let call = json!({"records": [record]});
         answering(
-            &runtime.join("daemons/tuple.sock"),
+            &runtime.join("daemons/tuple-call.sock"),
             "get",
             "keys",
             json!(["call:current"]),
@@ -279,7 +279,7 @@ mod tests {
         let none = json!({"state": "none", "since": null, "people": []});
         assert_eq!(on(&runtime("none", &none), NOW).title, "Planning");
         let gone = runtime("gone", &none);
-        std::fs::remove_file(gone.join("daemons/tuple.sock")).unwrap();
+        std::fs::remove_file(gone.join("daemons/tuple-call.sock")).unwrap();
         assert_eq!(on(&gone, NOW).title, "Planning");
     }
 
@@ -287,7 +287,7 @@ mod tests {
     fn with_neither_daemon_there_the_call_is_nothing_known() {
         let none = json!({"state": "none", "since": null, "people": []});
         let bare = runtime("bare", &none);
-        std::fs::remove_file(bare.join("daemons/tuple.sock")).unwrap();
+        std::fs::remove_file(bare.join("daemons/tuple-call.sock")).unwrap();
         std::fs::remove_file(bare.join("daemons/google.sock")).unwrap();
         assert_eq!(on(&bare, NOW), Meeting::default());
     }

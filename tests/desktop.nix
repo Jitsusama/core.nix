@@ -1030,7 +1030,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.tuple-call.Service.ExecStart = lib.mkForce (
           lib.escapeShellArgs [
             (lib.getExe (pkgs.callPackage ../modules/tuple/call/package.nix { }))
-            "%t/daemons/tuple.sock"
+            "%t/daemons/tuple-call.sock"
             (pkgs.writeShellScript "tuple" ''
               PATH=${pkgs.coreutils}/bin exec ${lib.getExe pkgs.bash} ${./desktop/tuple-stand-in.sh} "$@"
             '')
@@ -1144,7 +1144,8 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # where it's imported, as a stand-in the test starts when it wants
         # it; Search Slack is offered only while it runs, so no other
         # test's search ends with it.
-        systemd.user.services.slack-stand-in.Service.ExecStart = "${standInSlack} %t/daemons/slack.sock";
+        systemd.user.services.slack-stand-in.Service.ExecStart =
+          "${standInSlack} %t/daemons/slack-unreads.sock";
         # The eero daemon would ask eero's cloud, which the VM can't reach.
         # Its stand-in serves the model the daemon's parsers are tested
         # against (modules/eero) on its socket, so the Home Network has a

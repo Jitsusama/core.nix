@@ -50,9 +50,10 @@ in
       Requires = [ "windows.socket" ];
     };
     Service = {
+      # Shown in ps by its name, not its store path (docs/daemons.md).
       ExecStart = lib.concatStringsSep " " (
         [
-          (lib.getExe windows)
+          "@${lib.getExe windows} windows"
           "%t/daemons/windows.sock"
         ]
         ++ worded

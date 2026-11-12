@@ -18,7 +18,7 @@ Singleton {
     Daemon {
         id: slack
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/slack.sock`
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/slack-unreads.sock`
         kind: ["slack-unread", "slack-recent", "slack-message", "slack-seen", "slack-account"]
         keptThroughGap: false
     }

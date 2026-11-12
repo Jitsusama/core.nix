@@ -41,7 +41,7 @@ Provider {
     ReadyRows {
         id: unreadRows
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack-unreads.sock`
         place: "slack-unread"
         maker: provider
         make: (row, key) => SlackConversation.served(unreadRows, row, key)
@@ -51,7 +51,7 @@ Provider {
     ReadyRows {
         id: recentRows
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack-unreads.sock`
         place: "slack-recent"
         maker: provider
         make: (row, key) => SlackConversation.served(recentRows, row, key)

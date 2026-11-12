@@ -51,7 +51,7 @@
 # tuple-call (call/) holds the call Joel's in, a ring and a missed call,
 # and the calls had lately, kept in its state folder across restarts,
 # for the shell and anything else that asks, on
-# $XDG_RUNTIME_DIR/daemons/tuple.sock in the shell's daemon interface,
+# $XDG_RUNTIME_DIR/daemons/tuple-call.sock in the shell's daemon interface,
 # and does the call's acts through Tuple's own command. Its socket is
 # systemd's, held whether or not it runs, as people's is. A call's
 # transcript (modules/dictation) names its folder by who the call is with,
@@ -224,7 +224,8 @@ in
       After = [ "tuple-call.socket" ];
     };
     Service = {
-      ExecStart = "${lib.getExe calls} %t/daemons/tuple.sock ${tuple}";
+      # Shown in ps by its name, not its store path (docs/daemons.md).
+      ExecStart = "@${lib.getExe calls} tuple-call %t/daemons/tuple-call.sock ${tuple}";
       Restart = "on-failure";
       RestartSec = 5;
     };
@@ -237,7 +238,7 @@ in
   systemd.user.sockets.tuple-call = {
     Unit.Description = "Where the shell asks after Tuple's call";
     Socket = {
-      ListenStream = "%t/daemons/tuple.sock";
+      ListenStream = "%t/daemons/tuple-call.sock";
       SocketMode = "0600";
       DirectoryMode = "0700";
     };

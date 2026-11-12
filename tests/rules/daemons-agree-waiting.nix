@@ -72,13 +72,6 @@
     "shown"
     "speaks"
   ];
-  tuple = [
-    "named"
-    "shown"
-    "speaks"
-  ];
-  windows = [
-    "shown"
-    "speaks"
-  ];
+  tuple-call = [ "speaks" ];
+  windows = [ "speaks" ];
 }

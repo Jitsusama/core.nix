@@ -141,7 +141,7 @@ in
       ConditionPathExists = credentials;
     };
     Socket = {
-      ListenStream = "%t/daemons/slack.sock";
+      ListenStream = "%t/daemons/slack-unreads.sock";
       SocketMode = "0600";
       DirectoryMode = "0700";
     };
@@ -160,12 +160,13 @@ in
     };
     Service = {
       Slice = "background.slice";
+      # Shown in ps by its name, not its store path (docs/daemons.md).
       ExecStart = lib.concatStringsSep " " [
-        "${lookUp}/bin/slack-unreads"
+        "@${lookUp}/bin/slack-unreads slack-unreads"
         (lib.escapeShellArg credentials)
         # Slack's daemon, where the shell watches what's unread and
         # searches Slack (src/daemon.rs).
-        "%t/daemons/slack.sock"
+        "%t/daemons/slack-unreads.sock"
         (lib.escapeShellArg waiting)
       ];
       # The vocabulary by its store path, read once as it starts.

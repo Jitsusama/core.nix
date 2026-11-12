@@ -39,7 +39,7 @@ Singleton {
     Launcher.ReadyRows {
         id: messages
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack-unreads.sock`
         place: "slack-messages"
         beside: ["drawer"]
         maker: making
@@ -49,7 +49,7 @@ Singleton {
     Launcher.ReadyRows {
         id: conversations
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack.sock`
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/slack-unreads.sock`
         place: "slack-unread"
         maker: making
         make: (row, key) => SlackConversation.served(conversations, row, key)

@@ -59,8 +59,8 @@ onLinux {
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.WatchdogSec > 0
         && unit.Service.NotifyAccess == "main"
-        && !(lib.hasInfix "%t/daemons/slack.sock" unit.Service.ExecStopPost)
-        && socket.Socket.ListenStream == "%t/daemons/slack.sock"
+        && !(lib.hasInfix "%t/daemons/slack-unreads.sock" unit.Service.ExecStopPost)
+        && socket.Socket.ListenStream == "%t/daemons/slack-unreads.sock"
         && socket.Unit.ConditionPathExists == credentials
         && lib.elem "slack-unreads.socket" unit.Unit.Requires
         # Handed the launcher's vocabulary, its rows are said in it.
