@@ -403,6 +403,11 @@
     or an app's, a page with a program of its own by its title alone, a command cut off left for
     the next reading, and a file of another version refused saying which
   '';
+  chrome-vimium-takes-the-keys = ''
+    Vimium's own parser takes the settings an account writes it, each of the key language's keys
+    doing the language's act beside Vimium's own, rather than refusing a line or leaving one to
+    nothing
+  '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
   '';
