@@ -8,8 +8,9 @@ named as its second argument, the one the daemon's parsers are tested against (m
 so the Home Network has a whole three-node network to show. A watch of rows, one naming the
 row kind or a place, is answered with the records named as its third argument, those the daemon
 serves of that model, each row ordered (modules/eero/tests/rows.json, which a cargo test holds
-to the daemon's), or only those it names. It never changes, so
-nothing is told after a watch's answer.
+to the daemon's), or only those it names. Each such watch is said on its output, with the words
+it asks in, so a test sees the shell watch them. It never changes, so nothing is told after a
+watch's answer.
 """
 
 import json
@@ -46,6 +47,7 @@ def watched(said: dict[str, object]) -> dict[str, object]:
         message = f"no kind {kinds} or place {place} here"
         return {"id": said.get("id"), "error": {"code": "unknown-kind", "message": message}}
     records = [record for record in ROWS if named is None or record["key"] in named]
+    print(f"watched {PLACE}'s rows in {said.get('words', 'no words')}", flush=True)
     return {"id": said.get("id"), "records": records}
 
 
