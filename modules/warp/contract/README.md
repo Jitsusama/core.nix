@@ -40,7 +40,7 @@ then goes to its status.
 
 ## Where Each Figure Shows
 
-The place is Network's WARP in the launcher, its row saying how the link
+The place is Network's Work Network in the launcher, its row saying how the link
 stands and its parts a step in; the page is what `warp` prints, and every
 figure it shows is in `warp --json` too.
 

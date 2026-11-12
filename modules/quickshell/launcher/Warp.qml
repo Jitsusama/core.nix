@@ -1,18 +1,20 @@
-// WARP, the VPN, answered in the field by its words ("warp" or "vpn", as
-// words.json lists them) and listed in Network after Speed. The headline
-// says how its link stands, "connected · 127 ms", in the warning colour
-// while WARP finds the network degraded or its service doesn't answer;
-// a step in are its switch, Disconnect WARP or Connect WARP as :disconnect
-// and :connect name it, then its State and why, the network's Health as
-// WARP judges it, its Settings (the mode, always on and the split tunnel
-// first, each saying who set it), the tunnel's Round Trip and Loss as
-// WARP estimates them, its Protocol, the Data Centre it ends in, its
-// Endpoint and Last Handshake, its Traffic each way and its TLS, and what
-// its DNS proxy answered (Warp.js works each out, WarpSeen.js the sparks
-// and WarpSwitch.js the switch, in the words words.json gives warp). A
-// machine
-// whose system installs no warp-cli has no WARP here at all (home.nix
-// enables this only where it does).
+// The Work Network, Joel's link to work through WARP, the VPN (Joel,
+// 2026-11-11: "should we do the same for WARP and call it a work network"),
+// answered in the field by its words ("warp", "vpn", "work" or "tunnel",
+// as words.json lists them) and listed in Network after the Home Network,
+// its sibling (VKCF3Z, 2026-11-11). The headline says how its link
+// stands, "connected · 127 ms", in the warning colour while WARP finds the
+// network degraded or its service doesn't answer; a step in are its
+// switch, Disconnect WARP or Connect WARP as :disconnect and :connect name
+// it, then its State and why, the network's Health as WARP judges it, its
+// Settings (the mode, always on and the split tunnel first, each saying
+// who set it), the tunnel's Round Trip and Loss as WARP estimates them,
+// its Protocol, the Data Centre it ends in, its Endpoint and Last
+// Handshake, its Traffic each way and its TLS, what its DNS proxy
+// answered, and Through, WARP, named once (Warp.js works each out,
+// WarpSeen.js the sparks and WarpSwitch.js the switch, in the words
+// words.json gives warp). A machine whose system installs no warp-cli has
+// no Work Network at all (home.nix enables this only where it does).
 //
 // What it shows comes from warp's daemon (modules/warp/src/serve.rs), over
 // the socket it holds, so the launcher starts no process for WARP (Joel,

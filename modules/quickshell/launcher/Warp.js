@@ -416,9 +416,9 @@ function coloPart(edge, said) {
 // parts }, each part { id, side, note, copy, warns } by its id in the
 // vocabulary (warp:<id>), one holding more { parts } too, a step in; or
 // null for a record with no status. The parts go how it stands, the
-// settings, the tunnel, then DNS, as `warp`'s own page has them, but for
-// the settings coming first, as a thing's settings come before its
-// readings. The headline is its state, or the network's health while
+// settings, the tunnel, DNS, then what carries it, as `warp`'s own page
+// has them, but for the settings coming first, as a thing's settings come
+// before its readings. The headline is its state, or the network's health while
 // connected, with the latency beside it where warp gave one: "connected
 // · 127 ms". `settings` says how a figure is written (its group and
 // point), as HomeNetwork.js takes it, and `said` is warp's words. The
@@ -446,6 +446,9 @@ function told(record, settings, said) {
         ...(record.tunnel
             ? tunnelParts(record.tunnel, settings, said) : []),
         record.dns ? dnsPart(record.dns, settings, said) : null,
+        // The place is the work network, Joel's word for it (2026-11-11),
+        // so what carries it is named once, last (VKCF3Z, 2026-11-11).
+        part("through", worded(said, "through")),
     ]));
     const warns = judged?.warns === true;
     const first = warns ? judged.side : state;
