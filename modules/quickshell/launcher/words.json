@@ -14324,6 +14324,14 @@
       "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
     },
     {
+      "word": "finding words",
+      "things": [
+        "shortcuts:zathura:finding",
+        "shortcuts:chrome:finding"
+      ],
+      "why": "The PDF viewer and the browser both find words on a page, and each group says which program's it is beside it."
+    },
+    {
       "word": "command line",
       "things": [
         "shortcuts:neovim:editor:commands",
