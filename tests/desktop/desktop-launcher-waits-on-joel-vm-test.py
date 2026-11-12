@@ -216,8 +216,9 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
             lambda shown: (shown["selected"] or {}).get("is") == f"window:{pi['id']}"
         )
         desktop.close_launcher()
-    # Waiting on Joel, it comes straight after the window used last, and
-    # says so beside its name.
+    # Waiting on Joel, it comes straight after the window used last, folded
+    # with the other agents' windows into one Agents row that says how many
+    # need him, and Tab finds it inside.
     question = {
         "kind": "question",
         "since": machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip(),
@@ -233,12 +234,13 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
     desktop.next_row()
     desktop.launcher_until(
         lambda shown: (
-            shown["selected"]["is"] == f"window:{pi['id']}"
-            and any(
-                thing["is"] == f"window:{pi['id']}" and "needs you" in thing["reads"]
-                for thing in shown["things"]
-            )
+            shown["selected"]["is"] == "windows:agents"
+            and shown["selected"]["count"] == "1 needs you"
         )
+    )
+    desktop.into_program()
+    desktop.launcher_until(
+        lambda shown: any(thing["is"] == f"window:{pi['id']}" for thing in shown["things"])
     )
     desktop.close_launcher()
     desktop.presence_says({"addresses": ["TESTQA"], "busy": False})
