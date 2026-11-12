@@ -76,8 +76,8 @@ impl Microphone {
 
 /// The rank a microphone's twin takes among the sources, from the
 /// microphone's own `priority.session`: one above it once Joel has kept a
-/// cleaned pick, so that when the microphone chosen goes, WirePlumber falls
-/// back to a twin rather than to a microphone it cleans; and none before,
+/// cleaned pick, so that when the microphone chosen goes, the session
+/// manager falls back to a twin rather than to a microphone it cleans; and none before,
 /// so nothing changes until he picks.
 fn rank(priority: Option<&str>, chosen: &Chosen) -> Option<i64> {
     if !chosen.any_picked() {
