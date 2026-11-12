@@ -39,7 +39,7 @@ impl Running {
         zone_set(&folder, "America/Halifax");
         std::fs::write(folder.join("kept/here.json"), kept().to_string()).unwrap();
         let socket = folder.join("daemons/location.sock");
-        let mut command = Command::new(env!("CARGO_BIN_EXE_whereabouts"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_location"));
         command
             .arg(&socket)
             .arg(folder.join("root"))

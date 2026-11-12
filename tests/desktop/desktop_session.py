@@ -420,7 +420,7 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         write = f"rm -f {kept}"
         if here is not None:
             write = f"printf %s {shlex.quote(json.dumps(here))} > {kept}"
-        self.as_account(f"{write} && systemctl --user restart whereabouts.service")
+        self.as_account(f"{write} && systemctl --user restart location.service")
 
     def here_kept(self) -> Json | None:
         """Give where whereabouts says the laptop is, as it keeps it, or None for nowhere."""

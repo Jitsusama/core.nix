@@ -36,9 +36,12 @@
 //! Given WORDS, the launcher's words.json, it serves Location's rows too,
 //! worded and ready to draw (rows.rs), so the launcher holds none of it.
 //!
-//!     whereabouts SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]
-//!     whereabouts set PIN WORDS
-//!     whereabouts again PIN
+//! Its program goes by its domain's name, location, as its socket and
+//! units do (docs/daemons.md):
+//!
+//!     location SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]
+//!     location set PIN WORDS
+//!     location again PIN
 
 mod clock;
 mod figures;
@@ -143,8 +146,8 @@ async fn main() -> ExitCode {
     match done {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) if error.is::<Usage>() => {
-            eprintln!("<3>usage: whereabouts SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]");
-            eprintln!("<3>       whereabouts set PIN WORDS | again PIN");
+            eprintln!("<3>usage: location SOCKET ROOT [KEPT PIN MOVED] [--words WORDS]");
+            eprintln!("<3>       location set PIN WORDS | again PIN");
             ExitCode::from(64)
         }
         Err(error) => {
