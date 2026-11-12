@@ -22,8 +22,10 @@ function worded(time, words) {
 }
 
 // What it says, the daemon's record with its times worded: each eyebrow
-// item that's a time, and each fact's time after its value. The eyebrow
-// gives way by whole items, those it keeps least first (Reading.js).
+// item that's a time, and each fact's time after its value, and after its
+// items too where it's given as items, an item whole of its own, so its
+// lines break only between them. The eyebrow gives way by whole items,
+// those it keeps least first (Reading.js).
 function shown(drawer, words) {
     const eyebrowItems = (drawer.eyebrow ?? []).map(item => ({
         said: item.at ? worded(item.at, words) : String(item.said ?? ""),
@@ -40,8 +42,11 @@ function shown(drawer, words) {
                 told[name] = fact[name];
             }
         }
-        told.value = [String(fact.value ?? ""), worded(fact.at, words)]
-            .filter(part => part !== "").join(DOT);
+        const when = worded(fact.at, words);
+        told.value = [String(fact.value ?? ""), when].filter(part => part !== "").join(DOT);
+        if (fact.valueItems) {
+            told.valueItems = fact.valueItems.concat([{ said: when, whole: true }]);
+        }
         return told;
     });
     return {

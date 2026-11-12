@@ -137,8 +137,9 @@ fn budget(budgets: Option<&Value>, session: &str) -> String {
         .unwrap_or_default()
 }
 
-/// What it landed last, newest by when: what and its ref, and when.
-fn landed(presence: Option<&Value>) -> Option<(String, Option<i64>)> {
+/// What it landed last, newest by when: what and its ref, each an item
+/// the drawer keeps whole on its line, and when.
+fn landed(presence: Option<&Value>) -> Option<(Vec<String>, Option<i64>)> {
     let landings = presence?.get("landings")?.as_array()?;
     let at = |one: &Value| {
         one.get("at")
@@ -152,8 +153,12 @@ fn landed(presence: Option<&Value>) -> Option<(String, Option<i64>)> {
             Some(newest) if at(newest) >= at(one) => Some(newest),
             _ => Some(one),
         })?;
-    let said = joined(&[text(Some(last), "/what"), text(Some(last), "/ref")], DOT);
-    Some((said, last.get("at").and_then(clock::ms_of)))
+    let items = [text(Some(last), "/what"), text(Some(last), "/ref")]
+        .into_iter()
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect();
+    Some((items, last.get("at").and_then(clock::ms_of)))
 }
 
 /// Its address, where it works and since when it's run are the eyebrow
@@ -228,7 +233,8 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
                 .fill("allOf", &[("spent", text(Some(family), "/all"))])
         },
     );
-    let (landed_said, landed_at) = landed(presence).unwrap_or_default();
+    let (landed_items, landed_at) = landed(presence).unwrap_or_default();
+    let landed_said = landed_items.join(DOT);
     let budget = if known.sharing {
         String::new()
     } else {
@@ -265,6 +271,12 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
             && let Some(at) = landed_at
         {
             said["at"] = json!({"at": at, "as": "clock"});
+        }
+        if fact == "last-landing" {
+            said["valueItems"] = landed_items
+                .iter()
+                .map(|item| json!({"said": item, "whole": true}))
+                .collect();
         }
         said
     })
@@ -438,6 +450,33 @@ mod tests {
         assert_eq!(drawn["key"], "drawer:agents:8IDU4E");
         assert_eq!(drawn["kind"], "drawer");
         assert_eq!(drawn["drawer"]["title"], "A Quest");
+    }
+
+    /// Its last landing breaks only between its title, its change and
+    /// when, never inside one (Y2YBTS, 2026-11-12: "i hate gross line
+    /// wraps"), each whole on its line, its value still all of it.
+    #[test]
+    fn its_last_landing_is_said_as_its_title_its_change_and_when() {
+        let presence = json!({"addresses": ["8IDU4E"], "session": "s-1", "landings": [
+            {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}]});
+        let drawn = drawer(
+            Session(&record(&presence)),
+            false,
+            &words(),
+            &known(None, None),
+        );
+        let landing = &drawn["drawer"]["facts"][0];
+        assert_eq!(
+            landing["valueItems"],
+            json!([{"said": "Serve rows", "whole": true},
+                {"said": "core.nix#1", "whole": true}]),
+            "its title and its change as items"
+        );
+        assert_eq!(
+            landing["value"], "Serve rows \u{b7} core.nix#1",
+            "copied whole"
+        );
+        assert_eq!(landing["at"]["as"], "clock", "when, for the shell to say");
     }
 
     #[test]
