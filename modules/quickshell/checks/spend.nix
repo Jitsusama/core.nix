@@ -83,6 +83,7 @@
       cp ${../../../tests/spend-served.qml} served.qml
       cp ${../../../tests/spend-told.qml} told.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${../../../tests/lib/Until.qml} Until.qml
       cp ${niri} Niri.qml
       cp ${singleton "Quiet.qml" "property bool sharing: false"} Quiet.qml
       cp ${shortcuts} Shortcuts.qml

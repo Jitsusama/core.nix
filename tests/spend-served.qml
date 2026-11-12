@@ -107,49 +107,16 @@ ShellRoot {
     // Each case, as the test library says it.
     readonly property var expect: Expect.expect
 
-    // Waits for `holds`, ten seconds at most, then goes on to `then`, or
-    // fails saying `what`; `then` failing fails too.
-    function until(what, holds, then) {
-        waits.what = what;
-        waits.holds = holds;
-        waits.then = then;
-        waits.left = 200;
-        waits.start();
-    }
-
-    Timer {
+    // Each wait for the daemon, as the test library waits.
+    Until {
         id: waits
-
-        property string what: ""
-        property var holds: null
-        property var then: null
-        property int left: 0
-
-        interval: 50
-        repeat: true
-        onTriggered: {
-            try {
-                if (holds()) {
-                    stop();
-                    then();
-                } else if (--left === 0) {
-                    stop();
-                    throw new Error(`${what} never held`);
-                }
-            } catch (error) {
-                stop();
-                // Where it threw, since a case's message alone rarely says.
-                console.warn(`FAIL ${error.message}\n${error.stack ?? ""}`);
-                Qt.callLater(() => Qt.exit(1));
-            }
-        }
     }
 
     // spend-watch's collection written again, as its pass writes it, which
     // serve hears and tells; once `holds`, on to `then`.
     function rewrite(collection, what, holds, then) {
         collectionFile.setText(JSON.stringify(collection));
-        until(what, holds, then);
+        waits.until(what, holds, then);
     }
 
     // What the machine daemon, stood in for, was asked to do.
@@ -194,7 +161,7 @@ ShellRoot {
         // Serve may first serve what the folder held before these were
         // written, so the wait is for the rows they list, in their order.
         const listed = JSON.parse(root.collected).shown.map(key => `spend:${key}`).join(", ");
-        until("the collection served", () => spend.known
+        waits.until("the collection served", () => spend.known
             && Object.keys(SpendWatch.budgets).length > 0
             && spend.everything().map(row => row.key).join(", ") === listed, answers);
     }
@@ -414,7 +381,7 @@ ShellRoot {
         // place is a place of its own, served apart, so its rows may come
         // after the ones the collection was waited for by.
         Quiet.sharing = true;
-        until("the quiet rows served", () => spend.everything().length > 0, quietServed);
+        waits.until("the quiet rows served", () => spend.everything().length > 0, quietServed);
     }
 
     function quietServed() {
@@ -546,7 +513,7 @@ ShellRoot {
                 const told = shutSpend.everything()[0];
                 told.run();
                 told.verbs().find(row => row.name === "It's Expected").run();
-                until("its acts answered", () => shutLauncher.refusals.length === 2,
+                waits.until("its acts answered", () => shutLauncher.refusals.length === 2,
                     () => step(refusedActs));
             }));
     }
@@ -604,6 +571,6 @@ ShellRoot {
 
 
     // Spend over the files spend-watch wrote, read once they're there.
-    Component.onCompleted: until("the written files read",
+    Component.onCompleted: waits.until("the written files read",
         () => root.collected !== "" && root.budgeted !== "", collect)
 }
