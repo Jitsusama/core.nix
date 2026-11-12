@@ -3,10 +3,10 @@
 pi-hosts-recover.nix, beside this, runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), on a machine whose account lingers with a realm's hosts as their module
 renders them, their node a stand-in that says ready and pings the watchdog each second until a file
-tells it to hang, crash or refuse. A host left down starts the notice that says so, whose words
-the journal keeps too, which is what the tests read: the machine shows no notices. Each test
-starts the background host afresh, its start limit cleared, so any test runs alone with `-k`.
-The tests need no value from Nix.
+tells it to hang, crash, refuse or run a command too big for it. A host left down starts the
+notice that says so, whose words the journal keeps too, which is what the tests read: the machine
+shows no notices. Each test starts the background host afresh, its start limit cleared, so any
+test runs alone with `-k`. The tests need no value from Nix.
 """
 
 from __future__ import annotations
@@ -42,6 +42,10 @@ START_LIMIT = 3
 COMING_BACK = dt.timedelta(seconds=60)
 # How long a host left down is watched for a start it shouldn't get: past two restart delays.
 STAYING_DOWN = dt.timedelta(seconds=15)
+# What the unit is held to while a command of its takes a gigabyte, so the kernel kills it.
+MEMORY_HELD = "64M"
+# What the kernel's kill of a command leaves as its exit: 128 and SIGKILL.
+KILLED = 137
 
 
 def as_alice(command: str) -> str:
@@ -130,6 +134,31 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.
     assert DOWN not in host.said(NOTICE)
+
+
+def test_a_host_outlives_a_command_the_kernel_kills_for_memory(host: Host) -> None:
+    """A command a conversation runs shares its host's unit, and its OOM kill leaves the host.
+
+    systemd's default would stop the whole unit, parking every conversation the host holds over
+    one command; a plain pi outlives its command the same way.
+    """
+    [first] = host.starts()
+    host.run(f"systemctl --user set-property --runtime {UNIT} MemoryMax={MEMORY_HELD}")
+    try:
+        host.run(f"touch {FOLDER}/hog")
+        host.machine.wait_until_succeeds(
+            f"journalctl --no-pager _UID=1000 USER_UNIT={UNIT}"
+            " | grep -qF 'killed by the OOM killer'",
+            timeout=COMING_BACK,
+        )
+        # Nothing more is to happen, so the test waits out the time a restart would come in.
+        host.machine.sleep(duration=STAYING_DOWN)
+        assert host.show("ActiveState") == "active", host.said()
+        assert host.show("MainPID") == first
+        assert host.starts() == [first]
+        assert host.run(f"cat {FOLDER}/hog.status").strip() == str(KILLED)
+    finally:
+        host.run(f"systemctl --user set-property --runtime {UNIT} MemoryMax=infinity")
 
 
 def test_a_host_that_keeps_crashing_stays_down_after_three_starts(host: Host) -> None:
