@@ -350,10 +350,12 @@ QtObject {
         // Joel's 20 changes in machine took a median 36 ms, 6 past 50, and
         // nothing said whether they waited in the shell or after their
         // frame began (2026-11-11). Each part is said over the changes
-        // stamped with it, as a key's is.
+        // stamped with it, as a key's is, and how long each waited on the
+        // pace before its refresh began, which Windows' 190 ms in the shell
+        // was (2026-11-12).
         const parted = Presented.changesSaid([
-            { place: "machine", from: 0, heard: 5, begun: 15, at: 40 },
-            { place: "machine", from: 100, heard: 102, begun: 130, at: 190 },
+            { place: "machine", from: 0, heard: 5, refreshed: 7, begun: 15, at: 40 },
+            { place: "machine", from: 100, heard: 102, refreshed: 122, begun: 130, at: 190 },
             { place: "machine", from: 200, at: 230 },
             { place: "quests", from: 0, at: 70 }
         ]);
@@ -361,7 +363,8 @@ QtObject {
             parted.join("\n"),
             "launcher: 3 changes in machine presented a median 40 ms from the line, "
             + "the slowest 90 ms, the p99 90 ms, 2 within 50 ms: a median 2 ms before the "
-            + "shell heard it, 10 in the shell and 25 from its frame's start\n"
+            + "shell heard it, 2 waiting on the pace, 8 in the shell and 25 from its frame's "
+            + "start\n"
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
@@ -499,6 +502,68 @@ QtObject {
         check(failures, "and so does a thing whose stamp is null", makes.join(), "left");
     }
 
+    // Joel's windows changes waited up to 190 ms in the shell while his
+    // opening's sources woke, each behind another source's refresh a few
+    // milliseconds dear, for the rest of a quarter second (2026-11-12,
+    // 10:16 and 10:17); one that came alone took 13. The wait after a
+    // refresh is five times what it cost, so the shell spends at most a
+    // fifth of its time refreshing, and never more than the pace.
+    function costing(failures) {
+        const every = 250;
+        const cheap = Pacing.costed(Pacing.took(1000, Pacing.rested()), 8);
+        const soon = Pacing.heard(cheap, 1030, every);
+        check(failures, "a change after a cheap refresh waits five times its cost",
+            soon.pace.due, 1040);
+        check(failures, "and one past that is taken at once",
+            Pacing.heard(cheap, 1045, every).now, true);
+        const dear = Pacing.costed(Pacing.took(1000, Pacing.rested()), 80);
+        check(failures, "one after a dear refresh waits no more than the pace",
+            Pacing.heard(dear, 1100, every).pace.due, 1250);
+        const tiny = Pacing.costed(Pacing.took(1000, Pacing.rested()), 1);
+        check(failures, "nor less than a frame, which would draw only the second",
+            Pacing.heard(tiny, 1005, every).pace.due, 1016);
+        check(failures, "a refresh keeps the last one's cost until its own is known",
+            Pacing.took(2000, cheap).cost, 8);
+        check(failures, "as does the timer ringing", Pacing.rang(soon.pace).cost, 8);
+        check(failures, "a pace whose cost isn't known yet waits the whole pace",
+            Pacing.heard(Pacing.took(1000, Pacing.rested()), 1100, every).pace.due, 1250);
+
+        // A source changing every 2 ms for 3 s, as Slack's answers did, the
+        // shell hearing nothing while it refreshes.
+        const storm = cost => {
+            let pace = Pacing.rested();
+            let busy = 0;
+            let spent = 0;
+            let refreshes = 0;
+            const refresh = at => {
+                pace = Pacing.costed(Pacing.took(at, pace), cost);
+                spent += cost;
+                refreshes += 1;
+                busy = at + cost;
+            };
+            for (let now = 1000; now < 4000; now += 2) {
+                if (now < busy)
+                    continue;
+                if (pace.due !== null && pace.due <= now) {
+                    pace = Pacing.rang(pace);
+                    refresh(now);
+                    continue;
+                }
+                const heard = Pacing.heard(pace, now, every);
+                pace = heard.pace;
+                if (heard.now)
+                    refresh(now);
+            }
+            return { share: spent / 3000, each: 3000 / refreshes };
+        };
+        const cheapStorm = storm(10);
+        check(failures, "a storm of cheap changes spends at most a fifth refreshing",
+            cheapStorm.share <= 0.2, true);
+        check(failures, "and shows them many times a second", cheapStorm.each <= 60, true);
+        check(failures, "a storm of dear ones refreshes at most four times a second",
+            storm(100).each >= every, true);
+    }
+
     function run() {
         const failures = [];
         const every = 250;
@@ -581,6 +646,7 @@ QtObject {
         check(failures, "and one long after it is no key's",
             Pacing.keyed(Pacing.sinceKey(1200, 1000, 1070), false, within, true), false);
 
+        costing(failures);
         framing(failures);
         presenting(failures);
         wanting(failures);

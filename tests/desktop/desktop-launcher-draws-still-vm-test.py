@@ -136,7 +136,9 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
 
     Each change a source says joins the whole corpus again and searches what's shown, so 86 of
     Slack's answers, a tenth of a second apart just after a restart, held the open launcher a
-    minute (2026-10-30). A burst is taken as one refresh, then one each quarter second.
+    minute (2026-10-30). A burst is taken a refresh at a time, none sooner after the last than
+    a frame, and no more refreshes than changes heard. How long each waits by what the last
+    cost is held in tests/pacing.qml, and that the list keeps to those waits in keeps-up.
     """
     machine = desktop.machine
     jobs = "$XDG_RUNTIME_DIR/jobs"
@@ -185,15 +187,13 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         # after the last (mycelium's PROTOCOL.md), so 3 s of writes are
         # heard as about 12.
         assert len(heard) >= writes // 4, f"only {len(heard)} changes heard, too few to tell"
-        # Taken one by one, each change heard was a refresh of its own, some
-        # a tenth of a second after the last (2026-10-30). Together, there's
-        # one at once and then at most four a second while they come, each
-        # begun a quarter second after the last began. That's read from the
-        # shell's own clock as each begins: the journal hears a refresh's
-        # report as it ends, and on a loaded machine one slowed refresh put
-        # its report 0.06 s before the next one's (2026-11-03).
-        most = 2 + int(sum(heard) * 4)
-        assert len(refreshes) <= most, f"{len(heard)} changes, {len(refreshes)} refreshes"
+        # Each change waits on the last refresh, and those that came while
+        # it waited are taken together, so there are never more refreshes
+        # than changes heard. When each began is read from the shell's own
+        # clock as it begins: the journal hears a refresh's report as it
+        # ends, and on a loaded machine one slowed refresh put its report
+        # 0.06 s before the next one's (2026-11-03).
+        assert len(refreshes) <= len(heard), f"{len(heard)} changes, {len(refreshes)} refreshes"
         began = [
             int(line.split("report[refresh of jobs began ", 1)[1].removesuffix("]"))
             for line in desktop.as_account(
@@ -204,8 +204,9 @@ def test_an_open_launcher_takes_a_burst_of_changes_together(desktop: Desktop) ->
         ]
         apart = [later - sooner for sooner, later in itertools.pairwise(began)]
         assert len(began) >= len(refreshes), f"{len(began)} begun, {len(refreshes)} said"
-        # A coarse timer, Qt's own, may wake up to 5% early: 12 ms of 250.
-        assert min(apart, default=1000) >= 235, f"refreshes began {apart} ms apart"  # noqa: PLR2004
+        # Two within a frame would draw only the second (launcher/Pacing.js).
+        # A coarse timer, Qt's own, may wake up to 5% early: 1 ms of 16.
+        assert min(apart, default=1000) >= 15, f"refreshes began {apart} ms apart"  # noqa: PLR2004
     finally:
         desktop.close_launcher()
         desktop.as_account(f"rm -f {jobs}/queue.json")
