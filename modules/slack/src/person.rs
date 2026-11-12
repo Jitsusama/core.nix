@@ -24,6 +24,8 @@ use crate::message_rows::{capitalised, copy, open, word};
 
 /// The act that writes to them in Slack, as words.json keys it.
 pub const WRITE: &str = "verb:person:slack";
+/// What their title says it is, as People's drawer finds its head line.
+pub const TITLE: &str = "people:title";
 
 /// The words a person's facts and act are said in.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -128,7 +130,9 @@ fn conversations(found: &Found, words: &Words) -> Vec<Value> {
 
 /// Their drawer's facts, each only while Slack says it: their title,
 /// which says who they are, first, under their name as People's drawer
-/// heads it (VKCF3Z, 0cea8a93), then, in the order Slack.js gave them,
+/// heads it (VKCF3Z, 0cea8a93), found there by the People word it says it
+/// is, `wordsId`, not by its label (Y2YBTS, 2026-11-12); then, in the
+/// order Slack.js gave them,
 /// status, presence and time zone; or, for an
 /// address Slack knows nobody by, that it knows no one there, where the
 /// status would stand, since the two never show together.
@@ -143,7 +147,7 @@ fn facts(found: &Found, words: &Words) -> Vec<Value> {
         .join(" ");
     let mut facts = Vec::new();
     if !found.title.is_empty() {
-        facts.push(json!({"name": words.title, "said": found.title}));
+        facts.push(json!({"name": words.title, "said": found.title, "wordsId": TITLE}));
     }
     if !status.is_empty() {
         facts.push(json!({"name": words.status, "said": status}));
@@ -200,7 +204,7 @@ mod tests {
         assert_eq!(
             said["facts"],
             json!([
-                {"name": "Title", "said": "Analyst"},
+                {"name": "Title", "said": "Analyst", "wordsId": "people:title"},
                 {"name": "Status", "said": "\u{1f96a} at lunch"},
                 {"name": "Presence", "said": "In a huddle"},
                 {"name": "Time Zone", "zone": "Europe/London", "as": "zone"}

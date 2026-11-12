@@ -12,6 +12,15 @@
 //! A source that's down says so, never what it last said, which may be
 //! hours old (VKCF3Z, 2026-11-11): its facts give way to its name and
 //! "not answering", as a source names itself in the launcher's words.
+//!
+//! Who they are, their title and then their team, is said under their
+//! name rather than among their facts (VKCF3Z, a807ddcd): a quiet line
+//! that gives way from its end, served here so the shell words no
+//! drawer it's given (Y2YBTS, 2026-11-12). A fact is found for it by
+//! the `wordsId` it says it is, never by its label, so renaming a word
+//! keeps the line. Slack says its Title so; the pages source, kept
+//! outside core.nix, says no `wordsId` yet, so a team only it knows
+//! stays among the facts until it does.
 
 use std::collections::BTreeMap;
 
@@ -27,6 +36,12 @@ pub const THERE: &str = "people:there";
 /// What a source's name goes by in the launcher's words, after the
 /// source's own name, as `slack:person:source` is Slack's.
 pub const SOURCE: &str = ":person:source";
+/// What a fact says it is where it's their title, as Slack's Title is.
+pub const TITLE: &str = "people:title";
+/// What a fact says it is where it's their team.
+pub const TEAM: &str = "people:team";
+/// What joins their title and their team under their name.
+const JOINT: &str = " \u{b7} ";
 
 /// The names a drawer gives what it adds to the sources' facts.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -174,10 +189,31 @@ pub fn drawer(
             _ => facts.push(fact.clone()),
         }
     }
-    json!({
-        "key": key(person), "kind": "drawer",
-        "drawer": {"title": person.name, "facts": facts, "body": ""},
-    })
+    let head = headed(&mut facts);
+    let mut drawn = json!({"title": person.name, "facts": facts, "body": ""});
+    if let Some(preview) = head {
+        drawn["preview"] = preview;
+    }
+    json!({"key": key(person), "kind": "drawer", "drawer": drawn})
+}
+
+/// Their title and their team, each the first a source says, as the quiet
+/// line under their name that gives way from its end, the team first;
+/// both taken out of `facts`, since a drawer never says a thing twice.
+/// None where no source says either.
+fn headed(facts: &mut Vec<Value>) -> Option<Value> {
+    let is = |fact: &Value, id: &str| fact.get("wordsId").and_then(Value::as_str) == Some(id);
+    let first = |id: &str| {
+        facts
+            .iter()
+            .filter(|fact| is(fact, id))
+            .filter_map(|fact| fact.get("said").and_then(Value::as_str))
+            .find(|said| !said.is_empty())
+            .map(str::to_owned)
+    };
+    let items: Vec<String> = [first(TITLE), first(TEAM)].into_iter().flatten().collect();
+    facts.retain(|fact| !is(fact, TITLE) && !is(fact, TEAM));
+    (!items.is_empty()).then(|| json!({"lines": [items.join(JOINT)], "quiet": true, "gives": true}))
 }
 
 #[cfg(test)]
@@ -287,6 +323,68 @@ mod tests {
             drawn_while(&ada, &up)["drawer"]["facts"][1],
             json!({"name": "Presence", "said": "active"}),
             "once it answers, what it says"
+        );
+    }
+
+    #[test]
+    fn who_they_are_goes_under_their_name_by_what_each_fact_says_it_is() {
+        let ada = record(
+            "person:ada@example.com",
+            &[
+                (
+                    "slack",
+                    json!({"facts": [
+                        {"name": "Title", "said": "Analyst", "wordsId": TITLE},
+                        {"name": "Status", "said": "\u{1f334} away"}
+                    ]}),
+                ),
+                (
+                    "pages",
+                    json!({"facts": [
+                        {"name": "Role", "said": "Engineer", "wordsId": TITLE},
+                        {"name": "Squad", "said": "Shell", "wordsId": TEAM}
+                    ]}),
+                ),
+            ],
+        );
+        let drawer = drawn(&ada)["drawer"].take();
+        assert_eq!(
+            (drawer["preview"].clone(), drawer["facts"].clone()),
+            (
+                json!({"lines": ["Analyst \u{b7} Shell"], "quiet": true, "gives": true}),
+                json!([
+                    {"name": "Email", "said": "ada@example.com"},
+                    {"name": "Status", "said": "\u{1f334} away"},
+                ]),
+            ),
+            "Slack's title, as it's asked first, then the team, whatever each is labelled, \
+             and neither said again among the facts"
+        );
+    }
+
+    #[test]
+    fn a_fact_is_under_their_name_only_by_what_it_says_it_is() {
+        let ada = record(
+            "person:ada@example.com",
+            &[(
+                "pages",
+                json!({"facts": [
+                    {"name": "Title", "said": "", "wordsId": TITLE},
+                    {"name": "Team", "said": "Shell"}
+                ]}),
+            )],
+        );
+        let drawer = drawn(&ada)["drawer"].take();
+        assert_eq!(
+            (drawer.get("preview"), drawer["facts"].clone()),
+            (
+                None,
+                json!([
+                    {"name": "Email", "said": "ada@example.com"},
+                    {"name": "Team", "said": "Shell"},
+                ]),
+            ),
+            "a title saying nothing makes no line, and a team saying no wordsId stays a fact"
         );
     }
 

@@ -234,6 +234,11 @@ function details(person, there = () => "") {
 // facts, since a drawer never says a thing twice. The first source's is
 // theirs, as with every fact, so Slack's title wins over Vault's, Slack
 // being asked first. Knowing neither, the drawer has no line for it.
+// Only for a drawer the shell makes itself (details), for someone the
+// people daemon serves none for yet: one it serves comes with this line
+// (drawer.rs), found by each fact's wordsId rather than its label
+// (Y2YBTS, 2026-11-12). It goes with details, once the people daemon
+// serves every person's drawer (XY9H5C, by 2026-11-20).
 function headed(drawer, labels) {
     const facts = drawer.facts ?? [];
     const first = label => facts.find(fact => fact.label === label && fact.value)?.value ?? "";
