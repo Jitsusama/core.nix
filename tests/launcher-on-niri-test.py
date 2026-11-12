@@ -3202,6 +3202,36 @@ def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
     assert change["at"] >= change["from"], f"said {change}, presented before its line"
 
 
+def test_a_charge_told_in_batterys_step_is_said_there(shell: Shell, machine: StandIn) -> None:
+    """A charge the daemon tells while Battery's step is shown under Machine is said there.
+
+    Power watched the machine daemon only while its own answer or place could be seen, and a
+    step into Battery under Machine was neither, so Charge kept a figure held from before as
+    current (Y2YBTS, 2026-11-12 [495f1a1b]).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Power" in shown["rows"])
+    shell.down_to("Power")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Battery" in shown["rows"])
+    shell.down_to("Battery")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Charge" in shown["rows"])
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    watched = machine.watching("place:power", deadline)
+    machine.told(battery(77), [])
+    shell.down_to("Charge")
+    if watched:
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "77%")
+    selected = shell.showing()["selected"]
+    shell.close_launcher()
+    assert watched, "Power's rows were never watched in Battery's step"
+    assert selected["side"] == "77%", selected
+
+
 def agent_window(address: str, window: Json, title: str) -> Json:
     """Give a session's window as the agents daemon serves it, paired with niri's window."""
     return {
