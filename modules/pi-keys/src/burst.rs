@@ -87,10 +87,12 @@ struct Open {
 impl Bursts {
     /// Takes the reading at `now`, `interval` milliseconds after the last,
     /// and gives the burst it ends, if it ends one.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a burst's nanoseconds are far under 2^52"
+    )]
     pub fn take(&mut self, now: f64, interval: f64, reading: Reading) -> Option<Burst> {
-        let Some(last) = self.last.replace(reading) else {
-            return None;
-        };
+        let last = self.last.replace(reading)?;
         let ran = reading.run.saturating_sub(last.run);
         let waited = reading.wait.saturating_sub(last.wait);
         let busy = ran > 0 || waited > 0 || matches!(reading.state, 'R' | 'D');

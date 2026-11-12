@@ -101,6 +101,7 @@ impl Draw {
     }
 
     /// A number in [0, 1).
+    #[expect(clippy::cast_precision_loss, reason = "53 bits fit an f64 exactly")]
     pub fn next(&mut self) -> f64 {
         // xorshift64*, plenty for drawing instants.
         self.0 ^= self.0 >> 12;
@@ -170,6 +171,12 @@ pub struct Summary {
 }
 
 /// Sums up modelled keys, or nothing when there are none.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a count of keys is far under 2^52, and a share of it is positive"
+)]
 pub fn summary(keys: &[Key]) -> Option<Summary> {
     if keys.is_empty() {
         return None;
@@ -287,7 +294,10 @@ mod tests {
     #[test]
     fn no_keys_sum_to_nothing() {
         assert_eq!(summary(&[]), None);
-        assert!(keys(&Path::default(), &[], FRAME, 100, &mut Draw::new(1)).is_empty());
+        assert_eq!(
+            keys(&Path::default(), &[], FRAME, 100, &mut Draw::new(1)),
+            []
+        );
     }
 
     #[test]

@@ -61,16 +61,15 @@ fn main() -> ExitCode {
     };
     let number =
         |name: &str, default: f64| value(name).and_then(|v| v.parse().ok()).unwrap_or(default);
-    match args.first().map(String::as_str) {
-        Some("sample") => sample(&Settings {
+    if args.first().map(String::as_str) == Some("sample") {
+        sample(&Settings {
             minutes: number("--minutes", 10.0),
             wait: number("--wait", 60.0),
             call_check: value("--call-check").map(PathBuf::from),
-        }),
-        _ => {
-            eprintln!("usage: pi-keys sample [--minutes N] [--wait N] [--call-check PROGRAM]");
-            ExitCode::from(2)
-        }
+        })
+    } else {
+        eprintln!("usage: pi-keys sample [--minutes N] [--wait N] [--call-check PROGRAM]");
+        ExitCode::from(2)
     }
 }
 
@@ -106,6 +105,21 @@ impl Watched {
             majflt,
         })
     }
+
+    /// Reads the thread at `now`, keeping in `spans` a burst it ends that a
+    /// key would wait out. False when the thread has gone.
+    fn take(&mut self, now: f64, interval: f64, spans: &mut Vec<(f64, f64)>) -> bool {
+        let Some(reading) = self.read() else {
+            return false;
+        };
+        if let Some(b) = self.bursts.take(now, interval, reading)
+            && b.solid()
+            && b.worth()
+        {
+            spans.push((b.at, b.at + b.ms));
+        }
+        true
+    }
 }
 
 /// The threads of the window Joel is at, when it's a pi window whose
@@ -116,12 +130,188 @@ struct At {
     pi: Watched,
 }
 
+/// A call check run beside the sampling every [`CALLS`], never waited on.
+struct Calls {
+    program: Option<PathBuf>,
+    running: Option<Child>,
+    started: f64,
+}
+
+impl Calls {
+    /// Whether the check that last finished found a call on, starting the
+    /// next when it's due.
+    fn on(&mut self, now: f64) -> bool {
+        let Some(program) = self.program.as_deref() else {
+            return false;
+        };
+        match self.running.as_mut().map(Child::try_wait) {
+            Some(Ok(Some(status))) => {
+                self.running = None;
+                status.code() == Some(0)
+            }
+            Some(Err(_)) => {
+                self.running = None;
+                false
+            }
+            None if now - self.started >= CALLS => {
+                self.started = now;
+                self.running = quietly(program).spawn().ok();
+                false
+            }
+            Some(Ok(None)) | None => false,
+        }
+    }
+}
+
+impl Drop for Calls {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.running.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn quietly(program: &FsPath) -> Command {
+    let mut command = Command::new(program);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+/// What a sample has seen so far.
+struct Sampler {
+    socket: PathBuf,
+    niri: Watched,
+    at: Option<At>,
+    frame: f64,
+    spans: [Vec<(f64, f64)>; 3],
+    at_pi: Vec<(f64, f64)>,
+    since: Option<f64>,
+    windows: HashSet<u64>,
+    gaps: u32,
+    focus_asked: f64,
+}
+
+impl Sampler {
+    /// Leaves out what a late tick would show, as the sampler's own stall.
+    fn gap(&mut self, now: f64, interval: f64) {
+        self.gaps += 1;
+        self.niri.bursts.reset();
+        if let Some(at) = self.at.as_mut() {
+            at.kitty.bursts.reset();
+            at.pi.bursts.reset();
+        }
+        if let Some(from) = self.since {
+            self.at_pi.push((from, now - interval));
+            self.since = Some(now);
+        }
+    }
+
+    /// Ends the span at a pi window, if one is open.
+    fn away(&mut self, now: f64) {
+        if let Some(from) = self.since.take() {
+            self.at_pi.push((from, now));
+        }
+    }
+
+    /// Follows the focus to another window, watching its threads when
+    /// it's a pi window.
+    fn refocus(&mut self, now: f64) {
+        self.focus_asked = now;
+        let window = ask(&self.socket, "FocusedWindow")
+            .as_deref()
+            .and_then(path::focused);
+        if self.at.as_ref().map(|a| a.window) == window.as_ref().map(|w| w.id) {
+            return;
+        }
+        self.away(now);
+        self.at = window.as_ref().and_then(threads_of);
+        if let Some(found) = self.at.as_ref() {
+            self.windows.insert(found.window);
+            self.since = Some(now);
+            if let Some(frame) = ask(&self.socket, "FocusedOutput")
+                .as_deref()
+                .and_then(path::frame)
+            {
+                self.frame = frame;
+            }
+        }
+    }
+
+    fn tick(&mut self, now: f64, interval: f64) {
+        if interval > GAP {
+            self.gap(now, interval);
+        }
+        if now - self.focus_asked >= FOCUS {
+            self.refocus(now);
+        }
+        let [niri, kitty, pi] = &mut self.spans;
+        self.niri.take(now, interval, niri);
+        if let Some(found) = self.at.as_mut()
+            && !(found.kitty.take(now, interval, kitty) && found.pi.take(now, interval, pi))
+        {
+            eprintln!(
+                "pi-keys: thread {} or {} ended",
+                found.kitty.tid, found.pi.tid
+            );
+            self.at = None;
+            self.away(now);
+        }
+    }
+
+    /// Milliseconds spent at pi windows so far.
+    fn held(&self, now: f64) -> f64 {
+        self.at_pi.iter().map(|(a, b)| b - a).sum::<f64>() + self.since.map_or(0.0, |s| now - s)
+    }
+
+    /// The sample's line, or None when no time at a pi window was read.
+    fn line(self, ended: u64, call: bool) -> Option<serde_json::Value> {
+        let [niri, kitty, pi] = self.spans;
+        let path = model::Path {
+            niri: model::Spans::new(niri),
+            kitty: model::Spans::new(kitty),
+            pi: model::Spans::new(pi),
+        };
+        let keys = model::keys(
+            &path,
+            &self.at_pi,
+            self.frame,
+            KEYS,
+            &mut model::Draw::new(ended),
+        );
+        let sum = model::summary(&keys)?;
+        let seconds = self.at_pi.iter().map(|(a, b)| b - a).sum::<f64>() / 1000.0;
+        Some(serde_json::json!({
+            "ended": ended,
+            "keys": sum.keys,
+            "modelled": true,
+            "seconds_at_pi": round(seconds, 1),
+            "p50_ms": round(sum.p50, 1),
+            "p99_ms": round(sum.p99, 1),
+            "max_ms": round(sum.max, 1),
+            "over_33ms": round(sum.late, 4),
+            "waits_over_16ms": {
+                "niri": round(sum.lost_at[0], 4),
+                "kitty": round(sum.lost_at[1], 4),
+                "pi": round(sum.lost_at[2], 4),
+            },
+            "frame_ms": round(self.frame, 2),
+            "gaps": self.gaps,
+            "windows": self.windows.len(),
+            "call": call,
+        }))
+    }
+}
+
 fn sample(settings: &Settings) -> ExitCode {
     let Some(socket) = niri_socket() else {
         eprintln!("pi-keys: no niri to ask, so no sample");
         return ExitCode::SUCCESS;
     };
-    let Some(mut niri) = socket_pid(&socket).and_then(Watched::open) else {
+    let Some(niri) = socket_pid(&socket).and_then(Watched::open) else {
         eprintln!("pi-keys: niri's thread can't be read, so no sample");
         return ExitCode::SUCCESS;
     };
@@ -132,24 +322,31 @@ fn sample(settings: &Settings) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
-    let begun = Instant::now();
-    let ms = || begun.elapsed().as_secs_f64() * 1000.0;
-    let enough = settings.minutes * 60_000.0;
-    let mut frame = ask(&socket, "FocusedOutput")
+    let frame = ask(&socket, "FocusedOutput")
         .as_deref()
         .and_then(path::frame)
         .unwrap_or(SIXTY);
-    let (mut niri_spans, mut kitty_spans, mut pi_spans) = (Vec::new(), Vec::new(), Vec::new());
-    let mut at_pi: Vec<(f64, f64)> = Vec::new();
-    let mut since: Option<f64> = None;
-    let mut at: Option<At> = None;
-    let mut windows = HashSet::new();
-    let (mut gaps, mut call) = (0u32, false);
-    let mut focus_at = f64::NEG_INFINITY;
-    let mut calls_at = 0.0;
-    let mut checking: Option<Child> = None;
-    let mut last = ms();
-    let mut next = Instant::now();
+    let mut sampler = Sampler {
+        socket,
+        niri,
+        at: None,
+        frame,
+        spans: [Vec::new(), Vec::new(), Vec::new()],
+        at_pi: Vec::new(),
+        since: None,
+        windows: HashSet::new(),
+        gaps: 0,
+        focus_asked: f64::NEG_INFINITY,
+    };
+    let mut calls = Calls {
+        program: settings.call_check.clone(),
+        running: None,
+        started: 0.0,
+    };
+    let enough = settings.minutes * 60_000.0;
+    let begun = Instant::now();
+    let ms = || begun.elapsed().as_secs_f64() * 1000.0;
+    let (mut last, mut next, mut call) = (ms(), Instant::now(), false);
     loop {
         next += TICK;
         match next.checked_duration_since(Instant::now()) {
@@ -157,136 +354,22 @@ fn sample(settings: &Settings) -> ExitCode {
             None => next = Instant::now(),
         }
         let now = ms();
-        let interval = now - last;
+        sampler.tick(now, now - last);
         last = now;
-        if interval > GAP {
-            gaps += 1;
-            niri.bursts.reset();
-            if let Some(at) = at.as_mut() {
-                at.kitty.bursts.reset();
-                at.pi.bursts.reset();
-            }
-            if let Some(from) = since {
-                at_pi.push((from, now - interval));
-                since = Some(now);
-            }
+        if calls.on(now) {
+            call = true;
+            break;
         }
-        if now - focus_at >= FOCUS {
-            focus_at = now;
-            let window = ask(&socket, "FocusedWindow")
-                .as_deref()
-                .and_then(path::focused);
-            if at.as_ref().map(|a| a.window) != window.as_ref().map(|w| w.id) {
-                at = window.as_ref().and_then(threads_of);
-                if let Some(from) = since.take() {
-                    at_pi.push((from, now));
-                }
-                if let Some(found) = at.as_ref() {
-                    windows.insert(found.window);
-                    since = Some(now);
-                    if let Some(f) = ask(&socket, "FocusedOutput")
-                        .as_deref()
-                        .and_then(path::frame)
-                    {
-                        frame = f;
-                    }
-                }
-            }
-        }
-        let take = |watched: &mut Watched, spans: &mut Vec<(f64, f64)>| {
-            let Some(reading) = watched.read() else {
-                return false;
-            };
-            if let Some(b) = watched.bursts.take(now, interval, reading)
-                && b.solid()
-                && b.worth()
-            {
-                spans.push((b.at, b.at + b.ms));
-            }
-            true
-        };
-        take(&mut niri, &mut niri_spans);
-        if let Some(found) = at.as_mut() {
-            let alive =
-                take(&mut found.kitty, &mut kitty_spans) && take(&mut found.pi, &mut pi_spans);
-            if !alive {
-                eprintln!(
-                    "pi-keys: thread {} or {} ended",
-                    found.kitty.tid, found.pi.tid
-                );
-                at = None;
-                if let Some(from) = since.take() {
-                    at_pi.push((from, now));
-                }
-            }
-        }
-        if let Some(program) = settings.call_check.as_deref() {
-            match checking.as_mut().map(Child::try_wait) {
-                Some(Ok(Some(status))) => {
-                    checking = None;
-                    if status.code() == Some(0) {
-                        call = true;
-                        break;
-                    }
-                }
-                Some(Ok(None)) => {}
-                Some(Err(_)) => checking = None,
-                None if now - calls_at >= CALLS => {
-                    calls_at = now;
-                    checking = Command::new(program)
-                        .stdin(Stdio::null())
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .spawn()
-                        .ok();
-                }
-                None => {}
-            }
-        }
-        let held: f64 =
-            at_pi.iter().map(|(a, b)| b - a).sum::<f64>() + since.map_or(0.0, |s| now - s);
-        if held >= enough || now >= 3.0 * enough {
+        if sampler.held(now) >= enough || now >= 3.0 * enough {
             break;
         }
     }
-    if let Some(mut child) = checking {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    if let Some(from) = since {
-        at_pi.push((from, last));
-    }
-    let path = model::Path {
-        niri: model::Spans::new(niri_spans),
-        kitty: model::Spans::new(kitty_spans),
-        pi: model::Spans::new(pi_spans),
-    };
+    sampler.away(last);
     let ended = seconds_now();
-    let keys = model::keys(&path, &at_pi, frame, KEYS, &mut model::Draw::new(ended));
-    let seconds: f64 = at_pi.iter().map(|(a, b)| b - a).sum::<f64>() / 1000.0;
-    let Some(sum) = model::summary(&keys) else {
+    let Some(line) = sampler.line(ended, call) else {
         eprintln!("pi-keys: no time at a pi window was sampled, so no sample");
         return ExitCode::SUCCESS;
     };
-    let line = serde_json::json!({
-        "ended": ended,
-        "keys": sum.keys,
-        "modelled": true,
-        "seconds_at_pi": round(seconds, 1),
-        "p50_ms": round(sum.p50, 1),
-        "p99_ms": round(sum.p99, 1),
-        "max_ms": round(sum.max, 1),
-        "over_33ms": round(sum.late, 4),
-        "waits_over_16ms": {
-            "niri": round(sum.lost_at[0], 4),
-            "kitty": round(sum.lost_at[1], 4),
-            "pi": round(sum.lost_at[2], 4),
-        },
-        "frame_ms": round(frame, 2),
-        "gaps": gaps,
-        "windows": windows.len(),
-        "call": call,
-    });
     eprintln!("pi-keys: {line}");
     match keep(ended, &line.to_string()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -319,10 +402,7 @@ fn wait_for_pi(socket: &FsPath, settings: &Settings) -> bool {
 /// Whether the call check says a call is on: it exits 0 then.
 fn in_a_call(settings: &Settings) -> bool {
     settings.call_check.as_deref().is_some_and(|program| {
-        Command::new(program)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+        quietly(program)
             .status()
             .is_ok_and(|status| status.code() == Some(0))
     })
@@ -392,10 +472,14 @@ fn kitty_scopes(under: &FsPath) -> Vec<PathBuf> {
     while let Some((dir, depth)) = slices.pop() {
         for entry in fs::read_dir(&dir).into_iter().flatten().flatten() {
             let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with("kitty-") && name.ends_with(".scope") {
+            let kind = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default();
+            let kitty = entry.file_name().to_string_lossy().starts_with("kitty-");
+            if kitty && kind == "scope" {
                 found.push(path);
-            } else if name.ends_with(".slice") && depth < 3 {
+            } else if kind == "slice" && depth < 3 {
                 slices.push((path, depth + 1));
             }
         }

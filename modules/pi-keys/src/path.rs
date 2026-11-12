@@ -78,7 +78,7 @@ pub fn frame(answer: &str) -> Option<f64> {
 /// app ids its processes were started with: the one started with the
 /// window's own, or else the one scope of a kitty that draws it alone. Two
 /// started with the same are neither. It finds them as the jobs-sorter's
-/// focus::scope_of does (modules/slices), so what's measured is the window
+/// `focus::scope_of` does (modules/slices), so what's measured is the window
 /// the sorter holds.
 pub fn scope_of<'a>(window: &Window, scopes: &'a [(String, Vec<String>)]) -> Option<&'a str> {
     let one = |found: Vec<&'a str>| (found.len() == 1).then(|| found[0]);
@@ -134,7 +134,7 @@ mod tests {
             .map(|(unit, apps)| {
                 (
                     unit.to_string(),
-                    apps.iter().map(|a| a.to_string()).collect(),
+                    apps.iter().map(ToString::to_string).collect(),
                 )
             })
             .collect()
