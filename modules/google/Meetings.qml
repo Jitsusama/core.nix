@@ -20,9 +20,12 @@
 // Calendar. Its Guests and Attachments are the rows the daemon serves
 // inside it (src/calendar_inside.rs), each guest People's person and each
 // document Documents' own row where they hold one (ready-rows.md's
-// lends). Its other acts stay the shell's until the daemon serves Move the
-// Meeting's times and call-transcripts Open the Transcript, by Sun 15 Nov;
-// then every act inside a meeting is the daemon's.
+// lends), and Move the Meeting, its later times and the row asking Joel
+// to be sure of each. A time typed inside Move is still read by
+// Calendar.js (`typed` on Move's row) till the daemon answers it as a
+// search within Move's row, and its other acts stay the shell's till
+// call-transcripts serves Open the Transcript, both by Sun 15 Nov; then
+// every act inside a meeting is the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -75,8 +78,9 @@ Provider {
     // one that stays (Show in Calendar) is led by Return's own act
     // (Launcher.qml's keepsOpen), where the served inside rows would be.
     function made(from, row, key) {
-        const id = row.held?.id ?? "";
-        const meeting = Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
+        if (row.kind === "move")
+            return provider.moving(from, row, key);
+        const meeting = provider.meetingOf(row.held?.id ?? "");
         const fields = {
             what: "meeting",
             component: "meeting",
@@ -102,12 +106,36 @@ Provider {
         return from.thing(row, key, fields);
     }
 
+    // The meeting held as `id`, coming or held lately, or null.
+    function meetingOf(id) {
+        return Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
+    }
+
+    // Move the Meeting as the daemon serves it, stepping in to its later
+    // times, with a time typed there read by Calendar.js and made as
+    // Calendar.qml's moving() makes one, till the daemon answers it. It's
+    // made here as every row under a meeting is, so it's the meeting
+    // component's (Launcher.qml's components).
+    function moving(from, row, key) {
+        const meeting = provider.meetingOf(from.served(row.parent)?.held?.id ?? "");
+        return from.thing(row, key, {
+            component: "meeting",
+            typed: letters => {
+                const time = meeting ? Calendar.typed(letters, meeting) : null;
+                return time === null ? [] : [Calendar.movingTo(meeting, provider,
+                    Calendar.dated({ start: time.start, end: time.end, allDay: false }),
+                    time.start, time.end)];
+            }
+        });
+    }
+
     // The row the daemon serves inside the meeting at `key` in place of
     // the shell's `act`, for Guests and Attachments, or null for an act
     // it doesn't yet serve whole, or one it served none of.
     readonly property var servedActs: ({
         "verb:calendar:guests": "guests",
-        "verb:calendar:attachments": "attachments"
+        "verb:calendar:attachments": "attachments",
+        "verb:calendar:move": "move"
     })
     function servedInside(from, key, act) {
         const id = provider.servedActs[act?.key];

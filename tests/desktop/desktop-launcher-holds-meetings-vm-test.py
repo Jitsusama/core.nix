@@ -777,7 +777,7 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     desktop.follow()
     desktop.down_to("Move the Meeting")
     desktop.step_in("ret")
-    desktop.launcher_until(lambda shown: "15 Minutes Later" in shown["rows"])
+    desktop.launcher_until(lambda shown: "Fifteen Minutes Later" in shown["rows"])
     # A time typed there is offered first, named by its day and times.
     day = machine.succeed("date -d tomorrow '+%A %-d %B'").strip()
     when = f"{day} \u00b7 10:00 to 10:30"
@@ -803,6 +803,40 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
 
 
 @pytest.mark.usefixtures("google")
+def test_a_later_time_the_daemon_serves_moves_the_meeting_once_joel_is_sure(
+    desktop: Desktop,
+) -> None:
+    """A later time google serves inside Move the Meeting asks google to move it, once sure."""
+    machine = desktop.machine
+    closed = desktop.in_session(LAUNCHER_OPEN)
+    asked = "/run/user/1000/google-asked"
+    machine.succeed(f"rm -f {asked}")
+    desktop.answer("standup")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
+    desktop.follow()
+    desktop.down_to("Move the Meeting")
+    desktop.step_in("ret")
+    desktop.down_to("Tomorrow, Same Time")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            (shown["selected"] or {}).get("name", "").startswith("Move It to ")
+            and "Telling Ada Lovelace and Grace Hopper" in shown["selected"]["name"]
+        )
+    )
+    machine.fail(f"test -s {asked}")
+    machine.send_key("ret")
+    # The daemon's ask comes with its fields in its own order, so it's
+    # matched by what it says, not where.
+    machine.wait_until_succeeds(
+        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
+        timeout=dt.timedelta(seconds=30),
+    )
+    desktop.as_account("qs ipc call launcher toggle")
+    machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
+
+
+@pytest.mark.usefixtures("google")
 def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     desktop: Desktop,
 ) -> None:
@@ -819,8 +853,14 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     assert rows.index("Guests") + 1 == rows.index("Attachments"), rows
     desktop.down_to("Guests")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Grace Hopper"])
-    assert desktop.showing()["things"][1]["is"] == "person:grace@example.com"
+    # A served guest is listed by name at once, and People's own row once
+    # People lends it (ReadyRows' lentRevision), which may come a frame on.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Ada Lovelace", "Grace Hopper"]
+            and shown["things"][1]["is"] == "person:grace@example.com"
+        )
+    )
     desktop.down_to("Grace Hopper")
     machine.send_key("ret")
     # Her page leads with her mail Joel hasn't read, then the ways to reach her.

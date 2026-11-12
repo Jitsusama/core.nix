@@ -27,7 +27,7 @@ use crate::calendar_inside::{Within, inside, returns};
 pub use crate::calendar_words::Words;
 use crate::calendar_words::{COMMA, month, repeated, weekday};
 use crate::compose;
-use crate::rows::{fill, opens};
+use crate::rows::{asks, fill, opens};
 
 /// As many as a Recent lists (launcher/Recent.js), so none is made only
 /// to be dropped.
@@ -165,6 +165,8 @@ pub fn meetings(
             place: each.place,
             drawer: &drawn,
             details: &details,
+            zone,
+            others: meetings,
         };
         let acts = acts(each.meeting, words);
         rows.push(row);
@@ -308,11 +310,12 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
             ("maybe", Answer::Maybe),
             ("no", Answer::No),
         ] {
-            acts.push(json!({
-                "key": format!("verb:calendar:{said}"),
-                "ask": {"answer": {"id": id, "with": said}},
-                "given": meeting.answer == Some(answer),
-            }));
+            let mut act = asks(
+                &format!("verb:calendar:{said}"),
+                &json!({"answer": {"id": id, "with": said}}),
+            );
+            act["given"] = json!(meeting.answer == Some(answer));
+            acts.push(act);
         }
     }
     if meeting.through.is_some() && !meeting.all_day {
@@ -346,14 +349,12 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
             _ => words.fact("telling", "guests"),
         };
         let told = fill(told, &[("count", &count)]);
-        acts.push(json!({
-            "key": "verb:calendar:cancel",
-            "ask": {"cancel": {"id": id}},
-            "sure": fill(
-                words.fact("telling", "sure"),
-                &[("sure", &words.cancel_sure), ("telling", &told)],
-            ),
-        }));
+        let mut act = asks("verb:calendar:cancel", &json!({"cancel": {"id": id}}));
+        act["sure"] = json!(fill(
+            words.fact("telling", "sure"),
+            &[("sure", &words.cancel_sure), ("telling", &told)],
+        ));
+        acts.push(act);
     }
     if let Some(link) = meeting.link.as_ref().or(meeting.page.as_ref()) {
         let side = words.word(if meeting.link.is_some() {
@@ -667,6 +668,25 @@ fn dated(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
     )
 }
 
+/// Its day and times in full, were it moved to run from `start` to `end`:
+/// "Monday 26 October · 15:15 to 15:45" (Calendar.js's `dated`), as Move's
+/// times say where they'd take it.
+pub(crate) fn dated_between(
+    meeting: &Meeting,
+    start: i64,
+    end: i64,
+    zone: &TimeZone,
+    words: &Words,
+) -> String {
+    let moved = Meeting {
+        start,
+        end,
+        all_day: false,
+        ..meeting.clone()
+    };
+    [dated(&moved, zone, words), span(&moved, zone, words)].join(BETWEEN)
+}
+
 /// A time on Joel's clock, "09:05".
 fn clock(time: i64, zone: &TimeZone) -> String {
     Timestamp::from_millisecond(time).map_or_else(
@@ -696,6 +716,10 @@ mod words_tests;
 #[cfg(test)]
 #[path = "calendar_rows_told_tests.rs"]
 mod told_tests;
+
+#[cfg(test)]
+#[path = "calendar_rows_move_tests.rs"]
+mod move_tests;
 
 #[cfg(test)]
 #[path = "calendar_rows_lent_tests.rs"]

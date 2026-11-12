@@ -348,13 +348,13 @@ QtObject {
 
         // Later times keep its length, a day on keeps the clock.
         const design = meeting("design", at(26, 16, 0), at(26, 16, 30));
-        check("later times", Calendar.later(design).map(time => [time.name,
+        check("later times", Calendar.later(design).map(time => [time.state,
             Calendar.dated(Object.assign({ allDay: false }, time))]), [
-            ["15 Minutes Later", "Monday 26 October \u00b7 16:15 to 16:45"],
-            ["30 Minutes Later", "Monday 26 October \u00b7 16:30 to 17:00"],
-            ["An Hour Later", "Monday 26 October \u00b7 17:00 to 17:30"],
-            ["Tomorrow, Same Time", "Tuesday 27 October \u00b7 16:00 to 16:30"],
-            ["Next Week, Same Time", "Monday 2 November \u00b7 16:00 to 16:30"]
+            ["quarter", "Monday 26 October \u00b7 16:15 to 16:45"],
+            ["half", "Monday 26 October \u00b7 16:30 to 17:00"],
+            ["hour", "Monday 26 October \u00b7 17:00 to 17:30"],
+            ["tomorrow", "Tuesday 27 October \u00b7 16:00 to 16:30"],
+            ["week", "Monday 2 November \u00b7 16:00 to 16:30"]
         ]);
         // A week on crosses Toronto's clocks going back, on Sunday 1
         // November, which mustn't move the time on the clock.

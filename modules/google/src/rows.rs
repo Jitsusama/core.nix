@@ -106,6 +106,13 @@ pub(crate) fn opens(key: &str, link: &str) -> Value {
     json!({"key": key, "open": link, "in": OPENS_IN})
 }
 
+/// An act asking the account to do `act` (ask.rs reads it), as the shell
+/// sends a served ask back whole on the socket: `{"ask": "act", "act"}`,
+/// which the daemon's `act` answers, the line Google.qml sends its own in.
+pub(crate) fn asks(key: &str, act: &Value) -> Value {
+    json!({"key": key, "ask": {"ask": "act", "act": act}})
+}
+
 /// A form with each `{name}` in it filled.
 pub(crate) fn fill(form: &str, with: &[(&str, &str)]) -> String {
     with.iter().fold(form.to_owned(), |said, (name, value)| {
@@ -389,8 +396,11 @@ fn acts(mail: &Mail) -> Vec<Value> {
             listed.push(opens("verb:mail:replyAll", &all));
         }
     }
-    listed.push(json!({"key": "verb:mail:archive", "ask": {"archive": {"id": mail.id}}}));
-    listed.push(json!({"key": "verb:mail:read", "ask": {"read": {"id": mail.id}}}));
+    listed.push(asks(
+        "verb:mail:archive",
+        &json!({"archive": {"id": mail.id}}),
+    ));
+    listed.push(asks("verb:mail:read", &json!({"read": {"id": mail.id}})));
     if !mail.address.is_empty() {
         listed.push(json!({"key": "mail:sender", "step": "person",
                            "address": mail.address}));
@@ -653,8 +663,8 @@ mod tests {
                 {"key": "verb:mail:open", "open": page, "in": "google-opens"},
                 {"key": "verb:mail:reply", "open": reply, "in": "google-opens"},
                 {"key": "verb:mail:replyAll", "open": reply_all, "in": "google-opens"},
-                {"key": "verb:mail:archive", "ask": {"archive": {"id": "a"}}},
-                {"key": "verb:mail:read", "ask": {"read": {"id": "a"}}},
+                {"key": "verb:mail:archive", "ask": {"ask": "act", "act": {"archive": {"id": "a"}}}},
+                {"key": "verb:mail:read", "ask": {"ask": "act", "act": {"read": {"id": "a"}}}},
                 {"key": "mail:sender", "step": "person", "address": "ada@example.com"},
                 {"key": "verb:mail:link", "copy": page}
             ])

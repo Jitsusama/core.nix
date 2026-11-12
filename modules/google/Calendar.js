@@ -315,14 +315,16 @@ function movable(meeting) {
     return Boolean(meeting) && Boolean(meeting.through) && !meeting.allDay;
 }
 
-// Where Move the Meeting offers to take one, each its name and how far:
-// by minutes, or by days, kept at the same time on the clock.
+// Where Move the Meeting offers to take one, each by its state of
+// verb:calendar:move in the vocabulary, which names it, and how far: by
+// minutes, or by days, kept at the same time on the clock (the google
+// daemon's calendar_words.rs LATER).
 const LATER = [
-    { name: "15 Minutes Later", minutes: 15 },
-    { name: "30 Minutes Later", minutes: 30 },
-    { name: "An Hour Later", minutes: 60 },
-    { name: "Tomorrow, Same Time", days: 1 },
-    { name: "Next Week, Same Time", days: 7 }
+    { state: "quarter", minutes: 15 },
+    { state: "half", minutes: 30 },
+    { state: "hour", minutes: 60 },
+    { state: "tomorrow", days: 1 },
+    { state: "week", days: 7 }
 ];
 
 // Its start moved by minutes, or by days at the same time on the clock,
@@ -337,12 +339,12 @@ function shifted(start, by) {
 }
 
 // Where Move the Meeting offers to take a meeting, each lasting as long:
-// [{ name, start, end }].
+// [{ state, start, end }], each named by its state.
 function later(meeting) {
     const lasts = meeting.end - meeting.start;
     return LATER.map(by => {
         const start = shifted(meeting.start, by);
-        return { name: by.name, start, end: start + lasts };
+        return { state: by.state, start, end: start + lasts };
     });
 }
 

@@ -286,7 +286,8 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
     );
     assert_eq!(
         first(inside[3]),
-        json!({"key": "verb:calendar:yes", "ask": {"answer": {"id": "e1", "with": "yes"}}}),
+        json!({"key": "verb:calendar:yes",
+            "ask": {"ask": "act", "act": {"answer": {"id": "e1", "with": "yes"}}}}),
         "Going asks the daemon to answer"
     );
     assert_eq!(
@@ -295,17 +296,9 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
         "only the answer given says so"
     );
     assert_eq!(
-        (
-            inside[6]["kind"].clone(),
-            first(inside[6]),
-            inside[6]["moves"]["telling"].clone()
-        ),
-        (
-            json!("move"),
-            json!({"key": "verb:more", "step": "rows"}),
-            json!("Telling Ada Lovelace and Grace Hopper")
-        ),
-        "Move steps into the times the shell makes, till they're served"
+        (inside[6]["kind"].clone(), first(inside[6])),
+        (json!("move"), json!({"key": "verb:more", "step": "rows"})),
+        "Move steps into its later times, found by the shell for a time typed there"
     );
     assert_eq!(
         (first(inside[9]), inside[9]["side"].clone()),
@@ -499,7 +492,8 @@ fn one_joel_holds_cancels_once_sure_and_without_a_call_copies_its_page() {
         [(
             json!("Cancel It Now, Telling 3 Guests"),
             json!(true),
-            json!([{"key": "verb:calendar:cancel", "ask": {"cancel": {"id": "mine"}}}])
+            json!([{"key": "verb:calendar:cancel",
+                "ask": {"ask": "act", "act": {"cancel": {"id": "mine"}}}}])
         )],
         "its one row asks the daemon to cancel once Joel's sure"
     );
