@@ -601,8 +601,7 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     # and its change is among the nerdy bits, never a fact (VKCF3Z, ee3bac47).
     shell.launcher_until(lambda shown: (shown["drawer"] or {}).get("body") == TRY)
     drawer = shell.showing()["drawer"]
-    assert "core.nix#2138" not in drawer["values"], drawer
-    assert "Change" in drawer["nerd"], drawer
+    assert "core.nix#2138" not in drawer["values"] and "Change" in drawer["nerd"], drawer
     # Return steps into it where it lives, never a copy of it.
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
