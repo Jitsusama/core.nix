@@ -30,6 +30,9 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `unplugged`: whether nothing is in its jack     | whether it's listed     |
 |                         | `ports`: its card's ports for it, each's index, | Port                    |
 |                         | name and `available`, and the one `chosen`      |                         |
+|                         | `channels`: which channel each volume is of     | Channels                |
+|                         | `facts`: what desk-facts says of its card, by   | its last parts, and its |
+|                         | the `key` it's found by                         | drawer                  |
 | `stream:<id>`           | a program's stream, by its node's PipeWire id:  | each device's programs  |
 |                         | its name, `sink`, `volume`, `volumes`, `muted`  | and each program's row  |
 |                         | and `properties`, as a device's are             |                         |
@@ -111,9 +114,13 @@ a step in, in the order the launcher lists them: using it, where it
 isn't the one chosen; whether it's Muted, one switch; its Volume, or a
 microphone's Gain, with Louder, Quieter and four levels a step in; and
 its Programs, or a microphone's Recording, each playing through it or
-through a filter aimed at it (`src/programs.rs`); and its Port, where
-its card offers more than one, with each it can move to. Each part's act
-asks the daemon's own act, so the shell runs no process to do it.
+through a filter aimed at it (`src/programs.rs`); its Port, where its
+card offers more than one, with each it can move to; its Channels, each
+at its level (`src/channels.rs`); a Bluetooth device's Profile; and
+last, what desk-facts says of its card (`src/desk.rs`), read from the
+sound.json it keeps in `$XDG_RUNTIME_DIR/desk` and read again each time
+it writes it, so the shell reads no file for Sound. Each part's act asks
+the daemon's own act, so the shell runs no process to do it.
 
 A device's programs are its streams grouped by the desktop entry each
 names, as Quickshell's lookup finds it, A to Z by the entry's name and
@@ -128,6 +135,7 @@ can be sent to; and its first stream's Sample Rate and Delay.
 The launcher's Sound lists these rows rather than making its own,
 sends programs through the daemon rather than a `pw-metadata` each, and
 reads how nodes keep time from it rather than from `pw-top`. A device's
-and a program's drawers are still made in the shell, from Quickshell's
-nodes and these timings; they're served whole next. Then the rest of
-each device's parts: its filters, channels, profile, hardware and Level.
+drawer is still made in the shell, from Quickshell's nodes, these
+timings and the parts served; a program's is served. Next come the rest
+of each device's parts, its filters, hardware and Level, then its drawer
+served whole.

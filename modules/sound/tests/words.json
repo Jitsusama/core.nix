@@ -259,6 +259,9 @@
     { "id": "sound:cycle", "in": "sound", "name": "Cycle" },
     { "id": "sound:format", "in": "sound", "name": "Format", "term": "Machine/format" },
     { "id": "sound:channels", "in": "sound", "name": "Channels", "term": "Machine/channel" },
-    { "id": "sound:profile", "in": "sound", "name": "Profile", "term": "Machine/profile" }
+    { "id": "sound:profile", "in": "sound", "name": "Profile", "term": "Machine/profile" },
+    { "id": "sound:playing", "in": "sound", "name": "Playing At" },
+    { "id": "sound:recording", "in": "sound", "name": "Recording At" },
+    { "id": "sound:offers", "in": "sound", "name": "Offers" }
   ]
 }
