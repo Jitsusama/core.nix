@@ -594,7 +594,12 @@
         "device": "1 device",
         "devices": "{count} devices",
         "eyebrow": "via eero \u00b7 network",
-        "leadAt": ", last tested at {rate} down"
+        "leadAt": ", last tested at {rate} down",
+        "bytes": "{n} B",
+        "kilobytes": "{n} kB",
+        "megabytes": "{n} MB",
+        "gigabytes": "{n} GB",
+        "terabytes": "{n} TB"
       },
       "tells": {
         "connected": "Connected to the internet{at}, with {nodes} and {devices} on now.",

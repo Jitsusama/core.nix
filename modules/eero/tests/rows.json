@@ -43,6 +43,176 @@
     "kind": "drawer"
   },
   {
+    "drawer": {
+      "eyebrow": "profile",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
+          "name": "Default",
+          "said": "no"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "0 B down · 0 B up"
+        },
+        {
+          "name": "Devices",
+          "said": "10 listed"
+        },
+        {
+          "heading": "Devices in It"
+        },
+        {
+          "name": "phone 3",
+          "said": "not on now"
+        },
+        {
+          "name": "tablet 2",
+          "said": "not on now"
+        },
+        {
+          "name": "phone 4",
+          "said": "not on now"
+        },
+        {
+          "name": "tablet 2",
+          "said": "not on now"
+        },
+        {
+          "name": "laptop computer 3",
+          "said": "not on now"
+        },
+        {
+          "name": "laptop computer 4",
+          "said": "not on now"
+        },
+        {
+          "name": "laptop computer 5",
+          "said": "not on now"
+        },
+        {
+          "name": "phone 5",
+          "said": "not on now"
+        },
+        {
+          "name": "tablet 2",
+          "said": "not on now"
+        },
+        {
+          "name": "laptop computer 6",
+          "said": "not on now"
+        }
+      ],
+      "title": "profile 1"
+    },
+    "key": "drawer:eero:profile:3001",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "profile",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
+          "name": "Default",
+          "said": "no"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "0 B down · 0 B up"
+        },
+        {
+          "name": "Devices",
+          "said": "3 listed"
+        },
+        {
+          "heading": "Devices in It"
+        },
+        {
+          "name": "tablet 3",
+          "said": "not on now"
+        },
+        {
+          "name": "tablet 4",
+          "said": "not on now"
+        },
+        {
+          "name": "tablet 4",
+          "said": "not on now"
+        }
+      ],
+      "title": "profile 2"
+    },
+    "key": "drawer:eero:profile:3002",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "profile",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
+          "name": "Default",
+          "said": "no"
+        },
+        {
+          "name": "Devices",
+          "said": "1 listed"
+        },
+        {
+          "heading": "Devices in It"
+        },
+        {
+          "name": "network equipment 1",
+          "said": "not on now"
+        }
+      ],
+      "title": "profile 3"
+    },
+    "key": "drawer:eero:profile:3003",
+    "kind": "drawer"
+  },
+  {
     "key": "row:eero:device:02:00:00:00:00:01",
     "kind": "row",
     "row": {
@@ -790,6 +960,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:profile:3001",
       "glyph": "people",
       "held": {
         "id": "3001"
@@ -821,6 +992,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:profile:3002",
       "glyph": "people",
       "held": {
         "id": "3002"
@@ -852,6 +1024,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:profile:3003",
       "glyph": "people",
       "held": {
         "id": "3003"

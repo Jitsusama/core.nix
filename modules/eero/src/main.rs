@@ -29,6 +29,7 @@ mod called;
 mod cloud;
 mod daemon;
 mod desktop;
+mod drawers;
 #[cfg(test)]
 mod golden;
 mod history;

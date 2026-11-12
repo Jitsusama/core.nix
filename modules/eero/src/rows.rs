@@ -18,6 +18,7 @@ use ready_rows::time::{self, Form};
 use serde_json::{Value, json};
 
 use crate::called;
+use crate::drawers;
 use crate::model::{BackhaulKind, CloudState, Device, HomeNetwork, Node, Profile};
 use crate::place;
 use crate::time::to_unix;
@@ -59,7 +60,21 @@ const SAID: &[(&str, &[&str])] = &[
     (
         "eero",
         &[
-            "bps", "kbps", "mbps", "gbps", "down", "up", "device", "devices", "eyebrow", "leadAt",
+            "bps",
+            "kbps",
+            "mbps",
+            "gbps",
+            "down",
+            "up",
+            "device",
+            "devices",
+            "eyebrow",
+            "leadAt",
+            "bytes",
+            "kilobytes",
+            "megabytes",
+            "gigabytes",
+            "terabytes",
         ],
     ),
     (
@@ -94,7 +109,36 @@ const SAID: &[(&str, &[&str])] = &[
         "eero:device",
         &["thisMachine", "ethernet", "dbm", "channel", "idle", "made"],
     ),
-    ("eero:profile", &["paused", "onNow", "noneOnNow"]),
+    (
+        "eero:profile",
+        &[
+            "paused",
+            "onNow",
+            "noneOnNow",
+            "eyebrow",
+            "gaming",
+            "illegal",
+            "messaging",
+            "pornographic",
+            "social",
+            "shopping",
+            "streaming",
+            "violent",
+            "ads",
+            "adsNetwork",
+            "blocksNothing",
+            "safeSearch",
+            "youtubeRestricted",
+            "noSchedule",
+            "schedule",
+            "schedules",
+            "yes",
+            "no",
+            "listed",
+            "onNode",
+            "notOnNow",
+        ],
+    ),
 ];
 
 /// The things whose glyph a row wears.
@@ -137,7 +181,7 @@ impl Words {
             internet: word("eero:internet", &["name"])?,
             ..Words::default()
         };
-        for id in place::NAMES {
+        for id in place::NAMES.into_iter().chain(drawers::NAMES) {
             words.names.insert(id, word(id, &["name"])?);
         }
         for one in place::TELLS {
@@ -273,7 +317,7 @@ pub fn rows(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Value>
 }
 
 /// What a node is called: where it stands, as eero names it.
-fn node_name(node: &Node) -> &str {
+pub(crate) fn node_name(node: &Node) -> &str {
     node.location
         .as_deref()
         .or(node.model.as_deref())
@@ -643,6 +687,7 @@ fn profile_row(model: &HomeNetwork, profile: &Profile, words: &Words) -> Value {
         "glyph": words.glyph("eero:profile"), "hue": "machine", "depth": 0,
         "side": items([item(state)]),
         "note": items([item(words.devices(profile.devices.len())), item(on_now)]),
+        "drawer": drawers::profile_key(&profile.id),
         "held": {"id": profile.id},
     })
 }

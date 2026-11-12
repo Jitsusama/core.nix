@@ -77,7 +77,29 @@
       "said": {
         "paused": "paused",
         "onNow": "{count} on now",
-        "noneOnNow": "none on now"
+        "noneOnNow": "none on now",
+        "eyebrow": "profile",
+        "gaming": "gaming",
+        "illegal": "illegal",
+        "messaging": "messaging",
+        "pornographic": "pornographic",
+        "social": "social",
+        "shopping": "shopping",
+        "streaming": "streaming",
+        "violent": "violent",
+        "ads": "ads",
+        "adsNetwork": "ads network-wide",
+        "blocksNothing": "nothing",
+        "safeSearch": "safe search",
+        "youtubeRestricted": "YouTube restricted mode",
+        "noSchedule": "none",
+        "schedule": "1 schedule",
+        "schedules": "{count} schedules",
+        "yes": "yes",
+        "no": "no",
+        "listed": "{count} listed",
+        "onNode": "on {node}",
+        "notOnNow": "not on now"
       }
     },
     {
