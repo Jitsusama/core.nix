@@ -1224,4 +1224,79 @@ mod tests {
         assert_eq!(made_of("2026-07-00"), "2026-07");
         assert_eq!(made_of("1970-01-01"), "");
     }
+
+    /// Every row Power serves but a choice has a drawer giving a little
+    /// more than its line (Joel, 2026-11-11 22:00): what the battery's
+    /// folder keeps behind it, in its own units. The Charge's says the
+    /// energy now, full and designed, and the rate (Y2YBTS, 2026-11-11).
+    #[test]
+    fn every_power_row_has_a_drawer_saying_more() {
+        let mut b = battery();
+        for (field, value) in [
+            ("energy_wh", json!(20.0)),
+            ("energy_full_wh", json!(55.0)),
+            ("energy_design_wh", json!(60.0)),
+            ("min_design_volts", json!(15.4)),
+            ("technology", json!("Li-poly")),
+            ("manufacturer", json!("SMP")),
+            ("model", json!("5B11")),
+            ("charge_type", json!("Standard")),
+            ("charge_types", json!(["Fast", "Standard", "Long_Life"])),
+            ("temperature_c", json!(31.5)),
+            ("made", json!("2024-03-05")),
+        ] {
+            b[field] = value;
+        }
+        let ready = Power::default().read(&[b, port(true)], 0, &words());
+        let bare: Vec<&str> = ready
+            .rows
+            .iter()
+            .filter(|each| each["kind"] != "choice")
+            .filter(|each| {
+                let drawer = &each["drawer"];
+                let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+                !(drawer["title"].is_string() && (facts || drawer["body"].is_string()))
+            })
+            .filter_map(|each| each["key"].as_str())
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "rows whose drawer says nothing more: {bare:?}"
+        );
+        let facts = |key: &str| -> Vec<String> {
+            row(&ready, key)["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .collect()
+        };
+        assert_eq!(
+            facts("row:power:charge"),
+            [
+                "capacity=36",
+                "capacity_level=Normal",
+                "status=Charging",
+                "energy_now=20000000 \u{b5}Wh",
+                "energy_full=55000000 \u{b5}Wh",
+                "energy_full_design=60000000 \u{b5}Wh",
+                "power_now=30000000 \u{b5}W",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "the charge says the energy now, full and designed, and the rate"
+        );
+        assert_eq!(
+            facts("row:power:type"),
+            [
+                "charge_types=Fast [Standard] Long_Life",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "a choice of the kernel's says its line, the one in use in brackets"
+        );
+        assert_eq!(
+            facts("row:power:temperature"),
+            ["temp=315", "Read From=/sys/class/power_supply/BAT0"],
+            "its temperature in tenths of a degree, as the kernel counts it"
+        );
+    }
 }
