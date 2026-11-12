@@ -435,7 +435,11 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
     since = shell.mark()
     sits_over(shell, shell.opened(f"a column at {scale}"), since)
     since = shell.mark()
+    shell.as_account(f"{counting(shell)} start")
     shell.as_account(f"niri msg output winit scale {scale}")
+    began = time.monotonic()
+    heard: list[str] = []
+    seen = 0
     try:
         # niri lays the columns out again at the new scale a moment after it takes it, so the
         # cat's first report there may still be over the old ones: each try takes its newest.
@@ -444,6 +448,12 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
         deadline = time.monotonic() + LAYERED
         while drawn != wanted and time.monotonic() < deadline:
             said, _ = shell.said_since(since)
+            heard += [
+                f"{time.monotonic() - began:.1f}s {report}"
+                for report in said[seen:]
+                if report.startswith(SITS)
+            ]
+            seen = len(said)
             sits = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
             at = sits[-1] if sits else None
             if at is not None and round(at["size"] * scale) == at["cell"] * at["cells"]:
@@ -453,10 +463,18 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
             if drawn != wanted:
                 time.sleep(POLL)
         assert at is not None, f"the cat said nowhere at {scale}"
+        # Whether the shell drew the cat's window at all meanwhile, so a cat missing from the
+        # screen says which side of the socket kept it.
+        frames = cat_frames(shell) if drawn != wanted else (0, {})
         assert drawn == wanted, (
+            f"the shell drew {frames[0]} of the cat's frames in the wait, of {frames[1]}; "
             f"at {scale}, {drawn} pixels are the cat's ink, not {at['lit']} cells of "
             f"{at['cell']} squared: {at}; its box holds {colours.most_common(6)}, and "
-            f"there are {anywhere(shell, at['hue'])}; drawn:\n{drawn_as(shell, at, scale)}"
+            f"there are {anywhere(shell, at['hue'])}; drawn:\n{drawn_as(shell, at, scale)}\n"
+            f"heard:\n"
+            + "\n".join(heard)
+            + "\nniri's windows: "
+            + shell.as_account("niri msg --json windows")
         )
         kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
         kept.mkdir(exist_ok=True)
