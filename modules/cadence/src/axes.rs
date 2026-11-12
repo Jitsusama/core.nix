@@ -16,6 +16,7 @@
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
 mod landings;
+mod plans;
 mod readings;
 
 use std::fmt::Write;
