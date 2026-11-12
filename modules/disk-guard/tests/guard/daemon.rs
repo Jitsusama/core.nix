@@ -1452,6 +1452,52 @@ fn a_checkout_with_work_not_committed_is_never_finished() {
 }
 
 #[test]
+fn a_held_trees_build_stays_though_its_branch_merged() {
+    // On 12 November a session merged its branch and went on in the tree
+    // its broker recorded it holding, and twice the guard took the tree's
+    // packages within the half hour after a merge.
+    use crate::finished::git;
+    use std::os::unix::fs::PermissionsExt;
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    let app = home.root.join("trees/app");
+    git(&app, &["init", "-q", "-b", "work"]);
+    git(
+        &app,
+        &["remote", "add", "origin", "https://example.com/app.git"],
+    );
+    git(&app, &["add", "Cargo.toml"]);
+    git(&app, &["commit", "-q", "-m", "one"]);
+    let predicate = home.root.join("merged");
+    fs::write(&predicate, "#!/bin/sh\necho '{\"finished\": true}'\n").unwrap();
+    fs::set_permissions(&predicate, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut config = owned_trees(&home);
+    let merged = Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user",
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{
+               "merged": {{ "kind": "finished", "remote": "^https://example\\.com/",
+                            "command": ["{1}"], "timeout": "5s" }} }} }}"#,
+        home.root.display(),
+        predicate.display()
+    ))
+    .unwrap();
+    config.sources.extend(merged.sources);
+    let mut guard = home.guard(config);
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        built.exists(),
+        "a tree held by a running process was taken as finished by its branch"
+    );
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    assert!(
+        !built.exists(),
+        "a merged tree's build stayed once its holder had ended"
+    );
+}
+
+#[test]
 fn a_preview_leaves_a_damaged_memory_as_it_found_it() {
     let home = Home::new();
     fs::write(home.root.join("state/memory.json"), "{ \"learned\": ").unwrap();

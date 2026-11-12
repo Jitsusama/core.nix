@@ -2047,7 +2047,14 @@ impl Guard {
             })
         };
         let quests_over = spent_trees(&self.config, running, (&tick.boot, &boot));
+        let held = held_trees(&self.config, running);
         let mut finished = |dir: &Path| {
+            // On 12 November a session merged its branch and went on in the
+            // tree its broker recorded it holding, and twice the guard took
+            // the tree's packages within the half hour after a merge.
+            if held.iter().any(|tree| dir.starts_with(tree)) {
+                return false;
+            }
             if quests_over.iter().any(|tree| dir.starts_with(tree)) {
                 return true;
             }
@@ -2703,8 +2710,6 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
     }
 }
 
-/// Whether a user daemon spoke for the filesystem within the minute, so it
-/// drives that filesystem's passes.
 /// The trees whose builds are spent: every tree a finished quest lists,
 /// every tree whose broker record names no holder still `running`, unless a
 /// quest at work lists it, and every tree a quest lists while none of its
@@ -2745,6 +2750,25 @@ fn spent_trees(
         .collect()
 }
 
+/// The trees a broker's record names a holder of still `running`, which
+/// nothing finishes while it holds them.
+fn held_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec<PathBuf> {
+    config
+        .sources
+        .values()
+        .filter_map(|source| match source {
+            Source::Workspaces {
+                trees: Some(records),
+                ..
+            } => Some(records),
+            _ => None,
+        })
+        .flat_map(|records| crate::workspaces::held_trees(records, running))
+        .collect()
+}
+
+/// Whether a user daemon spoke for the filesystem within the minute, so it
+/// drives that filesystem's passes.
 fn spoken_for(hearing: Option<&Hearing>, device: u64) -> bool {
     hearing.is_some_and(|hearing| {
         let spoken = hearing

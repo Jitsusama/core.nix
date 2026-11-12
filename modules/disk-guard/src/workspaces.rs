@@ -248,31 +248,49 @@ pub fn unheld_trees(
     quests: &Path,
     running: impl Fn(u32, f64) -> bool,
 ) -> Vec<PathBuf> {
-    let Ok(entries) = fs::read_dir(records) else {
-        return Vec::new();
-    };
     let going: Vec<PathBuf> = quest_frontmatters(quests)
         .iter()
         .filter(|(_, frontmatter, over)| !over && !parked(frontmatter))
         .flat_map(|(_, frontmatter, _)| listed(frontmatter))
         .collect();
-    let mut found = Vec::new();
-    for entry in entries.filter_map(Result::ok) {
-        let Ok(text) = fs::read(entry.path()) else {
-            continue;
-        };
-        let Ok(record) = serde_json::from_slice::<Record>(&text) else {
-            continue;
-        };
-        let held = record
-            .owners
+    read_records(records)
+        .into_iter()
+        .filter(|record| !record.held(&running) && !going.contains(&record.path))
+        .map(|record| record.path)
+        .collect()
+}
+
+/// The trees a tree broker's records in `records` name a holder of that is
+/// still `running`, as `unheld_trees` reads a pid. A held tree is in use
+/// whatever its branch says: a session goes on in the tree whose branch it
+/// has just merged, to cut its next branch there.
+pub fn held_trees(records: &Path, running: impl Fn(u32, f64) -> bool) -> Vec<PathBuf> {
+    read_records(records)
+        .into_iter()
+        .filter(|record| record.held(&running))
+        .map(|record| record.path)
+        .collect()
+}
+
+/// Every record in `records` that reads, leaving out a torn one.
+fn read_records(records: &Path) -> Vec<Record> {
+    let Ok(entries) = fs::read_dir(records) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| fs::read(entry.path()).ok())
+        .filter_map(|text| serde_json::from_slice::<Record>(&text).ok())
+        .collect()
+}
+
+impl Record {
+    /// Whether any process the record names still runs as it started.
+    fn held(&self, running: impl Fn(u32, f64) -> bool) -> bool {
+        self.owners
             .iter()
-            .any(|owner| running(owner.pid, owner.started_at / 1000.0));
-        if !held && !going.contains(&record.path) {
-            found.push(record.path);
-        }
+            .any(|owner| running(owner.pid, owner.started_at / 1000.0))
     }
-    found
 }
 
 /// A coding session the harness records as working on a quest, and its
