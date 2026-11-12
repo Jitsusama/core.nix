@@ -46,7 +46,12 @@ onLinux {
     let
       home = account (bareNixos [
         self.nixosModules.graphical
-        { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
+        {
+          home-manager.users.someone = {
+            imports = [ self.homeModules.chrome ];
+            jitsusama.chrome.vimium = true;
+          };
+        }
       ]);
       settings = home.xdg.configFile."jitsusama/vimium.json" or null;
     in
@@ -61,6 +66,35 @@ onLinux {
           node ${./tests/chrome-vimium-takes-the-keys.mjs} ${vimium} ${settings.source}
           touch $out
         ''
+    );
+
+  # An account whose machine doesn't ask for Vimium, as one whose Chrome
+  # is managed, gets no Vimium settings and no launcher row that needs it,
+  # so it lists no keys its Chrome can't take.
+  chrome-leaves-vimium-out-unasked =
+    let
+      home = account (bareNixos [
+        self.nixosModules.graphical
+        { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
+      ]);
+      settings = home.xdg.configFile ? "jitsusama/vimium.json";
+      rows = map (key: key.chord) (
+        pkgs.lib.filter (key: pkgs.lib.hasInfix "Vimium" (key.when or "")) home.jitsusama.keys.chrome
+      );
+    in
+    pkgs.runCommandLocal "chrome-leaves-vimium-out-unasked" { } (
+      if settings then
+        ''
+          echo "the account writes Vimium settings, unasked"
+          exit 1
+        ''
+      else if rows != [ ] then
+        ''
+          echo "the launcher lists keys that need Vimium, unasked: ${pkgs.lib.concatStringsSep ", " rows}"
+          exit 1
+        ''
+      else
+        "touch $out"
     );
 
   # clippy finds nothing in what reads Chrome's open pages from its session

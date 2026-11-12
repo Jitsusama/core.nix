@@ -11,9 +11,13 @@
 # its own acts there open a repository's page on GitHub, the link copied
 # or the latest download (ChromeProgram.qml).
 #
-# A page speaks Vim's keys through Vimium, the one such extension the
-# browser's managers let it take, whose settings Chrome syncs and no policy
-# sets. So they're written to ~/.config/jitsusama/vimium.json, the file its
+# A page speaks Vim's keys through Vimium, on a machine that sets
+# jitsusama.chrome.vimium, since a managed Chrome may refuse it: an
+# organization's access checks can turn away a browser with an extension
+# they haven't approved, so a machine whose Chrome is managed leaves it
+# off, and its launcher lists no keys it can't use. Vimium's settings
+# Chrome syncs and no policy sets, and nothing here installs it. So
+# they're written to ~/.config/jitsusama/vimium.json, the file its
 # options page restores a backup from, once, by hand: its own keys with the
 # key language's beside them (../keys/language.toml), as j scrolls, gg goes
 # to the top, Ctrl+o goes back and ZZ closes the tab. Its own H, L and x
@@ -170,11 +174,15 @@ let
         chord = "Ctrl+l";
         does = "Type an address";
       }
-      {
-        chord = "Ctrl+f";
-        does = "Find words on the page";
-        when = "in a field, or where Vimium is off";
-      }
+      (
+        {
+          chord = "Ctrl+f";
+          does = "Find words on the page";
+        }
+        // lib.optionalAttrs config.jitsusama.chrome.vimium {
+          when = "in a field, or where Vimium is off";
+        }
+      )
       {
         chord = "Ctrl+Plus";
         does = "The page larger";
@@ -211,8 +219,8 @@ let
       }
     ]
     # Vimium's, the language's and its own, each in the group of the
-    # browser's own like it.
-    ++
+    # browser's own like it, where the machine has Vimium.
+    ++ lib.optionals config.jitsusama.chrome.vimium (
       map
         (
           key:
@@ -254,7 +262,8 @@ let
               group = "tabs";
             }
           ]
-        );
+        )
+    );
   # What reads Chrome's sites and its downloads (recent-sites).
   recentSites = lib.getExe (pkgs.callPackage ./recent-sites/package.nix { });
   # The extension's host, chrome-open-tabs, where the machine's own Chrome
@@ -276,89 +285,103 @@ in
     ../quickshell/recents.nix
   ];
 
-  jitsusama.keys.chrome = keys;
+  options.jitsusama.chrome.vimium = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''
+      Whether this machine's Chrome takes Vimium, so its settings are
+      written for Vimium to restore and the launcher lists its keys. Off
+      where an organization manages Chrome and hasn't approved it.
+    '';
+  };
 
-  # Its sites, and its tabs open now, which the programs daemon reads
-  # itself, with no process started, as Chrome is stepped into and as
-  # Chrome writes its session while it's watched. Where the machine
-  # installs the extension, they're its host's, asked on its socket, which
-  # Go To brings forward and Close It closes by the ids it gave; otherwise,
-  # and whenever the host isn't there or lists nothing, as with a managed
-  # Chrome refusing the extension, they're the profile's own session
-  # file's (./session), which needs no extension but can't name a tab to
-  # the host, so those have no id and Go To brings the tab's window
-  # forward alone. Without the host there's no Close It.
-  jitsusama.quickshell.launcher.recents = [
-    (
+  config = {
+    jitsusama.keys.chrome = keys;
+
+    # Its sites, and its tabs open now, which the programs daemon reads
+    # itself, with no process started, as Chrome is stepped into and as
+    # Chrome writes its session while it's watched. Where the machine
+    # installs the extension, they're its host's, asked on its socket, which
+    # Go To brings forward and Close It closes by the ids it gave; otherwise,
+    # and whenever the host isn't there or lists nothing, as with a managed
+    # Chrome refusing the extension, they're the profile's own session
+    # file's (./session), which needs no extension but can't name a tab to
+    # the host, so those have no id and Go To brings the tab's window
+    # forward alone. Without the host there's no Close It.
+    jitsusama.quickshell.launcher.recents = [
+      (
+        {
+          app = "google-chrome";
+          kind = "site";
+          asked = true;
+          list = [ recentSites ];
+          dated = true;
+          session = {
+            profile = "${config.home.homeDirectory}/.config/google-chrome/Default";
+            host = openTabs != null;
+          };
+        }
+        // lib.optionalAttrs (openTabs != null) {
+          go = [
+            openTabs
+            "go"
+            "{id}"
+          ];
+          close = [
+            openTabs
+            "close"
+            "{id}"
+          ];
+        }
+      )
+      # Its downloads, which the programs daemon reads as Chrome's page
+      # watches them, as it's stepped into, so the page starts no process.
       {
         app = "google-chrome";
-        kind = "site";
+        name = "downloads";
         asked = true;
-        list = [ recentSites ];
-        dated = true;
-        session = {
-          profile = "${config.home.homeDirectory}/.config/google-chrome/Default";
-          host = openTabs != null;
-        };
-      }
-      // lib.optionalAttrs (openTabs != null) {
-        go = [
-          openTabs
-          "go"
-          "{id}"
-        ];
-        close = [
-          openTabs
-          "close"
-          "{id}"
+        list = [
+          recentSites
+          "downloads"
         ];
       }
-    )
-    # Its downloads, which the programs daemon reads as Chrome's page
-    # watches them, as it's stepped into, so the page starts no process.
-    {
-      app = "google-chrome";
-      name = "downloads";
-      asked = true;
-      list = [
-        recentSites
-        "downloads"
-      ];
-    }
-  ];
-
-  xdg.configFile."quickshell/launcher/ChromeDownloads.js".source = ./ChromeDownloads.js;
-
-  # Vimium's settings, for its options page to restore once, as the comment
-  # at the top says; Chrome syncs them from there.
-  xdg.configFile."jitsusama/vimium.json".text = builtins.toJSON (
-    let
-      own = lib.importJSON ./vimium.json;
-    in
-    own
-    // {
-      inherit keyMappings;
-      exclusionRules = exclusionRules ++ own.exclusionRules;
-    }
-  );
-
-  # Chrome's own acts in the launcher (ChromeProgram.qml): Open a
-  # Repository on GitHub, through the git repositories under ~/src and
-  # their remotes, which the programs daemon reads, and Open the Copied
-  # Link, each in a new window, and Open the Latest Download, as the
-  # desktop opens the file. Its downloads, which the programs daemon has
-  # recent-sites list as Chrome is stepped into, are in its Recent too. After every other
-  # provider, as it adds no rows of its own.
-  jitsusama.quickshell.launcher.providers.chrome = {
-    order = 52;
-    source = ./ChromeProgram.qml;
-    # The programs daemon's key for its downloads, the list above.
-    downloads = "listed:google-chrome:downloads";
-    folder = "${config.home.homeDirectory}/src";
-    command = [
-      "google-chrome-stable"
-      "--new-window"
     ];
+
+    xdg.configFile."quickshell/launcher/ChromeDownloads.js".source = ./ChromeDownloads.js;
+
+    # Vimium's settings, for its options page to restore once, as the comment
+    # at the top says; Chrome syncs them from there.
+    xdg.configFile."jitsusama/vimium.json" = lib.mkIf config.jitsusama.chrome.vimium {
+      text = builtins.toJSON (
+        let
+          own = lib.importJSON ./vimium.json;
+        in
+        own
+        // {
+          inherit keyMappings;
+          exclusionRules = exclusionRules ++ own.exclusionRules;
+        }
+      );
+    };
+
+    # Chrome's own acts in the launcher (ChromeProgram.qml): Open a
+    # Repository on GitHub, through the git repositories under ~/src and
+    # their remotes, which the programs daemon reads, and Open the Copied
+    # Link, each in a new window, and Open the Latest Download, as the
+    # desktop opens the file. Its downloads, which the programs daemon has
+    # recent-sites list as Chrome is stepped into, are in its Recent too. After every other
+    # provider, as it adds no rows of its own.
+    jitsusama.quickshell.launcher.providers.chrome = {
+      order = 52;
+      source = ./ChromeProgram.qml;
+      # The programs daemon's key for its downloads, the list above.
+      downloads = "listed:google-chrome:downloads";
+      folder = "${config.home.homeDirectory}/src";
+      command = [
+        "google-chrome-stable"
+        "--new-window"
+      ];
+    };
   };
   # Chrome's open tabs, each found from home by its title or its site, as
   # the programs daemon serves them from Chrome's session.
