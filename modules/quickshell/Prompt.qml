@@ -550,7 +550,10 @@ Item {
         const key = named(event);
         keyMoved = false;
         keyTaken = key;
-        keysTaken += 1;
+        // A press is a key taken as it comes; a repeat only once it's
+        // known to do something (QueryKeys.heldDoes, below).
+        if (!event.isAutoRepeat)
+            keysTaken += 1;
         woken();
         // A held key's repeats never answer it.
         if (confirming) {
@@ -582,12 +585,16 @@ Item {
         keyMoved = QueryKeys.repeats(read.act);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
-        // press's once, so a key let go late by a busy shell, which
-        // repeats as if held (modules/keyboard/repeat.nix), never does it
-        // twice.
-        if (event.isAutoRepeat && QueryKeys.still(mode) && !QueryKeys.repeats(read.act)) {
-            event.accepted = true;
-            return;
+        // press's once, and Return is everywhere, so a key let go late by
+        // a busy shell, which repeats as if held
+        // (modules/keyboard/repeat.nix), never does it twice. A repeat
+        // that does nothing takes no key, so a row armed stays armed.
+        if (event.isAutoRepeat) {
+            if (!QueryKeys.heldDoes(read.act, mode)) {
+                event.accepted = true;
+                return;
+            }
+            keysTaken += 1;
         }
         // With no drawer out, Space and the right arrow do nothing, as
         // his Ctrl+W l does with no window to the right.

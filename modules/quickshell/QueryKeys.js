@@ -262,6 +262,15 @@ function repeats(act) {
     return moves.includes(act);
 }
 
+// Whether a held key's repeat does its act again, and so is a key taken:
+// where nothing types, only a move; where the line types, any act but
+// Return's, which is once a press (Prompt.qml's returned). One that does
+// nothing takes no key, so what its press said stands through the hold,
+// as a Return held on Reboot leaves it armed (Y2YBTS, 2026-11-12).
+function heldDoes(act, mode) {
+    return still(mode) ? repeats(act) : act !== "run";
+}
+
 // Where the keys stand between presses: the count typed so far, as
 // digits, and the keys of a sequence begun. An operator waiting for its
 // motion stands as `operator`, { key, count }, its key and the count
