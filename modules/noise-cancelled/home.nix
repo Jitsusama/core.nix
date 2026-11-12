@@ -41,7 +41,10 @@
 # After a call on a microphone never picked for at the spot it was made,
 # the service offers Choose by Ear there once, in Now, while no call is on
 # and nothing in refuseWhile holds (offer.rs): the offer stands in offer,
-# beside the picks, and each taken or put off is kept in offered.
+# beside the picks, and each taken or put off is kept in offered. Each pick
+# keeps how loud the room it was recorded in sat between words, in rooms, a
+# level alone (room.rs); a call whose room sits 10 dB louder or quieter than
+# its pick's offers Choose by Ear again, once a pick.
 {
   config,
   lib,

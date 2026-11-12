@@ -56,7 +56,29 @@ fn standing(chosen: &Chosen) -> Option<Value> {
 
 /// The MV7 used for a call at `spot`.
 fn called(offers: &mut Offers, chosen: &Chosen, spot: &Spot) {
-    offers.heard(chosen, MV7, SHURE, spot, Duration::from_mins(20));
+    offers.heard(chosen, MV7, SHURE, spot, Duration::from_mins(20), None);
+}
+
+/// The MV7 used for a call at `spot`, its room's floor `floor`.
+fn heard_in(offers: &mut Offers, chosen: &Chosen, spot: &Spot, floor: i32) {
+    offers.heard(
+        chosen,
+        MV7,
+        SHURE,
+        spot,
+        Duration::from_mins(20),
+        Some(floor),
+    );
+}
+
+/// Picks kept with the MV7's pick at the desk made in a room of `floor`.
+fn picked_at_desk(name: &str, floor: i32) -> Chosen {
+    let chosen = picks(name);
+    chosen
+        .choose(MV7, &desk(), Cleaner::RNNoise)
+        .expect("the pick is kept");
+    crate::room::kept(&chosen, MV7, &desk().key, floor).expect("its room is kept");
+    chosen
 }
 
 #[test]
@@ -106,7 +128,7 @@ fn a_microphone_picked_where_it_was_used_is_not_offered() {
 fn a_moment_recorded_is_not_a_call() {
     let chosen = picks("moment");
     let mut offers = Offers::new(&chosen, Vec::new());
-    offers.heard(&chosen, MV7, SHURE, &desk(), Duration::from_secs(5));
+    offers.heard(&chosen, MV7, SHURE, &desk(), Duration::from_secs(5), None);
     offers.stand(&chosen);
     assert_eq!(
         standing(&chosen),
@@ -249,5 +271,88 @@ fn a_raw_pick_settles_the_offer_where_it_was_made() {
     assert!(
         standing(&chosen).is_some(),
         "a raw pick at the desk settled the Roadside Inn too"
+    );
+}
+
+#[test]
+fn a_call_far_noisier_than_its_picks_room_offers_choose_by_ear_again() {
+    let chosen = picked_at_desk("noisier", -62);
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -48);
+    offers.stand(&chosen);
+    assert_eq!(
+        standing(&chosen),
+        Some(json!({
+            "microphone": SHURE, "node": MV7, "spot": "the desk",
+            "key": "home=6366013", "new": "noise", "by": 14, "from": -62,
+        })),
+    );
+}
+
+#[test]
+fn a_call_far_quieter_than_its_picks_room_offers_choose_by_ear_again() {
+    let chosen = picked_at_desk("quieter", -50);
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -61);
+    offers.stand(&chosen);
+    assert_eq!(
+        standing(&chosen).map(|offer| (offer["new"].clone(), offer["by"].clone())),
+        Some((json!("noise"), json!(-11))),
+    );
+}
+
+#[test]
+fn a_call_near_its_picks_room_offers_nothing() {
+    let chosen = picked_at_desk("near", -62);
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -53);
+    offers.stand(&chosen);
+    assert_eq!(standing(&chosen), None, "9 dB louder isn't far");
+}
+
+#[test]
+fn a_room_is_offered_again_once_a_pick() {
+    let chosen = picked_at_desk("once", -62);
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -45);
+    offers.stand(&chosen);
+    taken(&chosen).expect("the offer is taken");
+    assert_eq!(standing(&chosen), None, "the offer stood once taken");
+    heard_in(&mut offers, &chosen, &desk(), -45);
+    offers.stand(&chosen);
+    assert_eq!(standing(&chosen), None, "the same pick was offered again");
+    crate::room::kept(&chosen, MV7, &desk().key, -45).expect("picked again");
+    heard_in(&mut offers, &chosen, &desk(), -70);
+    offers.stand(&chosen);
+    assert_eq!(
+        standing(&chosen).map(|offer| offer["from"].clone()),
+        Some(json!(-45)),
+        "a new pick wasn't offered again for a room far from its own"
+    );
+}
+
+#[test]
+fn a_new_pick_withdraws_a_nudge_standing() {
+    let chosen = picked_at_desk("withdrawn", -62);
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -45);
+    offers.stand(&chosen);
+    assert!(standing(&chosen).is_some(), "the nudge should stand");
+    crate::room::kept(&chosen, MV7, &desk().key, -46).expect("picked again");
+    offers.stand(&chosen);
+    assert_eq!(standing(&chosen), None, "the nudge stood past a new pick");
+}
+
+#[test]
+fn a_raw_picks_room_is_offered_again_too() {
+    let chosen = picks("raw-room");
+    settled(&chosen, MV7, &desk().key).expect("the raw pick settles the offer");
+    crate::room::kept(&chosen, MV7, &desk().key, -62).expect("its room is kept");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    heard_in(&mut offers, &chosen, &desk(), -40);
+    offers.stand(&chosen);
+    assert_eq!(
+        standing(&chosen).map(|offer| offer["new"].clone()),
+        Some(json!("noise")),
     );
 }

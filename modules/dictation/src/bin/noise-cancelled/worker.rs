@@ -28,6 +28,7 @@ use rtrb::{Consumer, Producer};
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, Denoiser, FRAME, Model};
 use crate::offer::Offers;
+use crate::room::Room;
 use crate::spot::Spot;
 
 /// How long the model stays loaded once nothing records from a source.
@@ -117,6 +118,8 @@ struct Microphone {
     denoiser: Option<Denoiser>,
     /// When and where it began being recorded from, while it is.
     began: Option<(Instant, Spot)>,
+    /// The room it's heard in since it began, as it sounds raw.
+    room: Room,
 }
 
 /// The model, loaded only while it's wanted.
@@ -142,6 +145,7 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
                             cleaner: None,
                             denoiser: None,
                             began: None,
+                            room: Room::default(),
                         },
                     );
                 }
@@ -199,20 +203,30 @@ fn settled(
             microphone.cleaner = None;
             if let Some((began, at)) = microphone.began.take() {
                 let ends = &microphone.ends;
+                let floor = microphone.room.floor();
+                if let Some(floor) = floor {
+                    eprintln!(
+                        "noise-cancelled: {}'s room at {} sat at {floor} dBFS",
+                        ends.microphone, at.name
+                    );
+                }
                 offers.heard(
                     chosen,
                     &ends.microphone,
                     &ends.description,
                     &at,
                     began.elapsed(),
+                    floor,
                 );
             }
             continue;
         }
         let began = &mut microphone.began;
+        let room = &mut microphone.room;
         let cleaner = *microphone.cleaner.get_or_insert_with(|| {
             let spot = spot.get_or_insert_with(|| chosen.spot());
             *began = Some((Instant::now(), spot.clone()));
+            *room = Room::default();
             let cleaner = chosen.cleaner(Some(&microphone.ends.microphone), Some(spot));
             eprintln!(
                 "noise-cancelled: {} cleans with {cleaner} at {}",
@@ -311,6 +325,7 @@ fn clean(microphone: &mut Microphone, model: Option<&Loaded>) {
     }
     let mut frame = [0.0; FRAME];
     while ends.heard.pop_entire_slice(&mut frame).is_ok() {
+        microphone.room.heard(&frame);
         let cleaned = match microphone
             .denoiser
             .as_mut()

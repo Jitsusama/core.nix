@@ -44,9 +44,11 @@ mod loudness;
 mod offer;
 mod pipe;
 mod refusals;
+mod room;
 mod score;
 mod spot;
 mod trial;
+mod ways;
 mod worker;
 
 use std::io::{Read, Write};
