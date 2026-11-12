@@ -18,6 +18,9 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use dictation::daemon::{self, Answers, Shared, VERSION, Watches, error, now};
+// The A/B starts from the microphone as it is: its own node, found
+// through its twin when the twin is the default.
+pub use dictation::microphone::{Microphone, default_microphone};
 use serde_json::{Value, json};
 
 use crate::chosen::Chosen;
@@ -87,22 +90,6 @@ impl Stage {
             Self::Picked => "picked",
             Self::Refused => "refused",
         }
-    }
-}
-
-/// A microphone as PipeWire names it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Microphone {
-    /// Its node's name, which a recording targets.
-    pub name: String,
-    /// What it's called where Joel reads it.
-    pub description: String,
-}
-
-impl Microphone {
-    /// Its noise-cancelled twin's node name, as pipe.rs names it.
-    pub fn twin(&self) -> String {
-        format!("{}{}", crate::pipe::OURS, self.name)
     }
 }
 
@@ -529,31 +516,6 @@ fn dumped(dump: &str) -> Result<Value, String> {
         .output()
         .map_err(|why| format!("asking PipeWire: {why}"))?;
     serde_json::from_slice(&out.stdout).map_err(|why| format!("reading PipeWire: {why}"))
-}
-
-/// The default microphone in a dump: the one calls hear, its own node
-/// when the default is its noise-cancelled twin, so the A/B starts from
-/// the microphone as it is.
-pub fn default_microphone(dump: &Value) -> Option<Microphone> {
-    let objects = dump.as_array()?;
-    let default = objects
-        .iter()
-        .filter(|object| object["props"]["metadata.name"] == "default")
-        .filter_map(|object| object["metadata"].as_array())
-        .flatten()
-        .find(|entry| entry["key"] == "default.audio.source")?;
-    let named = default["value"]["name"].as_str()?;
-    let name = named.strip_prefix(crate::pipe::OURS).unwrap_or(named);
-    objects.iter().find_map(|object| {
-        let props = &object["info"]["props"];
-        (props["node.name"] == name && props["media.class"] == "Audio/Source").then(|| Microphone {
-            name: name.to_owned(),
-            description: props["node.description"]
-                .as_str()
-                .unwrap_or(name)
-                .to_owned(),
-        })
-    })
 }
 
 /// The default output in a dump, by its description: what the clips
