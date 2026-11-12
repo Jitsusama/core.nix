@@ -270,7 +270,9 @@ mod tests {
         let (socket, asked) = node(&folder, json!({"Err": "no such group"}));
         let kept = folder.join("feedback.jsonl");
         let landings = held(landing("", "SKIFF"));
-        let ask = |landing: &str, words: &str| json!({"ask": "feedback", "landing": landing, "words": words});
+        let ask = |landing: &str, words: &str| {
+            json!({"ask": "feedback", "landing": landing, "words": words})
+        };
         let code = |answer: Value| answer["error"]["code"].clone();
         let at = "2026-11-12T08:00:00Z";
         assert_eq!(
