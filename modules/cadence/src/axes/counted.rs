@@ -182,77 +182,49 @@ pub fn held(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// The launcher's keys today, each timed from his key to its frame, held to
-/// docs/design.md's budget: drawn in 50 ms at the median and 100 ms at the
-/// 99th percentile. From lines like `launcher: "fi" took 31 ms to its
-/// frame`, a drawer's left out. The shell journals only a key slower than
-/// a frame at 120 Hz, about half of his, so of the `timed` keys its trials
-/// counted, those missing from the journal are taken at that frame: left
-/// out, they'd make the middle key look slower than it was.
+/// The launcher's keys today, held to docs/design.md's budget: drawn in
+/// 50 ms at the median and 100 ms at the 99th percentile. Health reads them
+/// from the summary each opening ends with, each key timed from its press
+/// in the Wayland event to niri presenting the frame that drew it, so they
+/// are his key to his screen (Y2YBTS and 80ECO2, 2026-11-12). Its median
+/// weighs each opening's by its keys. Its 99th is the slowest opening's,
+/// only a ceiling, since percentiles of batches can't be pooled; so it's
+/// said, never judged, until the shell keeps each key's time.
 #[must_use]
-pub fn keys(journal: &str, timed: usize) -> Vec<Reading> {
-    let mut took: Vec<u32> = journal
-        .lines()
-        .filter_map(|line| {
-            let after = line.split("launcher: \"").nth(1)?;
-            let ms = after.rsplit_once("\" took ")?.1;
-            ms.split_whitespace().next()?.parse().ok()
-        })
-        .collect();
-    took.sort_unstable();
-    let unsaid = timed.saturating_sub(took.len());
-    let all = took.len() + unsaid;
-    // The nearest rank: the key that many in a hundred took no longer than,
-    // the unsaid keys first, since none took past a frame.
-    let rank = |percent: usize| {
-        (all > 0).then(|| match (all * percent).div_ceil(100) {
-            rank if rank <= unsaid => f64::from(UNSAID_MS),
-            rank => f64::from(took[rank - unsaid - 1]),
-        })
-    };
-    let of = Some(match unsaid {
-        0 => format!("of {all} keys"),
-        _ => format!("of {all} keys, {unsaid} drawn within a frame"),
-    });
+pub fn keys(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file, from the shell's presented keys";
     vec![
         Reading::new(
-            "the launcher's middle key {} today",
-            rank(50),
+            "the launcher's middle key {} today, from his key to his screen",
+            figure("health.launcher.keys.median-ms"),
             " ms",
             "Y2YBTS",
         )
         .bar(Bar::AtMost(50.0))
-        .detail(of.clone())
-        .from("the shell's journal and its trials")
+        .detail(
+            figure("health.launcher.keys.late-percent")
+                .map(|late| format!("{} of keys took longer than 50 ms", shown(late, "%"))),
+        )
+        .from(from)
         .his(),
         Reading::new(
-            "the launcher's slowest key in a hundred {} today",
-            rank(99),
+            "the launcher's slowest key in a hundred today {}",
+            None,
             " ms",
             "Y2YBTS",
         )
         .bar(Bar::AtMost(100.0))
-        .detail(of)
-        .from("the shell's journal and its trials")
+        .detail(figure("health.launcher.keys.p99-ms").map(|ceiling| {
+            format!(
+                "at most {}, the slowest batch's: batches can't be pooled exactly, \
+                 so an exact figure waits on the shell keeping each key's time",
+                shown(ceiling, " ms")
+            )
+        }))
+        .from(from)
         .his(),
     ]
-}
-
-/// The slowest a key the shell doesn't journal took: a frame at 120 Hz, as
-/// modules/quickshell/launcher/Trials.js's `FELT_MS` has it.
-const UNSAID_MS: u32 = 8;
-
-/// How many keys the launcher timed since `since`, in milliseconds, from
-/// its trial records, one opening a line, each counting its keys timed.
-#[must_use]
-pub fn timed(trials: &str, since: i64) -> usize {
-    trials
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|trial| trial["at"].as_i64().is_some_and(|at| at >= since))
-        .filter_map(|trial| trial["timed"]["count"].as_u64())
-        .map(|count| usize::try_from(count).unwrap_or(usize::MAX))
-        .sum()
 }
 
 /// How fast the machine answers Joel, from health's day file: the slowest
@@ -581,50 +553,47 @@ mod tests {
     }
 
     #[test]
-    fn launcher_keys_are_held_to_their_median_and_99th_percentile() {
-        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
-qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
-qml: launcher: "a \" took 9" took 120 ms to its frame
-qml: launcher: drawer for "Firefox" took 80 ms to its frame
-"#;
-        let read = keys(journal, 0);
+    fn launcher_keys_come_from_healths_presented_keys() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.launcher.keys.median-ms".to_owned(), 52.0),
+                ("health.launcher.keys.p99-ms".to_owned(), 1_209.0),
+                ("health.launcher.keys.late-percent".to_owned(), 43.2),
+            ])),
+            ..Sources::default()
+        };
+        let read = keys(&s);
         let words: Vec<String> = read.iter().map(Reading::words).collect();
         assert_eq!(
             words,
             [
-                "the launcher's middle key 74 ms today, at most 50 ms",
-                "the launcher's slowest key in a hundred 120 ms today, at most 100 ms",
+                "the launcher's middle key 52 ms today, from his key to his screen, at most 50 ms",
+                "the launcher's slowest key in a hundred today: no reading yet",
             ]
         );
+        assert!(read[0].out(), "a 52 ms middle key was in spec");
         assert!(
-            keys("", 0).iter().all(|r| r.figure().is_none()),
-            "a day with no keys reads as unread, not as fast"
-        );
-        // Seven keys timed, three slow enough for the journal: the other
-        // four took a frame at most, so the middle key is one of them.
-        let read = keys(journal, 7);
-        assert_eq!(
-            read.iter().map(Reading::figure).collect::<Vec<_>>(),
-            [Some(8.0), Some(120.0)],
-            "the keys the journal leaves out weren't counted as fast"
+            read[0].his,
+            "health times keys from his press to niri's frame"
         );
         assert_eq!(
             read[0].detail.as_deref(),
-            Some("of 7 keys, 4 drawn within a frame")
+            Some("43% of keys took longer than 50 ms"),
+            "the middle key says how many keys were late"
         );
-    }
-
-    #[test]
-    fn the_keys_timed_today_are_counted_from_the_trials() {
-        let trials = r#"{"at":5000,"timed":{"count":6,"felt":[]}}
-{"at":100,"timed":{"count":9,"felt":[]}}
-not a trial
-{"at":7000,"keys":{}}
-{"at":8000,"timed":{"count":2,"felt":[]}}"#;
         assert_eq!(
-            timed(trials, 1000),
-            8,
-            "only today's openings, by their keys timed"
+            read[1].detail.as_deref(),
+            Some(
+                "at most 1,209 ms, the slowest batch's: batches can't be pooled exactly, \
+                 so an exact figure waits on the shell keeping each key's time"
+            ),
+            "a ceiling is said, never judged as the 99th itself"
+        );
+        assert!(
+            keys(&Sources::default())
+                .iter()
+                .all(|r| r.figure().is_none()),
+            "a day with no keys reads as unread, not as fast"
         );
     }
 
