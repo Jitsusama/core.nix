@@ -81,6 +81,9 @@ in
       serviceConfig = {
         Type = "oneshot";
         ExecStart = lib.getExe deviceCheck;
+        # A look every two minutes is batch work, so it waits behind what
+        # the person runs rather than sharing app.slice with it.
+        Slice = "background.slice";
       };
     };
     systemd.user.timers.device-check = {
