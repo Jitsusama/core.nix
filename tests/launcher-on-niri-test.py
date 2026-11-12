@@ -581,6 +581,7 @@ def test_keep_awake_is_one_row_beside_power_found_by_awake_and_sleep(shell: Shel
     assert "Keep Awake" not in [row["name"] for row in power["rows"]], power["rows"]
     for typed in ("awake", "sleep"):
         shell.answer(typed)
+        # The wait ends before the loop moves on, so it reads this pass's words.
         shell.launcher_until(
             lambda shown: shown["typed"] == typed and "Keep Awake" in shown["rows"]  # noqa: B023
         )
