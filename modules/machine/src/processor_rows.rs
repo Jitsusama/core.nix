@@ -890,4 +890,113 @@ mod tests {
         assert_eq!(said(cache), "48.0 kB \u{d7} 4", "its size and count");
         assert_eq!(cache.note, "one a core \u{b7} cores 0 to 3", "whose it is");
     }
+
+    /// The processor as a machine at work reads it: every part it has,
+    /// the NPU busy, and the programs using it read just now.
+    fn processor_at_work() -> Value {
+        let mut p = processor();
+        p["cores"][0]["base_khz"] = json!(2_200_000);
+        p["cores"][0]["core"] = json!(0);
+        for (field, value) in [
+            ("time", json!({ "user": 0.3, "system": 0.1, "iowait": 0.01, "irq": 0.0,
+                "softirq": 0.01, "nice": 0.0, "steal": 0.0 })),
+            ("pressure", json!({ "some": { "avg10_pct": 4.0, "avg60_pct": 2.0,
+                "avg300_pct": 1.0, "total_us": 1_000 } })),
+            ("driver", json!("intel_pstate")),
+            ("governor", json!("powersave")),
+            ("preference", json!("balance_performance")),
+            ("turbo_read", json!(["intel_pstate/no_turbo", 0])),
+            ("temperature", json!({ "temperature_c": 52.0, "high_c": 100.0,
+                "critical_c": 110.0 })),
+            ("runnable", json!(3)),
+            ("tasks", json!(1234)),
+            ("running", json!(3)),
+            ("blocked", json!(1)),
+            ("switches_per_s", json!(4000.0)),
+            ("interrupts_per_s", json!(2000.0)),
+            ("softirqs_per_s", json!(900.0)),
+            ("forks_per_s", json!(3.0)),
+            ("counts", json!({ "ctxt": 987_654_321, "intr": 123_456_789,
+                "softirq": 45_678, "processes": 9_876 })),
+            ("npu", json!({ "busy_ratio": 0.4, "busy_us": 5_000_000, "clock_mhz": 1400,
+                "max_mhz": 1400 })),
+            ("vendor", json!("GenuineIntel")),
+            ("family", json!(6)),
+            ("model_number", json!(189)),
+            ("stepping", json!(1)),
+            ("microcode", json!("0x11f")),
+        ] {
+            p[field] = value;
+        }
+        p["caches"][0]["ways"] = json!(12);
+        p["caches"][0]["line_b"] = json!(64);
+        p
+    }
+
+    /// Every row the Processor serves has a drawer giving a little more
+    /// than its line (Joel, 2026-11-11 22:00): a row holding more, what
+    /// each a step in says; any other, what Linux keeps behind it.
+    #[test]
+    fn every_processor_row_has_a_drawer_saying_more() {
+        fn bare<'a>(made: &'a Made, found: &mut Vec<&'a str>) {
+            let drawer = made.drawer.as_ref().unwrap_or(&Value::Null);
+            let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+            if !(drawer["title"].is_string() && (facts || drawer["body"].is_string())) {
+                found.push(&made.id);
+            }
+            for part in &made.inside {
+                bare(part, found);
+            }
+        }
+        let programs = [json!({ "key": "using:cpu:1", "name": "cargo",
+            "share_ratio": 0.25, "processes": 3 })];
+        let made = row(&processor_at_work(), Some(&programs), &words()).expect("a row");
+        let mut found = Vec::new();
+        bare(&made, &mut found);
+        assert!(found.is_empty(), "rows whose drawer says nothing more: {found:?}");
+        let facts = |made: &Made| -> Vec<String> {
+            made.drawer.as_ref().unwrap()["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| {
+                    let said = &fact["said"];
+                    let said = said.as_str().map_or_else(|| said.to_string(), str::to_owned);
+                    format!("{}={said}", fact["name"].as_str().unwrap_or_default())
+                })
+                .collect()
+        };
+        assert_eq!(
+            facts(&part(&made, "cpu:cores").inside[0]),
+            [
+                "scaling_cur_freq=4,000,000 kHz",
+                "cpuinfo_min_freq=400,000 kHz",
+                "cpuinfo_max_freq=5,000,000 kHz",
+                "base_frequency=2,200,000 kHz",
+                "core_id=0",
+                "Read From=/sys/devices/system/cpu/cpu0"
+            ],
+            "a core says its clocks as cpufreq keeps them"
+        );
+        assert_eq!(
+            facts(part(&made, "cpu:load")),
+            ["loadavg=1.50 1.25 1.00 3/1234", "Read From=/proc/loadavg"],
+            "the load says the kernel's own line"
+        );
+        assert_eq!(
+            facts(part(&made, "cpu:switches")),
+            ["ctxt=987,654,321", "Read From=/proc/stat"],
+            "a rate says the count since startup it's measured from"
+        );
+        assert_eq!(
+            facts(part(part(&made, "cpu:model"), "cpu:family")),
+            [
+                "cpu family=6",
+                "model=189",
+                "stepping=1",
+                "Read From=/proc/cpuinfo"
+            ],
+            "what it is, as cpuinfo says it"
+        );
+    }
 }
