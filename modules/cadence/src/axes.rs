@@ -16,6 +16,7 @@
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
 mod landings;
+mod open;
 mod plans;
 mod readings;
 
@@ -47,8 +48,16 @@ pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
         }
     };
     let now = now_ms() / 1000;
-    let axes = read(&gather(&folder, &state_home, now));
+    let mut axes = read(&gather(&folder, &state_home, now));
     let ink = ink(&home);
+    let sep = format!(" {} ", ink.separator);
+    open::attach(
+        &mut axes,
+        &open::gather(&folder),
+        now,
+        &TimeZone::system(),
+        &sep,
+    );
     let zoned = Timestamp::from_second(now).map(|t| t.to_zoned(TimeZone::system()));
     let read_at = zoned
         .as_ref()
@@ -194,6 +203,8 @@ impl Reading {
 pub struct Axis {
     pub name: &'static str,
     pub readings: Vec<Reading>,
+    /// What the daily run found worse on it and hasn't seen fixed.
+    pub findings: Vec<open::Open>,
 }
 
 /// Where an axis stands: past a bar, in spec on his side's readings
@@ -406,7 +417,12 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
                 (ink.pending.clone(), format!("{said}{sep}{owner}"))
             }
         };
-        let _ = writeln!(out, "{mark} {:width$}  {said}", axis.name);
+        let findings = match axis.findings.len() {
+            0 => String::new(),
+            1 => format!("{sep}1 finding open"),
+            n => format!("{sep}{n} findings open"),
+        };
+        let _ = writeln!(out, "{mark} {:width$}  {said}{findings}", axis.name);
     }
     let tally = |standing: Standing| axes.iter().filter(|a| a.standing() == standing).count();
     let _ = write!(
@@ -459,6 +475,17 @@ pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
             let _ = writeln!(out, "    {}", more.join(&sep));
         }
     }
+    if !axis.findings.is_empty() {
+        out.push_str("\nfound worse and not yet fixed\n");
+    }
+    for finding in &axis.findings {
+        let mark = if finding.late {
+            ink.failed()
+        } else {
+            ink.pending.clone()
+        };
+        let _ = writeln!(out, "{mark} {}", finding.said);
+    }
     out
 }
 
@@ -492,6 +519,11 @@ mod tests {
         vec![
             Axis {
                 name: "scale",
+                findings: vec![open::Open {
+                    late: true,
+                    said: "ghosts rose · 85PKB2 · found 2026-11-11 · late since Thu 12 18:00"
+                        .into(),
+                }],
                 readings: vec![
                     Reading::new("{} pi windows", Some(85.0), "", "OSPHT4")
                         .bar(Bar::AtMost(12.0))
@@ -502,6 +534,7 @@ mod tests {
             },
             Axis {
                 name: "time to done",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("VM wait {}", Some(0.4), " min", "5FWIUS")
                         .bar(Bar::AtMost(2.0))
@@ -510,10 +543,12 @@ mod tests {
             },
             Axis {
                 name: "security",
+                findings: Vec::new(),
                 readings: vec![Reading::new("{} musts past their date", None, "", "ISXEG8")],
             },
             Axis {
                 name: "polish",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} slow keys", Some(0.0), "", "Y2YBTS")
                         .bar(Bar::AtMost(0.0))
@@ -522,6 +557,7 @@ mod tests {
             },
             Axis {
                 name: "stress",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} asks waiting", Some(0.0), "", "WCJQSG")
                         .bar(Bar::AtMost(0.0))
@@ -531,6 +567,7 @@ mod tests {
             },
             Axis {
                 name: "resources",
+                findings: Vec::new(),
                 readings: vec![
                     Reading::new("{} a day", Some(9000.0), "$", "QCXZEB")
                         .bar(Bar::AtMost(1.0))
@@ -552,7 +589,7 @@ mod tests {
             page,
             "axes · Wednesday 11 November · read 19:45
 
-✕ scale         85 pi windows, at most 12 · OSPHT4 · 1 more out
+✕ scale         85 pi windows, at most 12 · OSPHT4 · 1 more out · 1 finding open
 ◇ time to done  VM wait 0.4 min, at most 2 min · read on a stand-in
 ◇ security      no reading yet · ISXEG8
   polish        0 slow keys, at most 0
@@ -575,6 +612,9 @@ mod tests {
     from niri's windows
 ✕ 3 ghosts, at most 0 · 85PKB2
     a stand-in, read from our side rather than yours
+
+found worse and not yet fixed
+✕ ghosts rose · 85PKB2 · found 2026-11-11 · late since Thu 12 18:00
 "
         );
         assert_eq!(
