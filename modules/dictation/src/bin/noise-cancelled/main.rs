@@ -41,6 +41,7 @@ mod loudness;
 mod pipe;
 mod refusals;
 mod score;
+mod spot;
 mod trial;
 mod worker;
 

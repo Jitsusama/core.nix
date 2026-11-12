@@ -36,6 +36,7 @@ use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
 use crate::refusals::Refusal;
 use crate::score::{self, Marks};
+use crate::spot::Spot;
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -146,6 +147,9 @@ pub struct Trial {
     /// The default microphone's node name as the last watch began, so the
     /// cleaner said running is its own before anything's recorded.
     default_microphone: Option<String>,
+    /// Where the machine was as the last watch began or the recording
+    /// started, which a pick is kept for.
+    spot: Option<Spot>,
     /// What the clips play on: the default output, as Sound names it.
     output: Option<String>,
     until: Option<u64>,
@@ -188,6 +192,7 @@ impl Trial {
                 why: None,
                 microphone: None,
                 default_microphone: None,
+                spot: None,
                 output: None,
                 until: None,
                 clips: Vec::new(),
@@ -230,6 +235,7 @@ impl Trial {
             "stage": self.stage.name(),
             "why": self.why,
             "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
+            "spot": self.spot.as_ref().map(|spot| &spot.name),
             "output": self.output,
             "seconds": SECONDS,
             "until": self.until,
@@ -244,14 +250,16 @@ impl Trial {
     }
 
     /// The cleaner the microphone Sound shows runs: the one recorded from,
-    /// else the default as the last watch began.
+    /// else the default as the last watch began, at the spot read then.
     fn runs(&self) -> Cleaner {
         let microphone = self
             .microphone
             .as_ref()
             .map(|microphone| microphone.name.as_str());
-        self.running
-            .cleaner(microphone.or(self.default_microphone.as_deref()))
+        self.running.cleaner(
+            microphone.or(self.default_microphone.as_deref()),
+            self.spot.as_ref(),
+        )
     }
 
     /// Tells every watch the record changed.
@@ -311,6 +319,7 @@ impl Trial {
         let line = json!({
             "at": now(),
             "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
+            "spot": self.spot.as_ref().map(|spot| &spot.name),
             "output": self.output,
             "picked": way.name(),
             "marks": self.marked(),
@@ -404,6 +413,7 @@ impl Trial {
         self.stage = Stage::Recording;
         self.until = Some(now() + SECONDS * 1000);
         self.microphone = Some(microphone);
+        self.spot = Some(self.running.spot());
         self.output = dump.ok().as_ref().and_then(default_output);
         let me = self.me.clone();
         let models = self.models.clone();
@@ -451,7 +461,8 @@ impl Trial {
         if let (Way::Cleaned(cleaner), Some(microphone)) = (way, self.microphone.as_ref()) {
             // Kept first, so the microphone calls hear is never the twin
             // cleaning some other way than the one picked.
-            self.running.choose(&microphone.name, cleaner)?;
+            let spot = self.spot.clone().unwrap_or_else(|| self.running.spot());
+            self.running.choose(&microphone.name, &spot, cleaner)?;
             default_microphone_is(&self.tools.metadata, &microphone.twin())?;
         }
         eprintln!(
@@ -511,6 +522,9 @@ impl Answers for Trial {
                 .as_ref()
                 .and_then(default_microphone)
                 .map(|microphone| microphone.name);
+            if self.stage == Stage::Idle {
+                self.spot = Some(self.running.spot());
+            }
         }
         let keys = daemon::keys(&said);
         let named = keys
@@ -730,7 +744,7 @@ pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> 
         .and_then(|text| Refusal::listed(&text))?;
     eprintln!(
         "noise-cancelled: choosing by ear, {} running",
-        running.cleaner(None)
+        running.cleaner(None, None)
     );
     let trial = Trial::shared(models.to_path_buf(), running, refusals, Tools::default());
     let listener = match crate::handed() {

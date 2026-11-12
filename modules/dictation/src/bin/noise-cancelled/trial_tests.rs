@@ -4,6 +4,13 @@
 use std::sync::mpsc;
 
 use super::*;
+use crate::spot::Where;
+
+/// A machine knowing nothing of where it is, so every spot read is
+/// `network=none`.
+fn nowhere() -> Where {
+    Where::at(&std::env::temp_dir().join(format!("trial-nowhere-{}", std::process::id())))
+}
 
 fn trial(refusals: Vec<Refusal>) -> Arc<Shared<Trial>> {
     keeping(refusals, None)
@@ -17,7 +24,7 @@ fn keeping(refusals: Vec<Refusal>, file: Option<PathBuf>) -> Arc<Shared<Trial>> 
         play: "true".to_owned(),
         metadata: "true".to_owned(),
     };
-    let running = Chosen::new(file, Cleaner::DeepFilterNet);
+    let running = Chosen::new(file, Cleaner::DeepFilterNet).within(nowhere());
     Trial::shared(PathBuf::new(), running, refusals, tools)
 }
 
@@ -146,7 +153,8 @@ fn a_cleaned_pick_is_what_the_microphones_run_and_raw_changes_nothing() {
     ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
     assert_eq!(trial.lock().record()["running"], "rnnoise");
     assert_eq!(
-        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).cleaner(Some("mv7")),
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet)
+            .cleaner(Some("mv7"), Some(&nowhere().spot())),
         Cleaner::RNNoise,
         "the service would load some other cleaner than the one picked"
     );
@@ -164,11 +172,38 @@ fn a_pick_is_the_recorded_microphones_alone() {
     ready(&trial);
     ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
     let chosen = Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet);
-    assert_eq!(chosen.cleaner(Some("mv7")), Cleaner::RNNoise);
+    let here = nowhere().spot();
+    assert_eq!(chosen.cleaner(Some("mv7"), Some(&here)), Cleaner::RNNoise);
     assert_eq!(
-        chosen.cleaner(Some("laptop")),
+        chosen.cleaner(Some("laptop"), Some(&here)),
         Cleaner::DeepFilterNetGentle,
         "picking for the MV7 changed the laptop's microphone"
+    );
+    let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn a_pick_is_kept_at_the_spot_recorded_at() {
+    let file = std::env::temp_dir().join(format!("trial-spot-{}", std::process::id()));
+    std::fs::write(&file, "deepfilternet-gentle mv7 home=6366013\n").expect("home's pick kept");
+    let trial = keeping(Vec::new(), Some(file.clone()));
+    ready(&trial);
+    trial.lock().spot = Some(Spot {
+        key: "network=50-wifi-Lantern".to_owned(),
+        name: "away, on Lantern".to_owned(),
+    });
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
+    let record = trial.lock().record();
+    assert_eq!(record["spot"], "away, on Lantern");
+    assert_eq!(record["running"], "rnnoise");
+    let home = Spot {
+        key: "home=6366013".to_owned(),
+        name: "Main Floor".to_owned(),
+    };
+    assert_eq!(
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).cleaner(Some("mv7"), Some(&home)),
+        Cleaner::DeepFilterNetGentle,
+        "picking away from home changed the MV7's pick at home"
     );
     let _ = std::fs::remove_file(&file);
 }

@@ -17,12 +17,14 @@
 use std::path::{Path, PathBuf};
 
 use crate::denoise::Cleaner;
+use crate::spot::{Spot, Where};
 
 /// Where the picks are kept, and the cleaner used without one.
 #[derive(Clone, Debug)]
 pub struct Chosen {
     file: Option<PathBuf>,
     configured: Cleaner,
+    here: Where,
 }
 
 /// One line of the file: a cleaner, and the microphone it was picked for.
@@ -34,13 +36,28 @@ struct Pick {
 impl Chosen {
     /// The picks kept in `file`, or none kept at all when it's `None`, as
     /// for a cleaner named on the command line alone.
-    pub const fn new(file: Option<PathBuf>, configured: Cleaner) -> Self {
-        Self { file, configured }
+    pub fn new(file: Option<PathBuf>, configured: Cleaner) -> Self {
+        Self {
+            file,
+            configured,
+            here: Where::here(),
+        }
+    }
+
+    /// The same picks, at the spot `here` reads.
+    #[cfg(test)]
+    pub fn within(self, here: Where) -> Self {
+        Self { here, ..self }
+    }
+
+    /// The spot the machine is at now.
+    pub fn spot(&self) -> Spot {
+        self.here.spot()
     }
 
     /// The cleaner to clean `microphone` with now, by its node's name; with
     /// none named, the one a microphone never picked for takes.
-    pub fn cleaner(&self, microphone: Option<&str>) -> Cleaner {
+    pub fn cleaner(&self, microphone: Option<&str>, _spot: Option<&Spot>) -> Cleaner {
         let picks = self.picks();
         microphone
             .and_then(|name| {
@@ -62,7 +79,7 @@ impl Chosen {
 
     /// Keeps `cleaner` as `microphone`'s pick, the file written whole
     /// beside itself and moved over, so the service never reads half.
-    pub fn choose(&self, microphone: &str, cleaner: Cleaner) -> Result<(), String> {
+    pub fn choose(&self, microphone: &str, _spot: &Spot, cleaner: Cleaner) -> Result<(), String> {
         let Some(file) = &self.file else {
             return Ok(());
         };

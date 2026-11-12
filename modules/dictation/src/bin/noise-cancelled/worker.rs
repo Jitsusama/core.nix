@@ -9,9 +9,10 @@
 //! calls. It loads on a thread of its own, taking about half a second, and
 //! voices pass as heard meanwhile, since a call's first words matter more
 //! than their noise. Each microphone cleans as Joel last picked by ear for it
-//! (chosen.rs), settled as it starts being recorded and kept until it stops,
-//! so a pick changes the next call and never one under way. Each cleaner in
-//! use has its model loaded once, however many microphones share it.
+//! at the spot the machine is at (chosen.rs, spot.rs), settled as it starts
+//! being recorded and kept until it stops, so a pick changes the next call
+//! and never one under way. Each cleaner in use has its model loaded once,
+//! however many microphones share it.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -168,21 +169,24 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
     }
 }
 
-/// Settles what each microphone cleans with: as `chosen` says for it when
-/// it starts being recorded, kept until it stops, and nothing once it has.
-/// Answers every cleaner wanted now, each once.
+/// Settles what each microphone cleans with: as `chosen` says for it at
+/// the spot the machine is at when it starts being recorded, kept until it
+/// stops, and nothing once it has. The spot is read only then, once a
+/// pass. Answers every cleaner wanted now, each once.
 fn settled(microphones: &mut HashMap<u32, Microphone>, chosen: &Chosen) -> Vec<Cleaner> {
     let mut wanted = Vec::new();
+    let mut spot = None;
     for microphone in microphones.values_mut() {
         if !microphone.ends.shared.wanted.load(Ordering::Acquire) {
             microphone.cleaner = None;
             continue;
         }
         let cleaner = *microphone.cleaner.get_or_insert_with(|| {
-            let cleaner = chosen.cleaner(Some(&microphone.ends.microphone));
+            let spot = spot.get_or_insert_with(|| chosen.spot());
+            let cleaner = chosen.cleaner(Some(&microphone.ends.microphone), Some(spot));
             eprintln!(
-                "noise-cancelled: {} cleans with {cleaner}",
-                microphone.ends.microphone
+                "noise-cancelled: {} cleans with {cleaner} at {}",
+                microphone.ends.microphone, spot.name
             );
             cleaner
         });
