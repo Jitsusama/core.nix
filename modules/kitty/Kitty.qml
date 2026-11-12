@@ -377,6 +377,7 @@ Provider {
     // stays dimmed where it was, holding nothing.
     function row(one, kind, where) {
         const said = provider.words("kitty:tabs");
+        const ids = Kitty.wordsOf(kind);
         const pane = one.panes ? one.panes[0] : one;
         const drawer = () => Object.assign(Kitty.drawerOf(pane, {
             said: provider.words("kitty:pane"),
@@ -398,21 +399,26 @@ Provider {
             return thing(Object.assign(fields, {
                 side: Kitty.closedSide(one, said, Files.home),
                 gone: true,
-                verb: Words.verb(`kitty:${kind}`),
+                verb: Words.verb(ids.thing),
                 run: () => {},
                 verbs: () => []
             }));
-        const goes = provider.said(`verb:kitty:${kind}:go`, `verb:kitty:${kind}:go:${one.key}`, {
+        const goes = provider.said(ids.go, `${ids.go}:${one.key}`, {
             run: () => provider.go(one)
         });
-        const closes = provider.said(`verb:kitty:${kind}:close`,
-            `verb:kitty:${kind}:close:${one.key}`, {
-                stays: true,
-                run: () => provider.close(one)
-            });
+        const closes = provider.said(ids.close, `${ids.close}:${one.key}`, {
+            stays: true,
+            run: () => provider.close(one)
+        });
+        const copies = ids.copy === "" ? [] : [provider.said(ids.copy, `${ids.copy}:${one.key}`, {
+            copy: fields.name,
+            copies: fields.name
+        })];
         const panes = kind === "tab" && one.panes.length > 1
             ? one.panes.map(each => provider.row(each, "pane", where)) : [];
-        const acts = [goes].concat(panes, [closes]);
+        // As every tab's: Go to the Tab, Close the Tab, Copy the Title, then what it holds
+        // (VKCF3Z, 2026-11-12 [98fe0553]).
+        const acts = [goes, closes].concat(copies, panes);
         return thing(Object.assign(fields, {
             side: Kitty.sideOf(one, said, Files.home),
             verb: goes.verb,

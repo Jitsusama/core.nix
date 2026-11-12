@@ -145,6 +145,17 @@ function tabs(kitties, niri) {
     return all;
 }
 
+// The words a row is said in, by what it is: a tab is Tabs' one tab, as Chrome's is, with its
+// title to copy (VKCF3Z, 2026-11-12 [f56eec6d]); a pane keeps kitty's own, with none.
+function wordsOf(kind) {
+    if (kind === "tab") {
+        const verb = "verb:tabs";
+        return { thing: "tabs:tab", go: `${verb}:go`, close: `${verb}:close`, copy: `${verb}:title` };
+    }
+    const verb = `verb:kitty:${kind}`;
+    return { thing: `kitty:${kind}`, go: `${verb}:go`, close: `${verb}:close`, copy: "" };
+}
+
 function tabOf(placed, tab, bar) {
     const panes = byUse(tab.windows ?? [], tab.active_window_history)
         .map(window => Object.assign(paneOf(placed.pid, window), { window: placed.window.id }));
