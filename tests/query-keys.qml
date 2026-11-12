@@ -727,6 +727,16 @@ QtObject {
         for (const act of ["wordNext", "wordBack", "wordEnd"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         holds("x is once a press", Keys.repeats("deleteLetter"), false);
+        // A held key's repeat that does nothing takes no key, so a Return
+        // held on Reboot leaves it armed, rather than letting it go and
+        // making the next Return arm it again (Y2YBTS, 2026-11-12).
+        for (const mode of ["insert", "find", "normal", "visual", "page"])
+            holds(`a held Return does nothing more in ${mode}`, Keys.heldDoes("run", mode), false);
+        holds("a held j moves on in normal", Keys.heldDoes("next", "normal"), true);
+        holds("a held x does nothing more", Keys.heldDoes("deleteLetter", "normal"), false);
+        holds("a held Backspace deletes on in insert", Keys.heldDoes("deleteBack", "insert"),
+            true);
+        holds("and a held left arrow moves on", Keys.heldDoes("caretLeft", "find"), true);
 
         // [what, act, words, caret, count, { text, at } after]
         const edits = [
