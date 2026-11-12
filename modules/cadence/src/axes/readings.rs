@@ -11,8 +11,8 @@ use jiff::tz::TimeZone;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::landings;
 use super::{Axis, Bar, Reading, shown};
+use super::{landings, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -47,6 +47,8 @@ pub struct Sources {
     pub meminfo: String,
     /// What spend is judged by: the changes that reached him, and the bill.
     pub landings: landings::Sources,
+    /// The active quests and whether they're worked on and planned.
+    pub plans: plans::Sources,
     /// Now, in seconds, and the moment the reading's day began.
     pub now: i64,
     pub midnight: i64,
@@ -326,8 +328,7 @@ fn organization(s: &Sources) -> Axis {
             )))
             .from("mission's waiting files")
             .his(),
-            Reading::new("{} active quests with no live plan", None, "", "WCJQSG")
-                .bar(Bar::AtMost(0.0)),
+            plans::reading(&s.plans),
         ],
     )
 }
@@ -612,6 +613,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),
         landings: landings::gather(folder, &runtime, now),
+        plans: plans::gather(),
         now,
         midnight,
     }
