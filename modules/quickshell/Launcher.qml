@@ -4731,9 +4731,15 @@ Scope {
     // Asks for words in the field, with nothing to choose from below it.
     function ask(row) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
-        restart("");
+        // One that keeps its words, as a talk does, opens on what Joel was
+        // typing to it, or sent and not yet delivered, a shell started
+        // again included (Drafts.qml).
+        const kept = row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
+        restart(kept.text);
         // Words are what it asks for, so the line is typed in at once.
         prompt.typing();
+        if (kept.text !== "")
+            prompt.caretTo(kept.caret);
     }
 
     // Hands over what was typed, and empties the field for another try
@@ -4749,9 +4755,20 @@ Scope {
             back();
             return;
         }
+        // Kept until its talk says they were delivered, never on Return
+        // alone, so a switch before then loses nothing.
+        if (asking.draft)
+            drafts.sent(asking.draft, words);
         asking.given(words);
         prompt.text = "";
         searchNow();
+    }
+
+    // What a talk's field is still asking for, by whom it goes to.
+    readonly property string drafting: asking?.draft ?? ""
+    function drafted() {
+        if (drafting !== "")
+            drafts.typed(drafting, prompt.text, prompt.caret);
     }
 
     // A collection whose things changed while it's open is searched again,
@@ -5470,6 +5487,9 @@ Scope {
         const steps = held[held.length - 1].through && held.length > 1 ? 2 : 1;
         traces.began("back", { from: held[held.length - 1].key ?? "", depth: held.length });
         const left = held[held.length - steps];
+        // A talk's words put away are kept at once, not a moment later.
+        if (left.row.draft)
+            drafts.flush();
         held = held.slice(0, -steps);
         // A step back onto one whose line holds its words puts them back.
         const onto = held.length > 0 ? held[held.length - 1].row : null;
@@ -5558,6 +5578,13 @@ Scope {
             return !!choice && (finds(choice.prepared)
                 || !!choice.keywords && finds(choice.keywords));
         });
+    }
+
+    // What Joel was typing to whom, kept past the shell (Drafts.qml), so
+    // Agents can let go of what a talk delivered.
+    readonly property alias drafts: talkDrafts
+    Drafts {
+        id: talkDrafts
     }
 
     // What was picked for what was typed, which the ranking leans on.
@@ -7926,6 +7953,8 @@ Scope {
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
             asking: !!root.asking,
+            // Where the field's caret stands, so a talk's can be seen kept.
+            caret: prompt.caret,
             // What the list says in place of rows, where it has none.
             nothing: nothingShown.visible ? nothingShown.name : "",
             // The cat drawn beside it, if any: which mark's, a cell in the
@@ -8604,8 +8633,10 @@ Scope {
         const began = lapped;
         opening = false;
         markOpen(open);
-        if (!open)
+        if (!open) {
             Report.say("closing");
+            drafts.flush();
+        }
         else
             spotsBegin();
         keysHeld = filling && keysHeld;
@@ -10456,6 +10487,9 @@ Scope {
                             ? (Words.field.found ?? "").replace("{count}",
                                 String(root.matches.length)) : ""
                         onPressing: root.filled("key")
+                        // A talk's caret is kept with its words, moved by
+                        // a vi motion as much as by typing.
+                        onCaretChanged: root.drafted()
                         // How the place it's in stands, where its source
                         // says that presses, as People's down daemon.
                         placeStands: root.held.length === 0 ? ""
@@ -10469,6 +10503,7 @@ Scope {
                             // key held for answers included (Awaited.js).
                             trials.retyped(Awaited.before({ due: root.keysDue,
                                 held: root.answersAwaited }, root.typed), text);
+                            root.drafted();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }

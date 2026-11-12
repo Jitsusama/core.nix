@@ -74,4 +74,6 @@
   "launcher/Found.js"
   "launcher/NeedsYou.js"
   "launcher/Lately.js"
+  "Drafts.qml"
+  "launcher/Drafts.js"
 ]

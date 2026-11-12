@@ -48,6 +48,25 @@
       touch $out
     '';
 
+  # Joel's words in a talk's field outlive the shell starting again, as a
+  # switch does, and go only once his talk says they were delivered, never
+  # on Return (Joel, 2026-11-12 16:00, through QCXZEB's e23364f8), as
+  # tests/drafts.qml holds launcher/Drafts.js to it in Qt's own engine.
+  a-talks-words-outlive-the-shell =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-talks-words-outlive-the-shell" { } ''
+      cp ${../../../tests/drafts.qml} drafts.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Drafts.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml drafts.qml
+      touch $out
+    '';
+
   # pi's sessions, as many and as large as Joel's, each changing its step
   # with the launcher shut and then showing them, sorted and lived again as
   # Sessions.qml does, start a garbage collection in well under one change
