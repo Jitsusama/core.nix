@@ -31,8 +31,15 @@
       glyphs = import ./glyphs.nix { inherit lib; };
       oneMeaning = [
         [
+          "batting"
+          "blinking"
           "curled"
+          "earFlick"
+          "pouncing"
           "stretching"
+          "tailSwish"
+          "walkingA"
+          "walkingB"
         ]
         [
           "heat"
@@ -52,8 +59,8 @@
   # glyph does (docs/design.md, Marks one height): square, its ink touching
   # its top and bottom rows, and centred across to within a cell, so each
   # pose of the cat stands on the same middle line at the same height. The
-  # three empty places' marks and the margin's cat's two poses are drawn,
-  # so it can't pass on none.
+  # three empty places' marks, the margin's cat's own poses and its yarn
+  # are drawn, so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -75,11 +82,19 @@
         && lib.max left right - lib.min left right <= 1;
       crooked = lib.attrNames (lib.filterAttrs (_: mark: !level mark.pixels) drawn);
       missing = lib.filter (name: !(drawn ? ${name})) [
+        "batting"
+        "blinking"
         "curled"
+        "earFlick"
         "forYouEmpty"
         "nothingFound"
         "nothingHere"
+        "pouncing"
         "stretching"
+        "tailSwish"
+        "walkingA"
+        "walkingB"
+        "yarn"
       ];
       said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
     in
