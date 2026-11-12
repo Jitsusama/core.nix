@@ -159,6 +159,7 @@ mod tests {
     use super::*;
     use crate::rows;
 
+    #[expect(clippy::unnecessary_wraps, reason = "it's what read gives, to compare with")]
     fn invitation(answer: Answer, meeting: &str, when: &str, who: &str) -> Option<Invitation> {
         Some(Invitation {
             answer,
@@ -269,7 +270,7 @@ mod tests {
         ]}});
         let mail = crate::mail::read(&answer).expect("the answer wasn't read as mail");
         let words = rows::Words::read(&rows::marked::vocabulary()).expect("words didn't read");
-        let row = &rows::mail(std::slice::from_ref(&mail), &words)[0]["row"];
+        let row = &rows::mail(std::slice::from_ref(&mail), &words)[0];
         assert_eq!(
             row["name"], "Joel / Chad 1:1",
             "the row wasn't named by its meeting: {row}"
@@ -281,7 +282,7 @@ mod tests {
             "its side didn't say who, the answer, then when: {side:?}"
         );
         let drawers = rows::mail_drawers(std::slice::from_ref(&mail), &[], &words);
-        let drawer = &drawers[0].1["drawer"];
+        let drawer = &drawers[0].1;
         assert_eq!(
             (&drawer["title"], &drawer["facts"][0]),
             (
