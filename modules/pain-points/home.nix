@@ -1,5 +1,5 @@
 # pain-points names, every ten minutes, the interactions with the
-# launcher that cost Joel most today (src/main.rs says how), in
+# launcher that slowed Joel most today (src/main.rs says how), in
 # $XDG_STATE_HOME/pain-points/<local day>.jsonl, so the day's health can
 # say what slowed him down without anyone watching for it.
 { lib, pkgs, ... }:
@@ -10,7 +10,7 @@ in
   home.packages = [ package ];
 
   systemd.user.services.pain-points = {
-    Unit.Description = "Names the launcher's interactions that cost Joel most today";
+    Unit.Description = "Names the launcher's interactions that slowed Joel most today";
     Service = {
       Type = "oneshot";
       ExecStart = lib.concatStringsSep " " [
@@ -26,7 +26,7 @@ in
   };
 
   systemd.user.timers.pain-points = {
-    Unit.Description = "Names the launcher's interactions that cost Joel most, every ten minutes";
+    Unit.Description = "Names the launcher's interactions that slowed Joel most, every ten minutes";
     Timer.OnCalendar = "*:0/10";
     Install.WantedBy = [ "timers.target" ];
   };

@@ -1,4 +1,4 @@
-//! Names the interactions with the launcher that cost Joel most today,
+//! Names the interactions with the launcher that slowed Joel most today,
 //! so what slows him down is read from his own use rather than guessed
 //! (Joel, 2026-11-11: "identifying what i'm trying to do, and what slows
 //! me down from getting there, particuularly the launcher").
@@ -100,7 +100,7 @@ fn run(trials: &Path, journalctl: &Path, date: &Path) -> Result<(), String> {
     fs::rename(&partial, &file).map_err(|e| format!("{}: {e}", file.display()))?;
     match named.first() {
         Some(worst) => println!(
-            "pain-points: {} of {} openings today cost him a second or more; the worst, {}, lost {} s ({})",
+            "pain-points: {} of {} openings today lost him a second or more; the worst, {}, lost {} s ({})",
             named.len(),
             today.len(),
             worst.trying,
@@ -108,7 +108,7 @@ fn run(trials: &Path, journalctl: &Path, date: &Path) -> Result<(), String> {
             worst.slowed
         ),
         None => println!(
-            "pain-points: none of {} openings today cost him a second",
+            "pain-points: none of {} openings today lost him a second",
             today.len()
         ),
     }

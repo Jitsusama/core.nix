@@ -1,5 +1,5 @@
-//! What an opening of the launcher cost Joel, in the seconds he lost to
-//! it, and which of a day's interactions cost him most.
+//! What an opening of the launcher took from Joel, in the seconds he lost to
+//! it, and which of a day's interactions slowed him most.
 //!
 //! Each kind of loss comes from how product research tells a struggle
 //! from a visit that went well: the wait past what feels immediate (about
@@ -156,10 +156,12 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
 
 /// Whether `next` was a second go at what `was` failed to do: it came
 /// within `AGAIN_MS` of `was` closing, and `was` was a search he left
-/// with nothing or the same pick, which didn't do what he wanted.
+/// with nothing or the very row he picks again, which didn't do what he
+/// wanted. A different row of the same kind is working down a list, not
+/// a second go. The rows are compared here and never kept.
 fn again(was: &Trial, next: &Trial) -> bool {
     next.at - was.closed() <= AGAIN_MS
-        && (was.missed || (was.picked_one() && was.trying() == next.trying()))
+        && (was.missed || (was.picked_one() && was.picked == next.picked))
 }
 
 /// What an interaction showed, by kind and timing alone.
@@ -174,7 +176,7 @@ pub struct Signs {
     pub backs: u32,
 }
 
-/// One interaction that cost him, as the day file says it: when it began
+/// One interaction that slowed him, as the day file says it: when it began
 /// (seconds since the epoch), what he was doing as a kind, how long it
 /// took against his usual, what it lost him, and what slowed it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -192,7 +194,7 @@ pub struct Painful {
     pub signs: Signs,
 }
 
-/// The day's interactions that cost him at least a second, worst first
+/// The day's interactions that lost him at least a second, worst first
 /// and at most `KEPT`: each an opening, or openings in a row where each
 /// came straight back to one that failed him.
 pub fn painful(day: &[Trial], usable: &Usable, usual: &Usual) -> Vec<Painful> {
@@ -406,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn a_quick_pick_with_nothing_slow_costs_nothing() {
+    fn a_quick_pick_with_nothing_slow_loses_nothing() {
         let usual = usual_of("program:slack", &[2000, 2000, 2000]);
         let quick = pick(AT, "program:slack", 1500);
         assert_eq!(lost(&quick, Some(120.0), &usual).total(), 0.0);
@@ -508,6 +510,20 @@ mod tests {
         assert_eq!(named[0].openings, 2);
         assert_eq!(named[0].slowed, "tried again");
         assert_eq!(named[0].lost_seconds, 2.0);
+    }
+
+    #[test]
+    fn working_down_a_list_one_row_at_a_time_is_not_trying_again() {
+        let usual = usual_of("on:look", &[2000, 2000, 2000]);
+        let day = [
+            pick(AT, "on:look:546a", 2000),
+            pick(AT + 4000, "on:look:686d", 2000),
+        ];
+        let named = painful(&day, &Usable::new(vec![]), &usual);
+        assert!(
+            named.is_empty(),
+            "two different rows, each at his pace: {named:?}"
+        );
     }
 
     #[test]

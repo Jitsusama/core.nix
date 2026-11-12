@@ -13,7 +13,7 @@ rustPlatform.buildRustPackage {
   };
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Names the interactions with the launcher that cost Joel most today";
+    description = "Names the interactions with the launcher that slowed Joel most today";
     license = lib.licenses.mit;
     mainProgram = "pain-points";
     platforms = lib.platforms.linux;
