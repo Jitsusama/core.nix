@@ -173,16 +173,15 @@ pub fn read(paths: &Paths) -> String {
 /// Keeps the minutes Joel is at the machine, and the profile they make,
 /// for as long as the session runs.
 pub fn keep(paths: &Paths) -> std::io::Result<()> {
-    let mut seen = match read_seen(&paths.seen) {
-        Some(seen) => kept(seen, now()),
-        None => {
-            let seen = seeded(paths, now());
-            eprintln!(
-                "<6>rhythm seeded {} minutes at the machine from the logs",
-                seen.len()
-            );
-            seen
-        }
+    let mut seen = if let Some(seen) = read_seen(&paths.seen) {
+        kept(seen, now())
+    } else {
+        let seen = seeded(paths, now());
+        eprintln!(
+            "<6>rhythm seeded {} minutes at the machine from the logs",
+            seen.len()
+        );
+        seen
     };
     let lines: Vec<String> = seen.iter().map(ToString::to_string).collect();
     write_whole(&paths.seen, &(lines.join("\n") + "\n"))?;
