@@ -97,7 +97,7 @@ the queue and conclude.
 | report | a quest's document on what happened, its outcomes and lessons | | |
 | landing | what a session finished and handed Joel: a merged change, a built plan or a hand-off, at its ref, with a line saying what to try | | presence `landings` |
 | Landed | the group of landings in Agents, named for its state as Unread and Recent are | | `agents:landed` |
-| read | a landing Joel has seen, by its drawer or Return, which leaves For You for its History, as mail he has opened is read | | `agents:landed`'s mark |
+| read | a landing Joel has seen, by its drawer or Return, which leaves Needs You for its History, as mail he has opened is read | | `agents:landed`'s mark |
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine | | `carry` |
@@ -268,7 +268,7 @@ or a copy, can be opened, copied or forgotten.
 | launcher | the window on Super+Space that finds programs, windows, actions and answers | palette, command palette | `Launcher.qml` |
 | place | a list the launcher opens, belonging to one context, such as Agents or Network | category, collection | |
 | row | one thing in a place | | |
-| home | the launcher's first place: Now, Agents, Programs, People, Passwords, Desktop, Machine, Network and Keyboards | | |
+| home | the launcher's first place: Needs You, Now, Agents, Programs, Machine, Network, People, Clipboard, Passwords and Files | | |
 | crumbs | where Joel is in the launcher, from home | | |
 | Recent | the group of the last things done with what holds it, as in a program, a person or Capture: newest first, each once, never one open or shown already | | `*:recent` |
 | field | the line at the top of every place: the find line, or the command line in its place | | |
@@ -281,16 +281,16 @@ or a copy, can be opened, copied or forgotten.
 | turn off | the action stopping a setting, a radio or a light | | |
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
 | foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
-| Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
-| For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
-| to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |
+| Now | the launcher's view of what's on, to glance at: the time, the date, where, the weather, the next meeting, Timers and the modes left on; home's second row | What's on | `Now.qml` |
+| Needs You | the one place for what needs Joel and what came for him, with where each came from: home's first row, on Super+O, weighed, the most pressing first | For You | `ForYou.js` |
+| to-do | what only Joel can do, raised by the session that needs him and listed in Needs You | waiting on you | `WaitingOnYou.qml` |
 | to-do daemon | what finds a to-do done or ready by itself, running its check and hearing its signal | the desktop's daemon | `modules/to-do`, `verdicts.json` |
 | check | the command that settles a to-do, which succeeds once it's done, apart from the checks core.nix holds | | `doneWhen.check` |
-| look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in For You until he opens or clears it | | `on:waiting:look`, the looks folder |
-| to look at | a look For You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
-| to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it | | |
-| Lately | For You's band for what came for Joel, one row for each place it came from | | |
-| clipboard | what was copied last, and what was copied before it | | |
+| look | something a session points Joel at to see, a pull request, a page, a file, a diff or a terminal, kept in Needs You until he opens or clears it | | `on:waiting:look`, the looks folder |
+| to look at | a look Needs You holds in its row of them, one that neither blocks a session nor is due | | `for-you:kind:look` |
+| to try | a landing whose line asks Joel to try something, kept in Needs You until he opens or clears it | | |
+| Lately | Needs You's band for what came for Joel, one row for each place it came from | | |
+| clipboard | what was copied last, and what was copied before it; as a place, Clipboard, it holds those copies, Copied, with all that puts something there: Capture, Emoji, Characters, Sums and Units | | |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
 | stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |
 | lap | one stretch of the stopwatch, from its start or the lap before to when Joel marks it | | `Timers.qml` |

@@ -351,7 +351,7 @@ of each kind of line it sets, and a row's pitch is its height.
 - **Only the keyboards plugged in show** (Joel, 2026-11-07: "seeing ergodox
   layouts and shit when it isn't plugged in is weird as fuck"). Every
   surface that names or draws one keyboard's keys (the layout card, the
-  glance's layer mark, the Keyboards place, hints, key lists, the guide,
+  glance's layer mark, Machine's Keyboard, hints, key lists, the guide,
   the greeter and the lock) reads one list of the keyboards connected now,
   asked of the input stack rather than guessed from config, and the
   laptop's own is always on it. A keyboard not plugged in is absent, never
@@ -808,8 +808,8 @@ mark at Note's size reads as a gear (Joel's shot of 2026-11-06 read "⚙ +
 0"), and a chord's figures take Monaspace's slashed zero (`cv01`), in
 chords, the foot's keys and the key list alone, so Super + O never reads as
 a zero. A chord sits at the right of its row, at least `space.xxl` from the
-name, but a place's row, at home or in Desktop, hands its chord to the
-foot, which teaches Now's "Super + O next time" while the cursor is on it,
+name, but a place's row, at home or in Machine, hands its chord to the
+foot, which teaches Needs You's "Super + O next time" while the cursor is on it,
 furthest from Return and first to give way, since its right says how it
 stands. Nothing says what Escape does, since it only ever leaves a mode.
 
@@ -988,8 +988,8 @@ processor or niri, for a minute shows quietly, as something left on, from
 lag-watch's windows; a moment's wait never does, since Joel feels it
 himself, and the launcher's "lag" says what waited.
 
-What each is, in words, is the launcher's Now, opened by Super+O on its
-first row, For You, or by clicking a mark, on that mark's row: a
+What each is, in words, is the launcher's Now, home's second row after
+Super+O, or opened by clicking a mark, on that mark's row: a
 row each, its glyph, its name, how it stands at the right, and what more
 there is to know in the footer, grouped by how much it asks with what
 wants Joel first. Return does there what it
@@ -1174,10 +1174,10 @@ it. Owners go by layer:
 | Do Not Disturb, Keep Awake, recording, sharing, mic muted, caps lock   | the margin mark, while true                        | Now; the session's rows |
 | Keyboard layer                                                         | the margin mark, while locked; nothing while a key holds it | Keyboard            |
 | Music playing                                                          | the margin mark while it plays; a notice for a moment when the track changes or a media key is pressed | Now |
-| What waits on Joel: an agent's want, a to-do he can do now, a look, a source's to-do, a critical notice unread; a landing to try once the to-do daemon streams it | For You's tray, the margin's one mark for it, while any waits, counting as For You's row does; an agent's want a notice once | For You (Super+O); Agents ("pi" finds them) |
+| What waits on Joel: an agent's want, a to-do he can do now, a look, a source's to-do, a critical notice unread; a landing to try once the to-do daemon streams it | Needs You's tray, the margin's one mark for it, while any waits, counting as Needs You's row does; an agent's want a notice once | Needs You (Super+O); Agents ("pi" finds them) |
 | A camera open, and by what                                            | the margin mark, while a program reads one         | "camera"; Now               |
 | In a call                                                              | the margin mark, while in one                      | Programs › Tuple; Now        |
-| Notifications waiting                                                  | nothing in the margin: they're what came lately, and a critical one is For You's | Notifications (Super+N); Now |
+| Notifications waiting                                                  | nothing in the margin: they're what came lately, and a critical one is Needs You's | Notifications (Super+N); Now |
 | A password or one-time code copied                                     | the margin mark, until the clipboard clears it, since the launcher goes as it copies | Passwords' foot; Now |
 | A password reused or breached                                          | nothing, and nothing guessed, until Joel presses Check Every Password, which reads every password, so never on its own | Passwords › Needing Attention, counted, shown again after the vaults in its manager's program; each entry's Health in the warning's role, "reused in 3 other entries", "seen in 1,204 breaches" |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
@@ -1346,7 +1346,7 @@ works the same way everywhere.
   their choices too, so "scale 1.5" finds 1.5× without a step in, the
   setting's name a hidden word on each of its choices.
   A part is found from the top by its name, three letters or more,
-  saying where it lives (Rotation, Desktop › Screens › Built-in screen;
+  saying where it lives (Rotation, Machine › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path
   filled, so - climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
@@ -1482,10 +1482,10 @@ works the same way everywhere.
   spark, after its value on the value's baseline, its room counted in
   how the drawer lays out; where it still won't fit, it gives way before
   the value. It is no line for the cursor.
-- **Places are levels.** Desktop, Machine and Network gather what
+- **Places are levels.** Machine, Network and Clipboard gather what
   they're about, and a place may hold a smaller one, as Machine holds
-  Power (Battery, the power profile, Keep Awake, Sleep, Lock, Log Out,
-  Reboot and Power Off). Each is a row found by its word, stepping in
+  Power (Battery, the power profile, Sleep, Lock, Log Out, Reboot and
+  Power Off). Each is a row found by its word, stepping in
   lists what it holds, and its word and a space steps into it, through
   the places it sits in, so what's typed after it searches only inside
   it ("machine " and then "heat"). When a name goes on from the word and
@@ -1518,31 +1518,57 @@ works the same way everywhere.
   scrolled where it was. A category held, as Agents in "ai", refreshes
   the same way. A collection says it changed only when what its rows show
   did, not each time what they're made from moves.
-- **Home is a few places.** With nothing typed, the launcher shows Now,
-  then after a gap the places, each a context with its own words: Agents,
-  Programs, People and Passwords, what Joel works with; then Desktop,
-  Machine, Network and Keyboards, what he works on; always in that order,
-  nine rows, so home's shape never changes, and Passwords only on a
-  machine with a password manager, beside People (VKCF3Z). Disk is a
-  place in Machine, beside Processor, Memory and Heat, with Lag after it,
-  since what slowed the desktop is one of them, and a disk filling
-  fast shows in Now. Now's top never changes: For You first, always,
-  nothing after its name, as a place's row, its side what each of its
-  bands holds as a run ("1 to do · 44 to look at · 2 to try"), or
-  "nothing now";
-  then its own
-  rows, always there in this order: the time, the date, the location,
-  the weather and the next meeting, with no Today to step into, each the
-  one row that thing is anywhere it shows, never a version Now draws of
-  it. Below them, only while true, come what else wants Joel (a low
-  battery; mail and notices are For You's), what reaches other people,
+- **Home is ten places, each earned.** With nothing typed, the launcher
+  shows Needs You and Now, what wants Joel and what he glances at; then,
+  after a gap, the places, each a context with its own words: Agents,
+  Programs, Machine, Network, People, Clipboard, Passwords and Files.
+  They come always in that order, so home's shape never changes.
+  Passwords shows only on a machine with a password manager. Files shows
+  only once it holds every program's recent files, the folders and the
+  picker (Joel, 2026-10-26: "only if we can make it actually useful").
+  The places come from what Joel opened and typed (1,003 openings, 29
+  October to 11 November) and from his tree test, never from invented
+  categories (Joel, 2026-11-11: "higher order concepts that naturally
+  group things"). A place stands only when it tells home's choices
+  apart. A level inside one stands only when it holds more than a
+  screen's rows, or a kind he'd look for by its name. His tree test
+  (2026-11-12) got every first click right, and all three misses were
+  one level down, behind a holder he didn't think to open.
+  Desktop is no place: Windows and This Window are Programs', Screens
+  Machine's, Timers Now's and Do Not Disturb Needs You's, and Keyboard
+  is Machine's. Clipboard holds what Joel puts in: Copied, Capture,
+  Emoji, Characters, Sums and Units.
+  Machine lists first what it's using: Lag, Processor, Memory, Heat and
+  Disk. What slowed the desktop is one of them, and he browses them
+  more than its devices (19 against 14, 29 October to 11 November).
+  Then come its devices: Power, Keep Awake, Sound, Screens, Bluetooth,
+  Cameras, Keyboard and Desk Light; then Firmware and Machines. While
+  anything lags, Lag leads Machine, its side naming the cause ("cargo ·
+  11 of 16 cores"), and a disk filling fast shows in Now. Keep Awake is
+  Machine's own switch, beside Power, never inside it, since staying
+  awake powers nothing (his tree test: unfound inside Power).
+  Agents opens on what its sessions want of him, then each team, then AI
+  Spend, with Reopen Sessions a row of its own and Closed Teams last.
+  Needs You's top never changes: its kinds, each at its own level and
+  never behind a holder of Agents' (his tree test: a to-do went unfound
+  behind one). To-Dos, To Look At and To Try come first, then a row for
+  each source (Messages, Meetings, Home Network, This Machine), then Do
+  Not Disturb, Later and History, each saying at its side what it
+  holds. Now's top never changes either: its own rows, always there in
+  this order: the time, the date, the location, the weather, the next
+  meeting and Timers, with no Today to step into. Each is the one row
+  that thing is anywhere it shows, never a version Now draws of it.
+  Below them, only while true, come what else wants Joel (a low
+  battery; mail and notices are Needs You's), what reaches other people,
   what's playing and the modes left on, by name within each (the power
   profile only once picked by hand over the one the machine chose for
   the charger and the battery, since its own choice isn't a mode Joel
-  left on). For You is a place, so Return steps into it whatever it
-  holds, and Return on what's first goes where it's done; Super+O,
-  Return, Return reaches the pressing thing, each press foreseen. Every place
-  and list opens on its first row, Now and For You included, so the same
+  left on). Needs You is a place, so Return steps into it whatever it
+  holds, and Return on what's first goes where it's done. Super+O opens
+  home, on its first row, Needs You, so Super+O, Return, Return still
+  reaches the pressing thing, each press foreseen, and Now is a j away.
+  Every place
+  and list opens on its first row, Now and Needs You included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
   "when opening the launcher it selects seemingly random things"). A
@@ -1571,14 +1597,13 @@ works the same way everywhere.
   opens it, and its foot says so ("↵ open"). A thing keeps its detail
   after its name, as every row does: a call names who's in it, a
   meeting its time, a track its artist. Only a row that opens a list of
-  its own goes bare (VKCF3Z, 2026-11-09). Now's right names the
-  first thing waiting on Joel, its minutes and how many more he can do
-  now ("Answer the ask · 2 min · 2 more"); short of room its title gives
-  way by whole words behind an ellipsis, its minutes and counts never
-  (VKCF3Z, bd5cb965). Calm, it says what waits by its band ("44 to look
-  at · 2 to try"), and nothing only when all are empty; For You's own
-  row inside Now counts every band, needed most first ("1 to do · 44 to
-  look at · 2 to try"), To Try giving way first, and as a place's row
+  its own goes bare (VKCF3Z, 2026-11-09). Needs You's right at home
+  names the first thing waiting on Joel, its minutes and how many more
+  he can do now ("Answer the ask · 2 min · 2 more"); short of room its
+  title gives way by whole words behind an ellipsis, its minutes and
+  counts never (VKCF3Z, bd5cb965). Calm, it says what waits by its kind,
+  needed most first ("44 to look at · 2 to try"), To Try giving way
+  first, and "nothing now" only when all are empty; as a place's row it
   says nothing after its name, its drawer naming the heaviest it holds
   in a fact, Heaviest ("Answer the ask · 2 min"; VKCF3Z, a31a0e1b,
   3a92c450, 16efb1dc). Now's drawer is its moment plate, holding only
@@ -1603,7 +1628,7 @@ works the same way everywhere.
   a row that holds parts, a program or anything else with a page of its
   own, since Down and Ctrl+N already go to the next row (VKCF3Z,
   2026-11-07), so "chrome" and Tab reach Chrome's page.
-- **For You is the one place for Joel's attention, fed by sources**
+- **Needs You is the one place for Joel's attention, fed by sources**
   (Joel, 2026-11-08: "Why would we not just have a single place to grab
   my attention from that grabs data from various sources?"). Sources
   plug in as Passwords' do, each giving items of one shape, so a new
@@ -1629,7 +1654,7 @@ works the same way everywhere.
   mark and eyebrow say its kind ("from Reef Quest · look"), and its side
   the strongest reason it's there, state first ("session ended · 12 min
   ago", "blocks 2 sessions", "due 15:00", else "12 min ago", and before
-  today its day, "yesterday"). For You
+  today its day, "yesterday"). Needs You
   wears an in-tray, full while it holds something and empty when it
   doesn't; a look wears an eye, a landing to try a flask, a to-do and
   History the person and clock, and a source with no mark of its own
@@ -1645,10 +1670,10 @@ works the same way everywhere.
   Then Later, what was put off or can't be done yet, each
   saying what for; then History. A source may raise one to-do of its own
   for what one of its checks found, never one a finding, so a check can't
-  flood For You: Passwords' Change the Passwords the Check Found, "3
+  flood Needs You: Passwords' Change the Passwords the Check Found, "3
   breached · 12 reused", stands until a later check finds none (VKCF3Z,
   WCJQSG).
-- **For You keeps itself true, and forgets nothing.** Nothing in it times
+- **Needs You keeps itself true, and forgets nothing.** Nothing in it times
   out. An item leaves the moment its source says it no longer needs him:
   a check passes, a sign comes (a boot, a switch, a sign-in, a device
   seen, a file written), a pull request merges, a meeting ends, a
@@ -1662,7 +1687,7 @@ works the same way everywhere.
   and `/` finds any. A kind or a source is a step-in, never a mode:
   `:filter look` or `:filter slack` goes in, Tab completing the kinds and
   sources present, each with its mark, its name and its count, the head
-  names the kind by its name ("For You › To Look At", "› To-Dos", "› To
+  names the kind by its name ("Needs You › To Look At", "› To-Dos", "› To
   Try"), and - comes back out. Every row has a drawer, "nerdy and
   useful" (Joel, 2026-11-08): its why whole in the serif; Weight, as a
   figure and its parts ("82 · blocks 2 sessions · waiting 2 h · due
@@ -2327,9 +2352,9 @@ by its desktop entry since its windows are the terminal's; found from the
 top beside a layer named as it is, the program stands for both, so one
 Neovim is listed.
 
-Nothing the desktop shows is reached only by pointing. Super+O opens Now,
-the margin's glyphs in words, and Super+N takes the notices on screen as
-lines, where :e Notices gathers every notice into the launcher. Either
+Nothing the desktop shows is reached only by pointing. Super+O opens home,
+where Now, the margin's glyphs in words, is the second row, and Super+N
+takes the notices on screen as lines, where :e Notices gathers every notice into the launcher. Either
 way Return goes to who sent one, as the quickfix list's Return goes to
 where a line came from, and its verbs are commands: its own actions
 (:reply, Mark as read), copying what it said, and forgetting it, listed
@@ -2686,7 +2711,7 @@ hairline, the rows, a hairline, the status line.
   It draws nothing over the gutter in any mode. The place's glyph stands in
   the rows' glyph cell and its Title over their names, home's too ("⌂ Home",
   "Notices", "Time › Servers"). The glyph is its path's first place's,
-  however deep it goes, so "Now › For You › Slack" wears Now's mark.
+  however deep it goes, so "Machine › Power › Reboot" wears Machine's mark.
   The mode's mark takes the glyph's cell while the mode lasts, centred by
   its ink: the accent's `/` on the find,
   `:` on the command line (Joel, 2026-11-06: "we have an extra space in
