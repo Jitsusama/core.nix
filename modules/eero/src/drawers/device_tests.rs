@@ -6,6 +6,7 @@
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
 
+use super::super::node::tests::under;
 use super::*;
 use crate::model::{DeviceHistory, Event, Reservation, Roam};
 use crate::rows::tests::{model, words};
@@ -33,17 +34,6 @@ fn named_fact<'a>(drawer: &'a Value, name: &str) -> Option<&'a Value> {
 
 fn said(drawer: &Value, name: &str) -> Option<String> {
     named_fact(drawer, name).map(|fact| fact["said"].as_str().unwrap_or("").to_owned())
-}
-
-/// The facts under a heading, up to the next.
-fn under(drawer: &Value, heading: &str) -> Vec<Value> {
-    facts(drawer)
-        .iter()
-        .skip_while(|fact| fact["heading"] != heading)
-        .skip(1)
-        .take_while(|fact| fact.get("heading").is_none())
-        .cloned()
-        .collect()
 }
 
 fn ms(at: &str) -> i64 {

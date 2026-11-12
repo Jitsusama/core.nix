@@ -96,8 +96,10 @@ fn drawer(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers
     let how = say(if device.ethernet { "ethernet" } else { "wifi" });
     let at = on.map(|node| fill(say("onNode"), &[("name", node_name(node))]));
     let mut facts: Vec<Value> = link(device, words, numbers);
-    facts.extend(what(model, device, words, numbers));
+    facts.extend(what(model, device, words));
+    facts.extend(resent(device, words, numbers));
     facts.extend(where_on(model, device, &title, words));
+    facts.extend(seen_and_held(model, device, words));
     facts.extend(roams(model, device, words));
     facts.extend(events(model, device, words));
     json!({
@@ -207,9 +209,8 @@ fn link(device: &Device, words: &Words, numbers: &Numbers) -> Vec<Value> {
     .collect()
 }
 
-/// What it is and which node it's on, and what had to be sent again.
-fn what(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers) -> Vec<Value> {
-    let say = |word| words.say("eero:device", word);
+/// What it is, which node it's on and which of its radios it hears.
+fn what(model: &HomeNetwork, device: &Device, words: &Words) -> Vec<Value> {
     let on = device
         .node
         .as_deref()
@@ -218,15 +219,7 @@ fn what(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers) 
         .kind
         .as_deref()
         .map(|kind| kind.replace('_', " ").trim().to_owned());
-    let packets = device.packets.as_ref();
-    let counted = |count: Option<u64>, word: Option<&'static str>| {
-        count.map(|count| {
-            let figure = numbers.number(count_f64(count), 0);
-            word.map_or_else(|| figure.clone(), |word| fill(say(word), &[("n", &figure)]))
-        })
-    };
-    let ppm = |count: Option<u32>| counted(count.map(u64::from), Some("perMillion"));
-    let facts: Vec<Option<Value>> = vec![
+    [
         fact(
             words,
             "eero:device:kind",
@@ -257,6 +250,26 @@ fn what(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers) 
             "eero:device:bssid",
             device.bssid.as_deref().unwrap_or(""),
         ),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+/// What had to be sent again: how often it retries and how long it's been
+/// quiet, its packets each way, and those sent again, never sent and
+/// dropped.
+fn resent(device: &Device, words: &Words, numbers: &Numbers) -> Vec<Value> {
+    let say = |word| words.say("eero:device", word);
+    let packets = device.packets.as_ref();
+    let counted = |count: Option<u64>, word: Option<&'static str>| {
+        count.map(|count| {
+            let figure = numbers.number(count_f64(count), 0);
+            word.map_or_else(|| figure.clone(), |word| fill(say(word), &[("n", &figure)]))
+        })
+    };
+    let ppm = |count: Option<u32>| counted(count.map(u64::from), Some("perMillion"));
+    let facts: Vec<Option<Value>> = vec![
         fact(
             words,
             "eero:device:retries",
@@ -319,8 +332,7 @@ fn what(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers) 
     facts.into_iter().flatten().collect()
 }
 
-/// Under its own heading, its network, addresses, when it was seen, its
-/// profile and whether it's held off.
+/// Under its own heading, its network, its addresses and its names.
 fn where_on(model: &HomeNetwork, device: &Device, title: &str, words: &Words) -> Vec<Value> {
     let say = |word| words.say("eero:device", word);
     let mut facts: Vec<Option<Value>> = vec![
@@ -380,6 +392,14 @@ fn where_on(model: &HomeNetwork, device: &Device, title: &str, words: &Words) ->
             "eero:device:nickname",
             device.nickname.as_deref().unwrap_or(""),
         ),
+    ]);
+    facts.into_iter().flatten().collect()
+}
+
+/// When it was seen, its profile and whether it's held off.
+fn seen_and_held(model: &HomeNetwork, device: &Device, words: &Words) -> Vec<Value> {
+    let say = |word| words.say("eero:device", word);
+    [
         seen(
             words,
             "eero:device:first-seen",
@@ -425,8 +445,10 @@ fn where_on(model: &HomeNetwork, device: &Device, title: &str, words: &Words) ->
                 .flatten(),
             ),
         ),
-    ]);
-    facts.into_iter().flatten().collect()
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// Its address, said reserved where it's the one kept for it, and the kept

@@ -624,4 +624,4 @@ fn count_f64(count: usize) -> f64 {
 
 #[cfg(test)]
 #[path = "node_tests.rs"]
-mod tests;
+pub(super) mod tests;
