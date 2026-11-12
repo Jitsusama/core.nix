@@ -12,6 +12,8 @@ var where = {
   timed: account + "jobs.slice/jobs-timed.slice/work-16-2.scope",
   shared: account + "shared.slice/run-p17-i9.scope",
   brokered: account + "app.slice/pi-jobs-qestabc-1.scope",
+  node: account + "agents.slice/mycelium.service",
+  held: account + "agents.slice/mycelium-pi-3f2a.scope",
   terminal: account + "jobs.slice/jobs-awaited.slice/awaited-40-5.scope",
   app: account + "app.slice/app-niri-kitty-41.scope",
 };
@@ -25,6 +27,8 @@ var pids = {
   timed: 16,
   shared: 17,
   brokered: 18,
+  node: 19,
+  held: 20,
 };
 for (var place in where) {
   processes[pids[place]] = where[place];
@@ -91,6 +95,32 @@ expect("a work slice's weight", weight, "session", "yes");
 expect("a work slice's weight", weight, "command", "yes");
 expect("a work slice's weight", weight, "timed", "yes");
 expect("a work slice's weight", weight, "terminal", "yes");
+
+// mycelium's node holds off sleep and shutdown while it keeps work, as
+// Joel's session may; nothing else of agents' does, and it's granted
+// nothing more.
+var inhibits = ["block-sleep", "delay-sleep", "block-shutdown", "delay-shutdown"];
+for (var i = 0; i < inhibits.length; i++) {
+  var inhibit = asking("org.freedesktop.login1.inhibit-" + inhibits[i], {});
+  expect("holding off " + inhibits[i], inhibit, "node", "yes");
+  expect("holding off " + inhibits[i], inhibit, "held", "no");
+  expect("holding off " + inhibits[i], inhibit, "session", "no");
+  expect("holding off " + inhibits[i], inhibit, "terminal", null);
+}
+expect("libvirt's system connection", libvirt, "node", "no");
+expect(
+  "suspending",
+  asking("org.freedesktop.login1.suspend", {}),
+  "node",
+  "no"
+);
+var elsewhere = joels(pids.node);
+elsewhere.active = false;
+var away = polkit._runRules(asking("org.freedesktop.login1.inhibit-block-sleep", {}), elsewhere);
+if (away !== "no") {
+  failed += 1;
+  print("FAIL holding off sleep from the node outside the active session: " + away);
+}
 
 // A process gone before it's read is refused, since nobody's there to ask.
 expect("libvirt's system connection", libvirt, "gone", "no");
