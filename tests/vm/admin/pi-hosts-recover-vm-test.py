@@ -117,6 +117,6 @@ def test_a_host_that_keeps_crashing_stays_down_after_three_starts(host: Host) ->
     assert len(host.starts()) == START_LIMIT, host.starts()
     assert host.show("ActiveState") == "failed"
     # Nothing is to happen, so the test waits out the time a restart would come in.
-    host.machine.sleep(int(STAYING_DOWN.total_seconds()))
+    host.machine.sleep(duration=STAYING_DOWN)
     assert len(host.starts()) == START_LIMIT, host.starts()
     assert host.show("ActiveState") == "failed"
