@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime};
 use crate::state::{State, now};
 
 /// How long the net may say nothing while hung before it aborts.
-pub const QUIET_FOR: Duration = Duration::from_secs(20 * 60);
+pub const QUIET_FOR: Duration = Duration::from_mins(20);
 
 /// How often the guard looks.
 const EVERY: Duration = Duration::from_secs(60);
@@ -118,7 +118,7 @@ mod tests {
             "the hang of 12 November wasn't seen"
         );
         assert!(
-            !hung(QUIET_FOR - Duration::from_secs(1), 0, &locked),
+            !hung(QUIET_FOR.saturating_sub(Duration::from_secs(1)), 0, &locked),
             "a net quiet for less than its while was taken as hung"
         );
         assert!(
