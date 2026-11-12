@@ -1,6 +1,8 @@
 //! What processes are doing, which decides what's busy and what's occupied.
 
+use std::collections::BTreeSet;
 use std::ffi::OsString;
+use std::ops::Bound;
 use std::path::{Path, PathBuf};
 
 /// How a tree is used, each naming the process that decided it.
@@ -204,6 +206,79 @@ pub fn judge_within(
                 worst
             }
         })
+}
+
+/// Where processes work, read once so that asking it of many paths costs
+/// a lookup each rather than a pass over every process's files and maps.
+/// On one laptop a survey asked it of tens of thousands of quest entries,
+/// each against half a million open and mapped files, which took minutes
+/// of CPU a pass. It answers as `judge` calling a path busy does.
+pub struct Workplaces<'a> {
+    /// What a process sits in, runs, holds or maps, or a build variable
+    /// names: a path is worked in when one of these lies in it.
+    held: BTreeSet<PathBuf>,
+    /// What a build variable names, which also makes all inside it busy.
+    around: Vec<PathBuf>,
+    /// A process both serving macros and building, which `used` judges by
+    /// its maps before its variables, so it's asked the slow way.
+    odd: Vec<&'a Process>,
+}
+
+impl<'a> Workplaces<'a> {
+    /// Where every process but the guard (`me`) works. One it can't read
+    /// works nowhere here, as `judge` only calls it unknown.
+    pub fn new(processes: &'a [Process], me: u32) -> Self {
+        let mut places = Workplaces {
+            held: BTreeSet::new(),
+            around: Vec::new(),
+            odd: Vec::new(),
+        };
+        for process in processes {
+            if process.pid == me || !process.readable {
+                continue;
+            }
+            let (serves, builds) = (serves_macros(process), builds(process));
+            if serves && builds {
+                places.odd.push(process);
+                continue;
+            }
+            let mapped = if serves { &[][..] } else { &process.maps[..] };
+            let opened = process.cwd.iter().chain(&process.exe).chain(&process.files);
+            places.held.extend(opened.chain(mapped).cloned());
+            if builds {
+                for (name, value) in &process.env {
+                    if !BUILD_VARIABLES.iter().any(|variable| name == variable) {
+                        continue;
+                    }
+                    let value = Path::new(value);
+                    let value = match &process.cwd {
+                        Some(cwd) if value.is_relative() => normalized(&cwd.join(value)),
+                        _ => normalized(value),
+                    };
+                    places.held.insert(value.clone());
+                    places.around.push(value);
+                }
+            }
+        }
+        places
+    }
+
+    /// Whether a process works in `path`, so `judge` would call it busy.
+    /// Paths order by their components, so all that lie in `path` follow
+    /// it at once, and the first after it says whether any do.
+    pub fn work_in(&self, path: &Path) -> bool {
+        let inside = self
+            .held
+            .range::<Path, _>((Bound::Included(path), Bound::Unbounded))
+            .next()
+            .is_some_and(|held| held.starts_with(path));
+        inside
+            || self.around.iter().any(|named| path.starts_with(named))
+            || self
+                .odd
+                .iter()
+                .any(|process| matches!(used(process, path, None, None), Use::Busy(_)))
+    }
 }
 
 /// One process as the platform reads it. It crosses the system daemon's

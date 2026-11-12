@@ -1,4 +1,4 @@
-use disk_guard::activity::{Process, Use, judge, judge_within};
+use disk_guard::activity::{Process, Use, Workplaces, judge, judge_within};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -252,5 +252,91 @@ fn a_target_kept_inside_another_is_used_only_by_what_names_it() {
         run(&[building]),
         Use::Busy(11),
         "a build naming the run's target is busy in it"
+    );
+}
+
+// The survey asks where processes work of tens of thousands of entries,
+// so it reads them once into an index rather than judging each. The index
+// must call busy exactly what `judge` does, whatever made it so: a cwd,
+// an open file, a program, a map but a macro server's, a build variable
+// naming the path or a folder around it, and never the guard's own files
+// or what an unreadable process might hold.
+#[test]
+fn where_processes_work_is_read_once_as_judge_reads_it() {
+    let mut opened = shell(10);
+    opened.files.push(PathBuf::from("/w/open/log"));
+    let mut mapped = shell(11);
+    mapped.maps.push(PathBuf::from("/w/mapped/lib.so"));
+    let mut server = process(
+        12,
+        "/nix/store/abc-rust/libexec/rust-analyzer-proc-macro-srv",
+    );
+    server.maps.push(PathBuf::from("/w/macros/lib.so"));
+    let mut odd = process(
+        13,
+        "/nix/store/abc-rust/libexec/rust-analyzer-proc-macro-srv",
+    );
+    odd.cmdline = vec![OsString::from("cargo")];
+    odd.maps.push(PathBuf::from("/w/odd/lib.so"));
+    let odd = carries(odd, "CARGO_TARGET_DIR", "/w/odd");
+    let mut me = shell(ME);
+    me.files.push(PathBuf::from("/w/mine/log"));
+    let mut hidden = shell(14);
+    hidden.readable = false;
+    hidden.cwd = Some(PathBuf::from("/w/hidden"));
+    let processes = [
+        sits(shell(15), "/w/sat"),
+        opened,
+        process(16, "/w/program/bin/run"),
+        mapped,
+        server,
+        odd,
+        carries(
+            sits(cargo(17), "/w/rel"),
+            "CARGO_TARGET_DIR",
+            "../named/target",
+        ),
+        carries(cargo(18), "CARGO_HOME", "/w/home"),
+        carries(shell(19), "CARGO_TARGET_DIR", "/w/shelled"),
+        me,
+        hidden,
+    ];
+    let places = Workplaces::new(&processes, ME);
+    let asked = [
+        "/",
+        "/w",
+        "/w/sat",
+        "/w/sat-by",
+        "/w/sa",
+        "/w/open",
+        "/w/open/log",
+        "/w/open/lo",
+        "/w/program",
+        "/w/mapped",
+        "/w/macros",
+        "/w/odd",
+        "/w/named",
+        "/w/named/target/x",
+        "/w/rel",
+        "/w/home/registry",
+        "/w/home",
+        "/w/shelled",
+        "/w/mine",
+        "/w/hidden",
+        "/elsewhere",
+    ];
+    for path in asked {
+        let path = Path::new(path);
+        let busy = matches!(judge(&processes, ME, path, None), Use::Busy(_));
+        assert_eq!(
+            places.work_in(path),
+            busy,
+            "the index and judge disagree on {}",
+            path.display()
+        );
+    }
+    assert!(
+        !places.work_in(Path::new("/w/macros")) && places.work_in(Path::new("/w/home/registry")),
+        "the cases meant to differ didn't"
     );
 }

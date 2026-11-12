@@ -2349,10 +2349,17 @@ impl Guard {
                 goal,
                 &mut learned,
             );
+            // Looked up by path, since a plan can take tens of thousands
+            // of candidates and a search of them each would be quadratic.
+            // The first offer of a path is the one taken, as before.
+            let mut by_path: HashMap<&Path, &crate::plan::Candidate> = HashMap::new();
+            for candidate in &candidates {
+                by_path.entry(candidate.path.as_path()).or_insert(candidate);
+            }
             let taken = report
                 .actions
                 .iter()
-                .filter_map(|(path, _)| candidates.iter().find(|c| &c.path == path).cloned())
+                .filter_map(|(path, _)| by_path.get(path.as_path()).map(|&c| c.clone()))
                 .collect();
             previews.push(Preview {
                 path: watched.path.clone(),

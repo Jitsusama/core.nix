@@ -24,11 +24,24 @@ const BUDGET: usize = 50_000;
 /// Every entry of a scratch directory with its last write. A symlink is
 /// an entry of its own, dated by itself, and removing it removes only it.
 pub fn entries(dir: &Path) -> Vec<Entry> {
+    dated(dir, |_| true)
+}
+
+/// The entries a quest's workspace holds beside its `tmp/`, with their last
+/// writes, leaving out those it keeps whatever their age before any is
+/// dated: a working quest's `tmp/` alone can hold tens of thousands of
+/// entries, read to the budget on every pass for nothing.
+pub fn beside_tmp(workspace: &Path) -> Vec<Entry> {
+    dated(workspace, |path| !kept_beside_tmp(path))
+}
+
+fn dated(dir: &Path, wanted: impl Fn(&Path) -> bool) -> Vec<Entry> {
     let Ok(listing) = fs::read_dir(dir) else {
         return Vec::new();
     };
     let paths = listing.filter_map(Result::ok).map(|entry| entry.path());
     paths
+        .filter(|path| wanted(path))
         .map(|path| Entry {
             written: last_write(&path, DEPTH, BUDGET),
             path,
@@ -54,6 +67,11 @@ pub fn candidate(
     )
 }
 
+/// How long an entry has gone unwritten, in awake seconds.
+pub fn idle(entry: &Entry, awake: &Awake, now: f64) -> f64 {
+    awake.since(entry.written.min(now), now)
+}
+
 /// How long a quest at work's `tmp/` entry must go unwritten, in awake
 /// seconds, before it's offered: the plan's shortest window for one, so
 /// a younger one, which no band would take, is never sized.
@@ -68,7 +86,7 @@ pub fn quest_candidate(
     awake: &Awake,
     now: f64,
 ) -> Option<Candidate> {
-    let idle = awake.since(entry.written.min(now), now);
+    let idle = idle(entry, awake, now);
     (idle >= QUEST_UNWRITTEN).then(|| left(entry, Class::QuestTemp, size(), idle))
 }
 
@@ -81,7 +99,7 @@ pub const QUEST_SCRATCH_UNWRITTEN: f64 = 12.0 * 3_600.0;
 /// whose entries go by their own rule; the handover a leaving machine
 /// packs for the share to take home; and a folder of GC roots, whose links
 /// keep what running programs read.
-pub fn kept_beside_tmp(path: &Path) -> bool {
+fn kept_beside_tmp(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_none_or(|name| name == "tmp" || name == "handover" || name.starts_with("gcroots"))
@@ -96,7 +114,7 @@ pub fn quest_scratch_candidate(
     awake: &Awake,
     now: f64,
 ) -> Option<Candidate> {
-    let idle = awake.since(entry.written.min(now), now);
+    let idle = idle(entry, awake, now);
     (idle >= QUEST_SCRATCH_UNWRITTEN).then(|| left(entry, Class::QuestScratch, size(), idle))
 }
 
