@@ -7,7 +7,11 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agents::Died;
+use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
+use crate::memory::Memory;
+use crate::sessions::{Heard, Said};
 use crate::sign;
 
 /// The most signatures kept for one thing; past it, the rest are counted
@@ -59,6 +63,12 @@ pub enum Kind {
     Services,
     /// Who may do what: sudo, polkit, logins, the audit log.
     Security,
+    /// The agents' tools, as their sessions' logs say: calls that failed,
+    /// were refused, or were made twice running.
+    Tools,
+    /// What Joel typed to a session that sounds like something hurt, by
+    /// where the session ran.
+    Words,
 }
 
 impl Kind {
@@ -70,6 +80,8 @@ impl Kind {
             Self::Programs => "programs",
             Self::Services => "services",
             Self::Security => "security",
+            Self::Tools => "tools",
+            Self::Words => "words",
         }
     }
 }
@@ -86,6 +98,47 @@ pub struct Day {
     /// Each boot that started or stopped in the day, by its id.
     #[serde(default)]
     pub boots: BTreeMap<String, Boot>,
+    /// How using the machine felt: the day's most painful interactions,
+    /// worst first, as the pain-points detector ranked them.
+    #[serde(default)]
+    pub feel: Vec<Pain>,
+    /// How far each session's log has been read, in bytes, so a restart
+    /// reads on rather than reading a day's logs again.
+    #[serde(default)]
+    pub read: BTreeMap<String, u64>,
+    /// What each watched program held, by its name.
+    #[serde(default)]
+    pub memory: BTreeMap<String, Memory>,
+    /// The agents that died.
+    #[serde(default)]
+    pub agents: Agents,
+}
+
+/// The agents gone without parking: those at the last look, and every one
+/// that died in the day, each by session.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Agents {
+    /// When they were last looked for, in microseconds since the epoch.
+    pub looked: i64,
+    /// Gone at the last look, whenever each died.
+    pub gone: BTreeMap<String, Died>,
+    /// Each that died in the day, kept though its presence goes.
+    pub died: BTreeMap<String, Died>,
+}
+
+impl Agents {
+    /// Keep what a look at `at` found gone, those that died on `date`
+    /// among them.
+    pub fn saw(&mut self, at: i64, gone: BTreeMap<String, Died>, died_today: impl Fn(i64) -> bool) {
+        self.looked = at;
+        for (session, died) in &gone {
+            if died_today(died.at) {
+                self.died.insert(session.clone(), died.clone());
+            }
+        }
+        self.gone = gone;
+    }
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in
@@ -260,6 +313,45 @@ impl Day {
             Mark::Ready => boot.ready = boot.ready.or(Some(at)),
             Mark::Stopping => boot.stopping = boot.stopping.or(Some(entry.at)),
         }
+    }
+
+    /// Count what a session's log said, from the session that ran at
+    /// `place`: a tool's failure or refusal is an error of `pi <tool>`, a
+    /// call made twice running a warning of it, and Joel's words an error
+    /// of the place he said them.
+    pub fn heard(&mut self, place: &str, heard: &Heard) {
+        self.to = self.to.max(heard.at);
+        let (name, kind, message, priority) = match &heard.said {
+            Said::Failed { tool, why } | Said::Refused { tool, why } => {
+                (format!("pi {tool}"), Kind::Tools, why.as_str(), 3)
+            }
+            Said::Again { tool } => (format!("pi {tool}"), Kind::Tools, "the same call again", 4),
+            Said::Words { text } => (place.to_owned(), Kind::Words, text.as_str(), 3),
+        };
+        let thing = self.things.entry(name).or_default();
+        thing.kind = thing.kind.or(Some(kind));
+        thing.lines += 1;
+        if priority <= 3 {
+            thing.errors += 1;
+        }
+        thing.said(message, priority, heard.at);
+    }
+
+    /// Take from a day kept before this run what the journals don't say
+    /// again: the sessions' tallies, how far each log was read, and the
+    /// memory the watched programs held.
+    pub fn resume(&mut self, kept: Self) {
+        if kept.date != self.date {
+            return;
+        }
+        self.read = kept.read;
+        self.memory = kept.memory;
+        self.agents = kept.agents;
+        self.things.extend(
+            kept.things
+                .into_iter()
+                .filter(|(_, thing)| matches!(thing.kind, Some(Kind::Tools | Kind::Words))),
+        );
     }
 
     /// Count a fault health saw itself, which no journal said: a line at
