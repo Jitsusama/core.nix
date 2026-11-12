@@ -3009,8 +3009,10 @@ def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> N
     Joel feels the time from his press, and a shell busy with other work hears the ask late,
     which timing from the ask can't show (WCJQSG, 2026-11-10: "to its frame" isn't what he
     feels; he feels how long until it's usable). So a chord said to have run a while ago
-    makes an opening at least that long from it.
+    makes an opening at least that long from it, and the shell says it heard that chord late,
+    since one heard late shows its thread was held (Joel, 2026-11-12: Super+E heard 17 s late).
     """
+    since = shell.mark()
     pressed = time.time() - CHORD_AGO.total_seconds()
     with socket.socket(socket.AF_UNIX) as said:
         said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
@@ -3024,6 +3026,10 @@ def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> N
         time.sleep(launcher_on_niri.POLL)
     ago = CHORD_AGO.total_seconds() * 1000
     assert felt >= ago, f"the opening was timed {felt} ms from a chord {ago:.0f} ms before it"
+    with shell.log.open("rb") as log:
+        log.seek(since)
+        logged = log.read().decode(errors="replace")
+    assert "launcher: heard a chord " in logged, shell.tail()
 
 
 def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell: Shell) -> None:
