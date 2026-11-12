@@ -788,10 +788,10 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         answered = f"{answer} \u00b7 Wed 11 Nov, 21:01"
 
         def answering(shown: Json) -> bool:
-            drawer = shown["drawer"] or {}
-            return drawer.get("facts", [])[:2] == ["You Asked", "Its Answer"] and drawer[
-                "values"
-            ][:2] == [asked, answered]
+            drawer = cast("Json", shown["drawer"] or {})
+            facts = cast("list[str]", drawer.get("facts", []))
+            values = cast("list[str]", drawer.get("values", []))
+            return facts[:2] == ["You Asked", "Its Answer"] and values[:2] == [asked, answered]
 
         assert shell.showing()["selected"] is None, shell.showing()
         # Passed over: found, then gone again at one more letter.
