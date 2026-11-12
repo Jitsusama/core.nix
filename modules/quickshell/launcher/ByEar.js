@@ -137,10 +137,14 @@ function aimed(row, input) {
 
 // The step's rows but where Joel is.
 function stepRows(said, record, state, now) {
+    // With no record, the row saying how the daemon stands starts it on
+    // Return, since asking its socket does (goes-places, 2026-11-12: a row
+    // whose Return did nothing).
     if (record === null) {
         return [{
             key: HEAD, id: "sound:by-ear:down", side: daemonSays(said, state),
-            note: state === "not answering" ? told(said, "by-ear-down") : "", act: null
+            note: state === "not answering" ? told(said, "by-ear-down") : "", act: null,
+            starts: true
         }];
     }
     switch (record.stage) {

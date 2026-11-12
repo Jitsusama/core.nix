@@ -248,7 +248,8 @@
     {
       "id": "sound:by-ear:down",
       "in": "sound:by-ear",
-      "name": "The Noise Cancelling Daemon"
+      "name": "The Noise Cancelling Daemon",
+      "verb": "start"
     },
     {
       "id": "sound:rate",

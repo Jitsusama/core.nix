@@ -978,13 +978,27 @@ Provider {
         if (!cancels(node))
             return null;
         const record = NoiseCancelling.record;
-        return figureRow({
-            key: `sound:${node.name}:noise`,
-            name: Words.name("sound:noise"),
-            side: ByEar.running(soundSaid, record, NoiseCancelling.state),
-            // A daemon not answering has no cleaner to copy.
-            copiesNothing: record === null,
-            note: said("noise")
+        const key = `sound:${node.name}:noise`;
+        const side = ByEar.running(soundSaid, record, NoiseCancelling.state);
+        // A daemon not answering has no cleaner to copy, so Return starts it.
+        if (record === null)
+            return provider.startsRow(key, Words.name("sound:noise"), side, said("noise"));
+        return figureRow({ key: key, name: Words.name("sound:noise"), side: side,
+            note: said("noise") });
+    }
+
+    // A row saying noise-cancelled isn't answering, whose Return starts it,
+    // staying open to say so once it answers.
+    function startsRow(key, name, side, note) {
+        return thing({
+            key: key,
+            name: name,
+            verb: Words.verb("sound:by-ear:down"),
+            hue: "action",
+            stays: true,
+            side: side,
+            note: note,
+            run: () => NoiseCancelling.start()
         });
     }
 
@@ -1115,6 +1129,8 @@ Provider {
         const name = Words.name(row.id, state, row.fill);
         if (row.names)
             return provider.spotRow(row, name);
+        if (row.starts)
+            return provider.startsRow(row.key, name, row.side, row.note);
         if (!row.act)
             return figureRow({
                 key: row.key,

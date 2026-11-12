@@ -40,6 +40,12 @@ Singleton {
         }
     }
 
+    // Starts the daemon while it isn't answering: its socket starts it on
+    // the next ask, so connecting again at once is the asking.
+    function start() {
+        daemon.connectAgain();
+    }
+
     // Asks one of the trial's acts, as ByEar.asked words it; `then` is
     // given "" once it's taken, the daemon's plain reason when it refuses,
     // or null when the daemon isn't there to ask. What follows is the
