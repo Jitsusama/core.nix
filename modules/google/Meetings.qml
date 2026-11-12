@@ -16,16 +16,17 @@
 //
 // It's the one row of a meeting wherever one shows: Now's next, a
 // person's next or last meeting in People and the meeting a Meet call was
-// all take it (`next`, `lent`). A meeting's Return and everything inside
-// it are the daemon's (src/calendar_inside.rs): Return joins its call
-// from ten minutes before it starts, and otherwise steps in to Show in
-// Calendar (ready-rows.md's `into`). Each guest inside is People's person
-// and each document Documents' own row where they hold one (ready-rows.md's
-// lends); a time typed inside Move the Meeting the daemon reads as a
-// search within Move's row; and Open the Transcript is call-transcripts'
-// where a call was written down, none standing where it doesn't
-// (ready-rows.md's lentOnly). Calendar.row and Calendar.acts stand only
-// for a meeting the daemon doesn't serve.
+// all take it (`next`, `lent`). A meeting's Return is the daemon's
+// (src/calendar_inside.rs): it joins its call from ten minutes before it
+// starts, and otherwise steps in to Show in Calendar (ready-rows.md's
+// `into`), what's known of it. Show in Calendar, Guests, Attachments,
+// Move the Meeting and Open the Transcript are the rows the daemon serves
+// inside it: each guest People's person and each document Documents' own
+// row where they hold one (ready-rows.md's lends); a time typed inside
+// Move the daemon's search within Move's row; and the transcript
+// call-transcripts' where a call was written down, none standing where it
+// doesn't (ready-rows.md's lentOnly). Its other acts stay Calendar.acts'
+// till the daemon serves them as the shell makes them, by Sun 15 Nov.
 import qs
 import Quickshell
 import QtQuick
@@ -84,20 +85,36 @@ Provider {
 
     // A meeting's row as `from` serves it, made a meeting's part of
     // Calendar, so a program's Recent and Programs' counts find it. Its
-    // Return and the rows inside it are the daemon's: Return joins, or
-    // steps in to Show in Calendar under the meeting's name, which then
-    // leads the rows inside (ready-rows.md's `into`).
+    // Return is the daemon's: it joins, or steps in to Show in Calendar
+    // under the meeting's name (ready-rows.md's `into`). Its acts are
+    // still Calendar.qml's, each the daemon serves taken in its place
+    // (`servedActs`), as it holds the meeting now. Like Calendar.row's, it
+    // holds verbs and no targets, so a step into its acts is led by
+    // Return's own (Launcher.qml's keepsOpen).
     function made(from, row, key) {
         if (row.kind === "move")
             return provider.moving(from, row, key);
-        return from.thing(row, key, {
+        const meeting = provider.meetingOf(row.held?.id ?? "");
+        const fields = {
             what: "meeting",
             component: "meeting",
             of: "program:google-calendar",
             part: row.name ?? "",
             today: row.today === true,
             at: row.held?.start ?? 0
-        });
+        };
+        if (meeting)
+            Object.assign(fields, {
+                verbs: () => Calendar.acts(meeting, provider)
+                    .map(act => provider.servedInside(from, key, act) ?? act),
+                targets: undefined
+            });
+        return from.thing(row, key, fields);
+    }
+
+    // The meeting held as `id`, coming or held lately, or null.
+    function meetingOf(id) {
+        return Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
     }
 
     // Move the Meeting as the daemon serves it, stepping in to its later
@@ -131,6 +148,22 @@ Provider {
                 launcher?.reshow(launcher.held.length, true);
             }
         });
+    }
+
+    // The row the daemon serves inside the meeting at `key` in place of
+    // the shell's `act`, for Show in Calendar, Guests, Attachments, Move
+    // and the transcript lent, or null for an act it doesn't yet serve as
+    // the shell makes it, or one it served none of.
+    readonly property var servedActs: ({
+        "verb:calendar:see": "see",
+        "verb:calendar:guests": "guests",
+        "verb:calendar:attachments": "attachments",
+        "verb:calendar:move": "move",
+        "verb:calendar:transcript": "transcript"
+    })
+    function servedInside(from, key, act) {
+        const id = provider.servedActs[act?.key];
+        return id ? from.rowAt(`${key}:${id}`) : null;
     }
 
     // Its rows, made only while the launcher is open or its rows are

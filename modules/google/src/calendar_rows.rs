@@ -739,7 +739,13 @@ pub(crate) fn dated_between(
         all_day: false,
         ..meeting.clone()
     };
-    [dated(&moved, zone, words), span(&moved, zone, words)].join(BETWEEN)
+    dated_fully(&moved, zone, words)
+}
+
+/// Its day and times in full, "Monday 26 October · 14:00 to 14:30", or
+/// "Wednesday 28 October · all day" (Calendar.js's `dated`).
+pub(crate) fn dated_fully(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
+    [dated(meeting, zone, words), span(meeting, zone, words)].join(BETWEEN)
 }
 
 /// A time on Joel's clock, "09:05".

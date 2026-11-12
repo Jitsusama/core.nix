@@ -1515,7 +1515,11 @@
         "th": "{n}th",
         "and": "{some} and {last}",
         "yourAnswer": "your answer",
-        "aboutSide": "what it's about"
+        "aboutSide": "what it's about",
+        "whenSide": "when",
+        "whereSide": "where",
+        "callSide": "its call",
+        "holderSide": "holds it"
       },
       "weekdays": [
         "Sunday",

@@ -97,7 +97,7 @@ const ACTS: [&str; 16] = [
 
 /// The words a meeting's own `said` must hold, each one Calendar's rows
 /// say.
-const SAID: [&str; 45] = [
+const SAID: [&str; 49] = [
     "earlier",
     "eyebrow",
     "going",
@@ -143,6 +143,10 @@ const SAID: [&str; 45] = [
     "and",
     "yourAnswer",
     "aboutSide",
+    "whenSide",
+    "whereSide",
+    "callSide",
+    "holderSide",
 ];
 
 /// Each fact a drawer names, `calendar:<fact>` in the vocabulary, with the

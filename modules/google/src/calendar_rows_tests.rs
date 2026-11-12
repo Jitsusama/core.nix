@@ -186,8 +186,7 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
             returns(MONDAY + HOUR + 29 * MINUTE),
         ],
         [details.clone(), join.clone(), join],
-        "Return joins from ten minutes before it starts until it ends, stepping into its Show in \
-         Calendar before"
+        "Return joins from ten minutes before it starts until it ends, stepping in before"
     );
     assert_eq!(
         rows[0]["acts"][1],
@@ -352,30 +351,32 @@ fn show_in_calendar_steps_into_each_fact_copied_then_opens_its_page() {
     };
     let link = "https://meet.google.com/abc-defg-hij";
     assert!(
-        named[0].0.starts_with("Monday 26 October") && named[0].1 == json!([{"said": "When"}]),
-        "first when it is, as the drawer says it: {:?}",
+        named[0].0.starts_with("Monday 26 October \u{b7} ")
+            && named[0].1 == json!([{"said": "when"}]),
+        "first its day and times, as the shell said them: {:?}",
         named[0]
     );
     assert_eq!(
-        named[1..4],
+        named[1..7],
         [
-            fact("Room 4", "Where", "Room 4"),
-            fact(link, "Call", link),
-            fact("going", "Your Answer", "going"),
+            fact("Room 4", "where", "Room 4"),
+            fact("going", "your answer", "going"),
+            fact(link, "its call", link),
+            fact("Ada Lovelace", "holds it", "ada@example.com"),
+            fact("Grace Hopper", "not answered", "grace@example.com"),
+            fact(
+                "The plan, and the review.",
+                "what it's about",
+                "The plan,\n  and  the review."
+            ),
         ],
-        "each fact the drawer has, Return copying what it says"
+        "then where, his answer, its call, who holds it and each guest by name with how \
+         they answered, Return copying the value or the address, as Calendar.qml's facts, \
+         and what it's about on one line, copied whole"
     );
-    let about = named
-        .iter()
-        .find(|(_, side, _)| side[0]["said"] == "what it's about");
-    assert_eq!(
-        about.cloned(),
-        Some(fact(
-            "The plan, and the review.",
-            "what it's about",
-            "The plan,\n  and  the review."
-        )),
-        "what it's about is one line, copied whole"
+    assert!(
+        facts[..7].iter().all(|row| row["hue"] == "voice"),
+        "each a value, as a copy row is drawn"
     );
     let last = facts.last().unwrap();
     assert_eq!(

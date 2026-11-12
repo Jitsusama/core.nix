@@ -256,9 +256,7 @@ Singleton {
     // Attachments, the files on it, while it has any; and for one Joel
     // holds, Cancel
     // the Meeting, which asks once, since Google mails everyone asked; and
-    // last, as copying always is, Copy the Link. They stand only for a
-    // meeting the daemon doesn't serve, which lists the same acts as rows
-    // of its own (Meetings.qml).
+    // last, as copying always is, Copy the Link.
     function acts(meeting, provider) {
         const rows = [];
         if (meeting.link)
@@ -309,8 +307,9 @@ Singleton {
     // first lines, in the drawer. It's asked of any provider holding `transcriptOf`
     // (call-transcripts' Transcribed.qml), so a machine without
     // call-transcripts offers none; nor does a call with nothing yet
-    // written. It stands only for a meeting the daemon doesn't serve,
-    // whose Open the Transcript is the row call-transcripts lends.
+    // written. A meeting the daemon serves takes the row it lends instead
+    // (Meetings.qml's servedActs), and this goes with Calendar.acts, by
+    // Sun 15 Nov.
     function transcribing(meeting, provider) {
         const calls = (provider.launcher?.sources ?? []).find(source => typeof source.transcriptOf
             === "function");
