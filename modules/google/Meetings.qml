@@ -151,15 +151,18 @@ Provider {
     }
 
     // The row the daemon serves inside the meeting at `key` in place of
-    // the shell's `act`, for Show in Calendar, Guests, Attachments, Move
-    // and the transcript lent, or null for an act it doesn't yet serve as
-    // the shell makes it, or one it served none of.
+    // the shell's `act`, for Show in Calendar, Guests, Attachments, Move,
+    // the transcript lent and the answers, or null for an act it doesn't
+    // yet serve as the shell makes it, or one it served none of.
     readonly property var servedActs: ({
         "verb:calendar:see": "see",
         "verb:calendar:guests": "guests",
         "verb:calendar:attachments": "attachments",
         "verb:calendar:move": "move",
-        "verb:calendar:transcript": "transcript"
+        "verb:calendar:transcript": "transcript",
+        "verb:calendar:yes": "yes",
+        "verb:calendar:maybe": "maybe",
+        "verb:calendar:no": "no"
     })
     function servedInside(from, key, act) {
         const id = provider.servedActs[act?.key];

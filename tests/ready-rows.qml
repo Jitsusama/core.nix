@@ -161,6 +161,10 @@ QtObject {
         Expect.same("a note of items is said as a side is", Ready.noteSaid([{ said: "11.9 Mb/s up" },
             { at: now - 86_400_000, as: "on" }, { said: "" }, { said: "1 outage" }], now, said),
             "11.9 Mb/s up \u00b7 yesterday \u00b7 1 outage");
+        // A meeting's Maybe says in the foot how Joel stands (Calendar.qml's answering).
+        Expect.same("a row's state is said as served",
+            Ready.stateOf({ state: "going" })(), "going");
+        Expect.same("a row serving none has none", Ready.stateOf({ name: "Maybe" }), undefined);
     }
 
     function drawers() {

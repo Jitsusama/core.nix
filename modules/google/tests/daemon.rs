@@ -374,6 +374,7 @@ fn a_time_typed_within_move_is_answered_and_any_other_search_is_refused() {
         guests: vec![],
         reminders: vec![],
         done: None,
+        given: None,
     };
     daemon.say(
         &State {

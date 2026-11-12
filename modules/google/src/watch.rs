@@ -376,6 +376,7 @@ impl Watch {
     /// look says it again. An answer Google didn't take changes nothing
     /// held, and Google still answering the looks is still ready.
     pub fn answer(&mut self, id: &str, with: Answer, now: &Zoned) -> &State {
+        self.given(id, None);
         match self.asking(now, |google, token| google.answer(token, id, with)) {
             // One he declined goes at once, as it will from the next look.
             Ok(()) if with == Answer::No => self.state.meetings.retain(|meeting| meeting.id != id),
@@ -389,6 +390,22 @@ impl Watch {
             Err(looked) => self.fell(looked, self.state.account),
         }
         &self.state
+    }
+
+    /// Holds `with` as the answer Joel gave the meeting `id` while Google
+    /// is asked, so the shell notes it his at once, as it did itself, and
+    /// says how Google has him till it takes it (`answer`).
+    pub fn answering(&mut self, id: &str, with: Answer) -> &State {
+        self.given(id, Some(with));
+        &self.state
+    }
+
+    fn given(&mut self, id: &str, with: Option<Answer>) {
+        for meeting in &mut self.state.meetings {
+            if meeting.id == id {
+                meeting.given = with;
+            }
+        }
     }
 
     /// Cancels the meeting `id` and lets it go from what's held, so the

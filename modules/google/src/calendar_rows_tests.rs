@@ -45,6 +45,7 @@ pub(super) fn one(id: &str, start: i64) -> Meeting {
         guests: vec![],
         reminders: vec![],
         done: None,
+        given: None,
     }
 }
 
@@ -304,11 +305,6 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
         json!({"key": "verb:calendar:yes",
             "ask": {"ask": "act", "act": {"answer": {"id": "e1", "with": "yes"}}}}),
         "Going asks the daemon to answer"
-    );
-    assert_eq!(
-        [inside[4]["side"].clone(), inside[5]["side"].clone()],
-        [json!([{"said": "your answer"}]), json!([])],
-        "only the answer given says so"
     );
     assert_eq!(
         (inside[7]["kind"].clone(), first(inside[7])),

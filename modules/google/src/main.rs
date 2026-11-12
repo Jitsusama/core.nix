@@ -146,7 +146,11 @@ fn main() -> ExitCode {
             Ok(line) => {
                 let now = Zoned::now();
                 let state = match ask::read(&line) {
-                    Some(Ask::Answer { id, with }) => watch.answer(&id, with, &now),
+                    // Noted his as it's asked, then again as Google takes it.
+                    Some(Ask::Answer { id, with }) => {
+                        tell(watch.answering(&id, with));
+                        watch.answer(&id, with, &now)
+                    }
                     Some(Ask::Cancel { id }) => watch.cancel(&id, &now),
                     Some(Ask::Move { id, start, end }) => watch.reschedule(&id, start, end, &now),
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),

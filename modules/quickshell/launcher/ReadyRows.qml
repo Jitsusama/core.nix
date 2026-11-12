@@ -469,8 +469,7 @@ Scope {
     // so a place's `make` is `(row, key) => ready.thing(row, key, {...})`;
     // the row is given rather than looked up, as an act's `becomes` is made
     // by it too. It's a collection's member, its name made ready to match
-    // only once it's searched (Provider.qml's member). Null without a
-    // provider or a row.
+    // only once it's searched (Provider.qml's member). Null without a provider or a row.
     function thing(row, key, fields) {
         if (!row || !maker)
             return null;
@@ -535,6 +534,7 @@ Scope {
             // Its bar, strip or spark, { shape, values, warn }, as served.
             graph: row.graph ?? null,
             reads: row.reads ?? "",
+            state: Ready.stateOf(row),
             unfinished: row.unfinished === true,
             // A row a step in that asks Joel to be sure, so its Return does
             // its act (Launcher.lands), as an act that can't be taken back is.

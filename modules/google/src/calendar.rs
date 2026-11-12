@@ -87,6 +87,10 @@ pub struct Meeting {
     /// says it).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub done: Option<Done>,
+    /// The answer Joel asked and Google hasn't yet taken, noted as his
+    /// at once, as the shell noted it (watch.rs's `answering`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub given: Option<Answer>,
 }
 
 /// Someone on a meeting, by the name the calendar gives, or their address
@@ -505,6 +509,7 @@ fn meeting(event: &Value, zone: &TimeZone, defaults: &[i64], writable: &[&str]) 
         guests,
         reminders: reminded(event, defaults),
         done: None,
+        given: None,
     })
 }
 
@@ -836,6 +841,7 @@ mod tests {
                 }],
                 reminders: vec![],
                 done: None,
+                given: None,
             }]
         );
     }
