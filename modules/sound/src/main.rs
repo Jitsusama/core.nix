@@ -7,7 +7,8 @@
 //! as the launcher's Sound row for it, worded from WORDS, the launcher's
 //! words.json (rows.rs), with its parts inside it (parts.rs), the
 //! programs playing through it among them, each wearing its mark from
-//! MARKS (programs.rs); each program's stream as a `stream` record
+//! MARKS (programs.rs), and each program's drawer beside its row, as a
+//! `drawer` record (drawer.rs); each program's stream as a `stream` record
 //! (streams.rs); where each stream is sent, as one `targets` record; and,
 //! while a watch wants them, how each running node keeps time, as a
 //! `timing` record each, from PipeWire's profiler (timing.rs).
@@ -15,7 +16,7 @@
 //! It hears PipeWire through its own API for as long as it runs, rather
 //! than a program's output read line by line: the registry says each
 //! node and link as it comes and goes, each device's and stream's node
-//! says its properties and its Props as they change, and the default
+//! says its properties, its Props and its Format as they change, and the default
 //! metadata says which output and input are chosen and where each stream
 //! is sent. A program is named by its desktop entry, read again as the
 //! entries change. A watch is told only the records that changed,
@@ -62,7 +63,8 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use sound::acts::Move;
 use sound::devices::{Change, Devices, direction};
-use sound::levels::{levels, offered, profile, route};
+use sound::drawer;
+use sound::levels::{format, levels, offered, profile, route};
 use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
 use sound::rows::Words;
@@ -469,7 +471,8 @@ fn metadata(bound: &HashMap<u32, Bound>) -> Result<&Metadata, String> {
 }
 
 /// Binds a node that's an output or an input, or a program's stream, by
-/// the class the registry says of it, hearing its properties and Props.
+/// the class the registry says of it, hearing its properties, its Props
+/// and its Format.
 fn node(
     shared: &Arc<Mutex<Daemon>>,
     registry: &RegistryRc,
@@ -506,16 +509,21 @@ fn node(
         })
         .param({
             let shared = Arc::clone(shared);
-            move |_, kind, _, _, pod| {
-                let (Some(pod), ParamType::Props) = (pod, kind) else {
-                    return;
-                };
-                let (volumes, muted) = levels(pod.as_bytes());
-                told(&shared, Change::Levels { id, volumes, muted });
+            move |_, kind, _, _, pod| match (kind, pod) {
+                (ParamType::Props, Some(pod)) => {
+                    let (volumes, muted) = levels(pod.as_bytes());
+                    told(&shared, Change::Levels { id, volumes, muted });
+                }
+                // A node said to have no Format isn't set up to move audio.
+                (ParamType::Format, pod) => {
+                    let format = pod.and_then(|pod| format(pod.as_bytes()));
+                    told(&shared, Change::Format { id, format });
+                }
+                _ => {}
             }
         })
         .register();
-    node.subscribe_params(&[ParamType::Props]);
+    node.subscribe_params(&[ParamType::Props, ParamType::Format]);
     Some(Bound::Node {
         proxy: node,
         _listener: listener,
@@ -643,10 +651,12 @@ fn refresh(daemon: &mut Daemon) {
     let mut records = daemon.devices.records();
     let naming = |given: &str| daemon.naming.named(given);
     let ready = served(&records, &daemon.words, &naming);
-    daemon.served.take(ready, Vec::new());
+    let timings = daemon.timings.records();
+    let drawers = drawer::served(&records, &timings, &daemon.words, &naming);
+    daemon.served.take(ready, drawers);
     records.extend(daemon.served.all().cloned());
     records.push(daemon.devices.targets());
-    records.extend(daemon.timings.records());
+    records.extend(timings);
     let said: HashSet<String> = records
         .iter()
         .filter_map(|record| record["key"].as_str().map(str::to_owned))

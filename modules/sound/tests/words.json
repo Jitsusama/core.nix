@@ -248,6 +248,15 @@
       "id": "sound:delay",
       "in": "sound",
       "name": "Delay"
-    }
+    },
+    { "id": "sound:graph-id", "in": "sound", "name": "Graph ID" },
+    { "id": "sound:stream", "in": "sound", "name": "Stream", "term": "Machine/stream" },
+    { "id": "sound:role", "in": "sound", "name": "Role", "term": "Machine/role" },
+    { "id": "sound:process", "in": "sound", "name": "Process ID", "term": "Machine/process ID" },
+    { "id": "sound:client", "in": "sound", "name": "Client ID", "term": "Machine/client ID" },
+    { "id": "sound:dropouts", "in": "sound", "name": "Dropouts" },
+    { "id": "sound:load", "in": "sound", "name": "Load" },
+    { "id": "sound:cycle", "in": "sound", "name": "Cycle" },
+    { "id": "sound:format", "in": "sound", "name": "Format", "term": "Machine/format" }
   ]
 }

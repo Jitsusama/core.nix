@@ -308,89 +308,20 @@ ShellRoot {
         programs();
     }
 
-    // A stream as the sound server gives one: its id, what it plays, its
-    // level and the format it moves its audio in.
-    function stream(id, plays, volume) {
-        return {
-            id: id,
-            name: "firefox",
-            properties: { "media.name": plays, "media.role": "Movie", "node.rate": "1/48000",
-                "node.latency": "1024/48000", "application.process.id": "4123",
-                "client.id": "77" },
-            audio: { volume: volume, muted: false,
-                format: { rate: 48000, channels: 2, sample: "F32LE" } }
-        };
-    }
-
-    // A program's drawer says what its stream plays, how it keeps time,
-    // its format, delay and role, and what identifies it last; never its
-    // name nor its level, its row's, nor a rate its format opens with.
-    // With several streams each is a group, headed by what it plays, the
-    // loudest first.
+    // A program with no desktop entry is named as it names itself, for
+    // Now's open-programs list; the sound daemon serves a program's own
+    // drawer (modules/sound's drawer.rs). How nodes keep time is watched
+    // for a device's drawer and its programs', never its list's.
     function programs() {
-        const said = drawn => drawn.facts.map(fact => fact.heading !== undefined
-            ? `# ${fact.heading}` : `${fact.label}=${fact.value}${fact.identifies ? "*" : ""}`)
-            .join("; ");
-        sound.timings = { 90: { id: 90, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.098,
-            errors: 0 } };
-        const one = sound.programPlate(speakers,
-            { name: "Firefox", streams: [stream(90, "Big Buck Bunny - YouTube", 0.8)] });
-        expect("a program's one stream", one.eyebrow === "on alsa_output.pci.speakers \u00b7 stream"
-            && one.eyebrowNames === true && one.title === "Firefox"
-            && said(one) === "Stream=Big Buck Bunny - YouTube; Dropouts=none; "
-            + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
-            + "Format=48 kHz \u00b7 32 bit float; Delay=21.3 ms; Role=Movie; "
-            + "Process ID=4123*; Graph ID=90*; Client ID=77*",
-            `${one.eyebrow} ${one.title}: ${said(one)}`);
-        const asking = stream(91, "Ad", 0.4);
-        asking.properties["node.rate"] = "1/44100";
-        const two = sound.programPlate(speakers,
-            { name: "Firefox", streams: [asking, stream(90, "Big Buck Bunny - YouTube", 0.8)] });
-        expect("each of its streams a group, the loudest first, its rate where it differs",
-            said(two) === "# Big Buck Bunny - YouTube; Dropouts=none; "
-            + "Load=9.80% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
-            + "Format=48 kHz \u00b7 32 bit float; Delay=21.3 ms; Role=Movie; "
-            + "Process ID=4123*; Graph ID=90*; Client ID=77*; # Ad; "
-            + "Format=48 kHz \u00b7 32 bit float; Sample Rate=44.1 kHz; Delay=21.3 ms; "
-            + "Role=Movie; Process ID=4123*; Graph ID=91*; Client ID=77*", said(two));
-        // One of several that names nothing goes unheaded, never an empty
-        // heading.
-        const nameless = stream(92, "", 0.2);
-        nameless.name = "";
-        const three = sound.programPlate(speakers, { name: "Firefox",
-            streams: [stream(90, "Big Buck Bunny - YouTube", 0.8), nameless] });
-        expect("a stream that names nothing has no heading",
-            three.facts.filter(fact => fact.heading !== undefined).length === 1, said(three));
-        // A program gone from the device, its streams perhaps gone with
-        // it, draws none of them, so its drawer shuts.
-        const gone = shutSound.programDrawn({ node: deskSpeakers.name, program: "Firefox",
-            streams: [90] });
-        expect("a program gone has nothing to draw", gone?.facts.length === 0, said(gone));
-        // What a stream plays goes where it says nothing the title doesn't.
-        for (const plays of ["", "-", "firefox", "Firefox"]) {
-            const bare = sound.programPlate(speakers,
-                { name: "Firefox", streams: [stream(90, plays, 0.8)] });
-            expect(`a stream playing "${plays}" says no Stream`,
-                !bare.facts.some(fact => fact.label === "Stream"), said(bare));
-        }
         expect("a program with no entry is named as it names itself",
             sound.programOf({ name: "pw-cat", properties: { "application.name": "pw-cat" } })
                 .name === "pw-cat", "capitalised");
-        // A stream that says no format, rate or what it plays still has a
-        // drawer, of what it does say.
-        const scant = sound.programPlate(speakers,
-            { name: "Firefox", streams: [{ id: 93, name: "firefox", properties: {} }] });
-        expect("a stream that says little says what it does",
-            said(scant) === "Graph ID=93*", said(scant));
-        // How nodes keep time is watched for a device's drawer and its
-        // programs', never its list's.
         const among = [speakers, headphones];
         for (const [key, timed] of [["sound:alsa_output.pci.speakers", speakers.name],
             ["sound:alsa_output.pci.speakers:program:Firefox", speakers.name],
             ["sound:alsa_output.pci.speakers:programs", ""], ["sound:elsewhere", ""]])
             expect(`${key} times ${timed || "nothing"}`, sound.timedBy(key, among) === timed,
                 sound.timedBy(key, among));
-        sound.timings = {};
         targets();
     }
 

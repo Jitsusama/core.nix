@@ -4,10 +4,12 @@
 //! and a missing one keeps what was said before. A card's device says
 //! which of its routes plays each of its profile's devices, the profile
 //! it's in, and each route it has, a port, read here too, and a Route
-//! written to choose one.
+//! written to choose one; so is the format a node moves its audio in,
+//! from its Format.
 
 use std::io::Cursor;
 
+use pipewire::spa::param::audio::AudioFormat;
 use pipewire::spa::pod::deserialize::PodDeserializer;
 use pipewire::spa::pod::serialize::PodSerializer;
 use pipewire::spa::pod::{Object, Property, PropertyFlags, Value, ValueArray};
@@ -138,6 +140,49 @@ pub fn profile(pod: &[u8]) -> Option<i32> {
             (sys::SPA_PARAM_PROFILE_index, Value::Int(n)) => Some(n),
             _ => None,
         })
+}
+
+/// The format a node moves its audio in while it's set up to, as the
+/// shell's patched Quickshell read it (pipewire-node-state-and-format):
+/// its rate in hertz and its sample format's short name, `F32LE`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Format {
+    pub rate: u32,
+    pub sample: String,
+}
+
+/// What a node's Format pod says, or none for one that isn't raw audio,
+/// such as a passthrough, which says no rate or sample format of its own.
+pub fn format(pod: &[u8]) -> Option<Format> {
+    let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(pod) else {
+        return None;
+    };
+    let (mut media, mut subtype, mut sample, mut rate) = (None, None, None, None);
+    for property in object.properties {
+        match (property.key, property.value) {
+            (sys::SPA_FORMAT_mediaType, Value::Id(Id(said))) => media = Some(said),
+            (sys::SPA_FORMAT_mediaSubtype, Value::Id(Id(said))) => subtype = Some(said),
+            (sys::SPA_FORMAT_AUDIO_format, Value::Id(Id(said))) => sample = Some(said),
+            (sys::SPA_FORMAT_AUDIO_rate, Value::Int(said)) => rate = u32::try_from(said).ok(),
+            _ => {}
+        }
+    }
+    if media? != sys::SPA_MEDIA_TYPE_audio || subtype? != sys::SPA_MEDIA_SUBTYPE_raw {
+        return None;
+    }
+    // Its Debug is the one safe way to the short name SPA gives it,
+    // "AudioFormat::F32LE"; one SPA has no name for says none.
+    let named = format!("{:?}", AudioFormat::from_raw(sample?));
+    let sample = named.strip_prefix("AudioFormat::").unwrap_or("");
+    let sample = if ["Unknown", "Encoded"].contains(&sample) {
+        ""
+    } else {
+        sample
+    };
+    Some(Format {
+        rate: rate?,
+        sample: sample.to_owned(),
+    })
 }
 
 /// A Route pod choosing the port a card plays one of its profile's
@@ -305,6 +350,42 @@ mod tests {
         }));
         assert_eq!(profile(&pod), Some(2));
         assert_eq!(profile(&props(None, Some(true))), None);
+    }
+
+    fn formatted(subtype: u32, sample: u32, rate: i32) -> Vec<u8> {
+        let id = |said| Value::Id(Id(said));
+        written(&Value::Object(Object {
+            type_: sys::SPA_TYPE_OBJECT_Format,
+            id: sys::SPA_PARAM_Format,
+            properties: vec![
+                keyed(sys::SPA_FORMAT_mediaType, id(sys::SPA_MEDIA_TYPE_audio)),
+                keyed(sys::SPA_FORMAT_mediaSubtype, id(subtype)),
+                keyed(sys::SPA_FORMAT_AUDIO_format, id(sample)),
+                keyed(sys::SPA_FORMAT_AUDIO_rate, Value::Int(rate)),
+                keyed(sys::SPA_FORMAT_AUDIO_channels, Value::Int(2)),
+            ],
+        }))
+    }
+
+    // A stream moving 48 kHz in 32-bit float says so, by the sample
+    // format's short name, as Quickshell's patched format did; a
+    // passthrough, or a pod that's no Format, says none.
+    #[test]
+    fn a_format_says_its_rate_and_sample_format() {
+        let (raw, float) = (sys::SPA_MEDIA_SUBTYPE_raw, sys::SPA_AUDIO_FORMAT_F32_LE);
+        let pod = formatted(raw, float, 48_000);
+        let expected = Format {
+            rate: 48_000,
+            sample: "F32LE".into(),
+        };
+        assert_eq!(format(&pod), Some(expected));
+        let passed = formatted(sys::SPA_MEDIA_SUBTYPE_iec958, float, 48_000);
+        assert_eq!(format(&passed), None, "a passthrough says no format");
+        assert_eq!(
+            format(&props(None, Some(true))),
+            None,
+            "a Props is no Format"
+        );
     }
 
     #[test]

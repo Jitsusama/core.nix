@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::rows::tests::{device, words};
+use crate::rows::tests::{device, speakers_chosen, words};
 
 /// A program's stream as the daemon's records say one, linked to `ends`.
 fn stream(id: u32, sink: bool, program: &str, ends: &[&str]) -> Value {
@@ -58,12 +58,6 @@ fn served(records: &[Value], name: &str) -> Vec<Value> {
 fn keyed<'a>(rows: &'a [Value], key: &str) -> &'a Value {
     let found = rows.iter().find(|row| row["key"] == key);
     found.unwrap_or_else(|| panic!("no row {key} among {rows:#?}"))
-}
-
-fn speakers_chosen() -> Value {
-    let mut speakers = device("speakers", true, "Speakers", &json!({"device.api": "alsa"}));
-    speakers["chosen"] = json!(true);
-    speakers
 }
 
 // A program reaches the speakers through the tuning in front of them,
