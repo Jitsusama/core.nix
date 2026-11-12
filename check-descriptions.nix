@@ -550,6 +550,10 @@
     a machine's programs for the disk guard come first on its PATH under systemd and launchd, with
     core's git after
   '';
+  disk-guard-nix-collects-beside-leaving-clients = ''
+    the machine disk guard's Nix collects garbage while programs hand it roots and leave at once,
+    where an unpatched Nix 2.34 ends the collector
+  '';
   disk-guard-passes-clippy = ''
     clippy finds nothing in the disk guard or its scenarios
   '';

@@ -5,6 +5,7 @@
 //! source the scope doesn't own fails the build rather than the daemon.
 
 use crate::band::Band;
+use crate::hours::Hours;
 use crate::units::{Size, Span};
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -557,6 +558,10 @@ pub struct Dedupe {
     /// What confines a run to a scope of its own.
     #[serde(default = "Dedupe::systemd_run")]
     pub systemd_run: Option<PathBuf>,
+    /// The local hours a run may start and go on in, as `HH:MM-HH:MM`;
+    /// one still going when they end is stopped. Null for any hour.
+    #[serde(default = "Dedupe::hours")]
+    pub hours: Option<Hours>,
 }
 
 impl Dedupe {
@@ -571,6 +576,11 @@ impl Dedupe {
     fn systemd_run() -> Option<PathBuf> {
         Some(PathBuf::from("/run/current-system/systemd/bin/systemd-run"))
     }
+
+    /// The night, when a run reads the store with nobody at the machine.
+    fn hours() -> Option<Hours> {
+        Hours::parse("01:30-07:00").ok()
+    }
 }
 
 impl Default for Dedupe {
@@ -578,6 +588,7 @@ impl Default for Dedupe {
         Dedupe {
             every: Dedupe::every(),
             systemd_run: Dedupe::systemd_run(),
+            hours: Dedupe::hours(),
         }
     }
 }

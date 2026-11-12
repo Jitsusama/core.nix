@@ -20,6 +20,26 @@ let
   package = pkgs.callPackage ./package.nix { };
   inherit (config.jitsusama.disk-guard) configFile;
   podman = config.virtualisation.podman;
+
+  # Nix 2.34's collector takes other programs' temporary roots on a
+  # socket, a thread a client, and a client that left before its thread
+  # was registered left a stale entry: the next given the same descriptor
+  # ended the collector with std::terminate. On 11 November that aborted
+  # the guard's deletes at 06:16 and 11:54, each freeing nothing. So the
+  # guard's own Nix carries upstream's two fixes (NixOS/nix#16569 and
+  # #15963), and the machine's Nix stays as it is, so nothing else is
+  # built again. Another version is left as it is, as it may hold them.
+  nix =
+    let
+      machine = config.nix.package;
+    in
+    if machine ? appendPatches && lib.versions.majorMinor machine.version == "2.34" then
+      machine.appendPatches [
+        ./nix-gc-roots-client-leaves.patch
+        ./nix-gc-roots-client-interrupted.patch
+      ]
+    else
+      machine;
 in
 {
   imports = [ ./system.nix ];
@@ -28,7 +48,7 @@ in
     jitsusama.disk-guard.settings = {
       status_file = lib.mkDefault true;
       boot = lib.mkDefault config.boot.loader.efi.efiSysMountPoint;
-      nix.bin = lib.mkDefault (lib.getExe' config.nix.package "nix");
+      nix.bin = lib.mkDefault (lib.getExe' nix "nix");
       dedupe.systemd_run = lib.mkDefault (lib.getExe' config.systemd.package "systemd-run");
       # A day of garbage stays while the disk is healthy, within the guard's
       # budget, so a switch the next morning finds what the last one fetched:

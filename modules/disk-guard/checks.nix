@@ -161,6 +161,20 @@
       touch $out
     '';
 
+  # The machine guard's Nix collects garbage while programs hand it roots
+  # and leave at once, as an unpatched 2.34 doesn't
+  # (tests/nix-collects-beside-leaving-clients.sh). The race shows on
+  # tmpfs, as /dev/shm is in the build sandbox.
+  disk-guard-nix-collects-beside-leaving-clients =
+    pkgs.runCommand "disk-guard-nix-collects-beside-leaving-clients" { }
+      ''
+        export TMPDIR=/dev/shm
+        ${lib.getExe pkgs.bash} ${./tests/nix-collects-beside-leaving-clients.sh} \
+          ${builtins.dirOf workstation.config.jitsusama.disk-guard.settings.nix.bin} \
+          ${lib.getExe pkgs.python3} ${./tests/leave-at-once.py}
+        touch $out
+      '';
+
   # clippy finds nothing in the guard, its scenarios included.
   disk-guard-passes-clippy = passesClippy "disk-guard-passes-clippy" (
     pkgs.callPackage ./package.nix { }

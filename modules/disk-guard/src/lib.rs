@@ -33,6 +33,7 @@ pub mod git;
 pub mod holders;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod host;
+pub mod hours;
 pub mod journal;
 pub mod keeps;
 pub mod ledger;

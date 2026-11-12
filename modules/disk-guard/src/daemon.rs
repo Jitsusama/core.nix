@@ -1599,8 +1599,12 @@ impl Guard {
             return Ok(());
         };
         let (band, space) = (watched.band, watched.space);
+        let in_hours = system
+            .dedupe
+            .hours
+            .is_none_or(|hours| hours.hold_at(tick.wall));
         if let Some((begun, stop, out)) = &self.dedupe_out {
-            if band > Band::Healthy || !powered {
+            if band > Band::Healthy || !powered || !in_hours {
                 stop.store(true, Ordering::Relaxed);
             }
             let ended = match out.try_recv() {
@@ -1639,7 +1643,7 @@ impl Guard {
         };
         let every = system.dedupe.every.0.as_secs_f64();
         let due = dedupe::due(self.memory.deduped.as_ref(), tick.wall, every, space.total);
-        if band > Band::Healthy || !spare_moment || failed_lately || !due {
+        if band > Band::Healthy || !spare_moment || !in_hours || failed_lately || !due {
             return Ok(());
         }
         let (systemd_run, nix) = (

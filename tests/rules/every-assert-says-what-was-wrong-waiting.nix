@@ -67,7 +67,7 @@
   "modules/disk-guard/tests/guard/config.rs" = 2;
   "modules/disk-guard/tests/guard/daemon.rs" = 21;
   "modules/disk-guard/tests/guard/decide.rs" = 18;
-  "modules/disk-guard/tests/guard/dedupe.rs" = 4;
+  "modules/disk-guard/tests/guard/dedupe.rs" = 3;
   "modules/disk-guard/tests/guard/desktop.rs" = 3;
   "modules/disk-guard/tests/guard/discover.rs" = 1;
   "modules/disk-guard/tests/guard/entries.rs" = 1;

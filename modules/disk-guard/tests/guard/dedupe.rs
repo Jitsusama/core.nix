@@ -2,7 +2,9 @@
 //! when a run is due, and a run confined to a scope of its own.
 
 use crate::garbage::script;
+use disk_guard::config::Config;
 use disk_guard::dedupe::{Deduped, due, freed, optimise};
+use disk_guard::hours::Hours;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -39,6 +41,56 @@ fn a_run_is_due_weekly_or_monthly_after_one_that_freed_little() {
         "under 1% of the filesystem waits a month"
     );
     assert!(due(Some(&ran(31.0, 9 * GIB)), now, every, total));
+}
+
+#[test]
+fn a_run_keeps_to_its_hours_of_the_night_or_any_named() {
+    let night = Hours::parse("01:30-07:00").unwrap();
+    assert!(!night.hold(89), "01:29");
+    assert!(night.hold(90), "01:30");
+    assert!(night.hold(419), "06:59");
+    assert!(!night.hold(420), "07:00 ends them");
+    assert!(
+        !night.hold(20 * 60 + 6),
+        "20:06, when one began on 11 November"
+    );
+    let late = Hours::parse("23:00-06:00").unwrap();
+    assert!(
+        late.hold(23 * 60 + 30) && late.hold(0) && late.hold(5 * 60 + 59),
+        "23:30, midnight and 05:59 fall within 23:00-06:00"
+    );
+    assert!(
+        !late.hold(6 * 60) && !late.hold(12 * 60),
+        "past midnight and back"
+    );
+    for bad in [
+        "1:30-07:00",
+        "01:30",
+        "24:00-07:00",
+        "01:60-07:00",
+        "07:00-07:00",
+    ] {
+        assert!(Hours::parse(bad).is_err(), "{bad} is refused");
+    }
+    let config =
+        Config::parse(r#"{"version": 1, "scope": "system", "boot": "/boot", "sources": {}}"#)
+            .unwrap();
+    assert_eq!(
+        config.system.unwrap().dedupe.hours,
+        Some(night),
+        "the night unless told"
+    );
+    let any = Config::parse(
+        r#"{"version": 1, "scope": "system", "boot": "/boot",
+            "dedupe": {"hours": null}, "sources": {}}"#,
+    );
+    assert_eq!(any.unwrap().system.unwrap().dedupe.hours, None);
+    let wrong = Config::parse(
+        r#"{"version": 1, "scope": "system", "boot": "/boot",
+            "dedupe": {"hours": "night"}, "sources": {}}"#,
+    );
+    let refused = wrong.unwrap_err();
+    assert!(refused.contains("HH:MM"), "{refused}");
 }
 
 /// A `systemd-run` that notes what it was asked and runs the command after
@@ -99,7 +151,10 @@ fn a_run_is_confined_to_a_scope_of_its_own() {
 #[test]
 fn a_stopped_run_frees_nothing_it_knows_of() {
     let dir = tempfile::tempdir().unwrap();
-    let (run, nix) = fakes(dir.path(), "sleep 30 & wait\n");
+    // A run that would take 15 minutes, so a stop that ended it is told
+    // from one that didn't by minutes, not seconds: on 11 November a 10 s
+    // bound failed on a Mac building at a load average of 66.
+    let (run, nix) = fakes(dir.path(), "sleep 900 & wait\n");
     let stop = AtomicBool::new(false);
     let started = Instant::now();
     let stopped = std::thread::scope(|scope| {
@@ -110,7 +165,11 @@ fn a_stopped_run_frees_nothing_it_knows_of() {
         optimise(Some(&run), &nix, &stop)
     });
     assert_eq!(stopped, Ok(None));
-    assert!(started.elapsed() < Duration::from_secs(10));
+    assert!(
+        started.elapsed() < Duration::from_mins(5),
+        "a stopped run went on for {:?}",
+        started.elapsed()
+    );
 }
 
 #[test]
