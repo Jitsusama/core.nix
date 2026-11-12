@@ -88,7 +88,12 @@ let
   # three fixes to its collector that Qt's 6.12 branch has since 6.12.0
   # come with it, and a Map or a Set finds a string or a number key by
   # its hash rather than comparing it with every key it holds
-  # (qtdeclarative-maps-find-keys-by-hash.patch). Only the shell and the
+  # (qtdeclarative-maps-find-keys-by-hash.patch). Quickshell serves the
+  # shell's folder on its own qs: scheme, which stock Qt never keeps
+  # compiled, so each restart compiled all of it and each place again at
+  # its first opening; a unit served so is kept in the disk cache now,
+  # checked by its content (qtdeclarative-caches-what-is-served.patch).
+  # Only the shell and the
   # modules it loads are built with it, so nothing else on the machine is
   # rebuilt for it.
   shellQt =
@@ -104,6 +109,7 @@ let
             ./qtdeclarative-generator-frames-marked.patch
             ./qtdeclarative-generator-frames-checked.patch
             ./qtdeclarative-maps-find-keys-by-hash.patch
+            ./qtdeclarative-caches-what-is-served.patch
           ];
         });
       }

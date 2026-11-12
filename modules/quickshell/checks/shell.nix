@@ -226,6 +226,20 @@
     touch $out
   '';
 
+  # The shell's own files are compiled once and kept, and only a file that
+  # changed is compiled again, though Quickshell serves them on its own qs:
+  # scheme, which stock Qt never caches (tests/compiled-once.sh, over
+  # qtdeclarative-caches-what-is-served.patch).
+  the-shell-compiles-once = pkgs.runCommandLocal "the-shell-compiles-once" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp -r ${../../../tests/compiled-once} shell && chmod -R u+w shell
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    (cd shell && ${shellFolderLint})
+    ${lib.getExe pkgs.bash} ${../../../tests/compiled-once.sh} ${qs} shell
+    touch $out
+  '';
+
   # A file reloaded while it's still being read is read once more as that
   # read lands, so the view holds what was written last, as
   # tests/reloaded.qml drives it in the Quickshell the machine runs
