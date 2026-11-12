@@ -3735,6 +3735,41 @@ def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
     assert change["at"] >= change["from"], f"said {change}, presented before its line"
 
 
+def test_the_battery_answers_headline_opens_its_drawer(shell: Shell, machine: StandIn) -> None:
+    """The battery answer's headline opens the drawer the daemon serves, its empty time worded.
+
+    "80% · on battery" opened no drawer, so the headline was the one row saying nothing more
+    (Y2YBTS, 2026-11-12 [791a3de5]). The daemon serves the time as a moment, and the shell says
+    it, as it does every time a drawer holds.
+    """
+    records = battery(80)
+    empty = int(time.time() * 1000) + 3 * 3600 * 1000
+    records[0]["head"]["drawer"] = {
+        "eyebrow": "Read From the Machine",
+        "eyebrowNames": True,
+        "title": "Battery",
+        "facts": [
+            {"name": "Status", "said": "on battery"},
+            {"name": "Empty", "at": empty, "as": "moment", "said": "{time}, in 3 h"},
+            {"name": "Read From", "said": "/sys/class/power_supply/BAT0", "identifies": True},
+        ],
+    }
+    machine.told(records, [])
+    shell.answer("battery")
+    shell.launcher_until(
+        lambda shown: (
+            bool(shown["drawer"]["shown"])
+            and shown["drawer"]["title"] == "Battery"
+            and shown["drawer"]["facts"] == ["Status", "Empty", "Read From"]
+        )
+    )
+    said = shell.showing()["drawer"]["values"]
+    assert said[0] == "on battery", f"the drawer said its status as {said[0]!r}"
+    assert "{time}" not in said[1], f"the empty time was left unworded: {said[1]!r}"
+    assert said[1].endswith(", in 3 h"), f"the empty time lost its span: {said[1]!r}"
+    shell.close_launcher()
+
+
 def test_a_charge_told_in_batterys_step_is_said_there(shell: Shell, machine: StandIn) -> None:
     """A charge the daemon tells while Battery's step is shown under Machine is said there.
 
