@@ -2,6 +2,7 @@
   "things": [
     {
       "id": "displays",
+      "name": "Screens",
       "said": {
         "built-in": "built in",
         "screen": "screen",
@@ -35,6 +36,7 @@
     },
     { "id": "displays:built-in", "name": "Built-in Screen" },
     { "id": "verb:display-on", "name": "Turn It On", "glyph": "display" },
+    { "id": "verb:display-set", "command": "setlocal", "argument": "{setting}={value}" },
     {
       "id": "verb:display-off",
       "name": "Turn It Off",
@@ -51,15 +53,35 @@
       "id": "displays:sleep",
       "name": "Turn Every Screen Off",
       "glyph": "displayOff",
+      "command": "set",
+      "argument": "noscreens",
+      "tells": {
+        "does": "Turns every screen's picture off at once, the windows staying where they are."
+      },
       "said": { "note": "a key wakes them \u00b7 hubs stay on" }
     },
     { "id": "displays:mode", "name": "Screen Mode" },
-    { "id": "displays:scale", "name": "Scale" },
-    { "id": "displays:refresh", "name": "Refresh" },
-    { "id": "displays:resolution", "name": "Resolution" },
+    {
+      "id": "displays:scale",
+      "name": "Scale",
+      "tells": { "does": "Sets how large everything on this screen is drawn." }
+    },
+    {
+      "id": "displays:refresh",
+      "name": "Refresh",
+      "tells": { "does": "Sets how many times a second this screen draws a new picture." }
+    },
+    {
+      "id": "displays:resolution",
+      "name": "Resolution",
+      "tells": { "does": "Sets how many pixels this screen runs at, niri choosing the rate." }
+    },
     {
       "id": "displays:variable",
       "name": "Variable Refresh",
+      "tells": {
+        "does": "Lets this screen draw each frame as a game or video gives it, not at a fixed rate."
+      },
       "said": { "unsupported": "unsupported", "on": "on", "off": "off" }
     },
     { "id": "displays:logical", "name": "Logical Size" },
@@ -67,6 +89,7 @@
     {
       "id": "displays:rotation",
       "name": "Rotation",
+      "tells": { "does": "Turns or mirrors the picture this screen shows." },
       "said": {
         "90": "a quarter turn left",
         "180": "upside down",
@@ -98,6 +121,13 @@
     },
     { "id": "displays:density", "name": "Density" },
     { "id": "displays:serial", "name": "Serial" },
+    { "id": "displays:offers", "name": "Offers" },
+    {
+      "id": "displays:typed",
+      "name": "Typed",
+      "said": { "line": ":{command} {argument}", "not": "no{option}" }
+    },
+    { "id": "displays:turns-off", "name": "Turns Off" },
     { "id": "displays:size", "name": "Size" },
     { "id": "displays:depth", "name": "Colour Depth" },
     { "id": "displays:colours", "name": "Colours" },

@@ -7,12 +7,15 @@
 //! niri (acts.rs's `Set`), and what the : line's :setl would type for it
 //! is held, so its command fills in as the shell's did. Variable Refresh
 //! is a switch, its Return flipping it. A setting with one choice or none
-//! has nothing to step into, so it only says how it's set.
+//! has nothing to step into, so it only says how it's set. Each
+//! setting's drawer says what it does and how the : line types it
+//! (tells.rs).
 
 use serde_json::{Value, json};
 
 use super::acts::{Act, Set};
-use super::{APART, MILLIHERTZ, PLACE, TRANSFORMS, Words, hertz, key, mode_of, scale};
+use super::tells;
+use super::{APART, MILLIHERTZ, PLACE, TRANSFORMS, Words, hertz, key, mode_of, named, scale};
 
 /// The scales offered, as multiples, as Screens.js offered them.
 const SCALES: [f64; 7] = [1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
@@ -52,18 +55,15 @@ pub(super) struct Setting {
 #[must_use]
 pub fn rows(name: &str, output: &Value, words: &Words) -> Vec<Value> {
     let screen = key(&format!("display:{name}"));
+    let screened = named(name, output, words);
     let mut rows = Vec::new();
     for each in settings(output, words) {
-        rows.extend(setting(
-            name,
-            &screen,
-            each.id,
-            &each.side,
-            each.choices,
-            words,
-        ));
-        if each.id == "refresh" && output["vrr_supported"] == true {
-            rows.push(variable(name, &screen, output, words));
+        let drawer = tells::setting(&screened, &each, words);
+        let refresh = each.id == "refresh";
+        rows.extend(setting(name, &screen, each, &drawer, words));
+        if refresh && output["vrr_supported"] == true {
+            let drawer = tells::switch(&screened, words);
+            rows.push(variable(name, &screen, output, &drawer, words));
         }
     }
     rows
@@ -142,14 +142,10 @@ pub(super) fn option(named: &str) -> String {
 
 /// A setting's row, saying how it's set, then its choices' rows, which a
 /// step into it offers where there are two at least.
-fn setting(
-    name: &str,
-    screen: &str,
-    id: &str,
-    side: &str,
-    choices: Vec<Choice>,
-    words: &Words,
-) -> Vec<Value> {
+fn setting(name: &str, screen: &str, each: Setting, drawer: &Value, words: &Words) -> Vec<Value> {
+    let Setting {
+        id, side, choices, ..
+    } = each;
     let named = words.told.part(id);
     let at = key(&format!("setting:{name}:{id}"));
     let offers = choices.len() > 1;
@@ -169,6 +165,7 @@ fn setting(
         "parent": screen,
         "depth": 1,
         "side": [{"said": side}],
+        "drawer": drawer,
         "acts": acts,
     })];
     if !offers {
@@ -301,7 +298,7 @@ fn sizes(output: &Value, now: &Value, words: &Words) -> Vec<Choice> {
 /// off, Return flipping it. niri's on-demand variable refresh, on only
 /// while a window rule asks, would make it a setting of three; nothing
 /// here sets that, so it's on or off.
-fn variable(name: &str, screen: &str, output: &Value, words: &Words) -> Value {
+fn variable(name: &str, screen: &str, output: &Value, drawer: &Value, words: &Words) -> Value {
     let on = output["vrr_enabled"] == true;
     let named = words.told.part("variable");
     let side = if on {
@@ -329,6 +326,7 @@ fn variable(name: &str, screen: &str, output: &Value, words: &Words) -> Value {
         "depth": 1,
         "side": [{"said": side}],
         "held": {"on": on},
+        "drawer": drawer,
         "acts": [{"key": "displays:variable", "ask": Act::Set(set).ask()}],
     })
 }

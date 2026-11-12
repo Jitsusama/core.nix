@@ -113,6 +113,35 @@ fn a_screen_dark_by_name_says_its_hub_is_on() {
 }
 
 #[test]
+fn turning_every_screen_off_says_what_it_does_to_which_and_how_its_typed() {
+    let mut outputs = desk();
+    let mut dark = output("Dell Inc.", "P2422H", &lit(1.0));
+    dark["powered_off"] = json!(true);
+    outputs.insert("DP-1".to_owned(), dark);
+    let made = rows(&outputs, None, &words());
+    let sleep = made
+        .iter()
+        .find(|row| row["key"] == "row:displays:sleep")
+        .expect("Turn Every Screen Off is served while a screen is lit");
+    assert_eq!(
+        sleep["drawer"],
+        json!({
+            "eyebrow": "Screens",
+            "title": "Turn Every Screen Off",
+            "body": concat!(
+                "Turns every screen's picture off at once, ",
+                "the windows staying where they are."
+            ),
+            "facts": [
+                {"name": "Turns Off", "said": "Built-in Screen \u{b7} Dell Inc. U2723QE"},
+                {"name": "Typed", "said": ":set noscreens", "identifies": true},
+            ],
+        }),
+        "its drawer doesn't say what it does, to the lit screens alone, and its : line"
+    );
+}
+
+#[test]
 fn return_focuses_a_lit_screen_and_turns_on_any_other_and_every_one_off() {
     let mut outputs = desk();
     let mut dark = output("Dell Inc.", "U2723QE", &lit(1.0));
@@ -530,11 +559,6 @@ fn each_screens_row_carries_its_drawer() {
     let rows = rows(&desk(), None, &words());
     assert_eq!(rows[0]["drawer"]["title"], "Built-in Screen");
     assert_eq!(rows[2]["drawer"]["title"], "Dell Inc. U2723QE");
-    assert_eq!(
-        rows[3].get("drawer"),
-        None,
-        "Turn Every Screen Off has a drawer"
-    );
 }
 
 #[test]
@@ -576,7 +600,7 @@ fn no_vocabulary_still_words_every_row_by_its_ids() {
     assert_eq!(words.sleep.glyph, "", "a glyph lacked isn't none");
     assert_eq!(
         lacked.len(),
-        77,
+        93,
         "not every word lacked was said: {lacked:?}"
     );
     let drawer = drawer("eDP-1", &panel(), &words);

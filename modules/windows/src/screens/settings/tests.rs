@@ -183,6 +183,47 @@ fn a_setting_with_one_choice_only_says_how_its_set() {
         inside(&rows, "row:displays:setting:eDP-1:refresh").is_empty(),
         "one rate is offered as a choice"
     );
+    assert_eq!(
+        refresh["drawer"]["facts"],
+        json!([{"name": "Typed", "said": ":setlocal refresh=120", "identifies": true}]),
+        "one rate is said as offered"
+    );
+    assert_eq!(refresh["drawer"]["eyebrow"], "Built-in Screen");
+}
+
+#[test]
+fn a_settings_drawer_says_what_it_does_what_it_offers_and_how_the_line_types_it() {
+    let rows = rows("DP-2", &monitor(), &words());
+    assert_eq!(
+        found(&rows, "row:displays:setting:DP-2:scale")["drawer"],
+        json!({
+            "eyebrow": "DP-2",
+            "eyebrowNames": true,
+            "title": "Scale",
+            "body": "Sets how large everything on this screen is drawn.",
+            "facts": [
+                {"name": "Offers", "said": concat!(
+                    "1\u{d7} \u{b7} 1.25\u{d7} \u{b7} 1.5\u{d7} \u{b7} 1.75\u{d7} \u{b7} ",
+                    "2\u{d7} \u{b7} 2.5\u{d7} \u{b7} 3\u{d7}"
+                )},
+                {"name": "Typed", "said": ":setlocal scale=1.5", "identifies": true},
+            ],
+        }),
+        "Scale's drawer doesn't say what it does, offers and is typed as"
+    );
+    let typed = |id: &str| {
+        let drawer = &found(&rows, &format!("row:displays:setting:DP-2:{id}"))["drawer"];
+        (drawer["title"].clone(), drawer["facts"][1]["said"].clone())
+    };
+    assert_eq!(
+        ["refresh", "resolution", "rotation"].map(typed),
+        [
+            (json!("Refresh"), json!(":setlocal refresh=59.951")),
+            (json!("Resolution"), json!(":setlocal resolution=2560x1440")),
+            (json!("Rotation"), json!(":setlocal rotation=upright")),
+        ],
+        "a setting's drawer doesn't type it as the : line takes it now"
+    );
 }
 
 #[test]
@@ -207,6 +248,15 @@ fn variable_refresh_flips_as_a_switch_and_says_how_it_stands() {
     let rows = rows("DP-2", &output, &words());
     let on = found(&rows, "row:displays:setting:DP-2:variable");
     assert_eq!(on["side"], json!([{"said": "on"}]));
+    assert_eq!(
+        (&on["drawer"]["title"], &on["drawer"]["facts"]),
+        (
+            &json!("Variable Refresh"),
+            &json!([{"name": "Typed", "identifies": true,
+                "said": ":setlocal variablerefresh \u{b7} :setlocal novariablerefresh"}])
+        ),
+        "its drawer doesn't type it both ways"
+    );
     assert_eq!(on["acts"][0]["ask"]["done"], "off");
     output["vrr_supported"] = json!(false);
     assert!(

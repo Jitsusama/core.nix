@@ -4,7 +4,8 @@
 //! them are one record keyed by the kind alone, and which an ask gets
 //! only by naming them.
 
-use daemon_serve::asks::Domain;
+use daemon_serve::asks::{Domain, error};
+use serde_json::{Value, json};
 
 /// The kinds of record this daemon keeps.
 pub const KINDS: [&str; 9] = [

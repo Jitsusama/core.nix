@@ -581,7 +581,8 @@ fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
         .collect();
     assert!(rowed.is_empty(), "a watch of no kind took rows: {rowed:?}");
     // The other screen turned off, a workspace change asks again; the
-    // built-in one is no longer said focused beside another lit.
+    // built-in one is no longer said focused beside another lit, and
+    // Turn Every Screen Off's drawer names it alone as what it turns off.
     running
         .niri
         .shows(&json!({"eDP-1": screen("BOE", Some(2.0)), "DP-2": screen("Dell", None)}));
@@ -593,7 +594,11 @@ fn a_watch_of_screens_is_told_each_screens_row_and_only_those_a_change_moved() {
     told.sort();
     assert_eq!(
         told,
-        ["row:displays:display:DP-2", "row:displays:display:eDP-1"]
+        [
+            "row:displays:display:DP-2",
+            "row:displays:display:eDP-1",
+            "row:displays:sleep"
+        ]
     );
     let off = said["changed"]
         .as_array()
