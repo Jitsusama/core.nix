@@ -77,7 +77,7 @@ ShellRoot {
     // one is looked for on every look, since it would open at any point of
     // the walk.
     function deciding() {
-        Expect.expect("the one its decider hosts opens no window", spawned("s-hosted").length === 0,
+        Expect.expect("the one kept in the background opens no window", spawned("s-hosted").length === 0,
             Niri.spawns.join("\n"));
         const lines = decided.text().split("\n").filter(line => line !== "");
         const ended = lines.find(line => line.startsWith("ended s-slow at "));
@@ -100,7 +100,7 @@ ShellRoot {
             lines.join("\n"));
         Expect.expect("a saved one is never asked", !lines.some(line => line.includes("s-saved")),
             lines.join("\n"));
-        console.log("a spawn its decider hosts opens no window");
+        console.log("a spawn kept in the background opens no window");
         Qt.exit(0);
     }
 

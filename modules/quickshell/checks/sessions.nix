@@ -268,7 +268,7 @@ in
   # A fresh session the harness hands over is asked of its spawn decider
   # before a window opens (tests/sessions-spawn-decides.qml), with niri and
   # the decider stood in.
-  a-spawn-its-decider-hosts-opens-no-window =
+  a-spawn-kept-in-the-background-opens-no-window =
     let
       options = singleton "Options.qml" ''
         readonly property var sounds: ({ wants: "", player: "" })
@@ -287,7 +287,7 @@ in
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
-    pkgs.runCommandLocal "a-spawn-its-decider-hosts-opens-no-window" { } ''
+    pkgs.runCommandLocal "a-spawn-kept-in-the-background-opens-no-window" { } ''
       export HOME=$TMPDIR XDG_STATE_HOME=$PWD/state XDG_DATA_HOME=$PWD/data
       ${lib.getExe pkgs.bash} ${../tests/stand-ins/sessions-behind-the-lock-state.sh} $XDG_STATE_HOME
       ${copied [
