@@ -48,6 +48,37 @@ function run(failures) {
         Power.profileRefusal("balanced", "power-saver",
             profileTold([{ profile: "performance", app: "Steam" }])),
         "Power Saver kept");
+    // A profile's own drawer: the one on instead while it isn't, its own
+    // holds alone, Full Performance's being held back on its drawer
+    // alone, and what it set only while it's on.
+    const holds = [{ profile: "performance", app: "Steam", reason: "a game" },
+        { profile: "power-saver", app: "GNOME", reason: "" }];
+    const choice = (daemon, known) => Power.choiceFacts(daemon, Object.assign({ holds,
+        slowed: "heat", current: "Balanced", firmware: "balanced",
+        processor: "balance_performance" }, known), profileWords)
+        .map(fact => `${fact.id.slice("session:profile:".length)} ${fact.value}`);
+    machine("a profile not on says which is, who holds it and why it's held back",
+        choice("performance", { on: false }),
+        ["now Balanced", "held Steam for a game", "slowed too hot"]);
+    machine("a profile on says what it set, and a hold given no reason by its program",
+        choice("power-saver", { on: true }),
+        ["held GNOME", "firmware balanced", "processor balance_performance"]);
+    machine("a profile on before the firmware's been read says nothing it hasn't",
+        choice("balanced", { on: true, firmware: undefined, processor: undefined }), []);
+    // What a lock leaves open: the windows, then whose, the most first,
+    // then by name, four named and the rest counted.
+    const openWords = { window: "1 window", windows: "{count} windows", more: "{count} more" };
+    const windows = apps => apps.reduce((all, app, id) => Object.assign(all,
+        { [id]: { app_id: app } }), {});
+    const named = id => ({ kitty: "kitty", "google-chrome": "Chrome" })[id] ?? id;
+    machine("what a lock leaves open", Power.openSaid(Power.byProgram(windows(["kitty",
+        "google-chrome", "kitty", "slack", "zed", "mpv", "google-chrome", "kitty", ""]),
+    named), openWords), { windows: "9 windows", programs: "kitty 3 \u00b7 Chrome 2 \u00b7 mpv 1"
+        + " \u00b7 slack 1 \u00b7 1 more" });
+    machine("one window open", Power.openSaid(Power.byProgram(windows(["kitty"]), named),
+        openWords), { windows: "1 window", programs: "kitty 1" });
+    machine("none open says nothing", Power.openSaid(Power.byProgram({}, named), openWords),
+        { windows: "", programs: "" });
     // How bright a room is, from the light sensor's lux.
     machine("a dark room", Power.roomLevel(0), 0);
     machine("daylight", Power.roomLevel(10000), 1);
