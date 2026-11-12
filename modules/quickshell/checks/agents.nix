@@ -94,6 +94,24 @@
       touch $out
     '';
 
+  # Joel's line to the one standing at Agents' top goes out as one quiet
+  # card, sent, then answered in its place with the reply cut to whole
+  # words, as tests/told.qml holds Told.js to in Qt's own engine.
+  the-void-answers-on-one-card =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-void-answers-on-one-card" { } ''
+      cp ${../../../tests/told.qml} told.qml
+      ${copied [ "Told.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml told.qml
+      touch $out
+    '';
+
   # The machine queue is the harness's file as the node's record holds it,
   # and a write of only when it was written says nothing new, as
   # tests/jobs.qml holds Jobs.js to it in Qt's own engine.

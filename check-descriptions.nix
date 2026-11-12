@@ -3159,6 +3159,11 @@
     the notices' stack puts a critical one in front and the rest in the order they came, one unheard
     at the back, and turns and brings one forward as the keys and a click ask
   '';
+  the-void-answers-on-one-card = ''
+    Joel's line to the session standing at Agents' top goes out as one quiet card signed by its
+    name, sent, then answered in that card's place, the reply cut to whole words and its last line
+    saying the rest is in the talk
+  '';
   a-live-notice-asks-the-daemon = ''
     a notice the notices daemon serves reads as Quickshell's own did, its urgency in Quickshell's
     numbers, and each act on it is an ask of the daemon, an action's with the token niri gave
