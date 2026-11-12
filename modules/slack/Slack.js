@@ -110,6 +110,17 @@ function owing(said, now) {
     return !wroteLast(said) || now - said.conversation.at < AWAITED;
 }
 
+// Whether Joel owes a conversation an answer: something was said and
+// they said it last, which their page leads with and Return answers.
+function owed(said) {
+    return (said?.conversation?.messages ?? []).length > 0 && !wroteLast(said);
+}
+
+// Where a conversation opens in Slack's own app.
+function opens(said) {
+    return `slack://channel?team=${said.team}&id=${said.conversation.channel}`;
+}
+
 // A conversation's drawer: who it's with, then its last few messages,
 // plain, newest last, each after who said it, Joel's as his own.
 function drawn(said) {

@@ -1331,14 +1331,18 @@ Floating {
     }
     // A fact's value on the lines it's drawn on, an ellipsis while it's
     // asked: one given as items (`valueItems`, `between`) on the lines
-    // DrawerPage.valueLines lays them on, or with a `tail` on the one line
-    // valueLine gives way on, an identifier as identifierKept lays it, and
+    // DrawerPage.valueLines lays them on, with a `tail` on the one line
+    // valueLine gives way on, or as a lead whose `gives` gives way after
+    // them on leadLine's one line, an identifier as identifierKept lays it, and
     // any other as itemsKept does. Its `value` is still what's copied.
     function valueDrawn(fact) {
         const data = fact.modelData;
         const width = text => faceOf(data).advanceWidth(text);
         if (!fact.known) {
             return "\u2026";
+        }
+        if (data.valueItems && data.gives !== undefined) {
+            return Page.leadLine(data.valueItems, data.gives, fact.valueWide, width).join("\n");
         }
         if (data.valueItems) {
             return (data.tail ? Page.valueLine(data.valueItems, data.tail, fact.valueWide, width)

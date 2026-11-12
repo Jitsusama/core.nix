@@ -280,19 +280,49 @@ function awaySide(zone, apart, time, said) {
 // meeting, `coming` as its row is named and says when, and the newest
 // they met at, each "Lunch on Friday \u00b7 2 h ago", when said by `when`
 // and labelled by `labels`' waiting, next and met. `told` is each
-// source's firsts, { met, wait }, either null.
+// source's firsts, { met, wait }, either null. Their message Joel hasn't
+// answered leads, ahead of one he wrote last, as one line: where it came
+// from by `labels.from`, when, then the message, which alone gives way
+// (VKCF3Z, 6ea9cd26: "in Slack \u00b7 14:02 \u00b7 " then the message).
 function firsts(told, coming, when, labels) {
     const each = field => told.map(one => one?.[field]).filter(Boolean);
-    const wait = each("wait").reduce((oldest, one) => oldest && oldest.at <= one.at
-        ? oldest : one, null);
+    const wait = answering(told) ?? oldest(each("wait"));
     const met = each("met").reduce((newest, one) => newest && newest.at >= one.at
         ? newest : one, null);
     const said = (name, side) => side ? `${name} \u00b7 ${side}` : name;
     return [
-        wait ? { label: labels.waiting, value: said(wait.name, when(wait.at)) } : null,
+        wait ? waited(wait, when(wait.at), labels) : null,
         coming ? { label: labels.next, value: said(coming.name, coming.side) } : null,
         met ? { label: labels.met, value: said(met.name, when(met.at)) } : null
     ].filter(Boolean);
+}
+
+// The oldest of `waits`, each with its `at`, or null.
+function oldest(waits) {
+    return waits.reduce((first, one) => first && first.at <= one.at ? first : one, null);
+}
+
+// What Return on someone answers: the oldest of their messages that
+// waits on Joel, of each source's firsts in `told`, or null where all
+// that waits is his.
+function answering(told) {
+    return oldest(told.map(one => one?.wait).filter(wait => wait && wait.mine !== true));
+}
+
+// The Waiting fact for a wait said `at`: theirs as its lead, where and
+// when kept whole and the message after them, and his as it was.
+function waited(wait, at, labels) {
+    if (wait.mine === true || !labels.from) {
+        return { label: labels.waiting, value: at ? `${wait.name} \u00b7 ${at}` : wait.name };
+    }
+    const kept = [String(labels.from).replace("{what}", wait.what ?? ""), at]
+        .filter(Boolean);
+    return {
+        label: labels.waiting,
+        value: kept.concat([wait.name]).join(" \u00b7 "),
+        valueItems: kept.map(one => ({ said: one })),
+        gives: wait.name
+    };
 }
 
 // How one of those stands on their page: not at all while it holds

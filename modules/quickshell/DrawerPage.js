@@ -423,12 +423,36 @@ function valueLine(items, tail, wide, width) {
     return saying.length === 0 ? [] : [fitted({ said: more(saying.length) }, wide, width)];
 }
 
+// A lead's one line no wider than `wide`: its kept items a dot apart,
+// which never give way, then `gives` after a dot, as many of its words as
+// fit with an ellipsis where any went, so a person's unanswered message
+// reads "in Slack \u00b7 14:02 \u00b7 Can you look\u2026" (VKCF3Z, 6ea9cd26);
+// the kept items alone where not one word fits, past the frame if need be.
+function leadLine(kept, gives, wide, width) {
+    const held = kept.map(item => item.said).filter(said => said !== "").join(DOTTED);
+    const words = String(gives).split(" ").filter(word => word !== "");
+    const after = said => held === "" ? said : `${held}${DOTTED}${said}`;
+    if (words.length === 0 || width(after(words.join(" "))) <= wide) {
+        return [words.length === 0 ? held : after(words.join(" "))];
+    }
+    for (let whole = words.length - 1; whole > 0; whole--) {
+        const line = after(`${words.slice(0, whole).join(" ")}\u2026`);
+        if (width(line) <= wide) {
+            return [line];
+        }
+    }
+    return [held];
+}
+
 // What of a fact's value stands beside its name, measured to choose
 // whether a drawer reads as a table: a list with a `tail` is the one line
 // valueLine draws in `room`, never every item it holds, so a browser
 // opening dozens of kinds keeps its table (Y2YBTS, 2026-11-08); any other
 // its value whole. `value` stays what's copied either way.
 function besideText(fact, room, width) {
+    if (fact.valueItems && fact.gives !== undefined) {
+        return leadLine(fact.valueItems, fact.gives, room, width).join("");
+    }
     if (fact.valueItems && fact.tail) {
         return valueLine(fact.valueItems, fact.tail, room, width).join("");
     }
