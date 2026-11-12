@@ -75,9 +75,9 @@ Provider {
     // (VKCF3Z, 2026-11-08).
     function awakeFields() {
         const logind = awakeWatch.revision >= 0 ? awakeWatch.held["awake:main"] ?? null : null;
-        if (!logind)
-            return {};
         const words = Words.of("session:awake").said ?? {};
+        if (!logind)
+            return provider.silentFields(awakeWatch, words, "session:awake");
         const now = Date.now();
         const facts = Awake.facts(logind, words, {
             plugged: !UPower.onBattery,
@@ -99,6 +99,44 @@ Provider {
 
     // The words for a day a file's row says (FileFacts.js), so Last Slept
     // says a day as a thing taken does.
+    // A row the machine daemon gives figures to, while it doesn't answer:
+    // a thing whose drawer says so plainly, its act still Return, so every
+    // row says a little more than its line (Joel, 22:00 on 11 November);
+    // nothing while it's still being asked, since that soon passes.
+    function silentFields(watch, words, key) {
+        if (watch.state !== "not answering")
+            return {};
+        return {
+            thing: true,
+            drawer: {
+                eyebrow: words.eyebrow ?? "",
+                eyebrowNames: true,
+                title: Words.name(key),
+                facts: [],
+                body: words.silent ?? ""
+            }
+        };
+    }
+
+    // Lock's drawer, an act's (Power.js's lockSaid): what it does and what
+    // stays running behind the lock, its key, and whose windows stay open.
+    // Worked out only as it's drawn, since niri's windows change all day.
+    function lockDrawer() {
+        const entry = Words.of("session:Lock");
+        // Its leads are sentences of the drawer's own (`tells`), the rest
+        // words beside them (`said`).
+        const words = Object.assign({}, entry.said, entry.tells);
+        const told = Power.lockSaid(Power.byProgram(Niri.windows, provider.programNamed),
+            provider.bound(provider.locks).map(key => key.text).join(" "), words);
+        return {
+            eyebrow: words.eyebrow ?? "",
+            eyebrowNames: true,
+            title: Words.name("session:Lock"),
+            facts: told.facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
+            body: told.lead
+        };
+    }
+
     readonly property var days: ({
         yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
         date: (at, format) => Qt.formatDate(at, format)
@@ -248,6 +286,10 @@ Provider {
             side: refusal.daemon === choice.daemon ? refusal.why
                 : provider.profileOn(choice) ? "chosen" : "",
             hue: "machine",
+            // Which is on instead, who holds it and what it set, under
+            // the row (choiceDrawer); Return still picks it.
+            thing: true,
+            drawer: () => provider.choiceDrawer(choice),
             of: Words.of(key).of,
             part: Words.of(key).part,
             stays: true,
@@ -377,20 +419,54 @@ Provider {
     property var profileRead: null
     property bool profileAsked: false
 
+    // Why power-profiles-daemon holds Full Performance back, as a said
+    // key: on a lap, too hot, or "".
+    function profileSlowed() {
+        const slowed = PowerProfiles.degradationReason;
+        return slowed === PerformanceDegradationReason.LapDetected ? "lap"
+            : slowed === PerformanceDegradationReason.HighTemperature ? "heat" : "";
+    }
+
+    // A profile choice's own drawer (Power.js's choiceFacts): what it set
+    // once sysfs has been read, which it asks for as the power profile's
+    // drawer does, and until then which is on and who holds it.
+    function choiceDrawer(choice) {
+        if (profileRead === null)
+            Qt.callLater(() => provider.readProfile());
+        const current = profileChoices.find(each => provider.profileOn(each));
+        const words = Words.of("session:profile:drawer").said;
+        const facts = Power.choiceFacts(choice.daemon, Object.assign({
+            on: provider.profileOn(choice),
+            current: current ? Words.of(`session:power:${current.was}`).part : "",
+            holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
+                profile: profileChoices.find(each => each.profile === hold.profile)?.daemon
+                    ?? "",
+                app: hold.applicationId,
+                reason: hold.reason
+            })),
+            slowed: provider.profileSlowed()
+        }, profileRead ?? {}), words);
+        return {
+            eyebrow: words.eyebrow,
+            eyebrowNames: true,
+            title: Words.name(`session:power:${choice.was}`),
+            facts: facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
+            body: ""
+        };
+    }
+
     function profileDrawer() {
         if (profileRead === null) {
             Qt.callLater(() => provider.readProfile());
             return null;
         }
-        const slowed = PowerProfiles.degradationReason;
         return Object.assign({ title: Words.name("session:profile") }, Power.profileDrawer(
             Object.assign({
                 holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
                     app: hold.applicationId,
                     reason: hold.reason
                 })),
-                slowed: slowed === PerformanceDegradationReason.LapDetected ? "lap"
-                    : slowed === PerformanceDegradationReason.HighTemperature ? "heat" : ""
+                slowed: provider.profileSlowed()
             }, profileRead),
             id => Words.name(id),
             Words.of("session:profile:drawer").said));
@@ -500,7 +576,8 @@ Provider {
     // how sleep stands, so it carries no ":suspend"; the foot says that.
     function sleepFields() {
         if (sleeping === null)
-            return {};
+            return provider.silentFields(sleepWatch, Words.of("session:Suspend").said ?? {},
+                "session:Suspend");
         const told = Power.sleepSaid(sleeping, Words.of("session:Suspend").said ?? {},
             Interfaces.lasted, Words.of("sleep:error").said ?? {});
         return {
@@ -562,7 +639,10 @@ Provider {
     // Each is learned by the name it had first (was), so renaming one keeps
     // what Joel taught it.
     things: [awake, quiet].concat(Recorder.recording ? [recording] : [], [profile], profiles, [
-        { was: "Lock", does: locks, run: () => provider.launcher.lock.lock() },
+        // Lock says what stays running behind it (lockDrawer), its act
+        // still Return.
+        { was: "Lock", does: locks, run: () => provider.launcher.lock.lock(),
+            fields: { thing: true, drawer: () => provider.lockDrawer() } },
         { was: "Suspend", run: () => Niri.spawn(["systemctl", "suspend"]), fields: sleepFields() },
         { was: "Log Out", run: () => Niri.act({ Quit: { skip_confirmation: true } }) },
         { was: "Reboot", run: () => Niri.spawn(["systemctl", "reboot"]) },

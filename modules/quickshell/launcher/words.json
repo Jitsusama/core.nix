@@ -10882,6 +10882,7 @@
       },
       "said": {
         "eyebrow": "on this machine \u00b7 switch",
+        "silent": "not answering",
         "after": "{does} {lasted} after the screens go off",
         "held": "{who}: {why}",
         "locks": "never \u00b7 it only locks",
@@ -11005,6 +11006,11 @@
       "term": "Machine/held back"
     },
     {
+      "id": "session:profile:now",
+      "in": "session:profile",
+      "name": "On Now"
+    },
+    {
       "id": "session:profile:firmware",
       "in": "session:profile",
       "name": "Firmware",
@@ -11066,7 +11072,28 @@
       "command": "lockscreen",
       "name": "Lock",
       "verb": "lock",
-      "glyph": "locked"
+      "glyph": "locked",
+      "said": {
+        "eyebrow": "on this machine \u00b7 lock",
+        "window": "1 window",
+        "windows": "{count} windows",
+        "more": "{count} more"
+      },
+      "tells": {
+        "lead": "Locks the screen; {windows} keep running behind it.",
+        "one": "Locks the screen; {windows} keeps running behind it.",
+        "alone": "Locks the screen."
+      }
+    },
+    {
+      "id": "session:Lock:key",
+      "in": "session:Lock",
+      "name": "Key"
+    },
+    {
+      "id": "session:Lock:open",
+      "in": "session:Lock",
+      "name": "Stays Open"
     },
     {
       "id": "session:Suspend",
@@ -11078,6 +11105,7 @@
       "glyph": "suspend",
       "said": {
         "eyebrow": "on this machine \u00b7 sleep",
+        "silent": "not answering",
         "failed": "failed while {step}",
         "at": "{count} while {step}",
         "time": "1 time",

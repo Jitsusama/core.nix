@@ -7,6 +7,7 @@
 // chargers' rows are the machine daemon's, served ready
 // (modules/machine's power_rows.rs), and none of it is worked out here.
 .pragma library
+.import "Order.js" as Order
 
 const SPACES = /\s+/;
 
@@ -59,6 +60,90 @@ function profileRefusal(wanted, heard, told) {
     const holding = (told.holds ?? []).find(hold => hold.profile === heard);
     return holding ? filled(told.said.held, { profile, app: holding.app })
         : filled(told.said.kept, { profile });
+}
+
+// A power profile's own drawer, under its row among Power Profile's
+// choices, as facts by their words' ids: which profile is on instead,
+// while this one isn't; which programs hold this one, as the power
+// profile's drawer says them; why Full Performance is held back, on its
+// own drawer alone; and while it's the one on, what it set, the firmware's
+// profile and the processor's preference as power-profiles-daemon wrote
+// them. `known` holds `on`, whether it's on, `current`, the name of the
+// one on, `holds`, each { profile, app, reason } by the daemon's names,
+// `slowed`, a said key or "", and `firmware` and `processor` as read, or
+// none before they are.
+function choiceFacts(daemon, known, said) {
+    const held = (known.holds ?? []).filter(hold => hold.profile === daemon)
+        .map(hold => hold.reason === "" ? hold.app : filled(said.held, hold)).join(" \u00b7 ");
+    return [
+        { id: "session:profile:now", value: known.on ? "" : known.current ?? "" },
+        { id: "session:profile:held", value: held },
+        { id: "session:profile:slowed", value: daemon !== "performance" || !known.slowed ? ""
+            : said[known.slowed] ?? "" },
+        { id: "session:profile:firmware", value: known.on ? known.firmware ?? "" : "" },
+        { id: "session:profile:processor", value: known.on ? known.processor ?? "" : "" }
+    ].filter(fact => fact.value !== "");
+}
+
+// The programs whose windows are open, the most windows first, then A to
+// Z, as amounts are (Order.js), each { name, count }, from niri's windows (Niri.qml's, by id),
+// each named by `named` from its app_id, and how many windows in all, a
+// window with no app_id counted there alone.
+function byProgram(windows, named) {
+    const counted = Object.create(null);
+    let open = 0;
+    for (const each of Object.values(windows ?? {})) {
+        open += 1;
+        const id = String(each?.app_id ?? "");
+        if (id !== "") {
+            const name = named(id);
+            counted[name] = (counted[name] ?? 0) + 1;
+        }
+    }
+    const programs = Order.sorted(
+        Object.keys(counted).map(name => ({ name, count: counted[name] })),
+        Order.amounts({ amount: program => program.count, name: program => program.name }));
+    return { open, programs };
+}
+
+// How many programs a drawer names before saying how many more.
+const PROGRAMS_NAMED = 4;
+
+// What's open, as Lock's drawer says it stays running behind the lock:
+// how many windows, "14 windows", and whose, the most first, "kitty 5 \u00b7
+// Chrome 4 \u00b7 Slack 2 \u00b7 3 more", in the words `said` gives; each ""
+// when none is open.
+function openSaid(open, said) {
+    if (open.open === 0) {
+        return { windows: "", programs: "" };
+    }
+    const named = open.programs.slice(0, PROGRAMS_NAMED).map(each => `${each.name} ${each.count}`);
+    const more = open.programs.length - PROGRAMS_NAMED;
+    if (more > 0) {
+        named.push(filled(said.more, { count: more }));
+    }
+    return {
+        windows: open.open === 1 ? said.window : filled(said.windows, { count: open.open }),
+        programs: named.join(" \u00b7 ")
+    };
+}
+
+// Lock's drawer, an act's as drawers.md has it (VKCF3Z, 37e49991): its
+// lead says what it does and what stays running behind it, "Locks the
+// screen; 9 windows keep running behind it.", then its facts by their
+// words' ids, its key as its chord says it, then whose windows stay open.
+// One window keeps running where several keep, so it has its own line.
+// `open` is byProgram's, `chord` its keys' words, "Super L".
+function lockSaid(open, chord, said) {
+    const told = openSaid(open, said);
+    const lead = open.open === 1 ? said.one : said.lead;
+    return {
+        lead: told.windows === "" ? said.alone : filled(lead, { windows: told.windows }),
+        facts: [
+            { id: "session:Lock:key", value: chord },
+            { id: "session:Lock:open", value: told.programs }
+        ].filter(fact => fact.value !== "")
+    };
 }
 
 // The steps a sleep goes through, in the order Linux takes them, each as
