@@ -1,5 +1,8 @@
 # The checks of pi, which checks.nix gathers with every other folder's;
-# its opening comment says what each kind of check proves.
+# its opening comment says what each kind of check proves. Long because pi
+# is one program set up many ways, on the Claude plan and off it, hosted and
+# in a terminal, on Linux and on a Mac, and these read together as what pi
+# is on each; its own programs keep their checks in their folders.
 {
   account,
   bareDarwin,
