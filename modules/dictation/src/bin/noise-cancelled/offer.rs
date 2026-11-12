@@ -12,8 +12,14 @@
 //! do. Taken or put off, its microphone and spot are kept in `offered`
 //! and never offered again, and a pick by ear there withdraws it too.
 //!
+//! Once picked for, a call whose room sat [`FAR`] louder or quieter than
+//! the one its pick was made in (room.rs) offers it again: a nudge, once a
+//! pick, kept as nudged once taken or put off, and withdrawn by a new pick.
+//!
 //! `offer` is one JSON object: the microphone's name and node, the spot's
-//! name and key, and whether the microphone or the spot is the new one.
+//! name and key, and what's new: the microphone, the spot, or the noise,
+//! with `by`, how many dB louder the room was, quieter under nought, and
+//! `from`, its pick's floor.
 //! The trial tells it to the launcher as it comes and goes, with when it
 //! was made, and For You shows it as a thing to do.
 
@@ -28,6 +34,7 @@ use serde_json::{Value, json};
 
 use crate::chosen::{Chosen, written};
 use crate::refusals::Refusal;
+use crate::room::{self, FAR};
 use crate::spot::Spot;
 use crate::trial::Trial;
 
@@ -82,8 +89,9 @@ impl Offers {
     /// After `microphone`, by its `node`, was recorded from at `spot` for
     /// `lasted`, its room's floor `floor`: waits to offer Choose by Ear for
     /// it there, if that was a call, it's never been picked for there, and
-    /// it's never been offered there. The newest call's waits in place of
-    /// any before.
+    /// it's never been offered there. A call whose room sits [`FAR`] from the
+    /// one its pick there was made in offers it again, once a pick. The
+    /// newest call's waits in place of any before.
     pub fn heard(
         &mut self,
         chosen: &Chosen,
@@ -93,9 +101,25 @@ impl Offers {
         lasted: Duration,
         floor: Option<i32>,
     ) {
-        let _ = floor;
-        if lasted < CALL || chosen.picked(node, Some(&spot.key)) || offered(chosen, node, &spot.key)
+        if lasted < CALL {
+            return;
+        }
+        if let Some(floor) = floor
+            && let Some((from, false)) = room::picked_in(chosen, node, &spot.key)
+            && (floor - from).abs() >= FAR
         {
+            self.waiting = Some(Offer {
+                node: node.to_owned(),
+                microphone: microphone.to_owned(),
+                spot: spot.clone(),
+                why: Why::Noise {
+                    by: floor - from,
+                    from,
+                },
+            });
+            return;
+        }
+        if chosen.picked(node, Some(&spot.key)) || offered(chosen, node, &spot.key) {
             return;
         }
         self.waiting = Some(Offer {
@@ -125,9 +149,17 @@ impl Offers {
         let Some(offer) = &self.waiting else {
             return;
         };
-        if chosen.picked(&offer.node, Some(&offer.spot.key))
-            || offered(chosen, &offer.node, &offer.spot.key)
-        {
+        let settled = match offer.why {
+            // A nudge is for the pick it was measured against alone.
+            Why::Noise { from, .. } => {
+                room::picked_in(chosen, &offer.node, &offer.spot.key) != Some((from, false))
+            }
+            Why::Microphone | Why::Spot => {
+                chosen.picked(&offer.node, Some(&offer.spot.key))
+                    || offered(chosen, &offer.node, &offer.spot.key)
+            }
+        };
+        if settled {
             self.waiting = None;
             self.withheld(chosen);
             return;
@@ -152,9 +184,15 @@ impl Offers {
 }
 
 /// Takes the offer standing, as Joel took it or put it off: its
-/// microphone and spot are kept as offered, and it's withdrawn.
+/// microphone and spot are kept as offered, or a nudge as nudged until he
+/// picks there again, and it's withdrawn.
 pub fn taken(chosen: &Chosen) -> Result<(), String> {
     match standing_offer(chosen) {
+        Some(offer) if matches!(offer.why, Why::Noise { .. }) => {
+            room::nudged(chosen, &offer.node, &offer.spot.key)?;
+            removed(chosen);
+            Ok(())
+        }
         Some(offer) => settled(chosen, &offer.node, &offer.spot.key),
         None => Ok(()),
     }
