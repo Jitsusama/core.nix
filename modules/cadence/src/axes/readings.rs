@@ -11,6 +11,7 @@ use jiff::tz::TimeZone;
 use serde::Deserialize;
 use serde_json::Value;
 
+use super::landings;
 use super::{Axis, Bar, Reading, shown};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
@@ -44,6 +45,8 @@ pub struct Sources {
     /// `/proc/pressure/cpu` and `/proc/meminfo`.
     pub pressure: String,
     pub meminfo: String,
+    /// What spend is judged by: the changes that reached him, and the bill.
+    pub landings: landings::Sources,
     /// Now, in seconds, and the moment the reading's day began.
     pub now: i64,
     pub midnight: i64,
@@ -101,31 +104,17 @@ pub fn read(s: &Sources) -> Vec<Axis> {
 const DISAGREE: &str = "its sources disagree, and QCXZEB is settling which is true";
 
 fn resources(s: &Sources) -> Axis {
-    let spends: Vec<f64> = s.measures.iter().filter_map(|m| spend(m)).collect();
-    let week = |skip: usize| -> Option<f64> {
-        let days: Vec<f64> = spends.iter().rev().skip(skip).take(7).copied().collect();
-        (days.len() == 7).then(|| days.iter().sum::<f64>() / 7.0)
-    };
-    let mut spend = Reading::new("spend {} a day this week", week(0), "$", "QCXZEB")
-        .from("the daily measure's Spend lines")
-        .held(DISAGREE)
-        .detail(
-            spends
-                .last()
-                .map(|d| format!("yesterday {}, its bar the week before", shown(*d, "$"))),
-        );
-    // Read against the week before, though held: the bar it takes once
-    // let go is the bill per landing that reached him at quality.
-    if let Some(before) = week(7) {
-        spend = spend.bar(Bar::AtMost(before));
-    }
+    // Spend is the bill per core change that reached him and stayed, beside
+    // how many reached him, so a cheaper day that brought fewer is out.
+    let (bill, changes, _) = landings::readings(&s.landings, s.now, &TimeZone::system());
     let figure = |key: &str| s.day.as_ref().and_then(|d| d.figures.get(key).copied());
     let (_, swap) = crate::records::memory(&s.meminfo);
     let now = crate::records::avg300(&s.pressure);
     axis(
         "resources",
         vec![
-            spend,
+            bill,
+            changes,
             Reading::new(
                 "spent on cache rewrites after compaction {}",
                 s.measures.last().and_then(|m| after_compaction(m)),
@@ -248,6 +237,7 @@ fn quality(s: &Sources) -> Axis {
             )
             .bar(Bar::AtMost(60.0))
             .from("cadence's card"),
+            landings::readings(&s.landings, s.now, &TimeZone::system()).2,
             // Y9XISP's daily code-health read lands by Thu 12 18:00.
             Reading::new("{} code-health regressions", None, "", "Y9XISP").bar(Bar::AtMost(0.0)),
         ],
@@ -399,7 +389,7 @@ fn percent(part: usize, all: usize) -> f64 {
 
 /// A count as a figure. No count here comes near `u32`'s top, which
 /// `f64` holds exactly.
-fn count(n: usize) -> f64 {
+pub(super) fn count(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
@@ -411,11 +401,6 @@ fn money(text: &str) -> Option<f64> {
         .filter(|c| *c != ',')
         .collect();
     digits.parse().ok()
-}
-
-/// The day's spend, from the measure's "Spend: $7,293 over ..." line.
-fn spend(measure: &str) -> Option<f64> {
-    money(measure.lines().find_map(|l| l.strip_prefix("Spend: "))?)
 }
 
 /// What cache rewrites after a compaction cost, from the measure's
@@ -626,6 +611,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         notices: text(state_home.join("notices/notices.json")),
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),
+        landings: landings::gather(folder, &runtime, now),
         now,
         midnight,
     }
@@ -676,41 +662,19 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
     }
 
     #[test]
-    fn the_measure_says_spend_and_rewrites() {
-        assert_eq!(spend(&measure("7,293")), Some(7293.0));
+    fn the_measure_says_rewrites() {
         assert_eq!(after_compaction(&measure("7,293")), Some(474.0));
-        assert_eq!(spend("no spend here"), None);
+        assert_eq!(after_compaction("no rewrites here"), None);
     }
 
     #[test]
-    fn spend_is_held_back_while_its_sources_disagree() {
-        let mut measures: Vec<String> = (0..7).map(|_| measure("1,000")).collect();
-        measures.extend((0..7).map(|_| measure("2,000")));
-        let s = Sources {
-            measures,
-            ..Sources::default()
-        };
-        let spend = &resources(&s).readings[0];
-        // It's still read against the week before, so letting it go is
-        // only taking the hold off.
-        assert_eq!(spend.now, Some(2000.0));
-        assert_eq!(spend.bar, Some(Bar::AtMost(1000.0)));
-        assert!(!spend.out(), "a held figure was judged, and so was shown");
-        assert_eq!(spend.words(), "spend a day this week: not agreed yet");
-    }
-
-    #[test]
-    fn under_two_weeks_of_measures_spend_has_no_bar() {
-        let s = Sources {
-            measures: (0..9).map(|_| measure("1,000")).collect(),
-            ..Sources::default()
-        };
-        let spend = &resources(&s).readings[0];
-        assert_eq!(spend.bar, None);
-        assert!(
-            !spend.out(),
-            "spend with no week before to hold it to was out"
+    fn with_no_bill_or_changes_spend_is_unread_rather_than_fine() {
+        let spend = &resources(&Sources::default()).readings[0];
+        assert_eq!(
+            spend.words(),
+            "the bill per core change that reached you and stayed: no reading yet"
         );
+        assert!(!spend.out(), "an unread bill was out");
     }
 
     #[test]
