@@ -232,17 +232,22 @@ Provider {
     // ideas", and a headset's two rows said the same name. So the machine's
     // own are Built-in speakers, Built-in microphones and the Headphone
     // jack, and a headset's microphone is named as its (Sounds.js called).
-    // A noise-cancelled microphone is the one it hears, named for it, as the
-    // sound daemon names its row (modules/sound's rows.rs).
+    // A noise-cancelled microphone is the one it hears, named as that one's
+    // row and said Noise Cancelled once, as the sound daemon names its row
+    // (modules/sound's rows.rs); its own description says so already, for
+    // call programs, so it's named by its own only once that one's gone.
     function named(node) {
+        const heard = String(node.name).replace(/^noise-cancelled\./, "");
+        if (heard !== node.name) {
+            const microphone = inputs.find(input => input.name === heard);
+            return microphone ? Words.name("sound:called:noise-cancelled", "",
+                { device: named(microphone) }) : nicknamed(node);
+        }
         const own = nicknamed(node);
         const shared = inputs.includes(node) && outputs.some(output => nicknamed(output) === own);
-        const heard = String(node.name).replace(/^noise-cancelled\./, "");
         const called = Sounds.called(heard, shared);
-        const name = called === "" ? own
+        return called === "" ? own
             : Words.name(`sound:called:${called}`, "", { device: own });
-        return heard === node.name ? name
-            : Words.name("sound:called:noise-cancelled", "", { device: name });
     }
 
     // What it is, from what the sound server knows of it, and for a
