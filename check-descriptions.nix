@@ -381,6 +381,11 @@
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
   '';
+  choose-by-ear-walks-its-steps = ''
+    the launcher's Choose by Ear follows the noise-cancelled daemon's trial: Record and its count,
+    the clips heard blind, Return playing one and Pick a step in, every cleaner and its cost once
+    one's picked, a refusal said plainly, and leaving discarding anything but idle
+  '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
   '';
@@ -3725,7 +3730,8 @@
     window; the node gives the session that window, so no second viewer opens and Go To goes to it
   '';
   vm-desktop-opens-and-sets = ''
-    the launcher sets sound and opens its outputs' and microphones' parts, works a program's media,
+    the launcher sets sound and opens its outputs' and microphones' parts, chooses a microphone's
+    noise cancelling by ear over the trial daemon's socket, works a program's media,
     sets the power profile, scales displays, joins Wi-Fi and names each connection's addresses
   '';
   vm-desktop-opens-files = ''

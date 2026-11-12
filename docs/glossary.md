@@ -196,6 +196,10 @@ be read, marked unread and archived.
 | transcript | what was said on a call, Joel's words and the others' in the order they were said, written on the machine as the call goes | | `call-transcripts` |
 | summary | a call's transcript summed up once it ends, on the machine: the lines a model picked as worth reading, each quoted word for word with who said it to whom and when | | `summary.md` |
 | noise cancelled | a microphone's voice with the sounds around it taken out on the machine, offered as a microphone of its own named for it | noise suppression, denoised | `noise-cancelled` |
+| noise cancelling | which cleaner the microphones' noise is cancelled by now, an input's part, or none | | the trial daemon's `running` |
+| cleaner | one way of cancelling noise, DeepFilterNet full or gentle or RNNoise, or none, the microphone as calls hear it | denoiser | `raw`, `deepfilternet`, `deepfilternet-gentle`, `rnnoise` |
+| choose by ear | the blind trial picking an input's cleaner: a few seconds recorded, cleaned by each cleaner as clips A to D, played and one picked | A/B | `trial:now`, `NoiseCancelling.qml` |
+| clip | one of a choose by ear's recordings, cleaned by a cleaner it doesn't name until a pick | | `A` to `D` |
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
