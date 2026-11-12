@@ -13,6 +13,7 @@
 //! only from November 2026, so the logs before need telling apart by how
 //! they open.
 
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::clock::iso;
@@ -60,11 +61,11 @@ pub fn zsh(history: &[u8]) -> Vec<i64> {
         .collect()
 }
 
-/// The moments Joel wrote to one pi session, from its log, in seconds
-/// since 1970.
-pub fn pi_session(log: &str) -> Vec<i64> {
-    log.lines()
-        .filter(|line| line.contains("\"type\":\"message\"") && line.contains("\"role\":\"user\""))
+/// The moments Joel wrote to one pi session, from its log's lines, in
+/// seconds since 1970. The lines come one at a time, since a log can run
+/// to hundreds of megabytes.
+pub fn pi_session(log: impl Iterator<Item = String>) -> Vec<i64> {
+    log.filter(|line| line.contains("\"type\":\"message\"") && line.contains("\"role\":\"user\""))
         .skip(1)
         .filter(|line| {
             line.split_once("\"text\":\"")
@@ -92,9 +93,11 @@ pub fn pi_sessions(folder: &Path, since: std::time::SystemTime) -> Vec<i64> {
                 folders.push(path);
             } else if path.extension().is_some_and(|it| it == "jsonl")
                 && about.modified().is_ok_and(|written| written >= since)
-                && let Ok(log) = std::fs::read_to_string(&path)
+                && let Ok(log) = std::fs::File::open(&path)
             {
-                found.extend(pi_session(&log));
+                found.extend(pi_session(
+                    BufReader::new(log).lines().map_while(Result::ok),
+                ));
             }
         }
     }
@@ -146,7 +149,7 @@ mod tests {
         .join("\n");
         let day = 20_766 * 86_400 + 20 * 3600;
         assert_eq!(
-            pi_session(&log),
+            pi_session(log.lines().map(str::to_owned)),
             vec![day + 60 + 55, day + 5 * 60],
             "his two messages, not the brief, the harness or the mesh"
         );
@@ -189,7 +192,7 @@ mod tests {
         .join("\n");
         let day = 20_766 * 86_400 + 20 * 3600;
         assert_eq!(
-            pi_session(&log),
+            pi_session(log.lines().map(str::to_owned)),
             vec![day + 8 * 60],
             "only the message he typed, which happens to open with From"
         );
