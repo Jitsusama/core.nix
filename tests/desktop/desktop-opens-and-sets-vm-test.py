@@ -398,6 +398,44 @@ def test_the_launchers_sound_chooses_noise_cancelling_by_ear(desktop: Desktop) -
     desktop.as_account("systemctl --user stop noise-cancelled-stand-in.service")
 
 
+def test_for_you_offers_choose_by_ear_after_a_call(desktop: Desktop) -> None:
+    """An offer of Choose by Ear is For You's to-do, and Return goes to its microphone's.
+
+    The service leaves the offer after a call on a microphone not chosen for where it is; the
+    stand-in daemon tells it as the trial does. One path through the connection, Sound's to-do
+    reaching For You and its trail reaching Choose by Ear; what the offer says, case by case, is
+    tests/by-ear.qml's.
+    """
+    offer = json.dumps(
+        {
+            "microphone": "Stand-in microphone",
+            "node": "stand-in-microphone",
+            "spot": "the desk",
+            "key": "home=6366013",
+            "new": "spot",
+        }
+    )
+    left = "~/.local/state/noise-cancelled/offer"
+    desktop.as_account("mkdir -p ~/.local/state/noise-cancelled")
+    desktop.as_account(f"echo {shlex.quote(offer)} > {left}")
+    desktop.as_account("systemctl --user start noise-cancelled-stand-in.service")
+    offered = "Choose by Ear for Stand-in microphone"
+    desktop.as_account("qs ipc call launcher collection on")
+    desktop.launcher_ready()
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "For You")
+    desktop.step_in("ret")
+    desktop.launcher_until(lambda shown: offered in shown["rows"])
+    desktop.down_to(offered)
+    desktop.machine.send_key("ret")
+    # Its microphone's Choose by Ear, waiting to record, and the offer taken.
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Record"])
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"test ! -e {left}"), timeout=timedelta(seconds=10)
+    )
+    desktop.close_launcher()
+    desktop.as_account("systemctl --user stop noise-cancelled-stand-in.service")
+
+
 # A program's own Media and Sound, against a real player playing real
 # sound: mpv, through its MPRIS script, playing two tones in turn through
 # PipeWire to the speakers. What each act does is read back from the
