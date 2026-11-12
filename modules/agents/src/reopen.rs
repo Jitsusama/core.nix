@@ -31,7 +31,13 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::row::Words;
+use crate::said::Said;
 use crate::served::{PLACE, SPACING};
+
+/// The key of Sessions to Reopen's own record, saying how many there are,
+/// where they came from and how many folders are gone.
+pub const TO_REOPEN: &str = "to-reopen:agents";
 
 /// The ways a session comes to be offered apart from a boot.
 const APART: [&str; 2] = ["carried", "released"];
@@ -222,9 +228,279 @@ pub fn offered(restore: Option<&Value>, boot: &str, kept: &Kept, here: &[Here]) 
         .collect()
 }
 
+/// What a row to reopen is said against beyond its record.
+pub struct Wording<'a> {
+    /// The launcher's words.
+    pub words: &'a Words,
+    /// The account's home folder, said as `~`.
+    pub home: &'a str,
+    /// Whether a folder is there.
+    pub there: &'a dyn Fn(&str) -> bool,
+}
+
+/// Gives each record `offered` made its row as the launcher shows it,
+/// under `row`, and answers Sessions to Reopen's own record, or none
+/// while none is offered. A row is named by its title, address or id;
+/// its side says the folder it reopens in from home, or that it's gone,
+/// looked for as it's made, as a closed orchestrator's is, rather than
+/// by the shell on every opening; one held elsewhere says its machine;
+/// its note says the way it came. One pi's host gave back names that
+/// host apart, since the host's name is no place Joel chose (VKCF3Z,
+/// [92a1d30c]).
+pub fn worded(offered: &mut [Value], wording: &Wording) -> Option<Value> {
+    if offered.is_empty() {
+        return None;
+    }
+    let place = &wording.words.to_reopen;
+    let mut ways = Ways::default();
+    let mut gone = 0;
+    for record in offered.iter_mut() {
+        let row = row_of(record, wording, &mut ways);
+        gone += usize::from(row["gone"] == true);
+        record["row"] = row;
+    }
+    let count = offered.len();
+    let side = if count == 1 {
+        place.word("one").to_owned()
+    } else {
+        place.fill("many", &[("count", &count.to_string())])
+    };
+    let there = place.fill(
+        "there",
+        &[
+            ("there", &(count - gone).to_string()),
+            ("count", &count.to_string()),
+        ],
+    );
+    let gone_said = if gone == 1 {
+        place.word("goneOne").to_owned()
+    } else {
+        place.fill("goneMany", &[("count", &gone.to_string())])
+    };
+    // Reopen Them All counts those it can reopen only when any can't, the
+    // count that failed in the alert's colour (VKCF3Z, 2026-11-07).
+    let (all_side, all_items) = if gone == 0 {
+        (String::new(), json!([]))
+    } else {
+        (
+            format!("{there} \u{b7} {gone_said}"),
+            json!([{"said": there, "keep": 2}, {"said": gone_said, "keep": 3, "hue": "alert"}]),
+        )
+    };
+    Some(json!({"key": TO_REOPEN, "kind": "to-reopen", "toReopen": {
+        "side": side,
+        "note": ways.note(place),
+        "there": count - gone,
+        "gone": gone,
+        "lastBoot": ways.booted,
+        "allSide": all_side,
+        "allItems": all_items,
+    }}))
+}
+
+/// How many came each way, and the machines those carried came from, in
+/// the order first met.
+#[derive(Default)]
+struct Ways {
+    booted: usize,
+    carried: usize,
+    machines: Vec<String>,
+    released: usize,
+}
+
+impl Ways {
+    /// Where they came from, as Sessions to Reopen's note says it: one
+    /// way alone by itself, but those given back counted, since that way
+    /// names no place; several each counted, and several machines counted
+    /// rather than listed.
+    fn note(&self, place: &Said) -> String {
+        let carried = if self.machines.len() == 1 {
+            place.fill("carried", &[("machine", &self.machines[0])])
+        } else {
+            let machines = place.fill("machines", &[("count", &self.machines.len().to_string())]);
+            place.fill("carried", &[("machine", &machines)])
+        };
+        let ways: Vec<(usize, String, bool)> = [
+            (self.booted, place.word("lastBoot").to_owned(), false),
+            (self.carried, carried, false),
+            (self.released, place.word("givenBack").to_owned(), true),
+        ]
+        .into_iter()
+        .filter(|(count, _, _)| *count > 0)
+        .collect();
+        let counted = |(count, from, _): &(usize, String, bool)| {
+            place.fill("counted", &[("count", &count.to_string()), ("from", from)])
+        };
+        match &ways[..] {
+            [] => place.word("lastBoot").to_owned(),
+            [one] if one.2 => counted(one),
+            [one] => one.1.clone(),
+            several => several.iter().map(counted).collect::<Vec<_>>().join(", "),
+        }
+    }
+}
+
+/// One record's row, counting the way it came into `ways`.
+fn row_of(record: &Value, wording: &Wording, ways: &mut Ways) -> Value {
+    let words = wording.words;
+    let session = &record["session"];
+    let text = |field: &str| session[field].as_str().unwrap_or("");
+    let name = [text("title"), text("address"), text("id")]
+        .into_iter()
+        .find(|one| !one.is_empty())
+        .unwrap_or("");
+    let cwd = text("cwd");
+    let machine = session["machine"].as_str();
+    let gone = machine.is_none() && !(wording.there)(cwd);
+    let homely = from_home(cwd, wording.home);
+    let side = match machine {
+        Some(machine) => words.machine.fill("on", &[("machine", machine)]),
+        None if gone => words.reopen_one.fill("gone", &[("cwd", &homely)]),
+        None => homely,
+    };
+    let from = record["from"].as_str().unwrap_or("");
+    let (note, host) = match record["way"].as_str() {
+        Some("carried") => {
+            ways.carried += 1;
+            if !ways.machines.iter().any(|one| one == from) {
+                ways.machines.push(from.to_owned());
+            }
+            (words.to_reopen.fill("carried", &[("machine", from)]), "")
+        }
+        Some("released") => {
+            ways.released += 1;
+            (words.to_reopen.word("givenBack").to_owned(), from)
+        }
+        _ => {
+            ways.booted += 1;
+            (words.to_reopen.word("lastBoot").to_owned(), "")
+        }
+    };
+    json!({"name": name, "side": side, "note": note, "gone": gone, "host": host})
+}
+
+/// A folder said from `home`, as `~` and what's under it.
+fn from_home(folder: &str, home: &str) -> String {
+    if home.is_empty() {
+        return folder.to_owned();
+    }
+    match folder.strip_prefix(home) {
+        Some("") => "~".to_owned(),
+        Some(under) if under.starts_with('/') => format!("~{under}"),
+        _ => folder.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn words() -> Words {
+        Words::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
+    }
+
+    fn worded_now(offered: &mut [Value], there: &dyn Fn(&str) -> bool) -> Option<Value> {
+        let words = words();
+        let wording = Wording {
+            words: &words,
+            home: "/home/skiff",
+            there,
+        };
+        worded(offered, &wording)
+    }
+
+    fn rows(offered: &[Value]) -> Vec<Value> {
+        offered.iter().map(|one| one["row"].clone()).collect()
+    }
+
+    fn reef() -> Value {
+        json!({"boot": "the-last", "sessions": [
+            {"id": "01-kept", "cwd": "/home/skiff/harbour", "title": "Harbour"},
+            {"id": "01-lost", "cwd": "/home/skiff/gone", "address": "GONEAW"},
+            {"id": "01-far", "cwd": "", "machine": "lighthouse", "address": "FARAWY",
+                "title": "Far", "attach": ["mycelium", "attach", "FARAWY"]},
+            {"id": "01-ferried", "cwd": "/home/skiff", "carried": {"from": "far", "at": "1"}},
+            {"id": "01-freed", "cwd": "/tmp", "title": "Freed",
+                "released": {"from": "attended", "at": "2"}}
+        ]})
+    }
+
+    #[test]
+    fn each_row_says_where_it_reopens_and_how_it_came() {
+        let mut all = offered(Some(&reef()), "this-one", &Kept::default(), &[]);
+        let place = worded_now(&mut all, &|folder| folder != "/home/skiff/gone");
+        assert_eq!(
+            rows(&all),
+            [
+                json!({"name": "Harbour", "side": "~/harbour", "note": "from the last boot",
+                    "gone": false, "host": ""}),
+                json!({"name": "GONEAW", "side": "~/gone is gone",
+                    "note": "from the last boot", "gone": true, "host": ""}),
+                json!({"name": "Far", "side": "on lighthouse", "note": "from the last boot",
+                    "gone": false, "host": ""}),
+                json!({"name": "Freed", "side": "/tmp", "note": "given back by its host",
+                    "gone": false, "host": "attended"}),
+                json!({"name": "01-ferried", "side": "~", "note": "carried from far",
+                    "gone": false, "host": ""}),
+            ],
+            "named by title, address or id; its folder from home, or gone; its machine; its way"
+        );
+        assert_eq!(
+            place,
+            Some(json!({"key": TO_REOPEN, "kind": "to-reopen", "toReopen": {
+                "side": "5 sessions",
+                "note": "3 from the last boot, 1 carried from far, 1 given back by its host",
+                "there": 4, "gone": 1, "lastBoot": 3,
+                "allSide": "4 of 5 \u{b7} 1 folder gone",
+                "allItems": [{"said": "4 of 5", "keep": 2},
+                    {"said": "1 folder gone", "keep": 3, "hue": "alert"}]}})),
+            "the place counts them, says where they came from and how many folders are gone"
+        );
+    }
+
+    #[test]
+    fn one_way_alone_is_said_by_itself_and_none_offered_is_no_place() {
+        let one = json!({"boot": "the-last", "sessions": [
+            {"id": "01-kept", "cwd": "/home/skiff/harbour"}]});
+        let mut all = offered(Some(&one), "this-one", &Kept::default(), &[]);
+        let place = worded_now(&mut all, &|_| true).expect("one is offered");
+        assert_eq!(
+            (&place["toReopen"]["side"], &place["toReopen"]["note"]),
+            (&json!("1 session"), &json!("from the last boot")),
+            "one from the last boot alone says so uncounted"
+        );
+        assert_eq!(
+            (
+                &place["toReopen"]["allSide"],
+                &place["toReopen"]["allItems"]
+            ),
+            (&json!(""), &json!([])),
+            "with every folder there, Reopen Them All says nothing at its side"
+        );
+        let given = json!({"boot": "this-one", "sessions": [
+            {"id": "01-a", "cwd": "/tmp", "released": {"from": "attended", "at": "1"}},
+            {"id": "01-b", "cwd": "/tmp", "released": {"from": "attended", "at": "2"}}]});
+        let mut all = offered(Some(&given), "this-one", &Kept::default(), &[]);
+        let place = worded_now(&mut all, &|_| true).expect("two are offered");
+        assert_eq!(
+            place["toReopen"]["note"], "2 given back by its host",
+            "those given back are counted even alone, since the way names no place"
+        );
+        let carried = json!({"boot": "this-one", "sessions": [
+            {"id": "01-a", "cwd": "/tmp", "carried": {"from": "far", "at": "1"}},
+            {"id": "01-b", "cwd": "/tmp", "carried": {"from": "reef", "at": "2"}}]});
+        let mut all = offered(Some(&carried), "this-one", &Kept::default(), &[]);
+        let place = worded_now(&mut all, &|_| true).expect("two are offered");
+        assert_eq!(
+            place["toReopen"]["note"], "carried from 2 machines",
+            "several machines are counted rather than listed"
+        );
+        assert_eq!(
+            worded_now(&mut [], &|_| true),
+            None,
+            "none offered is no place"
+        );
+    }
 
     fn restore() -> Value {
         json!({"v": 1, "boot": "the-last", "sessions": [

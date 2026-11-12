@@ -361,32 +361,6 @@ Singleton {
         }
     }
 
-    // Whether each folder a closed session would reopen in is there, as it
-    // was last looked for: true or false, and absent until it has been. The
-    // place listing them looks as it's shown (lookForFolders), never trusting
-    // what the shell found at its start, so a row says its folder is gone
-    // before Return rather than a notice saying so after (VKCF3Z,
-    // 2026-11-07 [4a00987e]).
-    property var folders: ({})
-    function lookForFolders(cwds) {
-        const asked = cwds.filter((cwd, at) => cwd !== "" && cwds.indexOf(cwd) === at);
-        if (asked.length === 0)
-            return;
-        lookFor(asked, there => heardFolders(asked, there));
-    }
-    function heardFolders(asked, there) {
-        if (asked.every((cwd, at) => folders[cwd] === there[at]))
-            return;
-        const next = Object.assign({}, folders);
-        asked.forEach((cwd, at) => {
-            next[cwd] = there[at];
-        });
-        folders = next;
-    }
-    function folderGone(cwd) {
-        return folders[cwd] === false;
-    }
-
     // Opens a closed session again where it left off, in a window of its
     // own in `cwd`, held as every start is. One pi never saved, as it
     // saves none before its first answer, is `fresh` in restore.json
@@ -450,12 +424,16 @@ Singleton {
     // data layer"). Each is `reopen:agents:<id>`: the session as
     // restore.json keeps it, the way it came and its place in the list.
     // `restoring:agents` names the boot the file is of, which the places
-    // kept are by. With the daemon not answering, none is offered.
+    // kept are by. Each comes worded as its row says it, under `row`, and
+    // `to-reopen:agents` words the place, its folders looked for as the
+    // daemon makes the list, so the launcher looks for none as it opens
+    // and still says a folder is gone before Return (VKCF3Z, 2026-11-07
+    // [4a00987e]). With the daemon not answering, none is offered.
     Daemon {
         id: reopenKind
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-        kind: ["reopen", "restoring"]
+        kind: ["reopen", "restoring", "to-reopen"]
         watching: ({ place: "agents" })
         answersWhole: true
         // Told as it answers which sessions the boot being restored kept a
@@ -466,6 +444,20 @@ Singleton {
         void reopenKind.revision;
         return Order.sorted(Object.values(reopenKind.held).filter(one => one.kind === "reopen"),
             Order.smaller(one => one.order));
+    }
+    // Each one's row as the daemon words it, by its id: its name, side,
+    // note, whether its folder is gone and the host that gave it back.
+    readonly property var reopenRows: {
+        const rows = {};
+        for (const one of offered)
+            rows[one.session?.id] = one.row ?? {};
+        return rows;
+    }
+    // Sessions to Reopen's own words: its count, where they came from,
+    // and Reopen Them All's side while any folder is gone.
+    readonly property var reopenPlace: {
+        void reopenKind.revision;
+        return reopenKind.held["to-reopen:agents"]?.toReopen ?? {};
     }
     readonly property var restoring: {
         void reopenKind.revision;
@@ -532,7 +524,6 @@ Singleton {
             return;
         }
         lookFor([lost.cwd], there => {
-            heardFolders([lost.cwd], there);
             if (there[0])
                 reopened(lost, lost.cwd);
             else
@@ -1575,7 +1566,6 @@ Singleton {
         reopening.looking = true;
         lookFor([next.one.cwd], there => {
             reopening.looking = false;
-            heardFolders([next.one.cwd], there);
             if (!there[0]) {
                 next.gone?.(next.one, next.one.cwd);
                 reopenNext();
