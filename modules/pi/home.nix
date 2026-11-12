@@ -131,6 +131,7 @@ let
   restoreFile = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/restore-file.ts";
   windowsElsewhere = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/windows-elsewhere.ts";
   carryScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-carry.ts";
+  verbsScript = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-verbs.ts";
 
   # What mycelium carry runs to carry a quest's trees and sessions to
   # another machine, and to put them back on arriving: the harness's
@@ -614,6 +615,40 @@ in
         AccuracySec = "10s";
       };
       Install.WantedBy = [ "timers.target" ];
+    };
+
+    # The launcher's AI verbs: the harness's server lists them and builds
+    # each one's prompt, refusing a selection that looks like a secret, so
+    # the launcher starts no program to read them or to use one. It's
+    # TypeScript beside the harness's scrubber, which guards tool output
+    # too, rather than a copy of it in Rust that would drift. Its socket is
+    # held by systemd, so the launcher asking while it starts waits on it.
+    systemd.user.sockets.pi-verbs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Where the launcher asks for its AI verbs";
+        ConditionPathExists = verbsScript;
+      };
+      Socket = {
+        ListenStream = "%t/daemons/pi-verbs.sock";
+        SocketMode = "0600";
+        DirectoryMode = "0700";
+      };
+      Install.WantedBy = [ "sockets.target" ];
+    };
+    systemd.user.services.pi-verbs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+      Unit = {
+        Description = "Lists the launcher's AI verbs and builds their prompts";
+        ConditionPathExists = verbsScript;
+        Requires = [ "pi-verbs.socket" ];
+        After = [ "pi-verbs.socket" ];
+        X-SwitchMethod = "restart";
+      };
+      Service = {
+        ExecStart = "@${lib.getExe pkgs.nodejs} pi-verbs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${verbsScript} serve";
+        Restart = "always";
+        RestartSec = 5;
+        Slice = "background.slice";
+      };
     };
 
     jitsusama.keys.pi = map (key: {
