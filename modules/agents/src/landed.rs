@@ -700,7 +700,7 @@ mod tests {
             "s-gone",
             "PLAN-20261106-2ZPAI5#4",
             "2026-11-10T09:00:00Z",
-            "",
+            "Try it.",
         );
         bare["quest"] = json!("QEST-UNKNOWN");
         bare["repo"] = json!("");
