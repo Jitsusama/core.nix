@@ -12,8 +12,9 @@
 // when a source says, and their address below. Return steps in, as the
 // right arrow does, never calling by itself: inside, every way this
 // machine reaches them, in the sources' order (calling before mail before
-// chat), their page in each source that keeps one, their next meeting,
-// their Recent, the things lately with them, whether they're a favourite,
+// chat), their page in each source that keeps one, what waits between
+// them, their next meeting, when they last met, what they last wrote each
+// other, whether they're a favourite,
 // then each address to copy, last as every Copy is. Each thing is drawn
 // by its own row, so a mail is Mail's row and a meeting the meeting's.
 // Their details, every address and each source's facts, are in the
@@ -37,6 +38,7 @@ import Quickshell.Io
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
+import "../When.js" as When
 import "Person.js" as Person
 import "Placed.js" as Placed
 import "ReadyRows.js" as Ready
@@ -638,9 +640,10 @@ Provider {
         return Person.acts(sources.map(source => source.acts(person, provider)));
     }
 
-    // What the right arrow lists: every way to reach them, their next
-    // meeting, what of theirs is unread, what Joel had with them lately
-    // (Recent), whether they're a favourite,
+    // What the right arrow lists: what waits between them first, since it
+    // needs him (VKCF3Z, 17e0f150), then every way to reach them, their
+    // pages, their next meeting, when they last met and what they last
+    // wrote each other (VKCF3Z, 0cea8a93), whether they're a favourite,
     // then each address to copy, last as every Copy is. An address wears
     // its mark, though it's a figure, so the page's column of marks never
     // breaks on its last row (VKCF3Z, 2026-11-08).
@@ -652,8 +655,9 @@ Provider {
             glyph: Theme.glyph.email,
             marked: true
         }));
-        return acts(person).concat(pages(person), next(person), unread(person),
-            recent(person), favourite(person), addresses);
+        const had = between(person);
+        return had.waiting.concat(acts(person), pages(person), had.since, favourite(person),
+            addresses);
     }
 
     // Their page in each source that keeps one and knows them, in the
@@ -791,41 +795,61 @@ Provider {
     }
 
     // Their next meeting, drawn as a meeting is everywhere, the soonest any
-    // source has; a meeting to come isn't Recent.
+    // source has; a meeting to come isn't one they met at.
     function next(person) {
         const coming = sources.map(source => source.next(person, provider))
             .filter(Boolean).sort((a, b) => a.at - b.at)[0];
         return coming ? [coming.row] : [];
     }
 
-    // Their Recent: what Joel had with them across every source, laid out
-    // as every Recent is (Recent.js): the last nine, newest first, each
-    // thing once by its row's key, each its own thing's row. It stands
-    // whether or not there's any, saying how many, so it's always where
-    // it was. It's gathered once as they're stepped into, and stepping
-    // into it lists what was gathered then.
-    function recent(person) {
-        const rows = Recent.listed(sources.map((source, which) => source
-            .recent(person, provider)
-            .map((one, at) => ({ key: one.row?.key || `${which}:${at}`, at: one.at,
-                row: one.row }))), []).map(one => one.row);
-        const stands = Recent.said(rows.map(row => row.name), false,
-            Words.of("person:recent").said);
-        return [holding("person:recent", rows, stands.side, stands.held)];
+    // What's between them, in place of one Recent, which said when rather
+    // than what (Person.between): Waiting, what of theirs waits on Joel
+    // and what he waits on from them, how many at its side; their next
+    // meeting; Last Met, the meetings and calls they shared, its side when
+    // the last was; and Messages, what they wrote each other, its side who
+    // wrote last and when. Each stands only while it holds anything, and
+    // one thing alone stands as itself (Person.placed). Each thing is its
+    // own row, as it's drawn everywhere, once, newest first, nine at most
+    // (Recent.js). It's gathered once as they're stepped into, and
+    // stepping into one lists what was gathered then. One alone says at
+    // its side what its heading would have, "needs you \u00b7 mail \u00b7
+    // 14:02" or "met \u00b7 yesterday", since nothing above it says why it's
+    // there (VKCF3Z, 17e0f150). Waiting is given apart, as it comes first.
+    function between(person) {
+        const keyed = (which, list) => list.map((one, at) => ({
+            key: one.row?.key || `${which}:${at}`, at: one.at, row: one.row,
+            kind: one.kind, mine: one.mine, one: one.one, what: one.what
+        }));
+        const had = Person.between(
+            sources.map((source, which) => keyed(which, source.recent(person, provider))),
+            sources.map((source, which) => keyed(which, source.unread(person, provider))),
+            Recent.listed);
+        const now = Date.now();
+        const when = at => When.came(at, now, provider.dates);
+        const alone = (key, side) => entry => {
+            const said = Words.of(key).said ?? {};
+            return Object.assign({}, entry.row, { side: side(entry, when, said) });
+        };
+        const sided = (key, entries, side) => Person.placed(entries, all => holding(key,
+            all.map(one => one.row), side(all[0], when, Words.of(key).said ?? {}),
+            Recent.once(all.map(one => one.row.name), {})),
+            alone(key, (entry, at, said) => Person.aloneSide(side(entry, at, said), said)));
+        return {
+            waiting: Person.placed(had.waiting, all => {
+                const stands = Recent.said(all.map(one => one.row.name), false, {});
+                return holding("person:waiting", all.map(one => one.row), stands.side,
+                    stands.held);
+            }, alone("person:waiting", Person.waitSide)),
+            since: next(person).concat(sided("person:met", had.met, Person.metSide),
+                sided("person:messages", had.messages, Person.wroteSide))
+        };
     }
 
-    // Their Unread: what of theirs waits on Joel, unread mail, newest
-    // first, standing only while there's any, how many at its side and
-    // their names in its drawer, as Recent's and Slack's Unread say
-    // theirs. It comes before Recent, which holds only
-    // what he's had with them.
-    function unread(person) {
-        const rows = [].concat(...sources.map(source => source.unread(person, provider)))
-            .sort((a, b) => b.at - a.at).map(one => one.row);
-        const stands = Recent.said(rows.map(row => row.name), false, {});
-        return rows.length === 0 ? []
-            : [holding("person:unread", rows, stands.side, stands.held)];
-    }
+    // How People says when, in the vocabulary's words, with the locale's
+    // names of days and months, as Mail says it (Mail.qml's dates).
+    readonly property var dates: Object.assign({}, Words.of("mail:message").said ?? {}, {
+        date: (date, format) => Qt.formatDate(date, format)
+    })
 
     // A row holding some of their things, by the words `key` names. Its
     // rows are both what it holds and what it steps into, as a meeting's

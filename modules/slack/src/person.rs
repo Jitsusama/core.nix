@@ -8,7 +8,7 @@
 //! says it as it ticks. How they stand is the people daemon's to word,
 //! from Slack's `stands` in its sources file.
 //!
-//! Their direct messages with Joel are one conversation in their Recent,
+//! Their direct messages with Joel are one conversation in their Messages,
 //! a ready row with its drawer under `conversations`, which the people
 //! daemon places among mail and meetings by its `at` (XY9H5C,
 //! 2026-11-10): named by its newest message's first words, with "Slack"

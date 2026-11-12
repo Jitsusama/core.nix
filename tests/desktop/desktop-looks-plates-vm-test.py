@@ -239,10 +239,11 @@ def test_a_plates_facts_lie_on_the_rows_lines_and_halfway(
 def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A person's Unread and Recent say nothing after their names, how many at their right.
+    """A person's page lists what waits, what's next and where they last met, each as itself.
 
-    Ada wrote the stand-in Google's Lunch on Friday, so her page holds it in Unread, shot at
-    both of Joel's scales for a person to judge.
+    Ada wrote the stand-in Google's Lunch on Friday, which waits on Joel alone, so her page
+    holds it in place, first, before Standup and Retro (VKCF3Z, 0cea8a93), shot at both of Joel's
+    scales for a person to judge.
     """
     for scale in at_each_scale:
         at_scale(desktop, scale)
@@ -251,18 +252,12 @@ def test_a_persons_page_names_what_its_rows_hold_at_each_scale(
             lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
         )
         desktop.step_in()
-        desktop.launcher_until(lambda shown: "Unread" in shown["rows"])
-        desktop.down_to("Unread")
-        unread = desktop.showing()["selected"]
-        # What it holds is named in its drawer, a place's, as on the nested niri's Agents'
-        # Recent (VKCF3Z, dafc2199).
-        assert (unread["count"], unread["side"]) == ("", "1"), unread
         desktop.launcher_until(
             lambda shown: (
-                (shown["drawer"]["title"], shown["drawer"]["eyebrow"], shown["drawer"]["body"])
-                == ("Unread", "place", "Lunch on Friday")
+                shown["rows"][:4] == ["Lunch on Friday", "Write a Mail", "Standup", "Last Met"]
             )
         )
+        desktop.down_to("Lunch on Friday")
         desktop.shoot(f"launcher-person-at-{scale.replace('.', '-')}")
         desktop.close_launcher()
 

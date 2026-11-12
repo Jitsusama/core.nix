@@ -115,6 +115,18 @@ QtObject {
         check("their conversation, by any address",
             Slack.talked(both, { "ada@example.com": talking }), talking);
         check("none until Slack finds one", Slack.talked(both, known), null);
+        // Theirs last owes Joel an answer however old; his owes theirs
+        // for two days.
+        const days = 86_400_000;
+        const lastMine = Object.assign({}, ada, { conversation: Object.assign({}, talk, {
+            messages: talk.messages.slice().reverse() }) });
+        check("who wrote last", [Slack.wroteLast(talking), Slack.wroteLast(lastMine)],
+            [false, true]);
+        check("theirs last owes him", Slack.owing(talking, 2 + 30 * days), true);
+        check("his owes them a while", [Slack.owing(lastMine, 2 + days),
+            Slack.owing(lastMine, 2 + 2 * days)], [true, false]);
+        check("a conversation with nothing said owes nothing", Slack.owing(Object.assign({},
+            ada, { conversation: Object.assign({}, talk, { messages: [] }) }), 2), false);
         check("its drawer, who said each, newest last", Slack.drawn(talking), {
             title: "Ada Lovelace",
             facts: [],

@@ -8,7 +8,7 @@ pragma ComponentBehavior: Bound
 //
 // `row` is a call's one row, which every surface showing one takes as it
 // is, as Calendar.row is a meeting's: the launcher's Transcripts
-// (Transcribed.qml beside this), someone's Recent in People
+// (Transcribed.qml beside this), someone's Last Met in People
 // (TranscriptSource.qml) and a meeting's Open the Transcript all show
 // the same thing, with the same acts and details. Transcripts.js works
 // out what it says.

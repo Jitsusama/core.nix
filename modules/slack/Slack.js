@@ -88,6 +88,28 @@ function talked(emails, known) {
         .find(said => said?.id && said.conversation) ?? null;
 }
 
+// Whether Joel wrote the newest of the messages Slack said of a
+// conversation with someone, which it gives newest last.
+function wroteLast(said) {
+    const messages = said?.conversation?.messages ?? [];
+    return messages.length > 0 && messages[messages.length - 1].mine === true;
+}
+
+// How long what Joel wrote last waits on them, as their page's Waiting
+// says (People.qml): two days, past which a conversation he wrote last is
+// most often one he ended.
+const AWAITED = 2 * 86_400_000;
+
+// Whether a conversation owes an answer, as of `now` in milliseconds:
+// theirs last waits on Joel however long ago, and his last waits on them
+// for AWAITED.
+function owing(said, now) {
+    if ((said?.conversation?.messages ?? []).length === 0) {
+        return false;
+    }
+    return !wroteLast(said) || now - said.conversation.at < AWAITED;
+}
+
 // A conversation's drawer: who it's with, then its last few messages,
 // plain, newest last, each after who said it, Joel's as his own.
 function drawn(said) {

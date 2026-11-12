@@ -185,6 +185,50 @@ QtObject {
             ["Write in Slack", "Call Them", "Write a Mail", "Make Them a Favourite",
                 "See Their Meetings"]);
 
+        // What's between them, sorted by what it is rather than told as one
+        // Recent; `listed` stands in for Recent.js's, newest first, leaving
+        // out what's shown.
+        const listed = (sources, shown) => [].concat(...sources)
+            .filter(one => !shown.includes(one.key)).sort((a, b) => b.at - a.at);
+        const keys = entries => entries.map(one => one.key);
+        const between = Person.between([
+            [{ key: "retro", at: 3, kind: "met" }, { key: "lunch", at: 5, kind: "wrote" }],
+            [{ key: "dm", at: 4, kind: "wrote" }, { key: "call", at: 6, kind: "met" },
+                { key: "old", at: 1 }]
+        ], [[{ key: "lunch", at: 5 }]], listed);
+        check("what waits", keys(between.waiting), ["lunch"]);
+        check("meetings and calls, newest first", keys(between.met), ["call", "retro"]);
+        check("what was written, what waits left out, one of no kind written",
+            keys(between.messages), ["dm", "old"]);
+        const when = at => `at ${at}`;
+        const words = { one: "{when} \u00b7 1:1", theirs: "they wrote \u00b7 {when}",
+            mine: "you wrote \u00b7 {when}" };
+        check("when they last met", Person.metSide({ at: 3 }, when, words), "at 3");
+        check("and that it was the two of them", Person.metSide({ at: 6, one: true }, when,
+            words), "at 6 \u00b7 1:1");
+        check("who wrote last", [Person.wroteSide({ at: 4 }, when, words),
+            Person.wroteSide({ at: 4, mine: true }, when, words)],
+            ["they wrote \u00b7 at 4", "you wrote \u00b7 at 4"]);
+        const waits = { needs: "needs you \u00b7 {what} \u00b7 {when}",
+            sent: "you wrote \u00b7 {what} \u00b7 {when}", mail: "mail" };
+        check("what waits says it needs him, what it is and when", [
+            Person.waitSide({ at: 2, what: "mail" }, when, waits),
+            Person.waitSide({ at: 2, what: "Slack", mine: true }, when, waits)
+        ], ["needs you \u00b7 mail \u00b7 at 2", "you wrote \u00b7 Slack \u00b7 at 2"]);
+        check("alone, it says what its heading would have", [
+            Person.aloneSide("at 3", { alone: "met \u00b7 {side}" }),
+            Person.aloneSide("at 4", {})
+        ], ["met \u00b7 at 3", "at 4"]);
+        const holding = entries => ({ name: "Held", count: entries.length });
+        const standing = entry => ({ name: entry.row.name, side: "alone" });
+        check("nothing stands for nothing", Person.placed([], holding, standing), []);
+        check("one thing stands as itself",
+            Person.placed([{ row: { name: "Lunch" } }], holding, standing),
+            [{ name: "Lunch", side: "alone" }]);
+        check("more step into them all",
+            Person.placed([{ row: {} }, { row: {} }], holding, standing),
+            [{ name: "Held", count: 2 }]);
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);

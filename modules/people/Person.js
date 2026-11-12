@@ -234,3 +234,75 @@ function acts(each) {
     const all = [].concat(...each);
     return all.filter(act => act.main).concat(all.filter(act => !act.main));
 }
+
+// What a thing Joel had with someone is: a meeting or a call they were
+// both on, or something they wrote each other, as a source's `recent`
+// tells it (PersonSource.qml). One that says no kind was written.
+const MET = "met";
+const WROTE = "wrote";
+
+// What's between Joel and someone, as their page lists it in place of one
+// Recent, which named when rather than what (Joel, 2026-11-11: "the use
+// of recent in contacts ... is ambiguous"; VKCF3Z, 0cea8a93): what waits
+// (`waiting`), the meetings and calls they shared (`met`), and what they
+// wrote each other (`messages`). `had` is each source's recent things and
+// `waits` each source's waiting ones, each { key, at, row } with a recent
+// one's `kind`, and `once` is Recent.js's listed, which lists a thing
+// once, newest first, nine at most. What waits isn't listed again in
+// Messages.
+function between(had, waits, once) {
+    const waiting = once(waits, []);
+    const of = kind => had.map(source => (source ?? [])
+        .filter(one => (one.kind ?? WROTE) === kind));
+    return {
+        waiting,
+        met: once(of(MET), []),
+        messages: once(of(WROTE), waiting.map(one => one.key))
+    };
+}
+
+// What Last Met says at its side, of the newest it holds: when it was, as
+// the launcher says when (`when`, When.js's came), and that it was the two
+// of them, where it was: "Tuesday \u00b7 1:1", by `said.one`.
+function metSide(newest, when, said) {
+    const at = when(newest.at);
+    return newest.one === true ? String(said.one).replace("{when}", at) : at;
+}
+
+// What Messages says at its side, of the newest it holds: who wrote last
+// and when, "they wrote \u00b7 14:02" or "you wrote \u00b7 yesterday", by
+// `said.theirs` and `said.mine`.
+function wroteSide(newest, when, said) {
+    return String(newest.mine === true ? said.mine : said.theirs)
+        .replace("{when}", when(newest.at));
+}
+
+// What a thing waiting says at its side, standing alone: that it needs
+// him, or that he wrote last and waits on them, what it is and when,
+// "needs you \u00b7 mail \u00b7 14:02", by `said.needs` and `said.sent`,
+// what it is by its `what` in `said` or as the source says it.
+function waitSide(entry, when, said) {
+    const what = said[entry.what] ?? entry.what ?? "";
+    return String(entry.mine === true ? said.sent : said.needs).replace("{what}", what)
+        .replace("{when}", when(entry.at));
+}
+
+// What a thing says at its side standing alone, in place of the heading
+// that would have held it, since nothing above it says why it's there
+// (VKCF3Z, 17e0f150): its heading's side, in `said.alone` where it has
+// one, "met \u00b7 {side}".
+function aloneSide(side, said) {
+    return String(said.alone ?? "{side}").replace("{side}", side);
+}
+
+// How one of those stands on their page: not at all while it holds
+// nothing; the one thing itself where it holds one, as `alone` makes it,
+// so Return does its act with no step between (VKCF3Z, 0cea8a93, after
+// #3519's rule that a row never opens on one thing); and else a row
+// stepping into them all, as `holding` makes it.
+function placed(entries, holding, alone) {
+    if (entries.length === 0) {
+        return [];
+    }
+    return entries.length === 1 ? [alone(entries[0])] : [holding(entries)];
+}

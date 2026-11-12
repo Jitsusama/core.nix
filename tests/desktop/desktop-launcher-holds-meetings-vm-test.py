@@ -822,7 +822,8 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     assert desktop.showing()["things"][1]["is"] == "person:grace@example.com"
     desktop.down_to("Grace Hopper")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write a Mail"])
+    # Her page leads with her mail Joel hasn't read, then the ways to reach her.
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == ["Quarterly Numbers", "Write a Mail"])
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     # Lunch on Friday's sender is Ada, whose row steps in to her.
@@ -834,7 +835,8 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["rows"][:5] == ["Write a Mail", "Standup", "Unread", "Recent", "ada@example.com"]
+            shown["rows"][:5]
+            == ["Lunch on Friday", "Write a Mail", "Standup", "Last Met", "ada@example.com"]
         )
     )
     desktop.as_account("qs ipc call launcher toggle")
@@ -923,13 +925,14 @@ def transcripts_listed(desktop: Desktop) -> None:
 
 
 def found_with_ada_and_in_standup(desktop: Desktop, ada: str) -> None:
-    """See Ada's Recent hold the call with her, and Standup offer its transcript."""
+    """See Ada's Last Met hold the call with her, and Standup offer its transcript."""
     desktop.answer("ada lovelace")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
     )
     desktop.step_in("ret")
-    desktop.down_to("Recent")
+    # The call and Retro, so a row stepping into both.
+    desktop.down_to("Last Met")
     desktop.follow()
     desktop.launcher_until(lambda shown: "Call With Ada Lovelace" in shown["rows"])
     things = desktop.showing()["things"]
