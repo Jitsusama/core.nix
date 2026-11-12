@@ -798,9 +798,10 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     )
     machine.fail(f"test -s {asked}")
     machine.send_key("ret")
-    moved = '{"move":{"id":"standup","start":'
+    # Matched by its fields, since google's ask names them in its own order.
     machine.wait_until_succeeds(
-        f"grep -qF {shlex.quote(moved)} {asked}", timeout=dt.timedelta(seconds=30)
+        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
+        timeout=dt.timedelta(seconds=30),
     )
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
