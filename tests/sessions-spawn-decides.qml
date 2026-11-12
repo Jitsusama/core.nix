@@ -54,8 +54,6 @@ ShellRoot {
                 handing();
             else if (stage === "deciding")
                 deciding();
-            else if (stage === "settled")
-                settled();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -75,28 +73,23 @@ ShellRoot {
         stage = "deciding";
     }
 
-    // Every one but the hosted opens, the slow one last, once ended.
+    // Every one but the hosted opens, the slow one once ended. The hosted
+    // one is looked for on every look, since it would open at any point of
+    // the walk.
     function deciding() {
-        if (["s-saved", "s-stayed", "s-broken", "s-slow"].some(id => spawned(id).length === 0))
-            return;
         Expect.expect("the one its decider hosts opens no window", spawned("s-hosted").length === 0,
             Niri.spawns.join("\n"));
+        const lines = decided.text().split("\n").filter(line => line !== "");
+        const ended = lines.find(line => line.startsWith("ended s-slow at "));
+        if (!ended
+            || ["s-saved", "s-stayed", "s-broken", "s-slow"].some(id => spawned(id).length === 0))
+            return;
         Expect.expect("the one kept out of a host is told why",
             spawned("s-stayed")[0].includes(" QUEST_WORKFLOW_SPAWN_STAYED=the host is full "),
             spawned("s-stayed")[0]);
         Expect.expect("the others aren't told any such thing",
             ["s-saved", "s-broken", "s-slow"].every(id => !spawned(id)[0].includes("STAYED")),
             Niri.spawns.join("\n"));
-        stage = "settled";
-        decided.reload();
-    }
-
-    // What the decider was asked, and that the slow one was ended.
-    function settled() {
-        const lines = decided.text().split("\n").filter(line => line !== "");
-        const ended = lines.find(line => line.startsWith("ended s-slow at "));
-        if (!ended)
-            return;
         // Ended as it's given up on, which the walk's pace doesn't touch.
         const waited = Number(ended.split(" ").pop()) - root.handedAt;
         Expect.expect("the one its decider says nothing of is ended at three seconds",
@@ -107,8 +100,6 @@ ShellRoot {
             lines.join("\n"));
         Expect.expect("a saved one is never asked", !lines.some(line => line.includes("s-saved")),
             lines.join("\n"));
-        Expect.expect("and the hosted one still has no window", spawned("s-hosted").length === 0,
-            Niri.spawns.join("\n"));
         console.log("a spawn its decider hosts opens no window");
         Qt.exit(0);
     }
