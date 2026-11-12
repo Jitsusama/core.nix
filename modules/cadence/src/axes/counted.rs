@@ -181,6 +181,50 @@ pub fn held(s: &Sources) -> Vec<Reading> {
     ]
 }
 
+/// The launcher's keys today, each timed from his key to its frame, held to
+/// docs/design.md's budget: drawn in 50 ms at the median and 100 ms at the
+/// 99th percentile. From lines like `launcher: "fi" took 31 ms to its
+/// frame`, a drawer's left out.
+#[must_use]
+pub fn keys(journal: &str) -> Vec<Reading> {
+    let mut took: Vec<u32> = journal
+        .lines()
+        .filter_map(|line| {
+            let after = line.split("launcher: \"").nth(1)?;
+            let ms = after.rsplit_once("\" took ")?.1;
+            ms.split_whitespace().next()?.parse().ok()
+        })
+        .collect();
+    took.sort_unstable();
+    // The nearest rank: the key that many in a hundred took no longer than.
+    let rank = |percent: usize| {
+        (!took.is_empty()).then(|| f64::from(took[(took.len() * percent).div_ceil(100) - 1]))
+    };
+    let of = Some(format!("of {} keys", took.len()));
+    vec![
+        Reading::new(
+            "the launcher's middle key {} today",
+            rank(50),
+            " ms",
+            "Y2YBTS",
+        )
+        .bar(Bar::AtMost(50.0))
+        .detail(of.clone())
+        .from("the shell's journal")
+        .his(),
+        Reading::new(
+            "the launcher's slowest key in a hundred {} today",
+            rank(99),
+            " ms",
+            "Y2YBTS",
+        )
+        .bar(Bar::AtMost(100.0))
+        .detail(of)
+        .from("the shell's journal")
+        .his(),
+    ]
+}
+
 /// How fast the machine answers Joel, from health's day file: the slowest
 /// boot to a ready launcher with his password left out, the slowest
 /// shutdown, and the minutes the day's worst moments cost him, each timed
@@ -426,6 +470,28 @@ mod tests {
             read.iter().map(Reading::out).collect::<Vec<_>>(),
             [true, false, false],
             "only the disk has a bar to be past"
+        );
+    }
+
+    #[test]
+    fn launcher_keys_are_held_to_their_median_and_99th_percentile() {
+        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
+qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
+qml: launcher: "a \" took 9" took 120 ms to its frame
+qml: launcher: drawer for "Firefox" took 80 ms to its frame
+"#;
+        let read = keys(journal);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the launcher's middle key 74 ms today, at most 50 ms",
+                "the launcher's slowest key in a hundred 120 ms today, at most 100 ms",
+            ]
+        );
+        assert!(
+            keys("").iter().all(|r| r.figure().is_none()),
+            "a day with no keys reads as unread, not as fast"
         );
     }
 

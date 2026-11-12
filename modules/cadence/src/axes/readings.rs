@@ -70,7 +70,6 @@ pub struct Note {
 /// The ten axes, read from `s`.
 #[must_use]
 pub fn read(s: &Sources) -> Vec<Axis> {
-    let (over, keys) = launcher(&s.launcher);
     vec![
         resources(s),
         time(s),
@@ -109,22 +108,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         ),
         axis(
             "responsiveness",
-            [
-                vec![
-                    Reading::new(
-                        "{} launcher keys over 50 ms today",
-                        Some(count(over)),
-                        "",
-                        "Y2YBTS",
-                    )
-                    .bar(Bar::AtMost(0.0))
-                    .detail(Some(format!("of {keys} keys")))
-                    .from("the shell's journal")
-                    .his(),
-                ],
-                counted::responds(&s.counted),
-            ]
-            .concat(),
+            [counted::keys(&s.launcher), counted::responds(&s.counted)].concat(),
         ),
         stress(s),
     ]
@@ -494,21 +478,6 @@ fn pi_windows(windows: &str) -> Option<f64> {
     ))
 }
 
-/// Of the launcher's keys, how many took past 50 ms to their frame, and
-/// how many there were, from lines like `launcher: "fi" took 31 ms to its
-/// frame`.
-fn launcher(journal: &str) -> (usize, usize) {
-    let took: Vec<u32> = journal
-        .lines()
-        .filter_map(|line| {
-            let after = line.split("launcher: \"").nth(1)?;
-            let ms = after.rsplit_once("\" took ")?.1;
-            ms.split_whitespace().next()?.parse().ok()
-        })
-        .collect();
-    (took.iter().filter(|ms| **ms > 50).count(), took.len())
-}
-
 /// Of the notices that left since `since` (in milliseconds), how many
 /// cleared themselves and how many were dismissed by hand.
 fn notices(record: &str, since: i64) -> (usize, usize) {
@@ -711,16 +680,6 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             "the bill per core or harness change that reached you and stayed: no reading yet"
         );
         assert!(!spend.out(), "an unread bill was out");
-    }
-
-    #[test]
-    fn launcher_keys_past_fifty_ms_are_counted() {
-        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
-qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
-qml: launcher: "a \" took 9" took 120 ms to its frame
-qml: launcher: drawer for "Firefox" took 80 ms to its frame
-"#;
-        assert_eq!(launcher(journal), (2, 3));
     }
 
     #[test]
