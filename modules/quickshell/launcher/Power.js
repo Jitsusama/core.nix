@@ -146,6 +146,19 @@ function lockSaid(open, chord, said) {
     };
 }
 
+// The drawer of a row that ends the session, Log Out's, Reboot's or Power
+// Off's, an act's that ends something (VKCF3Z, 37e49991): its lead says
+// what it does and how many windows it closes, "Restarts the machine,
+// closing 14 windows.", and its Ends fact, by the id `ends`, whose they
+// are. `open` is byProgram's.
+function endingSaid(open, ends, said) {
+    const told = openSaid(open, said);
+    return {
+        lead: told.windows === "" ? said.alone : filled(said.lead, { windows: told.windows }),
+        facts: [{ id: ends, value: told.programs }].filter(fact => fact.value !== "")
+    };
+}
+
 // The steps a sleep goes through, in the order Linux takes them, each as
 // its suspend_stats names it.
 const SLEEP_STEPS = ["freeze", "prepare", "suspend", "suspend_late", "suspend_noirq",
