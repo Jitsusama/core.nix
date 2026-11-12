@@ -539,10 +539,11 @@ mod tests {
     fn a_sender_signing_by_its_own_name_and_saying_how_it_stands_reads_so() {
         // The void's notice of Joel's line to it (VKCF3Z, 2026-11-12):
         // signed by its name with the agents' mark, and saying it was sent,
-        // then answered, before its time.
+        // then answered, before its time; read, so its side leads with no
+        // "unread".
         let sent = notice(
             10,
-            &json!({ "app": "pi", "summary": "is the beacon lit?",
+            &json!({ "app": "pi", "summary": "is the beacon lit?", "read": true,
             "body": "", "hints": { "x-from": "The Void", "x-said": "sent" } }),
         );
         let mut rows = Rows::default();
