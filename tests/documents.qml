@@ -193,6 +193,32 @@ ShellRoot {
             Expect.expect("and gone, the served row stands again",
                 borrower.rowAt("row:calendar:late")?.name === "late",
                 borrower.rowAt("row:calendar:late")?.name);
+            // A row that stands only where it's lent is none where nobody
+            // lends it, so a meeting offers no Open the Transcript for a
+            // call nobody wrote down, nor on a machine without
+            // call-transcripts (Y2YBTS's 2b6b2cc5).
+            const inMeeting = (name, id, order) => {
+                const made = borrowed(name, id, order);
+                Object.assign(made.row, { parent: "row:calendar:meet", depth: 1 },
+                    id === "" ? {} : { lentOnly: true });
+                return made;
+            };
+            borrower.link.took([borrowed("meet", "", 5120), inMeeting("opened", "d1", 6144),
+                inMeeting("unwritten", "d8", 7168), inMeeting("guests", "", 8192)], []);
+            const inside = () => borrower.rows("row:calendar:meet").map(made => made.name)
+                .join(", ");
+            Expect.expect("one standing only where lent is its lender's row",
+                borrower.rowAt("row:calendar:opened")?.key === "gdoc:d1",
+                borrower.rowAt("row:calendar:opened")?.key);
+            Expect.expect("and none where nobody lends it, the row it's in holding one less",
+                borrower.rowAt("row:calendar:unwritten") === null
+                && inside() === "Quarterly Plan, guests", inside());
+            tell([row("d8", "Meeting Notes", 8192)]);
+            Expect.expect("until a lender holds it",
+                inside() === "Quarterly Plan, Meeting Notes, guests", inside());
+            tell([], ["row:documents:d8"]);
+            Expect.expect("and none again once it's gone", inside() === "Quarterly Plan, guests",
+                inside());
             // What's typed inside a step is asked of its daemon within the
             // step, and the rows answered held beside the watch's, the
             // same key the same row, so none moves under the cursor; one
