@@ -648,6 +648,7 @@ gather (
     ./modules/linux-id/checks.nix
     ./modules/litra/checks.nix
     ./modules/machine/checks.nix
+    ./modules/margin-cat/checks.nix
     ./modules/meaning/checks.nix
     ./modules/memory-modules/checks.nix
     ./modules/mic-mute-light/checks.nix

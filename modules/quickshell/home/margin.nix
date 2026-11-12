@@ -2,6 +2,7 @@
 # place's list; README.md says which list a file goes in.
 [
   "Margin.qml"
+  "MarginMarks.qml"
   "Facts.js"
   "Volume.qml"
   "Brightness.qml"

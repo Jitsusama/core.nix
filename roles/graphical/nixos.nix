@@ -76,6 +76,7 @@
     homeModules.google
     homeModules.gtk
     homeModules.inkscape
+    homeModules.margin-cat
     homeModules.niri
     homeModules.kitty
     homeModules.lag-watch
