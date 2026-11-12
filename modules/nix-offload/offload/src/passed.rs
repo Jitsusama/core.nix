@@ -192,14 +192,20 @@ impl Passed {
     /// Keep that a changed-checks run with `arguments`, started at
     /// `started` in seconds since 1970, passed at `at`, having printed
     /// `printed`. When it started orders merges whose gates share files
-    /// (`running.rs`).
+    /// (`running.rs`), and when it ended, now, says with it how long the
+    /// gate took, which cadence's day reads. Only the run's line says so,
+    /// since a check passed later at the commit joins the same file.
     pub fn keep_run(&self, at: &At, arguments: &[String], printed: &str, started: u64) {
         if self.run(at, arguments).is_none() {
+            let ended = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs());
             let line = serde_json::json!({
                 "dir": at.dir,
                 "run": arguments,
                 "printed": printed,
                 "started": started,
+                "ended": ended,
             });
             self.keep(at, &[line]);
         }
@@ -390,6 +396,37 @@ mod tests {
         assert!(
             kept.contains("\"started\":1700000000"),
             "the run's start wasn't kept: {kept}"
+        );
+    }
+
+    #[test]
+    fn a_gates_end_is_kept_on_its_run_alone() {
+        let state = tempfile::tempdir().unwrap();
+        let passed = Passed::under(state.path());
+        let top = At::new(COMMIT, None).unwrap();
+        let now = || {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+        };
+        let before = now();
+        passed.keep_run(&top, &["--build".to_owned()], "changed  a\n", 1_700_000_000);
+        let after = now();
+        passed.keep_checks(&top, &["checks.x.a".to_owned()]);
+        let kept = fs::read_to_string(passed.file(&top)).unwrap();
+        let lines: Vec<serde_json::Value> = kept
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let ended = lines[0]["ended"].as_u64();
+        assert!(
+            ended.is_some_and(|ended| (before..=after).contains(&ended)),
+            "the gate's end wasn't kept as it passed: {kept}"
+        );
+        assert!(
+            lines[1].get("ended").is_none(),
+            "a check passed later was kept as a gate's end: {kept}"
         );
     }
 
