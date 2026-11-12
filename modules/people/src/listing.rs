@@ -19,6 +19,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::drawer::{self, Named};
+use crate::name::{self, bare};
 use crate::{Book, LISTING, Record, address};
 
 /// How a source's entry says someone stands, as its module tells the
@@ -222,11 +223,6 @@ pub struct Person {
     pub stood: Stood,
 }
 
-/// Whether a name is only an address, which a real name always wins over.
-fn bare(name: &str) -> bool {
-    name.is_empty() || name.contains('@')
-}
-
 /// A record as one person, by its sources in the order they're consulted,
 /// each with how it says anyone stands.
 pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
@@ -254,7 +250,7 @@ pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
                 if email.is_empty() {
                     known.to_owned()
                 } else {
-                    email.clone()
+                    name::by_address(&email)
                 }
             },
             str::to_owned,
@@ -358,43 +354,6 @@ impl Person {
     }
 }
 
-/// A name's runs of digits and of the rest, the rest in lower case, as
-/// Order.js's `pieces` breaks it.
-pub fn pieces(name: &str) -> Vec<String> {
-    let mut runs: Vec<String> = Vec::new();
-    let mut digits = false;
-    for c in name.to_lowercase().chars() {
-        let digit = c.is_ascii_digit();
-        match runs.last_mut() {
-            Some(run) if digit == digits => run.push(c),
-            _ => runs.push(c.to_string()),
-        }
-        digits = digit;
-    }
-    runs
-}
-
-/// A to Z, as names are read: numbers by their value, so Tab 9 comes
-/// before Tab 10, and case alike, as Order.js's `byPieces`. The rest is
-/// compared by character where the shell asks the locale, which differs
-/// only for letters with marks.
-fn by_pieces(one: &[String], other: &[String]) -> Ordering {
-    for (a, b) in one.iter().zip(other) {
-        let numbers = a.starts_with(|c: char| c.is_ascii_digit())
-            && b.starts_with(|c: char| c.is_ascii_digit());
-        let said = if numbers {
-            let value = |run: &str| run.parse::<f64>().unwrap_or(0.0);
-            value(a).partial_cmp(&value(b)).unwrap_or(Ordering::Equal)
-        } else {
-            a.cmp(b)
-        };
-        if said != Ordering::Equal {
-            return said;
-        }
-    }
-    one.len().cmp(&other.len())
-}
-
 /// Those listed, in the order things returned to keep: favourites first,
 /// then by the last thing with each, the newest first, those with nothing
 /// yet after, then A to Z, and those alike in all three in the order heard.
@@ -414,7 +373,7 @@ pub fn ordered(persons: &[Person], now: f64) -> Vec<&Person> {
         .map(|(heard, person)| Measured {
             favourite: person.stood.favourite,
             last: person.last(now),
-            pieces: pieces(&person.name),
+            pieces: name::pieces(&person.name),
             heard,
             person,
         })
@@ -429,7 +388,7 @@ pub fn ordered(persons: &[Person], now: f64) -> Vec<&Person> {
                 (None, Some(_)) => Ordering::Greater,
                 (None, None) => Ordering::Equal,
             })
-            .then_with(|| by_pieces(&one.pieces, &other.pieces))
+            .then_with(|| name::by_pieces(&one.pieces, &other.pieces))
             .then_with(|| one.heard.cmp(&other.heard))
     });
     measured.into_iter().map(|one| one.person).collect()
@@ -665,8 +624,8 @@ pub(crate) mod tests {
             ("slack", json!({"name": " Bo Diddley "})),
         ]);
         assert_eq!(named.name, "Bo Diddley", "an address loses to a real name");
-        let bare = person_of(&[("google", json!({"name": ""}))]);
-        assert_eq!(bare.name, "bo@example.com", "with no name, their address");
+        let bare = person_of(&[("google", json!({"name": "bo@example.com"}))]);
+        assert_eq!(bare.name, "Bo", "with no name, one from their address");
         let by_id = person(
             &record("person:tuple:7", &[("tuple", json!({"id": 7}))]),
             &sources(),
@@ -696,9 +655,13 @@ pub(crate) mod tests {
         );
         let bare = person_of(&[("google", json!({}))]);
         assert_eq!(
-            (bare.row()["glyph"].clone(), bare.row()["note"].clone()),
-            (json!("person"), json!("")),
-            "one named by their address says it once"
+            (
+                bare.row()["glyph"].clone(),
+                bare.row()["name"].clone(),
+                bare.row()["note"].clone()
+            ),
+            (json!("person"), json!("Bo"), json!("bo@example.com")),
+            "one no source names is named from their address, and says it under"
         );
         let found = favourite.found();
         assert_eq!(
@@ -776,20 +739,6 @@ pub(crate) mod tests {
             changes_at(&persons, now),
             Some(2_000.0),
             "the next edge is the meeting under way ending"
-        );
-    }
-
-    #[test]
-    fn a_name_breaks_into_runs_of_digits_and_the_rest() {
-        assert_eq!(
-            pieces("Tab 10b"),
-            ["tab ", "10", "b"],
-            "digits apart, the rest lower case"
-        );
-        assert_eq!(
-            by_pieces(&pieces("tab 9"), &pieces("Tab 10")),
-            Ordering::Less,
-            "9 before 10, case alike"
         );
     }
 }
