@@ -504,6 +504,10 @@
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
     quarantine, from a ref's files, and writes the day's figures as cadence reads them
   '';
+  code-health-finds-a-machines-programs-first = ''
+    code-health finds a machine's own programs first on its PATH, such as a git that reads a
+    repository stock git refuses, with core's git after them
+  '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
   '';

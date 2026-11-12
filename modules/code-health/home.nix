@@ -7,6 +7,8 @@
 # in quarantine and the points of docs/daemons.md daemons still break.
 # It runs before `cadence day`, which holds each figure against the days
 # before it, so a repository getting messier is named the day it does.
+# jitsusama.code-health.path puts a machine's own programs ahead of core's
+# git, for a repository kept by a git of its own that stock git refuses.
 {
   config,
   lib,
@@ -51,6 +53,17 @@ in
     description = "The repositories read each evening, by the name cadence says them by.";
   };
 
+  options.jitsusama.code-health.path = lib.mkOption {
+    type = lib.types.listOf (lib.types.either lib.types.package lib.types.str);
+    default = [ ];
+    description = ''
+      Programs code-health finds first on its PATH, ahead of the git core
+      gives it, such as a git that reads a repository stock git refuses:
+      packages, or the folders of profiles kept outside the store, each of
+      whose bin is searched.
+    '';
+  };
+
   config = lib.mkIf (cfg.repos != { }) {
     home.packages = [ package ];
 
@@ -69,7 +82,7 @@ in
           ++ each "--ref" (repo: repo.ref)
           ++ each "--under" (repo: repo.under)
         );
-        Environment = [ "PATH=${lib.makeBinPath [ pkgs.git ]}" ];
+        Environment = [ "PATH=${lib.makeBinPath (cfg.path ++ [ pkgs.git ])}" ];
         Slice = "background.slice";
       };
     };
