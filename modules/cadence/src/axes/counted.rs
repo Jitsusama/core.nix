@@ -3,8 +3,9 @@
 //! day judges into its findings ledger under keys starting `code.`; the
 //! lines where Joel sounded pained, which health counts in its day file;
 //! the turns making one tool call, which the daily measure counts; and
-//! the security musts past due, which ISXEG8 files in the ledger; and the
-//! asks for a secret, which health counts from secret-asks's journal.
+//! the security musts past due and holes open, which ISXEG8 files in the
+//! ledger; the asks for a secret, which health counts from secret-asks's
+//! journal; and boot, shutdown, disk and memory, from health's day file.
 //! Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
@@ -45,18 +46,41 @@ pub fn regressions(s: &Sources) -> Reading {
         .from("cadence day's findings, from code-health's figures")
 }
 
-/// ISXEG8's musts open past their date: the ledger's open findings on the
-/// security axis whose answer was due before `now`.
+/// ISXEG8's musts open past their date: the security entries it filed with
+/// `cadence owe`, holes aside, whose date is before `now`. Cadence day's
+/// own findings carry no kind and are left out, so an asks figure judged
+/// late isn't counted as a must as well.
 #[must_use]
 pub fn musts(s: &Sources, now: i64) -> Reading {
     let late = s.findings.as_ref().map(|all| {
         all.iter()
             .filter(|f| f.axis == "security" && f.due < now)
+            .filter(|f| f.kind.as_deref().is_some_and(|kind| kind != "hole"))
             .count()
     });
     Reading::new("{} security musts past due", late.map(count), "", "ISXEG8")
         .bar(Bar::AtMost(0.0))
-        .from("cadence day's findings, as ISXEG8 files them")
+        .from("the ledger's musts, as ISXEG8 files them")
+}
+
+/// The security holes known and not yet closed, as ISXEG8 files them with
+/// kind "hole". An entry says what kind of hole and where, never a secret,
+/// a path to one or a command line, so naming them here shows nothing.
+#[must_use]
+pub fn holes(s: &Sources) -> Reading {
+    let open = s.findings.as_ref().map(|all| {
+        all.iter()
+            .filter(|f| f.axis == "security" && f.kind.as_deref() == Some("hole"))
+            .count()
+    });
+    Reading::new(
+        "{} security holes known and open",
+        open.map(count),
+        "",
+        "ISXEG8",
+    )
+    .bar(Bar::AtMost(0.0))
+    .from("the ledger's holes, as ISXEG8 files them")
 }
 
 /// The asks for a secret today, as health counts them from secret-asks:
@@ -273,31 +297,38 @@ mod tests {
     use super::*;
 
     fn finding(key: &str) -> Entry {
-        on(key, "quality", 0)
+        on(key, "quality", 0, "null")
     }
 
-    fn on(key: &str, axis: &str, due: i64) -> Entry {
+    /// A ledger entry; `kind` is a filed entry's, or null for cadence's own.
+    fn on(key: &str, axis: &str, due: i64, kind: &str) -> Entry {
         serde_json::from_str(&format!(
             r#"{{"key":"{key}","first":"2026-11-12","last":"2026-11-12","last_to":0,
             "due":{due},"words":"rose","axis":"{axis}","evidence":"","fell_when":"",
-            "open":true,"late":false}}"#
+            "open":true,"late":false,"kind":{kind}}}"#
         ))
         .expect("a finding parses")
     }
 
     #[test]
-    fn musts_are_the_security_findings_past_their_date() {
+    fn musts_are_the_filed_security_musts_past_their_date() {
         let s = Sources {
             findings: Some(vec![
-                on("must:polkit", "security", 100),
-                on("must:asks", "security", 300),
-                on("crashes:biome", "quality", 100),
+                on("security:polkit", "security", 100, r#""must""#),
+                on("security:asks", "security", 300, r#""must""#),
+                on("security:fence", "security", 100, r#""hole""#),
+                on("health.asks.again", "security", 100, "null"),
+                on("crashes:biome", "quality", 100, r#""must""#),
             ]),
             ..Sources::default()
         };
         assert_eq!(
             musts(&s, 200).words(),
             "1 security must past due, at most 0"
+        );
+        assert_eq!(
+            holes(&s).words(),
+            "1 security hole known and open, at most 0"
         );
         assert_eq!(musts(&Sources::default(), 200).figure(), None);
     }

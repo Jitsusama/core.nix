@@ -79,7 +79,10 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         axis(
             "security",
             [
-                vec![counted::musts(&s.counted, s.now)],
+                vec![
+                    counted::musts(&s.counted, s.now),
+                    counted::holes(&s.counted),
+                ],
                 counted::asks(&s.counted),
             ]
             .concat(),
