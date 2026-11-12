@@ -120,6 +120,8 @@ enum Verdict {
     Doubted,
     /// The switch offered says what it already did.
     Unchanged,
+    /// Open, though the lid's switch says shut: the laptop's own keys or touchpad were used.
+    Used,
 }
 
 /// A close not believed yet: when it came, and what each light sensor read at it.
@@ -150,7 +152,7 @@ impl Judge {
     /// A reading of the hinge's angle. Only those while the switch reads open say how the
     /// lid came down.
     /// Says whether the lid has just come down past `NEAR_SHUT`.
-    fn hinge(&mut self, degrees: f64) -> bool {
+    fn hinge(&mut self, degrees: f64, _now: Instant) -> bool {
         if self.switch_shut || degrees < NO_ANGLE {
             return false;
         }
@@ -207,6 +209,10 @@ impl Judge {
 
     fn doubting(&self) -> bool {
         self.doubt.is_some()
+    }
+
+    fn keys(&mut self, _count: u64, _now: Instant) -> Verdict {
+        Verdict::Unchanged
     }
 
     fn offer(&mut self, shut: bool, verdict: Verdict) -> Verdict {
@@ -436,6 +442,10 @@ fn light(root: &Path) -> Vec<Option<f64>> {
         .collect()
 }
 
+fn presses(_interrupts: &str, _names: &[String]) -> Option<u64> {
+    None
+}
+
 fn checked(result: c_int) -> io::Result<c_int> {
     if result < 0 {
         Err(io::Error::last_os_error())
@@ -560,7 +570,7 @@ fn hear(hinge: Option<&mut Hinge>, judge: &mut Judge) -> io::Result<()> {
         return Ok(());
     };
     for degrees in hinge.angles()? {
-        if judge.hinge(degrees) {
+        if judge.hinge(degrees, Instant::now()) {
             eprintln!("lid-hinge: the hinge is nearly shut, at {degrees:.0}°");
         }
     }
@@ -658,7 +668,7 @@ fn run() -> io::Result<()> {
                 eprintln!("lid-hinge: the lid is open");
                 offered.say(false)?;
             }
-            Verdict::Doubted | Verdict::Unchanged => {}
+            Verdict::Doubted | Verdict::Unchanged | Verdict::Used => {}
         }
     }
 }
