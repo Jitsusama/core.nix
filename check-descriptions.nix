@@ -453,6 +453,14 @@
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
     or its tests
   '';
+  code-health-counts-what-got-messier = ''
+    code-health counts a repository's long files and crowded folders without their reasons, its
+    suppressions in each language's own way and its lines repeated from elsewhere, from a ref's
+    files, and writes the day's figures as cadence reads them
+  '';
+  code-health-passes-clippy = ''
+    clippy finds nothing in code-health or its tests
+  '';
   collector-keeps-what-it-is-sent = ''
     the collector reads a span it was sent back at its moment and in its trace, and keeps what a
     slice holds in memory and swap, and the pressure on it, as spans and moments
