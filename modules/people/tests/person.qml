@@ -36,8 +36,7 @@ QtObject {
             { emails: ["ben@example.com"], name: "" }
         ] };
         const google = { name: "google", people: [
-            { emails: ["ADA@home.example"], name: "Ada L.", recent: true,
-                facts: [{ label: "Last Mail", value: "Lunch on Friday" }] },
+            { emails: ["ADA@home.example"], name: "Ada L.", recent: true },
             { emails: ["grace@example.com"], name: "grace@example.com", recent: true },
             { emails: [], name: "Nobody" }
         ] };
@@ -47,8 +46,6 @@ QtObject {
         check("every address, the first first", everyone[0].emails,
             ["ada@example.com", "ada@home.example"]);
         check("the sources that know them, in order", everyone[0].from, ["tuple", "google"]);
-        check("each source's facts", everyone[0].facts,
-            [{ label: "Last Mail", value: "Lunch on Friday" }]);
         check("dealt with lately, by any source", everyone.map(person => person.recent),
             [true, false, true]);
         check("a real name wins over an address", names(Person.merged([google, tuple]))[0],
@@ -58,13 +55,11 @@ QtObject {
         const joining = Person.merged([
             { name: "google", people: [{ emails: ["a@x"], name: "A" },
                 { emails: ["b@x"], name: "B" }] },
-            { name: "vault", people: [{ emails: ["b@x", "a@x"], name: "Alex",
-                facts: [{ label: "Team", value: "Shell" }] }] }
+            { name: "vault", people: [{ emails: ["b@x", "a@x"], name: "Alex" }] }
         ]);
         check("two found to be one",
             joining.map(person => [person.name, person.emails, person.from]),
             [["A", ["a@x", "b@x"], ["google", "vault"]]]);
-        check("their facts kept", joining[0].facts, [{ label: "Team", value: "Shell" }]);
 
         // How they stand: the first source that says.
         const stands = [{ "ben@example.com": { said: "in a call", order: 1, favourite: true } },

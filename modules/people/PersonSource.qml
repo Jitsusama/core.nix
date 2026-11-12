@@ -3,8 +3,7 @@
 // jitsusama.people.sources by the module that brings the program:
 //
 //     PersonSource {
-//         people: [{ emails: ["ada@example.com"], name: "Ada Lovelace",
-//                    facts: [{ label: "Team", value: "Shell" }], recent: true }]
+//         people: [{ emails: ["ada@example.com"], name: "Ada Lovelace", recent: true }]
 //         function acts(person, provider) {
 //             return [provider.thing({ key: "verb:person:wave", name: "Wave",
 //                                      verb: "wave", run: () => … })];
@@ -12,13 +11,13 @@
 //     }
 //
 // Everyone it knows (people), each by every address it knows them by,
-// with a name when it has one, facts the drawer shows under the source's
-// own labels, and `recent` for someone Joel dealt with lately, who's
-// listed with nothing typed. Who it knows changes seldom; how they stand
+// with a name when it has one, and `recent` for someone Joel dealt with
+// lately, who's listed with nothing typed. What their drawer says is the
+// people daemon's (drawer.rs), never a source's here. Who it knows changes seldom; how they stand
 // (stands) changes often, so it's kept apart, by address: { said, order,
 // favourite, recent }, "available" and 0 for someone who can be reached
 // now. Given a person as People.qml joins them, { key, email, emails,
-// name, facts, recent, spans, from }, `acts` gives what Joel can do with them through
+// name, recent, spans, from }, `acts` gives what Joel can do with them through
 // it, rows made with the People place's provider, `main` on the one way
 // it reaches them; `next` the next thing it has with them, a meeting not
 // yet over, as { at, row }, or null; `unread` what waits between them,
