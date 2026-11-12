@@ -6028,6 +6028,8 @@
         "by-ear-speak": "speak as you would on a call, with the room as it is",
         "by-ear-each": "with each cleaner, then shuffled as clips A to D",
         "by-ear-playing": "playing",
+        "by-ear-on": "on {output}",
+        "by-ear-playing-on": "playing on {output}",
         "by-ear-blind": "its cleaner is said once one is picked",
         "by-ear-chosen": "{clip} \u00b7 {cleaner}",
         "by-ear-from-now": "calls hear {microphone} through it from now",

@@ -36,6 +36,8 @@ QtObject {
         "by-ear-speak": "speak as you would on a call, with the room as it is",
         "by-ear-each": "with each cleaner, then shuffled as clips A to D",
         "by-ear-playing": "playing",
+        "by-ear-on": "on {output}",
+        "by-ear-playing-on": "playing on {output}",
         "by-ear-blind": "its cleaner is said once one is picked",
         "by-ear-chosen": "{clip} \u00b7 {cleaner}",
         "by-ear-from-now": "calls hear {microphone} through it from now",
@@ -122,6 +124,14 @@ QtObject {
         same("pick steps back", clips[1].pick.back, true);
         same("play stays", clips[1].back ?? false, false);
         same("blind", clips.every(row => !row.side.includes("RNNoise")), true);
+
+        // Where the clips play, once the daemon says, on every clip, so Joel
+        // knows which speaker or headset to listen on before he plays one.
+        const heard = ByEar.rows(said, Object.assign({}, ready, { output: "Pebble V3" }),
+            "answering", 0).slice(1);
+        same("plays on", heard.map(row => [row.fill.clip, row.side]),
+            [["A", "playing on Pebble V3"], ["B", "on Pebble V3"], ["C", "on Pebble V3"],
+                ["D", "on Pebble V3"]]);
 
         // Picked: what was picked and that calls use it from now, then each
         // clip's cleaner and its cost as a share of a core.

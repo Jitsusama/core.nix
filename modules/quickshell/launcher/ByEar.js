@@ -162,6 +162,17 @@ function recordRow(said, record, state) {
     };
 }
 
+// Where a clip plays, once the daemon says: the output it plays on, on
+// every clip, so Joel knows which to listen on before he plays one.
+function where(said, record, playing) {
+    const output = typeof record.output === "string" && record.output !== ""
+        ? record.output : null;
+    if (output === null) {
+        return playing ? told(said, "by-ear-playing") : "";
+    }
+    return told(said, playing ? "by-ear-playing-on" : "by-ear-on", { output });
+}
+
 // A clip, heard blind: Return plays it, or plays it again from the start
 // while it's the one playing, and a step in holds Pick.
 function clipRow(said, record, clip) {
@@ -171,7 +182,7 @@ function clipRow(said, record, clip) {
         id: "sound:by-ear:clip",
         state: playing ? "playing" : "",
         fill: { clip },
-        side: playing ? told(said, "by-ear-playing") : "",
+        side: where(said, record, playing),
         note: told(said, "by-ear-blind"),
         act: { act: "play", clip },
         // Picking drops the clips, so Pick steps back out to the trial,
