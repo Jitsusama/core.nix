@@ -7,6 +7,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::agents::Died;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::memory::Memory;
@@ -108,6 +109,36 @@ pub struct Day {
     /// What each watched program held, by its name.
     #[serde(default)]
     pub memory: BTreeMap<String, Memory>,
+    /// The agents that died.
+    #[serde(default)]
+    pub agents: Agents,
+}
+
+/// The agents gone without parking: those at the last look, and every one
+/// that died in the day, each by session.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Agents {
+    /// When they were last looked for, in microseconds since the epoch.
+    pub looked: i64,
+    /// Gone at the last look, whenever each died.
+    pub gone: BTreeMap<String, Died>,
+    /// Each that died in the day, kept though its presence goes.
+    pub died: BTreeMap<String, Died>,
+}
+
+impl Agents {
+    /// Keep what a look at `at` found gone, those that died on `date`
+    /// among them.
+    pub fn saw(&mut self, at: i64, gone: BTreeMap<String, Died>, died_today: impl Fn(i64) -> bool) {
+        self.looked = at;
+        for (session, died) in &gone {
+            if died_today(died.at) {
+                self.died.insert(session.clone(), died.clone());
+            }
+        }
+        self.gone = gone;
+    }
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in
@@ -315,6 +346,7 @@ impl Day {
         }
         self.read = kept.read;
         self.memory = kept.memory;
+        self.agents = kept.agents;
         self.things.extend(
             kept.things
                 .into_iter()

@@ -8,7 +8,8 @@ use std::fmt::Write as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::day::{Badness, Boot, Day, Kind, Thing};
+use crate::agents::{self, Died};
+use crate::day::{Agents, Badness, Boot, Day, Kind, Thing};
 use crate::feel;
 use crate::memory::{self, Memory};
 
@@ -74,6 +75,9 @@ pub fn day(day: &Day) -> String {
             );
         }
     }
+    if let Some(line) = the_dead(&day.agents) {
+        let _ = writeln!(out, "agents    {line}");
+    }
     for (name, held) in &day.memory {
         if held.most_kib > 0 {
             let _ = writeln!(
@@ -88,6 +92,82 @@ pub fn day(day: &Day) -> String {
         }
     }
     out
+}
+
+/// The agents gone without parking, how many mid-turn and how long the
+/// oldest has been gone, then those that died in the day and the most in
+/// any ten minutes, which is when dying has become a pattern.
+fn the_dead(agents: &Agents) -> Option<String> {
+    if agents.gone.is_empty() && agents.died.is_empty() {
+        return None;
+    }
+    let mid_turn = agents
+        .gone
+        .values()
+        .filter(|died| died.state == "busy")
+        .count();
+    let oldest = agents
+        .gone
+        .values()
+        .map(|died| died.at)
+        .min()
+        .unwrap_or(agents.looked);
+    let times: Vec<i64> = agents.died.values().map(|died| died.at).collect();
+    let gone = u64::try_from(agents.gone.len()).unwrap_or(u64::MAX);
+    let age = u64::try_from((agents.looked - oldest) / 1_000_000).unwrap_or(0);
+    Some(format!(
+        "{} gone without parking ({mid_turn} mid-turn), oldest {}; {} died today, \
+         at most {} in ten minutes",
+        grouped(gone),
+        memory::age(age),
+        agents.died.len(),
+        agents::most_in_ten_minutes(&times)
+    ))
+}
+
+/// Each agent that died in the day, and each still gone from before it,
+/// in the order they died.
+fn the_dead_by_name(day: &Day) -> String {
+    let mut out = format!(
+        "agents gone without parking, {}{}\n",
+        day.date,
+        until(day.to)
+    );
+    let mut dead: Vec<(&String, &Died)> = day.agents.died.iter().collect();
+    let earlier = day
+        .agents
+        .gone
+        .iter()
+        .filter(|(session, _)| !day.agents.died.contains_key(*session));
+    dead.extend(earlier);
+    dead.sort_by_key(|(_, died)| died.at);
+    for (session, died) in dead {
+        let _ = writeln!(
+            out,
+            "{} {:<9} {:<20} {} ({session})",
+            when(died.at, &day.date),
+            died.state,
+            died.quest,
+            died.title
+        );
+    }
+    out
+}
+
+/// A moment's time, and its day when it isn't `date`.
+fn when(at: i64, date: &str) -> String {
+    Timestamp::from_microsecond(at).map_or_else(
+        |_| "--:--".to_owned(),
+        |at| {
+            let zoned = at.to_zoned(TimeZone::system());
+            let day = zoned.strftime("%Y-%m-%d").to_string();
+            if day == date {
+                zoned.strftime("      %H:%M").to_string()
+            } else {
+                zoned.strftime("%b %d %H:%M").to_string()
+            }
+        },
+    )
 }
 
 /// What a watched program's copies held at the last look.
@@ -131,6 +211,10 @@ pub fn asked(day: &Day, words: &str) -> String {
     }
     if words == "memory" {
         return memory_by_age(day);
+    }
+    // Not `agents`, which is a daemon's name, whose lines that asks for.
+    if words == "died" {
+        return the_dead_by_name(day);
     }
     if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
         let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));
@@ -444,6 +528,45 @@ mod tests {
         assert!(lines[3].ends_with(", finding P3 took 9 s"), "{shown}");
         assert!(!shown.contains("P4"), "three at most: {shown}");
         assert!(!lines[4].starts_with("feel"), "then the kinds: {shown}");
+    }
+
+    #[test]
+    fn the_dead_agents_have_a_line_and_are_named() {
+        let mut mourned = a_day();
+        let died = |state: &str, at: i64| Died {
+            state: state.into(),
+            at,
+            quest: "QEST-1".into(),
+            title: "π - Git upkeep".into(),
+        };
+        let hour = 3_600_000_000;
+        mourned.agents.looked = 30 * hour;
+        mourned
+            .agents
+            .gone
+            .insert("a".into(), died("busy", 8 * hour));
+        mourned
+            .agents
+            .gone
+            .insert("b".into(), died("listening", 29 * hour));
+        mourned
+            .agents
+            .died
+            .insert("b".into(), died("listening", 29 * hour));
+        let shown = day(&mourned);
+        assert!(
+            shown.contains(
+                "\nagents    2 gone without parking (1 mid-turn), oldest 22 h; 1 died today, \
+                 at most 1 in ten minutes\n"
+            ),
+            "{shown}"
+        );
+        let named = asked(&mourned, "died");
+        let lines: Vec<&str> = named.lines().collect();
+        assert_eq!(lines.len(), 3, "each once, the earlier gone first: {named}");
+        assert!(lines[1].contains(" busy      QEST-1"), "{named}");
+        assert!(lines[2].ends_with("π - Git upkeep (b)"), "{named}");
+        assert!(!day(&a_day()).contains("agents"), "none died");
     }
 
     #[test]

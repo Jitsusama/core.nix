@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, BufRead as _, BufReader, Read as _, Seek as _, SeekFrom};
+use std::io::{self, BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
+use crate::agents;
 use crate::day::{Day, Kind};
 use crate::feel;
 use crate::journal::{
@@ -45,14 +46,18 @@ pub struct Follower {
     lid: Option<Looked>,
     lid_wrong: bool,
     pains: Option<PathBuf>,
-    sessions: Option<PathBuf>,
-    last_calls: BTreeMap<String, Option<String>>,
+    sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
+    presences: Option<PathBuf>,
 }
 
 /// How much of the sessions' logs is read a tick, so a first start on a
 /// day of a gigabyte of them reads it over minutes rather than all at once.
 const SESSIONS_A_TICK: u64 = 32 << 20;
+
+/// Where each pi session says it's there and what it's doing, under the
+/// account's home, as the harness's mesh keeps it.
+const PRESENCES: &str = ".local/state/pi/agentic-harness.pi/mesh-workflow/presence";
 
 /// What the day calls a lid that's wrong.
 const LID_WRONG: &str = "the lid reads shut while the laptop's screen is on and its keys are typed";
@@ -73,9 +78,35 @@ impl Follower {
             lid_wrong: false,
             pains: None,
             sessions: None,
-            last_calls: BTreeMap::new(),
             proc: None,
+            presences: None,
         }
+    }
+
+    /// Look for the agents that died among the sessions' presences.
+    #[must_use]
+    pub fn counting_the_dead(self, presences: &Path) -> Self {
+        Self {
+            presences: Some(presences.to_owned()),
+            ..self
+        }
+    }
+
+    /// Keep the agents gone without parking at `at`, by their presences
+    /// and the processes in the `proc` being minded.
+    pub fn count_the_dead(&mut self, at: i64) {
+        let (Some(presences), Some(proc)) = (&self.presences, &self.proc) else {
+            return;
+        };
+        if date_of(at, &self.zone) != self.day.date {
+            return;
+        }
+        let gone = agents::look(presences, proc);
+        let (zone, date) = (&self.zone, &self.day.date);
+        self.day
+            .agents
+            .saw(at, gone, |died| date_of(died, zone) == *date);
+        self.changed = true;
     }
 
     /// Look at the watched programs' memory in `proc`.
@@ -114,7 +145,7 @@ impl Follower {
     #[must_use]
     pub fn hearing(self, sessions: &Path) -> Self {
         Self {
-            sessions: Some(sessions.to_owned()),
+            sessions: Some(sessions::Reader::new(sessions)),
             ..self
         }
     }
@@ -129,71 +160,20 @@ impl Follower {
     }
 
     /// Read on in each session's log written to today, `budget` bytes in
-    /// all at most, and count what the day's lines said. A log that can't
-    /// be read is left for the next tick.
+    /// all at most, and count what the day's lines said.
     pub fn hear(&mut self, budget: u64) {
-        let Some(sessions) = self.sessions.clone() else {
+        let Some(reader) = &mut self.sessions else {
             return;
         };
-        let mut left = budget;
-        for folder in fs::read_dir(&sessions).into_iter().flatten().flatten() {
-            let place = sessions::place(&folder.file_name().to_string_lossy());
-            for log in fs::read_dir(folder.path()).into_iter().flatten().flatten() {
-                if left == 0 {
-                    return;
-                }
-                let path = log.path();
-                if path.extension().is_none_or(|kind| kind != "jsonl") || !self.written_today(&log)
-                {
-                    continue;
-                }
-                left -= self.hear_log(&path, &place, left).unwrap_or(0);
-            }
-        }
-    }
-
-    /// Whether a log was written to on the day being tallied.
-    fn written_today(&self, log: &fs::DirEntry) -> bool {
-        log.metadata()
-            .and_then(|meta| meta.modified())
-            .ok()
-            .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
-            .and_then(|since| i64::try_from(since.as_micros()).ok())
-            .is_some_and(|at| date_of(at, &self.zone) >= self.day.date)
-    }
-
-    /// Read one log on from where it was left, `budget` bytes at most, to
-    /// its last whole line; say how many bytes were read.
-    fn hear_log(&mut self, path: &Path, place: &str, budget: u64) -> io::Result<u64> {
-        let key = path.to_string_lossy().into_owned();
-        let mut file = fs::File::open(path)?;
-        let length = file.metadata()?.len();
-        let mut from = self.day.read.get(&key).copied().unwrap_or(0);
-        if from > length {
-            from = 0;
-        }
-        file.seek(SeekFrom::Start(from))?;
-        let mut chunk = Vec::new();
-        file.take(budget).read_to_end(&mut chunk)?;
-        let whole = match chunk.iter().rposition(|&byte| byte == b'\n') {
-            Some(end) => end + 1,
-            // A line longer than the whole budget is passed over.
-            None if chunk.len() as u64 == budget && budget == SESSIONS_A_TICK => chunk.len(),
-            None => return Ok(0),
-        };
-        let last = self.last_calls.entry(key.clone()).or_default();
-        for line in String::from_utf8_lossy(&chunk[..whole]).lines() {
-            if let Some(heard) = sessions::hear(line, last)
-                && date_of(heard.at, &self.zone) == self.day.date
-            {
-                self.day.heard(place, &heard);
-                self.changed = true;
-            }
-        }
-        let read = whole as u64;
-        self.day.read.insert(key, from + read);
-        self.changed = true;
-        Ok(read)
+        let (zone, day) = (&self.zone, &mut self.day);
+        let date = day.date.clone();
+        let today = |at: i64| date_of(at, zone) == date;
+        let mut read = std::mem::take(&mut day.read);
+        let any = reader.read_on(&mut read, budget, &today, |place, heard| {
+            day.heard(place, &heard);
+        });
+        day.read = read;
+        self.changed |= any;
     }
 
     /// Read how using the machine felt from the pain-points detector's
@@ -353,7 +333,10 @@ pub fn follow(into: &Path) -> io::Result<()> {
     }
     follower = follower.minding(Path::new("/proc"));
     if let Some(home) = std::env::var_os("HOME") {
-        follower = follower.hearing(&PathBuf::from(home).join(".pi/agent/sessions"));
+        let home = PathBuf::from(home);
+        follower = follower
+            .hearing(&home.join(".pi/agent/sessions"))
+            .counting_the_dead(&home.join(PRESENCES));
     }
     if let Some(kept) = fs::read(file_of(into, &today))
         .ok()
@@ -419,6 +402,7 @@ fn run(
             let wall = Timestamp::now().as_microsecond();
             follower.look_at_lid(look(), wall);
             follower.mind(wall);
+            follower.count_the_dead(wall);
             follower.feel();
             follower.hear(SESSIONS_A_TICK);
             follower.write()?;
@@ -703,6 +687,39 @@ mod tests {
             read(into.path(), "2026-11-12").memory["pi"].most_kib,
             2_048,
             "a restart keeps the day's most"
+        );
+    }
+
+    #[test]
+    fn a_death_of_the_day_is_kept_though_its_presence_goes() {
+        let into = tempfile::tempdir().expect("a folder");
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        let presences = tempfile::tempdir().expect("the presences");
+        let presence = |session: &str, at: &str| {
+            let said = format!(
+                r#"{{"session":"{session}","state":"busy","at":"{at}","owner":{{"pid":9,"startTicks":1}}}}"#
+            );
+            fs::write(presences.path().join(format!("{session}.json")), said).expect("a presence");
+        };
+        presence("yesterday", "2026-11-11T23:00:00Z");
+        presence("today", "2026-11-12T11:00:00Z");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+            .minding(proc.path())
+            .counting_the_dead(presences.path());
+        follower.count_the_dead(NOON);
+        fs::remove_file(presences.path().join("today.json")).expect("revived");
+        follower.count_the_dead(NOON + 1);
+        follower.write().expect("the day is written");
+        let agents = read(into.path(), "2026-11-12").agents;
+        assert_eq!(
+            agents.gone.keys().collect::<Vec<_>>(),
+            ["yesterday"],
+            "gone at the last look"
+        );
+        assert_eq!(
+            agents.died.keys().collect::<Vec<_>>(),
+            ["today"],
+            "the day's death, kept after its presence went"
         );
     }
 

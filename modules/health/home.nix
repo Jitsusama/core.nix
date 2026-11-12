@@ -6,10 +6,11 @@
 # reads shut over a laptop in use, takes the pain-points detector's ranking
 # of how using it felt, reads the agents' sessions' logs for the tools'
 # failures and Joel's pained words, watches what pi and the shell hold in
-# memory by age, and keeps the day's tally by kind,
-# thing and signature in ~/.local/state/health/<date>.json. `health` shows
-# the three most painful interactions, then a line a kind, the worst
-# first; `health <thing>` shows what it kept saying.
+# memory by age, counts the agents that died without parking, and keeps
+# the day's tally by kind, thing and signature in
+# ~/.local/state/health/<date>.json. `health` shows the three most painful
+# interactions, then a line a kind, the worst first; `health <thing>`
+# shows what it kept saying.
 { lib, pkgs, ... }:
 let
   package = pkgs.callPackage ./package.nix { };

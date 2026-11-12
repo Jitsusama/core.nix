@@ -3,7 +3,110 @@
 //! a line Joel typed that sounds like something hurt. Each session's log
 //! is a line of JSON a message, as pi writes it.
 
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::{self, Read as _, Seek as _, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
+
 use serde_json::Value;
+
+/// Reads the sessions' logs, a folder each place they ran, on from where
+/// each was left, so a day of a gigabyte of them is read once.
+pub struct Reader {
+    folder: PathBuf,
+    /// Each log's last tool call, so a call made twice running is heard
+    /// though a tick falls between them.
+    last_calls: BTreeMap<String, Option<String>>,
+}
+
+impl Reader {
+    #[must_use]
+    pub fn new(folder: &Path) -> Self {
+        Self {
+            folder: folder.to_owned(),
+            last_calls: BTreeMap::new(),
+        }
+    }
+
+    /// Read on in each log written to `today`, from the offsets `read`
+    /// keeps, `budget` bytes in all at most, handing each of today's
+    /// lines heard to `heard` with the place its session ran. A log that
+    /// can't be read is left for the next time. Say whether any was read.
+    pub fn read_on(
+        &mut self,
+        read: &mut BTreeMap<String, u64>,
+        budget: u64,
+        today: &impl Fn(i64) -> bool,
+        mut heard: impl FnMut(&str, Heard),
+    ) -> bool {
+        let mut left = budget;
+        let mut any = false;
+        for folder in fs::read_dir(&self.folder).into_iter().flatten().flatten() {
+            let place = place(&folder.file_name().to_string_lossy());
+            let logs = fs::read_dir(folder.path()).into_iter().flatten().flatten();
+            for log in logs.filter(|log| is_log_of(log, today)) {
+                if left == 0 {
+                    return any;
+                }
+                let key = log.path().to_string_lossy().into_owned();
+                let last = self.last_calls.entry(key.clone()).or_default();
+                let from = read.get(&key).copied().unwrap_or(0);
+                let Ok((to, lines)) = read_lines(&log.path(), from, left, budget) else {
+                    continue;
+                };
+                for line in lines.lines() {
+                    if let Some(said) = hear(line, last).filter(|said| today(said.at)) {
+                        heard(&place, said);
+                    }
+                }
+                left -= to.saturating_sub(from).min(left);
+                any |= to != from;
+                read.insert(key, to);
+            }
+        }
+        any
+    }
+}
+
+/// Whether `log` is a session's log written to `today`.
+fn is_log_of(log: &fs::DirEntry, today: &impl Fn(i64) -> bool) -> bool {
+    let path = log.path();
+    path.extension().is_some_and(|kind| kind == "jsonl")
+        && log
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+            .and_then(|since| i64::try_from(since.as_micros()).ok())
+            .is_some_and(today)
+}
+
+/// Read a log on from `from`, `budget` bytes at most, to its last whole
+/// line: where that leaves it, and the lines. A log shorter than `from`
+/// was begun again, and is read from its start; a line longer than a
+/// whole tick's `most` is passed over.
+fn read_lines(path: &Path, from: u64, budget: u64, most: u64) -> io::Result<(u64, String)> {
+    let mut file = fs::File::open(path)?;
+    let from = if from > file.metadata()?.len() {
+        0
+    } else {
+        from
+    };
+    file.seek(SeekFrom::Start(from))?;
+    let mut chunk = Vec::new();
+    file.take(budget).read_to_end(&mut chunk)?;
+    let whole = match chunk.iter().rposition(|&byte| byte == b'\n') {
+        Some(end) => end + 1,
+        None if chunk.len() as u64 == most => return Ok((from + most, String::new())),
+        None => return Ok((from, String::new())),
+    };
+    chunk.truncate(whole);
+    Ok((
+        from + whole as u64,
+        String::from_utf8_lossy(&chunk).into_owned(),
+    ))
+}
 
 /// What one session log line said that the day counts.
 #[derive(Debug, Clone, PartialEq, Eq)]

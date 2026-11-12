@@ -20,7 +20,8 @@
 //! for Joel's words, a line he typed that sounds like something hurt.
 //! And each half minute it keeps what every pi session and the shell hold
 //! in memory and swap, by how long each has run, so one that grows as it
-//! ages shows.
+//! ages shows, and counts the agents that died: a session whose presence
+//! says busy or listening though its process is gone.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
 //! `health` reads that file: the day's three most painful interactions,
@@ -30,6 +31,7 @@
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
 //! day` reads the day and holds it against the days before.
 
+mod agents;
 mod day;
 mod feel;
 mod follow;
@@ -57,6 +59,7 @@ health KIND            a kind's worst things: words, programs, services, devices
                        security or tools
 health boot            each boot's stages, and each shutdown's seconds
 health memory          what pi and the shell hold, by how long each copy has run
+health died            the agents that died, and those gone since before today
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
 health follow          the daemon, which keeps the day's file current
