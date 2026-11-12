@@ -59,7 +59,12 @@ function listed(sources, shown, most) {
 // the first and never arrives late at the bottom. Nothing after its name,
 // as no row says there: it's a place, stepped into and holding rows, so
 // its names, `held`, go in its drawer as a place's do (the launcher's
-// `heldNames`; VKCF3Z, dae7fb67, dafc2199).
+// `heldNames`; VKCF3Z, dae7fb67, dafc2199). A name held more than once,
+// as a meeting that recurs is, is said once where it's newest, with how
+// often by its words' `twice` and `times`, "CI Retro, twice", since the
+// same name twice in a drawer reads as a mistake (VKCF3Z, 498825ad); its
+// side still counts every thing. Words that say neither leave each as it
+// is.
 function said(names, waiting, words) {
     const count = names.length;
     if (waiting && count === 0) {
@@ -68,7 +73,22 @@ function said(names, waiting, words) {
     if (count === 0) {
         return { side: words?.none ?? "", held: [] };
     }
-    return { side: String(count), held: names.slice() };
+    return { side: String(count), held: once(names, words) };
+}
+
+// Each of `names` once, in their order, said with how often as `said`
+// tells it, or every one as it is where `words` can't say how often.
+function once(names, words) {
+    if (!words?.twice || !words?.times) {
+        return names.slice();
+    }
+    const often = new Map();
+    for (const name of names) {
+        often.set(name, (often.get(name) ?? 0) + 1);
+    }
+    return Array.from(often, ([name, count]) => count === 1 ? name
+        : (count === 2 ? words.twice : words.times)
+            .replace("{name}", name).replace("{count}", String(count)));
 }
 
 // What a thing taken says at its right in Capture's Recent: when it was
