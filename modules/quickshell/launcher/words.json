@@ -7273,7 +7273,7 @@
     {
       "id": "shortcuts:chrome:scrolling",
       "in": "shortcuts",
-      "name": "Scrolling the Page"
+      "name": "Scrolling"
     },
     {
       "id": "shortcuts:chrome:finding",
@@ -14318,10 +14318,11 @@
     {
       "word": "scrolling",
       "things": [
+        "shortcuts:chrome:scrolling",
         "shortcuts:reader:scrolling",
         "shortcuts:zathura:scrolling"
       ],
-      "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
+      "why": "The reader, the PDF viewer and the browser all scroll a page, and each group says which program's it is beside it."
     },
     {
       "word": "finding words",
