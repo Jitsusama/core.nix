@@ -22,10 +22,16 @@
 //! just ended against the days before it and sends the steward its note
 //! (daily.rs).
 //!
+//! `cadence axes`, typed by Joel, shows the nine axes he holds the machine
+//! to, each against its bar with its owner, and `cadence axes <axis>`
+//! steps into one (axes.rs).
+//!
 //!     cadence tick [--watcher ADDRESS --steward ADDRESS]
 //!         [--restart WORDS [--orchestrator ADDRESS]... [--skip ADDRESS]...]
 //!     cadence day [--steward ADDRESS]
+//!     cadence axes [AXIS]
 
+mod axes;
 mod card;
 mod daily;
 mod day;
@@ -74,11 +80,13 @@ fn main() -> ExitCode {
     match args.next().as_deref() {
         Some("tick") => {}
         Some("day") => return day(args),
+        Some("axes") => return axes::run(args),
         _ => {
             eprintln!(
                 "usage: cadence tick [--watcher ADDRESS --steward ADDRESS] [--restart WORDS \
                  [--orchestrator ADDRESS]... [--skip ADDRESS]...]\n       \
-                 cadence day [--steward ADDRESS]"
+                 cadence day [--steward ADDRESS]\n       \
+                 cadence axes [AXIS]"
             );
             return ExitCode::from(2);
         }

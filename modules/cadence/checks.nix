@@ -28,7 +28,11 @@ onLinux {
   # day, crashes, failed units, kills, pressure and switches are read from
   # their records, a figure past its bar or worse than the days before by a
   # fifth and its floor and a crash or failure not seen before are found,
-  # too few days before judge nothing, and the note keeps to ten lines.
+  # too few days before judge nothing, and the note keeps to ten lines;
+  # and of the axes, each reading is parsed from the card, the measure, the
+  # mesh, the notices and niri, a figure past its bar marks its axis with
+  # its owner, a reading nothing measures says so, and an axis is found by
+  # the start of its name.
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
