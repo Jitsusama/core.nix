@@ -952,21 +952,29 @@ ShellRoot {
                 && inside[0].drawer().body === "Its checks passed at its head."
                 && inside[1].drawer().body === "Push the branch?",
             JSON.stringify([inside[0].copies, inside[0].drawer(), inside[1].drawer()]));
+        // An answer the node couldn't put says nothing of being answered,
+        // since the session never heard it.
+        Sessions.puts = false;
         inside[0].run();
-        const steered = Sessions.steered[0] ?? {};
-        expect("its Return steers the session the answer, and the foot says so",
-            Sessions.steered.length === 1 && steered.address === "WANTE"
+        expect("an answer never put isn't said to be answered",
+            Sessions.steered.length === 1 && theLauncher.said.length === 0,
+            JSON.stringify([Sessions.steered, theLauncher.said]));
+        Sessions.puts = true;
+        inside[0].run();
+        const steered = Sessions.steered[1] ?? {};
+        expect("its Return steers the session the answer, and once put the foot says so",
+            Sessions.steered.length === 2 && steered.address === "WANTE"
                 && steered.fields.act === "answer" && steered.fields.value === "push"
                 && steered.fields.want === "question@2026-11-12T07:00:00.000Z"
                 && steered.fields.from === "joel"
-                && JSON.stringify(theLauncher.said) === JSON.stringify([["answered: Yes, push it",
+                && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
             JSON.stringify([Sessions.steered, theLauncher.said]));
         inside[3].given("after lunch");
         expect("his own words go as words",
-            Sessions.steered[1]?.fields.other === "after lunch"
-                && Sessions.steered[1]?.fields.value === undefined,
-            JSON.stringify(Sessions.steered[1]));
+            Sessions.steered[2]?.fields.other === "after lunch"
+                && Sessions.steered[2]?.fields.value === undefined,
+            JSON.stringify(Sessions.steered[2]));
         Sessions.steered = [];
         theLauncher.said = [];
         Sessions.wanting = [];
