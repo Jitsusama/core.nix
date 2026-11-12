@@ -84,8 +84,9 @@ pub fn read(shared: &Arc<Shared>) {
     }
 }
 
-/// What a source's command read, as it's kept: the rows made again where
-/// it was what Chrome or kitty has open and the tabs are watched.
+/// What a source's command read or refused, as it's kept: the rows and
+/// the head made again where it was what Chrome or kitty has open and the
+/// tabs are watched.
 pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
     let theirs = match what {
         Run::Opened => shared.sources[at].session.is_some(),
@@ -99,7 +100,7 @@ pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
 /// Makes the rows again from what's held open, keeping what changed and
 /// telling each watch only the rows that read differently and those gone.
 /// kitty's are of niri's windows but the agents', whose panes its list
-/// leaves out.
+/// leaves out. The head names each program whose last read was refused.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
     let theirs = agents::windows(daemon);
     let windows: Option<Vec<&Value>> = daemon.windows.as_ref().map(|windows| {
@@ -135,8 +136,26 @@ pub fn make(shared: &Shared, daemon: &mut Daemon) {
             }),
         tabs.as_ref(),
         windows.as_deref(),
+        &shared.tab_words,
     );
-    let moved = daemon.tabs.take(rows, Vec::new());
+    let kitty = kitty(shared);
+    let silent = shared
+        .sources
+        .iter()
+        .enumerate()
+        .filter_map(|(at, source)| {
+            let key = if source.session.is_some() {
+                source.opened_key()?
+            } else if kitty == Some(at) {
+                source.list_key()
+            } else {
+                return None;
+            };
+            let refused = daemon.commands.get(&key)?["state"] == "refused";
+            refused.then_some(source.app.as_deref()?)
+        });
+    let head = tab_rows::head(silent, windows.as_deref(), &shared.tab_words);
+    let moved = daemon.tabs.take(rows, head.into_iter().collect());
     keep(daemon, moved.changed, &moved.gone);
 }
 

@@ -71,8 +71,8 @@ use programs::mime::Mime;
 use programs::notify::Notify;
 use programs::preview::Previewer;
 use programs::source::{self, Source};
-use programs::taken_rows;
 use programs::{command, entry, now_ms, xdg};
+use programs::{tab_rows, taken_rows};
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 
@@ -150,6 +150,8 @@ struct Shared {
     home: String,
     /// The words Capture's rows are said in, where they were handed.
     taken_words: Option<taken_rows::Words>,
+    /// The words a tab's drawer and Tabs' head are said in.
+    tab_words: tab_rows::Words,
 }
 
 fn main() {
@@ -177,6 +179,7 @@ fn main() {
         }
     };
     let folders = xdg::folders_here();
+    let vocabulary = taken::vocabulary(args.next()).unwrap_or_default();
     let notify = Notify::new()
         .inspect_err(|why| eprintln!("<4>inotify isn't there, so changes aren't heard: {why}"))
         .ok();
@@ -211,7 +214,8 @@ fn main() {
         folders,
         search: std::env::var("PATH").unwrap_or_default(),
         home: std::env::var("HOME").unwrap_or_default(),
-        taken_words: taken::words(args.next()),
+        taken_words: taken::words(&vocabulary),
+        tab_words: tab_rows::Words::read(&vocabulary),
     });
     if let Some(notify) = &shared.notify {
         // Its folders are watched before the socket answers, so no
@@ -474,6 +478,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             daemon
                 .commands
                 .insert(key, json!({"state": "refused", "reason": why}));
+            tabs::heard(shared, &mut daemon, at, what);
         }
     }
 }

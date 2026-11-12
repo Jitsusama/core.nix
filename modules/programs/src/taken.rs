@@ -24,18 +24,23 @@ const MOST: usize = 9;
 /// screen holds are never seen, as Capture.qml's `most` says.
 pub const FOUND: usize = 50;
 
-/// The words Capture's rows are said in, from the vocabulary at `path`,
-/// or none, saying why in the journal.
-pub fn words(path: Option<String>) -> Option<taken_rows::Words> {
+/// The launcher's vocabulary at `path`, read once as the daemon starts
+/// for Capture's rows and the tabs' both, or none, saying why in the
+/// journal.
+pub fn vocabulary(path: Option<String>) -> Option<Value> {
     let path = path?;
-    let words = std::fs::read_to_string(&path)
+    std::fs::read_to_string(&path)
         .map_err(|why| why.to_string())
         .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|why| why.to_string()))
-        .and_then(|vocabulary| {
-            taken_rows::Words::read(&vocabulary).map_err(|id| format!("it has no {id}"))
-        });
-    words
-        .inspect_err(|why| eprintln!("<4>Capture's rows aren't served from {path}: {why}"))
+        .inspect_err(|why| eprintln!("<4>the launcher's words in {path} aren't read: {why}"))
+        .ok()
+}
+
+/// The words Capture's rows are said in, from the vocabulary, or none,
+/// saying why in the journal.
+pub fn words(vocabulary: &Value) -> Option<taken_rows::Words> {
+    taken_rows::Words::read(vocabulary)
+        .inspect_err(|id| eprintln!("<4>Capture's rows aren't served: the words have no {id}"))
         .ok()
 }
 
