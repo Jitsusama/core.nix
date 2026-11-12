@@ -429,6 +429,34 @@ QtObject {
             + "slowest 40 ms, the p99 40 ms, 1 within 50 ms: a median 5 ms before it "
             + "followed, 10 until its frame began and 25 from its frame's start");
         check(failures, "none presented says nothing", Presented.drawersSaid([]).length, 0);
+
+        // Joel's drawers spent 45 to 48 ms from their frame's start to the
+        // screen whatever they held, keys 12 to 34 and changes 6 to 12, and
+        // nothing said whether the shell's swap or niri took it (KP0L6A,
+        // 2026-11-12). Where the render thread timed the frame's swap, that
+        // part is said to the swap and after it, over those it timed.
+        check(failures, "a drawer says its frame's time to its swap and after it",
+            Presented.drawerSaid(Object.assign({ swapped: 1064 }, drawer)),
+            'launcher: drawer for "agent:Y2YBTS" presented 90 ms from the key: a median '
+            + "50 ms before it followed, 10 until its frame began and 30 from its "
+            + "frame's start (4 to its swap and 26 after it)");
+        const swapped = Presented.drawersSaid([
+            Object.assign({ swapped: 1062 }, drawer),
+            { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
+                swapped: 2030, at: 2040 },
+            { key: "agent:16V6F4", place: "agents", from: 3000, followed: 3005, begun: 3010,
+                swapped: null, at: 3045 }]);
+        check(failures, "and at the close over those whose swap was timed", swapped.join("\n"),
+            "launcher: 3 drawers in agents presented a median 45 ms from the key, the slowest "
+            + "90 ms, the p99 90 ms, 2 within 50 ms: a median 10 ms before it followed, 10 "
+            + "until its frame began and 30 from its frame's start (2 to its swap and 10 "
+            + "after it)");
+        check(failures, "as keys say theirs",
+            Presented.keysSaid("presented", [Object.assign({ swapped: 82 }, keys[0]),
+                keys[1], Object.assign({ swapped: 2020 }, keys[2])], true),
+            "launcher: 3 keys presented a median 100 ms from the key, the slowest 300 ms, "
+            + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
+            + "20 in the shell and 20 from its frame's start (2 to its swap and 18 after it)");
     }
 
     // Joel's closing at 14:36 on 2026-11-11 made Sound's 111 rows and

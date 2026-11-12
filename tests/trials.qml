@@ -60,6 +60,24 @@ QtObject {
         const lookedAway = Trials.ended(Trials.counted(Trials.begun(0, "four"), "arrows"), 5);
         expect("looked and closed isn't", !lookedAway.missed, lookedAway.missed);
 
+        // An answer is counted by its kind, never its empty key, so Return on
+        // one is a pick and not a miss: Ask by its source's word, Memory by
+        // what it's about, and one saying neither as an answer still
+        // (1JQPPC, 2026-11-11: Return on Ask was logged a miss).
+        const asked = Trials.ended(Trials.picked(Trials.retyped(Trials.begun(0, "today"), "",
+            "why?"), 10, { key: "", kind: "", counted: Trials.answerCounted("ask", "") },
+            { typed: "why?", depth: 0 }), 20);
+        expect("Ask is picked by its kind", asked.picked === "answer:ask" && !asked.missed,
+            JSON.stringify(asked));
+        expect("a sum by its kind", Trials.answerCounted("sum", "") === "answer:sum",
+            Trials.answerCounted("sum", ""));
+        expect("Memory by what it's about",
+            Trials.answerCounted("", "machine:memory") === "answer:machine:memory",
+            Trials.answerCounted("", "machine:memory"));
+        expect("one saying neither, as an answer",
+            Trials.answerCounted(undefined, undefined) === "answer",
+            Trials.answerCounted(undefined, undefined));
+
         // A later pick in one opening is the one kept: a collection, then a
         // thing in it, a step in.
         let deeper = Trials.picked(Trials.begun(0, "today"), 10, { key: "collection:wifi" },

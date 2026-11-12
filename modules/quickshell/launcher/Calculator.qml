@@ -11,6 +11,7 @@ import Maths
 import "Numbers.js" as Numbers
 
 Provider {
+    answerKind: "sum"
     examples: ["255 in hex", "2^32", "sqrt(2)", "0b1011 << 3"]
 
     // The maths reads its definitions as the launcher is made, so the

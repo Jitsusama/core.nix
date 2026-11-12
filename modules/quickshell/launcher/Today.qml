@@ -5,8 +5,10 @@
 // "Date holds the calendar only ... Nothing repeats"): the ISO date, the
 // ISO week date, the ordinal date, the quarter, the Unix day, the Julian
 // day and the modified one, each copied by Return, then the season and the
-// moon, each a thing stepping into its figures, with its drawer saying
-// them. It's all reckoned from the clock (Moment.js), the season where the
+// moon, each copied by Return too, with its drawer saying its figures,
+// since a step of copies alone is no step (Joel, 2026-11-11). The date's
+// own drawer says the week and the day of the year, the season and the
+// moon (NowDrawers.js). It's all reckoned from the clock (Moment.js), the season where the
 // laptop is, so nothing is asked, but for Calendars: the day in the
 // Chinese, Japanese, Hebrew and Islamic calendars, which timekeeping
 // reckons with ICU4X (Calendars.qml), held ready from the shell's start,
@@ -16,6 +18,7 @@
 import qs
 import QtQuick
 import "Moment.js" as Moment
+import "NowDrawers.js" as NowDrawers
 import "Numbers.js" as Numbers
 
 Provider {
@@ -51,13 +54,14 @@ Provider {
             copy: String(number), note: note, glyph: "" });
     }
 
-    // A thing of the date's, as the season and the moon are: its figures a
-    // step in, each copied, and its drawer saying them all.
+    // A thing of the date's, as the season and the moon are: Return copies
+    // what it is, and its drawer says its figures.
     function partThing(id, side, note, facts) {
-        return thingRow({
+        return copyRow({
             key: `today:${id}`,
             name: Words.name(`today:${id}`),
             side: side,
+            copy: side,
             note: note,
             glyph: Theme.glyph.date,
             thing: true,
@@ -66,13 +70,37 @@ Provider {
                 facts: facts.map(fact => ({ label: Words.name(`today:${id}:${fact.id}`),
                     value: fact.side }))
             })
-        }, () => facts.map(fact => copyRow({
-            name: Words.name(`today:${id}:${fact.id}`),
-            side: fact.side,
-            copy: fact.side,
-            note: fact.note ?? "",
-            glyph: ""
-        })));
+        });
+    }
+
+    // Date's drawer: the week, the day of the year and the days left in
+    // it, the season's days to go, then the date, the season, the moon and
+    // the quarter, as VKCF3Z's mock has them (NowDrawers.js).
+    function dateDrawer(now) {
+        const at = new Date(now);
+        const season = Moment.season(now, Location.here?.latitude);
+        const moon = Moment.moon(now);
+        const quarter = Moment.quarter(at);
+        return NowDrawers.date({
+            iso: Moment.iso(at),
+            week: Moment.isoWeek(at).week,
+            day: Moment.ordinal(at),
+            days: Moment.daysIn(at.getFullYear()),
+            season: said("today:season", season.season),
+            seasonLeft: Math.ceil((season.ends - now) / 86400000),
+            moon: said("today:moon", moon.phase),
+            lit: said("today:moon", "lit", { percent: `${Math.round(moon.lit * 100)}%` }),
+            quarter: quarter.quarter,
+            quarterDay: quarter.day,
+            quarterDays: quarter.days,
+            weekDate: Moment.isoWeekDate(at),
+            dayNumber: String(Moment.dayNumber(at)),
+            said: Words.of("today").said ?? {},
+            names: { title: Words.name("today"), iso: Words.name("today:iso"),
+                season: Words.name("today:season"), moon: Words.name("today:moon"),
+                quarter: Words.name("today:quarter"), weekDate: Words.name("today:week"),
+                julian: Words.name("today:julian") }
+        });
     }
 
     // The season where the laptop is, the north's while that's unknown.
@@ -284,6 +312,10 @@ Provider {
             // It's Date's, so Date knows when it's shown and asks for the
             // day's calendars.
             live: provider,
+            // A thing with a drawer, a little more than its line, made
+            // only as it's shown (Joel, 2026-11-11).
+            thing: true,
+            drawer: () => provider.dateDrawer(now),
             rows: [
                 row("iso", Moment.iso(at)),
                 row("week", Moment.isoWeekDate(at), said("today:week", "week",

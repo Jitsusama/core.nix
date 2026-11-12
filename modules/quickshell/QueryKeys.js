@@ -72,6 +72,9 @@ const table = [
     // macros, and says so until the next key (the vi-paradigm spec, Normal).
     { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
     { act: "quitSaid", mode: "normal", keys: ["q"] },
+    // za opens or folds the drawer's nerdy bits from the rows too, as from
+    // inside it (the drawer spec's part 7).
+    { act: "fold", mode: "normal", keys: [["z", "a"]] },
     // Ctrl+O and Ctrl+I go back and forward through the places stepped into,
     // as Vim's jump list; Space Tab goes to the place used last, as his goes
     // to the file used last. Tab is apart from Ctrl+I, as Neovim under
@@ -221,6 +224,9 @@ const table = [
     // search itself (seekRead).
     { act: "seekNext", mode: "page", keys: ["n"] },
     { act: "seekPrevious", mode: "page", keys: ["N"] },
+    // za opens or folds its nerdy bits, as Vim's za a fold (the drawer
+    // spec's part 7), and they stay as he left them from row to row.
+    { act: "fold", mode: "page", keys: [["z", "a"]] },
     // A page can't be changed, so each key Vim's nv_edit refuses says E21
     // at once, i a o entering no insert, d c and r once their motion or
     // letter comes (Operators.refused), and visual's over what's chosen;
@@ -260,6 +266,15 @@ const moves = ["next", "previous", "first", "last", "viewTop", "viewMiddle", "vi
 
 function repeats(act) {
     return moves.includes(act);
+}
+
+// Whether a held key's repeat does its act again, and so is a key taken:
+// where nothing types, only a move; where the line types, any act but
+// Return's, which is once a press (Prompt.qml's returned). One that does
+// nothing takes no key, so what its press said stands through the hold,
+// as a Return held on Reboot leaves it armed (Y2YBTS, 2026-11-12).
+function heldDoes(act, mode) {
+    return still(mode) ? repeats(act) : act !== "run";
 }
 
 // Where the keys stand between presses: the count typed so far, as

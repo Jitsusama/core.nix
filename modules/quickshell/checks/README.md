@@ -4,13 +4,16 @@ The shell's checks, one file for each place the launcher names and for each
 surface beside it, named as the launcher names it: `heat.nix` for Heat,
 `clipboard.nix` for Copies. Two places' changes then never share a file,
 where one `checks.nix` holding all of them made every change wait its turn.
+Many entries because each place keeps its own file: grouping them in folders
+would only add a level every place's checks are found through.
 
 A check goes with the one place whose QML it copies. One copying several
 places', or the launcher's own machinery (its prompt, rows, keys, pacing and
 the launcher on niri), goes in `core.nix`, and the kinds that are no place's
 have their own: `shell.nix` for how the shell is built and linted,
-`looks.nix`, `words.nix`, `terminal.nix`, `command-line.nix`, and
-`turned-on.nix` for which places a machine turns on.
+`looks.nix`, `words.nix`, `terminal.nix`, `command-line.nix`,
+`ready-rows.nix` for the rows the daemons serve, and `turned-on.nix` for
+which places a machine turns on.
 
 `helpers.nix` holds what more than one file uses: stand-ins for the shell's
 singletons, the shell as the account gets it, and the harnesses that run it

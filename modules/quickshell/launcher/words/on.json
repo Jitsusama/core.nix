@@ -15,7 +15,12 @@
         "moon"
       ],
       "said": {
-        "from": "from the clock"
+        "from": "from the clock",
+        "lead": "week {week}, day {day} of {days}, with {left} left in the year; {season} has {seasonLeft} to go.",
+        "day": "{count} day",
+        "days": "{count} days",
+        "left": "{days} left",
+        "quarterDay": "day {day} of {days}"
       }
     },
     {
@@ -56,7 +61,14 @@
         "tai",
         "gps time",
         "sidereal time"
-      ]
+      ],
+      "said": {
+        "inZone": "{time} in {zone}'s zone, {offset}",
+        "here": "{time}, {offset}",
+        "kept": "the clock is kept true",
+        "unkept": "the clock isn't kept true yet",
+        "none": "nothing keeps the clock true"
+      }
     },
     {
       "id": "location",

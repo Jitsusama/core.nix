@@ -127,6 +127,7 @@
     "launcher/Ago.js"
     "launcher/Keeping.js"
     "launcher/Moment.js"
+    "launcher/NowDrawers.js"
     "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
@@ -263,6 +264,7 @@
   ];
   "launcher/ReadyRows.qml" = [
     "Fuzzy.js"
+    "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
     "launcher/ReadyRows.js"
@@ -297,6 +299,7 @@
   ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
+    "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
   "launcher/Traffic.qml" = [

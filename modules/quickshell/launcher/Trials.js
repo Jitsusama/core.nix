@@ -155,8 +155,20 @@ function picked(trial, at, row, where) {
     if (!(trial && row)) {
         return trial;
     }
-    return Object.assign({}, trial, { picked: String(row.key ?? ""), kind: String(row.kind ?? ""),
+    // An answer keeps an empty key, since nothing is learned of it, so it's
+    // counted by the name answerCounted gives it.
+    const named = String(row.counted ?? row.key ?? "");
+    return Object.assign({}, trial, { picked: named, kind: String(row.kind ?? ""),
         typed: String(where?.typed ?? ""), depth: where?.depth ?? 0, ms: at - trial.at });
+}
+
+// What an answer is counted as when Return picks it: by the word its
+// source answers with ("ask", "sum"), else by what it's about, as
+// Machine's Memory is "machine:memory", else as an answer, so a pick of one
+// is never a miss (1JQPPC, 2026-11-11).
+function answerCounted(answers, about) {
+    const kind = String(answers || about || "");
+    return kind === "" ? "answer" : `answer:${kind}`;
 }
 
 // The trial as it closed at `at`: how long it was open, and a miss if

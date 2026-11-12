@@ -242,6 +242,28 @@ function drawer(plate) {
     return Object.keys(out).length > 0 ? out : null;
 }
 
+// A drawer with its row's acts (the drawer spec's part 6): its row's
+// verbs in their order, each by its name, Return's first by ↵ and the
+// rest by their own keys where they have one (`actKey`, KP0L6A's keyed
+// acts; VKCF3Z, fa0dfe45), so the drawer says what the row does and by
+// which key. A drawer giving its own acts keeps them, and one for a row of
+// no verbs is given back as it is, as none stays none.
+function acted(plate, row) {
+    if (!plate || plate.acts !== undefined || typeof row?.verbs !== "function") {
+        return plate;
+    }
+    const named = (row.verbs() ?? []).filter(one => String(one?.name ?? "") !== "");
+    if (named.length === 0) {
+        return plate;
+    }
+    return Object.assign({}, plate, {
+        acts: named.map((one, at) => ({
+            name: String(one.name),
+            key: at === 0 ? "\u21b5" : String(one.actKey ?? "")
+        }))
+    });
+}
+
 // Whether a drawer says anything its row doesn't: a fact, a picture, a
 // preview (a picture, or a file's first lines), or words, its title
 // among them, other than the row's own name, side and note. One that

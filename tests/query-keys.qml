@@ -727,6 +727,16 @@ QtObject {
         for (const act of ["wordNext", "wordBack", "wordEnd"])
             holds(`${act} repeats while held`, Keys.repeats(act), true);
         holds("x is once a press", Keys.repeats("deleteLetter"), false);
+        // A held key's repeat that does nothing takes no key, so a Return
+        // held on Reboot leaves it armed, rather than letting it go and
+        // making the next Return arm it again (Y2YBTS, 2026-11-12).
+        for (const mode of ["insert", "find", "normal", "visual", "page"])
+            holds(`a held Return does nothing more in ${mode}`, Keys.heldDoes("run", mode), false);
+        holds("a held j moves on in normal", Keys.heldDoes("next", "normal"), true);
+        holds("a held x does nothing more", Keys.heldDoes("deleteLetter", "normal"), false);
+        holds("a held Backspace deletes on in insert", Keys.heldDoes("deleteBack", "insert"),
+            true);
+        holds("and a held left arrow moves on", Keys.heldDoes("caretLeft", "find"), true);
 
         // [what, act, words, caret, count, { text, at } after]
         const edits = [
@@ -936,6 +946,15 @@ QtObject {
         for (const act of ["seekNext", "seekPrevious"])
             holds(`the drawer's search: ${act} repeats while held`, Keys.repeats(act), true);
         holds("the drawer's search: seek is once a press", Keys.repeats("seek"), false);
+        // za opens or folds the drawer's nerdy bits, as Vim's za a fold, once
+        // a press, in the drawer and on the rows alike.
+        holds("the drawer: za opens or folds its nerdy bits", typed(into.concat(["z", "a"])).acts,
+            ["normal", "drawer", "fold"]);
+        holds("the drawer: za twice folds them back",
+            typed(into.concat(["z", "a", "z", "a"])).acts, ["normal", "drawer", "fold", "fold"]);
+        holds("the drawer: a fold is once a press", Keys.repeats("fold"), false);
+        holds("the rows: za opens or folds the drawer's nerdy bits too",
+            typed(["Escape", "z", "a"]).acts, ["normal", "fold"]);
         holds("the drawer's search: / on the rows is no page's search",
             typed(["Escape", "/", "x", "Return"]).acts.includes("seek"), false);
 

@@ -49,6 +49,7 @@ import QtQuick
 import "Zones.js" as Zones
 import "Ago.js" as Ago
 import "Moment.js" as Moment
+import "NowDrawers.js" as NowDrawers
 import "Numbers.js" as Numbers
 import "Keeping.js" as Keeping
 
@@ -153,6 +154,11 @@ Provider {
             glyph: Theme.glyph.clock,
             rows: back.concat(parts, ours ? keeping() : []),
             note: moved ? Location.movedSaid : note,
+            // The time here is a thing with a drawer, a little more than
+            // its line, made only as it's shown (Joel, 2026-11-11: "side
+            // drawers for just about every item").
+            thing: ours,
+            drawer: ours ? () => provider.timeDrawer(told) : undefined,
             // The time here counts, so it's asked again each second while
             // it's shown or stepped into.
             live: ours ? provider : null
@@ -164,9 +170,50 @@ Provider {
         return String((Words.of(id).said ?? {})[key] ?? "");
     }
 
-    // The zone the clock keeps, a thing: its offset and abbreviation, when
-    // it next changes and to what, and which tzdata told it, each a figure
-    // a step in and a fact in its drawer.
+    // How the clock here is kept, as Time's facts say it: the Clock row's
+    // side, and which of Time's words say it in a sentence, or "" for
+    // either while timekeeping is still asked.
+    function keptSaid() {
+        const waiting = Timekeeping.watching > 0 && !Timekeeping.refused;
+        if (!kept)
+            return waiting ? { side: "\u2026", clock: "" }
+                : { side: clockSaid.nothing, clock: "none" };
+        return kept.synchronised ? { side: clockSaid.synchronised, clock: "kept" }
+            : { side: clockSaid.unsynchronised, clock: "unkept" };
+    }
+
+    // Time's drawer: what the time here means, in Toronto's zone and how
+    // far from UTC, and whether the clock is kept true, then the zone, UTC
+    // and the clock, as VKCF3Z's mock has them (NowDrawers.js). It reads
+    // as it's drawn, the answer being asked again each second it's shown.
+    function timeDrawer(told) {
+        const now = Date.now();
+        const zone = told.rows.find(row => row.part === "zone") ?? null;
+        const keptAs = keptSaid();
+        return NowDrawers.time({
+            time: told.headline,
+            zone: zone ? zone.text : "",
+            zoneNote: zone ? zone.note : "",
+            offset: Zones.offset(-new Date(now).getTimezoneOffset()),
+            utc: Moment.utcClock(now).slice(0, 5),
+            clock: keptAs.clock,
+            clockSide: keptAs.side,
+            // Raw, as the nerdy bits are: Time's own rows group the
+            // seconds, and these copy as a program would read them.
+            unix: String(Moment.unix(now)),
+            julian: Numbers.format(Moment.julian(now), 5, "", settings.point ?? "."),
+            said: Words.of("time").said ?? {},
+            names: { title: Words.name("time"), zone: Words.name("time:zone"),
+                utc: Words.name("time:utc"), clock: Words.name("time:clock"),
+                unix: Words.name("time:unix"), julian: Words.name("today:julian") }
+        });
+    }
+
+    // The zone the clock keeps, a figure copying its name: its offset and
+    // abbreviation, when it next changes and to what, and which tzdata told
+    // it are facts in its drawer, never a step of copies alone (Joel,
+    // 2026-11-11: "if they have nothing under them, we shouldn't open a
+    // submenu for them").
     function zoneThing(told, zone, now) {
         const said = told.rows.find(row => row.part === "zone") ?? null;
         const minutes = -new Date(now).getTimezoneOffset();
@@ -183,26 +230,25 @@ Provider {
             { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
         ].filter(part => part.side !== "");
         const name = said ? said.text : Zones.offset(standing[0]);
-        return thingRow({
+        return copyRow({
             key: "time:zone",
             name: Words.name("time:zone"),
             side: name,
+            copy: name,
             note: said ? said.note : "",
             glyph: Theme.glyph.zone,
             thing: true,
             drawer: () => ({
                 eyebrow: Words.name("time:zone:plate"),
                 title: name,
+                // What the next change turns it to stays beside when it
+                // comes, as its row's note said it; the database's note
+                // only says what tzdata is.
                 facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
-                    value: part.side }))
+                    value: part.id === "next" && part.note !== ""
+                        ? `${part.side} \u00b7 ${part.note}` : part.side }))
             })
-        }, () => parts.map(part => copyRow({
-            name: Words.name(`time:zone:${part.id}`),
-            side: part.side,
-            copy: part.side,
-            note: part.note,
-            glyph: ""
-        })));
+        });
     }
 
     // The time as other clocks keep it, each to the second, a figure that
