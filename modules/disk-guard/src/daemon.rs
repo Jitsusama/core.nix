@@ -1666,8 +1666,18 @@ impl Guard {
         Ok(())
     }
 
-    /// The garbage config and the store's device, for a system daemon.
+    /// Whether the store's runtime roots can be read, without which the
+    /// store isn't touched (config.rs says why).
+    fn sees_processes(&self) -> bool {
+        self.config.nix.runtime_roots
+    }
+
+    /// The garbage config and the store's device, for a system daemon
+    /// that can see what running programs hold.
     fn store(&self) -> Option<(&crate::config::Garbage, u64)> {
+        if !self.sees_processes() {
+            return None;
+        }
         let garbage = &self.config.system.as_ref()?.garbage;
         Some((garbage, pool(&self.config.nix.store).ok()?))
     }
@@ -1707,8 +1717,9 @@ impl Guard {
         let Some((_, device)) = self.store() else {
             // A user daemon no system daemon answers collects alone, as any
             // of Nix's clients may: the nix-daemon refuses only to ignore
-            // liveness.
-            let alone = self.config.system.is_none() && !self.system_heard;
+            // liveness. Not where processes can't be read, either: the
+            // guard can't then hold back what they use for Nix to check.
+            let alone = self.config.system.is_none() && !self.system_heard && self.sees_processes();
             return match pool(&self.config.nix.store) {
                 Ok(device) if alone => vec![self.gc_offer(tick, device)],
                 _ => Vec::new(),

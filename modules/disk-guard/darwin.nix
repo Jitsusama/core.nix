@@ -38,6 +38,9 @@ in
       # kept for one.
       boot = lib.mkDefault "/var/empty";
       nix.bin = lib.mkDefault nix;
+      # A Mac has no /proc to read what running programs hold, so the store
+      # is never collected by the guard here (src/config.rs says why).
+      nix.runtime_roots = lib.mkDefault false;
       # A Mac has no scopes to confine a run to, and no cgroups to limit.
       dedupe.systemd_run = lib.mkDefault null;
       sources = {

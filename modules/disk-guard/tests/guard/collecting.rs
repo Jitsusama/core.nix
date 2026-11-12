@@ -375,6 +375,30 @@ fn routine_upkeep_lists_garbage_at_idle_and_takes_what_is_old() {
     assert_eq!(log.len(), 2, "{log:?}");
 }
 
+// The store's runtime roots are read from /proc, which a Mac doesn't
+// have, so a guard there saw no running program holding anything: on 12
+// November one deleted store files two running sessions had mapped.
+// Where they can't be read, as a Mac's config says by default, a nearly
+// full store is neither listed nor collected, by its own batches or Nix's.
+#[test]
+fn a_guard_that_cant_read_the_processes_leaves_the_store_alone() {
+    let store = Store::new();
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mut config = store.config("100%", "100%");
+    config.nix.runtime_roots = false;
+    let mut guard = store.guard(config);
+    for _ in 0..20 {
+        guard.step(&tick(), &CALM).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(old.exists(), "collected blind: {:?}", store.log());
+    assert_eq!(
+        store.log(),
+        Vec::<String>::new(),
+        "the store was listed or collected"
+    );
+}
+
 #[test]
 fn garbage_a_running_build_holds_is_left_for_a_later_pass() {
     // Nix would refuse it, and each refusal costs a delete its whole look
