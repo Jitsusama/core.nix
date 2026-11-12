@@ -211,8 +211,9 @@ function shaped(one, at) {
 // A drawer as plain JSON (Drawer.qml's shape): its eyebrow, title and
 // body, its facts each a label and a value, a value not read yet null as
 // the drawer's placeholder stands for, a heading as its own, and the
-// moment's groups of facts; a picture by its path. A styled body is said
-// as its words, its markup taken away.
+// moment's groups of facts; its nerdy bits, folded or not, each a label
+// and a value, one with none left out as the drawer leaves it; a picture
+// by its path. A styled body is said as its words, its markup taken away.
 function drawer(plate) {
     const out = {};
     for (const key of ["eyebrow", "title"]) {
@@ -234,6 +235,11 @@ function drawer(plate) {
         .filter(one => one !== null)).filter(group => group.length > 0);
     if (groups.length > 0) {
         out.groups = groups;
+    }
+    const nerd = (plate.nerd ?? []).map(fact)
+        .filter(one => one !== null && one.value !== null && one.value !== "");
+    if (nerd.length > 0) {
+        out.nerd = nerd;
     }
     const picture = words(plate.picture);
     if (picture !== "") {
