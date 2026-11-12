@@ -4,8 +4,34 @@
 // process this answers first, refusing it, so no default asks Joel or acts
 // for an agent unasked. placeOf, fromAgents and refused are
 // agents-ask-first.rules', read first.
+//
+// One process of agents.slice keeps what logind's defaults give the seat's
+// session: mycelium's node, which holds off a suspend or a shutdown while
+// it keeps work for the machine, as logind would let any process of
+// Joel's active session do. Held sessions run in scopes of their own
+// beside it, so this reaches the node alone, and holding off sleep is all
+// it grants.
+var holdsOffSleep = [
+  "org.freedesktop.login1.inhibit-block-sleep",
+  "org.freedesktop.login1.inhibit-delay-sleep",
+  "org.freedesktop.login1.inhibit-block-shutdown",
+  "org.freedesktop.login1.inhibit-delay-shutdown",
+];
+
+function mycelium(place) {
+  return place !== null && /\/agents\.slice\/mycelium\.service(\/|$)/.test(place);
+}
+
 polkit.addRule(function (action, subject) {
   var place = placeOf(subject);
+  if (
+    holdsOffSleep.indexOf(action.id) >= 0 &&
+    subject.local &&
+    subject.active &&
+    mycelium(place)
+  ) {
+    return polkit.Result.YES;
+  }
   if (fromAgents(place)) {
     return refused(action, subject, place);
   }
