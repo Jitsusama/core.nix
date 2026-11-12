@@ -1498,7 +1498,8 @@
     with none waiting dropped, tells a watch each as one record, says an act on the bus with the
     token first, never takes the name from another server, and keeps its history and ids over a
     restart; each notice's rows list its card's acts in its order, in three places each worded for
-    its list, signed as the desktop knows its sender
+    its list, signed as the desktop knows its sender; and a notice read where it came from closes,
+    saying where it was read, while one read here stays open
   '';
   notices-passes-clippy = ''
     clippy finds nothing in the notices daemon or its tests
