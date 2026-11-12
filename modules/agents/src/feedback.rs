@@ -107,7 +107,11 @@ fn refused(code: &str, why: &str) -> Value {
 /// The answer to Joel's feedback `said` (`{landing, words}`, the landing
 /// by its record's key), sent through the node at `node` and kept in the
 /// file at `kept`, at `at`, in whole seconds since the epoch: who it went
-/// to and the message's id, or why it didn't go.
+/// to and the message's id, or why it didn't go. Who it went to is the
+/// landing session's name, its quest's title where it has one, since Joel
+/// reads it; it's empty for a session that has ended. Why it didn't go is
+/// a code the shell words: `no-one`, `no-mesh`, or `refused` with the
+/// node's reason.
 pub fn answer(
     said: &Value,
     landings: &Landings,
@@ -124,14 +128,14 @@ pub fn answer(
         return refused("not-an-ask", &format!("no landing is {key:?}"));
     };
     let Some(group) = group_of(&landing) else {
-        return refused("unsent", "the landing names no quest or session to tell");
+        return refused("no-one", "the landing names no quest or session to tell");
     };
     let Some(node) = node else {
-        return refused("unsent", "this machine runs no node to send it through");
+        return refused("no-mesh", "this machine runs no node to send it through");
     };
     let id = match sent(node, &group, &text_of(&landing, words)) {
         Ok(id) => id,
-        Err(why) => return refused("unsent", &format!("the node didn't send it: {why}")),
+        Err(why) => return refused("refused", &why.to_string()),
     };
     let line = json!({"at": at, "landing": key, "ref": landing["ref"], "url": landing["url"],
         "quest": landing["quest"], "address": landing["session"]["address"],
@@ -139,11 +143,8 @@ pub fn answer(
     // Sent is what Joel asked for, so a file that can't be written says
     // so beside it rather than taking back what went.
     let kept = keep(kept, &line).err().map(|why| why.to_string());
-    let to = group
-        .split_once('.')
-        .map_or("", |(_, to)| to)
-        .to_uppercase();
-    json!({"sent": id, "to": to, "unkept": kept})
+    json!({"sent": id, "to": landing["session"]["title"].as_str().unwrap_or(""),
+        "unkept": kept})
 }
 
 #[cfg(test)]
@@ -156,7 +157,7 @@ mod tests {
     fn landing(quest: &str, address: &str) -> Value {
         json!({"ref": "core.nix#7", "what": "Quiet Rows", "quest": quest,
             "person": "Open Agents and look.", "url": "https://example.org/7",
-            "session": {"address": address}})
+            "session": {"address": address, "title": "The Kelp Quest"}})
     }
 
     fn held(one: &Value) -> Landings {
@@ -239,7 +240,11 @@ mod tests {
             &kept,
             1_794_470_400,
         );
-        assert_eq!(answer, json!({"sent": "m-1", "to": "KELP", "unkept": null}));
+        assert_eq!(
+            answer,
+            json!({"sent": "m-1", "to": "The Kelp Quest", "unkept": null}),
+            "sent to the landing's quest, named as Joel reads it"
+        );
         let asked: Value = serde_json::from_str(&asked.join().expect("the node")).expect("JSON");
         assert_eq!(
             asked,
@@ -309,12 +314,23 @@ mod tests {
             [
                 json!("not-an-ask"),
                 json!("not-an-ask"),
-                json!("unsent"),
-                json!("unsent")
+                json!("no-mesh"),
+                json!("refused")
             ],
             "no words, no such landing, no node, and the node refusing"
         );
         asked.join().expect("the node");
+        assert_eq!(
+            code(answer(
+                &ask("landed:agents:s 7 at", "hi"),
+                &held(&landing("", "")),
+                Some(&socket),
+                &kept,
+                at
+            )),
+            json!("no-one"),
+            "a landing naming no quest or session has no one to tell"
+        );
         assert!(!kept.exists(), "nothing unsent is kept");
     }
 }

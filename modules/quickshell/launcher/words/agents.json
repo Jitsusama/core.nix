@@ -84,6 +84,9 @@
         "yesterday": "yesterday",
         "sending": "sending",
         "sent": "sent to {to}",
+        "sentAway": "sent to whoever landed it",
+        "toNoOne": "no one to tell: the landing names no quest or session",
+        "noMesh": "not sent: the mesh isn't running",
         "unsent": "not sent: {why}"
       },
       "tells": {

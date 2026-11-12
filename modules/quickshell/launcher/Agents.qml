@@ -1085,7 +1085,9 @@ Provider {
     // session, as a finding the agents daemon sends and keeps
     // (modules/agents/src/feedback.rs), so what he makes of it reaches
     // whoever can act on it (WCJQSG, 2026-11-11). The foot says where they
-    // went, or why they didn't.
+    // went, by the quest's title or the session's name, never an address,
+    // or why they didn't, in words for Joel rather than the plumbing's
+    // (VKCF3Z, 2026-11-12).
     property string fedBack: ""
     function feedback(key, words) {
         const text = words.trim();
@@ -1095,8 +1097,13 @@ Provider {
         fedBack = String(said.sending ?? "");
         rowsKind?.ask({ ask: "feedback", landing: `landed:agents:${key}`, words: text },
             answer => {
+                const to = String(answer?.to ?? "");
+                const why = { "no-one": said.toNoOne, "no-mesh": said.noMesh }[
+                    String(answer?.error?.code ?? "")];
                 fedBack = answer?.sent
-                    ? String(said.sent ?? "").replace("{to}", String(answer.to ?? ""))
+                    ? to === "" ? String(said.sentAway ?? "")
+                        : String(said.sent ?? "").replace("{to}", to)
+                    : why !== undefined ? String(why)
                     : String(said.unsent ?? "")
                         .replace("{why}", String(answer?.error?.message ?? ""));
             });
