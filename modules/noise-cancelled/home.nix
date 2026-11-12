@@ -23,7 +23,10 @@
 # jitsusama.noise-cancelled.refuseWhile says not to. A cleaned pick is kept
 # in ~/.local/state/noise-cancelled/cleaner, which the service reads each
 # time it loads the model, so his next call cleans as he picked, in place
-# of jitsusama.noise-cancelled.cleaner, with nothing restarted.
+# of jitsusama.noise-cancelled.cleaner, with nothing restarted. Each clip
+# is scored by DNSMOS too (models.nix), its marks shown after the pick, and
+# the pick and every clip's marks, numbers alone and never the sound, kept
+# beside it in ~/.local/state/noise-cancelled/scored.
 {
   config,
   lib,
@@ -34,6 +37,8 @@ let
   cfg = config.jitsusama.noise-cancelled;
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ./model.nix { };
+  # The trial's models: the cleaner's, and the scorer's beside it.
+  models = pkgs.callPackage ./models.nix { };
   # Where a pick by ear is kept, in the account's state folder (%S).
   chosen = "%S/noise-cancelled/cleaner";
   refusals = pkgs.writeText "noise-cancelled-refusals.json" (
@@ -103,7 +108,7 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/noise-cancelled trial %t/daemons/noise-cancelled.sock"
-        "${model} ${cfg.cleaner} ${refusals} ${chosen}"
+        "${models} ${cfg.cleaner} ${refusals} ${chosen}"
       ];
       StateDirectory = "noise-cancelled";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];

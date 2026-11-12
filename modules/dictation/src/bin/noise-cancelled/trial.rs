@@ -8,8 +8,15 @@
 //! What he said is held only here, in memory: never on disk, and the
 //! service may reach no network. It's dropped on a pick, a discard, five
 //! minutes without an act, or the daemon's exit.
+//!
+//! Each clip is scored too (score.rs), and its marks revealed with the
+//! rest. A pick keeps a line of numbers and names beside the pick's file,
+//! in `scored`: when, which microphone and output, which way was picked,
+//! and every way's marks and cost, so the scorer can be checked against
+//! his ear before it's trusted to choose. The sound itself is never kept.
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -24,8 +31,10 @@ pub use dictation::microphone::{Microphone, default_microphone};
 use serde_json::{Value, json};
 
 use crate::chosen::Chosen;
+use crate::defaults::{default_microphone_is, default_output, dumped};
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
+use crate::score::{self, Marks};
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -176,6 +185,10 @@ pub struct Trial {
     /// Each letter's way, kept past a pick for the reveal.
     ways: Vec<Way>,
     costs: BTreeMap<&'static str, f64>,
+    /// Each way's marks by the scorer, once it's heard them.
+    marks: BTreeMap<&'static str, Marks>,
+    /// Whether this recording's pick and marks are kept yet.
+    kept: bool,
     picked: Option<(usize, Way)>,
     playing: Option<(usize, Child)>,
     /// Counts each recording and discard, so a thread whose recording has
@@ -210,6 +223,8 @@ impl Trial {
                 clips: Vec::new(),
                 ways: Vec::new(),
                 costs: BTreeMap::new(),
+                marks: BTreeMap::new(),
+                kept: false,
                 picked: None,
                 playing: None,
                 generation: 0,
@@ -253,6 +268,7 @@ impl Trial {
             "picked": picked,
             "revealed": revealed,
             "costs": self.picked.map(|_| &self.costs),
+            "marks": self.picked.and_then(|_| self.marked()),
             "running": self.running.cleaner().name(),
         })
     }
@@ -282,7 +298,55 @@ impl Trial {
         self.clips.clear();
         self.ways.clear();
         self.costs.clear();
+        self.marks.clear();
+        self.kept = false;
         self.picked = None;
+    }
+
+    /// Every way's marks, once there are any.
+    fn marked(&self) -> Option<Value> {
+        if self.marks.is_empty() {
+            return None;
+        }
+        let each: serde_json::Map<String, Value> = self
+            .marks
+            .iter()
+            .map(|(way, marks)| ((*way).to_owned(), marks.said()))
+            .collect();
+        Some(Value::Object(each))
+    }
+
+    /// Keeps the pick and every way's marks beside the pick's file, once
+    /// both are in, and only once a recording.
+    fn keep(&mut self) {
+        let Some((_, way)) = self.picked else { return };
+        if self.kept || self.marks.is_empty() {
+            return;
+        }
+        let Some(file) = self.running.beside("scored") else {
+            return;
+        };
+        self.kept = true;
+        let line = json!({
+            "at": now(),
+            "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
+            "output": self.output,
+            "picked": way.name(),
+            "marks": self.marked(),
+            "costs": &self.costs,
+        });
+        // Its folder made here too, since a raw pick writes no pick file.
+        let appended = file
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| OpenOptions::new().create(true).append(true).open(&file))
+            .and_then(|mut kept| writeln!(kept, "{line}"));
+        if let Err(why) = appended {
+            eprintln!(
+                "noise-cancelled: keeping the marks in {}: {why}",
+                file.display()
+            );
+        }
     }
 
     /// Refuses to record, with why.
@@ -423,7 +487,19 @@ impl Trial {
         self.clips.clear();
         self.picked = Some((letter, way));
         self.stage = Stage::Picked;
+        self.keep();
         Ok(())
+    }
+
+    /// Takes the scorer's marks for the recording `generation` counted.
+    /// Marks for a recording since let go are dropped.
+    pub fn scored(&mut self, generation: u64, marks: BTreeMap<&'static str, Marks>) {
+        if generation != self.generation || marks.is_empty() {
+            return;
+        }
+        self.marks = marks;
+        self.keep();
+        self.changed();
     }
 
     /// Lets go of clips nobody has acted on for a while.
@@ -508,65 +584,6 @@ fn refused(refusal: &Refusal) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// What PipeWire holds now, as pw-dump says it.
-fn dumped(dump: &str) -> Result<Value, String> {
-    let out = Command::new(dump)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|why| format!("asking PipeWire: {why}"))?;
-    serde_json::from_slice(&out.stdout).map_err(|why| format!("reading PipeWire: {why}"))
-}
-
-/// The default output in a dump, by its description: what the clips
-/// play on.
-pub fn default_output(dump: &Value) -> Option<String> {
-    let objects = dump.as_array()?;
-    let default = objects
-        .iter()
-        .filter(|object| object["props"]["metadata.name"] == "default")
-        .filter_map(|object| object["metadata"].as_array())
-        .flatten()
-        .find(|entry| entry["key"] == "default.audio.sink")?;
-    let name = default["value"]["name"].as_str()?;
-    objects.iter().find_map(|object| {
-        let props = &object["info"]["props"];
-        (props["node.name"] == name && props["media.class"] == "Audio/Sink").then(|| {
-            props["node.description"]
-                .as_str()
-                .unwrap_or(name)
-                .to_owned()
-        })
-    })
-}
-
-/// Makes a node the default microphone, as choosing it in Sound does:
-/// `WirePlumber`'s own configured default, which it keeps.
-fn default_microphone_is(metadata: &str, name: &str) -> Result<(), String> {
-    let value = json!({"name": name}).to_string();
-    let status = Command::new(metadata)
-        .args([
-            "-n",
-            "default",
-            "0",
-            "default.configured.audio.source",
-            &value,
-        ])
-        .arg("Spa:String:JSON")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|why| format!("choosing the microphone: {why}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "choosing the microphone: pw-metadata said {status}"
-        ))
-    }
-}
-
 /// Hears the recording out, cleans it every way, and offers the clips.
 fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, models: &Path) {
     let wanted = usize::try_from(SECONDS * u64::from(RATE) * 4).unwrap_or(0);
@@ -640,6 +657,21 @@ fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, mode
         }
     }
     trial.changed();
+    // Scored once the clips are offered, so he can listen while it works,
+    // with the lock let go; the marks wait for his pick to be shown.
+    let heard: Vec<(&'static str, Arc<Vec<f32>>)> = trial
+        .clips
+        .iter()
+        .map(|clip| (clip.way.name(), Arc::clone(&clip.samples)))
+        .collect();
+    drop(trial);
+    if heard.is_empty() {
+        return;
+    }
+    let marks = score::every_way(models, &heard);
+    if let Some(trial) = me.upgrade() {
+        trial.lock().scored(generation, marks);
+    }
 }
 
 /// The recording, every way, with each way's share of one core while it
@@ -674,7 +706,7 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
 
 /// The processor time this thread has spent, from the kernel's
 /// scheduler statistics, which count it to the nanosecond.
-fn spent() -> Duration {
+pub fn spent() -> Duration {
     std::fs::read_to_string("/proc/thread-self/schedstat")
         .ok()
         .and_then(|stat| stat.split_whitespace().next()?.parse().ok())

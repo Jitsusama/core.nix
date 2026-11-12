@@ -5,6 +5,7 @@
 //! ```text
 //! noise-cancelled serve MODELS [CLEANER [CHOSEN]]
 //! noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32
+//! noise-cancelled score MODELS < heard.f32
 //! noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]
 //! ```
 //!
@@ -23,15 +24,21 @@
 //! `clean` cleans raw 32-bit float samples, one channel at 48 kHz, from
 //! standard input to standard output, as a check hears it.
 //!
+//! `score` says how good raw samples sound, as above, by the DNSMOS model
+//! in MODELS (score.rs): a line of JSON with its voice, background and
+//! overall marks out of 5.
+//!
 //! `trial` answers the launcher's Choose by Ear on SOCKET, or the socket
 //! systemd hands it (trial.rs): RUNNING is the cleaner the microphones run,
 //! and REFUSALS a JSON file of what refuses a recording while it holds;
 //! a cleaned pick is kept in CHOSEN.
 
 mod chosen;
+mod defaults;
 mod denoise;
 mod loudness;
 mod pipe;
+mod score;
 mod trial;
 mod worker;
 
@@ -59,6 +66,7 @@ fn main() -> ExitCode {
         ["clean", models, cleaner] => {
             Cleaner::named(cleaner).and_then(|cleaner| clean(Path::new(models), cleaner))
         }
+        ["score", models] => score(Path::new(models)),
         ["trial", socket, models, running, refusals, ref chosen @ ..] if chosen.len() <= 1 => {
             Cleaner::named(running).and_then(|running| {
                 trial::serve(
@@ -73,6 +81,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: noise-cancelled serve MODELS [CLEANER [CHOSEN]]\n       \
                  noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32\n       \
+                 noise-cancelled score MODELS < heard.f32\n       \
                  noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]"
             );
             return ExitCode::from(2);
@@ -103,19 +112,38 @@ fn handed() -> Option<UnixListener> {
     given.try_clone().ok()
 }
 
-/// Cleans standard input to standard output, a frame at a time, the last
-/// frame filled out with silence.
-fn clean(models: &Path, with: Cleaner) -> Result<(), String> {
+/// The raw samples on standard input.
+fn heard() -> Result<Vec<f32>, String> {
     let mut heard = Vec::new();
     std::io::stdin()
         .read_to_end(&mut heard)
         .map_err(|why| format!("reading what was heard: {why}"))?;
-    let samples: Vec<f32> = heard
+    Ok(heard
         .as_chunks::<4>()
         .0
         .iter()
         .map(|sample| f32::from_le_bytes(*sample))
-        .collect();
+        .collect())
+}
+
+/// Says how good standard input sounds.
+fn score(models: &Path) -> Result<(), String> {
+    let marks = score::Scorer::load(models)?.marks(&heard()?)?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "voice": marks.voice,
+            "background": marks.background,
+            "overall": marks.overall,
+        })
+    );
+    Ok(())
+}
+
+/// Cleans standard input to standard output, a frame at a time, the last
+/// frame filled out with silence.
+fn clean(models: &Path, with: Cleaner) -> Result<(), String> {
+    let samples = heard()?;
     let mut denoiser = Model::load(models, with)?.denoiser()?;
     let mut cleaned = Vec::with_capacity(samples.len() * 4);
     for chunk in samples.chunks(FRAME) {
