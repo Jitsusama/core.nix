@@ -991,4 +991,129 @@ mod tests {
     fn nothing_held_makes_no_rows() {
         assert_eq!(read(Held::default(), 0, &words()), Ready::default());
     }
+
+    /// The memory as a machine in use reads it: swapping, paging and
+    /// faulting, with something waiting to be written and huge pages.
+    fn memory_in_use() -> Value {
+        let mut m = memory();
+        for (field, bytes) in [
+            ("MemAvailable", 8.0 * GB),
+            ("MemFree", 1.024 * GB),
+            ("Buffers", 0.2 * GB),
+            ("Dirty", 0.01 * GB),
+            ("Slab", 0.5 * GB),
+            ("SwapTotal", 8.0 * GB),
+            ("SwapFree", 6.0 * GB),
+            ("SwapCached", 0.1 * GB),
+            ("Committed_AS", 12.0 * GB),
+            ("CommitLimit", 16.0 * GB),
+            ("AnonHugePages", 0.2 * GB),
+        ] {
+            m["info_b"][field] = json!(bytes);
+        }
+        m["pressure"]["some"]["total_us"] = json!(649_860_568);
+        for (field, rate) in [
+            ("paged_in_b_per_s", 4096.0),
+            ("paged_out_b_per_s", 0.0),
+            ("faults_per_s", 120.0),
+            ("major_faults_per_s", 2.0),
+            ("swapped_in_b_per_s", 0.0),
+            ("swapped_out_b_per_s", 8192.0),
+            ("compressed_in_b_per_s", 0.0),
+            ("compressed_out_b_per_s", 0.0),
+        ] {
+            m[field] = json!(rate);
+        }
+        m["oom_kills"] = json!(1);
+        m["vmstat"] = json!({ "pgpgin": 81_920, "pgpgout": 40_960, "pgfault": 1_234_567,
+            "pgmajfault": 89, "pswpin": 12, "pswpout": 345, "zswpin": 0, "zswpout": 0,
+            "oom_kill": 1 });
+        m
+    }
+
+    /// Every row Memory and the Uptime serve has a drawer giving a little
+    /// more than its line (Joel, 2026-11-11 22:00): a row holding more,
+    /// what each a step in says; any other, the fields Linux keeps it
+    /// from, by their own names, and the file it's read from.
+    #[test]
+    fn every_memory_and_uptime_row_has_a_drawer_saying_more() {
+        let using = [json!({ "key": "using:memory:1", "name": "firefox",
+            "resident_b": 2.0 * GB, "processes": 12 })];
+        let (m, b) = (memory_in_use(), boot());
+        let held = Held {
+            memory: Some(&m),
+            boot: Some(&b),
+            using: Some(&using),
+            ..Held::default()
+        };
+        let rows = read(held, 7_200_000, &words()).rows;
+        let bare: Vec<&Value> = rows
+            .iter()
+            .filter(|row| {
+                let drawer = &row["drawer"];
+                let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+                !(drawer["title"].is_string() && (facts || drawer["body"].is_string()))
+            })
+            .map(|row| &row["key"])
+            .collect();
+        assert!(bare.is_empty(), "rows whose drawer says nothing more: {bare:?}");
+        let facts = |id: &str| -> Vec<String> {
+            row(&rows, id)["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .collect()
+        };
+        assert_eq!(
+            facts("memory:used"),
+            [
+                "MemTotal=15,625,000 kB",
+                "MemAvailable=7,812,500 kB",
+                "MemFree=1,000,000 kB",
+                "Read From=/proc/meminfo"
+            ],
+            "Used says the fields it's worked out from, as Linux says them"
+        );
+        assert_eq!(
+            facts("memory:pressure-10"),
+            [
+                "some avg10=12.00",
+                "full avg10=2.00",
+                "some total=649,860,568 \u{b5}s",
+                "Read From=/proc/pressure/memory"
+            ],
+            "a pressure's window says the kernel's own line"
+        );
+        assert_eq!(
+            facts("memory:faults"),
+            [
+                "pgfault=1,234,567",
+                "pgmajfault=89",
+                "Read From=/proc/vmstat"
+            ],
+            "a rate says the counts since startup it's measured from"
+        );
+        assert_eq!(
+            facts("memory:pressure")[0],
+            "Last 10 Seconds=12% something waited \u{b7} 2% everything",
+            "a row holding more says what each a step in says"
+        );
+        let drawer = &row(&rows, "memory:counts")["drawer"];
+        assert_eq!(
+            (drawer["facts"].as_array().map(Vec::len), drawer["body"].as_str()),
+            (Some(8), Some("and 10 more, a step in")),
+            "Every Count says its first eight and how many more"
+        );
+        assert_eq!(
+            row(&rows, "memory:used")["drawer"]["eyebrow"],
+            "on this machine \u{b7} memory"
+        );
+    }
+
+    fn text(value: &Value) -> String {
+        value
+            .as_str()
+            .map_or_else(|| value.to_string(), str::to_owned)
+    }
 }
