@@ -103,6 +103,16 @@ function newest(files, folder) {
         .reduce((last, file) => last === null || file.at > last.at ? file : last, null);
 }
 
+// Where one of Capture's acts lands, as its drawer's Lands In says it:
+// the folder by its own name, as drawers.md's Act example has it
+// (Y2YBTS, #3579's review), then `also`, the clipboard beside it where
+// it's copied, or "" for nothing more. "Screenshots, and on the
+// clipboard" for a screenshot.
+function landsIn(folder, also) {
+    const name = folder.split("/").filter(part => part !== "").pop() ?? "";
+    return [name, also].filter(said => said !== "").join(", ");
+}
+
 // The drawer under one of Capture's acts, Screen, Window, Region, Record
 // and Stop among them (drawers.md's Act kind, VKCF3Z, 37e49991): what it
 // does, in one sentence, then its Key, where it Lands In, and the Last one

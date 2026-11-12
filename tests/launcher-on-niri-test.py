@@ -3247,7 +3247,7 @@ def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
         str(fact.get("label")): str(fact.get("value"))
         for fact in cast("list[Json]", screen.get("facts", []))
     }
-    assert facts.get("Lands In") == "~/Pictures/Screenshots, and on the clipboard", facts
+    assert facts.get("Lands In") == "Screenshots, and on the clipboard", facts
     region = drawers.get("Record a Region", {})
     assert str(region.get("body", "")).startswith("Records the part of the screen"), region
 
