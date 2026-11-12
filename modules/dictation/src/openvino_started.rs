@@ -36,8 +36,10 @@ unsafe extern "C" fn finished(done: *mut c_void) {
 
 /// A request to run a compiled model, started without waiting.
 pub struct Started {
-    // Declared first, so it's freed before the flag its callback marks.
+    // Declared first, so it's freed before the callback it keeps a
+    // pointer to and the flag that marks.
     request: Request,
+    _callback: Box<Callback>,
     done: Box<AtomicBool>,
     running: bool,
 }
@@ -61,19 +63,21 @@ impl Started {
     /// When OpenVINO won't take the callback.
     pub fn new(request: Request) -> Result<Self> {
         let done = Box::new(AtomicBool::new(false));
-        let callback = Callback {
+        let callback = Box::new(Callback {
             function: finished,
             args: std::ptr::from_ref::<AtomicBool>(&done).cast_mut().cast(),
-        };
-        // SAFETY: the request is alive, OpenVINO copies the callback, and
-        // the flag it points at is boxed, so it stays put while the
-        // request lives.
+        });
+        // SAFETY: the request is alive. OpenVINO keeps the pointer to the
+        // callback rather than a copy (a callback on the stack crashed the
+        // second request made), so it's boxed, as the flag it points at
+        // is, and both stay put while the request lives.
         check(
-            unsafe { ov_infer_request_set_callback(request.0, &raw const callback) },
+            unsafe { ov_infer_request_set_callback(request.0, &raw const *callback) },
             "setting a request's callback",
         )?;
         Ok(Self {
             request,
+            _callback: callback,
             done,
             running: false,
         })

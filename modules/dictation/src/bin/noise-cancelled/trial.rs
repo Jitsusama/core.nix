@@ -683,8 +683,10 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
     let mut clips = vec![(Way::Raw, samples.to_vec(), 0.0)];
     for cleaner in Cleaner::ALL {
         // Loaded outside the time it's charged, since the microphones load
-        // it once and keep it while a call goes on.
-        let mut denoiser = Model::load(models, cleaner)?.denoiser()?;
+        // it once and keep it while a call goes on, and kept while its
+        // denoiser cleans, whose requests run on what it compiled.
+        let model = Model::load(models, cleaner)?;
+        let mut denoiser = model.denoiser()?;
         let started = spent();
         let mut cleaned = Vec::with_capacity(samples.len());
         for chunk in samples.chunks(FRAME) {

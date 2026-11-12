@@ -47,8 +47,7 @@ impl Run for StandIn {
             return Err("nothing was started".to_owned());
         };
         match how {
-            Frame::OnTime => Ok(true),
-            Frame::Late(0) => Ok(true),
+            Frame::OnTime | Frame::Late(0) => Ok(true),
             Frame::Late(looks) => {
                 *looks -= 1;
                 Ok(false)
@@ -76,10 +75,10 @@ fn lane(frames: &[Frame]) -> (Lane, Rc<RefCell<Asked>>) {
 }
 
 /// The processor behind: trebles a frame and counts its state on by two.
-fn behind(frame: &[f32; FRAME], state: &[f32]) -> Result<Cleaned, String> {
+fn behind(frame: &[f32; FRAME], state: &[f32]) -> Cleaned {
     let mut next = state.to_vec();
     next.push(2.0);
-    Ok(([frame[0] * 3.0; FRAME], next))
+    ([frame[0] * 3.0; FRAME], next)
 }
 
 /// Cleans frames of 1, 2, 3 and on through `lane`, saying what came out of
@@ -89,7 +88,8 @@ fn cleaned(lane: &mut Lane, count: u8) -> (Vec<f32>, Vec<f32>) {
     let out = (1..=count)
         .map(|at| {
             let frame = [f32::from(at); FRAME];
-            lane.clean(&frame, &mut state, behind).expect("cleans")[0]
+            lane.clean(&frame, &mut state, |frame, state| Ok(behind(frame, state)))
+                .expect("cleans")[0]
         })
         .collect();
     (out, state)
