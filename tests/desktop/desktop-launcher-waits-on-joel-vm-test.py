@@ -21,6 +21,7 @@ import desktop_session
 import pytest
 from desktop_session import (
     HARNESS,
+    INBOX,
     LAUNCHER_OPEN,
     MISSION,
     PI_PRESENCE,
@@ -1010,8 +1011,59 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
             timeout=dt.timedelta(seconds=10),
         )
         desktop.launcher_until(lambda shown: not shown["open"])
+        answered_in_place(desktop, since)
     finally:
         desktop.presence_says({"addresses": ["TESTQA"], "busy": True})
+
+
+def answered_in_place(desktop: Desktop, since: str) -> None:
+    """Answer a session's question from For You: in its row, Return on the recommended answer.
+
+    The answer reaches the session's inbox as the harness takes one, by the want's id.
+    """
+    machine = desktop.machine
+    desktop.as_account(f"mkdir -p {INBOX} && find {INBOX} -name '*.json' -delete")
+    choices = [{"value": "hold", "label": "Hold it"}, {"value": "push", "label": "Push it"}]
+    ask = {"choices": choices, "recommended": "push"}
+    question = {"kind": "question", "since": since, "said": "Push it?", "ask": ask}
+    desktop.presence_says({"addresses": ["TESTQA"], "busy": False, "wants": question})
+    desktop.as_account("qs ipc call launcher collection on")
+    desktop.launcher_ready()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now"]
+            and (shown["selected"] or {}).get("name") == "For You"
+            and shown["selected"]["side"] == "1 to do"
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now", "For You"]
+            and (shown["selected"] or {}).get("side") == "needs your answer \u00b7 2 choices"
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Push it", "Hold it", "Deal With It"]
+            and (shown["selected"] or {}).get("name") == "Push it"
+        )
+    )
+    machine.send_key("ret")
+    machine.wait_until_succeeds(
+        desktop.in_session(f"cat {INBOX}/*.json | grep -q '\"act\":\"answer\"'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
+    want = f"question@{since.removesuffix('Z')}.000Z"
+    assert (said["act"], said["want"], said["value"], said["from"]) == (
+        "answer",
+        want,
+        "push",
+        "joel",
+    ), said
+    desktop.as_account("qs ipc call launcher collection off")
 
 
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
