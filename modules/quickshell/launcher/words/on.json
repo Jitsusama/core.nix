@@ -351,6 +351,10 @@
         "toDo": "{count} to do",
         "toLookAt": "{count} to look at",
         "toTry": "{count} to try",
+        "answer": "needs your answer \u00b7 {count} choices",
+        "answerOne": "needs your answer \u00b7 1 choice",
+        "recommended": "recommended",
+        "answered": "answered: {label}",
         "nobody": "nobody's watching this",
         "boot": "after the next boot",
         "switch": "after the next switch",
@@ -460,6 +464,26 @@
       "in": "on:waiting",
       "name": "Session",
       "term": "Agents/session"
+    },
+    {
+      "id": "on:waiting:asked",
+      "in": "on:waiting",
+      "name": "You Were Asked"
+    },
+    {
+      "id": "on:waiting:choice",
+      "in": "on:waiting",
+      "name": "Choice"
+    },
+    {
+      "id": "on:waiting:recommended",
+      "in": "on:waiting",
+      "name": "Recommended"
+    },
+    {
+      "id": "on:waiting:answers",
+      "in": "on:waiting",
+      "name": "Answers"
     },
     {
       "id": "on:waiting:look",
@@ -597,6 +621,23 @@
       "name": "Deal With It",
       "verb": "deal",
       "glyph": "reply"
+    },
+    {
+      "id": "verb:on:waiting:answer",
+      "command": "choose",
+      "in": "on",
+      "name": "Answer",
+      "verb": "answer",
+      "glyph": "reply"
+    },
+    {
+      "id": "verb:on:waiting:own",
+      "command": "reply",
+      "in": "on",
+      "name": "In Your Own Words",
+      "verb": "say",
+      "glyph": "reply",
+      "ask": "your answer?"
     },
     {
       "id": "verb:on:waiting:done",

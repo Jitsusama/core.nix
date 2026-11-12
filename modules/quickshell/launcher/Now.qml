@@ -26,6 +26,7 @@ import "../Hearing.js" as Hearing
 import "../Marks.js" as Marks
 import "../When.js" as When
 import "Ago.js" as Ago
+import "Choices.js" as Choices
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
@@ -1377,9 +1378,11 @@ Provider {
         // What it asked, in its own words, or the session by its name.
         const asked = String(session.presence?.wants?.said || session.title);
         const resting = Sessions.parkedAs(session.address);
+        const answers = Choices.of(session.presence?.wants);
         wantsNow[session.address] = session;
-        return keptAlike(wantsKept, session.address, [made, asked, resting, session.title],
-            () => madeWantRow(made, session, asked, resting));
+        return keptAlike(wantsKept, session.address,
+            [made, asked, resting, session.title, JSON.stringify(answers)],
+            () => madeWantRow(made, session, asked, resting, answers));
     }
     readonly property var wantsKept: keeper()
     // Each session wanting Joel as For You last read it, which a kept
@@ -1388,7 +1391,9 @@ Provider {
     // (Y2YBTS, 2026-11-10). Plain, so holding it notifies nothing.
     readonly property var wantsNow: ({})
 
-    function madeWantRow(made, madeFrom, asked, resting) {
+    function madeWantRow(made, madeFrom, asked, resting, answers) {
+        if (answers !== null)
+            return answerRow(made, madeFrom, asked, resting, answers);
         const key = `on:waiting:want:${madeFrom.address}`;
         const address = madeFrom.address;
         const session = () => provider.wantsNow[address] ?? madeFrom;
@@ -1424,6 +1429,100 @@ Provider {
         const row = member(Object.assign({}, made, {
             key: key,
             forYou: { kind: "do", source: "sessions" },
+            // Its Return is stepping in, not Agents' own act on the session.
+            returns: null,
+            verb: "more",
+            stays: true,
+            verbs: inside,
+            targets: inside,
+            run: () => provider.launcher?.enter(row)
+        }));
+        return row;
+    }
+
+    // A session asking Joel one question with its answers given, answered
+    // where he finds it (harness #1394; VKCF3Z's ruling, 2026-11-12): a
+    // place, its side saying it needs his answer and how many it offers,
+    // its drawer the question and each answer. Inside, each answer is a
+    // row, the recommended first and the cursor on it, whose Return
+    // answers at once, since stepping in and picking a labelled answer is
+    // already deliberate, and y copies its words; then, set apart, Deal
+    // With It, and In Your Own Words where it takes them. The session
+    // says it took the answer by its want leaving, which takes the row
+    // out of For You.
+    function answerRow(made, madeFrom, asked, resting, answers) {
+        const key = `on:waiting:want:${madeFrom.address}`;
+        const address = madeFrom.address;
+        const said = Words.of("on:waiting").said ?? {};
+        const session = () => provider.wantsNow[address] ?? madeFrom;
+        const answer = (fields, label) => {
+            Sessions.steer(address, Object.assign({
+                act: "answer",
+                want: answers.want,
+                from: "joel",
+                at: new Date().toISOString()
+            }, fields));
+            provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+        };
+        const named = id => ({
+            verb: Words.verb(`verb:on:waiting:${id}`),
+            name: Words.name(`verb:on:waiting:${id}`),
+            glyph: Words.glyph(`verb:on:waiting:${id}`),
+            hue: "action"
+        });
+        const choice = (one, at) => thing(Object.assign(named("answer"), {
+            key: `verb:on:waiting:answer:${at}:${key}`,
+            name: one.label,
+            side: one.recommended ? said.recommended ?? "" : "",
+            copies: one.label,
+            stays: true,
+            // Stepping into what a session asks was the asking, so one
+            // Return answers, from the find too, rather than landing first
+            // as a change does (VKCF3Z, 2026-11-12: "Return on a choice
+            // answers at once").
+            sure: true,
+            drawer: () => ({
+                title: one.label,
+                body: one.description || asked,
+                facts: [fact("answers", madeFrom.title)].concat(one.recommended
+                    ? [fact("recommended", said.recommended ?? "")] : [])
+            }),
+            run: () => answer({ value: one.value }, one.label)
+        }));
+        const inside = () => answers.choices.map(choice).concat([
+            thing(Object.assign(named("deal"), {
+                key: `verb:on:waiting:deal:${key}`,
+                gap: true,
+                later: true,
+                run: () => {
+                    // The node wakes one parked once its words are in.
+                    Sessions.steer(address, { act: "fill", text: readyToDeal(asked) });
+                    Sessions.goTo(session());
+                }
+            }))
+        ], answers.own ? [thing(Object.assign(named("own"), {
+            key: `verb:on:waiting:own:${key}`,
+            ask: Words.of("verb:on:waiting:own").ask ?? "",
+            chip: madeFrom.title,
+            given: words => {
+                const text = words.trim();
+                if (text !== "")
+                    answer({ other: text }, text);
+            }
+        }))] : []);
+        const count = answers.choices.length;
+        const row = member(Object.assign({}, made, {
+            key: key,
+            forYou: { kind: "do", source: "sessions" },
+            side: count === 1 ? said.answerOne ?? ""
+                : filledIn(said.answer ?? "", { count: String(count) }),
+            drawer: () => ({
+                title: madeFrom.title,
+                facts: [fact("asked", asked)].concat(answers.choices.map(one => ({
+                    label: Words.name(`on:waiting:${one.recommended ? "recommended" : "choice"}`),
+                    value: one.description ? `${one.label} \u00b7 ${one.description}` : one.label
+                })), [fact("session", madeFrom.title)])
+            }),
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
