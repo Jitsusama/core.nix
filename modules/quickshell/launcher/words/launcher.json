@@ -543,7 +543,6 @@
         "chosen": "chosen",
         "off": "off",
         "outOnceLit": "out, {percent}% once lit",
-        "is": "the desk light is {lit}",
         "cameraLights": "a camera lights it",
         "turnOn": "turn the desk light on",
         "turnOff": "turn the desk light off",
