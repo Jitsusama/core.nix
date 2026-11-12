@@ -25,12 +25,14 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::hash::BuildHasher;
 use std::io;
 use std::path::Path;
 
 use serde_json::{Value, json};
 
 use crate::clock;
+use crate::row::Words;
 use crate::served::PLACE;
 use crate::session::Session;
 
@@ -242,6 +244,66 @@ fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Valu
         "session": {"address": lander.address, "title": lander.title, "id": lander.id},
     });
     (key, at, said)
+}
+
+/// Gives each landing in `records` its drawer, the same in Landed and in
+/// For You, as the shell once worked out for itself (Landed.js): who
+/// landed it and that it's a landing as its eyebrow; what landed as its
+/// title; when it landed, its repository and machine as facts; what to
+/// try as its words, since a sentence never fits beside the row (VKCF3Z,
+/// 2026-11-10). Who landed it is named as Agents names it elsewhere, by
+/// its session's title, else, for a session ended, by the title of the
+/// quest it landed for (`titles`, by the quest's id), never by an
+/// address; its ref and its quest's id are nerdy bits, folded away
+/// where y copies them, since no identifier stands among what Joel
+/// reads (VKCF3Z, 2026-11-12). Its time goes out for the shell to word.
+pub fn drawn<S: BuildHasher>(
+    records: &mut [Value],
+    words: &Words,
+    titles: &HashMap<&str, &str, S>,
+) {
+    for record in records.iter_mut().filter(|one| one["kind"] == "landed") {
+        let _ = (drawer(&record["landed"], words, titles), "red");
+    }
+}
+
+fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &str, S>) -> Value {
+    let named = |id: &str| words.names.word(id).to_owned();
+    let quest = text(one, "quest");
+    let session = one["session"]["title"].as_str().unwrap_or("");
+    let who = if session.is_empty() {
+        titles.get(quest.as_str()).copied().unwrap_or("")
+    } else {
+        session
+    };
+    let reference = text(one, "ref");
+    let mut facts: Vec<Value> = clock::ms_of(&one["at"])
+        .map(|at| json!({"label": named("landed"), "value": "", "at": {"at": at, "as": "dated"}}))
+        .into_iter()
+        .collect();
+    let said = |pairs: [(&str, String); 2]| {
+        pairs
+            .into_iter()
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(fact, value)| json!({"label": named(fact), "value": value}))
+            .collect::<Vec<_>>()
+    };
+    facts.extend(said([
+        ("repo", text(one, "repo")),
+        ("machine", text(one, "machine")),
+    ]));
+    let kind = if is_change(&reference) {
+        "change"
+    } else {
+        "item"
+    };
+    json!({
+        "title": text(one, "what"),
+        "eyebrow": [{"said": who, "keep": 2}, {"said": words.landed.word("kind"), "keep": 1}],
+        "facts": facts,
+        "body": text(one, "person"),
+        "nerd": said([(kind, reference), ("task", quest)]),
+    })
 }
 
 /// What sessions landed: the harness's (`kept`, the node's `landing`
@@ -623,5 +685,71 @@ mod tests {
             "no shell, nothing read"
         );
         let _ = fs::remove_dir_all(&shells);
+    }
+
+    fn words() -> Words {
+        Words::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
+    }
+
+    #[test]
+    fn a_landings_drawer_names_who_landed_it_and_folds_its_identifiers() {
+        let here = session("s-here", "HERE01", &json!([]));
+        let sessions = [Session(&here)];
+        let mut bare = kept("s-gone", "PLAN-1#4", "2026-11-10T09:00:00Z", "");
+        bare["quest"] = json!("QEST-UNKNOWN");
+        bare["repo"] = json!("");
+        let landings = [
+            kept(
+                "s-here",
+                "core.nix#2140",
+                "2026-11-11T10:00:00Z",
+                "Try Stop twice.",
+            ),
+            kept("s-gone", "core.nix#2138", "2026-11-11T09:00:00Z", "Try it."),
+            bare,
+        ];
+        let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
+        let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
+        drawn(&mut records, &words(), &titles);
+        let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
+        assert_eq!(
+            records[0]["landed"]["drawer"],
+            json!({
+                "title": "Land core.nix#2140",
+                "eyebrow": [{"said": "The s-here Quest", "keep": 2},
+                    {"said": "landing", "keep": 1}],
+                "facts": [
+                    {"label": "Landed", "value": "", "at": {"at": at, "as": "dated"}},
+                    {"label": "Repository", "value": "o/r"},
+                    {"label": "Machine", "value": "skiff"},
+                ],
+                "body": "Try Stop twice.",
+                "nerd": [{"label": "Change", "value": "core.nix#2140"},
+                    {"label": "Quest", "value": "QEST-1"}],
+            }),
+            "who landed it by its session's title, when as a time the shell words, its ids folded"
+        );
+        assert_eq!(
+            records[1]["landed"]["drawer"]["eyebrow"][0]["said"], "The Lighthouse Quest",
+            "a session ended named by the quest it landed for, never its address"
+        );
+        let unknown = &records[2]["landed"]["drawer"];
+        assert_eq!(
+            (&unknown["eyebrow"][0]["said"], &unknown["nerd"][0]["label"]),
+            (&json!(""), &json!("Item")),
+            "one whose quest isn't known names nobody, and a plan's ref is an item"
+        );
+        assert_eq!(
+            unknown["facts"].as_array().map(Vec::len),
+            Some(2),
+            "what isn't known isn't said"
+        );
+        assert!(
+            records
+                .iter()
+                .filter(|one| one["kind"] != "landed")
+                .all(|one| one.get("drawer").is_none()),
+            "the days' count is drawn no drawer"
+        );
     }
 }

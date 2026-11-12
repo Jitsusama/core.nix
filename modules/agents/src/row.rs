@@ -26,6 +26,7 @@ pub struct Words {
     pub names: Said,
     pub to_reopen: Said,
     pub reopen_one: Said,
+    pub landed: Said,
 }
 
 impl Words {
@@ -38,6 +39,7 @@ impl Words {
             names: Said::names_under(text, "agents")?,
             to_reopen: Said::of_thing(text, "agents:to-reopen")?,
             reopen_one: Said::of_thing(text, "verb:agents:to-reopen:one")?,
+            landed: Said::of_thing(text, "agents:landed")?,
         })
     }
 }
