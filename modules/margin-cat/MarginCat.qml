@@ -8,9 +8,12 @@
 // still but for a walk: once the keys rest two seconds on another column it
 // trots there in nine strides, and otherwise draws a frame only as its
 // column moves, none at rest, so the closed shell draws nothing for it.
+// After ten minutes with no keys it curls up asleep, one frame, and wakes as
+// they come again; as the screen unlocks it stretches, then sits.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
@@ -19,8 +22,33 @@ import "../Pixels.js" as Pixels
 Scope {
     id: root
 
-    // Sitting, its tail curled up beside it.
-    readonly property var drawing: Theme.pixels.nothingHere ?? []
+    // Asleep once nothing's been typed or moved for as long as its settings
+    // say, ten minutes on the laptop, since it's livelier the less Joel is
+    // engaged and sleeps only once he's gone ("mild movements when i'm
+    // active, increeeasing as I'm less engaged", 2026-11-12); whatever keeps
+    // the screen awake, since a video playing is still no keys.
+    readonly property bool asleep: dozing.isIdle
+    // Its settings, from its module (modules/margin-cat/home.nix), read once
+    // as it starts.
+    readonly property var settings: {
+        try {
+            return JSON.parse(settingsFile.text());
+        } catch (_) {
+            return {};
+        }
+    }
+    // Stretching for a moment as the lock lets the screens go ("when you
+    // unlock, it stretches"), one pose held and then sitting, no tween.
+    property bool stretching: false
+    // What the lock last said it was, so only a lock let go stretches it,
+    // never the shell starting unlocked.
+    property string lockSaid: ""
+    // Sitting, its tail curled up beside it, curled up alone asleep, a z
+    // above it, or stretching: the theme's own poses, never copies of them.
+    // Not For You's empty tray, which means nothing's for him (VKCF3Z
+    // [a3b1144a]).
+    readonly property var drawing: (stretching ? Theme.pixels.stretching
+        : asleep ? Theme.pixels.curled : Theme.pixels.nothingHere) ?? []
     // While the screen is shared, as a call shares it through the portal,
     // the cat isn't there to be seen: a layer niri keeps from a capture is a
     // black square in it, so home.nix's layer rule only covers the moment
@@ -38,6 +66,49 @@ Scope {
     // them, and the cat follows the one Joel's in.
     Component.onCompleted: Niri.wantTiles("cat", true)
     Component.onDestruction: Niri.wantTiles("cat", false)
+
+    IdleMonitor {
+        id: dozing
+        timeout: root.settings.dozes ?? 600
+        respectInhibitors: false
+    }
+
+    FileView {
+        id: settingsFile
+        path: Quickshell.shellPath("surfaces/MarginCat.json")
+        blockAllReads: true
+    }
+
+    function heardLock(word: string): void {
+        if (root.lockSaid === "locked" && word === "unlocked") {
+            root.stretching = true;
+            stretched.restart();
+        }
+        root.lockSaid = word;
+    }
+
+    // The lock's own word, written as it takes and lets go of the screens
+    // (Lock.qml), watched rather than asked again, so it adds no wakes.
+    FileView {
+        id: lockWord
+        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/quickshell-locked`
+        watchChanges: true
+        blockAllReads: true
+        printErrors: false
+        onLoaded: root.heardLock(lockWord.text().trim())
+        onFileChanged: {
+            lockWord.reload();
+            root.heardLock(lockWord.text().trim());
+        }
+    }
+
+    // About half a second, long enough to be seen as a stretch and short of
+    // the keys he'll press next (XY9H5C's pose: "held about half a second").
+    Timer {
+        id: stretched
+        interval: 500
+        onTriggered: root.stretching = false
+    }
 
     Connections {
         target: Niri
@@ -82,9 +153,17 @@ Scope {
             }
             // Each cell in whole device pixels, and the cat's size from them.
             // The window's own ratio, which a fractional scale sets, rather
-            // than the screen's, as Hairline.qml reads it.
-            readonly property real ratio: cat.Window.window?.devicePixelRatio
-                ?? (cat.Screen.devicePixelRatio > 0 ? cat.Screen.devicePixelRatio : 1)
+            // than the screen's, as Hairline.qml reads it. Taken a moment
+            // late: showing the window sets its ratio, so read at once it
+            // would change the place that showed it, a loop Joel's shell said
+            // three times as it started at 1.5 (2026-11-12 15:12:29).
+            property real ratio: cat.Screen.devicePixelRatio > 0
+                ? cat.Screen.devicePixelRatio : 1
+            Binding on ratio {
+                value: cat.Window.window?.devicePixelRatio
+                    ?? (cat.Screen.devicePixelRatio > 0 ? cat.Screen.devicePixelRatio : 1)
+                delayed: true
+            }
             readonly property real cell: MarginCat.cell(Theme.gap, ratio) / ratio
             readonly property real size: Math.max(1, root.drawing.length) * cell
             // Where it sits over its column, and where it is: there, or a
@@ -206,7 +285,9 @@ Scope {
                     lit: root.drawing.join("").split("#").length - 1,
                     hue: `${Theme.voice}`,
                     walking: stride !== null,
-                    window: sat
+                    window: sat,
+                    asleep: root.asleep,
+                    stretching: root.stretching
                 });
                 Report.say(`sits cat ${modelData.name} ${at} over ${JSON.stringify(column)}`);
             }
@@ -215,6 +296,10 @@ Scope {
             // A new scale can leave its logical place and size as they were
             // while its cells take more device pixels, so it says so too.
             onRatioChanged: say()
+            readonly property bool asleep: root.asleep
+            onAsleepChanged: say()
+            readonly property bool stretching: root.stretching
+            onStretchingChanged: say()
             Component.onCompleted: {
                 settle();
                 say();

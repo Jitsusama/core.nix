@@ -6,8 +6,9 @@ module (modules/margin-cat). Where over a column it sits, beside the margin's ma
 is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's strides; here,
 only that niri's real layout reaches it, that it rests two seconds before trotting over in a
 few frames, and never for a tap along the columns, that its layer is one taking no keys, that
-it goes in fullscreen, where the gap it sits in is gone, and that niri draws it in whole pixels
-at 1.5 and at 2, each screen kept as the check's result.
+it goes in fullscreen, where the gap it sits in is gone, that it dozes off after a minute with
+no keys and stretches as the screen unlocks, and that niri draws it in whole pixels at 1.5 and
+at 2, each screen kept as the check's result.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import struct
 import time
 import zlib
 from collections import Counter
+from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -34,6 +36,13 @@ SITS = "sits cat "
 # How long the keys rest on a column before the cat trots there, how many strides its walk
 # takes, and the most frames it may draw for a focus move (modules/margin-cat/MarginCat.js).
 RESTS, STRIDES, FOCUS_MOVE = 2.0, 9, 12
+# How long with no keys draws none of its frames, how long after the last key it may take to
+# be heard asleep, its 45 s doze here (modules/quickshell/checks/margin.nix) and some, and the
+# frames that curling up may draw.
+IDLE, DOZES, POSED = 30.0, 60, 2
+# How long the cat's stretch holds as the lock lets go: about half a second, and no less than
+# a glance, nor so long that it's in the way of the keys pressed next.
+STRETCHES = (0.3, 1.0)
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 POLL = 0.05
@@ -54,6 +63,28 @@ def shell() -> Iterator[Shell]:
     with launcher_on_niri.running() as started:
         heard(started, lambda _: True, 0)
         yield started
+
+
+@pytest.fixture(autouse=True)
+def awake(shell: Shell) -> None:
+    """Wake the cat with a key before each case, since nobody types here and it dozes off."""
+    since = shell.mark()
+    shell.send_key("F24")
+    if dozing(shell):
+        heard(shell, lambda said: not asleep(said), since)
+
+
+def dozing(shell: Shell) -> bool:
+    """Say whether the cat's newest report has it asleep."""
+    said, _ = shell.said_since(0)
+    last = next((report for report in reversed(said) if report.startswith(SITS)), None)
+    return last is not None and asleep(last[len(SITS) :])
+
+
+def asleep(said: str) -> bool:
+    """Say whether a report has the cat asleep where it sits."""
+    at = placed(said)
+    return at is not None and bool(at.get("asleep"))
 
 
 def placed(said: str) -> Json | None:
@@ -154,6 +185,12 @@ def counting(shell: Shell) -> str:
     return f"qs -p {shell.folder} ipc call frames"
 
 
+def cat_frames(shell: Shell) -> tuple[int, Json]:
+    """Give the frames the cat's windows drew since the count started, and every window's."""
+    drawn = json.loads(shell.as_account(f"{counting(shell)} said"))
+    return sum(count for name, count in drawn.items() if name.startswith("cat ")), drawn
+
+
 def test_the_cat_trots_over_once_the_keys_rest(shell: Shell) -> None:
     """Two seconds after the keys move to another column, it trots there in a few frames.
 
@@ -171,8 +208,7 @@ def test_the_cat_trots_over_once_the_keys_rest(shell: Shell) -> None:
     shell.as_account("niri msg action focus-column-left")
     sits_over(shell, first, since)
     rested = time.monotonic() - moved
-    drawn = json.loads(shell.as_account(f"{counting(shell)} said"))
-    cat = sum(count for name, count in drawn.items() if name.startswith("cat "))
+    cat, drawn = cat_frames(shell)
     assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
     assert walked(shell, since) == STRIDES, f"the cat took {walked(shell, since)} strides"
     assert cat <= FOCUS_MOVE, f"the cat drew {cat} frames for a focus move: {drawn}"
@@ -190,6 +226,68 @@ def test_tapping_along_the_columns_never_sets_it_running(shell: Shell) -> None:
     shell.as_account("niri msg action focus-column-right")
     time.sleep(RESTS + 1)
     assert walked(shell, since) == 0, f"tapping set the cat off: {walked(shell, since)} strides"
+
+
+def test_the_cat_dozes_off_with_no_keys_drawing_nothing_more(shell: Shell) -> None:
+    """With no keys it draws nothing, then curls up asleep in a frame, and a key wakes it.
+
+    Thirty seconds with nothing typed draw none of its frames (VKCF3Z, 2026-11-12: "30 s idle
+    draws 0 frames"), its doze has it asleep, and asleep it draws nothing new.
+    """
+    since = shell.mark()
+    sits_over(shell, shell.opened("a column to doze over"), since)
+    # Its last frame over the new column lands a moment after it says it sits there.
+    time.sleep(RESTS)
+    since = shell.mark()
+    shell.send_key("F24")
+    shell.as_account(f"{counting(shell)} start")
+    time.sleep(IDLE)
+    still, drawn = cat_frames(shell)
+    said, _ = shell.said_since(since)
+    sat = [report for report in said if report.startswith(SITS)]
+    assert still == 0, (
+        f"the cat drew {still} frames in {IDLE:.0f} s with no keys: {drawn}; it said {sat}"
+    )
+    shell.reported(SITS, asleep, since, timedelta(seconds=DOZES))
+    time.sleep(RESTS)
+    dozed, drawn = cat_frames(shell)
+    assert dozed <= POSED, f"the cat drew {dozed} frames dozing off: {drawn}"
+    since = shell.mark()
+    shell.send_key("F24")
+    heard(shell, lambda said: not asleep(said), since)
+
+
+def stretching(said: str) -> bool:
+    """Say whether a report has the cat stretching where it sits."""
+    at = placed(said)
+    return at is not None and bool(at.get("stretching"))
+
+
+def test_the_cat_stretches_as_the_screen_unlocks(shell: Shell) -> None:
+    """As the lock lets the screens go it stretches for a moment, in one pose, then sits.
+
+    The lock's word is written as Lock.qml writes it, so no lock covers the nested screen, and
+    a shell that starts unlocked never stretches, since nothing was let go.
+    """
+    since = shell.mark()
+    sits_over(shell, shell.opened("a column to stretch over"), since)
+    marker = Path(os.environ["XDG_RUNTIME_DIR"]) / "quickshell-locked"
+    said, _ = shell.said_since(0)
+    started = [report for report in said if report.startswith(SITS)]
+    assert not any(stretching(report[len(SITS) :]) for report in started), (
+        f"the cat stretched with nothing unlocked: {started}"
+    )
+    marker.write_text("locked\n")
+    # The cat hears the lock's word by watching its file, a moment after it's written.
+    time.sleep(RESTS)
+    since = shell.mark()
+    marker.write_text("unlocked\n")
+    heard(shell, stretching, since)
+    began, since = time.monotonic(), shell.mark()
+    heard(shell, lambda said: placed(said) is not None and not stretching(said), since)
+    held = time.monotonic() - began
+    shortest, longest = STRETCHES
+    assert shortest <= held <= longest, f"the cat stretched for {held:.2f} s"
 
 
 def test_the_cat_goes_in_fullscreen(shell: Shell) -> None:
