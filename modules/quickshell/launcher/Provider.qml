@@ -254,14 +254,27 @@ Scope {
     // last, so it reads `wanted` alone and a change nobody sees wakes nothing. One that has made
     // nothing makes it once regardless, for what reads it shut (Sound's spots). Shut on Joel's
     // shell, Sound, Spend and Now made 426 rows in four minutes (YQZGPC, 2026-11-10). Kept in a
-    // plain object, so keeping notifies nothing. While the launcher looks through its rows shut
-    // (looksThrough), they're made as they stand, since the first made may have come before
-    // what they're made of was heard.
+    // plain object, so keeping notifies nothing. Each `make` is kept too, for `standing`.
     readonly property var madeLast: ({})
-    property bool lookingThrough: false
+    readonly property var makers: ({})
     function whileWanted(name, make) {
-        if (provider.wanted || provider.lookingThrough || !(name in provider.madeLast))
+        provider.makers[name] = make;
+        if (provider.wanted || !(name in provider.madeLast))
             provider.madeLast[name] = make();
+        return provider.madeLast[name];
+    }
+
+    // What whileWanted's `name` makes as it stands while the launcher looks through its rows
+    // shut (looksThrough), and otherwise `bound`, the property it made: the first made may have
+    // come before what they're made of was heard. Made here, not by its binding, since a
+    // binding told to make them again as the launcher looks through them, as a source's change
+    // can ask (Launcher.qml's onScreen), was told while it was still telling of its last: Sound
+    // warned "Binding loop detected for property all" in a gate under load (2026-11-11).
+    readonly property var lookingThrough: ({ now: false })
+    function standing(name, bound) {
+        if (!provider.lookingThrough.now || provider.wanted || !(name in provider.makers))
+            return bound;
+        provider.madeLast[name] = provider.makers[name]();
         return provider.madeLast[name];
     }
 
@@ -400,10 +413,13 @@ Scope {
     // made: Sound's, first made before the sound server said any device, were none, so the
     // first search after a restart made every device's text (2026-11-11).
     function looksThrough() {
-        lookingThrough = true;
-        const rows = everything();
-        lookingThrough = false;
-        return rows;
+        const was = lookingThrough.now;
+        lookingThrough.now = true;
+        try {
+            return everything();
+        } finally {
+            lookingThrough.now = was;
+        }
     }
 
     // Makes ready the texts of one of those rows that its search reads, each

@@ -224,7 +224,19 @@ ShellRoot {
         function onTimingsChanged() {
             root.heardNow();
         }
+
+        // Each change Sound tells the launcher of, which looks through its
+        // rows again as it's told while a key's change could be on screen
+        // (Launcher.qml's onScreen), as it does here while `looking`.
+        function onChanged() {
+            root.told += 1;
+            if (root.looking)
+                sound.looksThrough();
+        }
     }
+
+    property int told: 0
+    property bool looking: false
 
     // A case that never holds fails rather than leaving the check to wait
     // out its timeout; five seconds is far past a socket's line.
@@ -324,8 +336,17 @@ ShellRoot {
         // The rows whose texts are made ready while shut (Launcher.qml's
         // textsMadeClosed) are those it lists once it opens, so the first
         // search makes none (vm-desktop-launcher-goes-places, 2026-11-11).
+        // Looked through, nothing of them changed, so the launcher is told
+        // of no change: told it, it looked through them again while Sound
+        // was still telling, and Sound warned of a binding loop on `all`
+        // in a gate under load (2026-11-11).
         asking.wanting = false;
+        const toldBefore = root.told;
+        root.looking = true;
         const seen = sound.looksThrough();
+        root.looking = false;
+        expect("looking through its rows shut tells the launcher of no change",
+            root.told === toldBefore, `told ${root.told - toldBefore} times`);
         asking.wanting = true;
         const shown = sound.everything();
         expect("the rows looked through shut are the ones listed once wanted",

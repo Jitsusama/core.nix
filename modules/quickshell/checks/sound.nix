@@ -52,7 +52,11 @@
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml
       mkdir -p runtime/daemons
-      timeout 60 ${qs} -p served.qml
+      set -o pipefail
+      timeout 60 ${qs} -p served.qml 2>&1 | tee said
+      # A binding loop only warns, and Sound's on `all` warned only in a gate
+      # under load (2026-11-11), so one warned of here fails the check.
+      if grep -a 'Binding loop' said; then exit 1; fi
       touch $out
     '';
 
