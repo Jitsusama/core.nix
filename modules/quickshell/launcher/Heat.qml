@@ -56,8 +56,10 @@ Provider {
     // Whether the daemon hasn't yet answered this watch whole, so a
     // terminal's show asks again for the figures rather than printing
     // what it held before (Provider.stillReading).
-    stillReading: ready.link !== null && !ready.link.answeredThisWatch
-        && ready.state !== "not answering"
+    // A row held before its watch began counts too, so the show that
+    // begins it waits for what the daemon serves.
+    stillReading: provider.seen && ready.state !== "not answering"
+        && !(ready.link?.answeredThisWatch ?? false)
 
     // Heat's rows and headline as the machine daemon serves them, watched
     // only while they can be seen, since the daemon reads Heat's sensors
@@ -79,17 +81,39 @@ Provider {
     readonly property string headKey: "head:heat"
 
     // Heat's answer: its headline and its own rows, a step in each holding
-    // what's inside it; none until the daemon has served a row.
+    // what's inside it; held in its place until the daemon has served a
+    // row (unheld).
     function told() {
         const rows = ready.rows();
         if (rows.length === 0)
-            return null;
+            return unheld();
         const head = ready.held[headKey]?.head ?? {};
         return {
             headline: head.said ?? "",
             graph: head.graph,
             glyph: Words.glyph("heat"),
             rows: rows,
+            live: provider
+        };
+    }
+
+    // Heat with no row served: while its daemon is starting or not yet
+    // watched, held in its place with the fixed placeholder, as Machine's
+    // own are (Machine.qml's unheld), so a terminal's show finds it and
+    // its watch begins; and while the daemon isn't answering, saying so.
+    // Never gone, since Machine's head names Heat and a show must find
+    // the row it names (VKCF3Z, 2026-11-12 [058bd4b0]). It says it has
+    // parts, so a place lists it from the start and says it again in
+    // place as its rows come.
+    function unheld() {
+        const down = ready.state === "not answering";
+        return {
+            headline: down ? "" : "\u2026",
+            glyph: Words.glyph("heat"),
+            rows: [],
+            note: down ? (Words.of("heat").said?.down ?? "") : "",
+            asking: !down,
+            parted: true,
             live: provider
         };
     }
@@ -137,6 +161,14 @@ Provider {
 
     Connections {
         target: ready
+
+        // Its daemon gone or back, as its hello says it (Daemon.qml):
+        // Heat's row says so where it's held. A daemon's state changes
+        // only as it connects or drops, never with its figures.
+        function onStateChanged() {
+            provider.answered();
+            provider.launcher?.placesRead?.();
+        }
 
         function onHeard(changed, gone) {
             const placed = ready.keys.join("\n");

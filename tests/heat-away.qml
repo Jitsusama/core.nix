@@ -40,6 +40,12 @@ ShellRoot {
         }
     }
 
+    // An answer as a failure says it, without its provider, which holds
+    // the launcher and can't be said as JSON.
+    function said(answer) {
+        return JSON.stringify(Object.assign({}, answer, { live: answer.live === theHeat }));
+    }
+
     Timer {
         running: true
         interval: 30000
@@ -61,9 +67,9 @@ ShellRoot {
                 "no answer");
             Expect.expect("held in its place, being read", held.headline === "\u2026"
                 && held.asking === true && held.gone !== true && held.rows.length === 0,
-                JSON.stringify(held));
+                root.said(held));
             Expect.expect("it says it has parts, so a place lists it as it will be",
-                held.parted === true && held.live === theHeat, JSON.stringify(held));
+                held.parted === true && held.live === theHeat, root.said(held));
         } catch (error) {
             root.waiting = "a failure";
             Expect.fail(error.message);
@@ -86,10 +92,10 @@ ShellRoot {
                 Expect.expect("with its daemon away, Heat's row stands", away !== null,
                     "no answer");
                 Expect.expect("saying its daemon isn't answering", away.note === "not answering"
-                    && away.headline === "", JSON.stringify(away));
+                    && away.headline === "", root.said(away));
                 Expect.expect("no longer being read, and still there to find",
                     away.gone !== true && away.asking !== true && away.parted === true,
-                    JSON.stringify(away));
+                    root.said(away));
                 Expect.expect("a terminal's show isn't kept waiting on it",
                     theHeat.stillReading === false, "still reading");
             } catch (error) {

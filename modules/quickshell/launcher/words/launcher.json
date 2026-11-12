@@ -395,7 +395,8 @@
         "hottest": "{degrees} at the {part}",
         "stopped": "fans stopped",
         "turning": "a fan turning",
-        "turnings": "{count} fans turning"
+        "turnings": "{count} fans turning",
+        "down": "not answering"
       }
     },
     {
