@@ -175,7 +175,9 @@ Provider {
             hue: "warning",
             verb: Words.verb("spend:start"),
             // What it does, as every act's drawer says (Joel, 2026-11-11
-            // 22:00: every row has a drawer).
+            // 22:00: every row has a drawer). A thing, so it's drawn, as
+            // Capture's acts are.
+            thing: true,
             drawer: () => ({
                 eyebrow: Words.name("spend"),
                 title: Words.name("spend:start"),
