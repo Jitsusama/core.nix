@@ -158,7 +158,10 @@ ShellRoot {
         // 22:00), an act's saying what it does.
         const startDrawer = typeof down[0].drawer === "function" ? down[0].drawer()
             : down[0].drawer;
-        if (!String(startDrawer?.body ?? "").startsWith("Starts the watch on AI spend")) {
+        // It's a thing, so the launcher draws that drawer (Launcher.qml's
+        // drawable), rather than holding a drawer it never shows.
+        if (!String(startDrawer?.body ?? "").startsWith("Starts the watch on AI spend")
+            || down[0].thing !== true) {
             console.warn(`FAIL Start the Watch says what it does: ${JSON.stringify(startDrawer)}`);
             Qt.exit(1);
             return;
