@@ -21,6 +21,7 @@ use crate::health;
 use crate::judge;
 use crate::machine;
 use crate::mesh::Mesh;
+use crate::passed;
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
 
@@ -216,6 +217,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
     }
     builders::read(&mut day, state_home);
     gate::read(&mut day, state_home);
+    passed::read(&mut day, state_home);
 
     day.figures
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
