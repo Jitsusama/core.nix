@@ -21,13 +21,14 @@ function bare(name) {
 // Everyone the sources know, joined into one person each: two are one
 // when they share an address, and a source that knows several addresses
 // for someone joins them all. Each source is { name, people }, in the
-// order they're consulted, and each of its people { emails, name, facts,
-// recent, spans }. Each person is { key, email, emails, name, facts,
-// recent, spans, from }: what they're known by, their first address, every
-// address, the first real name a source gives (else their address), the
-// facts each source adds under its own label, whether any source has them
-// as someone Joel dealt with lately, when each thing with them is, and the
-// sources that know them, in order. Someone a source knows by no address
+// order they're consulted, and each of its people { emails, name,
+// recent, spans }. Each person is { key, email, emails, name, recent,
+// spans, from }: what they're known by, their first address, every
+// address, the first real name a source gives (else their address),
+// whether any source has them as someone Joel dealt with lately, when
+// each thing with them is, and the sources that know them, in order.
+// Their facts are their drawer's, which the daemon serves, so none are
+// merged here, and a fact changing remakes no one's row. Someone a source knows by no address
 // but by an id of its own, as Tuple can call a contact by its id, is a
 // person of that source alone, known as "<source>:<id>", since nothing
 // else could say they're the same; someone known by neither is left out.
@@ -61,7 +62,6 @@ function merged(sources) {
         email: person.email,
         emails: person.emails,
         name: bare(person.name) ? person.email || person.key : person.name,
-        facts: person.facts,
         recent: person.recent,
         spans: person.spans,
         from: person.from
@@ -70,7 +70,7 @@ function merged(sources) {
 
 function fresh(email, persons, key = email) {
     const person = {
-        key, email, emails: [], name: "", facts: [], recent: false, spans: [], from: []
+        key, email, emails: [], name: "", recent: false, spans: [], from: []
     };
     persons.push(person);
     return person;
@@ -86,13 +86,6 @@ function take(person, from, known, emails) {
     const name = String(known.name ?? "").trim();
     if (bare(person.name) && !bare(name)) {
         person.name = name;
-    }
-    for (const fact of known.facts ?? []) {
-        if (fact.value && !person.facts.some(had => had.label === fact.label)) {
-            person.facts.push(fact.zone
-                ? { label: fact.label, value: fact.value, zone: true }
-                : { label: fact.label, value: fact.value });
-        }
     }
     person.recent = person.recent || Boolean(known.recent);
     // When each thing with them is, by any source, from its start to its
