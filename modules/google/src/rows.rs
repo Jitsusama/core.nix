@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use crate::calendar_rows;
 use crate::compose::{answering, writing};
 use crate::document_rows;
+use crate::invitation;
 use crate::mail::Mail;
 
 /// How many people a sent mail's row names before it counts the rest.
@@ -52,6 +53,8 @@ pub struct Words {
     pub date: String,
     pub attached: String,
     pub attached_several: String,
+    /// A meeting's mail's words: its answer, and when it is.
+    pub invitation: invitation::Words,
 }
 
 /// Every place's words, from the launcher's vocabulary, each read apart,
@@ -151,6 +154,7 @@ impl Words {
             date: fact("date", &["name"])?,
             attached: fact("attached", &["name"])?,
             attached_several: fact("attached", &["states", "several", "name"])?,
+            invitation: invitation::Words::read(vocabulary)?,
         })
     }
 }
@@ -224,8 +228,11 @@ pub fn mail_drawers(held: &[Mail], had: &[Mail], words: &Words) -> Vec<(String, 
         .collect()
 }
 
+/// Its name: the meeting Calendar's mail is about, or its subject.
 fn titled<'a>(mail: &'a Mail, words: &'a Words) -> &'a str {
-    if mail.subject.is_empty() {
+    if let Some(about) = &mail.invitation {
+        &about.meeting
+    } else if mail.subject.is_empty() {
         &words.untitled
     } else {
         &mail.subject
@@ -257,9 +264,17 @@ fn row(mail: &Mail, place: &str, words: &Words) -> Value {
 
 /// Who it's from, or for mail Joel sent whom it went to, then when it
 /// came, as Mail.js's besideItems lays them: neither gives way whole, and
-/// the time never gives way at all.
+/// the time never gives way at all. A meeting's mail says its answer
+/// before the time, which outlasts who sent it, so a narrow row reads
+/// "accepted · 2 Nov".
 fn beside(mail: &Mail, words: &Words) -> Vec<Value> {
-    let when = json!({"at": mail.at, "as": "came", "keep": 2, "stays": true});
+    let came = json!({"at": mail.at, "as": "came", "keep": 2, "stays": true});
+    let when: Vec<Value> = mail
+        .invitation
+        .iter()
+        .map(|about| json!({"said": words.invitation.said(about.answer), "keep": 2}))
+        .chain([came])
+        .collect();
     let ways = if mail.sent {
         went_ways(&mail.went, words)
     } else {
@@ -267,12 +282,12 @@ fn beside(mail: &Mail, words: &Words) -> Vec<Value> {
     };
     match ways.first() {
         Some(first) if !first.is_empty() => {
-            vec![
-                json!({"said": first, "ways": ways, "keep": 1, "stays": true}),
-                when,
-            ]
+            [json!({"said": first, "ways": ways, "keep": 1, "stays": true})]
+                .into_iter()
+                .chain(when)
+                .collect()
         }
-        _ => vec![when],
+        _ => when,
     }
 }
 
@@ -320,6 +335,9 @@ fn drawer(mail: &Mail, title: &str, words: &Words) -> Value {
         &words.attached_several
     };
     let mut facts = Vec::new();
+    if let Some(about) = &mail.invitation {
+        facts.push(json!({"name": words.invitation.when, "said": about.when}));
+    }
     for (name, said) in [
         (&words.from, sender(mail, words)),
         (&words.to_fact, mail.to.clone()),
@@ -406,6 +424,7 @@ mod tests {
             cc: String::new(),
             others: Vec::new(),
             subject: "Engines".into(),
+            invitation: None,
             sent: false,
             went: Vec::new(),
             at,

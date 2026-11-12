@@ -11,6 +11,7 @@ use serde_json::Value;
 
 use crate::calendar;
 use crate::done::Done;
+use crate::invitation::{self, Invitation};
 
 /// What mail wants Joel, as Gmail's search writes it.
 pub const WANTS: &str = "in:inbox is:unread is:important";
@@ -71,6 +72,9 @@ pub struct Mail {
     /// its sender, whom the reply goes to, aren't among them.
     pub others: Vec<String>,
     pub subject: String,
+    /// The meeting it's about, when Calendar sent it (invitation.rs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invitation: Option<Invitation>,
     /// Whether Joel sent it, as Gmail's own label says, so what names it
     /// names who it went to rather than him.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -221,6 +225,7 @@ pub fn read(answer: &Value) -> Option<Mail> {
             &[header("Delivered-To"), header("From")],
         ),
         subject: header("Subject").trim().to_owned(),
+        invitation: invitation::read(header("Subject").trim()),
         sent,
         went: if sent {
             went(&[header("To"), header("Cc"), header("Bcc")], header("From"))
@@ -510,6 +515,7 @@ mod tests {
                 cc: String::new(),
                 others: Vec::new(),
                 subject: "Lunch?".into(),
+                invitation: None,
                 sent: false,
                 went: Vec::new(),
                 at: 1_793_044_800_000,

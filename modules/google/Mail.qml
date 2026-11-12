@@ -143,7 +143,7 @@ Singleton {
     }
 
     function titled(mail) {
-        return mail.subject !== "" ? mail.subject : Words.name("mail:message", "untitled");
+        return Said.titled(mail, Words.name("mail:message", "untitled"));
     }
 
     // Its acts, in the one order every surface lists them.
