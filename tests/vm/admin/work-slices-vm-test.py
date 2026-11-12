@@ -4,7 +4,8 @@ work-slices.nix, beside this, runs this through pytest inside the driver (tests/
 An account in wheel sets build.slice's and machine.slice's weight and cores for as long as
 the machine runs, as an agent measuring them would, outside any session. An account outside
 wheel can't, and an administrator still can't change any other unit without a password.
-A process in agents.slice, jobs.service or jobs-work.slice is refused outright what would ask, so
+A process where agents' work runs, agents.slice, jobs.service, jobs-work.slice, jobs-timed.slice
+or shared.slice, is refused outright what would ask, so
 no agent puts a password prompt on the screen, and keeps what a rule grants unasked.
 Each test puts what it changed back as it ends, so any runs alone.
 """
@@ -93,6 +94,8 @@ ASKS = 2
         ("--slice=agents.slice", "/agents.slice/"),
         ("--slice=jobs.slice --unit=jobs", "/jobs.slice/jobs.service"),
         ("--slice=jobs-work.slice", "/jobs-work.slice/"),
+        ("--slice=jobs-timed.slice", "/jobs-timed.slice/"),
+        ("--slice=shared.slice", "/shared.slice/"),
     ],
 )
 def test_an_agent_is_refused_what_would_ask_for_a_password(

@@ -228,9 +228,9 @@
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
   an-agent-raises-no-polkit-prompt = ''
-    a workstation's polkit rules refuse a process in agents.slice, jobs.service or jobs-work.slice,
-    or one gone, whatever would ask Joel for a password, leave his terminal and apps to ask, and
-    keep a grant
+    a workstation's polkit rules refuse a process where agents' work runs (agents.slice,
+    jobs.service, jobs-work.slice, jobs-timed.slice, shared.slice or a pi-jobs scope), or one gone,
+    whatever would ask Joel for a password, leave his terminal and apps to ask, and keep a grant
   '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, and leaves Joel's own calls,
