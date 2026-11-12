@@ -1,6 +1,6 @@
 // How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
-// modules/quickshell/launcher/ForYou.js and Order.js beside this file and
+// modules/quickshell/launcher/ForYou.js, Looks.js and Order.js beside this file and
 // runs `qml -platform offscreen for-you.qml`. Each case is one of the design's
 // rules (VKCF3Z, 2026-11-08): what blocks a session counts most, then what's
 // due, what he can do now, its kind and how long it has waited; the heaviest
@@ -8,12 +8,13 @@
 // try that blocks or is due, needs him now, and the rest stand in their kind's
 // row, the oldest first among ties; a row's side says its strongest
 // reason; the looks folder's files are read into what waits and what's
-// history, a file that can't be read left out and only one that changed
-// parsed again; and what other sources give
+// history, a file that can't be read left out, only one that changed
+// parsed again, and one waiting three days gone quiet; and what other sources give
 // For You, as Passwords' one to-do, is gathered into what waits and what's
 // done, and weighed beside the rest.
 import QtQuick
 import "ForYou.js" as ForYou
+import "Looks.js" as Looks
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -203,6 +204,7 @@ QtObject {
             opened: "opened",
             cleared: "cleared",
             resolved: "resolved",
+            quiet: "went quiet",
             clock: at => new Date(at).toISOString().slice(11, 16),
             ago: at => `${Math.round((now - at) / 60000)} min ago`,
             day: at => (now - at >= 24 * hour ? "yesterday" : "")
@@ -249,50 +251,63 @@ QtObject {
             { file: "f.json", text: lookOf({ id: "F", state: "resolved",
                 resolvedAt: "2026-11-08T12:00:00Z" }) },
             { file: "g.json.writing", text: lookOf({ id: "G" }) },
-            { file: "null.json", text: "null" }
+            { file: "null.json", text: "null" },
+            { file: "h.json", text: lookOf({ id: "H", at: "2026-11-05T15:00:00Z" }) },
+            { file: "o.json", text: lookOf({ id: "O", at: "2026-11-05T13:00:00Z" }) }
         ];
-        const read = ForYou.looks(files);
+        const read = Looks.looks(files, {}, now);
         expect("those waiting, in the order they came", read.waiting.map(one => one.id),
-            ["B", "A"]);
-        expect("the rest, newest first", read.history.map(one => one.id), ["E", "D", "C", "F"]);
+            ["H", "B", "A"]);
+        // One waiting past three days has gone quiet, in History from when it did, its file
+        // left saying it waits (Joel, 2026-11-11; VKCF3Z's flows).
+        expect("the rest, newest first, one gone quiet among them",
+            read.history.map(one => one.id), ["E", "D", "C", "O", "F"]);
+        const quiet = read.history.find(one => one.id === "O") ?? {};
+        expect("one gone quiet, three days after it came", [quiet.state, quiet.resolved],
+            ["quiet", Date.parse("2026-11-08T13:00:00Z")]);
         expect("a look read whole", read.waiting[0].title, "Review the change");
-        expect("a look's time as a number", read.waiting[0].since,
+        expect("a look's time as a number", read.waiting[1].since,
             Date.parse("2026-11-08T09:00:00Z"));
 
         // Read again keeping what was parsed, only a file that changed is
         // parsed again, and one gone is forgotten.
         const kept = {};
-        const first = ForYou.looks(files, kept);
+        const first = Looks.looks(files, kept, now);
         const changed = files.filter(one => one.file !== "e.json").map(one => one.file
             === "a.json" ? { file: one.file, text: lookOf({ id: "A", title: "Again" }) } : one);
-        const again = ForYou.looks(changed, kept);
+        const again = Looks.looks(changed, kept, now);
         const byId = (them, id) => them.waiting.concat(them.history).find(one => one.id === id);
         expect("a file as it was, not parsed again", byId(again, "B") === byId(first, "B"), true);
         expect("a file that changed, parsed again", byId(again, "A").title, "Again");
         expect("a file gone, forgotten", ["e.json" in kept.by, "a.json" in kept.by], [false, true]);
+        expect("a look gone quiet, kept as its file was read", kept.by["o.json"].look.state,
+            "waiting");
 
         // A look's drawer says why it's there, then what Joel is asked and
         // his choices; an older look, saying no ask, gives only its why.
-        const askingLook = ForYou.looks([{ file: "q.json", text: lookOf({ id: "Q",
-            ask: "Merge it, or say what to change." }) }]).waiting[0];
+        const askingLook = Looks.looks([{ file: "q.json", text: lookOf({ id: "Q",
+            ask: "Merge it, or say what to change." }) }], {}, now).waiting[0];
         expect("a look's words, its ask under its why", askingLook.words,
             "it touches the launcher\n\nMerge it, or say what to change.");
-        expect("an older look's words, its why alone", read.waiting[0].words,
+        expect("an older look's words, its why alone", read.waiting[1].words,
             "it touches the launcher");
 
         // History's side: how it went and when.
-        const side = id => ForYou.historySide(read.history.find(one => one.id === id), say);
+        const side = id => ForYou.historySide(read.history.find(one => one.id === id)
+            ?? { state: "", since: null }, say);
         expect("one merged", side("E"), "merged 14:02");
         expect("one opened", side("C"), "opened 13:10");
         expect("one cleared by Joel", side("D"), "cleared by you 13:30");
         expect("one saying no how, by its state", side("F"), "resolved 12:00");
+        expect("one gone quiet", side("O"), "went quiet 13:00");
 
         // A look written again as it's done with, whole, with what it was.
-        const opened = JSON.parse(ForYou.rewritten(read.waiting[0], "opened", "opened", now));
+        const opened = JSON.parse(Looks.rewritten(read.waiting[1], "opened", "opened", now));
         expect("a look opened, written whole", [opened.v, opened.id, opened.state, opened.how,
-            opened.resolvedAt, opened.title, opened.target, opened.since, opened.file],
+            opened.resolvedAt, opened.title, opened.target, opened.since, opened.file,
+            opened.words],
             [1, "B", "opened", "opened", "2026-11-08T14:00:00.000Z", "Review the change",
-                "https://github.com/o/r/pull/1", undefined, undefined]);
+                "https://github.com/o/r/pull/1", undefined, undefined, undefined]);
 
         // The to-dos Joel said were done, newest first, and none
         // he put off or that still waits.

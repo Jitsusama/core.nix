@@ -13,7 +13,7 @@ pragma Singleton
 import qs
 import Quickshell
 import QtQuick
-import "launcher/ForYou.js" as ForYou
+import "launcher/Looks.js" as Looks
 import "pieces/Holding.js" as Holding
 
 Singleton {
@@ -38,11 +38,13 @@ Singleton {
     // weighs the folder's, or Now's while the daemon hasn't answered. A
     // daemon that stopped answering keeps what it last held, so that's
     // set aside for Now's reading rather than counted as current: the tray
-    // fails to the folder, never to stale looks (Y2YBTS, as in #2707).
+    // fails to the folder, never to stale looks (Y2YBTS, as in #2707). One
+    // that has waited three days goes quiet as the stream next changes,
+    // which is many times an hour, so nothing wakes to time it.
     readonly property bool streamed: toDo.answered && toDo.state !== "not answering"
     readonly property var waitingLooks: {
         void toDo.revision;
-        return streamed ? ForYou.looks(Holding.lookFiles(toDo.held)).waiting : looks;
+        return streamed ? Looks.looks(Holding.lookFiles(toDo.held), {}, Date.now()).waiting : looks;
     }
 
     readonly property var holds: Holding.held({

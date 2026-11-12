@@ -1193,9 +1193,10 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
         "items": [{"id": "ask", "title": "Answer the ask", "minutes": 2, "ready": True}],
     }
     # A look names the quest that pointed at it, which the index holds paused, and a
-    # session that's gone.
+    # session that's gone. It came just now, since one three days old goes quiet.
     look = {"v": 1, "id": "filtered", "title": "Read the plan", "target": "/etc/hostname",
-            "kind": "file", "state": "waiting", "at": "2026-11-08T12:00:00Z",
+            "kind": "file", "state": "waiting",
+            "at": desktop.machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip(),
             "quest": "QEST-20261027-GONEQA", "session": "pi-reef"}  # fmt: skip
     desktop.as_account(f"mkdir -p {MISSION}/waiting {HARNESS}/looks")
     try:

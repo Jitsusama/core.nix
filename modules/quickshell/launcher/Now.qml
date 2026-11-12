@@ -29,6 +29,7 @@ import "Ago.js" as Ago
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
+import "Looks.js" as Looks
 import "NowGroups.js" as Groups
 import "Showing.js" as Showing
 import "Order.js" as Order
@@ -859,9 +860,14 @@ Provider {
     // file that changed is parsed again. A stopgap: KP0L6A's agents daemon
     // takes the looks over by Sat 14 Nov, and For You takes its rows from
     // it ready, with nothing to read or parse here.
-    readonly property var looks: ForYou.looks(Object.keys(lookTexts)
-        .map(file => ({ file: file, text: lookTexts[file] })), looksParsed)
+    readonly property var looks: Looks.looks(Object.keys(lookTexts)
+        .map(file => ({ file: file, text: lookTexts[file] })), looksParsed, looksHour * 3600000)
     readonly property var looksParsed: ({})
+    // The hour the looks were last listed in, which a look that has waited
+    // three days goes quiet by (Looks.js's quieted): set as the launcher
+    // opens, it changes at most once an hour, so the looks are split again
+    // then and never on each opening or minute.
+    property int looksHour: Math.floor(Date.now() / 3600000)
 
     FolderListModel {
         id: lookFiles
@@ -928,6 +934,7 @@ Provider {
         if (lookFiles.folder.toString() !== `file://${looksAt}`
             || lookFiles.status !== FolderListModel.Ready)
             return;
+        looksHour = Math.floor(Date.now() / 3600000);
         const listed = {};
         for (let at = 0; at < lookFiles.count; at += 1)
             listed[lookFiles.get(at, "fileName")] = true;
@@ -975,7 +982,7 @@ Provider {
     function settleLook(one, state, how) {
         if (one.file === "")
             return;
-        const text = ForYou.rewritten(one, state, how, Date.now());
+        const text = Looks.rewritten(one, state, how, Date.now());
         if (!(one.file in lookWriters))
             lookWriters[one.file] = lookWrite.createObject(provider, { file: one.file,
                 was: lookTexts[one.file] ?? "", path: `${provider.looksAt}/${one.file}` });
@@ -1009,7 +1016,8 @@ Provider {
 
     // Opening a look: a terminal's session gone to, anything else opened
     // by what opens its link or its file. Opened, it no longer needs Joel,
-    // so a waiting one is written so and moves to History.
+    // so a waiting one is written so and moves to History, as does one
+    // gone quiet there, whose file still says it waits.
     function openLook(one) {
         if (one.kind === "terminal") {
             const session = lookSession(one);
@@ -1018,7 +1026,7 @@ Provider {
         } else {
             Niri.spawn(["xdg-open", one.target]);
         }
-        if (one.state === "waiting")
+        if (one.state === "waiting" || one.state === "quiet")
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 

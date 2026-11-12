@@ -355,6 +355,7 @@
         "opened": "opened",
         "cleared": "cleared",
         "resolved": "resolved",
+        "quiet": "went quiet",
         "openedHow": "opened",
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",

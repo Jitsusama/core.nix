@@ -6,4 +6,5 @@
   "launcher/NowGroups.js"
   "launcher/ForYou.js"
   "launcher/ForYouFilter.js"
+  "launcher/Looks.js"
 ]

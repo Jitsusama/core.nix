@@ -36,9 +36,10 @@
   # bands what needs him now apart from To Look At and To Try, the
   # heaviest first and ties the oldest first in each, says each row's
   # strongest reason, reads the looks folder's files into what waits and
-  # what's history, says a look's ask under its why, and gathers what other
-  # sources give it, as Passwords' one to-do, weighed beside the rest or done, as
-  # tests/for-you.qml holds ForYou.js to it in Qt's own engine.
+  # what's history, a look three days old gone quiet into History, says a
+  # look's ask under its why, and gathers what other sources give it, as
+  # Passwords' one to-do, weighed beside the rest or done, as tests/for-you.qml
+  # holds ForYou.js and Looks.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -46,6 +47,7 @@
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
       cp ${../../../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/Looks.js} Looks.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
