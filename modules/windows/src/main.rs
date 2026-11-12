@@ -52,6 +52,7 @@ use windows::light::{Held, Seen};
 use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
+use windows::timed::{self, Timed};
 use windows::{open, order};
 
 /// How long to wait before asking niri again once it's gone.
@@ -247,6 +248,9 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
     if writeln!(stream, "\"EventStream\"").is_err() {
         return;
     }
+    // How long each program takes to open and to end is said apart from
+    // the desktop held, which it neither reads nor changes.
+    let mut times = Timed::default();
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { return };
         let Ok(event) = serde_json::from_str::<Value>(&line) else {
@@ -256,6 +260,9 @@ fn hear(shared: &Shared, mut stream: UnixStream, niri: &Path) {
         if let Some(why) = event.get("Err") {
             eprintln!("<3>niri refused the event stream: {why}");
             return;
+        }
+        if let Some(timing) = times.heard(&event, timed::now, timed::started) {
+            timed::say(timing);
         }
         // A screen coming or going changes the workspaces, so its outputs
         // are asked again then, before the lock is taken, so no ask waits

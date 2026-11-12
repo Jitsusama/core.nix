@@ -4328,7 +4328,9 @@
     reads alike with, only the two windows a focus moved between, and nothing for a resize or the
     launcher taking the keys; says a window closed as gone, names a window's program again once an
     entry is added, describes the desktop again once niri is gone and back, and refuses an ask or
-    a kind it doesn't know
+    a kind it doesn't know; times a program's first window from its process's start and waits
+    for its process once its last window closes, and says nothing of a second window, a window
+    there as the stream began or a process started long before
   '';
   windows-passes-clippy = ''
     clippy finds nothing in the windows daemon or its tests
