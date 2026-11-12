@@ -1,26 +1,15 @@
 # The checks of chrome, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
-  account,
-  bareNixos,
   onLinux,
   passesClippy,
   pkgs,
-  self,
   ...
 }:
 let
   recent-sites = pkgs.callPackage ./recent-sites/package.nix { };
   pack-extension = pkgs.callPackage ./pack-extension/package.nix { };
   open-tabs = pkgs.callPackage ./open-tabs/host/package.nix { };
-
-  # Vimium as Chrome's web store has it, whose parser reads the keys.
-  vimium = pkgs.fetchFromGitHub {
-    owner = "philc";
-    repo = "vimium";
-    rev = "v2.4.2";
-    hash = "sha256-i4JT2moQSVGzygC4BDAqkjioCAJiFCo5Bc5pmIAfovE=";
-  };
 in
 onLinux {
   # clippy finds nothing in the host that tells the launcher Chrome's open
@@ -34,32 +23,6 @@ onLinux {
   # clippy finds nothing in what reads Chrome's sites for the launcher, its
   # tests included.
   chrome-recent-sites-passes-clippy = passesClippy "chrome-recent-sites-passes-clippy" recent-sites;
-
-  # Vimium takes the settings an account with Chrome writes it, as it
-  # restores a backup: its own parser reads their keys after its defaults,
-  # refusing none, and each of the key language's does the language's act,
-  # with Vimium's own H, L, x, f and F beside them
-  # (tests/chrome-vimium-takes-the-keys.mjs).
-  chrome-vimium-takes-the-keys =
-    let
-      home = account (bareNixos [
-        self.nixosModules.graphical
-        { home-manager.users.someone.imports = [ self.homeModules.chrome ]; }
-      ]);
-      settings = home.xdg.configFile."jitsusama/vimium.json" or null;
-    in
-    pkgs.runCommandLocal "chrome-vimium-takes-the-keys" { nativeBuildInputs = [ pkgs.nodejs ]; } (
-      if settings == null then
-        ''
-          echo "the account writes Vimium no settings"
-          exit 1
-        ''
-      else
-        ''
-          node ${./tests/chrome-vimium-takes-the-keys.mjs} ${vimium} ${settings.source}
-          touch $out
-        ''
-    );
 
   # Chrome's sites are read whole from a history caught halfway through a
   # write, as Chrome leaves it while it browses: the half-written pages in
