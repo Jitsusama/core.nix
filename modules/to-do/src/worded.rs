@@ -232,10 +232,12 @@ fn body(item: &Value) -> String {
 mod tests {
     use super::*;
 
+    fn vocabulary() -> Value {
+        serde_json::from_str(include_str!("../tests/words.json")).expect("For You's words parse")
+    }
+
     fn words() -> Words {
-        let vocabulary = serde_json::from_str(include_str!("../tests/words.json"))
-            .expect("For You's words parse");
-        Words::read(&vocabulary).expect("every word a to-do needs is there")
+        Words::read(&vocabulary()).expect("every word a to-do needs is there")
     }
 
     fn said(item: &Value, now: bool) -> Value {
@@ -357,11 +359,24 @@ mod tests {
         let acts = said(&json!({"title": "T"}), true)["acts"].clone();
         assert_eq!(
             acts[1],
-            json!({"key": "verb:on:waiting:notNow:Q:sign-in", "name": "Put It Off",
-                "verb": "later", "glyph": "queued", "hue": "action",
+            json!({"key": "verb:on:waiting:notNow",
                 "ask": {"ask": "act", "act": "notNow", "item": "Q:sign-in"}}),
-            "put off, by an ask on the socket"
+            "put off, by an ask on the socket, its words the shell's by its key"
         );
         assert_eq!(acts[0]["ask"]["act"], "done", "done first");
+    }
+
+    #[test]
+    fn each_acts_key_is_a_verb_the_launcher_words() {
+        let things = vocabulary()["things"].clone();
+        let acts = said(&json!({"title": "T"}), true)["acts"].clone();
+        for act in acts.as_array().expect("its acts are a list") {
+            assert!(
+                things
+                    .as_array()
+                    .is_some_and(|things| things.iter().any(|thing| thing["id"] == act["key"])),
+                "an act's key names no word of the launcher's: {act}"
+            );
+        }
     }
 }
