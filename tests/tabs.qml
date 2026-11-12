@@ -45,7 +45,21 @@ ShellRoot {
         settings: ({ name: "tabs" })
     }
 
-    Component.onCompleted: {
+    // The cases run once ReadyRows' Daemon.qml has made its link, which its
+    // loader may make after the shell's own completion.
+    property bool begun: false
+    Component.onCompleted: begin()
+    Connections {
+        target: tabs.served
+        function onLinkChanged() {
+            root.begin();
+        }
+    }
+
+    function begin() {
+        if (begun || !tabs.served.link)
+            return;
+        begun = true;
         try {
             Niri.windows = {
                 "7": { id: 7, app_id: "google-chrome", title: "Inbox - Google Chrome" },
