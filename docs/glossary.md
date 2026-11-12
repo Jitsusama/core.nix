@@ -86,7 +86,7 @@ the queue and conclude.
 | ---- | ----- | --- | ------- |
 | agent | a model working for Joel, as a session or a subagent | AI, assistant, bot | |
 | sandbox | the fence around a command an agent runs: what it may read, write, reach and be told | | `PI_SANDBOX`, landrun |
-| broker | a program outside the sandbox holding a credential, which hands what's inside only a short-lived part of it | | `github-broker`, `gcloud-broker` |
+| broker | a program outside the sandbox holding a credential or a door the sandbox shuts, which hands what's inside only a short-lived or narrow part of it | | `github-broker`, `gcloud-broker`, `jobs-broker` |
 | quest | a piece of Joel's work, with its own folder, README and documents | task, project, todo | `QEST-` ids, the `quest` tool |
 | short name | a quest's name in two or three words, on its windows and in the launcher | | `short:` |
 | subquest | a quest that is part of another's work | | `kind: subquest` |

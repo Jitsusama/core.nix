@@ -979,6 +979,16 @@
     ir-camera keeps each sample's highest eight bits, reads and writes lines their stride apart,
     and refuses a short frame or a format it can't use
   '';
+  jobs-broker-passes-clippy = ''
+    clippy finds nothing in the jobs broker or its tests
+  '';
+  jobs-broker-runs-on-its-socket = ''
+    the jobs broker runs on %t/daemons/jobs-broker.sock, shown by its name, and a switch restarts it
+  '';
+  jobs-broker-scopes-only-agents-work = ''
+    the jobs broker makes a scope only into agents' own work, for a process already an agent's and
+    named by the kernel, refuses a status of anything not a unit's name, and knows no stop or start
+  '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
   '';
