@@ -12,8 +12,10 @@
   # run of lines repeated from elsewhere is counted once where it repeats
   # and braces alone repeat nothing, each quarantined test is counted by
   # its name and a repository keeping no quarantine has no figure for it,
-  # git's batch answer is split by its sizes, a repository's ref and folder go to it, and the day's file is
-  # the form cadence reads.
+  # each point a daemon waits on is counted by its daemon and a repository
+  # holding no daemons to docs/daemons.md has no figure for it, git's batch
+  # answer is split by its sizes, a repository's ref and folder go to it,
+  # and the day's file is the form cadence reads.
   code-health-counts-what-got-messier = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in code-health, its tests included.
   code-health-passes-clippy = passesClippy "code-health-passes-clippy" (

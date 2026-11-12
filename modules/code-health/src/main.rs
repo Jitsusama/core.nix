@@ -2,9 +2,9 @@
 //! it and writes the day's figures, so `cadence day` holds each against
 //! the days before it and a repository getting messier is named the day it
 //! does: its long files with no reason, its suppressions, its crowded
-//! folders with no reason, its lines of code repeated from elsewhere and
-//! the tests its merge net keeps in quarantine (measure.rs says how each
-//! is counted).
+//! folders with no reason, its lines of code repeated from elsewhere, the
+//! tests its merge net keeps in quarantine and the points its daemons wait
+//! on to agree (measure.rs says how each is counted).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
 //! the form cadence reads, and `<date>-named.json` beside it naming what

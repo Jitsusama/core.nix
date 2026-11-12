@@ -23,6 +23,9 @@ const OPENING: usize = 40;
 const SAME: usize = 8;
 /// How many names each measure keeps, so a day's file stays readable.
 const NAMED: usize = 200;
+/// The list of the points of docs/daemons.md each daemon still breaks,
+/// as the daemons-agree check keeps it.
+pub const DAEMONS_WAITING: &str = "tests/rules/daemons-agree-waiting.nix";
 
 /// The extensions of the files counted as code.
 const CODE: &[&str] = &[
@@ -113,7 +116,42 @@ pub fn measure(paths: &[String], files: &[File]) -> Health {
         let count = quarantined.len();
         health.put("quarantined-tests", quarantined, count);
     }
+
+    // Likewise a repository holding no daemons to docs/daemons.md.
+    if let Some(list) = files.iter().find(|file| file.path == DAEMONS_WAITING) {
+        let points = waiting_points(&list.text);
+        let count = points.len();
+        health.put("daemons-waiting", points, count);
+    }
     health
+}
+
+/// The points each daemon waits on, as `daemon: point`, from a list of
+/// `daemon = [ "point" ... ];` entries, one or several lines each.
+fn waiting_points(text: &str) -> Vec<String> {
+    let mut points = Vec::new();
+    let mut daemon: Option<String> = None;
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('#'))
+    {
+        let rest = match line.split_once(" = [") {
+            Some((name, rest)) => {
+                daemon = Some(name.trim_matches('"').to_owned());
+                rest
+            }
+            None => line,
+        };
+        if let Some(name) = &daemon {
+            let quoted = rest.split('"').skip(1).step_by(2);
+            points.extend(quoted.map(|point| format!("{name}: {point}")));
+        }
+        if rest.contains(']') {
+            daemon = None;
+        }
+    }
+    points
 }
 
 /// The tests a quarantine list holds, by name: a list of entries, each
@@ -425,6 +463,32 @@ mod tests {
         assert!(
             !health.figures.contains_key("quarantined-tests"),
             "a quarantine nobody keeps was counted as empty: {health:?}"
+        );
+    }
+
+    #[test]
+    fn each_point_a_daemon_waits_on_is_counted_by_its_daemon() {
+        let list = "# Waiting.\n{\n  agents = [ \"shown\" ];\n  calls = [\n    \"held\"\n    \"named\"\n  ];\n}\n";
+        let files = [file(DAEMONS_WAITING, list)];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["daemons-waiting"],
+            ["agents: shown", "calls: held", "calls: named"],
+            "a point a daemon waits on was missed or misnamed"
+        );
+        assert!(
+            (health.figures["daemons-waiting"] - 3.0).abs() < f64::EPSILON,
+            "the figure didn't match the points named: {health:?}"
+        );
+    }
+
+    #[test]
+    fn a_repository_holding_no_daemons_to_the_convention_has_no_figure_for_it() {
+        let files = [file("a.rs", "fn a() {}\n")];
+        let health = measure(&paths(&files), &files);
+        assert!(
+            !health.figures.contains_key("daemons-waiting"),
+            "a daemons list nobody keeps was counted as empty: {health:?}"
         );
     }
 
