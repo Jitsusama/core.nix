@@ -3816,7 +3816,8 @@
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below, for a notice, a time server and a device; a person's
-    Unread and Recent say how many at their right; and Now's plate sets its head as one unit and
+    Unread and Recent say how many at their right; a chord's plate gives its keys and where it
+    works, each fact beside its name; and Now's plate sets its head as one unit and
     its groups as a body under it
   '';
   vm-desktop-looks-programs = ''

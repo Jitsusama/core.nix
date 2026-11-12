@@ -5,8 +5,9 @@ other areas' screen is too small to hold the card and its drawer at: 1.5, as the
 as the laptop does. Its drawer is a plate whose every line lies on one of the card's
 (docs/design.md, the drawer), measured from what the launcher reports of both to a hundredth of a
 pixel: a notice's title, eyebrow and words, a time server's and a device's facts, a person's page,
-and Now's head and groups, each shot in the gallery for a person to measure too. It's an area of its
-own, rather than more of looks, so the looks areas run side by side rather than one after another;
+a chord's keys, and Now's head and groups, each shot in the gallery for a person to measure too.
+It's an area of its own, rather than more of looks, so the looks areas run side by side rather than
+one after another;
 what they share is in looks_session.py. tests/desktop.nix runs this through pytest inside the driver
 (tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for the
 desktop, started once a run (desktop_session.py), and leaves it as it found it.
@@ -346,6 +347,37 @@ def clock_plate_shown(desktop: Desktop, scale: str) -> None:
     assert drawer["laidOneWay"], f"at {scale} its facts mix beside and under: {drawer}"
     desktop.shoot(f"launcher-plate-clock-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+def test_a_shortcuts_plate_says_its_keys_and_where_it_works_on_the_cards_lines(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """A chord's plate is what it does under its layer, then its Keys, Also and Works.
+
+    Every row's drawer gives what its line couldn't fit (docs/design.md, the drawer), and a
+    chord's line holds one chord: its plate gives each way to do it and where it works, each
+    fact beside its name on the card's lines, shot at both of Joel's scales to judge.
+    """
+    title = "Go to the workspace below"
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.answer("shortcuts")
+        desktop.down_to("Shortcuts")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["path"] == ["Shortcuts"])
+        desktop.type_in("workspace below", selecting=title)
+        desktop.down_to(title)
+        drawer = plate_shown(desktop, scale, facts_laid(desktop, title))
+        assert drawer["eyebrow"] == "Desktop", f"at {scale} the chord's layer: {drawer}"
+        assert drawer["drawnFacts"][:1] == ["Keys"], f"at {scale} its facts: {drawer}"
+        assert "Works" in drawer["drawnFacts"], f"at {scale} it says not where: {drawer}"
+        facts = drawer["lines"]["facts"]
+        assert things_apart(facts, wrapped=drawer["factsWrapped"] > 0), (
+            f"at {scale} the chord's facts are off the pitch: {drawer}"
+        )
+        assert drawer["besideOnOneLine"], f"at {scale} a value wraps beside its name: {drawer}"
+        desktop.shoot(f"launcher-plate-shortcut-at-{scale.replace('.', '-')}")
+        desktop.close_launcher()
 
 
 def test_nows_plate_sets_its_head_and_groups_as_every_plate(
