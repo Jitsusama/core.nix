@@ -146,6 +146,9 @@ pub fn follow(
     let mut awake: Option<Awake> = None;
     // The calls Joel stopped, never transcribed again while this runs.
     let mut stopped: HashSet<String> = HashSet::new();
+    // The notice saying the call is being transcribed, withdrawn once it
+    // isn't, as the call ends or its transcribing stops.
+    let mut offered: Option<notices::Shown> = None;
     let mut count = 0;
     loop {
         let wait = match (call.due(Instant::now()), &recording) {
@@ -158,6 +161,9 @@ pub fn follow(
             Ok(Heard::Stop(key)) => {
                 if let Some(mut stopping) = recording.take_if(|now| now.key == key) {
                     stopping.stop();
+                    if let Some(said) = offered.take() {
+                        said.withdraw();
+                    }
                     eprintln!("call-transcripts: transcribing stopped, {key}");
                     stopped.insert(key);
                 }
@@ -183,7 +189,7 @@ pub fn follow(
                 let title = on.title.clone();
                 match start(book, calls, &key, on, at, jobs, count) {
                     Ok(started) => {
-                        offer_line(&title, &key, &stops);
+                        offered = Some(offer_line(&title, &key, &stops));
                         recording = Some(started);
                     }
                     Err(why) => {
@@ -198,6 +204,9 @@ pub fn follow(
                 calling.store(false, Ordering::SeqCst);
                 if let Some(mut ended) = recording.take() {
                     ended.stop();
+                }
+                if let Some(said) = offered.take() {
+                    said.withdraw();
                 }
                 if let Some(key) = on_call.take() {
                     ended_at(book, &key);
@@ -215,8 +224,9 @@ pub fn follow(
 
 /// Offers the line for the call's chat, quietly, as the call starts:
 /// clicking the card copies it, and Stop Transcribing stops the call's
-/// recorders.
-fn offer_line(title: &str, key: &str, stops: &Sender<Heard>) {
+/// recorders. It's given back to be withdrawn once the call isn't being
+/// transcribed.
+fn offer_line(title: &str, key: &str, stops: &Sender<Heard>) -> notices::Shown {
     let (key, stops) = (key.to_owned(), stops.clone());
     notices::show(
         &notices::being_transcribed(title),
@@ -227,7 +237,7 @@ fn offer_line(title: &str, key: &str, stops: &Sender<Heard>) {
             "copy" | "default" => notices::copy_line(),
             _ => {}
         },
-    );
+    )
 }
 
 /// Starts recording a call, in a record of its own, or in the record of the
