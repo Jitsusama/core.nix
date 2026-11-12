@@ -181,17 +181,9 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 .reduce(|a, b| a || b);
             let input = now(format!("temp{n}_input"));
             let degrees = thousandths(input.clone(), DEGREES);
-            // The files behind it as they say it, for its rows' drawers: what
-            // it reads, its label, its limits, then its alarms.
-            let mut files = vec![(format!("temp{n}_input"), input)];
-            files.push((format!("temp{n}_label"), label_of("temp", n)));
-            for what in ["min", "max", "crit", "emergency"] {
-                let file = format!("temp{n}_{what}");
-                files.push((file.clone(), fixed(file)));
-            }
-            files.extend(alarms);
+            let files = temp_files(n, input, label_of("temp", n), &mut fixed, alarms);
             json!({
-                "files": said_files(files),
+                "files": files,
                 "n": n,
                 "label": label_of("temp", n),
                 "temperature_c": degrees.map(|c| rounded(c, 1)),
@@ -221,24 +213,8 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 "1" => "manual",
                 _ => "automatic",
             });
-            let mut files: Vec<(String, Option<String>)> = ["input", "min", "max", "target"]
-                .iter()
-                .map(|what| format!("fan{n}_{what}"))
-                .map(|file| {
-                    let said = if file.ends_with("_input") || file.ends_with("_target") {
-                        now(file.clone())
-                    } else {
-                        fixed(file.clone())
-                    };
-                    (file, said)
-                })
-                .collect();
-            for file in [format!("pwm{n}"), format!("pwm{n}_enable")] {
-                let said = lists(&file).then(|| now(file.clone())).flatten();
-                files.push((file, said));
-            }
             json!({
-                "files": said_files(files),
+                "files": fan_files(n, &now, &mut fixed, &lists),
                 "n": n,
                 "label": label_of("fan", n),
                 "rpm": rpm(format!("fan{n}_input")),
@@ -263,6 +239,52 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         "currents": electrics(("curr", "amps", 1000.0)),
         "power": electrics(("power", "watts", 1_000_000.0)),
     })
+}
+
+/// The files behind a temperature as they say it, for its rows' drawers:
+/// what it reads, its label, its limits (as kept), then its alarms.
+fn temp_files(
+    n: u32,
+    input: Option<String>,
+    label: Option<String>,
+    fixed: &mut dyn FnMut(String) -> Option<String>,
+    alarms: Vec<(String, Option<String>)>,
+) -> Value {
+    let mut files = vec![
+        (format!("temp{n}_input"), input),
+        (format!("temp{n}_label"), label),
+    ];
+    for what in ["min", "max", "crit", "emergency"] {
+        let file = format!("temp{n}_{what}");
+        files.push((file.clone(), fixed(file)));
+    }
+    files.extend(alarms);
+    said_files(files)
+}
+
+/// The files behind a fan as they say it: its speed and where it's aimed
+/// read now, its least and most as kept, then how it's driven.
+fn fan_files(
+    n: u32,
+    now: &dyn Fn(String) -> Option<String>,
+    fixed: &mut dyn FnMut(String) -> Option<String>,
+    lists: &dyn Fn(&str) -> bool,
+) -> Value {
+    let mut files: Vec<(String, Option<String>)> = Vec::new();
+    for what in ["input", "min", "max", "target"] {
+        let file = format!("fan{n}_{what}");
+        let said = if matches!(what, "input" | "target") {
+            now(file.clone())
+        } else {
+            fixed(file.clone())
+        };
+        files.push((file, said));
+    }
+    for file in [format!("pwm{n}"), format!("pwm{n}_enable")] {
+        let said = lists(&file).then(|| now(file.clone())).flatten();
+        files.push((file, said));
+    }
+    said_files(files)
 }
 
 /// Files as `[name, said]` pairs, in the order read, those that said
