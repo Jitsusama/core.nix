@@ -53,6 +53,9 @@ SPOTS_MADE_SHUT = ("spots made while closed ", "spots freshened while closed ")
 # within SPOTS_LATER fails it.
 REOPENINGS_TRIED = 3
 
+# How often the shell's log is read for its closing, between a closing and its reopening.
+CLOSING_READ = 0.005
+
 # What the shell says once when it can't write the open mark (Launcher.qml's markFailed).
 MARK_UNWRITTEN = "launcher: couldn't write the open mark"
 
@@ -77,6 +80,11 @@ SETTLING_S = 2
 # guarded by this clock alone failed so, on a minute turned around its act (FEH1HE,
 # 2026-11-11, at 8c5ff8bf).
 CLOCK_SLACK = 5
+
+# How far into a minute an act timed against the clock may begin, in seconds, so the rest of
+# the minute, less CLOCK_SLACK, holds the act: begun anywhere, both of a For You case's tries
+# crossed a minute on a busy builder and it judged the second's (2026-11-12, at c015284d3).
+MINUTE_BEGUN = 20
 
 # How long a closing's spots are given to be freshened: a minute after they're made
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
@@ -126,6 +134,32 @@ def home_kept_after(shell: Shell) -> Iterator[None]:
 def openings(shell: Shell) -> list[Json]:
     """Give the last openings the launcher timed, each from its ask to its first frame."""
     return cast("list[Json]", json.loads(shell.as_account(shell.ipc("openings"))))
+
+
+def told(line: str) -> None:
+    """Say a line down the launcher's socket from this process, as its chord's launcher-say does.
+
+    No process is started for it, so two said in a row are as far apart as the shell makes them.
+    """
+    with socket.socket(socket.AF_UNIX) as said:
+        said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+        said.sendall(f"{line}\n".encode())
+
+
+def heard_closing(shell: Shell, since: int, by: float) -> None:
+    """Wait, reading the shell's log alone, until it says it's closing, or the clock reaches by."""
+    while time.monotonic() < by:
+        said, _ = shell.said_since(since)
+        if "closing" in said:
+            return
+        time.sleep(CLOSING_READ)
+
+
+def minute_begun() -> None:
+    """Wait, if the clock is past MINUTE_BEGUN or within CLOCK_SLACK of its minute, for the next."""
+    into = time.time() % 60
+    if into < CLOCK_SLACK or into > MINUTE_BEGUN:
+        time.sleep((CLOCK_SLACK - into) % 60)
 
 
 def latest(timed: list[Json]) -> int:
@@ -616,19 +650,20 @@ def test_a_reopening_puts_off_the_spots_its_closing_left(shell: Shell) -> None:
     Network's rows between its ask and its first frame (a gate of #2971, 2026-11-10). Niri is
     held from the closing until past that half second, so the reopening's first frame can't
     come before the spots are due, however quickly the shell turns. Rows follow only from a
-    place changed while shut, so the spots being made at all is what fails. Each call starts a
-    process, and on a busy builder the two took past the half second, so the spots were made
-    before the reopening was asked (four gates, 2026-11-10): such a try shows nothing and is
-    made again.
+    place changed while shut, so the spots being made at all is what fails. Both toggles are
+    said down the launcher's socket from here, the reopening once the shell's log says it's
+    closing: as two IPC calls, each starting a process, a busy builder took past the half
+    second on every try (five gates, 10 to 12 November), and such a try shows nothing.
     """
     for _ in range(REOPENINGS_TRIED):
         first = opened_from_kept(shell)
         began = shell.mark()
         with launcher_on_niri.niri_held():
             closed = time.monotonic()
-            shell.as_account(shell.ipc("toggle"))
-            # Home is kept a turn after the closing, before the next call can land.
-            shell.as_account(shell.ipc("toggle"))
+            told("toggle")
+            # Home is kept in the turn after the closing says so, before the next line is read.
+            heard_closing(shell, began, closed + SPOTS_LATER.total_seconds())
+            told("toggle")
             asked = time.monotonic() - closed
             # Held until the spots are due, so they come due between the ask and its frame.
             time.sleep(max(0, closed + SPOTS_DUE.total_seconds() - time.monotonic()))
@@ -971,9 +1006,11 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
 
         A turn counts if the clock says one came, or if the shell said it heard one, however
         late: a shell that heard the turn after the clock's slack made Time's and Today's rows
-        again rightly, and failed the case (Y2YBTS, 2026-11-11, at 0cb9591c).
+        again rightly, and failed the case (Y2YBTS, 2026-11-11, at 0cb9591c). Each try begins
+        early in a minute (MINUTE_BEGUN), so one only a turned clock remade is rare.
         """
         for _ in range(2):
+            minute_begun()
             began = time.time()
             heard_from = shell.mark()
             made_by_it = act()
@@ -1046,9 +1083,7 @@ def test_the_launcher_takes_keys_after_each_of_five_restarts(shell: Shell) -> No
     """
     for restart in range(1, RESTARTS + 1):
         shell.restart()
-        with socket.socket(socket.AF_UNIX) as said:
-            said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
-            said.sendall(f"toggle @{time.time():.6f}\n".encode())
+        told(f"toggle @{time.time():.6f}")
         shell.launcher_ready()
         shell.send_chars("agents")
         try:
