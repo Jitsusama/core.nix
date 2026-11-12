@@ -268,6 +268,30 @@ pub(crate) mod tests {
                 backs: 0
             })
         );
+        let tapped = [
+            visit(AT, RELOADED),
+            visit(AT + 20_000, RELOADED),
+            visit(AT + 20_800, RELOADED),
+        ];
+        assert_eq!(
+            painful(&[tapped.to_vec()], AT - 1, AT + 1)[0].lost_seconds,
+            20.8,
+            "a quick second reload is still his"
+        );
+    }
+
+    #[test]
+    fn a_page_reloading_itself_is_not_his_go() {
+        let mut day = vec![visit(AT, RELOADED), visit(AT + 10_000, RELOADED)];
+        day.extend((1..=25).map(|n| visit(AT + 10_000 + n * 1000, RELOADED)));
+        day.push(visit(AT + 40_000, LINK));
+        let named = painful(&[day], AT - 1, AT + 1);
+        assert_eq!(named.len(), 1, "his two reloads are a go: {named:?}");
+        assert_eq!(
+            (named[0].lost_seconds, named[0].openings),
+            (10.0, 2),
+            "reloads a second apart, three gaps and more in a row, are the page's own"
+        );
     }
 
     #[test]
