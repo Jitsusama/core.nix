@@ -138,6 +138,8 @@ ShellRoot {
             const waiting = searched("doc");
             Expect.expect("while the daemon's asked, the tabs holding the letters stand",
                 waiting === "Notes", waiting);
+            Expect.expect("what's typed is asked of the daemon",
+                tabs.served.asking === "doc", tabs.served.asking);
             tabs.served.answered("o", { id: 1, words: "o", marks: {}, keys: [
                 "row:tabs:https://docs.example.org/", "row:tabs:https://github.com/jitsusama/core.nix"
             ] });
