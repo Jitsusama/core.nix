@@ -563,9 +563,11 @@ impl Say<'_> {
                 reason = "a battery's time is a few days of seconds, and never below none"
             )]
             let ahead = (seconds * 1000.0) as u64;
-            facts.push(json!({ "name": self.words.name_in("power:until", state, &[]),
+            facts.push(
+                json!({ "name": self.words.name_in("power:until", state, &[]),
                 "at": (wall + ahead) / MINUTE_MS * MINUTE_MS, "as": "moment",
-                "said": self.says("until", "at", &[("span", &lasted(seconds))]) }));
+                "said": self.says("until", "at", &[("span", &lasted(seconds))]) }),
+            );
         }
         let mut kept = vec![("status", self.plain(&battery["status"]))];
         if battery["energy_full_wh"].is_number() || battery["charge_full_ah"].is_number() {
@@ -1448,7 +1450,10 @@ mod tests {
         let charging = say.head_drawer(&battery(), wall);
         assert_eq!(charging["title"], "Battery", "named as Power's answer is");
         assert_eq!(charging["eyebrow"], "on this machine \u{b7} power");
-        assert_eq!(charging["eyebrowNames"], true, "its eyebrow drawn as a name");
+        assert_eq!(
+            charging["eyebrowNames"], true,
+            "its eyebrow drawn as a name"
+        );
         assert_eq!(
             facts(&charging),
             [
