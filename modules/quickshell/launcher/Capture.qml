@@ -177,11 +177,10 @@ Provider {
     }
 
     function actDrawer(fields, folder) {
-        // Where it lands is its folder, said from the home as the launcher
-        // says a folder, and the clipboard beside it where it's copied.
+        // Where it lands is its folder by name, and the clipboard beside it
+        // where it's copied (Captured.js's landsIn).
         const words = Words.of(fields.key);
-        const lands = [folder.startsWith(home) ? `~${folder.slice(home.length)}` : folder,
-            (words.said ?? {}).also ?? ""].filter(said => said !== "").join(", ");
+        const lands = Captured.landsIn(folder, (words.said ?? {}).also ?? "");
         return Captured.act({ title: fields.name, does: (words.tells ?? {}).does ?? "",
             lands: lands }, provider.launcher?.chordText(fields.chord ?? []) ?? "",
         Captured.newest(Taken.files, folder), {

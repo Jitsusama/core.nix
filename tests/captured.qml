@@ -146,7 +146,7 @@ QtObject {
         const screen = {
             title: "The Whole Screen",
             does: "Takes a picture of the whole screen.",
-            lands: "~/Pictures/Screenshots, and on the clipboard"
+            lands: "Screenshots, and on the clipboard"
         };
         expect("an act says what it does, then its key, where it lands and the last one",
             Captured.act(screen, "Print", Captured.newest(files, shots), acts), {
@@ -155,13 +155,19 @@ QtObject {
                 body: screen.does,
                 facts: [
                     { label: "[key]", value: "Print" },
-                    { label: "[lands]", value: "~/Pictures/Screenshots, and on the clipboard" },
+                    { label: "[lands]", value: "Screenshots, and on the clipboard" },
                     { label: "[last]", value: "09:12" }
                 ]
             });
         expect("a fact it can't give, no key or nothing taken yet, is left out",
             Captured.act(screen, "", null, acts).facts,
-            [{ label: "[lands]", value: "~/Pictures/Screenshots, and on the clipboard" }]);
+            [{ label: "[lands]", value: "Screenshots, and on the clipboard" }]);
+        // Where it lands is said by the folder's own name, as drawers.md's
+        // Act example has it (Y2YBTS, #3579's review), not its path.
+        expect("it lands in its folder, named, and on the clipboard",
+            Captured.landsIn(shots, "and on the clipboard"), "Screenshots, and on the clipboard");
+        expect("a recording lands in its folder alone",
+            Captured.landsIn("/home/joel/Videos/Recordings/", ""), "Recordings");
 
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
