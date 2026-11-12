@@ -86,8 +86,7 @@ PersonSource {
 
     people: Object.values(known).filter(said => said.id).map(said => ({
         emails: [said.email],
-        name: said.name,
-        facts: Slack.facts(said)
+        name: said.name
     }))
 
     // How each stands in Slack, by address, for their note: active, away

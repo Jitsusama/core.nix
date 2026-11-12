@@ -1,7 +1,7 @@
 // What Slack's source in People decides, run in Qt's own JavaScript
 // engine, the one the shell runs it in: who's asked about and when, what
-// stands in Write in Slack's place before Slack answers, and the drawer's
-// facts. The `slack-waits-in-its-place` check copies Slack.js beside this
+// stands in Write in Slack's place before Slack answers, and a
+// conversation's drawer. The `slack-waits-in-its-place` check copies Slack.js beside this
 // file and runs `qml -platform offscreen slack.qml`.
 import QtQuick
 import "Slack.js" as Slack
@@ -87,15 +87,6 @@ QtObject {
             { emails: ["hal@example.com", "grace@example.com"] }, { emails: [] }, null];
         check("those listed, unanswered and not yet sent, in order",
             Slack.ahead(listed, known, { "hal@example.com": true }), ["grace@example.com"]);
-
-        check("the drawer's facts, each while Slack says it", Slack.facts(ada), [
-            { label: "Status", value: "\u{1f4dd} Writing" },
-            { label: "Presence", value: "Active" },
-            { label: "Time Zone", value: "Europe/London", zone: true }
-        ]);
-        check("a huddle said as a name",
-            Slack.facts({ presence: "in a huddle", zone: "" }),
-            [{ label: "Presence", value: "In a huddle" }]);
 
         // A restart's kept people come together: taken as one change.
         const burst = {};
