@@ -12,7 +12,9 @@ shell took to its frame, and what niri took after it to present it, since the VM
 the CPU and once held about half its frames some 150 ms past the swap, which read as the
 launcher's when only the whole was said (RTOIMQ, 2026-11-11). It fails only when an opening
 never says it was presented. Beside it, a second test times each step into a place from home,
-as Joel takes them, since a step is navigation and held to the same 50 ms.
+as Joel takes them, since a step is navigation and held to the same 50 ms. A third holds a place
+open while its daemon's changes come, and prints the line the shell says of them as it closes,
+since an update is held to it too: 6 of Machine's 20 on Joel's shell took longer (2026-11-11).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import statistics
+import time
 from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
@@ -53,6 +56,13 @@ WINDOWS = 4
 # The places stepped into from home, by the name home lists each by: Capture, whose step
 # showed in 138 ms on Joel's shell (2026-11-11), and the two with most rows beside it.
 STEPS = ("Capture", "Windows", "Emoji")
+
+# The places held open while their daemons change, by the name home lists each by: Machine,
+# whose figures change each second.
+WATCHED = ("Machine",)
+
+# How long each is held open a round, in seconds, for some twenty of Machine's changes.
+WATCHING = 20.0
 
 
 @pytest.fixture(scope="module")
@@ -182,6 +192,29 @@ def stepped(shell: Shell, name: str) -> tuple[Json, list[str]]:
     # The step's own line is written as its frame is drawn, before it's presented, and only
     # for a step Joel could feel (launcher/Trials.js's felt).
     return keys[-1], said_after(shell, mark, '"→ ')
+
+
+def test_each_places_changes_are_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+    """Hold each watched place open a while, round after round, and print its changes' lines."""
+    places = os.environ.get("LAB_WATCHED", " ".join(WATCHED)).split()
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    watching = float(os.environ.get("LAB_WATCHING", str(WATCHING)))
+    opened(shell, "home")
+    shell.close_launcher()
+    for round_ in range(rounds):
+        for name in places:
+            stepped(shell, name)
+            mark = shell.mark()
+            # Held open for the changes the place's daemon makes by itself, which nothing
+            # here can hurry: the time is the lab's measure, not a wait for a state.
+            time.sleep(watching)
+            shell.close_launcher()
+            shell.launcher_until(lambda shown: not shown["open"])
+            # The shell says them as it closes (Launcher.qml's keysPresentedSaid).
+            with capsys.disabled():
+                for line in said_after(shell, mark, " changes in "):
+                    said = line.split("qml: ", 1)[-1]
+                    print(f"lab-changes {name} round {round_}: {said}", flush=True)
 
 
 def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:

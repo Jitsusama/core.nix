@@ -416,6 +416,17 @@ step's showing into the rows new to the list and their laying out.
 new rows was most of a step's showing: 10 to 49 ms into Windows' 39 rows
 and 37 to 93 ms into Emoji's 1914 (2026-11-11).
 
+A place's updates are timed by `test_each_places_changes_are_timed`, run
+alone with `PYTEST_ADDOPTS = "-k changes_are_timed"`: it steps into each of
+`LAB_WATCHED` (Machine unless given) round after round, holds it open
+`LAB_WATCHING` seconds (20 unless given) while its daemon changes it, and
+prints the line the shell says as it closes: how many changes were
+presented, in what time from their line, and a median of each part, before
+the shell heard it, in the shell, and from its frame's start. So a change
+to a row's update path quotes that line before and after without a switch.
+Machine's spent 2 ms before the shell, 5 to 7 in it and 5 to 27 from its
+frame's start over eight rounds (2026-11-11).
+
 A key is timed by the `keys-lab` beside it
 (`tests/launcher-keys-lab-on-niri.py`). It opens home round after round and
 types each of `LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at
