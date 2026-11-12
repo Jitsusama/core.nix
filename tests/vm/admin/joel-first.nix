@@ -12,6 +12,7 @@ let
       python = "${pkgs.python3}/bin/python3";
       frames = "${./joel-first-frames.py}";
       heap = "${./swap-in-heap.py}";
+      work = "${./joel-first-work.py}";
     }
   );
 in

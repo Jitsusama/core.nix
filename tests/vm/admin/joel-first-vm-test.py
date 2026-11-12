@@ -3,9 +3,10 @@
 joel-first.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
 It replays 12 November's 16:33 freeze at an eighth of optimus's size. Agents' sessions, their
 work, the work other sessions wait on and Joel's apps first hold what they held then, each in its
-slice. A stand-in shell then draws a frame every 16 ms in session.slice, and a few seconds in, a
-fetch in agents.slice and a grep and three smaller commands in jobs.slice want a quarter more of
-memory within seconds, as they did. Every size is optimus's divided by eight.
+slice, the sessions and the build using theirs over and over as they did. A stand-in shell then
+draws a frame every 16 ms in session.slice, and a few seconds in, a fetch in agents.slice and a
+grep and three smaller commands in jobs.slice want a quarter more of memory within seconds, as
+they did. Every slice stays under its own ceiling, and only together do they pass memory.
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ RUNTIME = "/run/user/1000"
 FILES = "/home/alice"
 
 # What each slice held on optimus at 17:06, in MiB, divided by eight: agents'
-# sessions 20 GiB in 80 windows, kept here as 20 heaps; jobs 13.7 GiB, most
-# of it a build's and a grep's; shared's file cache 4.7 GiB; Joel's apps 5.9.
+# sessions 20 GiB in 80 windows, kept here as 20; jobs 13.7 GiB, most of it a
+# build's and a grep's reading; shared's file cache 4.7 GiB; Joel's apps 5.9.
 SESSIONS = 20
 SESSION = 128
 JOBS_HELD = 1024
@@ -40,6 +41,10 @@ FETCH_READ = 224
 GREP_READ = 896
 COMMANDS = 3
 COMMAND = 200
+# How often each walks what it holds, in seconds: a session's collector now
+# and then, a build and the burst's work all the time.
+SESSION_WALK = 3
+WORK_WALK = 1
 
 # How long the shell draws, and how far in the burst comes.
 DRAWING = 40
@@ -47,6 +52,13 @@ BURST_AFTER = 5
 # The latest a frame may come, in milliseconds: three frames, past which a
 # key's echo is a visible stall.
 LATEST = 50
+
+READS = {
+    "built": JOBS_READ,
+    "pushed": SHARED_READ,
+    "fetched": FETCH_READ,
+    "grepped": GREP_READ,
+}
 
 
 class Account:
@@ -58,6 +70,7 @@ class Account:
         self.python: str = values["python"]
         self.frames: str = values["frames"]
         self.heap: str = values["heap"]
+        self.work: str = values["work"]
 
     def run(self, unit: str, slice_: str, command: str) -> None:
         """Run the command as a unit of alice's in the slice."""
@@ -65,21 +78,27 @@ class Account:
             f"systemd-run -M alice@ --user --slice={slice_} --unit={unit} {command}"
         )
 
-    def start_holding(self, unit: str, slice_: str, mib: int) -> str:
-        """Start holding that many MiB of alice's own in the slice, giving where it says so."""
+    def hold(self, unit: str, slice_: str, mib: int) -> None:
+        """Hold that many MiB of alice's own in the slice, untouched, and wait until it's held."""
         said = f"{RUNTIME}/{unit}.pid"
         self.run(unit, slice_, f"{self.python} {self.heap} {mib} {said}")
+        self.machine.wait_for_file(said, timeout=120)
+
+    def start_working(self, unit: str, slice_: str, mib: int, every: float) -> str:
+        """Start using that many MiB in the slice every so often, giving where it says it's full."""
+        said = f"{RUNTIME}/{unit}.pid"
+        self.run(unit, slice_, f"{self.python} {self.work} {mib} {every} {said}")
         return said
 
-    def hold(self, unit: str, slice_: str, mib: int) -> None:
-        """Hold that many MiB of alice's own in the slice, and wait until it's held."""
-        self.machine.wait_for_file(self.start_holding(unit, slice_, mib), timeout=120)
+    def work_with(self, unit: str, slice_: str, mib: int, every: float) -> None:
+        """Use that many MiB in the slice every so often, once it's all held."""
+        self.machine.wait_for_file(self.start_working(unit, slice_, mib, every), timeout=120)
 
-    def read(self, unit: str, slice_: str, mib: int) -> None:
-        """Read a file of that many MiB in the slice, so its pages are the slice's cache."""
-        path = f"{FILES}/{unit}"
-        self.machine.succeed(f"fallocate -l {mib}M {path} && chown alice {path}")
-        self.run(unit, slice_, f"/run/current-system/sw/bin/dd if={path} of=/dev/null bs=1M")
+    def read(self, name: str, slice_: str) -> None:
+        """Read the named file in the slice, so its pages are the slice's cache."""
+        self.run(
+            name, slice_, f"/run/current-system/sw/bin/dd if={FILES}/{name} of=/dev/null bs=1M"
+        )
 
     def used(self, slice_: str) -> int:
         """Give the slice's memory, in MiB."""
@@ -95,13 +114,18 @@ def stalls(machine: BaseMachine) -> int:
 def loaded(machine: BaseMachine, values: dict[str, Any]) -> Account:
     """Give alice's account holding what optimus's slices held before the burst."""
     machine.wait_for_unit("user@1000.service")
+    # Written by root, the files' pages would be root's; out of the cache,
+    # each is charged to the slice that reads it first.
+    for name, mib in READS.items():
+        machine.succeed(f"head -c {mib}M /dev/urandom > {FILES}/{name}")
+    machine.succeed(f"chown alice {FILES}/* && sync && echo 3 > /proc/sys/vm/drop_caches")
     account = Account(machine, values)
     account.hold("apps", "app.slice", APPS)
     for n in range(SESSIONS):
-        account.hold(f"session-{n}", "agents.slice", SESSION)
-    account.hold("build", "jobs.slice", JOBS_HELD)
-    account.read("built", "jobs.slice", JOBS_READ)
-    account.read("pushed", "shared.slice", SHARED_READ)
+        account.work_with(f"session-{n}", "agents.slice", SESSION, SESSION_WALK)
+    account.work_with("build", "jobs.slice", JOBS_HELD, WORK_WALK)
+    account.read("built", "jobs.slice")
+    account.read("pushed", "shared.slice")
     return account
 
 
@@ -116,14 +140,18 @@ def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> Non
         f"{loaded.python} {loaded.frames} {SCENE} {DRAWING} {result}",
     )
     machine.sleep(BURST_AFTER)
-    loaded.start_holding("fetch", "agents.slice", FETCH_HELD)
-    loaded.read("fetched", "agents.slice", FETCH_READ)
-    loaded.read("grepped", "jobs.slice", GREP_READ)
+    loaded.start_working("fetch", "agents.slice", FETCH_HELD, WORK_WALK)
+    loaded.read("fetched", "agents.slice")
+    loaded.read("grepped", "jobs.slice")
     for n in range(COMMANDS):
-        loaded.start_holding(f"command-{n}", "jobs.slice", COMMAND)
+        loaded.start_working(f"command-{n}", "jobs.slice", COMMAND, WORK_WALK)
     machine.wait_for_file(result, timeout=DRAWING * 4)
     frames = json.loads(machine.succeed(f"cat {result}"))
-    held = {slice_: loaded.used(slice_) for slice_ in ("agents.slice", "jobs.slice")}
+    held = {
+        slice_: loaded.used(slice_)
+        for slice_ in ("session.slice", "app.slice", "agents.slice", "jobs.slice")
+    }
     said = f"{frames}, {stalls(machine) - before} reclaims by programs themselves, {held} MiB"
+    print(f"the shell's frames: {said}")
     assert frames["frames"] >= DRAWING * 50, f"the shell drew too few frames: {said}"
     assert frames["worst"] <= LATEST, f"a frame came past {LATEST} ms: {said}"

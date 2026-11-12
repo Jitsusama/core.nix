@@ -26,18 +26,19 @@ JOBS = f"{ACCOUNT}/jobs.slice"
 TIMED = f"{JOBS}/jobs-timed.slice"
 WORK = f"{JOBS}/jobs-work.slice"
 MIB = 2**20
-# The memory shares the module keeps for apps, hard, for agents' sessions beside them, soft,
-# and for every slice above both, one of each.
-APPS_SHARE = 0.10
-AGENTS_SHARE = 0.15
-ABOVE_SHARE = 0.15
-SESSION_FLOOR = 2560 * MIB
+# The memory shares the module keeps for apps, hard and soft, for agents' sessions beside
+# them, soft, and for every slice above both, one of each, the soft one covering all three.
+APPS_SHARE = 0.13
+AGENTS_SHARE = 0.10
+ABOVE_SHARE = 0.21
+ABOVE_SOFT_SHARE = 0.31
+SESSION_FLOOR = 4608 * MIB
 # The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself.
 AGENTS_FLOOR = 512 * MIB
 # The journal's soft floor, which every machine's system.slice claims.
 JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.
-JOBS_HIGH = 0.5
+JOBS_HIGH = 0.2
 # How much of the first CPU's running time the light quest must have, alone. It's a share
 # of the time the CPU ran rather than of the clock, since a loaded host runs a virtual
 # CPU only part of each second. It's most, not nearly all: a weight that held the quest back
@@ -237,10 +238,14 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     above = [ACCOUNT, "/sys/fs/cgroup/user.slice/user-1000.slice", "/sys/fs/cgroup/user.slice"]
     for path, share in [(f"{ACCOUNT}/app.slice", APPS_SHARE)] + [(p, ABOVE_SHARE) for p in above]:
         assert abs(account.floor(path) - total * share) <= MIB, path
-    for path in [f"{ACCOUNT}/agents.slice", *above]:
-        assert abs(account.soft_floor(path) - total * AGENTS_SHARE) <= MIB, path
+    for path, share in [
+        (f"{ACCOUNT}/app.slice", APPS_SHARE),
+        (f"{ACCOUNT}/agents.slice", AGENTS_SHARE),
+    ] + [(p, ABOVE_SOFT_SHARE) for p in above]:
+        assert abs(account.soft_floor(path) - total * share) <= MIB, path
     assert account.floor(f"{ACCOUNT}/agents.slice") == AGENTS_FLOOR
     assert account.floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
+    assert account.soft_floor(f"{ACCOUNT}/session.slice") == SESSION_FLOOR
     assert account.floor(JOBS) == 0
     system = "/sys/fs/cgroup/system.slice"
     assert account.soft_floor(f"{system}/systemd-journald.service") == JOURNAL_FLOOR
@@ -252,7 +257,7 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
 
 
 def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
-    """Work in jobs is slowed past half of memory, and never ended."""
+    """Work in jobs is slowed past a fifth of memory, and never ended."""
     high = int(account.read(f"{JOBS}/memory.high"))
     assert abs(high - account.memory() * JOBS_HIGH) <= MIB
     assert account.read(f"{JOBS}/memory.max") == "max"

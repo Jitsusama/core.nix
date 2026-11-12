@@ -13,6 +13,7 @@ for what a VM lacks.
 | `firmware-asks.nix`, `-vm-test.py`              | writing firmware asking an administrator, even at the seat      |
 | `joel-first.nix`, `-vm-test.py`                 | Joel's shell drawing on time while agents' work bursts          |
 | `joel-first-frames.py`                          | that test's stand-in shell, timing how late each frame comes    |
+| `joel-first-work.py`                            | that test's stand-in work, using what it holds over and over    |
 | `libvirt.nix`, `-vm-test.py`                    | libvirt's daemon stopping at once while its udev thread waits   |
 | `memory-tune.nix`, `-vm-test.py`                | four memory settings an administrator sets with no password     |
 | `niri-off-cpu.nix`, `-vm-test.py`               | an account in wheel tracing its own niri, and nobody else       |
