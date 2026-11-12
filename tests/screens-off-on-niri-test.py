@@ -76,22 +76,33 @@ class Proxy:
             client, _ = self.server.accept()
             upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             upstream.connect(self.niri)
-            threading.Thread(target=carry, args=(client, upstream, self.keep), daemon=True).start()
+            hears = self.keeper()
+            threading.Thread(target=carry, args=(client, upstream, hears), daemon=True).start()
             threading.Thread(target=carry, args=(upstream, client, unchanged), daemon=True).start()
 
-    def keep(self, chunk: bytes) -> bytes:
-        """Keep what a client sent niri, and give what goes on to it.
+    def keeper(self) -> Callable[[bytes], bytes]:
+        """Give one client's hearing, which keeps what it sent niri and passes each line on whole.
 
-        Each request is a line of its own, sent whole, so a chunk holds whole lines.
+        A request is a line of its own, but a socket may give it in more than one chunk, so a
+        line is held until its end comes and only a whole one is refused (ZINAWZ, 2026-11-12).
         """
-        with self.lock:
-            self.sent.extend(chunk)
-            refused = self.refused
-        if refused is None:
-            return chunk
-        return b"\n".join(
-            b'"ReturnError"' if refused in line else line for line in chunk.split(b"\n")
-        )
+        held = bytearray()
+
+        def keep(chunk: bytes) -> bytes:
+            with self.lock:
+                self.sent.extend(chunk)
+                refused = self.refused
+            held.extend(chunk)
+            whole, end, rest = bytes(held).rpartition(b"\n")
+            held[:] = rest
+            if not end:
+                return b""
+            lines = whole.split(b"\n")
+            if refused is not None:
+                lines = [b'"ReturnError"' if refused in line else line for line in lines]
+            return b"\n".join(lines) + end
+
+        return keep
 
     @contextmanager
     def refusing(self, asked: bytes) -> Iterator[None]:
