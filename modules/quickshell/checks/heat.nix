@@ -46,7 +46,8 @@
   # before its watch begins, then saying its daemon isn't answering, so
   # Machine's head never names a row a show can't find (tests/heat-away.qml).
   heat-stands-while-its-daemon-is-away =
-    # Kept in Nix for the same reason as the case above.
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what Quickshell runs it with.
     pkgs.runCommandLocal "heat-stands-while-its-daemon-is-away" { } ''
       mkdir -p launcher runtime/daemons && chmod -R 700 runtime
       cp ${../../../tests/lib/Expect.js} Expect.js

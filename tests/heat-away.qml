@@ -6,8 +6,8 @@ pragma ComponentBehavior: Bound
 // held in its place, still being read, so the show finds it and watches;
 // and once the daemon is found not answering, it says so, and is still
 // there for a show to find, rather than leaving Machine's head naming a
-// row that isn't there (VKCF3Z, 058bd4b0). It exits 0 once every case holds, and otherwise 1, saying
-// which didn't.
+// row that isn't there (VKCF3Z, 058bd4b0). It exits 0 once every case
+// holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
 import "Expect.js" as Expect
@@ -84,7 +84,8 @@ ShellRoot {
         target: theHeat.served
 
         function onStateChanged() {
-            if (theHeat.served.state !== "not answering" || root.waiting !== "the daemon found away")
+            if (theHeat.served.state !== "not answering"
+                || root.waiting !== "the daemon found away")
                 return;
             root.waiting = "the end";
             try {
