@@ -1497,20 +1497,26 @@ Provider {
     // already deliberate, and y copies its words; then, set apart, Deal
     // With It, and In Your Own Words where it takes them. The session
     // says it took the answer by its want leaving, which takes the row
-    // out of For You.
+    // out of For You. A stopgap: its rows are made here, from Sessions'
+    // wants, until the agents daemon serves For You's rows ready, as it
+    // does Agents' (KP0L6A, by Sat 14 Nov).
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;
         const address = madeFrom.address;
         const said = Words.of("on:waiting").said ?? {};
         const session = () => provider.wantsNow[address] ?? madeFrom;
+        // Said answered only once the node has put it in the session's
+        // inbox, since one it couldn't put never reached the session.
         const answer = (fields, label) => {
             Sessions.steer(address, Object.assign({
                 act: "answer",
                 want: answers.want,
                 from: "joel",
                 at: new Date().toISOString()
-            }, fields));
-            provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+            }, fields), put => {
+                if (put)
+                    provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
+            });
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
