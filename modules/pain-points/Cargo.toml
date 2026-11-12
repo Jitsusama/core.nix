@@ -1,5 +1,6 @@
-# pain-points names, from the launcher's own record of each opening, the
-# interactions that slowed Joel most today (src/main.rs says how).
+# pain-points names, from the launcher's own record of each opening and
+# pi's session logs, the interactions that slowed Joel most today
+# (src/main.rs says how).
 [package]
 name = "pain-points"
 version = "0.1.0"

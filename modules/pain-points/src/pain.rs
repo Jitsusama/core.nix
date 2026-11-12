@@ -186,9 +186,18 @@ fn again(was: &Trial, next: &Trial) -> bool {
         || (was.picked_one() && was.picked == next.picked && gap <= AGAIN_MS)
 }
 
-/// What an interaction showed, by kind and timing alone.
+/// What an interaction showed, by kind and timing alone, as its place
+/// tells it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum Signs {
+    Launcher(LauncherSigns),
+    Pi(PiSigns),
+}
+
+/// What a go at the launcher showed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
-pub struct Signs {
+pub struct LauncherSigns {
     pub usable_ms: u32,
     pub stall_ms: u32,
     pub slow_keys: u32,
@@ -196,6 +205,19 @@ pub struct Signs {
     pub erased: u32,
     pub arrows: u32,
     pub backs: u32,
+}
+
+/// What a go in pi showed: the longest wait for a reply to begin and for
+/// a message to reach a busy session, and how many errors, stopped turns,
+/// corrections and status questions it held.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct PiSigns {
+    pub waited_ms: u32,
+    pub queued_ms: u32,
+    pub errors: u32,
+    pub stopped: u32,
+    pub corrections: u32,
+    pub status: u32,
 }
 
 /// One interaction that slowed him, as the day file says it: when it began
@@ -216,9 +238,9 @@ pub struct Painful {
     pub signs: Signs,
 }
 
-/// The day's interactions that lost him at least a second, worst first
-/// and at most `KEPT`: each an opening, or openings in a row where each
-/// came straight back to one that failed him.
+/// The day's interactions that lost him at least a second, worst first:
+/// each an opening, or openings in a row where each came straight back to
+/// one that failed him. `ranked` keeps the day's worst of every place.
 pub fn painful(day: &[Trial], usable: &Usable, usual: &Usual) -> Vec<Painful> {
     let mut day = day.to_vec();
     day.sort_by_key(|t| t.at);
@@ -229,21 +251,12 @@ pub fn painful(day: &[Trial], usable: &Usable, usual: &Usual) -> Vec<Painful> {
             _ => goes.push(vec![trial]),
         }
     }
-    let mut named: Vec<Painful> = goes
-        .iter()
-        .map(|go| interaction(go, usable, usual))
-        .filter(|p| p.lost_seconds * 1000.0 >= PAINFUL_MS)
-        .collect();
-    named.sort_by(|a, b| {
-        b.lost_seconds
-            .total_cmp(&a.lost_seconds)
-            .then(a.at.cmp(&b.at))
-    });
-    named.truncate(KEPT);
-    for (n, p) in named.iter_mut().enumerate() {
-        p.rank = n + 1;
-    }
-    named
+    worst_first(
+        goes.iter()
+            .map(|go| interaction(go, usable, usual))
+            .filter(|p| p.lost_seconds * 1000.0 >= PAINFUL_MS)
+            .collect(),
+    )
 }
 
 /// One go at something, an opening or openings each straight after one
@@ -252,7 +265,7 @@ fn interaction(go: &[Trial], usable: &Usable, usual: &Usual) -> Painful {
     let first = &go[0];
     let last = &go[go.len() - 1];
     let mut sum = Lost::default();
-    let mut signs = Signs::default();
+    let mut signs = LauncherSigns::default();
     for (n, trial) in go.iter().enumerate() {
         let ready = usable.near(trial.at);
         let it = lost(trial, ready, usual);
@@ -321,12 +334,34 @@ fn interaction(go: &[Trial], usable: &Usable, usual: &Usual) -> Painful {
         slowed,
         part,
         openings: go.len(),
-        signs,
+        signs: Signs::Launcher(signs),
     }
 }
 
+/// Every place's named interactions as one day: worst first, at most
+/// `KEPT`, ranked afresh.
+pub fn ranked(named: Vec<Painful>) -> Vec<Painful> {
+    let mut named = worst_first(named);
+    named.truncate(KEPT);
+    named
+}
+
+/// Interactions sorted and ranked by what they lost him, the earlier
+/// first where two lost the same.
+fn worst_first(mut named: Vec<Painful>) -> Vec<Painful> {
+    named.sort_by(|a, b| {
+        b.lost_seconds
+            .total_cmp(&a.lost_seconds)
+            .then(a.at.cmp(&b.at))
+    });
+    for (n, p) in named.iter_mut().enumerate() {
+        p.rank = n + 1;
+    }
+    named
+}
+
 /// Milliseconds as seconds, to a tenth.
-fn tenths(ms: f64) -> f64 {
+pub fn tenths(ms: f64) -> f64 {
     (ms / 100.0).round() / 10.0
 }
 
@@ -336,7 +371,7 @@ fn tenths(ms: f64) -> f64 {
     clippy::cast_sign_loss,
     reason = "clamped to what a u32 holds first"
 )]
-fn whole(ms: f64) -> u32 {
+pub fn whole(ms: f64) -> u32 {
     ms.round().clamp(0.0, f64::from(u32::MAX)) as u32
 }
 
@@ -345,7 +380,7 @@ fn whole(ms: f64) -> u32 {
     clippy::cast_precision_loss,
     reason = "epoch milliseconds fit well inside f64's 52 bits until the year 144,000"
 )]
-fn float(ms: i64) -> f64 {
+pub fn float(ms: i64) -> f64 {
     ms as f64
 }
 
@@ -480,7 +515,10 @@ mod tests {
         let named = painful(&[slow], &Usable::new(vec![(AT + 1400, 1400.0)]), &usual);
         assert_eq!(named.len(), 1, "a second lost is named");
         assert_eq!((named[0].slowed, named[0].part), ("waiting", "opening"));
-        assert_eq!(named[0].signs.usable_ms, 1400);
+        let Signs::Launcher(signs) = &named[0].signs else {
+            panic!("a launcher moment carries the launcher's signs");
+        };
+        assert_eq!(signs.usable_ms, 1400);
     }
 
     #[test]
@@ -659,7 +697,13 @@ mod tests {
         let day: Vec<Trial> = (0..i64::try_from(KEPT).expect("KEPT is small") + 3)
             .map(|n| miss(AT + n * 200_000, 2000 + n * 1000))
             .collect();
-        let named = painful(&day, &Usable::new(vec![]), &usual);
+        let every = painful(&day, &Usable::new(vec![]), &usual);
+        assert_eq!(
+            every.len(),
+            day.len(),
+            "every opening that lost him a second is counted"
+        );
+        let named = ranked(every);
         assert_eq!(named.len(), KEPT);
         assert_eq!(named[0].rank, 1);
         assert_eq!(

@@ -1596,7 +1596,10 @@
     pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
     with nothing; joins an opening that came straight back to a failed search or the same row,
-    ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path
+    ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
+    reads pi's logs from where it stopped, counting only what Joel typed, what a message waited past
+    a second for its reply, a provider's error, a stopped turn or a message said again, at most two
+    minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or its line
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
