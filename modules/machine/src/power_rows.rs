@@ -1498,6 +1498,20 @@ mod tests {
             ],
             "full, with no time to say"
         );
+        let held = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Not charging",
+                "upower": { "state": "pending-charge", "time_to_full_s": 600.0 } }),
+            wall,
+        );
+        assert_eq!(
+            facts(&held),
+            [
+                "Status=on power, holding",
+                "status=Not charging",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "held at a limit, with no time to say even where one is guessed"
+        );
         let ready = Power::default().read(&[battery()], 0, &words);
         assert_eq!(
             ready.head.unwrap()["drawer"]["title"],
