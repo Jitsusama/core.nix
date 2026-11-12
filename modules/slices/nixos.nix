@@ -329,20 +329,28 @@ in
       MemoryMin = "2560M";
     };
 
+    # Ten times the weight of what sits beside it in the account, agents'
+    # sessions included. At the same weight his programs waited on the
+    # processor all evening while agents worked: on 11 November, switching
+    # between 100 and 1000 every five minutes for 40 minutes, app.slice's
+    # CPU wait fell from 3.6 ms a second to 1.1 at a load under 20, and
+    # from 8.9 to 4.3 above it. A busy app takes only what it uses, so the
+    # sessions lose little: his programs used 0.04 of a core of their 1.6.
     systemd.user.slices.app.sliceConfig = {
+      CPUWeight = 1000;
       MemoryMin = apps;
     };
 
-    # Agents' sessions, pi in a window of kitty's each, beside the apps at
-    # their weight rather than among them. A task in app.slice is preempted
+    # Agents' sessions, pi in a window of kitty's each, beside the apps
+    # rather than among them, at a tenth of their weight. A task in app.slice is preempted
     # whenever a sibling there wakes on its processor: on 3 November the
     # sessions and mycelium woke 2,627 times a second, Joel's programs under
     # 100, and a task spinning 300 ms in app.slice waited a median 27 ms and
     # at worst 57, against 5.6 ms and 16 in an empty slice of the same
-    # weight. Raising app.slice's weight to 500 changed nothing, as it can't
-    # reach what competes inside it. Beside it, the sessions meet Joel's
-    # programs as one group of the same weight, as the empty slice's probe
-    # met app.slice. Whoever starts
+    # weight. Raising app.slice's weight to 500 changed nothing then, as it
+    # can't reach what competes inside it. Beside it, the sessions meet
+    # Joel's programs as one group, which his weight now puts first, and
+    # the sorter weighs the window he is at first among them. Whoever starts
     # their terminal names this slice, and kitty puts each window's scope
     # in its own. Its floor is soft but for one part, hard: the floor the
     # kitty drawing every session's window keeps for itself (Quickshell's
