@@ -253,6 +253,7 @@
   ];
   "launcher/ReadyRows.qml" = [
     "Fuzzy.js"
+    "launcher/Found.js"
     "launcher/Moved.js"
     "launcher/ReadyRows.js"
   ];

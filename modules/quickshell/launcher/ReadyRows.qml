@@ -16,6 +16,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 import qs
+import "Found.js" as Found
 import "ReadyRows.js" as Ready
 import "Moved.js" as Moved
 import "../Fuzzy.js" as Fuzzy
@@ -180,8 +181,8 @@ Scope {
         keys = Ready.placed(keys, held, said, dropped);
         placings += 1;
         // What was found was found among the rows before, so it's asked
-        // again of these, unless none of them moved (Ready.reranks).
-        if (found.words !== null && Ready.reranks(before, keys, said.concat(dropped)))
+        // again of these, unless none of them moved (Found.reranks).
+        if (found.words !== null && Found.reranks(before, keys, said.concat(dropped)))
             ended();
         heard(said, dropped);
     }
@@ -248,7 +249,7 @@ Scope {
     // until an answer comes, and again once the rows change. The rows it
     // found that the watch never served come with it, each made as the
     // place makes a row (`foundMade`) and let go with the answer.
-    property var found: Ready.foundOf(null, null)
+    property var found: Found.foundOf(null, null)
     readonly property var foundMade: ({})
     property string asking: ""
     // Whether the daemon said it can't search, so the place matches its
@@ -276,7 +277,7 @@ Scope {
     // The search over, as the launcher closing ends it, so what it found
     // is let go.
     function ended() {
-        found = Ready.foundOf(null, null);
+        found = Found.foundOf(null, null);
         for (const key of Object.keys(foundMade))
             delete foundMade[key];
     }
@@ -297,7 +298,7 @@ Scope {
             return;
         }
         ended();
-        found = Ready.foundOf(words, answer);
+        found = Found.foundOf(words, answer);
         searched(words);
     }
 
@@ -307,7 +308,7 @@ Scope {
     function foundRows(answer) {
         const out = [];
         for (const key of answer.keys) {
-            const record = Ready.foundRecord(answer, held, key);
+            const record = Found.foundRecord(answer, held, key);
             let row = null;
             if (record !== null && record === held[key]) {
                 row = rowAt(key);

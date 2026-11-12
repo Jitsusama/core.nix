@@ -63,6 +63,7 @@
   "launcher/Traces.js"
   "launcher/ReadyRows.js"
   "launcher/Moved.js"
+  "launcher/Found.js"
   "launcher/NeedsYou.js"
   "launcher/Lately.js"
 ]

@@ -1,11 +1,13 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-words-each-ready-row-it-is-served` check copies
-// launcher/ReadyRows.js, the When.js it reads from beside the launcher's
-// folder, launcher/Ago.js, launcher/Interfaces.js and tests/lib/Expect.js
+// launcher/ReadyRows.js and launcher/Found.js, the When.js ReadyRows.js
+// reads from beside the launcher's folder, launcher/Ago.js,
+// launcher/Interfaces.js and tests/lib/Expect.js
 // beside this file and runs `qml -platform offscreen ready-rows.qml` over
 // records made up here in the crate's wrapped form.
 import QtQuick
+import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
 import "launcher/Moved.js" as Moved
 import "Expect.js" as Expect
@@ -488,10 +490,10 @@ QtObject {
     // A search's answer, its found rows the watch never served among them
     // (ready-rows.md's search, RTOIMQ, d482d399).
     function searching() {
-        const none = Ready.foundOf("shot", null);
+        const none = Found.foundOf("shot", null);
         Expect.same("no answer yet finds nothing, for no words", [none.words, none.keys],
             [null, []]);
-        const found = Ready.foundOf("shot", {
+        const found = Found.foundOf("shot", {
             keys: ["b", "far", "lost"],
             marks: { far: [[0, 4]] },
             rows: { far: { thing: "quest:far", name: "Shot far" } }
@@ -501,20 +503,20 @@ QtObject {
                 { far: [[0, 4]] }]);
         const held = { b: record("b", 2048) };
         Expect.same("a row it found that the watch serves is the watch's",
-            Ready.foundRecord(found, held, "b"), held.b);
+            Found.foundRecord(found, held, "b"), held.b);
         Expect.same("one the watch never served is the answer's, read as any record",
-            Ready.rowOf(Ready.foundRecord(found, held, "far")),
+            Ready.rowOf(Found.foundRecord(found, held, "far")),
             { thing: "quest:far", name: "Shot far" });
         held.far = record("far", 1024);
         Expect.same("and a change naming it since replaces the answer's",
-            Ready.foundRecord(found, held, "far"), held.far);
-        Expect.same("a key served by neither is none", Ready.foundRecord(found, held, "lost"),
+            Found.foundRecord(found, held, "far"), held.far);
+        Expect.same("a key served by neither is none", Found.foundRecord(found, held, "lost"),
             null);
         Expect.same("a row placed or let go asks the search again",
-            [Ready.reranks(["a"], ["a", "b"], ["b"]), Ready.reranks(["a", "b"], ["a"], ["b"])],
+            [Found.reranks(["a"], ["a", "b"], ["b"]), Found.reranks(["a", "b"], ["a"], ["b"])],
             [true, true]);
         Expect.same("a found row served whole with no order, or a drawer, leaves it standing",
-            Ready.reranks(["a"], ["a"], ["far", "drawer:taken:a"]), false);
+            Found.reranks(["a"], ["a"], ["far", "drawer:taken:a"]), false);
     }
 
     function ticking() {
