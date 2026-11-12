@@ -52,6 +52,7 @@ import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
+import "DrawerProse.js" as Prose
 import "Identifier.js" as Identifier
 import "Pictures.js" as Pictures
 import "Search.js" as Search
@@ -313,10 +314,28 @@ Floating {
     // wraps, the break falls between two and the dot goes with it, so no
     // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
     readonly property bool runs: shown?.runs === true
+    // How many lines its prose shows while the fold is shut: five, as a
+    // lead's at most, so a long message or log doesn't stand in for the
+    // rest of the drawer, and the rest is the fold's, opened by za as the
+    // nerdy bits are (VKCF3Z's wrap rule 4, 76ba12d0).
+    readonly property int proseMost: 5
+    // Its prose laid in its face at its width, and where it's cut, which a
+    // binding sees only by reading the face, as nerdLabelsWide does; words
+    // in the mono that another program wrote are never cut.
+    readonly property var proseLaid: {
+        void bodyFace.font;
+        return prose && !runs && body !== ""
+            ? Prose.lines({ text: body, styled: shown?.styled === true }, wordsBox.width,
+                proseMost, text => bodyFace.advanceWidth(text))
+            : null;
+    }
+    // Whether its prose runs past its lines, so the fold holds the rest.
+    readonly property bool bodyCut: proseLaid?.cut === true
     // Its words as they're given to be drawn, a run measured in their own
-    // face, for the launcher to report.
-    readonly property string bodySaid: runs
-        ? itemsKept(body, bodyFace, wordsBox.width) : body
+    // face, and prose cut while the fold is shut, for the launcher to
+    // report.
+    readonly property string bodySaid: runs ? itemsKept(body, bodyFace, wordsBox.width)
+        : bodyCut && folded ? proseLaid.said : body
     // How many lines Qt draws its words in, for the launcher to report: a
     // run laid as one is as many as bodySaid's, Qt wrapping none further.
     readonly property int bodyLines: bodyText.lineCount
@@ -2480,7 +2499,12 @@ Floating {
                 Column {
                     id: foldShown
                     width: parent.width
-                    visible: drawer.nerd.length > 0
+                    // Shown too where only its prose runs past while it's
+                    // shut, the rest of which is what opening it brings;
+                    // opened, that rest stands in its place, and a line
+                    // naming bits with none under it would be a heading
+                    // over nothing, so za alone shuts it again.
+                    visible: drawer.nerd.length > 0 || drawer.bodyCut && drawer.folded
                     // The fold's line and every bit's name and value, for
                     // the keys' lines.
                     function texts() {
