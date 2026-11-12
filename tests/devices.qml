@@ -61,6 +61,7 @@ QtObject {
             [critical.wants, critical.role, critical.now], [true, "alert", true]);
         check("it's said as it comes true, signed by the device's name",
             [low.arrives, low.app, low.title], [true, "Device aa", "Device aa"]);
+        check("and taken back once it's charged", low.withdraws, true);
         check("and says its charge and what to do",
             [low.value, low.hint, low.context], ["18%", "18% left", "charge it soon"]);
         check("critical, it says to charge it now", critical.context, "charge it now");
