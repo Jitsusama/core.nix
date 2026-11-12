@@ -29,7 +29,12 @@ let
     terminal
     font
     space
+    motion
     ;
+
+  # The theme's milliseconds as kitty's seconds, slowed as every animation
+  # is by motion.slowdown.
+  seconds = milliseconds: toString (milliseconds * builtins.fromJSON motion.slowdown / 1000.0);
 
   # kitty measures padding in points, 72 to the inch, where the theme's
   # spaces are logical pixels, 96 to the inch.
@@ -261,6 +266,16 @@ in
 
     cursor ${terminal.cursor}
     cursor_text_color ${terminal.cursor_text}
+    # A jump leaves a trail to where the cursor lands, in the cursor's own
+    # colour, so the eye follows G, a search or Ctrl+D (Joel, 2026-11-11:
+    # "animations for interactions that show whimsy without slowing me
+    # down"). It's gone within the theme's short time, as anything leaving
+    # is. A move of three cells or fewer, as a letter typed or hjkl makes,
+    # leaves none, nor does a cursor that rested under 30 ms, as Neovim's
+    # does crossing the screen while it redraws.
+    cursor_trail 30
+    cursor_trail_decay ${seconds (motion.short / 2)} ${seconds motion.short}
+    cursor_trail_start_threshold 3
 
     active_border_color ${colours.accent}
     # The tab in view is drawn in the page's own colour against a darker
