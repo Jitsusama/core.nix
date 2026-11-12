@@ -81,6 +81,11 @@ SETTLING_S = 2
 # 2026-11-11, at 8c5ff8bf).
 CLOCK_SLACK = 5
 
+# How far into a minute an act timed against the clock may begin, in seconds, so the rest of
+# the minute, less CLOCK_SLACK, holds the act: begun anywhere, both of a For You case's tries
+# crossed a minute on a busy builder and it judged the second's (2026-11-12, at c015284d3).
+MINUTE_BEGUN = 20
+
 # How long a closing's spots are given to be freshened: a minute after they're made
 # (Launcher.qml's spotsFreshened), and room for a loaded builder.
 FRESHENING = timedelta(seconds=75)
@@ -148,6 +153,13 @@ def heard_closing(shell: Shell, since: int, by: float) -> None:
         if "closing" in said:
             return
         time.sleep(CLOSING_READ)
+
+
+def minute_begun() -> None:
+    """Wait, if the clock is past MINUTE_BEGUN or within CLOCK_SLACK of its minute, for the next."""
+    into = time.time() % 60
+    if into < CLOCK_SLACK or into > MINUTE_BEGUN:
+        time.sleep((CLOCK_SLACK - into) % 60)
 
 
 def latest(timed: list[Json]) -> int:
@@ -994,9 +1006,11 @@ def test_for_you_makes_only_the_rows_whose_source_changed(shell: Shell) -> None:
 
         A turn counts if the clock says one came, or if the shell said it heard one, however
         late: a shell that heard the turn after the clock's slack made Time's and Today's rows
-        again rightly, and failed the case (Y2YBTS, 2026-11-11, at 0cb9591c).
+        again rightly, and failed the case (Y2YBTS, 2026-11-11, at 0cb9591c). Each try begins
+        early in a minute (MINUTE_BEGUN), so one only a turned clock remade is rare.
         """
         for _ in range(2):
+            minute_begun()
             began = time.time()
             heard_from = shell.mark()
             made_by_it = act()
