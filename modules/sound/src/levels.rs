@@ -1,6 +1,6 @@
 //! How loud a node is set, read from the Props it says and written into
 //! the Props or the Route an act sets: each channel's volume and whether
-//! it's muted. A Props names only what it says, so either may be missing,
+//! it's muted, and which channel each volume is of. A Props names only what it says, so either may be missing,
 //! and a missing one keeps what was said before. A card's device says
 //! which of its routes plays each of its profile's devices, the profile
 //! it's in, and each route it has, a port, read here too, and a Route
@@ -35,6 +35,23 @@ pub fn levels(pod: &[u8]) -> (Option<Vec<f32>>, Option<bool>) {
         }
     }
     (volumes, muted)
+}
+
+/// The channels a Props pod says its volumes are of, in their order, by
+/// SPA's position ids, where it says them.
+pub fn channels(pod: &[u8]) -> Option<Vec<u32>> {
+    let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(pod) else {
+        return None;
+    };
+    object
+        .properties
+        .into_iter()
+        .find_map(|property| match property.value {
+            Value::ValueArray(ValueArray::Id(ids)) if property.key == sys::SPA_PROP_channelMap => {
+                Some(ids.into_iter().map(|id| id.0).collect())
+            }
+            _ => None,
+        })
 }
 
 /// The route a card's Route pod says it plays, and the profile's device
@@ -271,6 +288,21 @@ mod tests {
             ],
         }));
         assert_eq!(levels(&pod), (Some(vec![0.25, 0.5]), Some(true)));
+    }
+
+    #[test]
+    fn a_props_says_which_channel_each_volume_is_of() {
+        let map = [sys::SPA_AUDIO_CHANNEL_FL, sys::SPA_AUDIO_CHANNEL_FR];
+        let pod = written(&Value::Object(Object {
+            type_: sys::SPA_TYPE_OBJECT_Props,
+            id: sys::SPA_PARAM_Props,
+            properties: vec![keyed(
+                sys::SPA_PROP_channelMap,
+                Value::ValueArray(ValueArray::Id(map.iter().map(|id| Id(*id)).collect())),
+            )],
+        }));
+        assert_eq!(channels(&pod), Some(map.to_vec()));
+        assert_eq!(channels(&props(Some(&[0.5]), None)), None);
     }
 
     #[test]

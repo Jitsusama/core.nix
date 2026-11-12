@@ -3,16 +3,18 @@
 //! using it, where it isn't the one chosen; whether it's Muted, one switch;
 //! its Volume, or a microphone's Gain, a setting with its levels a step
 //! in; the programs playing through it or recording from it
-//! (programs.rs); and its Port, where its card offers more than one. Each
-//! act asks the daemon (acts.rs), so the shell runs nothing to do it.
+//! (programs.rs); its Port, where its card offers more than one; its
+//! Channels (channels.rs); and a Bluetooth device's Profile. Each act asks
+//! the daemon (acts.rs), so the shell runs nothing to do it.
 //!
-//! The rest of a device's parts, its Level, filters, channels, profile
-//! and facts, are still made by Sound.qml from the sound server.
+//! The rest of a device's parts, its Level, filters, hardware and facts,
+//! are still made by Sound.qml from the sound server.
 
 use serde_json::{Value, json};
 
+use crate::channels::channels_rows;
 use crate::programs::{Around, Naming, Sendable, programs_part};
-use crate::rows::{APART, Device, PLACE, Words, bar, kind, percent, rows, switches, worn};
+use crate::rows::{APART, Device, PLACE, Words, bar, carried, kind, percent, rows, switches, worn};
 
 /// How far Louder and Quieter move a volume, as Sound.qml's `step`.
 pub(crate) const STEP: f64 = 0.05;
@@ -74,7 +76,40 @@ fn of(device: &Device, top: &Value, around: &Around) -> Vec<Value> {
     parts.extend(volume_rows(device, words, &parent));
     parts.extend(programs_part(device, around, &parent));
     parts.extend(port_rows(device, words, &parent));
+    parts.extend(channels_rows(device, words, &parent));
+    parts.extend(profile_row(device, devices, words, &parent));
     parts
+}
+
+/// A Bluetooth device's Profile: what its sound is for now, music or
+/// calls, said in those words, and that listening through a headset
+/// microphone's stand-in switches it to calls while it's music. Its
+/// codec and link are said once, in Bluetooth, which the note points to.
+fn profile_row(device: &Device, devices: &[Device], words: &Words, parent: &str) -> Option<Value> {
+    let carries = carried(device, devices);
+    if carries.is_empty() {
+        return None;
+    }
+    let note = if switches(device, devices) {
+        "profile-switches"
+    } else {
+        "profile-elsewhere"
+    };
+    Some(json!({
+        "key": format!("{parent}:profile"),
+        "thing": format!("sound:{}:profile", device.name),
+        "place": PLACE,
+        "kind": "figure",
+        "parent": parent,
+        "name": words.name("sound:profile", &[]),
+        "glyph": "",
+        "hue": "machine",
+        "depth": 1,
+        "side": [{"said": words.said(carries, &[])}],
+        "note": words.said(note, &[]),
+        "acts": [],
+        "held": {"node": device.name},
+    }))
 }
 
 /// An ask of the daemon's act `act` on the device, with `more` beside it.
@@ -230,7 +265,7 @@ pub(crate) fn stepped(level: f64, by: f64) -> f64 {
 
 /// A level in decibels, to a tenth, as a mixer says it: 100% is 0 dB,
 /// 50% is -18.1 dB, and nothing is -∞ dB.
-fn decibels(level: f64) -> String {
+pub(crate) fn decibels(level: f64) -> String {
     if level.is_nan() || level <= 0.0 {
         return "-\u{221e} dB".to_owned();
     }
@@ -339,6 +374,59 @@ mod tests {
         rows.iter()
             .find(|row| row["key"] == key)
             .unwrap_or_else(|| panic!("no row {key}"))
+    }
+
+    // A headset says what its profile carries, and its microphone's
+    // stand-in says its headset's, and that listening through it switches
+    // that to calls while it's music. A device that isn't Bluetooth has
+    // no Profile.
+    #[test]
+    fn a_headset_and_its_microphone_say_its_profile() {
+        let address = "AC:80:0A:2E:AA:01";
+        let profiled = |profile: &str| {
+            device(
+                &format!("bluez_output.{address}.1"),
+                true,
+                "WH-1000XM4",
+                &json!({"api.bluez5.address": address, "api.bluez5.profile": profile}),
+            )
+        };
+        let stand_in = device(
+            &format!("bluez_input.{address}"),
+            false,
+            "WH-1000XM4",
+            &json!({"bluez5.loopback": "true"}),
+        );
+        let desk = device("desk", true, "Desk", &json!({}));
+        let made = served(&[profiled("a2dp-sink"), stand_in.clone(), desk], &words());
+        let headset = keyed(
+            &made,
+            &format!("row:sound:bluez_output.{address}.1:profile"),
+        );
+        assert_eq!(headset["name"], "Profile");
+        assert_eq!(headset["side"], json!([{"said": "music"}]));
+        assert_eq!(headset["note"], "its codec and connection are in Bluetooth");
+        let microphone = keyed(&made, &format!("row:sound:bluez_input.{address}:profile"));
+        assert_eq!(microphone["side"], json!([{"said": "music"}]));
+        assert_eq!(
+            microphone["note"],
+            "listening through it switches the headset to calls"
+        );
+        assert!(
+            made.iter()
+                .all(|row| row["key"] != "row:sound:desk:profile"),
+            "a device that isn't Bluetooth has no Profile"
+        );
+        let calling = served(&[profiled("headset-head-unit"), stand_in], &words());
+        let microphone = keyed(
+            &calling,
+            &format!("row:sound:bluez_input.{address}:profile"),
+        );
+        assert_eq!(microphone["side"], json!([{"said": "calls"}]));
+        assert_eq!(
+            microphone["note"],
+            "its codec and connection are in Bluetooth"
+        );
     }
 
     // Inside a device's row come its parts, in the order Sound lists

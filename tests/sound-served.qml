@@ -12,7 +12,9 @@
 // inside its row, steps into its choices, a choice's Return asking the
 // daemon to move it, as its option does; and its Use, Muted and Volume,
 // served, lead its parts in Sound's order, Muted's act named Unmute once
-// it's muted, the Volume its drawer's, and each Return asking the daemon;
+// it's muted, the Volume its drawer's, and each Return asking the daemon,
+// and its Channels, served, each channel inside at its level, and its
+// Profile;
 // and where each program's stream is sent is the daemon's targets record,
 // a send asking it once a stream; and the programs playing through a
 // device are served inside it, the drawer's Playing saying the daemon's
@@ -395,8 +397,11 @@ ShellRoot {
             tell(mutePart(false));
             tell(volumePart());
             tell(louderChoice());
-            when("the parts served", () => partOf("volume")?.targets().length === 1,
-                levelled);
+            for (const record of figuresServed())
+                tell(record);
+            when("the parts served", () => partOf("volume")?.targets().length === 1
+                && partOf("channels")?.targets().length === 2
+                && partOf("profile")?.side === "music", levelled);
         });
     }
 
@@ -454,6 +459,30 @@ ShellRoot {
         });
     }
 
+    // The speakers' Channels, as channels.rs serves them inside their
+    // row, and each channel inside that, then a Profile, as parts.rs
+    // serves a Bluetooth device's.
+    function figuresServed() {
+        const channels = `row:sound:${deskSpeakers.name}:channels`;
+        const channel = (at, name, said, level) => part(`channels:${at}`, {
+            parent: channels, depth: 2, thing: `sound:${deskSpeakers.name}:channels:${at}`,
+            kind: "figure", order: 1501 + at, name: name, glyph: "", hue: "machine",
+            side: [{ said: said }], note: "",
+            graph: { shape: "bar", values: [level], warn: false },
+            acts: [{ key: "verb:copy", copy: said }]
+        });
+        return [part("channels", {
+            thing: `sound:${deskSpeakers.name}:channels`, kind: "figures", order: 1500,
+            name: "Channels", hue: "machine", side: [{ said: "stereo" }],
+            acts: [{ key: "verb:copy", copy: "stereo" }, { key: "verb:more", step: "rows" }]
+        }), channel(0, "Front left", "50%", 0.5), channel(1, "Front right", "40%", 0.4),
+        part("profile", {
+            thing: `sound:${deskSpeakers.name}:profile`, kind: "figure", order: 1503,
+            name: "Profile", glyph: "", hue: "machine", side: [{ said: "music" }],
+            note: "its codec and connection are in Bluetooth", acts: []
+        })];
+    }
+
     function louderChoice() {
         return part("volume:louder", {
             parent: `row:sound:${deskSpeakers.name}:volume`, depth: 2,
@@ -486,6 +515,16 @@ ShellRoot {
         expect("its drawer says its decibels, drawing its share as a stroke",
             drawn?.value === "-18.1 dB" && drawn?.figure?.shape === "stroke"
             && drawn.figure.values[0] === 0.5, JSON.stringify(drawn));
+        const channels = partOf("channels");
+        expect("its Channels are served, saying stereo, each channel at its level inside",
+            channels?.side === "stereo" && channels.targets().map(one => `${one.name} ${one.side}`)
+                .join(", ") === "Front left 50%, Front right 40%",
+            `${channels?.side}: ${channels?.targets().map(one => one.name).join(", ")}`);
+        const profile = partOf("profile");
+        expect("its Profile is served, saying what it carries and where the rest is said",
+            profile?.side === "music"
+                && profile.note === "its codec and connection are in Bluetooth",
+            `${profile?.side}, ${profile?.note}`);
         volume.targets()[0].run();
         when("the volume asked", () => root.acted.length === 2, louder);
     }

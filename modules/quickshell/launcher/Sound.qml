@@ -467,8 +467,8 @@ Provider {
         const channels = Array.from(node.audio.channels ?? []);
         const volumes = Array.from(node.audio.volumes ?? []);
         const programs = node.isSink ? "programs" : "recorders";
-        const parts = [volumePart(node), servedPart(node, programs), channelsPart(node),
-            filterPart(node), portPart(node), profilePart(node)]
+        const parts = [volumePart(node), servedPart(node, programs), servedPart(node, "channels"),
+            filterPart(node), portPart(node), servedPart(node, "profile")]
             .concat(hardware.filter(row => row.key !== usb), factRows(node));
         const facts = Plate.facts(parts, row => {
             switch (row.key) {
@@ -604,11 +604,6 @@ Provider {
             named(filter), filter.audio?.volume, filter.audio?.muted, flowing(filter, node)]));
     }
 
-    function channelsSaid(node) {
-        return [glyph(kind(node)), Array.from(node.audio?.channels ?? []),
-            Array.from(node.audio?.volumes ?? []), node.audio?.muted];
-    }
-
     function hardwareSaid(node) {
         const properties = node.properties;
         return [glyph(kind(node)), nicknamed(node), factsOf(node).map(fact => fact.name)]
@@ -655,10 +650,10 @@ Provider {
     }
 
     // Using it, when it isn't the one chosen, then its parts, and what the
-    // kernel says of its card. Using it, Muted, its Volume, its programs
-    // and its Port are served; the rest are made here until the daemon
-    // serves them too, each by `kept` (verbs) where it's given, from what
-    // that part says.
+    // kernel says of its card. Using it, Muted, its Volume, its programs,
+    // its Port, its Channels and its Profile are served; the rest are made
+    // here until the daemon serves them too, each by `kept` (verbs) where
+    // it's given, from what that part says.
     function partsMade(node, kept) {
         const made = kept ?? ((part, from, make) => make());
         const programs = node.isSink ? "programs" : "recorders";
@@ -667,8 +662,8 @@ Provider {
                 () => levelPart(node)),
             volumePart(node), servedPart(node, programs),
             made("filter", filtersSaid(node), () => filterPart(node)), portPart(node),
-            made("channels", channelsSaid(node), () => channelsPart(node)),
-            made("profile", [carried(node), switches(node)], () => profilePart(node)),
+            servedPart(node, "channels"),
+            servedPart(node, "profile"),
             made("hardware", hardwareSaid(node), () => hardwarePart(node))];
         return parts.filter(part => part !== null)
             .concat(made("facts", factsOf(node), () => factRows(node)));
@@ -931,29 +926,6 @@ Provider {
         ]), []));
     }
 
-    // Its Channels, each with its own volume.
-    function channelsPart(node) {
-        const channels = Array.from(node.audio.channels ?? []);
-        if (channels.length === 0)
-            return null;
-        const volumes = Array.from(node.audio.volumes ?? []);
-        const count = channels.length;
-        const key = `sound:${node.name}:channels`;
-        return holderRow({
-            key: key,
-            name: Words.name("sound:channels"),
-            side: count === 1 ? said("mono") : count === 2 ? said("stereo")
-                : said("channels", { count: count }),
-            glyph: glyph(kind(node))
-        }, () => channels.map((channel, i) => provider.figureRow({
-            key: `${key}:${i}`,
-            name: Sounds.channel(PwAudioChannel.toString(channel)),
-            side: provider.percent(volumes[i] ?? 0),
-            graph: provider.bar(node.audio.muted ? 0 : volumes[i] ?? 0),
-            note: Sounds.decibels(volumes[i] ?? 0)
-        })));
-    }
-
     // Its Port, when its card offers it several, as one card's analog
     // output offers its speakers and a headphone jack: the sound daemon
     // serves it inside the device's row, a setting saying the one in use,
@@ -1171,11 +1143,10 @@ Provider {
             { program: went.program, device: named(went.to) }));
     }
 
-    // A Bluetooth device's Profile: what its sound is for now, music or
-    // calls, said in those words. Its Codec and link are said once, in
-    // Bluetooth, which the footer points to. A headset microphone's
-    // stand-in has no profile of its own: it says its headset's, and that
-    // listening through it, while that's music, switches it to calls.
+    // A Bluetooth device's headset, whose profile says what its sound is
+    // for now, music or calls. A headset microphone's stand-in has no
+    // profile of its own: it says its headset's. The daemon serves the
+    // Profile part; Level and spots still read it here.
     function headsetOf(node) {
         const address = Sounds.address(node.name, node.properties);
         if (address === "")
@@ -1196,18 +1167,6 @@ Provider {
     function switches(node) {
         return !!node && !node.isSink && Sounds.standIn(node.properties)
             && carried(node) === "music";
-    }
-
-    function profilePart(node) {
-        const carries = carried(node);
-        if (carries === "")
-            return null;
-        return figureRow({
-            key: `sound:${node.name}:profile`,
-            name: Words.name("sound:profile"),
-            side: said(carries),
-            note: said(switches(node) ? "profile-switches" : "profile-elsewhere")
-        });
     }
 
     // Its Hardware, from what the sound server says of its card: the chip

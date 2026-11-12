@@ -64,7 +64,7 @@ use serde_json::{Value, json};
 use sound::acts::Move;
 use sound::devices::{Change, Devices, direction};
 use sound::drawer;
-use sound::levels::{format, levels, offered, profile, route};
+use sound::levels::{channels, format, levels, offered, profile, route};
 use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
 use sound::rows::Words;
@@ -513,6 +513,9 @@ fn node(
                 (ParamType::Props, Some(pod)) => {
                     let (volumes, muted) = levels(pod.as_bytes());
                     told(&shared, Change::Levels { id, volumes, muted });
+                    if let Some(channels) = channels(pod.as_bytes()) {
+                        told(&shared, Change::Channels { id, channels });
+                    }
                 }
                 // A node said to have no Format isn't set up to move audio.
                 (ParamType::Format, pod) => {

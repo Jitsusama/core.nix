@@ -25,6 +25,9 @@ pub enum Change {
         volumes: Option<Vec<f32>>,
         muted: Option<bool>,
     },
+    /// Which channel each of a node's volumes is of, by SPA's position
+    /// ids, where its Props said them.
+    Channels { id: u32, channels: Vec<u32> },
     /// The format a node moves its audio in, as its Format param says
     /// it, or none once it isn't set up to move any.
     Format { id: u32, format: Option<Format> },
@@ -73,6 +76,8 @@ struct Node {
     properties: BTreeMap<String, String>,
     /// Each channel's volume as PipeWire holds it, a linear share.
     volumes: Vec<f32>,
+    /// Which channel each volume is of, by SPA's position ids.
+    channels: Vec<u32>,
     muted: bool,
 }
 
@@ -172,6 +177,10 @@ impl Devices {
                 }
                 true
             }
+            // Only a device's are said, in its Channels.
+            Change::Channels { id, channels } => self.nodes.get_mut(&id).is_some_and(|node| {
+                std::mem::replace(&mut node.channels, channels) != node.channels
+            }),
             // Only a stream's is said yet, in its program's drawer.
             Change::Format { id, format } => self.streams.format(id, format),
             Change::Card { id, properties } => {
@@ -387,6 +396,7 @@ impl Devices {
                     "sink": sink,
                     "volume": shown(&node.volumes),
                     "volumes": node.volumes,
+                    "channels": node.channels,
                     "muted": node.muted,
                     "chosen": chosen.as_deref() == Some(name.as_str()),
                     "properties": node.properties,
@@ -487,6 +497,30 @@ mod tests {
             muted: None,
         });
         assert!(!heard, "levels of a node not heard change nothing");
+    }
+
+    #[test]
+    fn a_device_says_which_channel_each_volume_is_of() {
+        let mut devices = Devices::default();
+        devices.hear(node(40, "speakers", "Audio/Sink"));
+        let stereo = || Change::Channels {
+            id: 40,
+            channels: vec![3, 4],
+        };
+        assert!(
+            devices.hear(stereo()),
+            "a device's channels change its record"
+        );
+        assert_eq!(devices.records()[0]["channels"], json!([3, 4]));
+        assert!(
+            !devices.hear(stereo()),
+            "the same channels again are no news"
+        );
+        let elsewhere = Change::Channels {
+            id: 99,
+            channels: vec![2],
+        };
+        assert!(!devices.hear(elsewhere), "a node not heard changes nothing");
     }
 
     #[test]
