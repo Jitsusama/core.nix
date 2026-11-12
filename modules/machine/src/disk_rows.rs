@@ -655,6 +655,12 @@ impl Rows<'_> {
         );
         rows.push(self.smart(made, &["unsafe_shutdowns", "power_cycles"]));
         rows.extend(self.too_hot(smart));
+        rows.push(self.warned(smart));
+        rows
+    }
+
+    /// What its controller warns of, or that it warns of nothing.
+    fn warned(&self, smart: &Value) -> Made {
         let warned = warnings(&smart["critical_warning"]);
         let said = if warned.is_empty() {
             self.says("disk:warnings", "none", &[])
@@ -681,12 +687,11 @@ impl Rows<'_> {
         } else {
             warned
         };
-        rows.push(self.linux(
+        self.linux(
             made,
             "UDisks2 SmartCriticalWarning",
             [("critical_warning", warned)],
-        ));
-        rows
+        )
     }
 
     /// How long it ran past where it warns of heat, and past where it's
