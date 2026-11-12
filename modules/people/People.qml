@@ -615,11 +615,14 @@ Provider {
         row.drawer = () => {
             const minute = Math.floor(Date.now() / 60000);
             if (details === null || detailsAt !== minute) {
+                // A served drawer comes with the line under their name;
+                // one made here is given it (Person.headed).
                 const drawn = served ? drawnFrom(served()) : null;
                 details = drawn ?? Person.details(person, zone => provider.there(zone));
                 if (details) {
                     details.facts = firstsOf(person).concat(details.facts ?? []);
-                    details = Person.headed(details, headLabels);
+                    if (!drawn)
+                        details = Person.headed(details, headLabels);
                 }
                 detailsAt = minute;
             }
