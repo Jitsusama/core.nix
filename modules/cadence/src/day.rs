@@ -51,7 +51,7 @@ const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memo
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
 
 /// How much worse than its median a figure must be to be a regression.
-const WORSE: f64 = 1.2;
+pub const WORSE: f64 = 1.2;
 
 impl Measure {
     /// Each of a day's figures this measure holds, by its key, with whose
@@ -274,6 +274,10 @@ pub struct Kind {
     pub evidence: &'static str,
     /// "{says} {name}, N times".
     pub says: &'static str,
+    /// For a kind whose names come back every day, the least move in a
+    /// name's count that's a move: past it and a fifth over its median,
+    /// a name seen before is worse too. None judges only new names.
+    pub floor: Option<f64>,
 }
 
 pub const KINDS: &[Kind] = &[
@@ -282,24 +286,30 @@ pub const KINDS: &[Kind] = &[
         axis: "quality",
         evidence: "coredumpctl list over the day, by program",
         says: "a crash of",
+        floor: None,
     },
     Kind {
         key: "failed",
         axis: "quality",
         evidence: "journalctl MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c over the day, by unit",
         says: "a failure of",
+        floor: None,
     },
     Kind {
         key: "flaky",
         axis: "quality",
         evidence: "nix-offload's there.jsonl, a check failed and passed at one commit",
         says: "a flake in",
+        floor: None,
     },
     Kind {
         key: "code.queued-on",
         axis: "time to done",
         evidence: "merge-net's answers.jsonl, the files each hold and run again turned on",
         says: "changes held back or run again on",
+        // The launcher's pytest file held 11 changes back by 09:50 on 12
+        // November, as it had most days, so only a new file was ever said.
+        floor: Some(3.0),
     },
 ];
 

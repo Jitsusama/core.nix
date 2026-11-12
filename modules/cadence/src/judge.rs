@@ -1,11 +1,15 @@
 //! Holds a day against the days before it: a figure past its bar, or
 //! worse than its median over them by a fifth and by its floor, and a
 //! crash or failure of something not seen in them, each becomes a finding
-//! the day it appears. The note says them in a few plain lines.
+//! the day it appears; so does a file every change queues on, once it
+//! queues a fifth and its floor more than it did. The note says them in a
+//! few plain lines.
+
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::day::{Day, KINDS, measures, median};
+use crate::day::{Day, KINDS, WORSE, measures, median};
 
 /// How many days before are held against a day.
 pub const BEFORE: usize = 7;
@@ -88,30 +92,74 @@ pub fn judge(day: &Day, before: &[Day]) -> Judged {
             }
         }
     }
+    judge_names(day, before, &mut judged);
+    judged
+}
+
+/// Holds the day's names of each kind against the days before: a name
+/// not seen in them is new, and for a kind with a floor, a name seen
+/// before is worse or better by its count, as a figure is by its median,
+/// a day that read the kind without it counting as none.
+fn judge_names(day: &Day, before: &[Day], judged: &mut Judged) {
+    if before.len() < ENOUGH {
+        return;
+    }
     for kind in KINDS {
-        let Some(named) = day.named.get(kind.key) else {
+        let Some(today) = day.named.get(kind.key) else {
             continue;
         };
-        if before.len() < ENOUGH {
-            continue;
+        let past: Vec<&BTreeMap<String, u32>> = before
+            .iter()
+            .filter_map(|d| d.named.get(kind.key))
+            .collect();
+        let mut names: BTreeSet<&str> = today.keys().map(String::as_str).collect();
+        if kind.floor.is_some() {
+            names.extend(past.iter().flat_map(|n| n.keys().map(String::as_str)));
         }
-        for (name, &times) in named {
-            let seen = before
+        for name in names {
+            let times = today.get(name).copied().unwrap_or(0);
+            let counts: Vec<f64> = past
                 .iter()
-                .any(|d| d.named.get(kind.key).is_some_and(|n| n.contains_key(name)));
-            if !seen {
+                .map(|n| n.get(name).copied().map_or(0.0, f64::from))
+                .collect();
+            let key = format!("{}:{name}", kind.key);
+            if counts.iter().all(|&count| count == 0.0) {
                 let words = format!("{} {name}, new, {}", kind.says, times_said(times));
                 judged.worse.push(Finding {
-                    key: format!("{}:{name}", kind.key),
+                    key,
                     bar: None,
                     before: Some(0.0),
                     now: f64::from(times),
                     words,
                 });
+                continue;
+            }
+            let Some(floor) = kind.floor.filter(|_| counts.len() >= ENOUGH) else {
+                continue;
+            };
+            let Some(middle) = median(&counts) else {
+                continue;
+            };
+            let now = f64::from(times);
+            let words = format!(
+                "{} {name} went from {} to {}",
+                kind.says,
+                round(middle),
+                round(now)
+            );
+            if now > middle * WORSE && now - middle >= floor {
+                judged.worse.push(Finding {
+                    key,
+                    bar: None,
+                    before: Some(middle),
+                    now,
+                    words,
+                });
+            } else if now * WORSE < middle && middle - now >= floor {
+                judged.better.push(words);
             }
         }
     }
-    judged
 }
 
 /// The day's note, in at most ten lines: the findings past their date in
@@ -295,6 +343,60 @@ mod tests {
             keys,
             vec!["crashes:biome"],
             "a crash seen before was new, or a new one wasn't"
+        );
+    }
+
+    fn queued(counts: &[(&str, u32)]) -> Day {
+        let mut day = day(&[], &[]);
+        day.named.insert(
+            "code.queued-on".to_owned(),
+            counts.iter().map(|(f, n)| ((*f).to_owned(), *n)).collect(),
+        );
+        day
+    }
+
+    #[test]
+    fn a_file_queued_on_every_day_is_worse_past_a_fifth_and_its_floor() {
+        let file = "tests/launcher-on-niri-test.py";
+        // A day it held nothing counts as none, so its median is 4.
+        let before = vec![
+            queued(&[(file, 4)]),
+            queued(&[(file, 5)]),
+            queued(&[]),
+            queued(&[(file, 4)]),
+        ];
+        let more = judge(&queued(&[(file, 11)]), &before);
+        let words: Vec<&str> = more.worse.iter().map(|f| f.words.as_str()).collect();
+        assert_eq!(
+            words,
+            ["changes held back or run again on tests/launcher-on-niri-test.py went from 4 to 11"],
+            "a file holding nearly three times its usual wasn't said worse"
+        );
+        assert_eq!(
+            more.worse[0].key,
+            format!("code.queued-on:{file}"),
+            "the finding wasn't keyed by its kind and file"
+        );
+        let inside = judge(&queued(&[(file, 6)]), &before);
+        assert!(
+            inside.worse.is_empty(),
+            "a rise of two, inside the floor of three, was worse: {inside:?}"
+        );
+        let gone = judge(&queued(&[]), &before);
+        assert_eq!(
+            gone.better,
+            ["changes held back or run again on tests/launcher-on-niri-test.py went from 4 to 0"],
+            "a file that stopped holding changes back wasn't said better"
+        );
+        let crashing: Vec<Day> = (0..3).map(|_| day(&[], &["tec"])).collect();
+        let mut often = day(&[], &[]);
+        often.named.insert(
+            "crashes".to_owned(),
+            BTreeMap::from([("tec".to_owned(), 20)]),
+        );
+        assert!(
+            judge(&often, &crashing).worse.is_empty(),
+            "a kind with no floor was judged on its count, not only on new names"
         );
     }
 
