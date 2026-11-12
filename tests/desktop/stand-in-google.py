@@ -3,8 +3,9 @@
 It speaks the program's daemon interface (modules/google/src/daemon.rs), on the socket systemd
 hands it or else the one it's named: each meeting, piece of mail and document a record, and the
 account one more, each told to a watch as it changes, and what a shell asks taken as an act, a
-line of ask.rs, or a time it types inside Move answered as the program answers one. The account is ready, unless a test signs it out, with three
-meetings on Meet from when the stand-in starts: Design Review five minutes on, Joel's own,
+line of ask.rs, or a time it types inside Move answered as the program answers one. The
+account is ready, unless a test signs it out, with three meetings on Meet from when the
+stand-in starts: Design Review five minutes on, Joel's own,
 reminding him a minute before, or nearer or further as a test asks; Standup half an hour on,
 Ada's in Room 4 every weekday, with Grace not going and Ada's Quarterly Plan and an agenda
 attached; and Planning two hours on, Joel's own with Grace asked. Joel may change his own, and
