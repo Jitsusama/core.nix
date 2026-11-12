@@ -183,10 +183,11 @@ fn status(units: &[String]) -> ExitCode {
         }
     };
     let mut failed = false;
+    let mut said = String::new();
     let told = answer["units"].as_array().cloned().unwrap_or_default();
     for (at, unit) in told.iter().enumerate() {
         if at > 0 {
-            println!();
+            said.push('\n');
         }
         let name = unit["unit"].as_str().unwrap_or("?");
         if let Some(why) = unit["error"].as_str() {
@@ -195,15 +196,84 @@ fn status(units: &[String]) -> ExitCode {
             continue;
         }
         for (key, value) in unit["status"].as_object().into_iter().flatten() {
-            match value {
-                Value::String(text) => println!("{key}={text}"),
-                other => println!("{key}={other}"),
-            }
+            let text = match value {
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            said.push_str(key);
+            said.push('=');
+            said.push_str(&text);
+            said.push('\n');
         }
+    }
+    if let Err(error) = write_out(&mut std::io::stdout().lock(), &said) {
+        eprintln!("jobs-broker: can't write the status: {error}");
+        return ExitCode::FAILURE;
     }
     if failed {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
+    }
+}
+
+/// Writes `said` whole; a reader that has stopped reading, as `head` does
+/// once it has its lines, wanted no more, so that ends it without fault.
+fn write_out(out: &mut impl Write, said: &str) -> std::io::Result<()> {
+    match out.write_all(said.as_bytes()).and_then(|()| out.flush()) {
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => Ok(()),
+        other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A reader that has hung up.
+    struct HungUp;
+
+    impl Write for HungUp {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::BrokenPipe.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// A disk that is full.
+    struct Full;
+
+    impl Write for Full {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::ErrorKind::StorageFull.into())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_reader_that_hung_up_ends_the_status_without_fault() {
+        assert!(
+            write_out(&mut HungUp, "ActiveState=active\n").is_ok(),
+            "a closed pipe was taken as a failure"
+        );
+    }
+
+    #[test]
+    fn any_other_failure_to_write_is_said() {
+        assert!(
+            write_out(&mut Full, "ActiveState=active\n").is_err(),
+            "a full disk went unsaid"
+        );
+    }
+
+    #[test]
+    fn the_status_is_written_whole() {
+        let mut out = Vec::new();
+        write_out(&mut out, "a=1\nb=2\n").expect("a buffer takes every byte");
+        assert_eq!(out, b"a=1\nb=2\n", "the status was cut short");
     }
 }

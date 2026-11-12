@@ -40,6 +40,12 @@ A daemon that answers in a protocol another program defines, as the agent
 proxy speaks ssh-agent's to ssh and git, keeps that protocol's ways, and the
 check names it as such.
 
+One speaks this interface without daemon-serve: pi-verbs, the launcher's AI
+actions, is the harness's TypeScript, since the secret scrubber it refuses a
+selection with lives there and guards every tool's output too, and a copy in
+Rust would drift from it. It keeps the other five points, and the check
+names it with that reason.
+
 ## The Interface
 
 Version 1, one JSON object a line in UTF-8, either side writing at any time.

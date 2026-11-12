@@ -56,6 +56,12 @@ OTHERS_PROTOCOL = {
     "pi-agent-proxy": "ssh-agent's protocol, which ssh and git speak to it",
 }
 
+# Daemons that speak the interface from a program no crate here builds, each
+# with why it can't serve through daemon-serve. Every other point holds them.
+SPEAKS_ELSEWHERE = {
+    "pi-verbs": "the harness's TypeScript, beside the secret scrubber that guards tool output too",
+}
+
 # A socket a command line names, in the runtime folder.
 SOCKET = re.compile(r"%t/(\S+\.sock)\b")
 
@@ -153,7 +159,7 @@ def broken(daemon: Daemon, built: dict[str, Path]) -> list[str]:
         == {daemon.name},
         "fits": len(daemon.name) <= SHOWN,
         "shown": shown == daemon.name,
-        "speaks": manifest is not None and serves(manifest),
+        "speaks": daemon.name in SPEAKS_ELSEWHERE or (manifest is not None and serves(manifest)),
     }
     return [point for point in POINTS if not keeps[point]]
 
