@@ -7,8 +7,9 @@
 // it through litra; its answer holds its Brightness and Warmth, each a
 // setting whose choices step it or set a level; the bar is told of a change
 // of brightness or warmth, never of a camera lighting it or putting it out;
-// and with no light there is no answer. It exits 0 once every case holds,
-// and otherwise 1, saying which didn't.
+// and with no light its row stays, dimmed, saying it isn't plugged in, or
+// that litra isn't answering once its watch has ended, with nothing to set.
+// It exits 0 once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -107,6 +108,14 @@ ShellRoot {
 
         function onWarmed() {
             root.warmed++;
+        }
+
+        function onAnsweringChanged() {
+            Qt.callLater(root.heard);
+        }
+
+        function onTriedChanged() {
+            Qt.callLater(root.heard);
         }
     }
 
@@ -272,10 +281,29 @@ ShellRoot {
         root.step("unplugged", () => DeskLight.light === null, root.none);
     }
 
-    function none() {
-        expect("no light, no answer", light.answer("desk light") === null, JSON.stringify(light.answer("desk light")));
+    // With no light its row stays where Machine's head names it, dimmed,
+    // saying why, with nothing inside it to set (Y2YBTS, 2026-11-12: a
+    // place whose source is away keeps its row).
+    function away(why) {
+        const told = light.answer("desk light");
+        expect(`no light, its row stays: ${why}`, told !== null && told.gone === true
+            && told.headline === "" && told.note === why && told.rows.length === 0
+            && told.thing !== true, JSON.stringify(told));
+        expect("nothing to set", light.answer("desk light 60") === null
+            && light.answer("warmer") === null, JSON.stringify(light.answer("desk light 60")));
         expect("and no options", Object.keys(light.setOptions ?? {}).length === 0,
             Object.keys(light.setOptions ?? {}).join(" "));
+    }
+
+    function none() {
+        away("not plugged in");
+        // litra's watch ends, and its one try again a little later ends too.
+        root.says(["end"]);
+        root.step("the watch ended", () => !DeskLight.answering && DeskLight.tried, root.ended);
+    }
+
+    function ended() {
+        away("not answering");
         Qt.exit(0);
     }
 

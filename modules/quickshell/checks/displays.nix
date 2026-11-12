@@ -98,8 +98,12 @@
               >> "$feed"
           }
           case "$1" in
+            # A watch once litra has ended for good fails at once, as one
+            # with litra gone would.
             watch)
+              [ ! -e "$XDG_RUNTIME_DIR/litra-ended" ] || exit 1
               said
+              echo $$ > "$XDG_RUNTIME_DIR/litra-watch"
               exec tail -n +1 -f "$feed"
               ;;
             on) on=true ;;
@@ -111,6 +115,12 @@
             press) on=$2 percent=$3 kelvin=$4 ;;
             unplug)
               echo "[]" >> "$feed"
+              exit 0
+              ;;
+            # litra's watch ending, and every one after it.
+            end)
+              touch "$XDG_RUNTIME_DIR/litra-ended"
+              kill "$(cat "$XDG_RUNTIME_DIR/litra-watch")"
               exit 0
               ;;
             *) exit 2 ;;
