@@ -279,15 +279,19 @@ Provider {
         return present ? Home.holding(model) : "";
     }
 
+    // A row is found by its name, then by the words the daemon serves it
+    // with (a node's model and serial, a device's address), as Launcher's
+    // `within` finds one: a served row's words hold only those, not its
+    // name, so a node was found by its model and never by where it is.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
+        const matched = prepared => prepared && (prepared.mask & need) === need
+            ? Fuzzy.match(prepared, words, false) : { score: -1 };
         for (const row of everything()) {
-            const prepared = row.keywords ?? row.prepared;
-            if ((prepared.mask & need) !== need)
-                continue;
-            const m = Fuzzy.match(prepared, words, false);
+            const byName = matched(row.prepared);
+            const m = byName.score >= 0 ? byName : matched(row.keywords);
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
         }
