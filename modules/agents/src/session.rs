@@ -88,6 +88,15 @@ impl<'a> Session<'a> {
         Some((name, keywords))
     }
 
+    /// What one standing at the top is for, in the one sentence its
+    /// presence says it in (`standsAtTop.what`), or "" where it says none
+    /// or doesn't stand there.
+    pub fn stands_for(self) -> &'a str {
+        self.at_top()
+            .and_then(|_| self.presence()?.pointer("/standsAtTop/what")?.as_str())
+            .map_or("", str::trim)
+    }
+
     /// Pi's own id for it, by which its spend and jobs are kept.
     pub fn id(self) -> &'a str {
         self.said("session").unwrap_or("")

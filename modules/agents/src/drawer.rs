@@ -189,7 +189,8 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
             "title": title,
             "eyebrow": eyebrow(session, &folder),
             "facts": facts,
-            "body": ""
+            // What one standing at the top is for, so Joel needn't know it.
+            "body": session.stands_for()
         }
     })
 }
@@ -486,6 +487,38 @@ mod tests {
             &known(None, None),
         );
         assert_eq!(facts(&drawn), "Quest=QEST-1 \u{b7} paused; Machine=skiff");
+    }
+
+    #[test]
+    fn one_standing_at_the_top_says_what_its_for_in_its_own_sentence() {
+        let for_it = "Tell it a thing once; it passes it to whoever owns it.";
+        let presence = json!({"addresses": ["V"],
+            "standsAtTop": {"name": "The Void", "what": for_it}});
+        let drawn = drawer(
+            Session(&record(&presence)),
+            false,
+            &words(),
+            &known(None, None),
+        );
+        assert_eq!(
+            drawn["drawer"]["body"], for_it,
+            "its sentence, as its presence says it"
+        );
+        for presence in [
+            json!({"addresses": ["V"], "standsAtTop": {"name": "The Void"}}),
+            json!({"addresses": ["A"], "standsAtTop": {"what": for_it}}),
+        ] {
+            let drawn = drawer(
+                Session(&record(&presence)),
+                false,
+                &words(),
+                &known(None, None),
+            );
+            assert_eq!(
+                drawn["drawer"]["body"], "",
+                "none unsaid, nor of one not at the top"
+            );
+        }
     }
 
     #[test]
