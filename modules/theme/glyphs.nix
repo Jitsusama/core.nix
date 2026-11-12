@@ -639,6 +639,17 @@ in
     glyph = nerd "f1294";
     console = "Y";
     means = "For You holding nothing, now or later";
+    # The cat asleep in the empty tray, a z above it (nothingFound's).
+    pixels = [
+      ".....###"
+      ".......#"
+      ".#.#.###"
+      ".###...."
+      ".######."
+      "########"
+      "#......#"
+      ".######."
+    ];
   };
   # An eye: For You's looks as a kind, in :filter's menu; a look's own row
   # wears its target's mark.
@@ -940,10 +951,44 @@ in
     console = "*";
     means = "the launcher saying what it can do, before anything's typed";
   };
+  # Where a list has nothing to show, the cat does instead (`pixels`),
+  # still, in a pose for what the nothing is: reading when a find comes up
+  # empty, asleep in For You's empty tray (forYouEmpty's), sitting by any
+  # other empty list. Each is 8 cells square and drawn in whole pixels, so
+  # it's sharp at 1.5 as at 2, and the margin's cat is drawn from the same
+  # pixels.
   nothingFound = {
     glyph = nerd "f02a0";
     console = "?";
     means = "nothing answers what was typed";
+    # Reading: sitting's head over an open book, its two pages rising
+    # from the spine, wider than the head (VKCF3Z, e5239c50).
+    pixels = [
+      ".#...#.."
+      ".#####.."
+      ".#.#.#.."
+      ".#####.."
+      "........"
+      ".##.##.."
+      "#..#..#."
+      "#######."
+    ];
+  };
+  nothingHere = {
+    glyph = nerd "f011b";
+    console = "-";
+    means = "a list with nothing in it yet";
+    # Sitting, tail curled up beside it, waiting with him.
+    pixels = [
+      "#...#..."
+      "#####..."
+      "#.#.#..."
+      "#####..."
+      ".###...."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
   };
   # The padlock, as locked's is, beside anything typed that stays hidden.
   secret = {

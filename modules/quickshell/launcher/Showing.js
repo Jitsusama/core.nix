@@ -73,6 +73,22 @@ function saysNothing(typed, rows, said) {
     return (said ?? "") !== "" && rows.every(row => row?.elsewhere === true);
 }
 
+// The theme's mark the line saying nothing wears, by what its nothing
+// means: nothing answering what's typed, nothing come for him (For You's
+// lists, all keyed under on:waiting), or any other list with nothing in it.
+// With nothing typed and no list stepped into it isn't empty, only the
+// launcher saying what it can do, so it keeps the greeting. The three
+// empty ones each draw the theme's cat, the greeting none.
+function nothingMark(typed, holder) {
+    if (typed !== "") {
+        return "nothingFound";
+    }
+    if (!holder) {
+        return "greeting";
+    }
+    return String(holder.key ?? "").startsWith("on:waiting") ? "forYouEmpty" : "nothingHere";
+}
+
 // The names within a few letters of what was typed, nearest first: a
 // letter added, dropped, changed or two swapped each count one, and a
 // name is near when its start is within a third of the typed letters,

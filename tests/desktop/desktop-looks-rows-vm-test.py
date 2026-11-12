@@ -3,11 +3,12 @@
 Here the launcher is laid out at Joel's two scales, on a screen as large as the laptop's, which the
 other areas' screen is too small to hold the card and its drawer at: 1.5, as the HP draws it, and 2,
 as the laptop does. A found row's note is in the serif, on its name's baseline, a step on, and
-home's own foot is held here too, each shot for a person to measure. It's an area of its own, rather
-than more of looks, so the looks areas run side by side rather than one after another; what they
-share is in looks_session.py. tests/desktop.nix runs this through pytest inside the driver
-(tests/lib/vm_pytest.py), and its opening comment says what the test proves. Every test asks for the
-desktop, started once a run (desktop_session.py), and leaves it as it found it.
+home's own foot and the empty places' cat are held here too, each shot for a person to measure.
+It's an area of its own, rather than more of looks, so the looks areas run side by side rather
+than one after another; what they share is in looks_session.py. tests/desktop.nix runs this
+through pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the
+test proves. Every test asks for the desktop, started once a run (desktop_session.py), and leaves
+it as it found it.
 """
 
 from __future__ import annotations
@@ -215,6 +216,51 @@ def counts_with_its_chord_in_the_foot(desktop: Desktop, scale: str) -> None:
     assert "next time" in taught, f"at {scale} the foot doesn't teach its chord: {taught}"
     desktop.shoot(f"launcher-desktop-counts-at-{scale.replace('.', '-')}")
     desktop.close_launcher()
+
+
+# A cat's cell in the screen's pixels at each scale: whole, and 16 logical pixels across at both.
+CAT_CELL = {"1.5": 3, "2": 4}
+
+
+def cat_drawn(desktop: Desktop, scale: str, mark: str, shot: str) -> None:
+    """Wait for the empty line's cat in the pose for `mark`, hold it to whole pixels, shoot it."""
+    desktop.launcher_until(lambda shown: (shown["nothingDrawn"] or {}).get("mark") == mark)
+    drawn = desktop.showing()["nothingDrawn"]
+    assert drawn["cell"] == CAT_CELL[scale], f"at {scale} the cat's cell: {drawn}"
+    off = [abs(at - round(at)) for at in drawn["at"]]
+    assert max(off) < HALF_A_PIXEL / 10, f"at {scale} the cat splits a pixel: {drawn}"
+    # Its foot on the sentence's baseline, to the pixel snapping may move it (VKCF3Z, e5239c50).
+    assert abs(drawn["fromBaseline"]) <= 1, f"at {scale} the cat stands off the line: {drawn}"
+    desktop.shoot(f"launcher-cat-{shot}-at-{scale.replace('.', '-')}")
+
+
+def test_the_empty_places_cat_stands_in_whole_pixels(
+    desktop: Desktop, at_each_scale: list[str]
+) -> None:
+    """Where a list is empty the cat stands in its mark column, in the pose its nothing means.
+
+    It reads by a find that found nothing, sleeps in For You's empty Desktop, and sits by an
+    empty Recent; each cell is whole pixels of the screen, starting on one, at 1.5 as at 2,
+    and its foot stands on the sentence's baseline.
+    """
+    machine = desktop.machine
+    for scale in at_each_scale:
+        at_scale(desktop, scale)
+        desktop.answer("zqxjvw")
+        cat_drawn(desktop, scale, "nothingFound", "reading")
+        desktop.close_launcher()
+        machine.send_key("meta_l-n")
+        desktop.launcher_until(lambda shown: shown["held"][-1:] == ["Desktop"])
+        cat_drawn(desktop, scale, "forYouEmpty", "asleep")
+        desktop.close_launcher()
+        desktop.answer("capture")
+        desktop.down_to("Capture")
+        desktop.step_in()
+        desktop.launcher_until(lambda shown: shown["held"][-1:] == ["captures"])
+        desktop.down_to("Recent")
+        desktop.step_in()
+        cat_drawn(desktop, scale, "nothingHere", "sitting")
+        desktop.close_launcher()
 
 
 def finds_kitty(desktop: Desktop, scale: str) -> None:

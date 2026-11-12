@@ -41,6 +41,10 @@
   "NoticeList.js" = [ "launcher/Order.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
   "PiSource.qml" = [ "PiSource.js" ];
+  "PixelMark.qml" = [
+    "MarkSize.js"
+    "Pixels.js"
+  ];
   "Prompt.qml" = [
     "Bands.js"
     "Confirm.js"
