@@ -19,6 +19,7 @@ import qs
 import "Found.js" as Found
 import "ReadyRows.js" as Ready
 import "Moved.js" as Moved
+import "Beneath.js" as Beneath
 import "../Fuzzy.js" as Fuzzy
 
 Scope {
@@ -442,9 +443,12 @@ Scope {
         // wordsOf).
         const words = Ready.wordsOf(first);
         const asking = words === "" ? {} : { wordsId: words };
+        // One holding only what the keys reach opens no list of its acts:
+        // Return does the first, and its acts are still y's and d's.
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
-            run: () => act(key, first)
+            run: () => act(key, first),
+            actsOnly: Beneath.actsOnly(acts)
         }, Ready.leaving(first));
         // A row asking Joel to be sure holds its one act alone, as the
         // shell's own sure rows did, so the key language reads that act's

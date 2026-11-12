@@ -36,6 +36,7 @@ let
     ./checks/power.nix
     ./checks/programs.nix
     ./checks/quests.nix
+    ./checks/ready-rows.nix
     ./checks/sessions.nix
     ./checks/shell.nix
     ./checks/shortcuts.nix

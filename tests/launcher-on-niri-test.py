@@ -3429,6 +3429,34 @@ def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
             shell.close(window)
 
 
+def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell, machine: StandIn) -> None:
+    """Return on a served row whose one act is a copy copies it, never opening a list of it.
+
+    Power's Charge is served with a copy alone, so stepping in showed one row named by its act's
+    key (Joel, 2026-11-11: "if they have nothing under them, we shouldn't open a submenu for
+    them"). The charge is told once Charge is shown, so the row says it as it's watched: told
+    before opening, it reached no watch, and a case before's 79% stayed.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("power", selecting="Power")
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: shown["path"][-1:] == ["Power"] and "Battery" in shown["rows"]
+    )
+    shell.down_to("Battery")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Charge" in shown["rows"])
+    shell.down_to("Charge")
+    machine.told(battery(80), [])
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "80%")
+    assert shell.showing()["selected"]["verb"] == "copy", shell.showing()["selected"]
+    with shell.told("parted copied"):
+        shell.send_key("ret")
+    shell.launcher_closed()
+    assert shell.copied() == "80%", shell.copied()
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

@@ -17,6 +17,14 @@
         "machine:uptime:started",
         "machine:uptime:kernel"
       ]
+    },
+    {
+      "id": "verb:copy",
+      "command": "yank",
+      "in": "computer",
+      "name": "Copy It",
+      "verb": "copy",
+      "glyph": "copy"
     }
   ]
 }

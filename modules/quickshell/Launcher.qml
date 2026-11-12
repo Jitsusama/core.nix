@@ -2380,6 +2380,12 @@ Scope {
     function holdsMore(choice) {
         if (held.length > 0 && choice.given)
             return true;
+        // A served row whose acts are all the keys' already holds nothing a
+        // step in would show but a list of one verb (ReadyRows.qml's
+        // actsOnly; Joel, 2026-11-11: "if they have nothing under them, we
+        // shouldn't open a submenu for them").
+        if (choice.actsOnly === true)
+            return false;
         // One that keeps the launcher holds its own act, which closes it.
         // A copy never keeps it, and asking would ask copiesOnly, which
         // asks this.
