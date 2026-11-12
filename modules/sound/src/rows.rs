@@ -216,14 +216,14 @@ impl<'a> Device<'a> {
     }
 
     /// A display's output, by what the sound server calls it.
-    fn display(&self) -> bool {
+    pub(crate) fn display(&self) -> bool {
         let known = format!("{} {}", self.name, self.text("description")).to_lowercase();
         known.contains("hdmi") || known.contains("displayport")
     }
 
     /// The Bluetooth address its sound is of, from its properties or, for
     /// a headset microphone's stand-in, its name, or "".
-    fn address(&self) -> &'a str {
+    pub(crate) fn address(&self) -> &'a str {
         let said = self.property("api.bluez5.address");
         if !said.is_empty() {
             return said;
@@ -499,6 +499,9 @@ fn row(device: &Device, name: &str, devices: &[Device], words: &Words) -> Value 
         "note": note.join(APART),
         // Return steps in, as every device's does, to its parts.
         "acts": [{"key": "verb:more", "step": "rows"}],
+        // Its drawer is served beside it (device_drawer.rs), so how it
+        // keeps time moves the drawer alone.
+        "drawer": format!("drawer:{PLACE}:{}", device.name),
         "held": {"node": device.name, "sink": device.sink},
     })
 }

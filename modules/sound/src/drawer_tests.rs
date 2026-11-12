@@ -28,19 +28,30 @@ fn named(given: &str) -> Named {
     }
 }
 
-/// The drawers served of these records, with these timings.
+/// The programs' drawers served of these records, with these timings;
+/// the devices' are `device_drawer.rs`'s cases.
 fn drawers(records: &[Value], timings: &[Value]) -> Vec<Value> {
-    served(records, timings, &words(), &named)
+    let ready = crate::parts::served(records, &words(), &named);
+    let served = served(records, &ready, timings, &words(), &named);
+    served
+        .into_iter()
+        .filter(|drawer| {
+            drawer["key"]
+                .as_str()
+                .is_some_and(|key| key.contains(":program:"))
+        })
+        .collect()
 }
 
-fn facts(drawer: &Value) -> &Vec<Value> {
+pub(crate) fn facts(drawer: &Value) -> &Vec<Value> {
     drawer["drawer"]["facts"]
         .as_array()
         .unwrap_or_else(|| panic!("no facts in {drawer}"))
 }
 
-/// A fact's name and what it says, or its heading, each as one line.
-fn lines(drawer: &Value) -> Vec<String> {
+/// A fact's name and what it says, or its heading, each as one line, for
+/// a device's drawer's cases too.
+pub(crate) fn lines(drawer: &Value) -> Vec<String> {
     facts(drawer)
         .iter()
         .map(|fact| match fact["heading"].as_str() {

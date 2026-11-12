@@ -9,8 +9,9 @@
 //! ([`programs`], [`channels`]), its filters ([`filters`]), its Hardware
 //! ([`hardware`]), and what
 //! desk-facts says of its card last ([`desk`]),
-//! each named by its desktop entry ([`naming`]) and each program's drawer
-//! served beside its row ([`drawer`]), and how each running
+//! each named by its desktop entry ([`naming`]) and each program's and
+//! device's drawer served beside its row ([`drawer`], [`device_drawer`]),
+//! and how each running
 //! node keeps time, as PipeWire's profiler says it ([`timing`]).
 //!
 //! A device record names every figure as PipeWire says it, never a
@@ -19,6 +20,7 @@
 pub mod acts;
 pub mod channels;
 pub mod desk;
+pub mod device_drawer;
 pub mod devices;
 pub mod drawer;
 pub mod filters;

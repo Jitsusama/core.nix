@@ -35,12 +35,16 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | the `key` it's found by                         | drawer                  |
 |                         | `flows`: for a filter, the devices its sound    | Tuning, Voice           |
 |                         | passes to or from now, while its half runs      | Processing              |
+|                         | `state`: what PipeWire says it's doing, and     | its drawer's State and  |
+|                         | `format`, the rate and sample the graph moves   | Format                  |
 | `stream:<id>`           | a program's stream, by its node's PipeWire id:  | each device's programs  |
 |                         | its name, `sink`, `volume`, `volumes`, `muted`  | and each program's row  |
 |                         | and `properties`, as a device's are             |                         |
 |                         | `ends`: the ids of the nodes it's linked to     | which device it plays   |
 |                         | `target`: where it's sent, or "" by default     | Plays On, Records From  |
 | `row:sound:<node name>` | the launcher's row for it, ready to draw        | Sound's place           |
+| `drawer:sound:<device>` | its drawer, ready to draw, which its row names  | the drawer beside it    |
+|                         | (`src/device_drawer.rs`), by its node name      |                         |
 | `targets:default`       | `targets`: each stream's `target.object`, by    | Plays On, Records From  |
 |                         | the stream's id, where one is sent              |                         |
 | `timing:<id>`           | a running node's cycle, in its driver's         | a drawer's Dropouts,    |
@@ -142,6 +146,7 @@ can be sent to; and its first stream's Sample Rate and Delay.
 The launcher's Sound lists these rows rather than making its own,
 sends programs through the daemon rather than a `pw-metadata` each, and
 reads how nodes keep time from it rather than from `pw-top`. A device's
-drawer is still made in the shell, from Quickshell's nodes, these
-timings and the parts served; a program's is served. Next come the last
-of each device's parts, its Level, then its drawer served whole.
+drawer and a program's are served whole, each its own record the row
+names, so how a node keeps time each second remakes a drawer and never
+a row. A device's Level is still read in the shell, since a live meter
+would need the daemon to open a stream of its own on the device.

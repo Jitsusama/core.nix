@@ -53,7 +53,7 @@ use pw::context::ContextRc;
 use pw::device::{Device, DeviceChangeMask, DeviceInfoRef, DeviceListener};
 use pw::main_loop::MainLoopRc;
 use pw::metadata::{Metadata, MetadataListener};
-use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener, NodeState};
+use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener};
 use pw::registry::{GlobalObject, RegistryRc};
 use pw::spa::param::ParamType;
 use pw::spa::pod::Pod;
@@ -62,7 +62,7 @@ use pw::types::ObjectType;
 use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use sound::acts::Move;
-use sound::devices::{Change, Devices, direction};
+use sound::devices::{Change, Devices, direction, said_state};
 use sound::levels::{channels, format, levels, offered, profile, route};
 use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
@@ -507,10 +507,11 @@ fn node(
         .info({
             let shared = Arc::clone(shared);
             move |info: &NodeInfoRef| {
-                // A filter's half running is sound passing through it.
+                // A device's state is its drawer's; a filter's half's is
+                // whether sound passes through it.
                 if info.change_mask().contains(NodeChangeMask::STATE) {
-                    let running = matches!(info.state(), NodeState::Running);
-                    told(&shared, Change::Running { id, running });
+                    let state = said_state(&info.state());
+                    told(&shared, Change::State { id, state });
                 }
                 // An info says its properties only where they changed,
                 // as its first does.
@@ -679,7 +680,7 @@ fn refresh(daemon: &mut Daemon) {
     let naming = |given: &str| daemon.naming.named(given);
     let ready = served(&records, &daemon.words, &naming);
     let timings = daemon.timings.records();
-    let drawers = drawer::served(&records, &timings, &daemon.words, &naming);
+    let drawers = drawer::served(&records, &ready, &timings, &daemon.words, &naming);
     daemon.served.take(ready, drawers);
     records.extend(daemon.served.all().cloned());
     records.push(daemon.devices.targets());

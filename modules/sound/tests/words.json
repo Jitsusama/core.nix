@@ -253,6 +253,11 @@
       "name": "Delay"
     },
     { "id": "sound:graph-id", "in": "sound", "name": "Graph ID" },
+    { "id": "sound:state", "in": "sound", "name": "State" },
+    { "id": "sound:graph-format", "in": "sound", "name": "Graph Format" },
+    { "id": "sound:priority", "in": "sound", "name": "Priority" },
+    { "id": "sound:alsa-device", "in": "sound", "name": "ALSA Device" },
+    { "id": "bluetooth", "name": "Bluetooth" },
     { "id": "sound:stream", "in": "sound", "name": "Stream", "term": "Machine/stream" },
     { "id": "sound:role", "in": "sound", "name": "Role", "term": "Machine/role" },
     { "id": "sound:process", "in": "sound", "name": "Process ID", "term": "Machine/process ID" },
