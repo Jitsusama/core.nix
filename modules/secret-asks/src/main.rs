@@ -2,9 +2,10 @@
 //! released to one fixed checker on Joel's yes in the launcher.
 //!
 //! - `secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS
-//!   --item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT]`
-//!   serves each ask in DIR as a row in Asks, and answers release and
-//!   refuse (src/daemon.rs says how).
+//!   --item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT]
+//!   [--journal SOCKET]` serves each ask in DIR as a row in Asks, and
+//!   answers release and refuse (src/daemon.rs says how), telling the
+//!   journal at SOCKET, journald's own by default, how each ended.
 //! - `secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR]
 //!   [--given NAME] [--session NAME] [--quest-id ID --quest-title TITLE]`
 //!   puts up one ask for the checker, as the harness will for an agent.
@@ -16,10 +17,11 @@ use std::process::ExitCode;
 
 use secret_asks::ask::Ask;
 use secret_asks::daemon::{self, Config};
+use secret_asks::reading;
 use secret_asks::words::Words;
 
 const USAGE: &str = "usage: secret-asks serve --socket SOCKET --asks DIR --vocabulary WORDS \
---item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT]
+--item REF --op OP --git GIT --loginctl LOGINCTL [--account ACCOUNT] [--journal SOCKET]
        secret-asks ask --item REF --tree PATH --why WORDS [--asks DIR] [--given NAME] \
 [--session NAME] [--quest-id ID --quest-title TITLE]
        secret-asks received";
@@ -78,6 +80,7 @@ fn serve(args: &[String]) -> ExitCode {
         checker,
         home: std::env::var("HOME").unwrap_or_default(),
         words,
+        journal: named(args, "--journal").map_or_else(|| reading::JOURNAL.into(), PathBuf::from),
     })
 }
 

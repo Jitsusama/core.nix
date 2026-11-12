@@ -15,7 +15,9 @@
 //!
 //! Each answer is written beside its ask as `<id>.answer.json`, and the
 //! ask's file is taken away; the journal says each ask's id, item,
-//! command, tree and outcome, never the value.
+//! command, tree and outcome, never the value, and each answered ask
+//! leaves a line of fields alone for the machine's health to count
+//! (reading.rs).
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
@@ -34,6 +36,7 @@ use serde_json::{Value, json};
 
 use crate::ask::{self, Ask};
 use crate::mask::masked;
+use crate::reading::{self, Outcome};
 use crate::row::{self, Held, STAYS_MS, State};
 use crate::tree;
 use crate::words::Words;
@@ -67,6 +70,8 @@ pub struct Config {
     pub checker: PathBuf,
     pub home: String,
     pub words: Words,
+    /// Where journald takes the readings' lines.
+    pub journal: PathBuf,
 }
 
 /// Milliseconds since 1970.
@@ -142,6 +147,14 @@ impl Daemon {
         let _ = std::fs::remove_file(self.ask_path(id));
     }
 
+    /// Tells the journal how an ask ended, for the machine's health.
+    fn reading(&self, ask: &Ask, outcome: Outcome, said: &Value) {
+        reading::send(
+            &self.config.journal,
+            &reading::line(ask, outcome, said["shown"].as_i64()),
+        );
+    }
+
     /// Answers an ask that ended without running, saying why.
     fn answered(&self, id: &str, state: &str, why: &str) {
         eprintln!("<6>secret-asks: {id} {state}: {why}");
@@ -205,8 +218,10 @@ impl Daemon {
                 Err(why) => self.answered(&id, "refused", &format!("not an ask: {why}")),
                 Ok(ask) => {
                     if let Some(why) = self.refused(&ask) {
+                        self.reading(&ask, Outcome::Unseen, &Value::Null);
                         self.answered(&id, "refused", why);
                     } else if !ask.waits_at(now) {
+                        self.reading(&ask, Outcome::Expired, &Value::Null);
                         self.answered(&id, "ended", "ended unanswered");
                     } else {
                         let tree = tree::read(&self.config.git, Path::new(&ask.tree));
@@ -235,18 +250,19 @@ impl Daemon {
     fn tidy(&self) -> Option<i64> {
         let now = now_ms();
         let mut asks = self.asks();
-        let ended: Vec<String> = asks
+        let ended: Vec<Ask> = asks
             .held
             .values()
             .filter(|held| held.state == State::Waiting && !held.ask.waits_at(now))
-            .map(|held| held.ask.id.clone())
+            .map(|held| held.ask.clone())
             .collect();
-        for id in ended {
-            if let Some(held) = asks.held.get_mut(&id) {
+        for ask in ended {
+            if let Some(held) = asks.held.get_mut(&ask.id) {
                 held.state = State::Ended;
                 held.since_ms = now;
             }
-            self.answered(&id, "ended", "ended unanswered");
+            self.reading(&ask, Outcome::Expired, &Value::Null);
+            self.answered(&ask.id, "ended", "ended unanswered");
         }
         asks.held.retain(|_, held| {
             matches!(held.state, State::Waiting | State::Releasing)
@@ -316,6 +332,7 @@ impl Daemon {
             return self.refusal("refused", "it's already answered", "answered");
         }
         if self.locked() {
+            self.reading(&held.ask, Outcome::Locked, said);
             return self.refusal("refused", "the screen is locked", "locked");
         }
         let now = match self.read(&id) {
@@ -324,6 +341,7 @@ impl Daemon {
         };
         let tree = tree::read(&self.config.git, Path::new(&now.tree));
         if Some(row::digest(&now, &tree).as_str()) != said["digest"].as_str() {
+            self.reading(&held.ask, Outcome::Changed, said);
             held.ask = now;
             held.tree = tree;
             drop(asks);
@@ -338,6 +356,7 @@ impl Daemon {
         held.since_ms = now_ms();
         let ask = held.ask.clone();
         drop(asks);
+        self.reading(&ask, Outcome::Released, said);
         self.changed();
         let daemon = Arc::clone(self);
         std::thread::spawn(move || daemon.run_released(&ask));
@@ -464,7 +483,9 @@ impl Daemon {
         held.state = State::Refused;
         held.since_ms = now_ms();
         let id = id.to_owned();
+        let ask = held.ask.clone();
         drop(asks);
+        self.reading(&ask, Outcome::Refused, said);
         self.answered(&id, "refused", "refused by Joel");
         self.changed();
         json!({"refused": true})

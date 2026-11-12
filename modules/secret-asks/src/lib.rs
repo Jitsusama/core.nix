@@ -8,11 +8,13 @@
 //! - `row`: an ask as the launcher draws it, and the digest of it.
 //! - `mask`: a command's output with the value masked.
 //! - `words`: Asks' words, from the launcher's vocabulary.
+//! - `reading`: how each ask ended, told to the journal as fields alone.
 //! - `daemon`: the folder watched, the rows served, and the yes.
 
 pub mod ask;
 pub mod daemon;
 pub mod mask;
+pub mod reading;
 pub mod row;
 pub mod tree;
 pub mod words;

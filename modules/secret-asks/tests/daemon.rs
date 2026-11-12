@@ -3,6 +3,7 @@
 //! over its socket as the launcher asks it.
 
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -54,6 +55,8 @@ fn git(tree: &Path, args: &[&str]) {
 struct Setting {
     daemon: Daemon,
     folder: PathBuf,
+    /// A stand-in for journald's socket, which the readings' lines reach.
+    journal: UnixDatagram,
 }
 
 impl Setting {
@@ -83,6 +86,12 @@ impl Setting {
             ),
         );
         let socket = folder.join("secret-asks.sock");
+        let journal =
+            UnixDatagram::bind(folder.join("journal.sock")).expect("the journal stand-in binds");
+        // A reading comes as the act is answered, so a few seconds is long.
+        journal
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .expect("the journal stand-in waits a while");
         let mut command = Command::new(env!("CARGO_BIN_EXE_secret-asks"));
         command
             .arg("serve")
@@ -99,9 +108,25 @@ impl Setting {
             .arg("--git")
             .arg(on_path("git"))
             .arg("--loginctl")
-            .arg(folder.join("loginctl"));
+            .arg(folder.join("loginctl"))
+            .arg("--journal")
+            .arg(folder.join("journal.sock"));
         let daemon = Daemon::start(&mut command, socket, folder.clone());
-        Setting { daemon, folder }
+        Setting {
+            daemon,
+            folder,
+            journal,
+        }
+    }
+
+    /// The next reading the journal was told, once one has come.
+    fn reading(&self) -> String {
+        let mut line = [0_u8; 4096];
+        let length = self
+            .journal
+            .recv(&mut line)
+            .expect("a reading reached the journal");
+        String::from_utf8_lossy(&line[..length]).into_owned()
     }
 
     /// Puts up an ask for `item` and answers its id.
@@ -171,10 +196,25 @@ fn a_yes_releases_the_item_to_the_checker_alone() {
     let id = setting.ask(ITEM);
     let drawn = row(&mut client, &id);
     assert_eq!(drawn["state"], "waiting", "the ask didn't wait");
-    assert_eq!(
-        act(&mut client, &drawn, 0)["releasing"],
-        true,
-        "the yes wasn't taken"
+    let mut yes = drawn["acts"][0]["ask"].clone();
+    yes["id"] = json!(7);
+    // How long the launcher says the line was on screen before the yes.
+    yes["shown"] = json!(812);
+    assert_eq!(client.ask(&yes)["releasing"], true, "the yes wasn't taken");
+    let reading = setting.reading();
+    for field in [
+        "ASK_OUTCOME=released\n",
+        "ASK_SHOWN_MS=812\n",
+        "ASK_AVOIDABLE=unknown\n",
+    ] {
+        assert!(
+            reading.contains(field),
+            "the reading lacks {field}: {reading}"
+        );
+    }
+    assert!(
+        !reading.contains(VALUE) && !reading.contains("op://"),
+        "the reading says the value or the item: {reading}"
     );
     let answer = setting.answer(&id);
     assert_eq!(answer["state"], "ran", "the checker didn't run: {answer}");
@@ -204,6 +244,11 @@ fn an_ask_for_any_other_item_reads_nothing_and_draws_no_row() {
         "another item wasn't refused: {answer}"
     );
     assert_eq!(answer["why"], "not listed", "it was refused for: {answer}");
+    let reading = setting.reading();
+    assert!(
+        reading.contains("ASK_OUTCOME=unseen\n"),
+        "an ask Joel never saw isn't read as unseen: {reading}"
+    );
     let mut client = setting.daemon.client();
     let held = client.ask(&json!({"id": 1, "ask": "list", "kind": "row"}));
     assert_eq!(held["records"], json!([]), "another item drew a row");
@@ -256,6 +301,11 @@ fn a_yes_while_locked_reads_nothing() {
         "the launcher can't say why: {said}"
     );
     assert_eq!(setting.op_ran(), 0, "op ran while locked");
+    let reading = setting.reading();
+    assert!(
+        reading.contains("ASK_OUTCOME=locked\n"),
+        "a locked yes isn't read: {reading}"
+    );
 }
 
 #[test]
@@ -273,6 +323,11 @@ fn a_no_refuses_and_reads_nothing() {
         setting.answer(&id)["why"],
         "refused by Joel",
         "the no wasn't answered"
+    );
+    let reading = setting.reading();
+    assert!(
+        reading.contains("ASK_OUTCOME=refused\n"),
+        "a no isn't read: {reading}"
     );
     assert_eq!(
         row(&mut client, &id)["acts"],
