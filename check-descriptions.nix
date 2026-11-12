@@ -1627,6 +1627,16 @@
     pi's settings take core's at a switch and keep pi's own keys; a file holding them isn't
     rewritten, a missing one is made, and one not JSON is refused untouched
   '';
+  pi-keys-models-a-key-s-waits = ''
+    pi-keys times a thread's bursts from its schedstat and stat, keeping the solid ones a key would
+    wait out, models keys only over the time Joel was at a pi window, each waiting at niri, kitty
+    and pi for the burst it lands in and then for the screen's next frame, counts a late key and
+    the thread that lost it a frame, reads niri's focused window and frame, and finds the window's
+    scope and pi as the jobs-sorter finds them, a bare class in the shared kitty finding none
+  '';
+  pi-keys-passes-clippy = ''
+    clippy finds nothing in pi-keys or its tests
+  '';
   pi-carry-is-on-the-path = ''
     pi-carry, the harness's program mycelium carry runs to carry a quest to another machine and put it
     back, is on the path of every account with pi, run by the store's node

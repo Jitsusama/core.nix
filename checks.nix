@@ -651,6 +651,7 @@ gather (
     ./modules/people/checks.nix
     ./modules/pi/checks.nix
     ./modules/pi/agent-proxy/checks.nix
+    ./modules/pi-keys/checks.nix
     ./modules/pi-packages/checks.nix
     ./modules/pipewire/checks.nix
     ./modules/plymouth/checks.nix
