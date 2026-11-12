@@ -13,19 +13,23 @@
 const LETTERS = 36;
 const LINES = 6;
 
+const SPACES = /\s+/u;
+
 // A reply as the card says it: whole, when it fits, else its words to the
 // card's last line and that line ending "... more in the talk", never a
 // word cut (VKCF3Z, 2026-11-12 [24c972ba]). The whole stays in the talk.
 function cut(reply, more) {
-    const words = String(reply ?? "").trim().split(/\s+/).filter(word => word !== "");
+    const words = String(reply ?? "").trim().split(SPACES).filter(word => word !== "");
     const lines = laid(words);
-    if (lines.length <= LINES)
+    if (lines.length <= LINES) {
         return words.join(" ");
+    }
     const ending = `... ${more}`;
     const kept = [].concat(...lines.slice(0, LINES - 1));
     const last = lines[LINES - 1].slice();
-    while (last.length > 0 && `${last.join(" ")} ${ending}`.length > LETTERS)
+    while (last.length > 0 && `${last.join(" ")} ${ending}`.length > LETTERS) {
         last.pop();
+    }
     return kept.concat(last, [ending]).join(" ");
 }
 
@@ -36,21 +40,22 @@ function laid(words) {
     const lines = [];
     let line = [];
     for (const word of words) {
-        const next = line.concat([word]).join(" ");
-        if (next.length <= LETTERS) {
+        if (line.concat([word]).join(" ").length <= LETTERS) {
             line.push(word);
-            continue;
-        }
-        if (line.length > 0)
-            lines.push(line);
-        line = [word];
-        for (let spans = Math.ceil(word.length / LETTERS); spans > 1; spans--) {
-            lines.push(line);
-            line = [];
+        } else {
+            if (line.length > 0) {
+                lines.push(line);
+            }
+            const spans = Math.ceil(word.length / LETTERS);
+            for (let filled = 1; filled < spans; filled += 1) {
+                lines.push(filled === 1 ? [word] : []);
+            }
+            line = spans > 1 ? [] : [word];
         }
     }
-    if (line.length > 0)
+    if (line.length > 0) {
         lines.push(line);
+    }
     return lines;
 }
 
@@ -69,15 +74,20 @@ function talkOf(talks, line, since) {
 // The reply a talk has given, once it's given one whole, or "": one still
 // being written isn't a reply yet.
 function replyOf(talk) {
-    if (talk === null || talk.reply === "")
+    if (talk === null || talk.reply === "") {
         return "";
+    }
     return ["replied", "over", "read"].includes(talk.stage) ? talk.reply : "";
 }
+
+const AMPERSANDS = /&/gu;
+const OPENINGS = /</gu;
+const CLOSINGS = />/gu;
 
 // What a notice's body holds of words as the bus takes them, which reads
 // markup.
 function plain(text) {
-    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return text.replace(AMPERSANDS, "&amp;").replace(OPENINGS, "&lt;").replace(CLOSINGS, "&gt;");
 }
 
 // notify-send's command for the card as it stands: from the name it signs
