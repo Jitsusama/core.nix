@@ -443,30 +443,28 @@ impl Daemon {
                 drop(held);
                 act(&id, &said, asks)
             }
-            // Only inside a meeting's Move, a time typed there; any other
-            // the shell matches among its rows itself (ready-rows.md).
-            "search" => held
-                .state
-                .as_ref()
-                .zip(held.words.as_ref())
-                .and_then(|(state, words)| {
-                    ready::typed(state, words, &said, Timestamp::now().as_millisecond())
-                })
-                .map_or_else(
-                    || {
-                        error(
-                            &id,
-                            "unknown-ask",
-                            "this daemon searches only within a Move",
-                        )
-                    },
-                    |mut found| {
-                        found["id"] = id.clone();
-                        found
-                    },
-                ),
+            "search" => search(&held, &id, &said),
             _ => error(&id, "unknown-ask", &format!("no ask {asked:?}")),
         }
+    }
+}
+
+/// A search answered only inside a meeting's Move, for a time typed
+/// there, as of the clock now; any other is refused, for the shell to
+/// match among its rows itself (ready-rows.md).
+fn search(held: &Held, id: &Value, said: &Value) -> Value {
+    let now = Timestamp::now().as_millisecond();
+    let found = held
+        .state
+        .as_ref()
+        .zip(held.words.as_ref())
+        .and_then(|(state, words)| ready::typed(state, words, said, now));
+    match found {
+        Some(mut found) => {
+            found["id"] = id.clone();
+            found
+        }
+        None => error(id, "unknown-ask", "this daemon searches only within a Move"),
     }
 }
 
