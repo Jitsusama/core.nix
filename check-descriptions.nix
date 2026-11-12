@@ -3711,6 +3711,12 @@
     and isn't recorded once rejoined; a call holds logind's lock against going idle while it's
     on, transcribed or not, and lets go once it ends
   '';
+  vm-a-call-keeps-its-packets = ''
+    behind a router sharing 90 Mbit/s down and 15 up flow by flow under fq_codel, with the jobs
+    downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
+    the video tin and one to 443 as best effort, lose at most a hundredth of their datagrams
+    coming down, where without the shaper they lose none
+  '';
   vm-a-hidden-queue-is-taken-back = ''
     behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the
     one-way controller takes the queue back under it, and an app's one upload gets over half the

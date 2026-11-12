@@ -217,6 +217,9 @@ struct Shaped {
     drops: Option<u64>,
     dropped: u64,
     told_at: Option<Instant>,
+    /// Whether what the link receives goes straight in, past its IFB,
+    /// because nothing limits the download.
+    straight: bool,
     /// The bytes the upload's CAKE had sent when last read, and when the
     /// controller was last told: what crossed the line, apart from the
     /// home network's traffic, which the link sends as well.
@@ -419,7 +422,7 @@ fn start(
         ),
     );
     let (up, down) = (controller.up.rate, controller.down.rate);
-    install(&uplink.name, &ifb, up, down);
+    install(&uplink.name, &ifb, up, down, false);
     eprintln!(
         "shaping {} on {network} at {up} kbit/s up, {down} down",
         uplink.name
@@ -444,6 +447,7 @@ fn start(
         drops: None,
         dropped: 0,
         told_at: None,
+        straight: false,
         sent_bytes: 0,
         sent_told: None,
     };
@@ -452,8 +456,13 @@ fn start(
     Some(shaped)
 }
 
-fn install(link: &str, ifb: &str, up: u64, down: u64) {
+/// Puts a link's queues on, turning what it receives through its IFB
+/// unless it goes `straight` in.
+fn install(link: &str, ifb: &str, up: u64, down: u64, straight: bool) {
     run_all(qdisc::install(link, ifb, up, down));
+    if !straight {
+        run_all(qdisc::turn(link, ifb));
+    }
 }
 
 /// Runs each command, saying what failed, and gives whether all went.
@@ -577,7 +586,10 @@ fn run(options: &Options) -> ExitCode {
                 }
             }
             primary = order.first().cloned();
-            let base = order.first().and_then(|p| shaped.get(p)).map(|s| s.applied);
+            let base = order
+                .first()
+                .and_then(|p| shaped.get(p))
+                .map(|s| (s.applied.0, s.applied.1, s.straight));
             follow_vpns(&mut vpns, &options.vpns, base, t);
             reach = local(&shaped, &vpns.0);
             watch_real_time(&mut shaped, (now - began).as_secs_f64());
@@ -748,11 +760,12 @@ fn moved(applied: Option<u64>, kbit: u64) -> bool {
 /// Keeps a CAKE on each VPN that's there, each way, at its share of the
 /// primary uplink's rates, less what its own packets cost the uplink past
 /// what its CAKE counts, and lets go of one that's gone or has no uplink to
-/// ride. Read at `t` seconds.
+/// ride. What a VPN receives goes straight in, past its IFB, while the
+/// uplink's does. Read at `t` seconds.
 fn follow_vpns(
     (applied, spent): &mut (BTreeMap<String, Vpn>, cost::Cost),
     names: &[String],
-    base: Option<(u64, u64)>,
+    base: Option<(u64, u64, bool)>,
     t: f64,
 ) {
     let counted: Option<u64> = applied
@@ -777,7 +790,7 @@ fn follow_vpns(
     for name in names {
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
-        let (Some((up, down)), Some(index)) = (base, index) else {
+        let (Some((up, down, straight)), Some(index)) = (base, index) else {
             if let Some(gone) = applied.remove(name) {
                 if dir.exists() {
                     let _ = sh(&words(&format!("tc qdisc del dev {name} root")));
@@ -811,7 +824,13 @@ fn follow_vpns(
                 Err(e) => eprintln!("{e}"),
             }
         }
-        if !qdisc::turned(&json) || !qdisc::vpn_ours(&back) {
+        if straight {
+            if qdisc::turned(&json)
+                && let Err(e) = sh(&qdisc::unturn(name))
+            {
+                eprintln!("{e}");
+            }
+        } else if !qdisc::turned(&json) || !qdisc::vpn_ours(&back) {
             if run_all(qdisc::vpn_ingress(name, &ifb, down)) {
                 kept.down = down;
             }
@@ -866,7 +885,8 @@ fn look(
                     .unwrap_or_default();
                 let ifb =
                     sh(&words(&format!("tc -j qdisc show dev {}", s.ifb))).unwrap_or_default();
-                if !qdisc::ours(&json) || !qdisc::turned(&json) || !qdisc::ours(&ifb) {
+                let turned = s.straight || qdisc::turned(&json);
+                if !qdisc::ours(&json) || !turned || !qdisc::ours(&ifb) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
                     install(
@@ -874,6 +894,7 @@ fn look(
                         &s.ifb,
                         s.controller.up.rate,
                         s.controller.down.rate,
+                        s.straight,
                     );
                     s.applied = (s.controller.up.rate, s.controller.down.rate);
                 }
@@ -948,6 +969,9 @@ fn step(s: &mut Shaped, t: f64, sent: f64, received: f64) {
     s.state = s.controller.step(t, sent, received);
     tell(s, was, sent, received);
     apply(s);
+    // The round trip's controller reads what came down from the IFB's
+    // CAKE, so its downloads always go through it.
+    go_straight(s, false);
 }
 
 /// One step of every uplink's controller, on what its connection carried:
@@ -1014,6 +1038,37 @@ fn hold(s: &mut Shaped, rates: replay::Rates) {
         State::Resting
     };
     apply(s);
+    go_straight(s, rates.down.is_none());
+}
+
+/// Lets what a link receives go straight in, past its IFB, or turns it
+/// back through once a limit holds, after `apply` gave the IFB's CAKE its
+/// rate. `qdisc::unturn` says why.
+fn go_straight(s: &mut Shaped, straight: bool) {
+    if straight == s.straight {
+        return;
+    }
+    let name = s.uplink.name.clone();
+    let done = if straight {
+        match sh(&qdisc::unturn(&name)) {
+            // Queues put back while it went straight came without a turn.
+            Err(e) if !e.contains("Cannot find") => {
+                eprintln!("{e}");
+                false
+            }
+            _ => true,
+        }
+    } else {
+        run_all(qdisc::turn(&name, &s.ifb))
+    };
+    if done {
+        s.straight = straight;
+        if straight {
+            eprintln!("{name}: nothing limits the download, so it goes straight in");
+        } else {
+            eprintln!("{name}: the download is limited, so it queues in CAKE again");
+        }
+    }
 }
 
 /// Tells the journal of each cut, and of a queue on the connection that
@@ -1099,6 +1154,9 @@ struct LinkStatus {
     /// Whether real-time traffic crosses the link now.
     #[serde(default)]
     live: bool,
+    /// Whether what the link receives goes straight in, past its IFB.
+    #[serde(default)]
+    straight: bool,
     /// What the one-way controller last heard of the link it holds, and
     /// made of it, so a trace can say why its rate held where it did.
     #[serde(default)]
@@ -1125,6 +1183,7 @@ fn write_status(
             baselines: s.controller.baselines(),
             follows: s.follows.clone(),
             live: s.controller.live,
+            straight: s.straight,
             heard: heard
                 .filter(|(link, _)| *link == s.uplink.name)
                 .map(|(_, heard)| heard.clone()),
