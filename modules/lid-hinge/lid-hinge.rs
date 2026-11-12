@@ -679,6 +679,21 @@ fn hear(hinge: Option<&mut Hinge>, judge: &mut Judge) -> io::Result<()> {
     Ok(())
 }
 
+/// Gives the judge the presses of the laptop's own keys and touchpad so far, and opens the
+/// lid offered when they say it's open.
+fn feel(judge: &mut Judge, offered: &mut Offered, now: Instant) -> io::Result<()> {
+    if let Some(count) = hands()
+        && judge.keys(count, now) == Verdict::Used
+    {
+        eprintln!(
+            "lid-hinge: the lid is open: its switch says shut, but the laptop's own keys or \
+             touchpad were used"
+        );
+        offered.say(false)?;
+    }
+    Ok(())
+}
+
 fn run() -> io::Result<()> {
     let root =
         env::var_os("LID_HINGE_IIO").map_or_else(|| "/sys/bus/iio/devices".into(), PathBuf::from);
@@ -744,15 +759,7 @@ fn run() -> io::Result<()> {
         hear(hinge.as_mut(), &mut judge)?;
         let now = Instant::now();
         // Every wake, so presses long before a close aren't taken for a hand on a shut lid.
-        if let Some(count) = hands()
-            && judge.keys(count, now) == Verdict::Used
-        {
-            eprintln!(
-                "lid-hinge: the lid is open: its switch says shut, but the laptop's own keys \
-                 or touchpad were used"
-            );
-            offered.say(false)?;
-        }
+        feel(&mut judge, &mut offered, now)?;
         let verdict = if fds[0].revents & POLLIN != 0 && lid_events(&mut lid)? {
             let shut = lid_shut(&lid)?;
             let seen = judge
