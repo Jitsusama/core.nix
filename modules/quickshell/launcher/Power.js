@@ -7,7 +7,6 @@
 // chargers' rows are the machine daemon's, served ready
 // (modules/machine's power_rows.rs), and none of it is worked out here.
 .pragma library
-.import "Order.js" as Order
 
 const SPACES = /\s+/;
 
@@ -85,28 +84,16 @@ function choiceFacts(daemon, known, said) {
     ].filter(fact => fact.value !== "");
 }
 
-// The programs whose windows are open, the most windows first, then A to
-// Z, as amounts are (Order.js), each { name, count }, from niri's windows (Niri.qml's, by id),
-// each named by `named` from its app_id, and how many windows in all, a
-// window with no app_id counted there alone. A stopgap against the rule
-// that daemons count and sort (Y2YBTS, 2207fa52): the windows daemon
-// (ZINAWZ) serves it as windows-open:power by Thu 12 Nov 18:00, and
-// Session.qml reads that record in its place the day it lands.
-function byProgram(windows, named) {
-    const counted = Object.create(null);
-    let open = 0;
-    for (const each of Object.values(windows ?? {})) {
-        open += 1;
-        const id = String(each?.app_id ?? "");
-        if (id !== "") {
-            const name = named(id);
-            counted[name] = (counted[name] ?? 0) + 1;
-        }
-    }
-    const programs = Order.sorted(
-        Object.keys(counted).map(name => ({ name, count: counted[name] })),
-        Order.amounts({ amount: program => program.count, name: program => program.name }));
-    return { open, programs };
+// How many windows are open and whose, from the windows daemon's
+// windows-open record, counted, named and ordered there, the most first
+// (ZINAWZ, #3718), since daemons count and sort (Y2YBTS, 2207fa52):
+// { open, programs: [{ name, count }] }, none open before it answers.
+function openOf(record) {
+    return {
+        open: Number(record?.open ?? 0),
+        programs: (record?.programs ?? []).map(each => ({
+            name: String(each.program), count: Number(each.count) }))
+    };
 }
 
 // How many programs a drawer names before saying how many more.
@@ -115,13 +102,15 @@ const PROGRAMS_NAMED = 4;
 // What's open, as Lock's drawer says it stays running behind the lock:
 // how many windows, "14 windows", and whose, the most first, "kitty 5 \u00b7
 // Chrome 4 \u00b7 Slack 2 \u00b7 3 more", in the words `said` gives; each ""
-// when none is open.
+// when none is open. The more are the windows of the rest, a window of
+// no program among them, so the figures add up to the windows open.
 function openSaid(open, said) {
     if (open.open === 0) {
         return { windows: "", programs: "" };
     }
-    const named = open.programs.slice(0, PROGRAMS_NAMED).map(each => `${each.name} ${each.count}`);
-    const more = open.programs.length - PROGRAMS_NAMED;
+    const shown = open.programs.slice(0, PROGRAMS_NAMED);
+    const named = shown.map(each => `${each.name} ${each.count}`);
+    const more = open.open - shown.reduce((all, each) => all + each.count, 0);
     if (more > 0) {
         named.push(filled(said.more, { count: more }));
     }
@@ -136,7 +125,7 @@ function openSaid(open, said) {
 // screen; 9 windows keep running behind it.", then its facts by their
 // words' ids, its key as its chord says it, then whose windows stay open.
 // One window keeps running where several keep, so it has its own line.
-// `open` is byProgram's, `chord` its keys' words, "Super L".
+// `open` is openOf's, `chord` its keys' words, "Super L".
 function lockSaid(open, chord, said) {
     const told = openSaid(open, said);
     const lead = open.open === 1 ? said.one : said.lead;
@@ -153,7 +142,7 @@ function lockSaid(open, chord, said) {
 // Off's, an act's that ends something (VKCF3Z, 37e49991): its lead says
 // what it does and how many windows it closes, "Reboots the machine,
 // closing 14 windows.", and its Ends fact, by the id `ends`, whose they
-// are. `open` is byProgram's.
+// are. `open` is openOf's.
 function endingSaid(open, ends, said) {
     const told = openSaid(open, said);
     return {
