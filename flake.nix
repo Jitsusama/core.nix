@@ -217,6 +217,7 @@
         passwords = moduleFrom ./modules/passwords/home.nix { inherit (self.homeModules) quickshell; };
         pi = ./modules/pi/home.nix;
         people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };
+        pi-keys = ./modules/pi-keys/home.nix;
         pi-packages = ./modules/pi-packages/home.nix;
         pnpm = ./modules/pnpm/home.nix;
         podman = ./modules/podman/home.nix;
