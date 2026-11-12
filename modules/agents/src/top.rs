@@ -421,6 +421,60 @@ mod tests {
     }
 
     #[test]
+    fn an_orchestrations_own_acts_are_rows_inside_it_ahead_of_its_sessions() {
+        let rows = top(&[
+            row(
+                "O",
+                "working",
+                0,
+                &["switch", "talk", "pause", "stop", "close"],
+            ),
+            row("A", "working", 1, LIVE),
+        ]);
+        let inside: Vec<&Value> = rows
+            .iter()
+            .filter(|row| row["parent"] == "row:agents-top:O")
+            .collect();
+        let said: Vec<(&str, &str, &str)> = inside
+            .iter()
+            .map(|row| {
+                (
+                    row["kind"].as_str().unwrap_or(""),
+                    row["name"].as_str().unwrap_or(""),
+                    row["glyph"].as_str().unwrap_or(""),
+                )
+            })
+            .collect();
+        assert_eq!(
+            said,
+            [
+                ("act", "Talk", "reply"),
+                ("act", "Go To", "windows"),
+                ("act", "Pause", "pause"),
+                ("act", "Stop", "stopped"),
+                ("act", "Close", "close"),
+                ("session", "A's quest", "agent"),
+            ],
+            "Talk first, then its own acts as its row orders them, each named as the \
+             launcher names it, then its sessions"
+        );
+        let stop = found(&rows, "row:agents-top:O:stop");
+        assert_eq!(
+            stop["acts"],
+            json!([{"key": "verb:agent:stop", "ask": {"ask": "stop", "address": "O"}}]),
+            "each does its act on the orchestrator, by the act's own key: {stop}"
+        );
+        assert_eq!(stop["depth"], 1, "each is a step in: {stop}");
+        assert_eq!(stop["thing"], "verb:agent:stop", "each is its act: {stop}");
+        let alone = top(&[row("L", "listening", 0, LIVE)]);
+        assert_eq!(
+            alone.len(),
+            1,
+            "one with no sessions under it has no step, so its acts stay its row's: {alone:?}"
+        );
+    }
+
+    #[test]
     fn a_session_inside_is_gone_to_only_where_it_needs_joel() {
         let rows = top(&[
             row("O", "working", 0, LIVE),
