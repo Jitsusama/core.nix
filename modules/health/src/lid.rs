@@ -1,7 +1,7 @@
 //! A lid that says it's shut while Joel works on the laptop under it: a
 //! fault no journal line tells of, since every program believes the lid.
-//! On 12 November optimus's lid read shut for over half an hour with its
-//! screen on and its keys typed on, and nothing said so.
+//! On 12 November one laptop's lid read shut for over half an hour with
+//! its screen on and its keys typed on, and nothing said so.
 
 use std::fs;
 use std::path::Path;
