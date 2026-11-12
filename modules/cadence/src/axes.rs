@@ -1,6 +1,6 @@
-//! `cadence axes`: the nine axes Joel holds the machine to (resources,
+//! `cadence axes`: the ten axes Joel holds the machine to (resources,
 //! time to done, quality, collaboration, security, organization, scale,
-//! polish and his stress), each read now against its bar, so he sees in
+//! polish, responsiveness and his stress), each read now against its bar, so he sees in
 //! one page which are out of spec and who has each. `cadence axes <axis>`
 //! steps into one and says where each reading comes from.
 //!
@@ -34,7 +34,7 @@ use serde_json::Value;
 use crate::{folders, now_ms};
 use readings::{gather, read};
 
-/// `cadence axes [AXIS]`: prints the nine axes, or the one named.
+/// `cadence axes [AXIS]`: prints the ten axes, or the one named.
 pub fn run(mut args: impl Iterator<Item = String>) -> ExitCode {
     let asked = args.next();
     if args.next().is_some() {
@@ -204,7 +204,7 @@ impl Reading {
     }
 }
 
-/// One of the nine axes and what it's read by.
+/// One of the ten axes and what it's read by.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Axis {
     pub name: &'static str,
@@ -409,7 +409,7 @@ pub fn find<'a>(axes: &'a [Axis], asked: &str) -> Option<&'a Axis> {
         .find(|a| !asked.is_empty() && a.name.starts_with(&asked))
 }
 
-/// The page of all nine: each axis's one line, marked when out of spec,
+/// The page of all ten: each axis's one line, marked when out of spec,
 /// saying its first reading out with its owner; marked pending when it's
 /// read only on stand-ins or in part, saying so; else its first reading.
 #[must_use]

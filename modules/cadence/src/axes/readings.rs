@@ -67,10 +67,9 @@ pub struct Note {
     pub re: Option<String>,
 }
 
-/// The nine axes, read from `s`.
+/// The ten axes, read from `s`.
 #[must_use]
 pub fn read(s: &Sources) -> Vec<Axis> {
-    let (over, keys) = launcher(&s.launcher);
     vec![
         resources(s),
         time(s),
@@ -79,7 +78,10 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         axis(
             "security",
             [
-                vec![counted::musts(&s.counted, s.now)],
+                vec![
+                    counted::musts(&s.counted, s.now),
+                    counted::holes(&s.counted),
+                ],
                 counted::asks(&s.counted),
             ]
             .concat(),
@@ -88,18 +90,25 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         scale(s),
         axis(
             "polish",
+            // Nothing counts how what he sees meets the design's bar yet,
+            // so polish says so rather than borrow another axis's figure.
             vec![
                 Reading::new(
-                    "{} launcher keys over 50 ms today",
-                    Some(count(over)),
+                    "{} surfaces that failed the design's checks this week",
+                    None,
                     "",
-                    "Y2YBTS",
+                    "1JQPPC",
                 )
                 .bar(Bar::AtMost(0.0))
-                .detail(Some(format!("of {keys} keys")))
-                .from("the shell's journal")
+                .detail(Some(
+                    "nothing counts this yet; Friday's blind-spot review takes it".into(),
+                ))
                 .his(),
             ],
+        ),
+        axis(
+            "responsiveness",
+            [counted::keys(&s.launcher), counted::responds(&s.counted)].concat(),
         ),
         stress(s),
     ]
@@ -119,47 +128,46 @@ fn resources(s: &Sources) -> Axis {
     let figure = |key: &str| s.day.as_ref().and_then(|d| d.figures.get(key).copied());
     let (_, swap) = crate::records::memory(&s.meminfo);
     let now = crate::records::avg300(&s.pressure);
-    axis(
-        "resources",
-        vec![
-            bill,
-            changes,
-            landings::harness(&s.harness, s.now, &TimeZone::system()),
-            Reading::new(
-                "spent on cache rewrites after compaction {}",
-                s.measures.last().and_then(|m| after_compaction(m)),
-                "$",
-                "QCXZEB",
+    let mut readings = vec![
+        bill,
+        changes,
+        landings::harness(&s.harness, s.now, &TimeZone::system()),
+        Reading::new(
+            "spent on cache rewrites after compaction {}",
+            s.measures.last().and_then(|m| after_compaction(m)),
+            "$",
+            "QCXZEB",
+        )
+        .bar(Bar::AtMost(100.0))
+        .from("the daily measure's cache rewrites")
+        .held(DISAGREE),
+        Reading::new(
+            "agents' CPU pressure {} over the day",
+            figure("pressure.cpu.jobs"),
+            "%",
+            "5FWIUS",
+        )
+        .bar(Bar::AtMost(15.0))
+        .detail(now.map(|n| {
+            format!(
+                "the machine's {} now, {} GiB of swap",
+                shown(n, "%"),
+                shown(swap, "")
             )
-            .bar(Bar::AtMost(100.0))
-            .from("the daily measure's cache rewrites")
-            .held(DISAGREE),
-            Reading::new(
-                "agents' CPU pressure {} over the day",
-                figure("pressure.cpu.jobs"),
-                "%",
-                "5FWIUS",
-            )
-            .bar(Bar::AtMost(15.0))
-            .detail(now.map(|n| {
-                format!(
-                    "the machine's {} now, {} GiB of swap",
-                    shown(n, "%"),
-                    shown(swap, "")
-                )
-            }))
-            .from("cadence's day, lag-watch's figures"),
-            Reading::new(
-                "{} machine-wide out-of-memory kills over the day",
-                figure("oom.machine"),
-                "",
-                "80ECO2",
-            )
-            .bar(Bar::AtMost(0.0))
-            .from("cadence's day, the kernel's journal"),
-            counted::one_call(s.measures.last().map(String::as_str)),
-        ],
-    )
+        }))
+        .from("cadence's day, lag-watch's figures"),
+        Reading::new(
+            "{} machine-wide out-of-memory kills over the day",
+            figure("oom.machine"),
+            "",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from("cadence's day, the kernel's journal"),
+        counted::one_call(s.measures.last().map(String::as_str)),
+    ];
+    readings.extend(counted::held(&s.counted));
+    axis("resources", readings)
 }
 
 fn time(s: &Sources) -> Axis {
@@ -470,21 +478,6 @@ fn pi_windows(windows: &str) -> Option<f64> {
     ))
 }
 
-/// Of the launcher's keys, how many took past 50 ms to their frame, and
-/// how many there were, from lines like `launcher: "fi" took 31 ms to its
-/// frame`.
-fn launcher(journal: &str) -> (usize, usize) {
-    let took: Vec<u32> = journal
-        .lines()
-        .filter_map(|line| {
-            let after = line.split("launcher: \"").nth(1)?;
-            let ms = after.rsplit_once("\" took ")?.1;
-            ms.split_whitespace().next()?.parse().ok()
-        })
-        .collect();
-    (took.iter().filter(|ms| **ms > 50).count(), took.len())
-}
-
 /// Of the notices that left since `since` (in milliseconds), how many
 /// cleared themselves and how many were dismissed by hand.
 fn notices(record: &str, since: i64) -> (usize, usize) {
@@ -687,16 +680,6 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             "the bill per core or harness change that reached you and stayed: no reading yet"
         );
         assert!(!spend.out(), "an unread bill was out");
-    }
-
-    #[test]
-    fn launcher_keys_past_fifty_ms_are_counted() {
-        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
-qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
-qml: launcher: "a \" took 9" took 120 ms to its frame
-qml: launcher: drawer for "Firefox" took 80 ms to its frame
-"#;
-        assert_eq!(launcher(journal), (2, 3));
     }
 
     #[test]

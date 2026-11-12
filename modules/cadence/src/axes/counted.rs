@@ -3,8 +3,9 @@
 //! day judges into its findings ledger under keys starting `code.`; the
 //! lines where Joel sounded pained, which health counts in its day file;
 //! the turns making one tool call, which the daily measure counts; and
-//! the security musts past due, which ISXEG8 files in the ledger; and the
-//! asks for a secret, which health counts from secret-asks's journal.
+//! the security musts past due and holes open, which ISXEG8 files in the
+//! ledger; the asks for a secret, which health counts from secret-asks's
+//! journal; and boot, shutdown, disk and memory, from health's day file.
 //! Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
@@ -45,18 +46,41 @@ pub fn regressions(s: &Sources) -> Reading {
         .from("cadence day's findings, from code-health's figures")
 }
 
-/// ISXEG8's musts open past their date: the ledger's open findings on the
-/// security axis whose answer was due before `now`.
+/// ISXEG8's musts open past their date: the security entries it filed with
+/// `cadence owe`, holes aside, whose date is before `now`. Cadence day's
+/// own findings carry no kind and are left out, so an asks figure judged
+/// late isn't counted as a must as well.
 #[must_use]
 pub fn musts(s: &Sources, now: i64) -> Reading {
     let late = s.findings.as_ref().map(|all| {
         all.iter()
             .filter(|f| f.axis == "security" && f.due < now)
+            .filter(|f| f.kind.as_deref().is_some_and(|kind| kind != "hole"))
             .count()
     });
     Reading::new("{} security musts past due", late.map(count), "", "ISXEG8")
         .bar(Bar::AtMost(0.0))
-        .from("cadence day's findings, as ISXEG8 files them")
+        .from("the ledger's musts, as ISXEG8 files them")
+}
+
+/// The security holes known and not yet closed, as ISXEG8 files them with
+/// kind "hole". An entry says what kind of hole and where, never a secret,
+/// a path to one or a command line, so naming them here shows nothing.
+#[must_use]
+pub fn holes(s: &Sources) -> Reading {
+    let open = s.findings.as_ref().map(|all| {
+        all.iter()
+            .filter(|f| f.axis == "security" && f.kind.as_deref() == Some("hole"))
+            .count()
+    });
+    Reading::new(
+        "{} security holes known and open",
+        open.map(count),
+        "",
+        "ISXEG8",
+    )
+    .bar(Bar::AtMost(0.0))
+    .from("the ledger's holes, as ISXEG8 files them")
 }
 
 /// The asks for a secret today, as health counts them from secret-asks:
@@ -121,6 +145,161 @@ pub fn pained(s: &Sources) -> Reading {
     .bar(Bar::AtMost(0.0))
     .from("health's day file")
     .his()
+}
+
+/// What the machine held, from health's day file: the fullest disk, held to
+/// the disk guard's nearly-full band, and the most pi and the shell held at
+/// once. The memory peaks carry no bar until the split of resources sets
+/// one, so they're shown and never in spec.
+#[must_use]
+pub fn held(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file";
+    vec![
+        Reading::new(
+            "the fullest disk {} in use",
+            figure("health.disk.most-used-percent"),
+            "%",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(90.0))
+        .from(from),
+        Reading::new(
+            "the most pi held at once {}",
+            figure("health.memory.pi.most-mib"),
+            " MiB",
+            "80ECO2",
+        )
+        .from(from),
+        Reading::new(
+            "the most the shell held at once {}",
+            figure("health.memory.quickshell.most-mib"),
+            " MiB",
+            "80ECO2",
+        )
+        .from(from),
+    ]
+}
+
+/// The launcher's keys today, each timed from his key to its frame, held to
+/// docs/design.md's budget: drawn in 50 ms at the median and 100 ms at the
+/// 99th percentile. From lines like `launcher: "fi" took 31 ms to its
+/// frame`, a drawer's left out.
+#[must_use]
+pub fn keys(journal: &str) -> Vec<Reading> {
+    let mut took: Vec<u32> = journal
+        .lines()
+        .filter_map(|line| {
+            let after = line.split("launcher: \"").nth(1)?;
+            let ms = after.rsplit_once("\" took ")?.1;
+            ms.split_whitespace().next()?.parse().ok()
+        })
+        .collect();
+    took.sort_unstable();
+    // The nearest rank: the key that many in a hundred took no longer than.
+    let rank = |percent: usize| {
+        (!took.is_empty()).then(|| f64::from(took[(took.len() * percent).div_ceil(100) - 1]))
+    };
+    let of = Some(format!("of {} keys", took.len()));
+    vec![
+        Reading::new(
+            "the launcher's middle key {} today",
+            rank(50),
+            " ms",
+            "Y2YBTS",
+        )
+        .bar(Bar::AtMost(50.0))
+        .detail(of.clone())
+        .from("the shell's journal")
+        .his(),
+        Reading::new(
+            "the launcher's slowest key in a hundred {} today",
+            rank(99),
+            " ms",
+            "Y2YBTS",
+        )
+        .bar(Bar::AtMost(100.0))
+        .detail(of)
+        .from("the shell's journal")
+        .his(),
+    ]
+}
+
+/// How fast the machine answers Joel, from health's day file: the slowest
+/// boot to a ready launcher with his password left out, the slowest
+/// shutdown, and the minutes the day's worst moments cost him, each timed
+/// from his key to what he waited for, so each is his side. The bars are
+/// the ones docs/design.md holds the machine to; no minute lost is the
+/// bar for the last, since he asked for end to end perfection. Programs
+/// opening and ending follow, held to design.md's 300 ms and 200 ms at the
+/// 99th percentile, as for keys; the windows daemon times them from the
+/// process starting and its last window gone, since niri never says the
+/// key that asked, so they are our side's.
+#[must_use]
+pub fn responds(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file";
+    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
+        let spread = figure(&format!("health.launches.{name}.median-ms"))
+            .zip(figure(&format!("health.launches.{name}.slowest-ms")))
+            .map(|(median, slowest)| {
+                format!(
+                    "a median {}, the slowest {}; timed from {timed}",
+                    shown(median, " ms"),
+                    shown(slowest, " ms")
+                )
+            });
+        Reading::new(
+            says,
+            figure(&format!("health.launches.{name}.p99-ms")),
+            " ms",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(budget))
+        .detail(spread)
+        .from("health's day file, from the windows daemon")
+    };
+    vec![
+        Reading::new(
+            "the slowest boot {} to a ready launcher, the password left out",
+            figure("health.boot.seconds"),
+            " s",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(30.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "the slowest shutdown {}",
+            figure("health.shutdown.seconds"),
+            " s",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(10.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "time lost in the day's worst moments {}",
+            figure("health.feel.lost-minutes"),
+            " min",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from("health's day file, from its feel of his tasks")
+        .his(),
+        program(
+            "the slowest program in a hundred to its first window {}",
+            "opened",
+            300.0,
+            "the program starting",
+        ),
+        program(
+            "the slowest program in a hundred to end once closed {}",
+            "ended",
+            200.0,
+            "its last window closing",
+        ),
+    ]
 }
 
 /// The share of the last day's turns that made exactly one tool call, from
@@ -198,31 +377,38 @@ mod tests {
     use super::*;
 
     fn finding(key: &str) -> Entry {
-        on(key, "quality", 0)
+        on(key, "quality", 0, "null")
     }
 
-    fn on(key: &str, axis: &str, due: i64) -> Entry {
+    /// A ledger entry; `kind` is a filed entry's, or null for cadence's own.
+    fn on(key: &str, axis: &str, due: i64, kind: &str) -> Entry {
         serde_json::from_str(&format!(
             r#"{{"key":"{key}","first":"2026-11-12","last":"2026-11-12","last_to":0,
             "due":{due},"words":"rose","axis":"{axis}","evidence":"","fell_when":"",
-            "open":true,"late":false}}"#
+            "open":true,"late":false,"kind":{kind}}}"#
         ))
         .expect("a finding parses")
     }
 
     #[test]
-    fn musts_are_the_security_findings_past_their_date() {
+    fn musts_are_the_filed_security_musts_past_their_date() {
         let s = Sources {
             findings: Some(vec![
-                on("must:polkit", "security", 100),
-                on("must:asks", "security", 300),
-                on("crashes:biome", "quality", 100),
+                on("security:polkit", "security", 100, r#""must""#),
+                on("security:asks", "security", 300, r#""must""#),
+                on("security:fence", "security", 100, r#""hole""#),
+                on("health.asks.again", "security", 100, "null"),
+                on("crashes:biome", "quality", 100, r#""must""#),
             ]),
             ..Sources::default()
         };
         assert_eq!(
             musts(&s, 200).words(),
             "1 security must past due, at most 0"
+        );
+        assert_eq!(
+            holes(&s).words(),
+            "1 security hole known and open, at most 0"
         );
         assert_eq!(musts(&Sources::default(), 200).figure(), None);
     }
@@ -294,6 +480,91 @@ mod tests {
                 "asks for an item and command already asked for today: no reading yet",
                 "of asks a minted token would have spared: no reading yet",
             ]
+        );
+    }
+
+    #[test]
+    fn what_the_machine_held_comes_from_healths_figures() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.disk.most-used-percent".to_owned(), 93.0),
+                ("health.memory.pi.most-mib".to_owned(), 4096.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = held(&s);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the fullest disk 93% in use, at most 90%",
+                "the most pi held at once 4,096 MiB",
+                "the most the shell held at once: no reading yet",
+            ]
+        );
+        assert_eq!(
+            read.iter().map(Reading::out).collect::<Vec<_>>(),
+            [true, false, false],
+            "only the disk has a bar to be past"
+        );
+    }
+
+    #[test]
+    fn launcher_keys_are_held_to_their_median_and_99th_percentile() {
+        let journal = r#"qml: launcher: "fi" took 31 ms to its frame, 4 ms searching
+qml: launcher: "fir" took 74 ms to its frame, 60 ms searching
+qml: launcher: "a \" took 9" took 120 ms to its frame
+qml: launcher: drawer for "Firefox" took 80 ms to its frame
+"#;
+        let read = keys(journal);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the launcher's middle key 74 ms today, at most 50 ms",
+                "the launcher's slowest key in a hundred 120 ms today, at most 100 ms",
+            ]
+        );
+        assert!(
+            keys("").iter().all(|r| r.figure().is_none()),
+            "a day with no keys reads as unread, not as fast"
+        );
+    }
+
+    #[test]
+    fn responsiveness_comes_from_healths_figures() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.boot.seconds".to_owned(), 27.0),
+                ("health.shutdown.seconds".to_owned(), 12.0),
+                ("health.launches.opened.p99-ms".to_owned(), 420.0),
+                ("health.launches.opened.median-ms".to_owned(), 90.0),
+                ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
+                ("health.launches.ended.p99-ms".to_owned(), 150.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = responds(&s);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the slowest boot 27 s to a ready launcher, the password left out, at most 30 s",
+                "the slowest shutdown 12 s, at most 10 s",
+                "time lost in the day's worst moments: no reading yet",
+                "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
+                "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
+            ]
+        );
+        assert_eq!(
+            read.iter().map(Reading::out).collect::<Vec<_>>(),
+            [false, true, false, true, false],
+            "only the shutdown and the openings are past their bars"
+        );
+        assert_eq!(
+            read[3].detail.as_deref(),
+            Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
+            "an opening says its spread and that it's timed from our side"
         );
     }
 
