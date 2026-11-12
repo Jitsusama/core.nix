@@ -14,8 +14,9 @@
 function of(wants) {
     const ask = wants?.ask;
     const since = Date.parse(wants?.since ?? "");
-    if (!ask || !Array.isArray(ask.choices) || Number.isNaN(since))
+    if (!ask || !Array.isArray(ask.choices) || Number.isNaN(since)) {
         return null;
+    }
     const recommended = String(ask.recommended ?? "");
     const choices = ask.choices
         .filter(one => typeof one?.value === "string" && one.value !== "")
@@ -25,8 +26,9 @@ function of(wants) {
             description: String(one.description ?? ""),
             recommended: recommended !== "" && one.value === recommended
         }));
-    if (choices.length === 0)
+    if (choices.length === 0) {
         return null;
+    }
     return {
         want: `${String(wants.kind ?? "")}@${new Date(since).toISOString()}`,
         choices: choices.filter(one => one.recommended)

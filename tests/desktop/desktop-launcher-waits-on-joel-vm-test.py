@@ -1052,7 +1052,7 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     )
     machine.send_key("ret")
     machine.wait_until_succeeds(
-        desktop.in_session(f"cat {INBOX}/*.json | grep -q '\"act\":\"answer\"'"),
+        desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"answer"\''),
         timeout=dt.timedelta(seconds=10),
     )
     said = json.loads(desktop.as_account(f"cat {INBOX}/*.json"))
