@@ -79,7 +79,10 @@ ShellRoot {
     }
 
     // The daemon found away: Heat's row says it isn't answering, and asks
-    // the launcher to say it again so.
+    // the launcher to say it again so. Read once the change has settled,
+    // since Heat's own bindings on the state, stillReading among them,
+    // may follow it only after this handler (they did on a fresh build,
+    // JCWNFD, 2026-11-12 [00962b09]).
     Connections {
         target: theHeat.served
 
@@ -88,21 +91,26 @@ ShellRoot {
                 || root.waiting !== "the daemon found away")
                 return;
             root.waiting = "the end";
-            try {
-                const away = theHeat.answer("heat");
-                Expect.expect("with its daemon away, Heat's row stands", away !== null,
-                    "no answer");
-                Expect.expect("saying its daemon isn't answering", away.note === "not answering"
-                    && away.headline === "", root.said(away));
-                Expect.expect("no longer being read, and still there to find",
-                    away.gone !== true && away.asking !== true && away.parted === true,
-                    root.said(away));
-                Expect.expect("a terminal's show isn't kept waiting on it",
-                    theHeat.stillReading === false, "still reading");
-            } catch (error) {
-                Expect.fail(error.message);
-            }
-            Qt.callLater(() => Qt.exit(0));
+            Qt.callLater(root.away);
         }
+    }
+
+    function away() {
+        try {
+            const answer = theHeat.answer("heat");
+            Expect.expect("with its daemon away, Heat's row stands", answer !== null,
+                "no answer");
+            Expect.expect("saying its daemon isn't answering", answer.note === "not answering"
+                && answer.headline === "", root.said(answer));
+            Expect.expect("no longer being read, and still there to find",
+                answer.gone !== true && answer.asking !== true && answer.parted === true,
+                root.said(answer));
+            Expect.expect("a terminal's show isn't kept waiting on it",
+                theHeat.stillReading === false, "still reading");
+        } catch (error) {
+            Expect.fail(error.message);
+            return;
+        }
+        Qt.callLater(() => Qt.exit(0));
     }
 }
