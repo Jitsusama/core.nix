@@ -1,7 +1,35 @@
 //! What rhythm says: to Joel in a terminal, in plain words, and to other
 //! programs in its profile file, as one JSON object.
 
+use crate::clock::civil_from_days;
 use crate::nights::{ENOUGH, Profile, clock_of, weekday_name};
+
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
+/// An evening, as days since 1970, as Joel reads a date: 2 October.
+fn date(days: i64) -> String {
+    let (_, month, day) = civil_from_days(days);
+    format!("{day} {}", MONTHS[(month as usize + 11) % 12])
+}
+
+/// An evening as the profile file gives it: 2026-10-02.
+fn iso_date(days: i64) -> String {
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
 
 /// How long before his likely stop the evening's wind-down starts, in
 /// minutes: two and a half hours, so the screen is half as bright two
@@ -33,8 +61,13 @@ pub fn said(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String {
     let mut lines = Vec::new();
     if learned {
         if let Some(usual) = profile.usual {
+            let weeks = profile
+                .from
+                .map_or("in the last four weeks".to_owned(), |from| {
+                    format!("in the four weeks to {}, before you were away", date(from))
+                });
             lines.push(format!(
-                "You usually stop for the night around {}, from {} nights in the last four weeks.",
+                "You usually stop for the night around {}, from {} nights {weeks}.",
                 clock_of(usual),
                 profile.nights
             ));
@@ -45,6 +78,17 @@ pub fn said(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String {
             clock_of(tonight),
             wind_down(tonight)
         ));
+        if profile.drift != 0 {
+            let (way, day) = if profile.drift < 0 {
+                ("earlier", "shorter")
+            } else {
+                ("later", "longer")
+            };
+            lines.push(format!(
+                "That's {} minutes {way} than the weeks say, for the {day} day.",
+                profile.drift.unsigned_abs()
+            ));
+        }
     } else {
         lines.push(format!(
             "Not enough nights yet ({} of {ENOUGH}), so it guesses you stop around {}, and \
@@ -102,7 +146,7 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
     format!(
         "{{\"v\": 1, \"basis\": \"{}\", \"nights\": {}, \"usual\": {}, \"weekday\": \"{}\", \
          \"tonight\": \"{}\", \"windDown\": \"{}\", \"sunrise\": {}, \"sunset\": {}, \
-         \"weekdays\": {{{}}}}}\n",
+         \"weekdays\": {{{}}}, \"from\": {}, \"drift\": {}}}\n",
         if learned { "learned" } else { "guess" },
         profile.nights,
         text(profile.usual.map(clock_of)),
@@ -111,7 +155,9 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
         wind_down(tonight),
         text(sun.map(|sun| clock(sun.rise))),
         text(sun.map(|sun| clock(sun.set))),
-        weekdays.join(", ")
+        weekdays.join(", "),
+        text(profile.from.map(iso_date)),
+        profile.drift
     )
 }
 
@@ -126,7 +172,32 @@ mod tests {
             nights: 23,
             usual: Some(6 * 60 + 40),
             weekdays,
+            from: None,
+            drift: 0,
         }
+    }
+
+    #[test]
+    fn a_shorter_day_s_lean_is_said() {
+        let leaning = Profile {
+            drift: -20,
+            ..learned()
+        };
+        let read = said(&leaning, 4, None);
+        assert!(
+            read.contains("it's likely around 00:20"),
+            "tonight's, moved: {read}"
+        );
+        assert!(
+            read.contains("That's 20 minutes earlier than the weeks say, for the shorter day."),
+            "why: {read}"
+        );
+        let json = profile_json(&leaning, 4, None);
+        assert!(json.contains("\"drift\": -20"), "the lean in {json}");
+        assert!(
+            !said(&learned(), 4, None).contains("than the weeks say"),
+            "no lean, nothing said"
+        );
     }
 
     #[test]
@@ -166,11 +237,32 @@ mod tests {
     }
 
     #[test]
+    fn after_a_break_it_says_which_weeks_it_follows() {
+        // 2 October 2026, as days since 1970.
+        let away = Profile {
+            from: Some(20_728),
+            ..learned()
+        };
+        let read = said(&away, 5, None);
+        assert!(
+            read.contains("from 23 nights in the four weeks to 2 October, before you were away."),
+            "the weeks it follows: {read}"
+        );
+        let json = profile_json(&away, 5, None);
+        assert!(
+            json.contains("\"from\": \"2026-10-02\""),
+            "the date in {json}"
+        );
+    }
+
+    #[test]
     fn too_few_nights_say_they_guess() {
         let few = Profile {
             nights: 3,
             usual: Some(6 * 60 + 40),
             weekdays: [None; 7],
+            from: None,
+            drift: 0,
         };
         let read = said(&few, 4, None);
         assert!(
@@ -194,6 +286,7 @@ mod tests {
             "\"sunset\": null",
             "\"Friday\": \"02:30\"",
             "\"Monday\": null",
+            "\"from\": null",
         ] {
             assert!(json.contains(part), "{part} in {json}");
         }

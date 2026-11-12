@@ -7,6 +7,11 @@ use super::*;
 /// A microphone that's recorded from, with the test's ends of its rings:
 /// where it hears, and where its cleaned sound comes out.
 fn recorded() -> (Microphone, Producer<f32>, Consumer<f32>) {
+    named("mv7")
+}
+
+/// A microphone whose node is `name`, recorded from, with the test's ends.
+fn named(name: &str) -> (Microphone, Producer<f32>, Consumer<f32>) {
     let (microphone_side, heard) = RingBuffer::new(16 * FRAME);
     let (cleaned, out) = RingBuffer::new(16 * FRAME);
     let shared = Arc::new(Shared::default());
@@ -16,7 +21,9 @@ fn recorded() -> (Microphone, Producer<f32>, Consumer<f32>) {
             heard,
             cleaned,
             shared,
+            microphone: name.to_owned(),
         },
+        cleaner: None,
         denoiser: None,
     };
     (microphone, microphone_side, out)
@@ -81,7 +88,7 @@ fn a_voice_passes_as_heard_while_its_model_loads() {
     let frame = voice();
     hears.push_entire_slice(&frame).expect("the ring has room");
     hears.push_entire_slice(&frame).expect("the ring has room");
-    clean(&mut microphone, &arrived(model));
+    clean(&mut microphone, Some(&arrived(model)));
     let passed = drained(&mut out);
     assert_eq!(passed, [frame, frame].concat());
 }
@@ -96,7 +103,7 @@ fn the_model_cleans_once_it_arrives() {
     );
     let frame = voice();
     hears.push_entire_slice(&frame).expect("the ring has room");
-    clean(&mut microphone, &model);
+    clean(&mut microphone, Some(&model));
     let cleaned = drained(&mut out);
     assert_eq!(cleaned.len(), FRAME, "one frame should come out");
     assert_ne!(
@@ -115,4 +122,55 @@ fn a_model_that_wont_load_is_refused() {
         matches!(model, Loaded::Refused(_)),
         "a model that won't load should be refused"
     );
+}
+
+/// Picks kept in a file of the test's own, as the trial writes them.
+fn picked(name: &str, said: &str) -> (Chosen, PathBuf) {
+    let file = std::env::temp_dir().join(format!("worker-{name}-{}", std::process::id()));
+    std::fs::write(&file, said).expect("the picks are written");
+    (
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet),
+        file,
+    )
+}
+
+#[test]
+fn each_microphone_cleans_with_its_own_pick() {
+    let (chosen, file) = picked("own", "rnnoise mv7\ndeepfilternet-gentle laptop\n");
+    let mut microphones = HashMap::from([(1, named("mv7").0), (2, named("laptop").0)]);
+    let wanted = settled(&mut microphones, &chosen);
+    assert_eq!(microphones[&1].cleaner, Some(Cleaner::RNNoise));
+    assert_eq!(
+        microphones[&2].cleaner,
+        Some(Cleaner::DeepFilterNetGentle),
+        "the laptop's microphone took another's pick"
+    );
+    assert_eq!(wanted.len(), 2, "both cleaners should load: {wanted:?}");
+    let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn a_pick_cleans_from_the_next_recording() {
+    let (chosen, file) = picked("next", "rnnoise mv7\n");
+    let mut microphones = HashMap::from([(1, named("mv7").0)]);
+    settled(&mut microphones, &chosen);
+    chosen
+        .choose("mv7", Cleaner::DeepFilterNetGentle)
+        .expect("picked again");
+    settled(&mut microphones, &chosen);
+    assert_eq!(
+        microphones[&1].cleaner,
+        Some(Cleaner::RNNoise),
+        "a pick changed a call under way"
+    );
+    let shared = Arc::clone(&microphones[&1].ends.shared);
+    shared.wanted.store(false, Ordering::Release);
+    assert!(
+        settled(&mut microphones, &chosen).is_empty(),
+        "nothing records"
+    );
+    shared.wanted.store(true, Ordering::Release);
+    settled(&mut microphones, &chosen);
+    assert_eq!(microphones[&1].cleaner, Some(Cleaner::DeepFilterNetGentle));
+    let _ = std::fs::remove_file(&file);
 }

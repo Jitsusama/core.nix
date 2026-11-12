@@ -146,13 +146,46 @@ fn a_cleaned_pick_is_what_the_microphones_run_and_raw_changes_nothing() {
     ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
     assert_eq!(trial.lock().record()["running"], "rnnoise");
     assert_eq!(
-        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).cleaner(),
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).cleaner(Some("mv7")),
         Cleaner::RNNoise,
         "the service would load some other cleaner than the one picked"
     );
     ready(&trial);
     ask(&trial, r#"{"id":5,"ask":"act","act":"pick","clip":"B"}"#);
     assert_eq!(trial.lock().record()["running"], "rnnoise");
+    let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn a_pick_is_the_recorded_microphones_alone() {
+    let file = std::env::temp_dir().join(format!("trial-own-{}", std::process::id()));
+    std::fs::write(&file, "deepfilternet-gentle laptop\n").expect("the laptop's pick is kept");
+    let trial = keeping(Vec::new(), Some(file.clone()));
+    ready(&trial);
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
+    let chosen = Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet);
+    assert_eq!(chosen.cleaner(Some("mv7")), Cleaner::RNNoise);
+    assert_eq!(
+        chosen.cleaner(Some("laptop")),
+        Cleaner::DeepFilterNetGentle,
+        "picking for the MV7 changed the laptop's microphone"
+    );
+    let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn it_says_the_default_microphones_own_cleaner_running() {
+    let file = std::env::temp_dir().join(format!("trial-default-{}", std::process::id()));
+    std::fs::write(&file, "rnnoise mv7\ndeepfilternet-gentle laptop\n").expect("picks kept");
+    let trial = keeping(Vec::new(), Some(file.clone()));
+    trial.lock().default_microphone = Some("mv7".to_owned());
+    assert_eq!(trial.lock().record()["running"], "rnnoise");
+    trial.lock().default_microphone = Some("laptop".to_owned());
+    assert_eq!(
+        trial.lock().record()["running"],
+        "deepfilternet-gentle",
+        "Sound would say the MV7's cleaner under the laptop's microphone"
+    );
     let _ = std::fs::remove_file(&file);
 }
 

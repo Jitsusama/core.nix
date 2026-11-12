@@ -35,6 +35,7 @@
 //! day` reads the day and holds it against the days before.
 
 mod agents;
+mod asks;
 mod day;
 mod feel;
 mod figures;

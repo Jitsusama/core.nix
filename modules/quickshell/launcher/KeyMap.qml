@@ -109,7 +109,10 @@ Provider {
                 .join("; "),
             // A little more than its line (docs/design.md, Every row says a
             // little more beside it): its keys in words, every chord doing
-            // it and where it works, made as it's shown.
+            // it and where it works, made as it's shown. A thing, so the
+            // launcher draws it, as Capture's acts are (Launcher.qml's
+            // drawable): a drawer on a row that isn't one is never asked.
+            thing: true,
             drawer: () => provider.drawerOf(layer, bind),
             // Acts on the screen, so it waits for the launcher to be gone.
             later: true,

@@ -78,6 +78,9 @@ pub fn day(day: &Day) -> String {
     if let Some(line) = the_dead(&day.agents) {
         let _ = writeln!(out, "agents    {line}");
     }
+    if let Some(line) = day.asks.said() {
+        let _ = writeln!(out, "asks      {line}");
+    }
     for (name, held) in &day.memory {
         if held.most_kib > 0 {
             let _ = writeln!(

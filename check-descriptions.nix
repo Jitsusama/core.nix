@@ -228,7 +228,8 @@
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
   an-agent-raises-no-polkit-prompt = ''
-    a workstation's polkit rules refuse a process in agents.slice or jobs-work.slice, or one gone,
+    a workstation's polkit rules refuse a process where agents' work runs (agents.slice,
+    jobs.service, jobs-work.slice, jobs-timed.slice, shared.slice or a pi-jobs scope), or one gone,
     whatever would ask Joel for a password, leave his terminal and apps to ask, and keep a grant
   '';
   an-agents-run-stays-in-its-slice = ''
@@ -335,7 +336,8 @@
     tells the orchestrator above it when that session doesn't answer or is gone, tells an
     orchestrator of a session idle two hours by its log's last write, revives a crashed
     orchestrator while leaving one that was ended, marks each of Joel's axes past its bar
-    with its owner, and holds the figures health writes, a boot past 30 s among them
+    with its owner, and holds the figures health writes, a boot past 30 s and an unread yes to an
+    ask for a secret among them
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -393,8 +395,8 @@
   chrome-leaves-vimium-out-unasked = ''
     an account whose machine doesn't ask for Vimium gets no Vimium settings and no launcher row
     that needs Vimium, so a managed Chrome's launcher lists no keys it can't take, and it still
-    lists Chrome's own for the address, finding and following a link found, caret browsing,
-    searching tabs and moving by the screen or to an end
+    lists Chrome's own for the address, finding and following a link found, bookmarks, caret
+    browsing, searching tabs and moving by the screen or to an end
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
@@ -899,9 +901,10 @@
     each session's log on from where it stopped and never twice, keeps what pi and the shell hold
     by their copies' ages and the day's most through a restart, counts an agent whose presence says
     busy or listening though its process is gone and keeps the day's deaths after their presences
-    go, keeps a day by kind and writes it with the figures cadence holds it to every half minute
-    however busy the journals, and shows the three worst pains in plain words, pi's as pi's, then
-    a line a kind, the gravest first
+    go, counts the asks for a secret shown, said yes to unread and asked again though said only as
+    information, keeps a day by kind and writes it with the figures cadence holds it to every half
+    minute however busy the journals, and shows the three worst pains in plain words, pi's as
+    pi's, then a line a kind, the gravest first
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
@@ -1931,6 +1934,9 @@
     the quests daemon runs in each account of a machine in a realm, following its node, its socket
     systemd's and restarted by a switch, and in none without a realm
   '';
+  quickshell-allocates-from-four-arenas = ''
+    the account's Quickshell unit holds jemalloc to four arenas, rather than one for each thread
+  '';
   quickshell-compiles-every-file = ''
     Qt's own compiler compiles every file of the account's shell and the greeter without refusing or
     crashing
@@ -2034,10 +2040,13 @@
     rhythm finds each night's stop at the last busy minute before four hours' sleep, never at
     dinner, lunch or a stray key, makes four weeks' middle usual with each weekday's own habit,
     the latest nights weighing most so a change shows within a week, guesses midnight and says so
-    with under a week of nights, reads only the times Joel typed from
-    zsh's history and pi's logs, and says it in plain words and its profile file; and it suggests a
-    walk only in daylight after a long stretch at the machine, an hour and a half apart, at most
-    three a day and one in poor weather, saying the weather and the sunset
+    with under a week of nights unless the four weeks before a break hold enough, keeps a year of
+    nights past the minutes and, once they span two months and an hour and a half of daylight,
+    leans tonight's stop with the day's length by at most an hour, reads only the times Joel
+    typed from zsh's history and pi's logs, each seeded night stopping at its last, and says it
+    in plain words and its profile file; and it suggests a walk only in daylight after a long
+    stretch at the machine, an hour and a half apart, at most three a day and one in poor
+    weather, saying the weather and the sunset
   '';
   rhythm-passes-clippy = ''
     clippy finds nothing in rhythm or its tests
@@ -3807,7 +3816,8 @@
     up to 520, and every line of it lies on one of the card's to a hundredth of a pixel: its
     eyebrow on the field's centre, its title on the first row's baseline, and its facts and words
     a whole number of half rows below, for a notice, a time server and a device; a person's
-    Unread and Recent say how many at their right; and Now's plate sets its head as one unit and
+    Unread and Recent say how many at their right; a chord's plate gives its keys and where it
+    works, each fact beside its name; and Now's plate sets its head as one unit and
     its groups as a body under it
   '';
   vm-desktop-looks-programs = ''

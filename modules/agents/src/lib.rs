@@ -24,6 +24,7 @@
 //! - `closed`: the closed orchestrators, and what reopening each needs.
 //! - `top`: Agents' top level, one row for each orchestration.
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
+//! - `windows`: which kitty pane and window each session here is in.
 
 pub mod acts;
 pub mod answered;
@@ -45,3 +46,4 @@ pub mod standing;
 pub mod summary;
 pub mod top;
 pub mod tree;
+pub mod windows;

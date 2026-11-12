@@ -46,7 +46,7 @@ pub const GENTLE_DB: f32 = 12.0;
 const PCM: f32 = 32_768.0;
 
 /// One way of cleaning a voice.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Cleaner {
     DeepFilterNet,
     DeepFilterNetGentle,

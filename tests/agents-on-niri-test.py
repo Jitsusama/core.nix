@@ -107,6 +107,8 @@ STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
 ORCHESTRATING = "Orchestrating Quest"
+# Longer than the two seconds a session's drawer must stay on its row to read its answer.
+PAST_A_STAY = 2.5
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
 WORKS_ON = (
@@ -759,9 +761,10 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
 ) -> None:
     """A session that answered Joel's talk is counted at home, calmly, until he reads it.
 
-    Its drawer leads with what he asked and what came back; opening it is reading it, which
-    the daemon says in the talk's own file, so the count goes, but the drawer keeps it there
-    while he reads (Joel, 2026-11-11: "how do i know when a sessions answers a talk?").
+    Its drawer leads with what he asked and what came back; keeping it there two seconds is
+    reading it, which the daemon says in the talk's own file, so the count goes, but the drawer
+    keeps it there while he reads (Joel, 2026-11-11: "how do i know when a sessions answers a
+    talk?"). A drawer only passed over isn't read (VKCF3Z, 2026-11-12, on #3547).
     """
     asked, answer = "is the harbour light lit?", "Yes, since nine, and the fog has lifted."
     replies = STEER / "LISTEN" / "replies"
@@ -779,15 +782,33 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         shell.launcher_ready()
         shell.launcher_until(lambda _: " \u00b7 1 answer \u00b7 " in agents_at_home(shell))
         shell.close_launcher()
-        found(shell, "listening quest", "Listening Quest")
+        # One letter past its name finds no session, so its drawer shows only from the
+        # Backspace below, for as long as the test takes to type the letter again.
+        opened(shell)
+        shell.type_in("listening questx")
         # The answer says when it came after it, as a landing does.
         answered = f"{answer} \u00b7 Wed 11 Nov, 21:01"
-        shell.launcher_until(
-            lambda shown: (
-                (shown["drawer"] or {}).get("facts", [])[:2] == ["You Asked", "Its Answer"]
-                and shown["drawer"]["values"][:2] == [asked, answered]
-            )
+
+        def answering(shown: Json) -> bool:
+            drawer = cast("Json", shown["drawer"] or {})
+            facts = cast("list[str]", drawer.get("facts", []))
+            values = cast("list[str]", drawer.get("values", []))
+            return facts[:2] == ["You Asked", "Its Answer"] and values[:2] == [asked, answered]
+
+        assert shell.showing()["selected"] is None, shell.showing()
+        # Passed over: found, then gone again at one more letter.
+        shell.send_key("backspace")
+        shell.launcher_until(answering)
+        showed = time.monotonic()
+        shell.send_chars("x")
+        shell.launcher_until(lambda shown: not answering(shown))
+        passing = time.monotonic() - showed
+        time.sleep(PAST_A_STAY)
+        assert '"stage":"read"' not in talk.read_text(), (
+            f"a drawer passed over in {passing:.1f} s was read"
         )
+        shell.send_key("backspace")
+        shell.launcher_until(answering)
         deadline = time.monotonic() + 10
         while '"stage":"read"' not in talk.read_text():
             assert time.monotonic() < deadline, talk.read_text()

@@ -55,6 +55,7 @@ const DOMAIN: Domain = Domain {
         "landed",
         "landed-days",
         "closed",
+        "agent-window",
     ],
 };
 

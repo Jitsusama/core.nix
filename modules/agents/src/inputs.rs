@@ -24,6 +24,7 @@ use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
 use crate::top;
+use crate::windows;
 
 /// What each source last said.
 #[derive(Default)]
@@ -406,6 +407,7 @@ impl Inputs {
         .with_reopens(reopens)
         .with_landed(self.landed().0)
         .with_closed(closed)
+        .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
     }
 }
 
@@ -488,6 +490,27 @@ mod tests {
             used.get("Q"),
             None,
             "one opened without an app id isn't said"
+        );
+    }
+
+    #[test]
+    fn each_session_here_is_served_with_its_window() {
+        let mut inputs = inputs();
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "running", "here": true,
+             "window": {"terminal": "kitty", "within": "unix:@kitty-4", "id": 2,
+                "app_id": "pi-session.1"},
+             "presence": {"addresses": ["O"]}}
+        ]}));
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
+        let served = served(&inputs);
+        let record = served.get("agent-window:agents:O").expect("its record");
+        assert_eq!(
+            (&record["window"], &record["kitty"]["id"]),
+            (&json!("window:7"), &json!("2")),
+            "the window opened with its app id, in its kitty's pane"
         );
     }
 

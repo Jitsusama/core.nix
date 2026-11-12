@@ -8,6 +8,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::agents::Died;
+use crate::asks::Asks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::memory::Memory;
@@ -112,6 +113,10 @@ pub struct Day {
     /// The agents that died.
     #[serde(default)]
     pub agents: Agents,
+    /// The asks for a secret Joel answered, read again from the journal
+    /// on each start, so never resumed.
+    #[serde(default)]
+    pub asks: Asks,
 }
 
 /// The agents gone without parking: those at the last look, and every one
@@ -250,6 +255,10 @@ impl Day {
         self.to = self.to.max(entry.at);
         if let Some(mark) = entry.mark {
             self.mark(entry, mark);
+            return;
+        }
+        if let Some(ask) = &entry.ask {
+            self.asks.took(ask);
             return;
         }
         let event = entry.priority > 4 && !entry.restart;
@@ -511,6 +520,7 @@ mod tests {
             boot: "b".to_owned(),
             since_boot: 1,
             mark: None,
+            ask: None,
         }
     }
 

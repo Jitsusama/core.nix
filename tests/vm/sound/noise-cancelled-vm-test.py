@@ -250,5 +250,7 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert kept == "", f"a raw pick kept {kept!r} for the service"
     else:
         assert chosen == OFFERED
-        assert kept == picked["picked"]["cleaner"]
-        assert picked["running"] == kept
+        assert kept == f"{picked['picked']['cleaner']} {MICROPHONE}", (
+            f"the pick should be kept for the microphone recorded, not {kept!r}"
+        )
+        assert picked["running"] == picked["picked"]["cleaner"]
