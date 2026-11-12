@@ -489,6 +489,38 @@ mod tests {
     }
 
     #[test]
+    fn one_standing_at_the_top_says_what_its_for_in_its_own_sentence() {
+        let for_it = "Tell it a thing once; it passes it to whoever owns it.";
+        let presence = json!({"addresses": ["V"],
+            "standsAtTop": {"name": "The Void", "what": for_it}});
+        let drawn = drawer(
+            Session(&record(&presence)),
+            false,
+            &words(),
+            &known(None, None),
+        );
+        assert_eq!(
+            drawn["drawer"]["body"], for_it,
+            "its sentence, as its presence says it"
+        );
+        for presence in [
+            json!({"addresses": ["V"], "standsAtTop": {"name": "The Void"}}),
+            json!({"addresses": ["A"], "standsAtTop": {"what": for_it}}),
+        ] {
+            let drawn = drawer(
+                Session(&record(&presence)),
+                false,
+                &words(),
+                &known(None, None),
+            );
+            assert_eq!(
+                drawn["drawer"]["body"], "",
+                "none unsaid, nor of one not at the top"
+            );
+        }
+    }
+
+    #[test]
     fn its_eyebrow_says_its_address_where_it_works_and_since_when() {
         let presence = json!({"addresses": ["8IDU4E"], "repo": "core.nix",
             "cwd": "/src/elsewhere", "owner": {"startedAt": 1_794_352_932_300_i64}});
