@@ -2158,6 +2158,10 @@
     agents' sessions have a slice beside Joel's programs, which outweigh it ten times over on the
     processor, and the sorter watches both
   '';
+  a-probe-waits-beside-the-programs = ''
+    the sorter's probe runs in a slice of its own at Joel's programs' weight from login, so its
+    pressure reads what the rest of the machine makes one of them wait
+  '';
   shared-work-ranks-with-the-sessions = ''
     no slice inside the account holds a disk target, and work other sessions wait on has a
     slice beside jobs, below Joel's programs on the processor, with a memory ceiling, named in

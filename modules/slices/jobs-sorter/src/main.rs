@@ -91,6 +91,7 @@ mod keep;
 mod kitty;
 mod low;
 mod oom;
+mod probe;
 mod quests;
 mod real_time;
 mod revive;
@@ -1629,6 +1630,17 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some((first, rest)) = args.split_first()
+        && first == "probe"
+    {
+        match probe::every(rest) {
+            Ok(beat) => probe::run(beat),
+            Err(error) => {
+                eprintln!("jobs-sorter probe: {error}");
+                process::exit(64);
+            }
+        }
+    }
     if let Some((first, rest)) = args.split_first()
         && first == "swap-in"
     {

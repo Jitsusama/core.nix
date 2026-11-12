@@ -271,6 +271,9 @@ let
   systemFloor = lib.foldl' (sum: floor: sum + floor.mib) 0 (lib.attrValues systemFloors);
 in
 {
+  # The probe a watcher reads for what the machine makes his programs wait.
+  imports = [ ./probe.nix ];
+
   options.jitsusama.slices.disks = lib.mkOption {
     description = ''
       The disks shared by the slices' weights, by their names under
