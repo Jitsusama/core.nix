@@ -417,9 +417,7 @@ impl Recorder {
                 "1",
             ])
             .args(["--format", "f32", "-P"])
-            .arg(format!(
-                "{{ node.name = \"{name}\" node.description = \"Call transcript\" }}"
-            ))
+            .arg(props(name))
             .arg("-")
             .stdout(Stdio::piped())
             .spawn()
@@ -438,6 +436,20 @@ impl Recorder {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// A recorder's node: named so it's found in the graph, and async, so the
+/// call never waits on it. A follower PipeWire schedules in step is one
+/// its driver waits for before ending a cycle, and a recorder in
+/// background.slice with no realtime thread is late on a busy machine:
+/// on Joel's side that holds back the microphone's cycle, on theirs the
+/// speaker's, the voice he hears. An async node is never waited for, at a
+/// cycle's latency the transcript doesn't notice, so a late recorder loses
+/// only its own sound.
+fn props(name: &str) -> String {
+    format!(
+        "{{ node.name = \"{name}\" node.description = \"Call transcript\" node.async = true }}"
+    )
 }
 
 /// How much a recorder's pipe holds: 1 MiB, about 16 s of its sound, the
@@ -540,6 +552,19 @@ mod tests {
         assert!(
             !Path::new(&format!("/proc/{id}")).exists(),
             "cat still runs once the hold is let go"
+        );
+    }
+
+    #[test]
+    fn a_recorder_never_holds_up_the_calls_sound() {
+        let props = props("call-transcripts-theirs-1");
+        assert!(
+            props.contains("node.async = true"),
+            "a recorder late to its cycle would hold back the call's: {props}"
+        );
+        assert!(
+            props.contains("node.name = \"call-transcripts-theirs-1\""),
+            "the recorder isn't named for the graph to find: {props}"
         );
     }
 
