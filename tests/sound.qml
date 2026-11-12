@@ -184,7 +184,7 @@ ShellRoot {
     function drawers() {
         const card = device("alsa_output.pci.speakers", true, { "alsa.id": "PCH",
             "alsa.device": "1", "device.bus": "pci", "api.alsa.path": "hw:PCH,1",
-            "priority.session": "1000", "alsa.resolution_bits": "24" });
+            "priority.session": "1000" });
         card.id = 52;
         card.state = "running";
         card.audio.format = { rate: 48000, channels: 2, sample: "S32LE" };
@@ -198,11 +198,11 @@ ShellRoot {
             sound.drawerOf(made).eyebrow);
         const said = plate.facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
         const labels = plate.facts.map(fact => fact.label).join(", ");
-        // What the kernel says of its card, and its Volume, are served,
-        // so tests/sound-served.qml says them; with neither, the format
-        // the graph moves is its Format.
-        expect("its state, its parts, its format, then what it's known by",
-            labels === "State, Resolution, Format, Priority, ALSA Device, Graph ID", said);
+        // Its Hardware, what the kernel says of its card and its Volume
+        // are served, so tests/sound-served.qml says them; with none, the
+        // format the graph moves is its Format.
+        expect("its state, its format, then what it's known by",
+            labels === "State, Format, Priority, ALSA Device, Graph ID", said);
         expect("what identifies it is marked so, its Graph ID last", plate.facts
             .filter(fact => fact.identifies).map(fact => fact.label).join(", ")
             === "ALSA Device, Graph ID", said);

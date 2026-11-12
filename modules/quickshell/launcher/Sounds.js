@@ -15,14 +15,9 @@ const AIMED = /"?([A-Za-z0-9_.-]+)"?\s*[=:]\s*"([^"]*)"/g;
 // A stream's "frames/rate", as it asks for its latency or says its rate.
 const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
 const PERCENT = 100;
-// A USB card names itself by its ids.
-const USB_IDS = /^USB([0-9a-f]{4}):([0-9a-f]{4})$/i;
 // A channel's name runs its words together: FrontLeft.
 const WORD_START = /([a-z0-9])([A-Z])/g;
-const SPACES = /\s+/;
 const FRONT = /^front /;
-// A microphone chip's digital microphones are named after it.
-const DIGITAL = /-dmic$/;
 const HERTZ_PER_KILOHERTZ = 1000;
 const MILLISECONDS = 1000;
 // A rate names a format, as "44.1 kHz" or "176 kHz", in three significant
@@ -77,33 +72,6 @@ function target(text) {
 function aims(wanted, properties) {
     const keys = Object.keys(wanted);
     return keys.length > 0 && keys.every((key) => String(properties[key] ?? "") === wanted[key]);
-}
-
-// The chips a sound card's components name, in capitals as their makers
-// write them: { amplifiers, speaker, headset, microphone, digital, usb }.
-// "cfg-amp:4 hs:cs42l45 mic:cs42l45-dmic spk:cs35l56" is four CS35L56
-// amplifiers, a CS42L45 for the headset and its digital microphones.
-function components(text) {
-    const chips = { amplifiers: 0, speaker: "", headset: "", microphone: "", digital: false, usb: "" };
-    for (const word of String(text ?? "").split(SPACES)) {
-        const usb = USB_IDS.exec(word);
-        const at = word.indexOf(":");
-        const key = at < 0 ? "" : word.slice(0, at);
-        const value = word.slice(at + 1);
-        if (usb) {
-            chips.usb = `${usb[1]}:${usb[2]}`.toLowerCase();
-        } else if (key === "cfg-amp") {
-            chips.amplifiers = Number(value) || 0;
-        } else if (key === "spk") {
-            chips.speaker = value.toUpperCase();
-        } else if (key === "hs") {
-            chips.headset = value.toUpperCase();
-        } else if (key === "mic") {
-            chips.digital = DIGITAL.test(value);
-            chips.microphone = value.replace(DIGITAL, "").toUpperCase();
-        }
-    }
-    return chips;
 }
 
 // A rate in Hz as it's said: 44100 is "44.1 kHz", 48000 "48 kHz".

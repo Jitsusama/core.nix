@@ -447,7 +447,7 @@ Provider {
     function drawerOf(node) {
         if (!node.audio)
             return null;
-        const hardware = hardwarePart(node)?.verbs() ?? [];
+        const hardware = ready.rows(`row:sound:${node.name}:hardware`);
         const usb = `sound:${node.name}:hardware:usb-id`;
         const channels = Array.from(node.audio.channels ?? []);
         const volumes = Array.from(node.audio.volumes ?? []);
@@ -589,13 +589,6 @@ Provider {
             named(filter), filter.audio?.volume, filter.audio?.muted, flowing(filter, node)]));
     }
 
-    function hardwareSaid(node) {
-        const properties = node.properties;
-        return [glyph(kind(node)), nicknamed(node), factsOf(node).map(fact => fact.name)]
-            .concat(["alsa.components", "device.profile.description", "device.bus",
-                "alsa.card_name", "alsa.resolution_bits"].map(key => properties[key] ?? null));
-    }
-
     // A part the daemon serves inside a device's row, by the last of its
     // key, as it's made, or null while it serves none.
     function servedPart(node, part) {
@@ -636,9 +629,9 @@ Provider {
 
     // Using it, when it isn't the one chosen, then its parts, and what the
     // kernel says of its card. Using it, Muted, its Volume, its programs,
-    // its Port, its Channels, its Profile and its card's facts are served;
-    // the rest are made here until the daemon serves them too, each by
-    // `kept` (verbs) where it's given, from what that part says.
+    // its Port, its Channels, its Profile, its Hardware and its card's facts
+    // are served; the rest are made here until the daemon serves them too,
+    // each by `kept` (verbs) where it's given, from what that part says.
     function partsMade(node, kept) {
         const made = kept ?? ((part, from, make) => make());
         const programs = node.isSink ? "programs" : "recorders";
@@ -651,7 +644,7 @@ Provider {
             made("by-ear", noiseSaid(node), () => byEarPart(node)), portPart(node),
             servedPart(node, "channels"),
             servedPart(node, "profile"),
-            made("hardware", hardwareSaid(node), () => hardwarePart(node))];
+            servedPart(node, "hardware")];
         return parts.filter(part => part !== null).concat(factRows(node));
     }
 
@@ -1278,55 +1271,6 @@ Provider {
         repeat: true
         running: provider.choosing && NoiseCancelling.record?.stage === "recording"
         onTriggered: provider.changed()
-    }
-
-    // Its Hardware, from what the sound server says of its card: the chip
-    // it goes through, as the card's components name them, picked by what
-    // the device is, unless desk-facts names it, by its maker too, among
-    // the facts after it; then a USB card's ids and its name, and the bits
-    // its samples carry. A card built into the machine is named by its
-    // driver ("sof-soundwire"), which says nothing, so it isn't.
-    readonly property var chipFacts: ["codec", "amplifiers"]
-
-    function hardwarePart(node) {
-        const properties = node.properties;
-        const told = factsOf(node).some(fact => provider.chipFacts
-            .includes(String(fact.name).toLowerCase()));
-        const chips = Sounds.components(properties["alsa.components"] ?? "");
-        const what = `${properties["device.profile.description"] ?? ""} ${nicknamed(node)}`
-            .toLowerCase();
-        const key = `sound:${node.name}:hardware`;
-        const rows = [];
-        const add = (id, side) => {
-            if (side !== "")
-                rows.push(provider.leafRow({ key: `${key}:${id}`, name: Words.name(`sound:${id}`),
-                    side: side }));
-        };
-        if (!told) {
-            if (what.includes("head"))
-                add("codec", chips.headset);
-            else if (node.isSink && chips.speaker !== "")
-                add("amplifiers", chips.amplifiers > 0
-                    ? said("amplifiers", { count: chips.amplifiers, chip: chips.speaker })
-                    : chips.speaker);
-            else if (!node.isSink && chips.microphone !== "")
-                add("microphones", chips.digital ? said("digital", { chip: chips.microphone })
-                    : chips.microphone);
-        }
-        add("usb-id", chips.usb);
-        if (properties["device.bus"] !== "pci")
-            add("card", String(properties["alsa.card_name"] ?? ""));
-        const bits = properties["alsa.resolution_bits"];
-        if (bits)
-            add("resolution", said("bits", { count: bits }));
-        if (rows.length === 0)
-            return null;
-        return holderRow({
-            key: key,
-            name: Words.name("sound:hardware"),
-            side: rows[0].side,
-            glyph: glyph(kind(node))
-        }, () => rows);
     }
 
     // In the daemon's order: by name, outputs before inputs, the one chosen

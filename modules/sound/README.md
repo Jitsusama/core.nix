@@ -116,8 +116,9 @@ microphone's Gain, with Louder, Quieter and four levels a step in; and
 its Programs, or a microphone's Recording, each playing through it or
 through a filter aimed at it (`src/programs.rs`); its Port, where its
 card offers more than one, with each it can move to; its Channels, each
-at its level (`src/channels.rs`); a Bluetooth device's Profile; and
-last, what desk-facts says of its card (`src/desk.rs`), read from the
+at its level (`src/channels.rs`); a Bluetooth device's Profile; its
+Hardware, the chips its card's components name and a USB card's ids
+(`src/hardware.rs`); and last, what desk-facts says of its card (`src/desk.rs`), read from the
 sound.json it keeps in `$XDG_RUNTIME_DIR/desk` and read again each time
 it writes it, so the shell reads no file for Sound. Each part's act asks
 the daemon's own act, so the shell runs no process to do it.
@@ -137,5 +138,5 @@ sends programs through the daemon rather than a `pw-metadata` each, and
 reads how nodes keep time from it rather than from `pw-top`. A device's
 drawer is still made in the shell, from Quickshell's nodes, these
 timings and the parts served; a program's is served. Next come the rest
-of each device's parts, its filters, hardware and Level, then its drawer
-served whole.
+of each device's parts, its filters and Level, then its drawer served
+whole.
