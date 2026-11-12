@@ -953,7 +953,10 @@
     pi's start to its own budget apart from the daemons', times a service's restart from its
     stopping to its ready line, the shell's ready or else its start, leaving a start alone, a stop
     long before and a ready long after, reads a service's stopping and start from systemd and not a
-    scope's, and says each figure's side
+    scope's, weighs each group's processor time by the hour from its cgroup, counting none from
+    before its first look or a restart of it, names pi's sessions and their commands for the
+    quest a presence or their slice says and the rest for their slice or service, finds the
+    account's manager above its own service, and says each figure's side
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
