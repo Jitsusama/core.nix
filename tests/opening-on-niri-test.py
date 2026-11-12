@@ -263,7 +263,8 @@ def test_a_chord_into_a_place_finds_no_home_first(shell: Shell) -> None:
 
     shell.launcher_until(timed_after)
     searches = int(shell.as_account(shell.ipc("searched")).strip()) - before
-    assert searches == 1, f"opening into On searched {searches} times: {each[-1]}"
+    # None where the place was kept as the shell started, and drawn from it.
+    assert searches <= 1, f"opening into On searched {searches} times: {each[-1]}"
 
 
 def test_a_chord_into_a_place_makes_only_its_rows(shell: Shell) -> None:
@@ -294,6 +295,33 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     shell.launcher_until(lambda shown: shown.get("kept"))
     made = made_by_others(shell, "windows")
     assert not made, f"first into Windows after a restart, other sources made rows: {made}"
+
+
+def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_started(
+    shell: Shell,
+) -> None:
+    """The first chord into a place after a restart draws it as the shell kept it, as it started.
+
+    Only a place a chord had opened before was kept, so each place's first chord since a start
+    was made whole: all 22 of Joel's on 2026-11-11, read by the shell's pid, took 70 to 413 ms
+    to the frame, while every later chord drew from what was kept in 13 to 35.
+    """
+    shell.restart()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    timed = latest(openings(shell))
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    each: list[Json] = []
+
+    def timed_after(_: Json) -> bool:
+        each[:] = openings(shell)
+        return latest(each) > timed
+
+    shell.launcher_until(timed_after)
+    opening = each[-1]
+    assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
+    assert opening.get("kept"), f"the first chord into On since the start was made whole: {opening}"
+    assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
 
 
 def test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go(shell: Shell) -> None:
