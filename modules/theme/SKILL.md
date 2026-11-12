@@ -220,6 +220,12 @@ constrain".
   there and what it asks of him; sources, identifiers and numbered rules
   stay one step away, in a record for agents. docs/design.md's Written for
   Joel says how.
+- **Sites for him on a shared host.** "we need to not creeeeeate quick sites
+  for stuff like luancher shapes ... we can run them locally though as just
+  standard sites, that is awesome" (2026-11-11). A mock, a tour, a record or
+  anything else just for him lives on his machine under one local home, as
+  the web-design skill's Where a Site Lives says; a shared host is only for
+  what he shares with other people.
 - **Polish that changes nothing he'd feel.** "i think you do have some
   general improvements here, but the UI still doesn't feel materially
   changed. what actually has impacted your design choices? you don't seem
