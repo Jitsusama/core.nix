@@ -247,7 +247,7 @@ impl Real {
         still: &dyn Fn(&str, &str) -> Result<bool, String>,
         change: &dyn Fn() -> Result<(), String>,
     ) -> Result<Merged, String> {
-        let _moving = self.moving();
+        let moving = self.moving();
         let followed = self.followed();
         self.git(&["fetch", "--quiet", "origin", &self.branch])?;
         let cut_from = self.git(&["rev-parse", &followed])?;
@@ -287,11 +287,30 @@ impl Real {
             );
         }
         let (newest, sha) = self.onto_newest(branch, &cut_from, sha, message, change)?;
-        if !still(&newest, &sha).map_err(|why| format!("{why}, {}", log.display()))? {
+        if !asked_free(moving, still, &newest, &sha)
+            .map_err(|why| format!("{why}, {}", log.display()))?
+        {
             return Err(format!("{DROPPED}, {}", log.display()));
         }
         self.pull(branch, title, body, &sha)
     }
+}
+
+/// What `still` says of `newest` and `sha`, asked once `moving` is given
+/// back. Its runs take minutes and need nothing of the checkout, and what
+/// it decides can land a change of its own, a flaky test's quarantine,
+/// which takes the checkout in turn. On 12 November a revert's `still`
+/// found vm-desktop-launcher-moves-windows flaky at main's newest head and
+/// listed it while the revert held the checkout, so the net waited on
+/// itself from 07:02 until it was restarted at 08:15.
+fn asked_free(
+    moving: MutexGuard<'_, ()>,
+    still: &dyn Fn(&str, &str) -> Result<bool, String>,
+    newest: &str,
+    sha: &str,
+) -> Result<bool, String> {
+    drop(moving);
+    still(newest, sha)
 }
 
 impl Real {
@@ -1500,6 +1519,24 @@ mod tests {
         git_in(&net.checkout(), &["config", "user.name", "net"]);
         git_in(&net.checkout(), &["config", "user.email", "net@t"]);
         (net, root)
+    }
+
+    #[test]
+    fn a_landing_asks_whether_it_is_still_wanted_with_the_checkout_given_back() {
+        let moving = Mutex::new(());
+        let free = Mutex::new(None);
+        let still = |_: &str, _: &str| {
+            *free.lock().unwrap() = Some(moving.try_lock().is_ok());
+            Ok(true)
+        };
+        let wanted = asked_free(moving.lock().unwrap(), &still, "newest", "sha");
+        assert_eq!(wanted, Ok(true), "what still said was lost");
+        assert_eq!(
+            *free.lock().unwrap(),
+            Some(true),
+            "still was asked while the landing held the checkout, so a quarantine it lands \
+             would wait on the landing forever"
+        );
     }
 
     #[test]

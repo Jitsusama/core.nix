@@ -1244,7 +1244,7 @@
     rather than evaluated again, and lets a head merge whose same change
     passed before a rebase that moved none of its files and no Rust crate its crates are in, read
     or are read by, and takes a net quiet 20 minutes, running nothing, every thread on a lock,
-    as hung
+    as hung, and asks whether a landing is still wanted with the checkout given back
   '';
   merge-net-passes-clippy = ''
     clippy finds nothing in merge-net or its tests
