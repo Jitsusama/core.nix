@@ -186,6 +186,16 @@ QtObject {
         const still = Trials.begun(0, "today");
         expect("nothing moved", Trials.paced(still, Trials.unpaced()) === still, "framed");
 
+        // Each key's time from its press to the screen is kept with the
+        // opening, and how many were never presented, so health can pool a
+        // day's keys (1JQPPC, 2026-11-12 [e1f448f2]).
+        const shown = Trials.presented(still, [52, 48, 108], 1);
+        expect("each key presented", JSON.stringify(shown.presented) === "[52,48,108]"
+            && shown.unpresented === 1, JSON.stringify(shown));
+        expect("an opening with no keys keeps none", Trials.presented(still, [], 0) === still,
+            "presented");
+        expect("nor does none at all", Trials.presented(null, [52], 0) === null, "a trial");
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);

@@ -27,6 +27,13 @@ function took(times) {
     };
 }
 
+// Each key's whole milliseconds from its press to the screen, in the order
+// pressed, which an opening's trial keeps so health can pool a day's keys for
+// their p99, as one opening's p99 can't be pooled (1JQPPC, 2026-11-12).
+function eachTook(times) {
+    return times.slice().sort((a, b) => a.from - b.from).map(one => Math.round(one.at - one.from));
+}
+
 // How long a set took, as every line here says it after what it timed:
 // `verb` as it came, presented or landed, and `from` what it's timed from.
 function tookSaid(one, from, verb) {

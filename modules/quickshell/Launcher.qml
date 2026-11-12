@@ -5922,6 +5922,7 @@ Scope {
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
+            keysAwaited += 1;
             presentedAwait(key.pressed, at => keyPresented(key.pressed, at, key));
         }
         keysDrawing = Pacing.frameBegun(keysDrawing);
@@ -9694,7 +9695,12 @@ Scope {
     // sets it against niri's screen; said in the journal as it closes, with
     // when the shell heard it and its frame began, to say where it went.
     property var keysPresented: []
+    // How many keys' frames began since it opened, and how many of those
+    // niri presented, so the trial says how many never reached the screen.
+    property int keysAwaited: 0
+    property int keysReached: 0
     function keyPresented(from, at, key) {
+        keysReached += 1;
         const times = surface.FramePresentation.timesOf(key.frame ?? 0);
         const one = { from, at, heard: key.heard, begun: key.begun,
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null };
@@ -9783,6 +9789,11 @@ Scope {
         const landed = Presented.keysSaid("landed", keysLanded, false);
         const updates = Presented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
+        // Each key's own time goes with the opening's trial, where health
+        // pools a day's keys for their p99 (1JQPPC, 2026-11-12).
+        trials.presented(Presented.eachTook(keysPresented), Math.max(0, keysAwaited - keysReached));
+        keysAwaited = 0;
+        keysReached = 0;
         drawersPresented = [];
         keysPresented = [];
         keysLanded = [];

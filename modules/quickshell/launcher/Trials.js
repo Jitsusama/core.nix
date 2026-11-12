@@ -214,6 +214,16 @@ function paced(trial, pace) {
     });
 }
 
+// The trial with each key's milliseconds from its press to the screen, in
+// the order pressed, and how many keys never reached it before the launcher
+// closed; the same trial for an opening with none, or for none.
+function presented(trial, each, unpresented) {
+    if (!trial || each.length + unpresented === 0) {
+        return trial;
+    }
+    return Object.assign({}, trial, { presented: each, unpresented });
+}
+
 // One trial as the line the file gains as the launcher closes: that
 // opening's text alone, so a close costs the same however many are kept.
 // Turning all 1,339 of Joel's into text took 39 ms a close at a load of
