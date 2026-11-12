@@ -401,8 +401,6 @@
         "clearsAnswer": "you answer, open or clear it",
         "answering": "answered {choice}",
         "clearsPr": "it merges or closes",
-        "review": "{at} review",
-        "diff": "{at} diff",
         "yesterday": "yesterday",
         "tomorrow": "tomorrow",
         "moment": "{day} {time}"
