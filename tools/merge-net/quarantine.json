@@ -42,13 +42,6 @@
     "test": "vm-desktop-opens-and-sets"
   },
   {
-    "at": 1794386792,
-    "commit": "44f5cb3df2f1cba34f44f4d894d85a3eabfdc469",
-    "owner_pr": 3102,
-    "reason": "failed, then passed, at 44f5cb3df2f1",
-    "test": "vm-desktop-launcher-reads-mail"
-  },
-  {
     "at": 1794408473,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
     "owner_pr": 3201,
