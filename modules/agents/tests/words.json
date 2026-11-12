@@ -145,6 +145,42 @@
       "in": "agents",
       "name": "Working On",
       "term": "Agents/Working on"
+    },
+    {
+      "id": "agents:to-reopen",
+      "in": "agents",
+      "name": "Sessions to Reopen",
+      "term": "Agents/Sessions to Reopen",
+      "verb": "more",
+      "glyph": "resume",
+      "said": {
+        "one": "1 session",
+        "many": "{count} sessions",
+        "lastBoot": "from the last boot",
+        "carried": "carried from {machine}",
+        "machines": "{count} machines",
+        "givenBack": "given back by its host",
+        "counted": "{count} {from}",
+        "there": "{there} of {count}",
+        "goneOne": "1 folder gone",
+        "goneMany": "{count} folders gone",
+        "reopened": "reopened",
+        "folderGone": "folder gone",
+        "foldersGone": "folders gone"
+      }
+    },
+    {
+      "id": "verb:agents:to-reopen:one",
+      "command": "reopen",
+      "in": "agents:to-reopen",
+      "name": "Reopen",
+      "term": "Agents/reopen",
+      "verb": "reopen",
+      "glyph": "resume",
+      "said": {
+        "gone": "{cwd} is gone",
+        "isGone": "is gone"
+      }
     }
   ]
 }

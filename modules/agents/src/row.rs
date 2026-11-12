@@ -15,14 +15,17 @@ use crate::tree::{self, Laid, Member};
 
 /// The vocabulary's words a row says: the agents' own, those for a
 /// session elsewhere (`agents:machine`) and those for what it wants
-/// (`agents:wants`); and the names a drawer gives its facts, each
-/// `agents:<id>`'s by its id.
+/// (`agents:wants`); the names a drawer gives its facts, each
+/// `agents:<id>`'s by its id; and Sessions to Reopen's, with Reopen's
+/// for a folder gone (`agents:to-reopen`, `verb:agents:to-reopen:one`).
 #[derive(Debug, Default)]
 pub struct Words {
     pub agents: Said,
     pub machine: Said,
     pub wants: Said,
     pub names: Said,
+    pub to_reopen: Said,
+    pub reopen_one: Said,
 }
 
 impl Words {
@@ -33,6 +36,8 @@ impl Words {
             machine: Said::of_thing(text, "agents:machine")?,
             wants: Said::of_thing(text, "agents:wants")?,
             names: Said::names_under(text, "agents")?,
+            to_reopen: Said::of_thing(text, "agents:to-reopen")?,
+            reopen_one: Said::of_thing(text, "verb:agents:to-reopen:one")?,
         })
     }
 }
