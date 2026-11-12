@@ -26,7 +26,9 @@
 // out, how its node keeps time is watched and drawn as the daemon serves
 // it, and the watch let go once the drawer's in. (tests/sound.qml holds
 // the parts and drawers made here.) It exits 0 once every case holds, and
-// otherwise 1, saying which didn't.
+// otherwise 1, saying which didn't. Long because each case steps on from
+// the rows the one before it left, on one stand-in socket and one Sound,
+// so a split would copy the stand-in and serve those rows again.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
