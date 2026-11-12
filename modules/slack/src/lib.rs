@@ -91,7 +91,9 @@ pub struct Found {
     pub handle: String,
     /// Their title as their profile says it, "Staff Engineer", or ""
     /// where it says none; who they are, so it's kept with their name.
-    #[serde(default)]
+    /// Left out of what's said where it's "", so a person without one is
+    /// said as before.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub title: String,
     /// Their direct messages with Joel, while Slack finds any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
