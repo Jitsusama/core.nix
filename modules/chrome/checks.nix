@@ -86,6 +86,8 @@ onLinux {
         "Ctrl+l"
         "Ctrl+f"
         "Escape Return"
+        "Ctrl+d"
+        "Ctrl+Shift+o"
         "F7"
         "Ctrl+Shift+a"
         "Space"

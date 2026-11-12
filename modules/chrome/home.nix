@@ -217,6 +217,22 @@ let
         does = "Follow the link found";
         when = "after Ctrl+f finds its words";
       }
+      # Vimium's half a screen down takes Ctrl+d where it's on, and Google's
+      # pages their own, as Sheets' fills down.
+      (
+        {
+          chord = "Ctrl+d";
+          does = "Bookmark the page";
+          leaves = lib.attrNames googlePages;
+        }
+        // lib.optionalAttrs config.jitsusama.chrome.vimium {
+          when = "in a field, or where Vimium is off";
+        }
+      )
+      {
+        chord = "Ctrl+Shift+o";
+        does = "The bookmarks";
+      }
       {
         chord = "Ctrl+Plus";
         does = "The page larger";
