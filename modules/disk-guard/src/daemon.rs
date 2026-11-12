@@ -2012,7 +2012,7 @@ impl Guard {
                 continue;
             }
             // A disk short of room is offered too what an image on it holds
-            // that the band would take: on one laptop on 11 November the
+            // that the band would take: on one laptop on 12 November the
             // cargo build disk held 28 GiB of the system disk, and its own
             // passes came only once the image itself filled.
             let reaching = matches!(decision, Decision::Reach(_));
