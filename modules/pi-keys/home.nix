@@ -1,7 +1,9 @@
 # pi-keys samples, four times a day, what a key typed into the pi window
 # Joel is at waits on (src/main.rs says how), and keeps a line a sample in
 # $XDG_STATE_HOME/pi-keys/<UTC day>.jsonl, so a day's typing in pi can be
-# read beside the others without anyone measuring it by hand.
+# read beside the others without anyone measuring it by hand. Each line
+# says how busy the machine was and which pi it read, so a rise can be
+# pinned on the load or on an install.
 { lib, pkgs, ... }:
 let
   package = pkgs.callPackage ./package.nix { };
