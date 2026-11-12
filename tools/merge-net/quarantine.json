@@ -114,8 +114,15 @@
   {
     "at": 1794483419,
     "commit": "c254ba88cb66cfdac880b354e913ce9cf941367d",
-    "owner_pr": null,
-    "reason": "the kitty trial counts more letters than were typed at every main from c254ba88cb66 on, passing at 1c6f5f469643; the merges between don't build (#3613), so no merge can be blamed",
+    "owner_pr": 3417,
+    "reason": "the kitty trial counts more letters than were typed at every main from c254ba88cb66 on, passing at 1c6f5f469643; the merges between don't build (#3613), so the search can't reach #3417, the one launcher change among them",
     "test": "vm-desktop-launcher-moves-windows"
+  },
+  {
+    "at": 1794483419,
+    "commit": "9630d29334e3d919fddd9cbfed02376e27c150fc",
+    "owner_pr": 3417,
+    "reason": "Ask's fallback stays first over a drawer since notices are searched in their daemon, failing twice at 9630d29334e3 and passing at 1c6f5f469643; the merges between don't build (#3613), so the search can't reach #3417",
+    "test": "vm-desktop-says-what-happens"
   }
 ]
