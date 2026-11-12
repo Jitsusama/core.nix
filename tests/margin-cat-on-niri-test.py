@@ -258,7 +258,8 @@ def test_leaving_and_coming_back_at_1_5_works_its_place_out_once(shell: Shell) -
 
     Its window's scale and the screen's differ at a fractional scale, so showing or hiding the
     window moved the scale its place is worked out from: Joel's shell logged a binding loop on
-    `place` 327 times from 15:12 to 15:57 on 2026-11-12, three around each launcher opening.
+    `place` 327 times from 15:12 to 15:57 on 2026-11-12, three around each launcher opening,
+    and read a place left undefined meanwhile ("Cannot read property 'x' of undefined").
     """
     since = shell.mark()
     filling = shell.opened("a column to leave at 1.5")
@@ -278,9 +279,9 @@ def test_leaving_and_coming_back_at_1_5_works_its_place_out_once(shell: Shell) -
             looped = [
                 line
                 for line in log.read().decode(errors="replace").splitlines()
-                if "Binding loop" in line and "MarginCat" in line
+                if ("Binding loop" in line or "TypeError" in line) and "MarginCat" in line
             ]
-        assert not looped, f"the cat's place depended on itself: {looped}"
+        assert not looped, f"the cat's place depended on itself, or went unread: {looped}"
     finally:
         shell.as_account("niri msg output winit scale 1")
 

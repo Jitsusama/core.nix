@@ -192,7 +192,10 @@ Scope {
             Counted { name: `cat ${window.modelData?.name ?? ""}` }
 
             screen: modelData
-            visible: place !== null && root.drawing.length > 0
+            // A place is undefined, not null, while a binding works it out
+            // again, so both are nowhere (Joel's shell, 2026-11-12: "Cannot
+            // read property 'x' of undefined").
+            visible: !!place && root.drawing.length > 0
             anchors.top: true
             anchors.left: true
             anchors.right: true
@@ -212,7 +215,7 @@ Scope {
             function say(): void {
                 if (!Options.reports)
                     return;
-                const at = place === null ? "nowhere" : JSON.stringify({
+                const at = !place ? "nowhere" : JSON.stringify({
                     x: place.x,
                     y: place.y,
                     size: window.size,
