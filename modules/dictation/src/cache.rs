@@ -2,10 +2,19 @@
 //!
 //! OpenVINO names each compiled model by a hash of what made it and never
 //! removes one, and on the NPU each of Whisper's is about 0.9 GB. A new
-//! model, a new build of dictation or OpenVINO, a new GPU or NPU driver, or
-//! a word added to Joel's words (which sizes the decoder's first step) each
-//! compiles another, so the old ones would pile up. So each set of those gets a folder of its
-//! own, and once a load from it succeeds, everything else in the cache goes.
+//! model, a new OpenVINO or `GenAI`, a new GPU or NPU driver, or a word added
+//! to Joel's words (which sizes the decoder's first step) each compiles
+//! another, so the old ones would pile up. So each set of those gets a
+//! folder of its own, and once a load from it succeeds, everything else in
+//! the cache goes.
+//!
+//! The folder follows the OpenVINO and `GenAI` that compile, not this build.
+//! Five programs share this crate, so keyed on its own path, a change to
+//! noise cancelling or a call's transcript threw Whisper's models away, and
+//! dictation then spent 45 to 112 s compiling them again after six
+//! switches in five hours, its first take waiting. What our code asks
+//! OpenVINO for is in OpenVINO's own name for each model, so a change to it
+//! still compiles anew, beside the old one, which goes with the folder.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -29,18 +38,29 @@ pub fn folder(cache: &Path, parts: &[&[u8]]) -> PathBuf {
 /// outside this build, so a new driver doesn't change this build's path.
 const DRIVERS: &str = "/run/opengl-driver";
 
-/// The folder in `cache` for models this build compiles from `parts` on the
-/// drivers the machine has now. A new driver compiles anew, and the folder
-/// compiled for the old one then goes with the rest.
+/// The folder in `cache` for models compiled from `parts` by this build's
+/// OpenVINO on the drivers the machine has now. A new OpenVINO or driver
+/// compiles anew, and the folder compiled for the old one then goes with
+/// the rest.
 pub fn kept(cache: &Path, parts: &[&[u8]]) -> PathBuf {
-    let build = std::env::current_exe().unwrap_or_default();
+    let compiler = compiled_with(option_env!("DICTATION_COMPILED_WITH"));
     let drivers = fs::canonicalize(DRIVERS).unwrap_or_default();
-    folder_for(cache, parts, &build, &drivers)
+    folder_for(cache, parts, &compiler, &drivers)
 }
 
-fn folder_for(cache: &Path, parts: &[&[u8]], build: &Path, drivers: &Path) -> PathBuf {
+/// What compiles the models: the OpenVINO and `GenAI` the build names
+/// (package.nix), or, built by hand without them, this program itself, so
+/// a hand build never reuses a folder it can't vouch for.
+fn compiled_with(named: Option<&str>) -> PathBuf {
+    match named {
+        Some(named) if !named.is_empty() => PathBuf::from(named),
+        _ => std::env::current_exe().unwrap_or_default(),
+    }
+}
+
+fn folder_for(cache: &Path, parts: &[&[u8]], compiler: &Path, drivers: &Path) -> PathBuf {
     let mut all = parts.to_vec();
-    all.push(build.as_os_str().as_encoded_bytes());
+    all.push(compiler.as_os_str().as_encoded_bytes());
     all.push(drivers.as_os_str().as_encoded_bytes());
     folder(cache, &all)
 }
@@ -104,25 +124,48 @@ mod tests {
     }
 
     #[test]
-    fn a_new_build_or_new_drivers_find_another_folder() {
+    fn a_new_openvino_or_new_drivers_find_another_folder() {
         let cache = Path::new("/cache");
         let parts: [&[u8]; 2] = [b"model", b"GPU"];
-        let (build, drivers) = (
-            Path::new("/nix/store/a-build"),
+        let (openvino, drivers) = (
+            Path::new("/nix/store/a-openvino /nix/store/a-genai"),
             Path::new("/nix/store/a-drivers"),
         );
-        let now = folder_for(cache, &parts, build, drivers);
-        assert_eq!(now, folder_for(cache, &parts, build, drivers));
+        let now = folder_for(cache, &parts, openvino, drivers);
+        assert_eq!(now, folder_for(cache, &parts, openvino, drivers));
         assert_ne!(
             now,
-            folder_for(cache, &parts, Path::new("/nix/store/b-build"), drivers),
-            "a new build compiled into the old one's folder"
+            folder_for(
+                cache,
+                &parts,
+                Path::new("/nix/store/a-openvino /nix/store/b-genai"),
+                drivers
+            ),
+            "a new GenAI compiled into the old one's folder"
         );
         assert_ne!(
             now,
-            folder_for(cache, &parts, build, Path::new("/nix/store/b-drivers")),
+            folder_for(cache, &parts, openvino, Path::new("/nix/store/b-drivers")),
             "new drivers compiled into the old ones' folder"
         );
+    }
+
+    #[test]
+    fn the_folder_follows_openvino_not_this_build() {
+        let named = "/nix/store/a-openvino /nix/store/a-genai";
+        assert_eq!(compiled_with(Some(named)), PathBuf::from(named));
+        assert_ne!(
+            compiled_with(Some(named)),
+            std::env::current_exe().unwrap(),
+            "a rebuild of the programs beside dictation would throw its models away"
+        );
+    }
+
+    #[test]
+    fn a_hand_build_keys_on_itself() {
+        let this = std::env::current_exe().unwrap();
+        assert_eq!(compiled_with(None), this);
+        assert_eq!(compiled_with(Some("")), this);
     }
 
     #[test]

@@ -43,6 +43,11 @@ rustPlatform.buildRustPackage {
     openvino-genai
     pipewire
   ];
+  # What compiles the models names the folder they're kept in
+  # (src/cache.rs), so a change to another program in this crate keeps
+  # Whisper's and the summarizer's compiled models rather than paying
+  # their NPU compile again.
+  env.DICTATION_COMPILED_WITH = "${openvino} ${openvino-genai}";
   passthru = { inherit openvino openvino-genai openvino-tokenizers; };
   meta = {
     description = "Dictation, call transcripts, screenshot text and noise-cancelled microphones";
