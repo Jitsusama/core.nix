@@ -20,14 +20,38 @@
 // when are SlackUnreads'.
 import qs
 import QtQuick
+import "../Marks.js" as Marks
 
 Piece {
+    id: slack
+
     active: SlackUnreads.shown
     // Slack's daemon says what's unread whether or not there's any, so
     // Slack's own notices stand for nothing while it answers.
     answers: SlackUnreads.stands === "ok"
     kind: "wants"
     wants: true
+    // Muted while what's unread is only the many: where the machine says
+    // who Joel is in Slack, its mark lights strong once a notice to him
+    // (one the notices daemon says chimes) comes, and goes muted again
+    // once it's read or he's been in Slack's window since (VKCF3Z's ruling
+    // f94c382e), since a thread's reply is never said read. A QML
+    // stopgap: Slack's daemon is to serve whether one waits.
+    hushed: (Options.notices.addressed ?? []).includes("slack")
+        && !Marks.toHim(Notices.history, "slack", slack.visited)
+
+    // When Joel was last in Slack's window.
+    property real visited: 0
+
+    Connections {
+        target: Niri
+
+        function onCurrentChanged() {
+            const window = Niri.windows[Niri.current];
+            if ((window?.app_id ?? "").toLowerCase() === "slack")
+                slack.visited = Date.now();
+        }
+    }
     hue: "person"
     title: "Slack"
     value: SlackUnreads.value

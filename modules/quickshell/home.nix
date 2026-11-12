@@ -1957,6 +1957,14 @@ in
               readonly property var notices: ${
                 object {
                   inherit (config.jitsusama.quickshell.notices) away;
+                  # The senders the daemon judges by who Joel is in them, in
+                  # lower case, whose pieces are muted until one is to him.
+                  addressed =
+                    let
+                      inherit (config.jitsusama.quickshell.notices) senders;
+                      named = lib.filterAttrs (_: sender: sender.addressed != null) senders;
+                    in
+                    map lib.toLower (lib.attrNames named);
                 }
               }
               // Other modules' surfaces, by file, from jitsusama.quickshell.surfaces.
