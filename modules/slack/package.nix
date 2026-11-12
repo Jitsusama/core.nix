@@ -1,6 +1,7 @@
 # slack-people and slack-unreads, built from this directory, their tests run
 # as they build. Their rows take the form every daemon's do (../ready-rows),
-# so the source is cut from the modules folder holding both, and built from
+# and slack-unreads serves them as every daemon does (../daemon-serve), so
+# the source is cut from the modules folder holding them all, and built from
 # this one.
 {
   lib,
@@ -20,6 +21,8 @@ rustPlatform.buildRustPackage rec {
       # beside them aren't the crate's.
       ./tests/stand_in.rs
       ./tests/words.json
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];

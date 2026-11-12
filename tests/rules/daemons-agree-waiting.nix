@@ -63,7 +63,6 @@
     "shown"
     "speaks"
   ];
-  slack-unreads = [ "speaks" ];
   sound = [
     "shown"
     "speaks"

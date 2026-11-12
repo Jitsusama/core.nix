@@ -425,8 +425,8 @@ def search(said: dict[str, object], _line: Line) -> dict[str, object]:
     return {"id": asked, "records": found(now) if words == "launcher" else []}
 
 
-def get(said: dict[str, object], _line: Line) -> dict[str, object]:
-    """Give the messages around each message asked about."""
+def asked_around(said: dict[str, object], _line: Line) -> dict[str, object]:
+    """Give the messages around each message asked about, as the daemon's own ask does."""
     keys = said.get("keys")
     if not isinstance(keys, list):
         return refused(said)
@@ -446,7 +446,7 @@ ASKS: dict[str, Callable[[dict[str, object], Line], dict[str, object] | None]] =
     "list": listing,
     "unwatch": unwatch,
     "search": search,
-    "get": get,
+    "around": asked_around,
 }
 
 

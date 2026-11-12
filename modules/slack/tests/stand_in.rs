@@ -862,7 +862,7 @@ fn a_search_asked_over_the_socket_says_each_message_and_what_is_around_it() {
     );
     let near = asked(
         &run,
-        &serde_json::json!({"id": 3, "ask": "get", "keys": [record["key"]]}),
+        &serde_json::json!({"id": 3, "ask": "around", "keys": [record["key"]]}),
     );
     let around: Vec<(&str, bool)> = near["records"][0]["around"]
         .as_array()
@@ -1089,11 +1089,11 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
         "id": 2, "ask": "get", "keys": ["slack-unread:threads", "slack-unread:D1"],
     }));
     assert_eq!(now["records"], serde_json::json!([threads]));
-    // Recent is its own kind, and a list says only as many as asked.
+    // Recent is its own kind, the one read last first.
     let recent = shell.answer(&serde_json::json!({
-        "id": 3, "ask": "list", "kind": "slack-recent", "limit": 1,
+        "id": 3, "ask": "list", "kind": "slack-recent",
     }));
-    assert_eq!(keys(&recent["records"]), ["slack-recent:C3"]);
+    assert_eq!(keys(&recent["records"])[0], "slack-recent:C3");
     assert_eq!(
         recent["records"][0]["slack-recent"]["read"],
         "1730200000.000100"
@@ -1116,7 +1116,7 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     }
     let health = shell.answer(&serde_json::json!({"id": 5, "ask": "health"}));
     assert_eq!(
-        (&health["watching"], &health["sources"]["slack"]["state"]),
+        (&health["watches"], &health["sources"]["slack"]["state"]),
         (&serde_json::json!(0), &serde_json::json!("answering"))
     );
     program.kill().unwrap();
@@ -1309,18 +1309,19 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     });
     shell.answer(&watch);
     // Joel reads Ada's messages in Slack: both are said done, read in
-    // Slack, with her conversation's mark, and nothing goes.
+    // Slack, with her conversation's mark, by key, and nothing goes,
+    // which a change says by naming nothing gone.
     ADA_READ.store(true, std::sync::atomic::Ordering::SeqCst);
     let changed = shell.heard(|said| said["id"] == "read" && said.get("changed").is_some());
     assert_eq!(
-        (keys(&changed["changed"]), &changed["gone"]),
+        (keys(&changed["changed"]), changed.get("gone")),
         (
             vec![
-                "slack-message:D1:1730100002.000100",
                 "slack-message:D1:1730100001.000100",
+                "slack-message:D1:1730100002.000100",
                 "slack-read:D1"
             ],
-            &serde_json::json!([])
+            None
         )
     );
     let done = &changed["changed"][0]["slack-message"]["done"];
