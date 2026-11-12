@@ -538,11 +538,18 @@ in
 
     # What a run Joel typed rings with when it's done, where the harness's
     # done-chime-widget reads it: the ding and what plays it, and no voice
-    # (chime.nix). A Mac rings with its own sound, which the harness knows.
+    # (chime.nix). It holds the ring while Do Not Disturb is on: `quiet`
+    # names, under the runtime folder, the file the shell's Quiet.qml
+    # writes, which a machine without the shell never has. Joel, 12
+    # November: "we need to stop dinging when I am in do not disturb mode".
+    # A Mac rings with its own sound, which the harness knows.
     xdg.configFile."pi/agentic-harness.pi/done-chime-widget/sound.json" =
       lib.mkIf pkgs.stdenv.hostPlatform.isLinux
         {
-          text = builtins.toJSON { inherit (config.jitsusama.pi.chime) ding player; };
+          text = builtins.toJSON {
+            inherit (config.jitsusama.pi.chime) ding player;
+            quiet = "quiet";
+          };
         };
 
     home.file.".pi/agent/keybindings.json".text = builtins.toJSON (

@@ -192,7 +192,9 @@ import ./host-checks.nix args
   # A run Joel typed rings with what chime.nix names, in the file the
   # harness's done-chime-widget reads, on Linux alone: the store's pw-play
   # and a ding, and no voice, since Joel kept only the bell on 9 November.
-  # A Mac rings with its own sound, so it gets no file.
+  # It names the shell's Do Not Disturb file, under the runtime folder,
+  # which holds the ring while it's on. A Mac rings with its own sound, so
+  # it gets no file.
   pi-rings-when-a-run-is-done =
     let
       home = account workstation;
@@ -202,10 +204,11 @@ import ./host-checks.nix args
       store = path: builtins.unsafeDiscardStringContext path;
     in
     holds "pi-rings-when-a-run-is-done"
-      "pi's ring names no ding, a player other than the store's, a voice, or reaches a Mac."
+      "pi's ring names no ding or quiet file, another player, a voice, or reaches a Mac."
       (
         lib.hasPrefix builtins.storeDir sound.ding
         && sound.player == store (lib.getExe' pkgs.pipewire "pw-play")
+        && (sound.quiet or null) == "quiet"
         && !(sound ? voice)
         && !(sound ? want)
         && !(mac.xdg.configFile ? ${file})
