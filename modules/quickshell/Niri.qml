@@ -187,6 +187,39 @@ Singleton {
         tilesFor = now;
     }
 
+    // What sits over one window's tile, by name, as the cat sits over the
+    // window with the keys: that tile alone is told, so a window resized
+    // or scrolled beside it wakes nothing (2026-11-12: the cat watching
+    // every tile made the shut shell hear each of 20 resizes).
+    property var tileFor: ({})
+    readonly property var tilesAhead: Array.from(new Set(Object.values(tileFor)))
+        .map(id => `layout:${id}`).sort()
+    function wantTile(who: string, id: var): void {
+        const wanted = id === undefined ? null : id;
+        if ((tileFor[who] ?? null) === wanted)
+            return;
+        const now = Object.assign({}, tileFor);
+        if (wanted === null)
+            delete now[who];
+        else
+            now[who] = wanted;
+        tileFor = now;
+    }
+
+    // A tile no watch follows is let go, as it would be wrong once its
+    // window moved unheard: sitting over it later waits the moment its
+    // watch takes to answer, rather than drawing where it was.
+    function forgetTiles(): void {
+        if (tilesWanted)
+            return;
+        const following = new Set(tilesAhead);
+        const stale = Object.keys(tilesHeard.held).filter(key => !following.has(key));
+        if (stale.length > 0)
+            tilesHeard.took([], stale, false);
+    }
+    onTilesAheadChanged: forgetTiles()
+    onTilesWantedChanged: forgetTiles()
+
     // Whether niri's own stream stands in for the daemon, since it isn't
     // answering, so what it held is made again from the daemon's whole
     // answer once it is.
@@ -271,13 +304,15 @@ Singleton {
         onHeard: (changed, gone) => root.took(placesHeard, changed, gone)
     }
 
-    // Each window's tile, only while something draws tiles.
+    // Each window's tile, only while something draws tiles, and the one
+    // something sits over.
     Daemon {
         id: tilesHeard
 
         socket: root.daemonSocket
         kind: "layout"
         live: root.tilesWanted
+        ahead: root.tilesAhead
         answersWhole: true
         onHeard: (changed, gone) => root.took(tilesHeard, changed, gone)
     }
