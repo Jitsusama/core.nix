@@ -113,7 +113,8 @@ fn a_later_time_moves_it_once_joel_is_sure_naming_who_google_tells() {
             json!(true),
             json!("alert"),
             json!([{"key": "verb:calendar:move",
-                "ask": {"move": {"id": "e1", "start": start, "end": start + 30 * MINUTE}}}]),
+                "ask": {"ask": "act", "act": {"move":
+                    {"id": "e1", "start": start, "end": start + 30 * MINUTE}}}}]),
         ),
         "its Return asks the daemon to move it"
     );

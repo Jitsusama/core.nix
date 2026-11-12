@@ -31,7 +31,7 @@ use crate::calendar::{Answer, Meeting};
 use crate::calendar_rows::dated_between;
 use crate::calendar_words::{LATER, Later, Words};
 use crate::compose;
-use crate::rows::{fill, opens};
+use crate::rows::{asks, fill, opens};
 
 /// Milliseconds in a minute, as the meetings' times count.
 const MINUTE: i64 = 60_000;
@@ -238,10 +238,10 @@ fn later(
             "hue": "alert",
             "sure": true,
             "side": [],
-            "acts": [{
-                "key": "verb:calendar:move",
-                "ask": {"move": {"id": meeting.id, "start": start, "end": end}},
-            }],
+            "acts": [asks(
+                "verb:calendar:move",
+                &json!({"move": {"id": meeting.id, "start": start, "end": end}}),
+            )],
         }));
     }
     rows

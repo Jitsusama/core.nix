@@ -1,8 +1,9 @@
 //! The daemon interface over what the program holds (daemon.rs), asked
 //! over its socket as the shell asks it: what a watch is told at first,
 //! then only the records a change touched and those that went; one kind
-//! watched alone; one row moving heard as that row alone; an act handed to the program's asks; and the program
-//! itself taking the socket systemd hands it.
+//! watched alone; one row moving heard as that row alone; an act handed
+//! to the program's asks, as a served row's ask sent back whole is; and
+//! the program itself taking the socket systemd hands it.
 
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -14,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use google::daemon::Daemon;
 use google::drive::{Document, Is, Kind};
+use google::mail::Mail;
 use google::rows::Vocabulary;
 use google::state::{Standing, State};
 use serde_json::{Value, json};
@@ -278,6 +280,62 @@ fn an_act_is_handed_to_the_programs_asks_and_one_it_doesnt_do_is_refused() {
     let refused = client.ask(&json!({"id": 2, "ask": "act", "act": {"archive": {"id": "../x"}}}));
     assert_eq!(refused["error"]["code"], "unknown-ask");
     assert!(asked.try_recv().is_err());
+}
+
+#[test]
+fn an_ask_a_served_row_names_sent_back_whole_is_taken_as_its_act() {
+    let socket = folder("served-act").join("google.sock");
+    let (asks, asked) = mpsc::channel();
+    let daemon = Daemon::listen(&socket, asks, NOW).unwrap();
+    let path = env::var("LAUNCHER_WORDS")
+        .expect("LAUNCHER_WORDS names no vocabulary; google-reads-the-calendar hands it one");
+    let vocabulary = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    daemon.words(Vocabulary::read(&vocabulary).0);
+    let mail = Mail {
+        id: "m1".into(),
+        from: "Ada Lovelace".into(),
+        address: "ada@example.com".into(),
+        to: "Joel".into(),
+        cc: String::new(),
+        others: vec![],
+        subject: "Notes".into(),
+        invitation: None,
+        sent: false,
+        went: vec![],
+        at: NOW,
+        page: "https://mail.google.com/mail/u/0/#inbox/m1".into(),
+        body: String::new(),
+        attachments: vec![],
+        done: None,
+    };
+    daemon.say(
+        &State {
+            mail: vec![mail],
+            ..ready(vec![], NOW)
+        },
+        NOW,
+    );
+    let mut client = Client::to(&socket);
+    let listed = client.ask(&json!({"id": 1, "ask": "list", "kind": "row", "place": "mail"}));
+    let acts = &listed["records"][0]["row"]["acts"];
+    let archive = acts
+        .as_array()
+        .and_then(|acts| acts.iter().find(|act| act["key"] == "verb:mail:archive"))
+        .unwrap_or_else(|| panic!("no Archive served: {listed}"));
+    // As ReadyRows sends it: the served ask, whole, with an id of its own.
+    let mut ask = archive["ask"].clone();
+    ask["id"] = json!(2);
+    assert_eq!(
+        client.ask(&ask),
+        json!({"id": 2, "taken": true}),
+        "the served ask {ask} isn't one the daemon takes"
+    );
+    let line = asked.recv_timeout(PATIENCE).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&line).unwrap(),
+        json!({"archive": {"id": "m1"}}),
+        "the account isn't handed the act"
+    );
 }
 
 /// The program, started as systemd starts it behind google.socket.
