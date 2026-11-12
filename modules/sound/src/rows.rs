@@ -383,20 +383,25 @@ pub fn rows(records: &[Value], words: &Words) -> Vec<Value> {
 
 /// What a device is called, saying the thing itself (Sound.qml's `named`).
 /// A microphone with the noise around it taken out is the one it hears,
-/// named for it (docs/glossary.md's noise cancelled), so it never reads
-/// as that microphone.
+/// named as that one's row and said once (docs/glossary.md's noise
+/// cancelled), so it never reads as that microphone. Its own description
+/// says Noise Cancelled already, for call programs, so it's named by that
+/// only once its microphone is gone.
 pub(crate) fn named(device: &Device, devices: &[Device], words: &Words) -> String {
     let own = device.nicknamed();
+    if let Some(heard) = device.name.strip_prefix("noise-cancelled.") {
+        let Some(microphone) = devices.iter().find(|other| other.name == heard) else {
+            return own.to_owned();
+        };
+        let heard = named(microphone, devices, words);
+        let name = words.name("sound:called:noise-cancelled", &[("device", &heard)]);
+        return if name.is_empty() { heard } else { name };
+    }
     let shared = !device.sink
         && devices
             .iter()
             .any(|other| other.sink && other.nicknamed() == own);
-    let Some(heard) = device.name.strip_prefix("noise-cancelled.") else {
-        return called_as(device.name, own, shared, words);
-    };
-    let heard = called_as(heard, own, shared, words);
-    let name = words.name("sound:called:noise-cancelled", &[("device", &heard)]);
-    if name.is_empty() { heard } else { name }
+    called_as(device.name, own, shared, words)
 }
 
 /// What the device of node `name` is called, by the vocabulary's word
@@ -532,6 +537,22 @@ pub(crate) mod tests {
                 "Built-In Microphones, Noise Cancelled"
             ],
             "the noise-cancelled microphone should be named for the one it hears"
+        );
+    }
+
+    // noise-cancelled names its own node "‹description›, Noise Cancelled"
+    // for call programs, with no nick, so Sound names it from its
+    // microphone's row instead, and says Noise Cancelled once.
+    #[test]
+    fn a_noise_cancelled_microphone_says_so_once() {
+        let none = json!({});
+        let mut cleaned = device("noise-cancelled.usb-mv7-in", false, "", &none);
+        cleaned["description"] = json!("MV7 Analog Mono, Noise Cancelled");
+        let records = [device("usb-mv7-in", false, "MV7", &none), cleaned];
+        assert_eq!(
+            names(&rows(&records, &words())),
+            ["MV7", "MV7, Noise Cancelled"],
+            "the noise-cancelled microphone should read as its microphone's row, said once"
         );
     }
 
