@@ -110,5 +110,12 @@
     "owner_pr": null,
     "reason": "fails 3 of 18 on others' gates: a reset remakes rows a read left alone; Y2YBTS mends ReadyRows.qml by Thu 12 Nov 12:00 and takes it off this list",
     "test": "the-launcher-shows-the-moment-in-now"
+  },
+  {
+    "at": 1794468889,
+    "commit": "dd21b75e8c65f6847ad9ff3a7e8a54a902417fa0",
+    "owner_pr": 3542,
+    "reason": "failed, then passed, at dd21b75e8c65",
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
