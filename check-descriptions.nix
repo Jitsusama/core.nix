@@ -628,6 +628,10 @@
     do not disturb turns on while the screen is shared, not recorded, and off after; ended mid-share
     it stays off until the next, and one kept by hand outlasts it
   '';
+  each-acts-key-is-free-where-its-pressed = ''
+    each act's own key is one letter normal mode doesn't already take, and no row gives one key to
+    two of its acts
+  '';
   each-list-keeps-its-kinds-order = ''
     each kind of list the launcher shows keeps one order with nothing typed, A to Z only its last
     tie and numbers read by their value, a choice never moving when chosen, and each place that
