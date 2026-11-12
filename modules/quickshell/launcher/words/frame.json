@@ -50,6 +50,7 @@
       "glyph": "computer",
       "holds": [
         "energy",
+        "session:awake",
         "bluetooth",
         "sound",
         "media",
@@ -76,7 +77,6 @@
         "power",
         "machine:cpu:kept-from-resting",
         "session:profile",
-        "session:awake",
         "session:Suspend",
         "session:Lock",
         "session:Log Out",

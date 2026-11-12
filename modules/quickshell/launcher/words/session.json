@@ -1,6 +1,22 @@
 {
   "things": [
     {
+      "id": "session:awake:keep",
+      "command": "set",
+      "argument": "keepawake",
+      "in": "session:awake",
+      "name": "Keep It Awake",
+      "glyph": "awake"
+    },
+    {
+      "id": "session:awake:let",
+      "command": "set",
+      "argument": "nokeepawake",
+      "in": "session:awake",
+      "name": "Let It Sleep",
+      "glyph": "suspend"
+    },
+    {
       "id": "awake:idle-held",
       "in": "session:awake",
       "name": "Idle Held By"

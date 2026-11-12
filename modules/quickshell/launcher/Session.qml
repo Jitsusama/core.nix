@@ -49,14 +49,28 @@ Provider {
     // Keep Awake as it stands, or as it will once systemd has started or
     // stopped what keeps it so: kept, a shut lid goes on too, on battery as
     // on the charger (KeepAwake.qml). A switch always says how
-    // it stands, so off says "off" (VKCF3Z, 2026-11-08).
+    // it stands, so off says "off" (VKCF3Z, 2026-11-08). It's one row of
+    // one name, Keep Awake, whatever its state, beside Power in Machine
+    // rather than in it, since Joel looked there for Keep Awake and Power
+    // called it Let It Sleep (VKCF3Z, 99c7bc98). Its one act, Return,
+    // says what it does, so it opens no list, and "sleep" finds it too.
     function awakeRow(kept, lidToo) {
-        const howKept = lidToo ? "awake, lid shut too" : "awake while open";
+        const words = Words.of("session:awake");
+        const told = words.said ?? {};
+        const act = kept ? "session:awake:let" : "session:awake:keep";
         return said("session:awake", kept ? "on" : "", Object.assign({
-            side: kept ? howKept : "off",
+            side: !kept ? told.off : lidToo ? told.lidToo : told.on,
+            keywords: (words.words ?? []).join(" "),
             hue: "machine",
             stays: true,
-            run: () => provider.keepAwake(!kept)
+            actsOnly: true,
+            run: () => provider.keepAwake(!kept),
+            verbs: () => [provider.said(act, "", {
+                verb: Words.verb("session:awake", kept ? "on" : ""),
+                hue: "action",
+                stays: true,
+                run: () => provider.keepAwake(!kept)
+            })]
         }, awakeFields()));
     }
 
@@ -602,7 +616,7 @@ Provider {
     }
     // Sleep's row, in Power or found by name: how sleep stands.
     readonly property bool sleepShown: rowShown("session:Suspend")
-    // Keep Awake's row, in Power, at home or found by name: logind's locks.
+    // Keep Awake's row, in Machine, at home or found by name: logind's locks.
     readonly property bool awakeShown: rowShown("session:awake")
     // Whether a watch hasn't yet answered whole, so a terminal's show
     // asks again (Provider.stillReading).
