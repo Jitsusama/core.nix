@@ -67,7 +67,6 @@ pub(crate) struct Within<'a> {
     pub thing: &'a str,
     pub place: &'a str,
     pub drawer: &'a str,
-    pub details: &'a Value,
     /// The zone Joel's clock reads, which a day later keeps the time on.
     pub zone: &'a TimeZone,
     /// Joel's meetings, which a time Move offers may clash with.

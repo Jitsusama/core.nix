@@ -215,13 +215,11 @@ fn within_row<T>(
     let row = row(each, now, zone, words);
     let text = |field: &str| row[field].as_str().unwrap_or_default().to_owned();
     let (key, thing, drawn) = (text("key"), text("thing"), text("drawer"));
-    let details = drawer(each, zone, words);
     let within = Within {
         key: &key,
         thing: &thing,
         place: each.place,
         drawer: &drawn,
-        details: &details,
         zone,
         others,
     };
