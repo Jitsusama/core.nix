@@ -22,7 +22,9 @@
 # spotify-player plays and browses Spotify from the terminal, as a Spotify
 # Connect device of its own. It draws in the terminal's colours, which are
 # the theme's, so it needs no theme of its own, and it reports what's
-# playing to the desktop's media keys.
+# playing to the desktop's media keys. Its own keys are mostly Vim's
+# already; the language's others are added beside them (playerCommands),
+# which spotify-player puts before its own, keeping every one of those.
 #
 # In the launcher, Programs › Spotify holds the playlists, albums and
 # shows Spotify played lately as its Recent, and Liked Songs, Playlists,
@@ -114,6 +116,33 @@ let
       map (bind: lib.nameValuePair bind.key bind.act) (scrollBinds ++ otherBinds)
     );
   };
+
+  # The spotify-player command each of the language's acts is, where it
+  # has one. It has no half page, and Ctrl+i reaches a terminal as Tab,
+  # which moves between its panes, so neither is given.
+  playerCommands = {
+    down = "SelectNextOrScrollDown";
+    up = "SelectPreviousOrScrollUp";
+    scroll-down = "SelectNextOrScrollDown";
+    scroll-up = "SelectPreviousOrScrollUp";
+    screen-down = "PageSelectNextOrScrollDown";
+    screen-up = "PageSelectPreviousOrScrollUp";
+    first = "SelectFirstOrScrollToTop";
+    last = "SelectLastOrScrollToBottom";
+    jump-back = "PreviousPage";
+    search-forward = "Search";
+  };
+
+  # A key in spotify-player's spelling: <C-o> is C-o and gg is g g.
+  playerKeyOf =
+    key:
+    let
+      ctrl = builtins.match "<C-(.)>" key;
+    in
+    if ctrl != null then
+      "C-${lib.head ctrl}"
+    else
+      lib.concatStringsSep " " (lib.stringToCharacters key);
 
   # A bind of the extension's, in the launcher's spelling.
   listed = bind: {
@@ -340,6 +369,13 @@ in
       # Rounded, as the theme's corners are.
       border_type = "Rounded";
     };
+    keymaps = lib.concatMap (
+      act:
+      map (key: {
+        key_sequence = playerKeyOf key;
+        command = playerCommands.${act};
+      }) (keysOf act)
+    ) (lib.attrNames playerCommands);
   };
 
   # Spotify pauses while a call app records from a microphone and plays

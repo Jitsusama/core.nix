@@ -2174,6 +2174,9 @@
   spotify-player-signs-in-where-spotify-answers = ''
     spotify-player's sign-in asks ncspot's Spotify app to answer at the one address that app takes
   '';
+  spotify-player-speaks-vims-keys = ''
+    spotify-player takes the key language's Ctrl+e, Ctrl+y and Ctrl+o beside its own Vim keys
+  '';
   spotify-recent-passes-clippy = ''
     clippy finds nothing in spotify-recent or its tests
   '';

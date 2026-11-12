@@ -164,6 +164,39 @@ onLinux {
         touch $out
       '';
 
+  # spotify-player takes the language's keys its own lack: Ctrl+e and Ctrl+y
+  # a line, Ctrl+o back a page. It reads its keymap before anything else and
+  # stops at one it can't, so the keys are read from what it accepted.
+  spotify-player-speaks-vims-keys =
+    let
+      home = account graphical;
+      files = home.xdg.configFile;
+      keymap = files."spotify-player/keymap.toml".source or (pkgs.writeText "keymap.toml" "");
+    in
+    pkgs.runCommandLocal "spotify-player-speaks-vims-keys"
+      {
+        nativeBuildInputs = [
+          home.programs.spotify-player.package
+          pkgs.yq-go
+        ];
+      }
+      ''
+        export HOME=$PWD
+        mkdir config cache
+        cp ${files."spotify-player/app.toml".source} config/app.toml
+        cp ${keymap} config/keymap.toml
+        spotify_player -c config -C cache features > /dev/null
+        for pair in C-e:SelectNextOrScrollDown C-y:SelectPreviousOrScrollUp C-o:PreviousPage; do
+          key=''${pair%%:*} command=''${pair#*:}
+          given=$(yq -p toml ".keymaps[] | select(.key_sequence == \"$key\") | .command" config/keymap.toml)
+          if [ "$given" != "$command" ]; then
+            echo "spotify-player's $key doesn't do $command, as the language says: '$given'" >&2
+            exit 1
+          fi
+        done
+        touch $out
+      '';
+
   # spotify-player's sign-in asks ncspot's app to send Joel back to the one
   # address that app takes. The sign-in prints where it sends him, then
   # waits for Spotify's answer, which never comes here, so it's stopped.
