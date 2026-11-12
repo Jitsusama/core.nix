@@ -15,7 +15,8 @@
 //! the packet's mark, where the IFB's CAKE reads the tin and its filter
 //! finds local traffic. A packet's own mark is set only on the way in,
 //! where nothing has marked it: on the way out, WARP and Tailscale route by
-//! theirs.
+//! theirs. While nothing limits the download, what arrives goes straight
+//! in instead, as `unturn` says why.
 
 use serde_json::Value;
 
@@ -71,8 +72,9 @@ fn ingress_cake(kbit: u64) -> String {
     format!("cake bandwidth {kbit}kbit diffserv4 nat ingress fwmark {CLASS_MASK:#x}")
 }
 
-/// Everything an uplink needs, from nothing or from a half-made set:
-/// every command replaces rather than adds, so it can be run again.
+/// Everything an uplink needs, from nothing or from a half-made set, but
+/// the turn of what arrives to the IFB, which `turn` adds: every command
+/// replaces rather than adds, so it can be run again.
 pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
     let mut all = htb(link);
     all.push(cmd(&format!(
@@ -90,14 +92,29 @@ pub fn install(link: &str, ifb: &str, up: u64, down: u64) -> Vec<Vec<String>> {
         "tc qdisc replace dev {ifb} parent 1:2 handle 2: {}",
         ingress_cake(down)
     )));
-    all.push(cmd(&format!(
-        "tc qdisc replace dev {link} handle ffff: ingress"
-    )));
-    all.push(cmd(&format!(
-        "tc filter replace dev {link} parent ffff: protocol all prio 1 matchall \
-         action ctinfo cpmark {OWN_MASK:#x} pipe action mirred egress redirect dev {ifb}"
-    )));
     all
+}
+
+/// Turns what a link or a VPN receives round through its IFB, the class
+/// copied from the connection to the packet on the way.
+pub fn turn(dev: &str, ifb: &str) -> Vec<Vec<String>> {
+    vec![
+        cmd(&format!("tc qdisc replace dev {dev} handle ffff: ingress")),
+        cmd(&format!(
+            "tc filter replace dev {dev} parent ffff: protocol all prio 1 matchall \
+             action ctinfo cpmark {OWN_MASK:#x} pipe action mirred egress redirect dev {ifb}"
+        )),
+    ]
+}
+
+/// Lets what a link or a VPN receives go straight in, past its IFB, while
+/// nothing limits the download. CAKE there shapes nothing at a rate the
+/// connection never reaches, yet it drops: under a full connection, a call
+/// sorted best effort lost 4,213 of its 5,200 packets coming down through
+/// a CAKE at 2 Gbit/s, on a connection carrying 90 Mbit/s, and none with
+/// the shaper stopped. The IFB stays, so a limit puts the turn back alone.
+pub fn unturn(dev: &str) -> Vec<String> {
+    cmd(&format!("tc qdisc del dev {dev} ingress"))
 }
 
 /// The most a VPN adds to each packet it carries: an outer IPv6 and UDP
@@ -146,19 +163,16 @@ fn vpn_ingress_cake(kbit: u64) -> String {
 /// command replaces rather than adds, but for the IFB's, which says it
 /// exists when run again.
 pub fn vpn_ingress(dev: &str, ifb: &str, kbit: u64) -> Vec<Vec<String>> {
-    vec![
+    let mut all = vec![
         cmd(&format!("ip link add {ifb} type ifb")),
         cmd(&format!("ip link set {ifb} up")),
         cmd(&format!(
             "tc qdisc replace dev {ifb} root handle 2: {}",
             vpn_ingress_cake(kbit)
         )),
-        cmd(&format!("tc qdisc replace dev {dev} handle ffff: ingress")),
-        cmd(&format!(
-            "tc filter replace dev {dev} parent ffff: protocol all prio 1 matchall \
-             action ctinfo cpmark {OWN_MASK:#x} pipe action mirred egress redirect dev {ifb}"
-        )),
-    ]
+    ];
+    all.extend(turn(dev, ifb));
+    all
 }
 
 /// A new rate for what a VPN brings in.
@@ -514,14 +528,45 @@ mod tests {
                    cake bandwidth 9000kbit diffserv4 nat ack-filter";
         let back = "tc qdisc replace dev shaper3 parent 1:2 handle 2: \
                     cake bandwidth 80000kbit diffserv4 nat ingress fwmark 0x7000000";
-        assert!(all.contains(&out.to_string()));
-        assert!(all.contains(&back.to_string()));
-        assert!(all.iter().any(|c| {
-            c.contains("ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper3")
-        }));
+        assert!(all.contains(&out.to_string()), "no upload CAKE in {all:?}");
+        assert!(
+            all.contains(&back.to_string()),
+            "no download CAKE in {all:?}"
+        );
         assert!(
             all.iter()
-                .any(|c| c.contains("handle 0x8000000/0x8000000 fw classid 1:1"))
+                .any(|c| c.contains("handle 0x8000000/0x8000000 fw classid 1:1")),
+            "local traffic isn't sent past the IFB's CAKE in {all:?}"
+        );
+        assert!(
+            !all.iter().any(|c| c.contains("ffff:")),
+            "installing turned downloads to the IFB before a limit asked: {all:?}"
+        );
+    }
+
+    #[test]
+    fn a_turn_copies_the_class_and_sends_what_arrives_to_the_ifb() {
+        let all: Vec<String> = turn("enp1", "shaper3")
+            .iter()
+            .map(|c| c.join(" "))
+            .collect();
+        assert_eq!(
+            all,
+            [
+                "tc qdisc replace dev enp1 handle ffff: ingress",
+                "tc filter replace dev enp1 parent ffff: protocol all prio 1 matchall \
+                 action ctinfo cpmark 0xf000000 pipe action mirred egress redirect dev shaper3",
+            ],
+            "the turn's commands"
+        );
+    }
+
+    #[test]
+    fn going_straight_leaves_the_ifb_in_place() {
+        assert_eq!(
+            unturn("enp1").join(" "),
+            "tc qdisc del dev enp1 ingress",
+            "going straight took more than the link's ingress"
         );
     }
 

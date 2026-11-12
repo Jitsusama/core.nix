@@ -49,4 +49,7 @@ onLinux {
   # Whether the shaper takes back a queue a router hides by sharing it flow
   # by flow shows only with real TCP filling a real fq_codel.
   vm-a-hidden-queue-is-taken-back = import ./shaper-owned.nix { inherit self pkgs; };
+  # Whether the shaper's queues drop a call's packets while the connection
+  # is full both ways shows only with real flows filling real CAKEs.
+  vm-a-call-keeps-its-packets = import ./shaper-call.nix { inherit self pkgs; };
 }
