@@ -1,18 +1,15 @@
 pragma ComponentBehavior: Bound
-// One place's rows as its daemon serves them ready (ready-rows.md, the
-// ready-row form): held over one socket kept open, each record as the
-// crate's Kept wraps it, `{ key, kind: "row", row }`, placed by its
-// `order` as a change names it and never sorted, and made into what the
-// place draws once a change to it, never once an ask (Joel, 2026-11-10:
-// "the daemons need to be the data layer, and they need to serve the
-// launcher"). What reads the clock, a time at a row's side or in its
-// drawer, is worded here (ReadyRows.js), and only the rows that say one are
-// made again as the minute turns, and only while they're drawn. Records
-// of other kinds the place watches beside its rows, a summary, a head or
-// a drawer served apart, are held by key and never placed. A row is made
-// as every place's are by `thing`, its served acts its verbs, which ask
-// back on the same socket, copy, open a link or step within the launcher,
-// so a place moving onto it keeps no act of its own.
+// One place's rows as its daemon serves them ready (ready-rows.md, the ready-row form): held
+// over one socket kept open, each record as the crate's Kept wraps it, `{ key, kind: "row", row
+// }`, placed by its `order` as a change names it and never sorted, and made into what the place
+// draws once a change to it, never once an ask (Joel, 2026-11-10: "the daemons need to be the
+// data layer, and they need to serve the launcher"). What reads the clock, a time at a row's
+// side or in its drawer, is worded here (ReadyRows.js), and only the rows that say one are made
+// again as the minute turns, and only while they're drawn. Records of other kinds the place
+// watches beside its rows, a summary, a head or a drawer served apart, are held by key and never
+// placed. A row is made as every place's are by `thing`, its served acts its verbs, which ask
+// back on the same socket, copy, open a link or step within the launcher, so a place moving
+// onto it keeps no act of its own.
 import QtQuick
 import Quickshell
 import qs
@@ -32,9 +29,8 @@ Scope {
     property var beside: []
     // What else narrows the watch, as the daemon reads it.
     property var watching: ({})
-    // The keys of rows the place is about to draw more of, its selected
-    // row's, so the daemon reads their drawers and inside rows only while
-    // they're ahead (ready-rows.md's Notes).
+    // The keys of rows the place is about to draw more of, its selected row's, so the daemon
+    // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
     // Whether it's watched: false where there's no runtime folder, as in
     // a test with no session, so nothing is asked of a socket never made.
@@ -45,9 +41,8 @@ Scope {
     // meanwhile. `paced` waits a watch begun by a key on the next frame.
     property bool live: true
     property var paced: null
-    // Whether what it held stays through a gap in the daemon, as
-    // Daemon.qml's: a place whose records may not be Joel's to see once
-    // it answers again, as Google's, lets them go.
+    // Whether what it held stays through a gap in the daemon, as Daemon.qml's: a place whose
+    // records may not be Joel's to see once it answers again, as Google's, lets them go.
     property bool keptThroughGap: true
     // Whether what it makes is drawn now, so a row saying a time is said
     // again as the minute turns: the place's launcher open.
@@ -58,10 +53,9 @@ Scope {
     // A place's own make of an act, `(key, act, row)` to its row, else null: Agents' Talk
     // asks for words before its ask is sent, which no served act form says.
     property var actMade: null
-    // The place's provider, which makes its rows as every place's are
-    // (`thing`) and holds what an act asks drawn until it's done. Not named
-    // `provider`, which would hide the place's own id of that name inside
-    // its ReadyRows.
+    // The place's provider, which makes its rows as every place's are (`thing`) and holds what
+    // an act asks drawn until it's done. Not named `provider`, which would hide the place's own
+    // id of that name inside its ReadyRows.
     property var maker: null
 
     // Each record by its key, as the daemon last said it, and its state.
@@ -84,9 +78,8 @@ Scope {
     // Which row names each drawer served apart, by the drawer's key, so
     // the row is made again once its drawer changes.
     readonly property var drawers: ({})
-    // The act keys each row has served more than once, by the row's key,
-    // so they're told apart for as long as it's held (ReadyRows.js's
-    // actKeys).
+    // The act keys each row has served more than once, by the row's key, so they're told apart
+    // for as long as it's held (ReadyRows.js's actKeys).
     readonly property var repeats: ({})
     // The rows that say a time, by key, each saying how often it says a
     // new one, "minute" or "day" (ReadyRows.js's ticks), and how many say
@@ -135,10 +128,9 @@ Scope {
         typedAgain();
     }
 
-    // Each key a change names let go of what was made of it, and the rows
-    // placed again; a row told with only its order moved keeps what was
-    // made of it and only moves. Its lists come through the signal
-    // converted, so they're copied by index.
+    // Each key a change names let go of what was made of it, and the rows placed again; a row
+    // told with only its order moved keeps what was made of it and only moves. Its lists come
+    // through the signal converted, so they're copied by index.
     function took(changed, gone) {
         const said = [];
         const dropped = [];
@@ -425,10 +417,9 @@ Scope {
         return out;
     }
 
-    // The words a time is said in, the launcher's own for each form
-    // (words.json's field.times), with the calendar's names of days and
-    // months and, for a time somewhere else, `zoneSaid` where the place
-    // gives one, else the zone's name.
+    // The words a time is said in, the launcher's own for each form (words.json's field.times),
+    // with the calendar's names of days and months and, for a time somewhere else, `zoneSaid`
+    // where the place gives one, else the zone's name.
     property var zoneSaid: null
     readonly property var timeWords: Object.assign({
         date: (date, format) => Qt.formatDate(date, format),
@@ -461,6 +452,14 @@ Scope {
     // own or the one served beside it.
     function drawerOf(row) {
         return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
+    }
+
+    // A drawer naming its row's acts by their words, Return's by its mark, never making one a row
+    // for it: arrows between Agents' sessions made theirs (keeps-up, 2026-11-12).
+    function actsNamed(drawer, acts, first) {
+        const named = (one, at) => at === 0 && first ? first.name : one.name || Words.name(one.key);
+        return !drawer || acts.length === 0 ? drawer : Object.assign({}, drawer,
+            { acts: acts.map((one, at) => ({ name: named(one, at), key: at ? "" : "\u21b5" })) });
     }
 
     // A served row, the record of `key`'s, as a place draws one, made by its provider: its
@@ -549,7 +548,8 @@ Scope {
             // Only a row serving a drawer holds one, so a row without, as
             // Power's Charger is, isn't taken for a thing missing its say
             // (goes-places' undrawn, KP0L6A's 439b18d9).
-            drawer: row.drawer ? () => drawerOf(row) : undefined
+            drawer: row.drawer ? () => actsNamed(drawerOf(row), acting.verbs && !steps ? acts : [],
+                firstOwn) : undefined
         }, acting, asking, copying, fields ?? {}, {
             // The words it's found by beyond its name, the daemon's and the
             // place's, made ready to match as the search reads them
@@ -668,10 +668,9 @@ Scope {
         }
     }
 
-    // An open whose program went between its rows being listed and Return
-    // opens nothing and says so as a refused ask does, on the next opening,
-    // since the launcher has gone by then; nothing was done, so nothing
-    // else it asks is sent.
+    // An open whose program went between its rows being listed and Return opens nothing and says
+    // so as a refused ask does, on the next opening, since the launcher has gone by then; nothing
+    // was done, so nothing else it asks is sent.
     function notOpened(key, one, why) {
         const row = served(key);
         const shown = row?.thing ?? key;

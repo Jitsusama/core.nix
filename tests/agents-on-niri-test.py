@@ -530,10 +530,10 @@ def test_a_sessions_drawer_lists_its_acts_and_arrows_past_it_make_none_of_its_ro
 
     Listing them by making the row's verbs made its facts and acts as rows, about nine for each
     arrow resting on a session, 891 in a held arrow's turns (keeps-up, 2026-11-12), and named
-    each fact as an act.
+    each fact as an act. The sessions are inside their orchestration's fold.
     """
-    opened(shell)
-    shell.down_to("1 listening, 1 paused")
+    into_orchestration(shell)
+    shell.down_to(FOLD)
     shell.step_in()
     names = ("Listening Quest", "Paused Quest")
     shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
@@ -548,7 +548,9 @@ def test_a_sessions_drawer_lists_its_acts_and_arrows_past_it_make_none_of_its_ro
     shell.down_to(names[0])
     shell.launcher_until(rested_on(names[0]))
     acts = shell.showing()["drawer"]["acts"]
-    assert acts[0] == "\u21b5 Talk", acts
+    # Inside its orchestration a session needing nothing of Joel isn't talked to there
+    # (VKCF3Z, 3a742b67), so Return's act leads whichever the daemon serves first.
+    assert acts[0].startswith("\u21b5 "), acts
     assert not {"Quest", "Address"} & {act.split(" ")[-1] for act in acts}, acts
     before = made_by_agents(shell)
     for _ in range(ARROWS_PAST):
