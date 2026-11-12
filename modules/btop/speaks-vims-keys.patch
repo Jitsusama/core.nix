@@ -1,0 +1,123 @@
+--- a/src/btop_input.cpp
++++ b/src/btop_input.cpp
+@@ -44,6 +44,8 @@
+ 	const std::unordered_map<string, string> Key_escapes = {
+ 		{"\033",	"escape"},
+ 		{"\x12",	"ctrl_r"},
++		{"\x04",	"ctrl_d"},
++		{"\x15",	"ctrl_u"},
+ 		{"\n",		"enter"},
+ 		{" ",		"space"},
+ 		{"\x7f",	"backspace"},
+@@ -211,6 +213,11 @@
+ 		// do not need it, actually
+ 	}
+ 
++	//? The key before, and when it came, for Vim's pairs of keys, gg and ZZ,
++	//? whose second is waited for as long as the key language says.
++	string key_before;
++	uint64_t key_before_at = 0;
++
+ 	void process(const std::string_view key) {
+ 		if (key.empty()) return;
+ 		try {
+@@ -218,13 +225,23 @@
+ 			auto vim_keys = Config::getB("vim_keys");
+ 			auto help_key = (vim_keys ? "H" : "h");
+ 			auto kill_key = (vim_keys ? "K" : "k");
++			//? Whether this key ends a pair, which then begins nothing.
++			const bool twice = not filtering and key == key_before and time_ms() - key_before_at < @wait@;
++			key_before = (twice or filtering) ? "" : string(key);
++			key_before_at = time_ms();
+ 			//? Global input actions
+ 			if (not filtering) {
+ 				bool keep_going = false;
+-				if (key == "q") {
+-					clean_quit(0);
++				//? ZZ quits, as it closes in Vim; q alone does nothing, as nothing
++				//? records, and Escape only leaves the filter.
++				if (key == "Z") {
++					if (twice) clean_quit(0);
++					return;
++				}
++				else if (is_in(key, "escape", "q") or (vim_keys and key == "g" and not twice)) {
++					return;
+ 				}
+-				else if (is_in(key, "escape", "m")) {
++				else if (key == "m") {
+ 					Menu::show(Menu::Menus::Main);
+ 					return;
+ 				}
+@@ -458,6 +475,11 @@
+ 					else
+ 						keep_going = true;
+ 				}
++				//? - goes out of a process's details, as up a level in Vim's lists.
++				else if (key == "-" and Config::getB("show_detailed") and Config::getI("proc_selected") == 0) {
++					process("enter");
++					return;
++				}
+ 				else if (is_in(key, "enter", "info_enter")) {
+ 					if (Config::getI("proc_selected") == 0 and not Config::getB("show_detailed")) {
+ 						return;
+@@ -519,7 +541,7 @@
+ 				    Menu::show(Menu::Menus::Renice);
+ 				    return;
+ 			    }
+-				else if (is_in(key, "up", "down", "page_up", "page_down", "home", "end") or (vim_keys and is_in(key, "j", "k", "g", "G"))) {
++				else if (is_in(key, "up", "down", "page_up", "page_down", "home", "end") or (vim_keys and is_in(key, "j", "k", "g", "G", "ctrl_d", "ctrl_u"))) {
+ 					proc_mouse_scroll:
+ 					redraw = false;
+ 					auto old_selected = Config::getI("proc_selected");
+--- a/src/btop_draw.cpp
++++ b/src/btop_draw.cpp
+@@ -1680,6 +1680,18 @@
+ 			if (selected > 0 and start >= numpids - select_max) selected = select_max;
+ 			else start = clamp(start + select_max, 0, max(0, numpids - select_max));
+ 		}
++		//? Ctrl+U and Ctrl+D move half the list, as Vim's move half a window:
++		//? the list scrolls by half, the chosen row with it at either end.
++		else if (vim_keys and cmd_key == "ctrl_u") {
++			const int half = max(1, select_max / 2);
++			if (selected > 0 and start == 0) selected = max(1, selected - half);
++			else start = max(0, start - half);
++		}
++		else if (vim_keys and cmd_key == "ctrl_d") {
++			const int half = max(1, select_max / 2);
++			if (selected > 0 and start >= numpids - select_max) selected = min(select_max, selected + half);
++			else start = clamp(start + half, 0, max(0, numpids - select_max));
++		}
+ 		else if (cmd_key == "home" or (vim_keys and cmd_key == "g")) {
+ 			start = 0;
+ 			if (selected > 0) selected = 1;
+--- a/src/btop_menu.cpp
++++ b/src/btop_menu.cpp
+@@ -174,7 +174,8 @@
+ 	const vector<array<string, 2>> help_text = {
+ 		{"Mouse 1", "Clicks buttons and selects in process list."},
+ 		{"Mouse scroll", "Scrolls any scrollable list/text under cursor."},
+-		{"Esc, m", "Toggles main menu."},
++		{"m", "Toggles main menu."},
++		{"Esc", "Leaves the process filter."},
+ 		{"p", "Cycle view presets forwards."},
+ 		{"shift + p", "Cycle view presets backwards."},
+ 		{"1", "Toggle CPU box."},
+@@ -187,7 +188,7 @@
+ 		{"F1, ?, h", "Shows this window."},
+ 		{"ctrl + z", "Sleep program and put in background."},
+ 		{"ctrl + r", "Reloads config file from disk."},
+-		{"q, ctrl + c", "Quits program."},
++		{"Z Z, ctrl + c", "Quits program."},
+ 		{"+, -", "Add/Subtract 100ms to/from update timer."},
+ 		{"Up, Down", "Select in process list."},
+ 		{"Enter", "Show detailed information for selected process."},
+@@ -195,6 +196,9 @@
+ 		{"C", "Expand/collapse the selected process' children."},
+ 		{"Pg Up, Pg Down", "Jump 1 page in process list."},
+ 		{"Home, End", "Jump to first or last page in process list."},
++		{"g g, G", "Select the first or last process."},
++		{"ctrl + d, ctrl + u", "Move half the process list down or up."},
++		{"- in details", "Leave the detailed information."},
+ 		{"Left, Right", "Select previous/next sorting column."},
+ 		{"b, n", "Select previous/next network device."},
+ 		{"i", "Toggle disks io mode with big graphs."},
