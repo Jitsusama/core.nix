@@ -95,6 +95,17 @@ function run(failures) {
     machine("Lock's drawer with nothing open and no key",
         Power.lockSaid(Power.byProgram({}, named), "", lockWords),
         { lead: "Locks the screen.", facts: [] });
+    // Ending the session's drawer says what it ends: how many windows in
+    // its lead, and whose in its Ends; with none open, only what it does.
+    const endWords = Object.assign({ lead: "Restarts the machine, closing {windows}.",
+        alone: "Restarts the machine." }, openWords);
+    machine("Reboot's drawer", Power.endingSaid(Power.byProgram(windows(["kitty", "kitty",
+        "google-chrome"]), named), "session:Reboot:ends", endWords),
+    { lead: "Restarts the machine, closing 3 windows.", facts: [
+        { id: "session:Reboot:ends", value: "kitty 2 \u00b7 Chrome 1" }] });
+    machine("Reboot's drawer with nothing open",
+        Power.endingSaid(Power.byProgram({}, named), "session:Reboot:ends", endWords),
+        { lead: "Restarts the machine.", facts: [] });
     // How bright a room is, from the light sensor's lux.
     machine("a dark room", Power.roomLevel(0), 0);
     machine("daylight", Power.roomLevel(10000), 1);
