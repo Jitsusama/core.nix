@@ -55,7 +55,9 @@ esac
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
 /// derivations waits for another to be under way beside it before
-/// answering, and fails if none comes within ten seconds. Asked how many
+/// answering, and fails if none comes within ten seconds. Once a test
+/// writes `vm-beside-build`, the working tree's VM tests answer only once a
+/// build has begun, failing if none begins within ten seconds. Asked how many
 /// checks each system has, it answers `systems.json`, or x86_64-linux's
 /// alone. Every evaluation and build must be pure and take no flake's
 /// config, since a fenced session's flake is evaluated on a lent builder.
@@ -102,6 +104,19 @@ case "$5" in
         sleep 0.05
       done
       rmdir "$STAND_IN/evaluating.$$"
+    fi
+    if [ -e "$STAND_IN/vm-beside-build" ] && [ "$side" = working ]; then
+      case "$5" in
+        *'"vm-'*)
+          tries=0
+          until [ -e "$STAND_IN/built" ]; do
+            tries=$((tries + 1))
+            if [ "$tries" -ge 200 ]; then
+              echo "evaluated the VM tests before the build began" >&2; exit 1
+            fi
+            sleep 0.05
+          done ;;
+      esac
     fi
     cat "$STAND_IN/$side.json" ;;
 esac
@@ -688,6 +703,53 @@ fn a_check_that_stops_evaluating_fails_the_run_and_nothing_is_built() {
 }
 
 #[test]
+fn a_run_building_no_vm_test_builds_while_it_evaluates_the_vm_tests() {
+    // On 11 November the 90 VM tests were 11% of the checks but half of
+    // each run's evaluating, and a gate builds none of them, so its build
+    // waited minutes on evaluations it never used.
+    let stand_in = StandIn::new("beside");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::write(stand_in.path("vm-beside-build"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+        "every check is named, the VM test among them"
+    );
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+    assert_eq!(
+        stand_in.built(),
+        format!("--no-link --keep-going -L {flake}.new {flake}.a\n"),
+        "the ordinary checks alone are built"
+    );
+}
+
+#[test]
+fn a_vm_test_that_stops_evaluating_beside_the_build_still_fails_the_run() {
+    let stand_in = StandIn::new("beside-broken");
+    stand_in.checks("base", BASE);
+    stand_in.checks(
+        "working",
+        r#"{"a": "a2.drv", "b": "b.drv", "new": "n.drv", "vm-x": null}"#,
+    );
+    fs::write(stand_in.path("vm-beside-build"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+    assert_eq!(ran.status.code(), Some(1), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "added    new\nchanged  a\nremoved  gone\nbroken   vm-x\n",
+        "the VM test that stopped evaluating is named with the rest"
+    );
+}
+
+#[test]
 fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     let stand_in = StandIn::new("kept");
     stand_in.checks("base", BASE);
@@ -708,8 +770,18 @@ fn the_base_is_evaluated_once_and_kept_by_its_commit() {
     assert_eq!(evaluated(&runs[1]), ["tree"], "{}", runs[1]);
     assert_eq!(runs[1]["base"], "0123456789abcdef0123", "{}", runs[1]);
     assert_eq!(runs[1]["named"], 0, "{}", runs[1]);
-    let chunks = &runs[0]["evaluated"][1]["chunks"];
-    assert_eq!(chunks[0]["checks"], 4, "the tree's one chunk: {}", runs[0]);
+    let chunks: Vec<&serde_json::Value> = runs[0]["evaluated"][1]["chunks"]
+        .as_array()
+        .expect("the tree's chunks")
+        .iter()
+        .map(|chunk| &chunk["checks"])
+        .collect();
+    assert_eq!(
+        chunks,
+        [3, 1],
+        "the tree's ordinary checks, then its VM test: {}",
+        runs[0]
+    );
 }
 
 #[test]

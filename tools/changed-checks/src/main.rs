@@ -32,7 +32,10 @@
 //! with the cores and memory for them (`checks.rs` says why),
 //! rather than all in one, which held every check at once and reached 24 GB
 //! on a machine many sessions share; each evaluation's memory goes when it
-//! ends. A commit's derivations never change, so the base's are
+//! ends. A run that builds no VM test evaluates the tree's ordinary checks
+//! first and builds what they moved while it evaluates its VM tests, which
+//! are half the evaluating, so the build waits on none of them. A commit's
+//! derivations never change, so the base's are
 //! kept under `~/.cache/changed-checks`, and only the working tree is
 //! evaluated again. A run that wants a commit another run is evaluating
 //! waits for it rather than evaluating it too, and a working tree git
@@ -80,11 +83,12 @@ mod turn;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use checks::Derivations;
 use quarantine::Held;
-use runs::Run;
+use runs::{Evaluation, Run};
 use there::Sent;
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
@@ -189,7 +193,7 @@ impl Options {
 /// November one `--build` for a change of the shell's alone sent 27 of
 /// them, which held every VM builder for 66 minutes while other changes'
 /// runs waited up to 53; the gate before merging needed none of them.
-fn say_vm_tests(targets: &[&str]) {
+fn say_vm_tests(targets: &[String]) {
     let vm = targets
         .iter()
         .filter(|name| name.starts_with("vm-"))
@@ -528,12 +532,62 @@ fn compare(
     // same commit, or one whose commit is a base kept already, evaluates
     // nothing.
     let commit = clean_commit()?;
-    let after = match &commit {
-        Some(commit) => checks::kept(&checks::keeping(&cache(), commit, system), || {
-            derivations(flake, system, "tree", noted)
-        })?,
-        None => derivations(flake, system, "tree", noted)?,
+    let passed = passed_at(commit.as_deref());
+    let unbuilt = |comparison: &checks::Comparison| {
+        unpassed(
+            &comparison.to_build(options.vm),
+            &passed,
+            commit.as_deref(),
+            options.build,
+        )
     };
+    // A run that builds no VM test, as the gate before a merge, builds what
+    // the ordinary checks moved while it evaluates the VM tests, rather than
+    // after: on 11 November the 90 VM tests were 11% of core's checks but
+    // half of each run's evaluating, which every build waited on.
+    let beside = options.build && !options.vm;
+    let (after, building) = thread::scope(|scope| {
+        // Once the ordinary checks are compared, the build they began, if
+        // they moved any; none for a tree kept already.
+        let mut building = None;
+        let mut evaluate = || -> Result<Derivations, String> {
+            if !beside {
+                return derivations(flake, system, "tree", noted);
+            }
+            let mut evaluation = Run::evaluating("tree");
+            let (vm, ordinary): (Vec<String>, Vec<String>) = names(flake, system)?
+                .into_iter()
+                .partition(|name| name.starts_with("vm-"));
+            let mut after = evaluated(flake, system, &ordinary, &mut evaluation)?;
+            after.retain(|name, _| !name.starts_with("vm-"));
+            let moved = checks::compare(&before, &after);
+            let targets = if moved.broken.is_empty() {
+                unbuilt(&moved)
+            } else {
+                Vec::new()
+            };
+            building = Some((!targets.is_empty()).then(|| {
+                let derivations = after.clone();
+                scope.spawn(move || built(flake, system, held, &targets, &derivations))
+            }));
+            after.extend(evaluated(flake, system, &vm, &mut evaluation)?);
+            noted.evaluated(evaluation);
+            Ok(after)
+        };
+        let after = match &commit {
+            Some(commit) => checks::kept(&checks::keeping(&cache(), commit, system), evaluate),
+            None => evaluate(),
+        };
+        let building = building.map(|began| {
+            began.map(|build| {
+                build
+                    .join()
+                    .unwrap_or_else(|_| Err("the build beside the evaluation panicked".to_owned()))
+            })
+        });
+        (after, building)
+    });
+    let after = after?;
     let comparison = checks::compare(&before, &after);
     let mut named = 0;
     for (kind, names) in comparison.kinds() {
@@ -543,17 +597,51 @@ fn compare(
         }
     }
     noted.named(named);
-    if !comparison.broken.is_empty() {
-        return Ok(ExitCode::FAILURE);
+    let whole = comparison.broken.is_empty();
+    let build = match building {
+        Some(began) => began.transpose()?,
+        None if whole && options.build => {
+            let targets = unbuilt(&comparison);
+            if targets.is_empty() {
+                None
+            } else {
+                say_vm_tests(&targets);
+                Some(built(flake, system, held, &targets, &after)?)
+            }
+        }
+        None => None,
+    };
+    if let Some(build) = &build {
+        noted.built(build.checks, build.took, build.sent.passed);
+        if build.sent.there {
+            noted.lent(build.sent.bytes);
+        }
     }
-    let passed = passed_at(commit.as_deref());
-    let targets: Vec<&str> = comparison
-        .to_build(options.vm)
-        .into_iter()
+    Ok(
+        if whole && build.as_ref().is_none_or(|build| build.sent.passed) {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        },
+    )
+}
+
+/// Those of the checks a comparison moved that `passed` doesn't say passed
+/// at the commit already, saying of each it leaves out, when building, that
+/// it isn't built again.
+fn unpassed(
+    moved: &[&str],
+    passed: &[String],
+    commit: Option<&str>,
+    building: bool,
+) -> Vec<String> {
+    moved
+        .iter()
+        .copied()
         .filter(|name| {
-            let already = passed.iter().any(|check| check.as_str() == *name);
-            if already && options.build {
-                let short = commit.as_deref().and_then(|commit| commit.get(..12));
+            let already = passed.iter().any(|check| check == name);
+            if already && building {
+                let short = commit.and_then(|commit| commit.get(..12));
                 eprintln!(
                     "changed-checks: {name} passed at {} already, so it isn't built again",
                     short.unwrap_or_default()
@@ -561,48 +649,60 @@ fn compare(
             }
             !already
         })
-        .collect();
-    if !options.build || targets.is_empty() {
-        return Ok(ExitCode::SUCCESS);
-    }
-    say_vm_tests(&targets);
+        .map(str::to_owned)
+        .collect()
+}
+
+/// A build of the checks a run named: how many, how long it took, and how
+/// it ended.
+struct Built {
+    checks: usize,
+    took: Duration,
+    sent: Sent,
+}
+
+/// Build `targets`, each that main quarantines alone after the rest, from
+/// the derivations `after` evaluated for them.
+fn built(
+    flake: &str,
+    system: &str,
+    held: &[Held],
+    targets: &[String],
+    after: &Derivations,
+) -> Result<Built, String> {
     let began = Instant::now();
-    let count = targets.len();
     let (quarantined, blocking): (Vec<&str>, Vec<&str>) = targets
-        .into_iter()
+        .iter()
+        .map(String::as_str)
         .partition(|name| quarantine::find(held, name).is_some());
-    let mut built = Sent {
+    let mut sent = Sent {
         passed: true,
         there: false,
         bytes: None,
     };
     if !blocking.is_empty() {
-        built = build(flake, system, &blocking, &after)?;
+        sent = build(flake, system, &blocking, after)?;
     }
     // Each is built alone, so a failure is known for the check it was.
     for name in quarantined {
-        let alone = build(flake, system, &[name], &after)?;
+        let alone = build(flake, system, &[name], after)?;
         if !alone.passed {
             let why = quarantine::find(held, name)
                 .map(Held::said)
                 .unwrap_or_default();
             eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
         }
-        built.there |= alone.there;
+        sent.there |= alone.there;
         // Each build there sent its own, so the run sent them all.
-        built.bytes = match (built.bytes, alone.bytes) {
+        sent.bytes = match (sent.bytes, alone.bytes) {
             (Some(before), Some(now)) => Some(before + now),
             (before, now) => before.or(now),
         };
     }
-    noted.built(count, began.elapsed(), built.passed);
-    if built.there {
-        noted.lent(built.bytes);
-    }
-    Ok(if built.passed {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::FAILURE
+    Ok(Built {
+        checks: targets.len(),
+        took: began.elapsed(),
+        sent,
     })
 }
 
@@ -745,6 +845,13 @@ fn derivations(
     noted: &mut Run,
 ) -> Result<Derivations, String> {
     let mut evaluation = Run::evaluating(side);
+    let found = evaluated(flake, system, &names(flake, system)?, &mut evaluation)?;
+    noted.evaluated(evaluation);
+    Ok(found)
+}
+
+/// The names of a flake's checks for a system.
+fn names(flake: &str, system: &str) -> Result<Vec<String>, String> {
     let checks = format!("{flake}#checks.{system}");
     let naming: [&str; 6] = [
         "eval",
@@ -755,9 +862,19 @@ fn derivations(
         UNCACHED,
     ];
     let listed = run("nix", &pure(&naming))?;
-    let names: Vec<String> = serde_json::from_str(&listed)
-        .map_err(|error| format!("nix named the checks oddly: {error}"))?;
-    let chunks = checks::chunks(&names);
+    serde_json::from_str(&listed).map_err(|error| format!("nix named the checks oddly: {error}"))
+}
+
+/// Evaluate these of a flake's checks for a system to their derivations'
+/// paths, noting in the evaluation what each chunk of them took.
+fn evaluated(
+    flake: &str,
+    system: &str,
+    names: &[String],
+    evaluation: &mut Evaluation,
+) -> Result<Derivations, String> {
+    let checks = format!("{flake}#checks.{system}");
+    let chunks = checks::chunks(names);
     // As many go at once as a builder made for the run has room for, and two
     // on the person's own machine (`checks::at_once` says why). Either way a
     // further chunk begins only while memory isn't stalling: two at once
@@ -782,7 +899,6 @@ fn derivations(
         evaluation.chunk(checks, took);
         found.extend(derivations);
     }
-    noted.evaluated(evaluation);
     Ok(found)
 }
 
