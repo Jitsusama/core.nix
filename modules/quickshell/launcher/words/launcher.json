@@ -838,8 +838,8 @@
       "ask": "which network?",
       "said": {
         "eyebrow": "on this machine \u00b7 wireless",
-        "unjoined": "Not on a Network",
-        "off": "Turned Off"
+        "unjoined": "not on a network",
+        "off": "turned off"
       }
     },
     {

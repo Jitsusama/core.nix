@@ -157,29 +157,31 @@ ShellRoot {
     // first, the rest in wifid's order; before it's read, how its row
     // stands; on none, what's in reach; off, that it's off.
     function wireless() {
-        const words = { said: Words.of("wifi").said ?? {},
+        const words = { name: Words.name("wifi"), said: Words.of("wifi").said ?? {},
             leading: [Words.name("wifi:signal"), Words.name("wifi:connected")] };
-        const heard = [{ name: "grrbrr", connected: true }, { name: "Lantern" }];
-        const drawn = { eyebrow: "on 5 GHz \u00b7 network", title: "grrbrr", facts: [
+        const heard = [{ name: "Harbour", connected: true }, { name: "Lantern" }];
+        const drawn = { eyebrow: "on 5 GHz \u00b7 network", title: "Harbour", facts: [
             { label: "Speed", value: "866 Mb/s" },
             { label: "Signal", value: "-52 dBm" },
             { label: "Protection", value: "strong" },
             { label: "Connected For", value: "3 h" }] };
         const joined = Plate.plate({ on: true, networks: heard,
-            joined: { name: "grrbrr", side: "connected", drawn: drawn } }, words);
+            joined: { name: "Harbour", side: "connected", drawn: drawn } }, words);
         Expect.expect("Wi-Fi's row says it's the machine's wireless",
             joined.eyebrow === "on this machine \u00b7 wireless", joined.eyebrow);
         Expect.expect("Wi-Fi's row leads with the network joined, its signal and how long",
-            joined.title === "grrbrr" && facts(joined).join("; ") === "Signal=-52 dBm; "
+            joined.title === "Harbour" && facts(joined).join("; ") === "Signal=-52 dBm; "
                 + "Connected For=3 h; Speed=866 Mb/s; Protection=strong", facts(joined).join("; "));
         const unread = Plate.plate({ on: true, networks: heard,
-            joined: { name: "grrbrr", side: "connected", drawn: null } }, words);
+            joined: { name: "Harbour", side: "connected", drawn: null } }, words);
         Expect.expect("before its network's drawer is read, Wi-Fi's row says how it stands",
-            unread.title === "grrbrr" && unread.body === "connected", JSON.stringify(unread));
+            unread.title === "Harbour" && unread.body === "connected", JSON.stringify(unread));
         const none = Plate.plate({ on: true, networks: heard.slice(1), joined: null }, words);
         Expect.expect("on no network, Wi-Fi's row names what's in reach",
-            none.title === "Not on a Network" && none.body === "Lantern", JSON.stringify(none));
+            none.title === "Wi-Fi" && none.body === "not on a network: Lantern",
+            JSON.stringify(none));
         const off = Plate.plate({ on: false, networks: [], joined: null }, words);
-        Expect.expect("off, Wi-Fi's row says so", off.title === "Turned Off", JSON.stringify(off));
+        Expect.expect("off, Wi-Fi's row says so", off.title === "Wi-Fi" && off.body === "turned off",
+            JSON.stringify(off));
     }
 }

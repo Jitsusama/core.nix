@@ -13,19 +13,16 @@
 // networks Wireless lists, by their `name`; and `joined`, the one joined as
 // `{ name, side, drawn }`, its side as its row says it and `drawn` its
 // drawer as ReadyRows draws it, or null until it's read, or `joined` null
-// on none. `words` are the place's own `said` and `leading`, the facts'
-// labels said first, in their order.
+// on none. `words` are the place's `name`, its own `said` and `leading`,
+// the facts' labels said first, in their order.
 function plate(heard, words) {
     const { on, networks, joined } = heard;
-    const { said, leading } = words;
+    const { name, said, leading } = words;
     const eyebrow = said.eyebrow ?? "";
-    if (joined === null) {
-        return {
-            eyebrow,
-            title: (on ? said.unjoined : said.off) ?? "",
-            body: networks.map(network => network.name).join(", "),
-            facts: []
-        };
+    if (!joined) {
+        const reach = networks.map(network => network.name).join(", ");
+        const body = on ? [said.unjoined ?? "", reach].filter(Boolean).join(": ") : said.off;
+        return { eyebrow, title: name, body: body ?? "", facts: [] };
     }
     if (!joined.drawn) {
         return { eyebrow, title: joined.name, body: joined.side ?? "", facts: [] };
