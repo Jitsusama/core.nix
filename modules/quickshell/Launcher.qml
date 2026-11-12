@@ -8848,12 +8848,29 @@ Scope {
     property real chordAt: -1
     property real chordHeardAfter: -1
     function chordHeard(word) {
+        if (word !== "")
+            chordLate(Number(word.slice(1)) * 1000);
         if (open || opening || word === "") {
             chordAt = -1;
             return;
         }
         chordAt = Number(word.slice(1)) * 1000;
         chordHeardAfter = Date.now() - chordAt;
+    }
+
+    // A chord heard over a second after it ran found the shell's thread
+    // held, whatever held it, and is said with when it ran, so the journal
+    // beside it can be read for why. Joel's first Super+E after a restart
+    // was heard about 17 s late, with two more pressed behind it, and
+    // nothing the shell said showed it: its opening, timed from the ask,
+    // took 168 ms (2026-11-12, 16:33). Every chord is told, not only one
+    // that opens, since those pressed behind it are the ones he waited on.
+    readonly property int chordHeldPast: 1000
+    function chordLate(at) {
+        const late = Math.round(Date.now() - at);
+        if (late > chordHeldPast)
+            console.info(`launcher: heard a chord ${late} ms after it ran at`
+                + ` ${Qt.formatDateTime(new Date(at), "hh:mm:ss.zzz")}, the shell held`);
     }
 
     // The chord's toggle: shut while shown, and opened while shut, from
