@@ -148,7 +148,7 @@
         && environment.sessionVariables.SHARED_SLICE == "shared.slice"
       );
 
-  # Work in jobs swaps its own memory past a fifth of it, and agents' sessions
+  # Work in jobs swaps its own memory past 26% of it, and agents' sessions
   # theirs past 42%, rather than pushing out what an app reaches for next,
   # and both are only ever slowed there: a hard limit would end an
   # evaluation or a session that a slow one lets finish.
@@ -159,9 +159,9 @@
       agents = slices.agents.sliceConfig;
     in
     holds "work-swaps-its-own-memory"
-      "jobs has no ceiling at a fifth of memory or agents' sessions none at 42%, so their work pushes apps' memory out to swap, or one has a hard limit that ends work."
+      "jobs has no ceiling at 26% of memory or agents' sessions none at 42%, so their work pushes apps' memory out to swap, or one has a hard limit that ends work."
       (
-        (jobs.MemoryHigh or null) == "20%"
+        (jobs.MemoryHigh or null) == "26%"
         && !(jobs ? MemoryMax)
         && (agents.MemoryHigh or null) == "42%"
         && !(agents ? MemoryMax)

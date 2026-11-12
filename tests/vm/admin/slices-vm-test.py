@@ -38,7 +38,7 @@ AGENTS_FLOOR = 512 * MIB
 # The journal's soft floor, which every machine's system.slice claims.
 JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.
-JOBS_HIGH = 0.2
+JOBS_HIGH = 0.26
 # How much of the first CPU's running time the light quest must have, alone. It's a share
 # of the time the CPU ran rather than of the clock, since a loaded host runs a virtual
 # CPU only part of each second. It's most, not nearly all: a weight that held the quest back
@@ -257,7 +257,7 @@ def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
 
 
 def test_work_in_jobs_is_slowed_never_ended(account: Account) -> None:
-    """Work in jobs is slowed past a fifth of memory, and never ended."""
+    """Work in jobs is slowed past 26% of memory, and never ended."""
     high = int(account.read(f"{JOBS}/memory.high"))
     assert abs(high - account.memory() * JOBS_HIGH) <= MIB
     assert account.read(f"{JOBS}/memory.max") == "max"

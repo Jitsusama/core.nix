@@ -226,8 +226,8 @@ let
   # 7.1, each slice under its own ceiling, while 2 GiB was free and 26 in
   # swap. kswapd gave up, and every program that needed a page reclaimed
   # one itself, the shell among them, which froze. The sessions' 42%, 26
-  # GiB, jobs' 20% and shared's 10% sum with Joel's floors to under all of
-  # memory, so a burst in any of them reclaims its own pages first.
+  # GiB, jobs' 26% and shared's 10% sum with Joel's floors to just under all
+  # of memory, so a burst in any of them reclaims its own pages first.
   agentsHigh = "42%";
   account = "21%";
   above = "31%";
@@ -395,8 +395,10 @@ in
     };
 
     # Beside app.slice and session.slice, so it yields to both, and held to
-    # a fifth of memory, so that it and the sessions can't together take what
-    # Joel's slices hold (see agentsHigh). The floors keep only what apps already hold: work in
+    # 26% of memory, 16 GiB here, so that it and the sessions can't together
+    # take what Joel's slices hold (see agentsHigh). At 12 GiB on 12 November
+    # work sat at its ceiling, slowed 767,888 times by 18:00, and moved slowly
+    # while 29 GiB was free. The floors keep only what apps already hold: work in
     # jobs still took the rest, pushing out to swap what an app reached for
     # next. Past the ceiling, jobs swaps its own memory instead. In 238
     # ten-second windows without it, apps waited on memory 0.67% of the time,
@@ -407,7 +409,7 @@ in
     # slows work past the ceiling and never ends it.
     systemd.user.slices.jobs.sliceConfig = {
       CPUWeight = "idle";
-      MemoryHigh = "20%";
+      MemoryHigh = "26%";
       IOWeight = 1;
     };
     systemd.user.slices.background.sliceConfig.IOWeight = 1;
