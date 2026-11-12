@@ -3139,6 +3139,10 @@
   the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
   '';
+  the-shell-compiles-once = ''
+    the shell's own files, served on Quickshell's qs: scheme, are compiled once and kept in Qt's
+    disk cache, a second start compiles none of them, and a file that changed is compiled again
+  '';
   the-shell-is-given-a-token-on-niri = ''
     the shell's QML asks niri for an activation token through Quickshell.activationToken and is
     given one rather than nothing

@@ -24,6 +24,8 @@ and why.
 
 - `battery-stand-ins/`, `lib/`, `repository/`, `rules/` and `vm/` say what
   they hold in their own READMEs.
+- `compiled-once/`: a shell of three files, started three times by
+  `compiled-once.sh` to show Qt compiles each once and keeps it.
 - `desktop/`: the desktop VM test's areas, one `-vm-test.py` each, with the
   programs its machine runs to drive the desktop. Five measure the launcher at
   Joel's scales, side by side, and share `looks_session.py`: looks itself

@@ -1,0 +1,124 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Cache a QML unit served by an interceptor, by content
+
+Qt caches a compiled QML or JavaScript unit only for a local file, so
+a program that serves its own files on a scheme of its own, as
+Quickshell serves a shell's folder on qs:, compiles every file at each
+start and each type it makes late at its first use: 4.9 MB of a shell's
+QML, 1.9 s of its start. Such a unit is now saved in the disk cache and
+read back, named by its URL, since it has no path, and only when its
+content checksum matches the source served, as every saved unit is
+written in content-hash mode.
+
+A remote unit read from the cache fetched its folder's qmldir only when
+the document imported "." itself, so it found none of its own folder's
+types; it now fetches it always, as a unit compiled from source does.
+
+---
+--- a/src/qml/common/qv4compileddata.cpp
++++ b/src/qml/common/qv4compileddata.cpp
+@@ -119,9 +119,15 @@ QString CompilationUnit::localCacheFilePath(const QUrl &url)
+ {
+     static const QByteArray envCachePath = qgetenv("QML_DISK_CACHE_PATH");
+ 
+-    const QString localSourcePath = QQmlFile::urlToLocalFileOrQrc(url);
+-    const QString cacheFileSuffix
+-            = QFileInfo(localSourcePath + QLatin1Char('c')).completeSuffix();
++    // A source an interceptor serves, such as a shell's own scheme, has no
++    // local path, so its cache file is named by its URL instead, and checked
++    // by the content checksum every saved unit carries.
++    const QString localSourcePath = QQmlFile::isLocalFile(url)
++            ? QQmlFile::urlToLocalFileOrQrc(url)
++            : url.toString(QUrl::FullyEncoded);
++    const QString cacheFileSuffix = QFileInfo(
++            (QQmlFile::isLocalFile(url) ? localSourcePath : url.path()) + QLatin1Char('c'))
++            .completeSuffix();
+     QCryptographicHash fileNameHash(QCryptographicHash::Sha1);
+     fileNameHash.addData(localSourcePath.toUtf8());
+     QString directory = envCachePath.isEmpty()
+@@ -137,15 +143,16 @@ bool CompilationUnit::loadFromDisk(
+         const QUrl &url, const QDateTime &sourceTimeStamp,
+         qxp::function_ref<QByteArray() const> sourceChecksum, QString *errorString)
+ {
+-    if (!QQmlFile::isLocalFile(url)) {
+-        *errorString = QStringLiteral("File has to be a local file.");
+-        return false;
+-    }
+-
++    // A source with no local path has no .qmlc beside it, and only its cache
++    // file, named by its URL, is read. Its unit was saved checked by content,
++    // so a source that has changed since is compiled again.
++    const bool isLocal = QQmlFile::isLocalFile(url);
+     const QString sourcePath = QQmlFile::urlToLocalFileOrQrc(url);
+     auto cacheFile = std::make_unique<CompilationUnitMapper>();
+ 
+-    const QStringList cachePaths = { sourcePath + QLatin1Char('c'), localCacheFilePath(url) };
++    const QStringList cachePaths = isLocal
++            ? QStringList { sourcePath + QLatin1Char('c'), localCacheFilePath(url) }
++            : QStringList { localCacheFilePath(url) };
+     for (const QString &cachePath : cachePaths) {
+         Unit *mappedUnit = cacheFile->get(cachePath, sourceTimeStamp, errorString);
+         if (!mappedUnit)
+@@ -172,7 +179,12 @@ bool CompilationUnit::loadFromDisk(
+             }
+         }
+ 
+-        if (mappedUnit->sourceFileIndex != 0) {
++        if (!isLocal && mappedUnit->sourceTimeStamp != -1) {
++            *errorString = QStringLiteral("Cached unit of a remote source is not content-hashed.");
++            continue;
++        }
++
++        if (isLocal && mappedUnit->sourceFileIndex != 0) {
+             if (mappedUnit->sourceFileIndex >=
+                 mappedUnit->stringTableSize + dynamicStrings.size()) {
+                 *errorString = QStringLiteral("QML source file index is invalid.");
+@@ -198,11 +210,6 @@ bool CompilationUnit::saveToDisk(
+         const QUrl &unitUrl, qxp::function_ref<QByteArray() const> sourceChecksum,
+         QString *errorString) const
+ {
+-    if (!QQmlFile::isLocalFile(unitUrl)) {
+-        *errorString = QStringLiteral("File has to be a local file.");
+-        return false;
+-    }
+-
+     Unit *mutableUnit = const_cast<Unit *>(unitData());
+     const QByteArray checksum = sourceChecksum();
+     if (checksum.size() != sizeof(mutableUnit->sourceChecksum)) {
+--- a/src/qml/qml/qqmltypedata.cpp
++++ b/src/qml/qml/qqmltypedata.cpp
+@@ -115,23 +115,17 @@ bool QQmlTypeData::loadFromDiskCache(const QQmlRefPointer<QV4::CompiledData::Com
+             if (!loadImplicitImport())
+                 return false;
+ 
+-            // find the implicit import
+-            for (quint32 i = 0, count = m_compiledData->importCount(); i < count; ++i) {
+-                const QV4::CompiledData::Import *import = m_compiledData->importAt(i);
+-                if (m_compiledData->stringAt(import->uriIndex) == QLatin1String(".")
+-                    && import->qualifierIndex == 0
+-                    && !import->version.hasMajorVersion()
+-                    && !import->version.hasMinorVersion()) {
+-                    QList<QQmlError> errors;
+-                    auto pendingImport = std::make_shared<PendingImport>(
+-                                this, import, QQmlImports::ImportNoFlag);
+-                    pendingImport->precedence = QQmlImportInstance::Implicit;
+-                    if (!fetchQmldir(qmldirUrl, std::move(pendingImport), 1, &errors)) {
+-                        setError(errors);
+-                        return false;
+-                    }
+-                    break;
+-                }
++            // The folder's qmldir is the implicit import, whether or not the document imports
++            // "." itself, as continueLoadFromIR() fetches it for a unit compiled from source.
++            // A unit served on a remote URL comes from the disk cache too, now, and without it
++            // finds none of its own folder's types.
++            auto implicitImport = std::make_shared<PendingImport>();
++            implicitImport->uri = QLatin1String(".");
++            implicitImport->version = QTypeRevision();
++            QList<QQmlError> errors;
++            if (!fetchQmldir(qmldirUrl, std::move(implicitImport), 1, &errors)) {
++                setError(errors);
++                return false;
+             }
+         }
+     }
