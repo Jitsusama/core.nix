@@ -90,8 +90,12 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 /// it otherwise. The command's own status is the shell's. The clock's
 /// sleep holds no output open, since one left behind by a TERM landing
 /// before its pid is known would keep ssh, and so the builder, until it
-/// woke. A command's 255 comes back as 254, since ssh's 255 means the
-/// builder was lost, and the run would be sent again.
+/// woke. Once it has run out, the clock ends the group before saying so,
+/// deaf to the group's TERM and to a broken pipe: said first, over a link
+/// gone dead, the saying killed the clock, and the command ran on to its
+/// end and passed (E2ZIAQ, 12 November). A command's 255 comes back as
+/// 254, since ssh's 255 means the builder was lost, and the run would be
+/// sent again.
 pub fn command(checkout: &str, asked: &Asked) -> String {
     let words: Vec<String> = asked.words.iter().map(|word| there::quoted(word)).collect();
     let longest = asked.longest;
@@ -99,8 +103,9 @@ pub fn command(checkout: &str, asked: &Asked) -> String {
         "{checkout}set +e; \
          (trap 'kill $sleeping 2>/dev/null; exit 0' TERM; \
          sleep {longest} 2>/dev/null & sleeping=$!; wait $sleeping; \
-         echo \"nix-offload: the command ran past {longest} s, so it ends\" >&2; \
-         kill -TERM 0) </dev/null >/dev/null & clock=$!; \
+         trap '' PIPE TERM; kill -TERM 0; \
+         echo \"nix-offload: the command ran past {longest} s, so it ends\" >&2) \
+         </dev/null >/dev/null & clock=$!; \
          WORK_RUNS_ELSEWHERE=1 {}; \
          ended=$?; kill $clock 2>/dev/null; \
          if [ $ended = 255 ]; then \
@@ -292,6 +297,63 @@ mod tests {
         assert!(stderr.contains("ran past 1 s"), "{stderr}");
         std::thread::sleep(Duration::from_secs(5));
         assert!(!left.exists(), "what it started went on");
+    }
+
+    /// What `asked` ends with, sent far as a lent run is, while its caller
+    /// reads nothing it says: the stand-in for a link gone dead.
+    fn ran_far_unread(asked: &Asked, folder: &Path) -> Option<i32> {
+        let run = there::far_brief(&command("", asked));
+        Command::new("sh")
+            .args([
+                "-c",
+                "{ sh -c \"$1\" 2>&1 >/dev/null; echo $? >&3; } 3>ended | true; \
+                 read -r ended < ended; exit \"$ended\"",
+                "caller",
+                &run,
+            ])
+            .current_dir(folder)
+            .env("TMPDIR", folder)
+            .process_group(0)
+            .status()
+            .unwrap()
+            .code()
+    }
+
+    #[test]
+    fn a_command_past_its_longest_ends_though_nothing_reads_it() {
+        let folder = tempfile::tempdir().unwrap();
+        let left = folder.path().join("left");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 1,
+            words: vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                format!("(sleep 4; touch {}) & sleep 8", left.display()),
+            ],
+        };
+        let began = Instant::now();
+        let ended = ran_far_unread(&asked, folder.path());
+        assert!(
+            began.elapsed() < Duration::from_secs(6),
+            "its clock didn't end it, so it ran its 8 s"
+        );
+        assert_ne!(ended, Some(0), "one cut off passed");
+        std::thread::sleep(Duration::from_secs(5));
+        assert!(!left.exists(), "what it started went on");
+    }
+
+    #[test]
+    fn a_command_its_clock_ends_is_never_sent_again() {
+        let folder = tempfile::tempdir().unwrap();
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 1,
+            words: vec!["sleep".to_owned(), "30".to_owned()],
+        };
+        let ended = ran_far_unread(&asked, folder.path());
+        assert_ne!(ended, Some(there::UNREACHED), "it would be sent again");
+        assert_ne!(ended, Some(0), "one cut off passed");
     }
 
     #[test]

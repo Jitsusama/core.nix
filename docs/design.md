@@ -1019,7 +1019,11 @@ another column it trots there, in nine strides of whole pixels over about a
 second, its feet touching down on every other: stepped, never a glide, and
 never for keys passing through, so h and l tapped along the columns leave it
 sitting. A column it sat on that's gone has it on the keys' column at once,
-since nothing walks in from nowhere.
+since nothing walks in from nowhere. After ten minutes with no keys
+(`jitsusama.quickshell.cat.dozes`), when Joel is away, it curls up asleep
+in a pose of its own, a z above it, one frame and then none; a key wakes
+it at once, with no animation in the way. As the lock lets the screens go
+it stretches, one pose held half a second, then sits.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.

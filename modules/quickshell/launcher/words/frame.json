@@ -121,8 +121,8 @@
       "says": "An address's range and who holds it",
       "reads": "Give an address with or without its prefix, or a network, for its range, mask and hosts, and who holds a public one.",
       "examples": [
-        { "typed": "ip 192.0.2.10/24", "answers": "in 192.0.2.0/24 · 254 hosts" },
-        { "typed": "ip 198.51.100.0/24", "answers": "254 hosts · 198.51.100.0 – 198.51.100.255" }
+        { "typed": "ip 192.0.2.10/24", "answers": "in 192.0.2.0/24" },
+        { "typed": "ip 198.51.100.0/24", "answers": "254 hosts" }
       ]
     },
     {
@@ -154,7 +154,7 @@
       "start": "is ",
       "form": "⟨address⟩ in ⟨network⟩",
       "says": "Whether a network holds an address",
-      "reads": "Ask of an address or a smaller network, then the network by its prefix or its mask.",
+      "reads": "Give an address or a smaller network, then in, then the network by its prefix or mask.",
       "examples": [
         { "typed": "is 192.0.2.10 in 192.0.2.0/24", "answers": "yes" },
         { "typed": "is 198.51.100.7 in 192.0.2.0/24", "answers": "no" }
@@ -179,8 +179,8 @@
       "says": "A character and its codes",
       "reads": "Give a character, or its number in decimal or hex, for its name, code point and bytes.",
       "examples": [
-        { "typed": "char 65", "answers": "A · U+0041 · latin capital letter a" },
-        { "typed": "char 0x4e00", "answers": "一 · decimal 19968" }
+        { "typed": "char 65", "answers": "A" },
+        { "typed": "char \u00e9", "answers": "233" }
       ]
     },
     {
@@ -191,7 +191,7 @@
       "says": "Text as UTF-8's bytes",
       "reads": "Give any text for its bytes in UTF-8, escaped and as a web address writes them.",
       "examples": [
-        { "typed": "utf8 é", "answers": "c3 a9 · %C3%A9" }
+        { "typed": "utf8 \u00e9", "answers": "c3 a9" }
       ]
     },
     {
@@ -305,7 +305,7 @@
       "start": "epoch",
       "form": "",
       "says": "Seconds since 1970, and the clock's other figures",
-      "reads": "Unix time counting to the second, with UTC, TAI, GPS and sidereal time under it.",
+      "reads": "Type it for Unix time, counting to the second, with UTC, TAI, GPS and sidereal time under it.",
       "examples": [
         { "typed": "epoch", "answers": "the seconds since 1970, counting" }
       ]
@@ -322,7 +322,10 @@
       "keys": "keys",
       "nerd": "nerdy bits",
       "place": "place",
-      "command": "command"
+      "command": {
+        "in": "in {place} \u00b7 command",
+        "anywhere": "anywhere \u00b7 command"
+      }
     },
     "times": {
       "now": "just now",

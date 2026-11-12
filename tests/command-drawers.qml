@@ -47,10 +47,19 @@ QtObject {
             .filter(address => /[0-9a-f]/u.test(address));
     }
 
-    function held(command) {
-        const said = CommandRow.drawer(command, "command");
+    function held(command, words) {
         const what = command.id;
+        // Its eyebrow says where it's listed, then what it is, as every
+        // drawer's does: "in Network · command", or "anywhere · command".
+        const eyebrow = CommandRow.eyebrowOf(command, words.categories,
+            words.field.drawer.command);
+        const place = words.categories.find(category => (category.commands ?? [])
+            .includes(what));
+        Expect.same(`${what}'s eyebrow says where it's listed`, eyebrow,
+            place ? `in ${place.name} · command` : "anywhere · command");
+        const said = CommandRow.drawer(command, eyebrow);
         Expect.expect(`${what} has a drawer`, said !== null, "it gave none");
+        Expect.same(`${what}'s drawer is under its eyebrow`, said.eyebrow, eyebrow);
         Expect.same(`${what}'s drawer is titled as its row is`, said.title,
             `${command.start}${command.form}`.trim());
         Expect.expect(`${what}'s drawer says what it answers in a sentence`,
@@ -85,7 +94,14 @@ QtObject {
         Expect.expect("the vocabulary offers commands", words.commands.length > 0,
             "it offers none");
         for (const command of words.commands)
-            held(command);
+            held(command, words);
+        Expect.same("a command Network lists is said in Network",
+            CommandRow.eyebrowOf(words.commands.find(command => command.id === "command:ip"),
+                words.categories, words.field.drawer.command), "in Network · command");
+        // Every command is listed in a place today, so this one is made up.
+        Expect.same("a command no place lists is said anywhere",
+            CommandRow.eyebrowOf({ id: "command:nowhere" }, words.categories,
+                words.field.drawer.command), "anywhere · command");
 
         // One the vocabulary says nothing more of has none, so its row
         // draws no drawer that repeats it.

@@ -504,6 +504,10 @@
     suppressions in each language's own way, its lines repeated from elsewhere and its tests in
     quarantine, from a ref's files, and writes the day's figures as cadence reads them
   '';
+  code-health-finds-a-machines-programs-first = ''
+    code-health finds a machine's own programs first on its PATH, such as a git that reads a
+    repository stock git refuses, with core's git after them
+  '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests
   '';
@@ -1812,7 +1816,8 @@
     the thread that lost it a frame, reads niri's focused window and frame, and finds the window's
     scope and pi as the jobs-sorter finds them, a bare class in the shared kitty finding none,
     and reads what a sample ran beside: the CPU's waiting, the load, and the pi and package
-    versions a pi runs, keeping nothing else of its environment
+    versions a pi runs, keeping nothing else of its environment, and models the keys again by the
+    install each window's pi loaded, so installs compare under one load
   '';
   pi-keys-passes-clippy = ''
     clippy finds nothing in pi-keys or its tests
@@ -2652,7 +2657,8 @@
     every figure of the record a part in its own unit and in words.json's words, its settings
     saying who set each, its TLS and DNS a step in; what it read while shown sparks Round Trip,
     Loss and Traffic, each with a drawer over the tunnel, one read sparking nothing; and its
-    switch says who holds it, when WARP always on comes back, and a switch held or refused
+    switch says who holds it, when WARP always on comes back, and a switch held or refused; and
+    each command's worked example with a fixed answer says the headline it gives
   '';
   the-sessions-kitty-outlives-a-switch = ''
     a switch never restarts the kitty every session's window is in, so no switch closes them
@@ -2731,8 +2737,8 @@
     asks again rather than closing, and each question is answered by a pi of its own
   '';
   every-command-row-has-a-drawer = ''
-    every command the launcher offers says in its drawer what it answers and one or two worked
-    examples, naming only documentation addresses
+    every command the launcher offers says in its drawer, under the place that lists it or
+    anywhere, what it answers and one or two worked examples, naming only documentation addresses
   '';
   the-launcher-catalogues-what-it-does = ''
     the launcher's catalogue tells a place from an action, offers what ends something rather than
@@ -3142,8 +3148,9 @@
     on a nested niri, the margin's cat sits over the column the keys are in and, two seconds after
     they move to another, trots there in nine strides and at most 12 frames from the key, never
     for h then l tapped; on the overlay layer taking no keys, it leaves while a window is
-    fullscreen, and is drawn in whole screen pixels of its hue at scales 1.5 and 2, each screen
-    kept as its result
+    fullscreen, draws nothing for 30 s with no keys, then curls up asleep in a frame and wakes at
+    a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
+    pixels of its hue at scales 1.5 and 2, each screen kept as its result
   '';
   the-margin-cat-sits-above-its-column = ''
     the margin's cat sits a cell above the focused column's top edge over the middle of what's

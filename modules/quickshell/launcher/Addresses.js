@@ -276,6 +276,16 @@ function read(text) {
     };
 }
 
+// What a hardware address's answer heads with: its maker, as `made` names
+// it from the IEEE's list, or why there's none. Worked out here so the
+// command's worked example is checked against it (tests/answers).
+function maker(at, made) {
+    if (at.local) {
+        return "locally set, no maker";
+    }
+    return made || "no maker listed";
+}
+
 // A hardware address, read: { oui, colon, dotted, local, multicast }, or
 // null. Written with colons, dashes, Cisco's dots, or none at all.
 function mac(text) {
