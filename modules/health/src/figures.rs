@@ -117,16 +117,19 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         }
     }
     // Our side's: an opening from its process's start, an end from its
-    // window gone, neither from Joel's ask, and a daemon's ready as it
-    // said it.
+    // window gone, neither from Joel's ask; a daemon's ready and a pi's
+    // start as each said it; and a service gone in a restart, from systemd
+    // stopping it.
     for (name, spread) in [
-        ("opened", day.launches.openings()),
-        ("ended", day.launches.ends()),
-        ("ready", day.launches.readies()),
+        ("launches.opened", day.launches.openings()),
+        ("launches.ended", day.launches.ends()),
+        ("launches.ready", day.launches.readies()),
+        ("launches.pi", day.launches.pi_starts()),
+        ("switch.restart", day.launches.restarts()),
     ] {
         if let Some(spread) = spread {
             let mut put = |figure: &str, value: f64| {
-                figures.insert(format!("launches.{name}.{figure}"), value);
+                figures.insert(format!("{name}.{figure}"), value);
             };
             put("median-ms", spread.median_ms as f64);
             put("p99-ms", spread.p99_ms as f64);
@@ -294,6 +297,11 @@ mod tests {
         }
         day.launches
             .took("dictation", "dictation: ready in 1065 ms");
+        day.launches
+            .took(launches::PI, "pi: ready in 4120 ms, session 01a1c28f");
+        day.launches
+            .restarted
+            .insert("google.service".to_owned(), vec![64]);
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -304,6 +312,8 @@ mod tests {
                 figure("launches.ended.median-ms"),
                 figure("launches.outlived"),
                 figure("launches.ready.slowest-ms"),
+                figure("launches.pi.late-percent"),
+                figure("switch.restart.slowest-ms"),
             ),
             (
                 Some(212.0),
@@ -311,7 +321,9 @@ mod tests {
                 Some(50.0),
                 None,
                 Some(1.0),
-                Some(1065.0)
+                Some(1065.0),
+                Some(100.0),
+                Some(64.0),
             ),
             "the day's openings and ends weren't figured: {figures:?}"
         );

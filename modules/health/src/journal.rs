@@ -29,6 +29,14 @@ pub const SHUTTING_DOWN: &str = "98268866d1d54a499c4e98921d93bc40";
 /// systemd's message for a unit whose start finished.
 pub const UNIT_STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
 
+/// systemd's message for a unit it starts to stop.
+pub const UNIT_STOPPING: &str = "de5b426a63be47a7b6ac3eaac82e2f6f";
+
+/// What `journalctl --grep` follows of those two: a service's, leaving the
+/// scopes each command an agent runs is started in, about two thousand an
+/// hour.
+const A_SERVICE: &str = r"^(Stopping|Started) [^ ]+\.service\b";
+
 /// What the launcher says once its rows are made after the shell starts,
 /// the moment it's ready to use: "launcher: home and 7 places kept as the
 /// shell started", or with no places, as `journalctl --grep` finds it.
@@ -78,6 +86,18 @@ pub struct Entry {
     pub mark: Option<Mark>,
     /// The ask for a secret it answered, when it's secret-asks's line.
     pub ask: Option<Ask>,
+    /// What systemd did to the service it's about, when it's one.
+    pub job: Option<Job>,
+}
+
+/// What systemd did to a service: stopping one, then starting it again, is
+/// how a switch restarts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Job {
+    /// It started to stop the service.
+    Stopping,
+    /// The service's start finished.
+    Started,
 }
 
 /// A moment in starting or stopping the machine, each said once a boot.
@@ -136,6 +156,12 @@ pub fn parse(line: &str) -> Option<Entry> {
         (Some(identifier), _) => identifier.to_owned(),
         (None, None) => "unnamed".to_owned(),
     };
+    let job = match text("MESSAGE_ID").as_deref() {
+        _ if !thing.ends_with(".service") => None,
+        Some(UNIT_STOPPING) => Some(Job::Stopping),
+        Some(UNIT_STARTED) => Some(Job::Started),
+        _ => None,
+    };
     let crashed = text("COREDUMP_COMM");
     let whose = crashed.as_ref().map(|_| whose(&fields));
     let micros = |name: &str| text(name).and_then(|value| value.parse().ok());
@@ -170,6 +196,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         since_boot: micros("__MONOTONIC_TIMESTAMP").unwrap_or_default(),
         mark,
         ask,
+        job,
     })
 }
 
@@ -234,15 +261,19 @@ pub fn followed() -> Vec<Vec<String>> {
         // Warnings and graver.
         asked(&["-p", "warning"]),
         // What systemd and logind say only as information: a restart
-        // scheduled, the machine started or stopping, and a unit started,
-        // which the day keeps only for the disk's password.
+        // scheduled, and the machine started or stopping.
         vec![
             format!("MESSAGE_ID={RESTART_SCHEDULED}"),
             format!("MESSAGE_ID={STARTUP_FINISHED}"),
             format!("MESSAGE_ID={SHUTTING_DOWN}"),
-            "+".to_owned(),
-            "_PID=1".to_owned(),
+        ],
+        // A service stopping and started, by the machine's systemd or
+        // Joel's: the two a restart is timed between, and the start of the
+        // disk's password and its opening.
+        vec![
+            format!("MESSAGE_ID={UNIT_STOPPING}"),
             format!("MESSAGE_ID={UNIT_STARTED}"),
+            format!("--grep={A_SERVICE}"),
         ],
         // The launcher ready, after each start of the shell, and how long
         // it took to show each thing Joel did, which it says as information.
@@ -362,6 +393,34 @@ mod tests {
             entry.message
         );
         assert!(entry.kernel, "the kernel's transport is the kernel's");
+    }
+
+    #[test]
+    fn a_service_stopping_or_started_is_its_job_and_a_scope_is_none() {
+        let line = |id: &str, unit: &str| {
+            format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
+                "MESSAGE_ID":"{id}","USER_UNIT":"{unit}","MESSAGE":"Started {unit}"}}"#
+            )
+            .replace('\n', "")
+        };
+        let job = |id, unit| parse(&line(id, unit)).expect("systemd's line is an entry");
+        let stopping = job(UNIT_STOPPING, "google.service");
+        assert_eq!(
+            (stopping.thing.as_str(), stopping.job),
+            ("google.service", Some(Job::Stopping)),
+            "a service stopping wasn't its job"
+        );
+        assert_eq!(
+            job(UNIT_STARTED, "google.service").job,
+            Some(Job::Started),
+            "a service started wasn't its job"
+        );
+        assert_eq!(
+            job(UNIT_STARTED, "work-1-2.scope").job,
+            None,
+            "a scope started was taken for a service's"
+        );
     }
 
     #[test]
