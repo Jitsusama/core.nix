@@ -49,10 +49,7 @@
     "shown"
     "speaks"
   ];
-  people = [
-    "shown"
-    "speaks"
-  ];
+  people = [ "speaks" ];
   programs = [
     "shown"
     "speaks"

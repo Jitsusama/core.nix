@@ -146,7 +146,14 @@ in
         After = [ "people.socket" ];
       };
       Service = {
-        ExecStart = "${lib.getExe people} %t/daemons/people.sock ${sourcesFile} ${words}";
+        # Started by its name, so ps reads "people" rather than a store path.
+        ExecStart = lib.concatStringsSep " " [
+          "@${lib.getExe people}"
+          "people"
+          "%t/daemons/people.sock"
+          "${sourcesFile}"
+          "${words}"
+        ];
         Restart = "on-failure";
         RestartSec = 5;
       };
