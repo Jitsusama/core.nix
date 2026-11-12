@@ -132,6 +132,40 @@ pub const MEASURES: &[Measure] = &[
         None,
         2.0,
     ),
+    // An ask for a secret is worth its interruption only while asks stay
+    // rare and read, and asked once: secret-asks's own readings.
+    measure(
+        "health.asks.shown",
+        "polish",
+        "asks for a secret Joel was shown",
+        "",
+        Some(3.0),
+        1.0,
+    ),
+    measure(
+        "health.asks.unread-yeses",
+        "polish",
+        "asks said yes to sooner than they could be read",
+        "",
+        Some(0.0),
+        1.0,
+    ),
+    measure(
+        "health.asks.again",
+        "polish",
+        "asks for an item and command already asked for that day",
+        "",
+        Some(0.0),
+        1.0,
+    ),
+    measure(
+        "health.asks.avoidable-percent",
+        "polish",
+        "the share of asks a minted token would have spared",
+        "%",
+        Some(0.0),
+        10.0,
+    ),
 ];
 
 /// The part of health's day the day reads: the figures health works out
@@ -166,12 +200,14 @@ mod tests {
     fn healths_figures_are_kept_by_their_names() {
         let figures = figures(
             r#"{"date": "2026-11-12", "things": {},
-                "figures": {"boot.seconds": 27.0, "agents.died": 4, "unheard-of": 3}}"#,
+                "figures": {"boot.seconds": 27.0, "agents.died": 4, "unheard-of": 3,
+                "asks.unread-yeses": 1}}"#,
         );
         assert_eq!(
             figures,
             BTreeMap::from([
                 ("health.agents.died".to_owned(), 4.0),
+                ("health.asks.unread-yeses".to_owned(), 1.0),
                 ("health.boot.seconds".to_owned(), 27.0),
             ]),
             "a figure of health's was lost, or one no measure holds was kept"

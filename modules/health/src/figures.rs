@@ -9,7 +9,8 @@ use crate::show::KINDS;
 
 /// Each figure of the day, by its name: the slowest boot and shutdown in
 /// seconds, each kind's errors, the minutes lost in the day's worst
-/// moments, the most each watched program held, and the agents that died.
+/// moments, the most each watched program held, the agents that died, and
+/// the asks for a secret: shown, said yes to unread, asked again, avoidable.
 /// A kind with no errors is written as none, so its days have a median.
 #[must_use]
 #[expect(
@@ -43,6 +44,14 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         );
     }
     figures.insert("agents.died".to_owned(), day.agents.died.len() as f64);
+    let asks = &day.asks;
+    figures.insert("asks.shown".to_owned(), asks.shown as f64);
+    figures.insert("asks.unread-yeses".to_owned(), asks.unread_yeses as f64);
+    figures.insert("asks.again".to_owned(), asks.again as f64);
+    figures.insert(
+        "asks.avoidable-percent".to_owned(),
+        asks.avoidable_percent(),
+    );
     figures
 }
 
@@ -95,6 +104,8 @@ mod tests {
             },
         );
         day.agents.died.insert("s".into(), Died::default());
+        day.asks.shown = 4;
+        day.asks.again = 2;
         let figures = of(&day);
         let figure = |name: &str| figures.get(name).copied();
         assert_eq!(
@@ -105,6 +116,8 @@ mod tests {
                 figure("devices.errors"),
                 figure("memory.pi.most-mib"),
                 figure("agents.died"),
+                figure("asks.shown"),
+                figure("asks.again"),
             ),
             (
                 Some(27.0),
@@ -112,7 +125,9 @@ mod tests {
                 Some(7.0),
                 Some(0.0),
                 Some(30_720.0),
-                Some(1.0)
+                Some(1.0),
+                Some(4.0),
+                Some(2.0)
             ),
             "a figure wasn't worked out from the day's tally: {figures:?}"
         );
