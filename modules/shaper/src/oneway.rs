@@ -71,6 +71,15 @@ const GIVEN_UP_S: f64 = 600.0;
 const PROVEN_S: f64 = 5.0;
 /// How long after a cut before another.
 const BETWEEN_CUTS_S: f64 = 1.0;
+/// A queue only the VPN's round trip meets is heard a round trip and a
+/// second late, so a cut for it waits this long for the last to show.
+/// Cut each second on what was heard before, on 11 November the upload
+/// went from 10,759 to 1,744 in 3 s, then to the floor.
+const UNSEEN_DRAIN_S: f64 = 5.0;
+/// The least share of what a direction reached in its stay that a queue
+/// only the VPN's round trip meets cuts it to: the line carried that, and
+/// a line that fell further is met by the probes on the link.
+const UNSEEN_FLOOR: f64 = 0.5;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
 const CLIMB: f64 = 1.05;
@@ -240,6 +249,11 @@ pub struct Learned {
     /// bases once more and keeps its plateaus.
     #[serde(rename = "line", default)]
     pub base: Option<f64>,
+    /// Kept as `held` since 11 November: cuts a second apart for a queue
+    /// only the VPN met saved a plateau of 1,424 on a 12 Mbit/s upload,
+    /// which held every later start there, so each network finds its
+    /// plateau once more.
+    #[serde(rename = "held", default)]
     pub plateau: Option<f64>,
 }
 
@@ -583,7 +597,16 @@ impl Way {
             self.probing_until = None;
             self.rate = plateau * HOLD;
             self.next_probe = at + PROBE_EVERY_S;
-        } else if standing && flowing && !theirs && at - self.last_cut >= BETWEEN_CUTS_S {
+        } else if standing
+            && flowing
+            && !theirs
+            && at - self.last_cut
+                >= if unseen {
+                    UNSEEN_DRAIN_S
+                } else {
+                    BETWEEN_CUTS_S
+                }
+        {
             // A queue the probes see is first come, first served, and the
             // delay says where it is better than any plateau, which is
             // kept only as where to climb back to once it has gone. A
@@ -611,7 +634,7 @@ impl Way {
                     .iter()
                     .map(|&(_, c)| c)
                     .fold(carried, f64::max);
-                self.plateau = Some(plateau.min(most / HOLD));
+                self.plateau = Some(plateau.min(most / HOLD).max(self.reached * UNSEEN_FLOOR));
             }
             self.elsewhere = None;
             // Only the line sets what got through while something of ours
@@ -623,6 +646,9 @@ impl Way {
             // from clear spells alone.
             let filled = ours.is_some_and(|ours| ours.waiting);
             self.cut(at, delay_ms, carried, filled);
+            if unseen {
+                self.rate = self.rate.max(self.reached * UNSEEN_FLOOR);
+            }
         } else if let Some(ours) = ours
             && !standing
             && self.own(at, dt, ours, carried)
@@ -1516,14 +1542,14 @@ mod tests {
     }
 
     #[test]
-    fn a_base_kept_before_cake_was_counted_is_learned_again() {
-        let old = r#"{"base": 282090.8, "plateau": 11325.1}"#;
+    fn a_base_or_plateau_kept_before_is_learned_again() {
+        let old = r#"{"base": 282090.8, "line": null, "plateau": 1423.7}"#;
         let learned: Learned = serde_json::from_str(old).expect("a learned");
         assert_eq!(learned.base, None, "kept a base a home transfer taught");
-        assert_eq!(learned.plateau, Some(11_325.1), "forgot the plateau");
+        assert_eq!(learned.plateau, None, "kept a plateau hasty cuts taught");
         let kept = Learned {
             base: Some(11_148.0),
-            plateau: None,
+            plateau: Some(10_759.0),
         };
         let again: Learned =
             serde_json::from_str(&serde_json::to_string(&kept).expect("json")).expect("back");
@@ -1995,6 +2021,59 @@ mod tests {
         }
         let plateau = c.up.plateau.expect("a plateau");
         assert!(plateau >= 9_900.0, "ratcheted to {plateau}");
+    }
+
+    // As at 17:50 on 11 November: held over a router that buffers the
+    // VPN's flow, the round trip through the VPN is heard a round trip and
+    // a second late. Cut again each second on what was heard before the
+    // last cut showed, the upload went from 10,759 to 1,744 in 3 s, then
+    // to the floor, and the stay saved a plateau of 1,424.
+    #[test]
+    fn a_queue_only_the_vpn_meets_is_let_drain_before_another_cut() {
+        const LINE: f64 = 10_000.0;
+        let mut c = Controller::from_learned(
+            Learned {
+                base: None,
+                plateau: Some(11_325.0),
+            },
+            Learned::default(),
+        );
+        let (mut backlog, mut heard, mut least) = (0.0_f64, VecDeque::new(), f64::INFINITY);
+        let mut at = 0.0;
+        while at < 120.0 {
+            let rate = c.up.limit().map_or(f64::INFINITY, crate::rate::float);
+            let carried = rate.min(40_000.0);
+            backlog = (backlog + (carried - LINE) * 0.1).clamp(0.0, LINE * 5.0);
+            heard.push_back(30.0 + backlog / LINE * 1_000.0);
+            let vpn_ms = if heard.len() > 15 {
+                heard.pop_front()
+            } else {
+                None
+            };
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: carried,
+                up_ours: Some(Ours {
+                    queued: true,
+                    in_vpn: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    ..Ours::default()
+                }),
+                vpn_ms,
+                ..quiet(0.0, 300.0)(at)
+            });
+            if at >= 10.0 {
+                least = least.min(rate);
+            }
+            at += 0.1;
+        }
+        assert!(
+            least >= LINE * 0.5,
+            "cut to {least} on a {LINE} line before its queue could drain"
+        );
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(plateau >= LINE * 0.5, "kept a plateau of {plateau}");
     }
 
     /// A second over a router behind the VPN, its CAKE holding a queue or
