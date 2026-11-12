@@ -1904,9 +1904,9 @@
   '';
   pi-serves-the-launchers-agent-actions = ''
     the harness serves the launcher's AI actions on daemons/pi-verbs.sock, held by systemd for the
-    login alone and named pi-verbs as daemons are, restarted by a switch, in background.slice with
-    the store's node through pi-verbs on the path, skipped where the harness isn't installed, and
-    never on a Mac
+    login alone and named pi-verbs as daemons are, restarted by a switch but not after it rests,
+    in background.slice with the store's node through pi-verbs on the path, skipped where the
+    harness isn't installed, and never on a Mac
   '';
   pi-tells-where-as-the-prompt-does = ''
     pi's status line finds the folder by the prompt's roots, asks the prompt's git-engine, and marks

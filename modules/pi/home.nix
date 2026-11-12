@@ -630,6 +630,9 @@ in
     # TypeScript beside the harness's scrubber, which guards tool output
     # too, rather than a copy of it in Rust that would drift. Its socket is
     # held by systemd, so the launcher asking while it starts waits on it.
+    # It's started by the first ask and ends itself after five minutes with
+    # no connection open, so its 95 MB of node aren't kept all day for a
+    # menu used now and then; a cold ask is answered in about 0.2 s.
     systemd.user.sockets.pi-verbs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
         Description = "Where the launcher asks for its AI actions";
@@ -652,7 +655,8 @@ in
       };
       Service = {
         ExecStart = "@${lib.getExe piVerbs} pi-verbs serve";
-        Restart = "always";
+        # A rest ends it cleanly, and the socket starts it again when asked.
+        Restart = "on-failure";
         RestartSec = 5;
         Slice = "background.slice";
       };

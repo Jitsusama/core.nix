@@ -132,8 +132,9 @@ import ./host-checks.nix args
       );
 
   # The launcher's AI actions are served on a socket systemd holds beside
-  # the other daemons', named as daemons are, restarted by a switch, in the
-  # background, only where the harness is installed; a Mac gets none.
+  # the other daemons', named as daemons are, restarted by a switch, left
+  # to rest once idle, in the background, only where the harness is
+  # installed; a Mac gets none.
   pi-serves-the-launchers-agent-actions =
     let
       home = account workstation;
@@ -143,7 +144,7 @@ import ./host-checks.nix args
       first = value: lib.head (lib.toList value);
     in
     holds "pi-serves-the-launchers-agent-actions"
-      "The launcher's AI actions aren't served on daemons/pi-verbs.sock held by systemd for the login alone, aren't named pi-verbs, outlive a switch, run outside background.slice or a node off the PATH, fail where the harness isn't installed, or reach a Mac."
+      "The launcher's AI actions aren't served on daemons/pi-verbs.sock held by systemd for the login alone, aren't named pi-verbs, outlive a switch, are started again after a rest, run outside background.slice or a node off the PATH, fail where the harness isn't installed, or reach a Mac."
       (
         socket.Socket.ListenStream == "%t/daemons/pi-verbs.sock"
         && socket.Socket.SocketMode == "0600"
@@ -151,6 +152,7 @@ import ./host-checks.nix args
         && service.Unit.Requires == [ "pi-verbs.socket" ]
         && service.Unit.X-SwitchMethod == "restart"
         && service.Service.Slice == "background.slice"
+        && service.Service.Restart == "on-failure"
         && lib.hasPrefix "@" (first service.Service.ExecStart)
         && lib.hasSuffix "/bin/pi-verbs pi-verbs serve" (first service.Service.ExecStart)
         && lib.any (package: lib.getName package == "pi-verbs") home.home.packages
