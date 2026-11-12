@@ -2,16 +2,7 @@
 //! (home-network.json) in the launcher's words (tests/words.json).
 
 use super::*;
-
-fn model() -> HomeNetwork {
-    serde_json::from_str(include_str!("../home-network.json")).expect("the model parses")
-}
-
-fn words() -> Words {
-    let vocabulary: Value =
-        serde_json::from_str(include_str!("../tests/words.json")).expect("the words parse");
-    Words::read(&vocabulary).expect("the vocabulary has the Home Network's words")
-}
+use crate::rows::tests::{model, words};
 
 fn drawer(model: &HomeNetwork) -> Value {
     record(model, &words(), &Numbers::default())["drawer"].clone()

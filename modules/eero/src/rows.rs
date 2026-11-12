@@ -649,4 +649,4 @@ fn profile_row(model: &HomeNetwork, profile: &Profile, words: &Words) -> Value {
 
 #[cfg(test)]
 #[path = "rows_tests.rs"]
-mod tests;
+pub(crate) mod tests;

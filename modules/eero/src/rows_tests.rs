@@ -7,11 +7,13 @@
 
 use super::*;
 
-fn model() -> HomeNetwork {
+/// The contract's network, which the place's drawer is tested on too.
+pub(crate) fn model() -> HomeNetwork {
     serde_json::from_str(include_str!("../home-network.json")).expect("the model parses")
 }
 
-fn words() -> Words {
+/// The launcher's words for the Home Network, which its drawer says too.
+pub(crate) fn words() -> Words {
     let vocabulary: Value =
         serde_json::from_str(include_str!("../tests/words.json")).expect("the words parse");
     Words::read(&vocabulary).expect("the vocabulary has the Home Network's words")
