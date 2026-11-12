@@ -2171,7 +2171,11 @@ Scope {
         const row = Object.assign(whole(source, false, false), { weight: source.weight },
             says.side !== null ? says : {});
         row.prepared = Fuzzy.prepare(row.name);
-        row.keywords = Fuzzy.prepare([row.name, collection.noun].join(" "));
+        // With the other words the vocabulary gives it, as "eero", the
+        // name on the Home Network's boxes, finds the place rather than a
+        // node whose model says it.
+        row.keywords = Fuzzy.prepare([row.name, collection.noun]
+            .concat(Words.of(source.settings.name).words ?? []).join(" "));
         // Its words are what a person calls it, so they count as its name.
         row.named = true;
         return row;
