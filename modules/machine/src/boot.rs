@@ -51,7 +51,8 @@ pub fn record(root: &Root, asleep_s: Option<u64>) -> Value {
     let mut fields = uptime
         .split_whitespace()
         .filter_map(|f| f.parse::<f64>().ok());
-    let idle = match (fields.next(), fields.next()) {
+    let (up_s, idle_s) = (fields.next(), fields.next());
+    let idle = match (up_s, idle_s) {
         (Some(up), Some(idle)) if up > 0.0 && cpus > 0 => {
             // The idle time is every processor's, asleep left out, so
             // it's measured against the time awake.
@@ -68,6 +69,9 @@ pub fn record(root: &Root, asleep_s: Option<u64>) -> Value {
         "booted_at_s": booted,
         "asleep_s": asleep_s,
         "idle_ratio": idle,
+        // As the kernel says them, for Uptime's drawers.
+        "uptime_s": up_s,
+        "idle_s": idle_s,
         "kernel": root.said("/proc/sys/kernel/osrelease"),
         "kernel_build": root.said("/proc/sys/kernel/version"),
     })
