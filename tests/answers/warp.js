@@ -319,10 +319,18 @@ function run(failures, fromRoot) {
         drawerOf(stood("Connecting", "", 13 * hour - 120_000)).body,
         drawerOf(stood("Disconnected", "Manual", 11 * hour)).body
     ], [
-        "Connected to work but degraded for 30 min, with a 127 ms round trip.",
+        "Connected to work, degraded for 30 min, with a 127 ms round trip.",
         "Connecting to work for 2 min.",
         "Disconnected from work for 2 h."
     ]);
+    const slowFor = (reason, since) => Object.assign(stood("Connected", reason, 10 * hour),
+        { slow: { waiting_ms: 120, since_ms: since } });
+    machine("slow leads with how long it's been slow and what waits, in place of the trip",
+        drawerOf(slowFor("NetworkHealthy", 13 * hour - 240_000)).body,
+        "Connected to work, slow for 4 min, with 120 ms waiting.");
+    machine("degraded says more than slow in the lead too",
+        drawerOf(slowFor("NetworkDegraded", 13 * hour - 240_000)).body,
+        "Connected to work, degraded for 3 h, with a 127 ms round trip.");
     machine("nothing heard of how it stands leaves the drawer no lead",
         drawerOf(null).body, "");
     // What the shell keeps of WARP's reads while it's shown, two seconds
