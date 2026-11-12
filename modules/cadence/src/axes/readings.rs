@@ -47,6 +47,8 @@ pub struct Sources {
     pub meminfo: String,
     /// What spend is judged by: the changes that reached him, and the bill.
     pub landings: landings::Sources,
+    /// The harness's changes, read the same way.
+    pub harness: landings::Sources,
     /// The active quests and whether they're worked on and planned.
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
@@ -109,9 +111,11 @@ pub fn read(s: &Sources) -> Vec<Axis> {
 const DISAGREE: &str = "its sources disagree, and QCXZEB is settling which is true";
 
 fn resources(s: &Sources) -> Axis {
-    // Spend is the bill per core change that reached him and stayed, beside
-    // how many reached him, so a cheaper day that brought fewer is out.
-    let (bill, changes, _) = landings::readings(&s.landings, s.now, &TimeZone::system());
+    // Spend is the bill per core or harness change that reached him and
+    // stayed, beside how many reached him, so a cheaper day that brought
+    // fewer is out.
+    let (bill, changes, _) =
+        landings::readings(&s.landings, &s.harness, s.now, &TimeZone::system());
     let figure = |key: &str| s.day.as_ref().and_then(|d| d.figures.get(key).copied());
     let (_, swap) = crate::records::memory(&s.meminfo);
     let now = crate::records::avg300(&s.pressure);
@@ -120,6 +124,7 @@ fn resources(s: &Sources) -> Axis {
         vec![
             bill,
             changes,
+            landings::harness(&s.harness, s.now, &TimeZone::system()),
             Reading::new(
                 "spent on cache rewrites after compaction {}",
                 s.measures.last().and_then(|m| after_compaction(m)),
@@ -241,7 +246,7 @@ fn quality(s: &Sources) -> Axis {
             )
             .bar(Bar::AtMost(60.0))
             .from("cadence's card"),
-            landings::readings(&s.landings, s.now, &TimeZone::system()).2,
+            landings::readings(&s.landings, &s.harness, s.now, &TimeZone::system()).2,
             counted::regressions(&s.counted),
         ],
     )
@@ -616,6 +621,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),
         landings: landings::gather(folder, &runtime, now),
+        harness: landings::gather_harness(now),
         plans: plans::gather(),
         counted: counted::gather(folder, state_home, now),
         now,
@@ -678,7 +684,7 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         let spend = &resources(&Sources::default()).readings[0];
         assert_eq!(
             spend.words(),
-            "the bill per core change that reached you and stayed: no reading yet"
+            "the bill per core or harness change that reached you and stayed: no reading yet"
         );
         assert!(!spend.out(), "an unread bill was out");
     }
