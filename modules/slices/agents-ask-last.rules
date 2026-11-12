@@ -1,0 +1,13 @@
+// What no rule answered falls to the action's own default, which for most
+// asks for a password, and for some lets any process of the seat's session
+// through: libvirt's system connection, run0, a suspend. For an agent's
+// process this answers first, refusing it, so no default asks Joel or acts
+// for an agent unasked. placeOf, fromAgents and refused are
+// agents-ask-first.rules', read first.
+polkit.addRule(function (action, subject) {
+  var place = placeOf(subject);
+  if (fromAgents(place)) {
+    return refused(action, subject, place);
+  }
+  return polkit.Result.NOT_HANDLED;
+});

@@ -76,6 +76,7 @@
 }:
 let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
+  asks = pkgs.callPackage ./agents-ask.nix { };
   limits = {
     LimitRTPRIO = "10";
     LimitNICE = "-10";
@@ -733,11 +734,15 @@ in
     # change from a lasting one, so a change made without --runtime stays
     # in /etc/systemd/system.control until it's reverted with
     # `systemctl revert build.slice`; this configuration still sets the
-    # slices as they boot.
+    # slices as they boot. agents-ask.nix says why an agent raises no prompt.
     security.polkit.enable = true;
-    security.polkit.extraConfig = lib.concatMapStringsSep "\n" builtins.readFile [
-      ./work-slices.rules
-      ./swap-in.rules
+    security.polkit.extraConfig = lib.mkMerge [
+      (lib.mkBefore asks.first)
+      (lib.concatMapStringsSep "\n" builtins.readFile [
+        ./work-slices.rules
+        ./swap-in.rules
+      ])
+      (lib.mkAfter asks.last)
     ];
     systemd.user.slices.user.sliceConfig = {
       CPUWeight = "idle";

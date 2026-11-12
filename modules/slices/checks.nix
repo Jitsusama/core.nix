@@ -328,6 +328,28 @@
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
       touch $out
     '';
+
+  # A workstation's polkit rules, as polkitd assembles them, run in duktape,
+  # polkit's own engine, after polkit's init.js: what would ask Joel is
+  # refused for a process in agents.slice or jobs-work.slice, or one gone,
+  # and left to ask from his terminal and apps, and a grant stays a grant
+  # (agents-ask-test.rules).
+  an-agent-raises-no-polkit-prompt =
+    let
+      # fwupd's rules ask an administrator, so a machine with them shows
+      # that asking turned into a refusal.
+      machine = bareNixos [
+        self.nixosModules.graphical
+        self.nixosModules.fwupd
+      ];
+      rules = machine.config.environment.etc."polkit-1/rules.d/10-nixos.rules".text;
+    in
+    pkgs.runCommandLocal "an-agent-raises-no-polkit-prompt" { } ''
+      ${lib.getExe' pkgs.duktape "duk"} ${./agents-ask-polkit.rules} \
+        ${pkgs.polkit.src}/src/polkitbackend/init.js \
+        ${pkgs.writeText "10-nixos.rules" rules} ${./agents-ask-test.rules}
+      touch $out
+    '';
 }
 // onLinux {
   # clippy finds nothing in the jobs sorter, its tests included.

@@ -1,0 +1,73 @@
+// No agent's process may put a polkit prompt on Joel's screen: whatever
+// would have asked him is refused outright, so the agent hears a plain
+// "not authorized" and he never sees a box he didn't call up. An agent's
+// process is one in agents.slice, where every pi session runs, or in
+// jobs-work.slice, where the jobs sorter puts agents' commands; what Joel
+// starts at a terminal runs in jobs-awaited.slice and asks as it always did.
+// What a rule already grants without asking, a switch or a slice's weight,
+// agents keep. agents-ask.nix says why, and agents-ask-last.rules,
+// read after every other rule, refuses what polkit's own defaults would ask.
+//
+// This catches an agent's mistake, not one set on getting round it: a
+// process can move itself to another slice of the account's, and keeping
+// it from doing so is the fence's work.
+
+// Where the process asking runs: the cgroup the kernel has it in, or null
+// for one that's gone or can't be read.
+function placeOf(subject) {
+  try {
+    var cgroup = polkit.spawn(["@cat@", "/proc/" + subject.pid + "/cgroup"]);
+    return cgroup.replace(/^0::/, "").replace(/\n$/, "");
+  } catch (_gone) {
+    return null;
+  }
+}
+
+// Whether a place is an agent's. A process that's gone is taken as one,
+// since a prompt for it would answer nobody.
+function fromAgents(place) {
+  return place === null || /\/(agents|jobs-work)\.slice\//.test(place);
+}
+
+// polkit's own lines name only a process, gone by the time anyone reads
+// them, so each refusal, and each ask a rule puts to Joel, says where the
+// process ran: the next "who asked" is answered from the journal, as
+// polkit-asks. polkit.log can't say it, since polkitd runs with its
+// stderr closed (--no-debug), so logger does. A line that can't be written
+// changes no answer.
+function record(line) {
+  try {
+    polkit.spawn(["@logger@", "--tag", "polkit-asks", "--", line]);
+  } catch (_unwritten) {
+    // The answer stands without its line.
+  }
+}
+
+function refused(action, subject, place) {
+  record("refused " + action.id + " to pid " + subject.pid + " in " + (place || "a process gone"));
+  return polkit.Result.NO;
+}
+
+// Every rule added from here on has its asking turned into a refusal for
+// an agent's process, so a rule that asks an administrator (fwupd's, or a
+// switch to a system it doesn't know) never asks on an agent's behalf.
+// polkit reads the rules again into the same engine when they change, so
+// the wrapping starts from the addRule it first had, never from its own.
+polkit._addRuleAsGiven = polkit._addRuleAsGiven || polkit.addRule;
+(function () {
+  var addRule = polkit._addRuleAsGiven;
+  polkit.addRule = function (rule) {
+    addRule.call(polkit, function (action, subject) {
+      var result = rule(action, subject);
+      if (!/^auth_/.test(result)) {
+        return result;
+      }
+      var place = placeOf(subject);
+      if (fromAgents(place)) {
+        return refused(action, subject, place);
+      }
+      record("asks Joel for " + action.id + " for pid " + subject.pid + " in " + place);
+      return result;
+    });
+  };
+})();

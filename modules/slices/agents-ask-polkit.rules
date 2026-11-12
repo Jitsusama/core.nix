@@ -1,0 +1,23 @@
+// What polkitd gives its rules before polkit's own init.js runs, for
+// agents-ask-test.rules: the polkit object, and a spawn that reads a
+// process's cgroup from the processes the test makes, failing as cat
+// does for one that isn't there, and keeps each line given to logger for
+// the test to read back. It's in the ES5 duktape reads, as the
+// rules are, so it's named as they are.
+var polkit = {};
+var processes = {};
+var spawned = 0;
+var logged = [];
+
+polkit.spawn = function (argv) {
+  if (argv[1] === "--tag") {
+    logged.push(argv[4]);
+    return "";
+  }
+  spawned += 1;
+  var pid = /^\/proc\/([0-9]+)\/cgroup$/.exec(argv[1]);
+  if (pid === null || !(pid[1] in processes)) {
+    throw new Error("Error spawning helper: exited with status 1");
+  }
+  return "0::" + processes[pid[1]] + "\n";
+};
