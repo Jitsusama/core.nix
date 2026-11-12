@@ -59,6 +59,7 @@
   "launcher/RowsKept.js"
   "launcher/Order.js"
   "launcher/PlaceRow.js"
+  "launcher/CommandRow.js"
   "launcher/KeysHeld.js"
   "launcher/Awaited.js"
   "launcher/RowsPlace.js"

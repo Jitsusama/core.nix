@@ -81,6 +81,7 @@ import "launcher/Presented.js" as Presented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
+import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
 import "launcher/RowsPlace.js" as RowsPlace
@@ -1989,7 +1990,12 @@ Scope {
                 chord: [],
                 side: "",
                 count: command.says ?? "",
-                plain: true
+                plain: true,
+                // What it answers and a worked example or two, the
+                // vocabulary's fixed words (CommandRow.js), made only once
+                // the drawer follows the selection onto it.
+                thing: true,
+                drawer: () => CommandRow.drawer(command, Words.field.drawer?.command ?? "")
             };
             row.prepared = Fuzzy.prepare(row.name);
             return row;
