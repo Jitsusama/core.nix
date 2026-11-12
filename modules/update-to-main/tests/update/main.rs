@@ -248,6 +248,7 @@ impl World {
             health_within: 1,
             battery_floor: 20,
             refuse_while: Vec::new(),
+            follower_tells: None,
             holds: None,
             power_supplies: root.join("power"),
             cpu_pressure: root.join("pressure"),

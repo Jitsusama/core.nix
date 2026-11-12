@@ -25,7 +25,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -169,6 +169,9 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
                     if let Some(why) = follower.asked(heads, &ending, &ended, Instant::now()) {
                         println!("stopped until someone asks by hand: {why}");
                     }
+                    if let Some(why) = follower.to_tell() {
+                        told(&config, &why);
+                    }
                 }
             }
             // Said once until it changes, since the host may be away a while.
@@ -225,6 +228,24 @@ fn heard(config: &Config, heads: &Followed) -> std::io::Result<Line> {
     asking
         .join()
         .unwrap_or_else(|_| Err(std::io::Error::other("the ask's thread panicked")))
+}
+
+/// Tells the person why the machine can't update, with the command the
+/// module gives, and says in the log when that couldn't be done.
+fn told(config: &Config, why: &str) {
+    let Some([program, args @ ..]) = config.follower_tells.as_deref() else {
+        return;
+    };
+    match Command::new(program)
+        .args(args)
+        .arg(why)
+        .stdin(Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => println!("told: {why}"),
+        Ok(status) => eprintln!("update-to-main: telling that it can't update ended {status}"),
+        Err(e) => eprintln!("update-to-main: telling that it can't update: {e}"),
+    }
 }
 
 fn stopped(socket: &Path) -> ExitCode {

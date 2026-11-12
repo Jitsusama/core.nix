@@ -76,6 +76,11 @@ pub struct Config {
     /// What the machine may be busy with, such as a call, when an update
     /// mustn't start or switch.
     pub refuse_while: Vec<Busy>,
+    /// The command the follower runs, why given after its own arguments,
+    /// to tell its person the machine can't update (`crate::tell`); none
+    /// to only log it.
+    #[serde(default)]
+    pub follower_tells: Option<Vec<String>>,
     /// Daemons a switch mustn't restart unless an asker has granted it,
     /// such as the one every build on the machine goes through.
     #[serde(default)]

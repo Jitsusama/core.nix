@@ -15,7 +15,9 @@
 # CoreAudio. A follower, when one is named, is that account's launchd agent
 # asking whenever main moves (src/follow.rs); a switch it asked for waits,
 # once built, until nobody has touched a key or the pointer for two
-# minutes, and for 45 minutes at most, as NixOS's does.
+# minutes, and for 45 minutes at most, as NixOS's does. When the Mac can't
+# update, the follower says so in a notice (./tells-on-a-mac.sh), since
+# nobody reads its log.
 {
   config,
   lib,
@@ -64,6 +66,10 @@ in
         followerWaits = true;
         followerWaitsAtMost = 45 * 60;
       }
+    ];
+
+    jitsusama.update-to-main.followerTells = lib.mkDefault [
+      "${pkgs.writeShellScript "update-to-main-tells" (builtins.readFile ./tells-on-a-mac.sh)}"
     ];
 
     jitsusama.update-to-main.system = {

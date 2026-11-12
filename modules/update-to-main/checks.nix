@@ -106,10 +106,11 @@ in
   # whenever follow ends, as it does for a newer update-to-main, and
   # naming no store path, so a switch never reloads it under its own ask.
   # Every Mac refuses an update during a call, and the follower's switch
-  # waits while someone is at the Mac, for 45 minutes at most.
+  # waits while someone is at the Mac, for 45 minutes at most. When the
+  # Mac can't update, the follower tells its person.
   update-to-main-follows-on-a-mac =
     holds "update-to-main-follows-on-a-mac"
-      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, or a Mac would switch during a call or under someone at it."
+      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, tells nobody when the Mac can't update, or a Mac would switch during a call or under someone at it."
       (
         follows.Label == "org.jitsusama.update-to-main-follows"
         && follows.RunAtLoad
@@ -119,6 +120,7 @@ in
           lib.last follows.ProgramArguments
         )
         && !(darwin.launchd.user.agents ? update-to-main-follows)
+        && followed.jitsusama.update-to-main.followerTells != null
         && lib.all (refusal: !refusal.followerWaits) (refusesOnAMac "a call is on")
         && refusesOnAMac "a call is on" != [ ]
         && lib.any (refusal: refusal.followerWaits && refusal.followerWaitsAtMost == 45 * 60) (
