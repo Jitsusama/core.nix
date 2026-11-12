@@ -53,7 +53,7 @@ use pw::context::ContextRc;
 use pw::device::{Device, DeviceChangeMask, DeviceInfoRef, DeviceListener};
 use pw::main_loop::MainLoopRc;
 use pw::metadata::{Metadata, MetadataListener};
-use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener};
+use pw::node::{Node, NodeChangeMask, NodeInfoRef, NodeListener, NodeState};
 use pw::registry::{GlobalObject, RegistryRc};
 use pw::spa::param::ParamType;
 use pw::spa::pod::Pod;
@@ -507,6 +507,11 @@ fn node(
         .info({
             let shared = Arc::clone(shared);
             move |info: &NodeInfoRef| {
+                // A filter's half running is sound passing through it.
+                if info.change_mask().contains(NodeChangeMask::STATE) {
+                    let running = matches!(info.state(), NodeState::Running);
+                    told(&shared, Change::Running { id, running });
+                }
                 // An info says its properties only where they changed,
                 // as its first does.
                 if !info.change_mask().contains(NodeChangeMask::PROPS) {

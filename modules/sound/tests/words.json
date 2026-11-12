@@ -144,6 +144,9 @@
       "in": "sound",
       "name": "Gain"
     },
+    { "id": "sound:tuning", "in": "sound", "name": "Tuning" },
+    { "id": "sound:voice", "in": "sound", "name": "Voice Processing" },
+    { "id": "sound:filter", "in": "sound", "name": "Filter" },
     {
       "id": "verb:sound-louder",
       "command": "setlocal",

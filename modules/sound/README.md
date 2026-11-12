@@ -33,6 +33,8 @@ levels and choices, and read whole files rewritten by another daemon.
 |                         | `channels`: which channel each volume is of     | Channels                |
 |                         | `facts`: what desk-facts says of its card, by   | its last parts, and its |
 |                         | the `key` it's found by                         | drawer                  |
+|                         | `flows`: for a filter, the devices its sound    | Tuning, Voice           |
+|                         | passes to or from now, while its half runs      | Processing              |
 | `stream:<id>`           | a program's stream, by its node's PipeWire id:  | each device's programs  |
 |                         | its name, `sink`, `volume`, `volumes`, `muted`  | and each program's row  |
 |                         | and `properties`, as a device's are             |                         |
@@ -114,13 +116,17 @@ a step in, in the order the launcher lists them: using it, where it
 isn't the one chosen; whether it's Muted, one switch; its Volume, or a
 microphone's Gain, with Louder, Quieter and four levels a step in; and
 its Programs, or a microphone's Recording, each playing through it or
-through a filter aimed at it (`src/programs.rs`); its Port, where its
-card offers more than one, with each it can move to; its Channels, each
-at its level (`src/channels.rs`); a Bluetooth device's Profile; its
-Hardware, the chips its card's components name and a USB card's ids
-(`src/hardware.rs`); and last, what desk-facts says of its card (`src/desk.rs`), read from the
-sound.json it keeps in `$XDG_RUNTIME_DIR/desk` and read again each time
-it writes it, so the shell reads no file for Sound. Each part's act asks
+through a filter aimed at it (`src/programs.rs`); its Tuning, or a
+microphone's Voice Processing, the filters aimed at it, saying whether
+sound passes through them now, each at its level a step in
+(`src/filters.rs`); its Port, where its card offers more than one, with
+each it can move to; its Channels, each at its level
+(`src/channels.rs`); a Bluetooth device's Profile; its Hardware, the
+chips its card's components name and a USB card's ids
+(`src/hardware.rs`); and last, what desk-facts says of its card
+(`src/desk.rs`), read from the sound.json it keeps in
+`$XDG_RUNTIME_DIR/desk` and read again each time it writes it, so the
+shell reads no file for Sound. Each part's act asks
 the daemon's own act, so the shell runs no process to do it.
 
 A device's programs are its streams grouped by the desktop entry each
@@ -137,6 +143,5 @@ The launcher's Sound lists these rows rather than making its own,
 sends programs through the daemon rather than a `pw-metadata` each, and
 reads how nodes keep time from it rather than from `pw-top`. A device's
 drawer is still made in the shell, from Quickshell's nodes, these
-timings and the parts served; a program's is served. Next come the rest
-of each device's parts, its filters and Level, then its drawer served
-whole.
+timings and the parts served; a program's is served. Next come the last
+of each device's parts, its Level, then its drawer served whole.

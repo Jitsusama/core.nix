@@ -42,6 +42,8 @@ pub enum Change {
     Gone { id: u32 },
     /// A link, from the node it goes out of to the one it goes into.
     Link { id: u32, from: u32, to: u32 },
+    /// Whether a node is running, moving sound now, as its info says.
+    Running { id: u32, running: bool },
     /// A card saying which of its routes plays one of its profile's
     /// devices, as its Route param does.
     Route { card: u32, index: i32, device: i32 },
@@ -212,6 +214,7 @@ impl Devices {
                 self.nodes.remove(&id).is_some() || sent || stream
             }
             Change::Link { id, from, to } => self.streams.link(id, from, to),
+            Change::Running { id, running } => self.streams.running(id, running),
             // A route moves the port its device says is chosen.
             Change::Route {
                 card,
@@ -377,6 +380,21 @@ impl Devices {
         records
     }
 
+    /// The devices a filter's sound passes to or from now, by their
+    /// names: those its other half, a stream in its link group, is linked
+    /// to while it runs. Any other node's are none.
+    fn flows(&self, node: &Node) -> Vec<&str> {
+        let group = node.properties.get("node.link-group");
+        group.map_or_else(Vec::new, |group| {
+            self.streams
+                .flows(group)
+                .iter()
+                .filter_map(|id| self.nodes.get(id)?.properties.get("node.name"))
+                .map(String::as_str)
+                .collect()
+        })
+    }
+
     fn devices(&self) -> Vec<Value> {
         self.nodes
             .iter()
@@ -403,6 +421,7 @@ impl Devices {
                     "form": self.form(node),
                     "unplugged": self.unplugged(node),
                     "ports": self.ported(node),
+                    "flows": self.flows(node),
                 }))
             })
             .collect()

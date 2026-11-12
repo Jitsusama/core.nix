@@ -32,6 +32,9 @@ pub struct Stream {
     pub muted: bool,
     /// The format it moves its audio in, while it's set up to move any.
     pub format: Option<Format>,
+    /// Whether it's running, kept only of a filter's half, since nothing
+    /// else of a stream's state is shown.
+    pub running: bool,
 }
 
 impl Stream {
@@ -91,6 +94,42 @@ impl Streams {
             return false;
         };
         std::mem::replace(&mut stream.format, format) != stream.format
+    }
+
+    /// Takes in whether a filter's half is running, answering whether it
+    /// changed; any other node's state is let be, so a program pausing
+    /// works nothing out again.
+    pub fn running(&mut self, id: u32, running: bool) -> bool {
+        let Some(stream) = self.streams.get_mut(&id) else {
+            return false;
+        };
+        if stream.said("node.link-group").is_empty() {
+            return false;
+        }
+        std::mem::replace(&mut stream.running, running) != running
+    }
+
+    /// The nodes a filter's halves in this link group are linked to while
+    /// they run, as Sound.qml's `flowing` read an active link: a playing
+    /// half's link goes into its device, a recording half's comes out of
+    /// it.
+    pub fn flows(&self, group: &str) -> Vec<u32> {
+        let halves: Vec<u32> = self
+            .streams
+            .iter()
+            .filter(|(_, stream)| stream.running && stream.said("node.link-group") == group)
+            .map(|(id, _)| *id)
+            .collect();
+        self.links
+            .values()
+            .filter_map(
+                |(from, to)| match (halves.contains(from), halves.contains(to)) {
+                    (true, false) => Some(*to),
+                    (false, true) => Some(*from),
+                    _ => None,
+                },
+            )
+            .collect()
     }
 
     /// Takes in a link, from the node it goes out of to the one it goes
@@ -254,5 +293,38 @@ mod tests {
         assert!(streams.format(90, None), "a format let go of is heard");
         assert_eq!(streams.records(names)[0]["format"], Value::Null);
         assert!(!streams.format(77, None), "no stream, no format");
+    }
+
+    // A filter's sound passes to its device only while its half runs; a
+    // program's stream running or not changes nothing, since none of its
+    // state is shown.
+    #[test]
+    fn a_filter_flows_to_its_device_only_while_its_half_runs() {
+        let mut streams = Streams::default();
+        let group = [("node.link-group", "filter-1")];
+        streams.node(92, stream("tuning", "Stream/Output/Audio", &group));
+        streams.node(93, stream("spotify", "Stream/Output/Audio", &[]));
+        streams.link(100, 92, 40);
+        streams.link(101, 93, 40);
+        assert!(
+            streams.flows("filter-1").is_empty(),
+            "a half not running passes nothing"
+        );
+        assert!(streams.running(92, true), "a half starting is heard");
+        assert_eq!(streams.flows("filter-1"), [40]);
+        assert!(
+            streams.flows("filter-2").is_empty(),
+            "another group's flows nowhere"
+        );
+        assert!(!streams.running(92, true), "running again changes nothing");
+        assert!(
+            !streams.running(93, true),
+            "a program's stream state is let be"
+        );
+        assert!(streams.running(92, false), "a half stopping is heard");
+        assert!(
+            streams.flows("filter-1").is_empty(),
+            "a half stopped passes nothing"
+        );
     }
 }
