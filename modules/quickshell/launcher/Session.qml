@@ -128,7 +128,8 @@ Provider {
         // words beside them (`said`).
         const words = Object.assign({}, entry.said, entry.tells);
         const told = Power.lockSaid(provider.windowsOpen,
-            provider.bound(provider.locks).map(key => key.text).join(" "), words);
+            provider.bound(provider.locks).map(key => key.text).join(" "), words,
+            provider.windowsSilent);
         return {
             eyebrow: words.eyebrow ?? "",
             eyebrowNames: true,
@@ -144,7 +145,8 @@ Provider {
     function endingDrawer(key) {
         const entry = Words.of(key);
         const words = Object.assign({}, Words.of("session:Lock").said, entry.said, entry.tells);
-        const told = Power.endingSaid(provider.windowsOpen, `${key}:ends`, words);
+        const told = Power.endingSaid(provider.windowsOpen, `${key}:ends`, words,
+            provider.windowsSilent);
         return {
             eyebrow: words.eyebrow ?? "",
             eyebrowNames: true,
@@ -662,9 +664,12 @@ Provider {
 
     // How many windows are open and whose, as the windows daemon counts
     // them (Power.js's openOf), for Lock's drawer and those of the rows
-    // that end the session.
+    // that end the session, or null until it answers.
     readonly property var windowsOpen: windowsOpenWatch.revision >= 0
-        ? Power.openOf(windowsOpenWatch.held["windows-open"] ?? null) : Power.openOf(null)
+        ? Power.openOf(windowsOpenWatch.held["windows-open"] ?? null) : null
+    // Whether it isn't answering, so those drawers say so rather than
+    // nothing (rule 2ff24ddd); nothing while it's still being asked.
+    readonly property bool windowsSilent: windowsOpenWatch.state === "not answering"
 
     // Watched while the launcher is open, as Windows' are, so the drawers
     // that say it have it before Joel rests on their rows, or while a
@@ -684,7 +689,7 @@ Provider {
 
     // What ending the session closes, said before it's done.
     readonly property string closing: {
-        const open = provider.windowsOpen.open;
+        const open = provider.windowsOpen?.open ?? 0;
         return open === 0 ? "" : `, Closing ${open === 1 ? "the Window" : `${open} Windows`}`;
     }
 
