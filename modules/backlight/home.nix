@@ -18,6 +18,9 @@
 # (src/evening.rs). It eases from wherever the screen is, a restart's too,
 # a pick then holds until the morning, and it never dims past what Joel
 # set in that light in an evening, kept in ~/.local/state/backlight/evening.
+# Its start moves to the wind-down modules/rhythm reads from when Joel
+# stops, two and a half hours before, once its profile is there
+# (src/tonight.rs).
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
 # panel at the same share of its own brightest (src/monitor/), once
 # udev opens its bus to the seat, as modules/ddcutil does. What such a
@@ -79,12 +82,13 @@ in
   options.jitsusama.backlight.evening.start = lib.mkOption {
     type = lib.types.nullOr clock;
     # Two and a half hours before a midnight bed, the evening the light
-    # research (RSCH-20261108-HGB8JZ) keeps dim, until it follows when Joel
-    # usually stops (modules/rhythm).
+    # research (RSCH-20261108-HGB8JZ) keeps dim, while rhythm's profile
+    # (modules/rhythm) isn't there to say when Joel usually stops.
     default = "21:30";
     description = ''
       When the built-in screen starts to dim for the evening, by the local
-      clock, as "21:30": it eases to 70% of the brightness the light asks
+      clock, as "21:30", until rhythm's profile says when tonight's
+      wind-down begins, which it follows from then on: it eases to 70% of the brightness the light asks
       for over the half hour after, from wherever the screen is, never past
       what Joel set in that light in an evening, and never under about 20
       nits. Null keeps it from dimming at all.
