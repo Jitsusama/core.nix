@@ -83,6 +83,10 @@ impl Domain {
         });
         let places = said.get("place").and_then(words);
         let fields = said.get("fields").and_then(words);
+        let limit = said
+            .get("limit")
+            .and_then(Value::as_u64)
+            .and_then(|limit| usize::try_from(limit).ok());
         let every = said
             .get("every")
             .and_then(Value::as_u64)
@@ -95,7 +99,12 @@ impl Domain {
                 keys: keys.unwrap_or_default(),
             },
             "list" => match self.kinds(&said) {
-                Ok(kinds) => Ask::List { id, kinds, places },
+                Ok(kinds) => Ask::List {
+                    id,
+                    kinds,
+                    places,
+                    limit,
+                },
                 Err(kind) => Ask::UnknownKind { id, kind },
             },
             "watch" => match self.kinds(&said) {
@@ -147,11 +156,13 @@ pub enum Ask {
         id: Value,
         keys: Vec<String>,
     },
-    /// Every record of these kinds, or those of them in these places.
+    /// Every record of these kinds, or those of them in these places, at
+    /// most `limit` of them.
     List {
         id: Value,
         kinds: Vec<String>,
         places: Option<Vec<String>>,
+        limit: Option<usize>,
     },
     /// Records of these kinds as they change: all of them, these keys, or
     /// those in these places; whole, or only these fields of each, told
@@ -312,6 +323,7 @@ mod tests {
                 id: json!(5),
                 kinds: vec!["row".into()],
                 places: Some(vec!["displays".into()]),
+                limit: None,
             },
             "a list of one place's rows"
         );

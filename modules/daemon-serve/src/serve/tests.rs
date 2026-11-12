@@ -375,3 +375,56 @@ fn a_watch_hears_how_the_sources_stand_when_they_moved_since_its_hello() {
         "the watch hears what hello no longer says"
     );
 }
+
+#[test]
+fn a_list_may_name_its_places_and_says_only_as_many_as_asked() {
+    let (shared, mut client, _folder) = served("listed", Box::new(|_| None));
+    shared.change(
+        vec![
+            row("agents", "O", "kelp"),
+            row("agents", "P", "reef"),
+            row("mail", "m", "hi"),
+        ],
+        json!({}),
+    );
+    let agents = client.ask(&json!({"id": 1, "ask": "list", "kind": "row", "place": "agents"}));
+    assert_eq!(
+        agents["records"],
+        json!([row("agents", "O", "kelp"), row("agents", "P", "reef")]),
+        "only Agents' rows"
+    );
+    let one = client.ask(&json!({"id": 2, "ask": "list", "kind": "row", "limit": 1}));
+    assert_eq!(
+        one["records"],
+        json!([row("agents", "O", "kelp")]),
+        "the first, alone"
+    );
+}
+
+#[test]
+fn a_daemon_answering_get_itself_is_asked_for_what_it_holds_none_of() {
+    let own: Own = Box::new(|said| {
+        (said["ask"] == "get")
+            .then(|| json!({"records": [{"key": said["keys"][0], "kind": "row", "found": true}]}))
+    });
+    let (shared, mut client, _folder) = served("own-get", own);
+    shared.answers(&["get"]);
+    let found = client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:search:x"]}));
+    assert_eq!(
+        found,
+        json!({"id": 1, "records": [{"key": "row:search:x", "kind": "row", "found": true}]}),
+        "the daemon found it, as a search's message is asked of Slack"
+    );
+}
+
+#[test]
+fn a_daemon_reads_back_what_it_holds() {
+    let (shared, _client, _folder) = served("held", Box::new(|_| None));
+    shared.change(vec![row("agents", "O", "kelp")], json!({}));
+    assert_eq!(
+        shared.held("row:agents:O"),
+        Some(row("agents", "O", "kelp")),
+        "the record as it was given"
+    );
+    assert_eq!(shared.held("row:agents:P"), None, "and none it wasn't");
+}

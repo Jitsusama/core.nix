@@ -110,11 +110,15 @@ impl Watch {
         let kind = domain
             .kind_of(key)
             .is_some_and(|kind| self.kinds.iter().any(|k| k == kind));
-        let place = self.places.as_ref().is_none_or(|places| {
-            place_of(key).is_some_and(|place| places.iter().any(|one| one == place))
-        });
-        kind && place
+        kind && placed(self.places.as_deref(), key)
     }
+}
+
+/// Whether a key is in one of these places, or `places` names none.
+fn placed(places: Option<&[String]>, key: &str) -> bool {
+    places.is_none_or(|places| {
+        place_of(key).is_some_and(|place| places.iter().any(|one| one == place))
+    })
 }
 
 struct Held {
@@ -173,6 +177,8 @@ pub struct Shared {
     heed: OnceLock<Heed>,
     /// The daemon's own asks answered each on a thread of its own.
     slow: OnceLock<&'static [&'static str]>,
+    /// The interface's asks the daemon answers itself.
+    answers: OnceLock<&'static [&'static str]>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -206,6 +212,7 @@ impl Shared {
             paced: Condvar::new(),
             heed: OnceLock::new(),
             slow: OnceLock::new(),
+            answers: OnceLock::new(),
         })
     }
 
@@ -221,6 +228,40 @@ impl Shared {
     /// its connection; only the first a daemon gives is kept.
     pub fn slow(&self, asks: &'static [&'static str]) {
         let _ = self.slow.set(asks);
+    }
+
+    /// Hands these of the interface's own asks to the daemon's `own`,
+    /// from then on, for a daemon whose answer reaches past what it
+    /// holds, as Slack's `get` asks Slack for a message a search found;
+    /// only the first a daemon gives is kept. Named in `slow` too, each
+    /// is answered on a thread of its own.
+    pub fn answers(&self, asks: &'static [&'static str]) {
+        let _ = self.answers.set(asks);
+    }
+
+    /// The record held under `key`, as the daemon last gave it, so one
+    /// keeping when each record last changed reads what it said before.
+    pub fn held(&self, key: &str) -> Option<Value> {
+        lock(self).records.get(key).cloned()
+    }
+
+    /// What a line asks, an ask of the interface's the daemon answers
+    /// itself (`answers`) as one of its own.
+    fn asked(&self, line: &str) -> Ask {
+        let asked = self.domain.ask(line);
+        let word = match &asked {
+            Ask::Get { .. } => "get",
+            Ask::List { .. } => "list",
+            _ => return asked,
+        };
+        let answered = self.answers.get().is_some_and(|asks| asks.contains(&word));
+        match serde_json::from_str::<Value>(line) {
+            Ok(said) if answered => Ask::Own {
+                id: said.get("id").cloned().unwrap_or(Value::Null),
+                said,
+            },
+            _ => asked,
+        }
     }
 
     fn is_slow(&self, said: &Value) -> bool {
@@ -456,7 +497,7 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     let mut greeted: Option<Value> = None;
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
-        let asked = shared.domain.ask(&line);
+        let asked = shared.asked(&line);
         if let Ask::Own { id, said } = &asked
             && shared.is_slow(said)
         {
@@ -580,12 +621,7 @@ fn records_of(
             held.given
                 .iter()
                 .filter_map(move |key| held.records.get_key_value(key))
-                .filter(move |(key, _)| {
-                    domain.kind_of(key) == Some(kind)
-                        && places.is_none_or(|places| {
-                            place_of(key).is_some_and(|place| places.iter().any(|p| p == place))
-                        })
-                })
+                .filter(move |(key, _)| domain.kind_of(key) == Some(kind) && placed(places, key))
                 .map(|(_, record)| record.clone())
         })
         .collect()
@@ -642,8 +678,14 @@ fn answer(
         Ask::Get { id, keys } => {
             json!({"id": id, "records": records_of(domain, held, &[], Some(&keys), None)})
         }
-        Ask::List { id, kinds, places } => {
-            let records = records_of(domain, held, &kinds, None, places.as_deref());
+        Ask::List {
+            id,
+            kinds,
+            places,
+            limit,
+        } => {
+            let mut records = records_of(domain, held, &kinds, None, places.as_deref());
+            records.truncate(limit.unwrap_or(usize::MAX));
             json!({"id": id, "records": records})
         }
         Ask::Watch { .. } => unreachable!("a watch is answered above"),
