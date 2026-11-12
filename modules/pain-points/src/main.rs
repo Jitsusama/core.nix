@@ -98,7 +98,12 @@ fn read(run: &Run) -> Result<String, String> {
         None => (Vec::new(), 0),
     };
     fs::create_dir_all(&run.state).map_err(|e| format!("{}: {e}", run.state.display()))?;
-    let logs = follow_pi(&run.sessions, &run.state.join("pi-logs.json"), start)?;
+    let logs = follow_pi(
+        &run.sessions,
+        &run.state.join("pi-logs.json"),
+        start,
+        &reader(),
+    )?;
     let turns: Vec<&[pi::Turn]> = logs.values().map(|log| log.turns.as_slice()).collect();
     let messages = turns
         .iter()
@@ -179,10 +184,20 @@ fn summary(
 /// Brings each session log written today up to date in the reading state
 /// kept at `state`, and gives every log's turns. A log is named in the
 /// state by its file's name alone, which says when it began, not where.
-fn follow_pi(sessions: &Path, state: &Path, since: i64) -> Result<BTreeMap<String, Log>, String> {
+fn follow_pi(
+    sessions: &Path,
+    state: &Path,
+    since: i64,
+    reader: &str,
+) -> Result<BTreeMap<String, Log>, String> {
+    // What a turn holds is the reading of the build that read it, so a
+    // state another build kept, or one from before builds were named, is
+    // read again from each log's start rather than gone on from.
     let mut logs: BTreeMap<String, Log> = fs::read(state)
         .ok()
-        .and_then(|kept| serde_json::from_slice(&kept).ok())
+        .and_then(|kept| serde_json::from_slice::<Kept>(&kept).ok())
+        .filter(|kept| kept.reader == reader)
+        .map(|kept| kept.logs)
         .unwrap_or_default();
     let mut present = Vec::new();
     for folder in fs::read_dir(sessions)
@@ -225,9 +240,28 @@ fn follow_pi(sessions: &Path, state: &Path, since: i64) -> Result<BTreeMap<Strin
     for log in logs.values_mut() {
         log.prune(since);
     }
-    let kept = serde_json::to_string(&logs).map_err(|e| e.to_string())?;
-    write_whole(state, &kept)?;
-    Ok(logs)
+    let kept = Kept {
+        reader: reader.to_string(),
+        logs,
+    };
+    write_whole(
+        state,
+        &serde_json::to_string(&kept).map_err(|e| e.to_string())?,
+    )?;
+    Ok(kept.logs)
+}
+
+/// The reading state, with the build that read it.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Kept {
+    reader: String,
+    logs: BTreeMap<String, Log>,
+}
+
+/// This build of the program, as the path it runs from, which in the Nix
+/// store changes with each build.
+fn reader() -> String {
+    env::current_exe().map_or_else(|_| String::new(), |p| p.display().to_string())
 }
 
 /// Writes a file whole, so a reader never sees half of it.
@@ -459,6 +493,48 @@ mod tests {
                 "no session's folder is kept: {kept}"
             );
         }
+    }
+
+    #[test]
+    fn a_state_another_build_kept_is_read_anew() {
+        let root = env::temp_dir().join(format!("pain-points-reader-{}", std::process::id()));
+        let folder = root.join("sessions/--home-someone--");
+        fs::create_dir_all(&folder).expect("a scratch folder");
+        let at: i64 = 1_794_412_800_000;
+        let log = serde_json::json!({
+            "type": "message", "id": "a", "parentId": null,
+            "timestamp": "2026-11-11T16:00:00.000Z",
+            "message": {"role": "user", "timestamp": at, "content": "go"}
+        })
+        .to_string()
+            + "\n";
+        let name = "2026-11-11T16-00-00-000Z_0001.jsonl";
+        fs::write(folder.join(name), &log).expect("a log");
+        let state = root.join("pi-logs.json");
+        let read_through =
+            serde_json::json!({name: {"end": log.len(), "open": false, "turns": []}});
+        let turns = |kept: &serde_json::Value, reader: &str| {
+            fs::write(&state, kept.to_string()).expect("a state");
+            let logs = follow_pi(&root.join("sessions"), &state, 0, reader).expect("it reads");
+            logs.get(name).map_or(0, |log| log.turns.len())
+        };
+        let kept = serde_json::json!({"reader": "/nix/store/a-pain-points", "logs": read_through});
+        assert_eq!(
+            turns(&kept, "/nix/store/a-pain-points"),
+            0,
+            "the build that kept it goes on from where it read to"
+        );
+        assert_eq!(
+            turns(&kept, "/nix/store/b-pain-points"),
+            1,
+            "another build may count a turn otherwise, so it reads the log again"
+        );
+        assert_eq!(
+            turns(&read_through, "/nix/store/b-pain-points"),
+            1,
+            "a state that names no build is read again"
+        );
+        fs::remove_dir_all(&root).expect("the scratch folder goes");
     }
 
     #[test]

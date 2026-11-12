@@ -1683,13 +1683,15 @@
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
     with nothing; joins an opening that came straight back to a failed search or the same row,
     ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
-    reads pi's logs from where it stopped, counting only what Joel typed up to the call that hands
+    reads pi's logs from where it stopped, or anew when another build kept them, counting only
+    what Joel typed up to the call that hands
     his turn back, pi's queue and preparing past a second, a tool holding the session past pi's
     minute, a provider's error, a stopped turn or a message said again, and after a nudge only
     its first reply, never the model's thinking or the work he asked for, at most
     two minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or
     its line; and reads Chrome's history from its bytes in memory, asking only when each visit
-    began and how, to count reloads a minute apart and going back within seconds, keeping no page
+    began and how, to count reloads a minute apart, leaving out a page reloading itself, and
+    going back within seconds, keeping no page
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
