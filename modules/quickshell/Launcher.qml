@@ -4634,6 +4634,13 @@ Scope {
         const words = prompt.text;
         if (words === "")
             return;
+        // :q leaves the line, back to the row that asked, rather than going
+        // as words; a secret's line gives it, as a password may be :q.
+        if (asking.secret !== true && CommandBinding.leaves(words, Options.commands ?? {})) {
+            prompt.text = "";
+            back();
+            return;
+        }
         asking.given(words);
         prompt.text = "";
         searchNow();

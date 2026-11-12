@@ -112,3 +112,15 @@ function wordsFor(act, of) {
     }
     return {};
 }
+
+// Whether a line typed where words are asked for, such as a session's talk
+// line, is a command to leave it rather than words to give: a colon, then
+// what the command line reads as :quit (`table` the key language's
+// commands), as :q leaves a page. Joel's vi keys make :q typed alone mean
+// leave (2026-11-11, when it went to a session as his words), and words
+// that only hold it are given as typed.
+function leaves(words, table) {
+    const typed = String(words ?? "").trim();
+    return typed.startsWith(":")
+        && Commands.ran(typed.slice(1), Commands.listed({ table })).entry?.kind === "quit";
+}

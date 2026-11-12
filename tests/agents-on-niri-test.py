@@ -308,6 +308,12 @@ def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     shell.launcher_until(
         lambda shown: shown["asking"] and shown["held"] == ["agents", "Listening Quest"]
     )
+    # :q typed alone leaves the line rather than going to it as words, as Joel's vi keys
+    # mean it: words given keep it asking for more, saying whom they went to.
+    shell.send_chars(":q")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: not shown["asking"])
+    assert "Listening Quest" not in shell.showing()["footer"], shell.showing()
     shell.close_launcher()
     found(shell, "listening quest", "Listening Quest")
     shell.step_in("ctrl-bracketright")
