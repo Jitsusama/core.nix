@@ -224,7 +224,10 @@ lists. A gate whose process is gone, or that started three hours ago, holds
 nothing back. A change run again after a merge left its pass stale keeps
 its tree's place, the start of the first gate `ready` saw there in the last
 six hours (`places.json` in the net's state), so it goes behind only the
-gates that started before that one. A machine switches only
+gates that started before that one. A change that passed waits so for at
+most 15 minutes from its pass, then goes first: waiting saves the other
+gate's run only by costing this change one of its own, and a tree that
+keeps running again keeps its early place for good. A machine switches only
 to merged main, and a bad switch is undone by switching back to the
 generation before it.
 

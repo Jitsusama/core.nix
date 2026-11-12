@@ -18,6 +18,13 @@
 //! gate counts as having started when its tree's first gate did
 //! (`places.rs`), so a change that runs again after a merge left its pass
 //! stale keeps its place rather than going behind every gate since.
+//!
+//! A change that passed waits so for at most [`PATIENCE`], then goes first.
+//! Waiting saves the other gate's run only by costing this change one of its
+//! own once the other merges, so it's a turn, not a right: on 11 November a
+//! change that passed at 22:40 and again at 23:14 was refused six times in
+//! an hour, each for another tree's gate placed before it on words.json,
+//! since trees that run again keep their places for good.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -30,6 +37,11 @@ use crate::places::Places;
 /// saturated lenders, so this leaves room, while a gate that hangs still
 /// lets merges go within a few hours.
 pub const LONGEST: u64 = 3 * 60 * 60;
+
+/// The longest a change that passed waits on earlier gates, from when its
+/// pass was kept: about the time one gate takes, so an earlier gate nearly
+/// done still ends first, and one far from done doesn't hold a pass back.
+pub const PATIENCE: u64 = 15 * 60;
 
 /// A gate going now, as nix-offload said it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,6 +100,8 @@ pub struct Ahead<'a> {
 /// the tree it's in, and the files it changes.
 pub struct Asking<'a> {
     pub started: u64,
+    /// When its pass was kept, which [`PATIENCE`] counts from.
+    pub passed: u64,
     pub here: &'a Path,
     pub ours: &'a [String],
 }
@@ -96,7 +110,7 @@ pub struct Asking<'a> {
 /// earliest that counts, as `place` says, as started before it, still runs
 /// as `alive` says of it, hasn't run past [`LONGEST`] by `now` since it
 /// really started, and changes, as `files_of` says, a file of its that's no
-/// list.
+/// list. A change that passed [`PATIENCE`] ago waits on none.
 pub fn ahead<'a>(
     gates: &'a [Gate],
     asking: &Asking,
@@ -105,6 +119,9 @@ pub fn ahead<'a>(
     alive: &dyn Fn(&Gate) -> bool,
     files_of: &dyn Fn(&Gate) -> Option<Vec<String>>,
 ) -> Option<Ahead<'a>> {
+    if now.saturating_sub(asking.passed) >= PATIENCE {
+        return None;
+    }
     let ours: BTreeSet<&str> = asking
         .ours
         .iter()
@@ -155,8 +172,10 @@ pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
     let here = std::env::current_dir().ok()?;
     let now = crate::state::now();
     let places = placed(&gates, &here, Some(its_gate), now);
+    let kept = kept_at(passes, &crate::ready::record).unwrap_or(now);
     let asking = Asking {
         started: places.start(&here, its_gate, now),
+        passed: kept,
         here: &here,
         ours,
     };
@@ -166,12 +185,33 @@ pub fn waits(passes: &[&str], ours: &[String]) -> Option<String> {
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
          one's, as its tree's first gate did, still runs and changes {} too; merging first \
          would leave its pass stale, so merge again once it ends, which needs no new run \
-         here unless it merges first and moves these",
+         here unless it merges first and moves these; this one waits at most {} more \
+         minutes, then goes first",
         held.gate.folder.display(),
         crate::state::short(&held.gate.commit),
         (asking.started - held.started) / 60,
-        held.shared.join(", ")
+        held.shared.join(", "),
+        (PATIENCE.saturating_sub(now.saturating_sub(kept))).div_ceil(60)
     ))
+}
+
+/// When the pass a change merges on was kept, in seconds since the epoch:
+/// when the record of the first of `passes` that kept a start was last
+/// written, which nix-offload does as its gate passes.
+fn kept_at(passes: &[&str], record: &dyn Fn(&str) -> String) -> Option<u64> {
+    let commit = passes
+        .iter()
+        .find(|commit| started(&record(commit)).is_some())?;
+    let written = fs::metadata(crate::ready::record_of(commit)?)
+        .ok()?
+        .modified()
+        .ok()?;
+    Some(
+        written
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs(),
+    )
 }
 
 /// Keep the place of the tree asking, whose pass at the first of `passes`
@@ -281,9 +321,29 @@ mod tests {
     fn asking<'a>(started: u64, here: &'a str, ours: &'a [String]) -> Asking<'a> {
         Asking {
             started,
+            passed: NOW,
             here: Path::new(here),
             ours,
         }
+    }
+
+    #[test]
+    fn a_pass_waits_on_an_earlier_gate_only_so_long() {
+        let gates = [gate(1, "/a", 100)];
+        let ours = owned(&["y.rs"]);
+        let touch = touching(&["y.rs"]);
+        let mut waiting = asking(200, "/b", &ours);
+        waiting.passed = NOW - PATIENCE + 1;
+        assert!(
+            ahead(&gates, &waiting, NOW, &own, &everyone, &touch).is_some(),
+            "a pass short of its patience went ahead of an earlier gate"
+        );
+        waiting.passed = NOW - PATIENCE;
+        assert_eq!(
+            ahead(&gates, &waiting, NOW, &own, &everyone, &touch),
+            None,
+            "a pass that waited its patience was still held back"
+        );
     }
 
     #[test]
