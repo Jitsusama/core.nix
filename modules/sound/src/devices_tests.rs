@@ -148,6 +148,29 @@ fn a_device_says_what_its_doing_and_in_what_format() {
     assert_eq!(said_state(&NodeState::Error("no card")), "error");
 }
 
+// A node's first info says its properties and its state at once, and a
+// microphone left suspended says its state no more; told the other way
+// round, the state reached a node not yet heard, and its drawer had none.
+#[test]
+fn a_nodes_first_info_keeps_the_state_it_says() {
+    let mut devices = Devices::default();
+    let Change::Node { properties, .. } = node(41, "microphone", "Audio/Source") else {
+        unreachable!("node makes a node");
+    };
+    for change in Change::info(41, Some("suspended"), Some(properties)) {
+        devices.hear(change);
+    }
+    assert_eq!(devices.records()[0]["state"], json!("suspended"));
+    assert_eq!(
+        Change::info(41, Some("idle"), None),
+        vec![Change::State {
+            id: 41,
+            state: "idle"
+        }],
+        "a later info says only what changed"
+    );
+}
+
 #[test]
 fn a_streams_target_is_where_the_default_metadata_sends_it() {
     let mut devices = Devices::default();

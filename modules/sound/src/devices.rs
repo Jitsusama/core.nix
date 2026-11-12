@@ -70,6 +70,21 @@ pub enum Change {
     },
 }
 
+impl Change {
+    /// What a node's info says, its properties before its state: a first
+    /// info says both, and a state told first reaches a node not yet
+    /// heard, which a device left suspended never says again.
+    pub fn info(
+        id: u32,
+        state: Option<&'static str>,
+        properties: Option<BTreeMap<String, String>>,
+    ) -> Vec<Change> {
+        let state = state.map(|state| Change::State { id, state });
+        let node = properties.map(|properties| Change::Node { id, properties });
+        node.into_iter().chain(state).collect()
+    }
+}
+
 /// What a stream sent nowhere is said to be sent to, as `WirePlumber` says
 /// it besides letting the key go.
 const NOWHERE: [&str; 2] = ["", "-1"];

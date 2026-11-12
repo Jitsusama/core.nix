@@ -508,27 +508,23 @@ fn node(
             let shared = Arc::clone(shared);
             move |info: &NodeInfoRef| {
                 // A device's state is its drawer's; a filter's half's is
-                // whether sound passes through it.
-                if info.change_mask().contains(NodeChangeMask::STATE) {
-                    let state = said_state(&info.state());
-                    told(&shared, Change::State { id, state });
+                // whether sound passes through it. An info says each only
+                // where it changed, as its first says both.
+                let mask = info.change_mask();
+                let state = mask
+                    .contains(NodeChangeMask::STATE)
+                    .then(|| said_state(&info.state()));
+                let props = info
+                    .props()
+                    .filter(|_| mask.contains(NodeChangeMask::PROPS));
+                let properties = props.map(|props| {
+                    let said = props.iter();
+                    said.map(|(key, value)| (key.to_owned(), value.to_owned()))
+                        .collect()
+                });
+                for change in Change::info(id, state, properties) {
+                    told(&shared, change);
                 }
-                // An info says its properties only where they changed,
-                // as its first does.
-                if !info.change_mask().contains(NodeChangeMask::PROPS) {
-                    return;
-                }
-                let Some(props) = info.props() else { return };
-                let properties = props
-                    .iter()
-                    .map(|(key, value)| (key.to_owned(), value.to_owned()));
-                told(
-                    &shared,
-                    Change::Node {
-                        id,
-                        properties: properties.collect(),
-                    },
-                );
             }
         })
         .param({
