@@ -108,7 +108,7 @@ pub fn status(bus: &Connection, unit: &str) -> zbus::Result<Value> {
             .destination(DESTINATION)?
             .path(path.as_str())?
             .interface(interface)?
-            .cache_properties(proxy::CacheProperties::No)
+            .cache_properties(zbus::proxy::CacheProperties::No)
             .build()?;
         for name in names {
             let value = asked.get_property::<zvariant::OwnedValue>(name)?;

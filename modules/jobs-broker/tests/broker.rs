@@ -11,6 +11,8 @@ use std::process::Command;
 use daemon_client::Daemon;
 use serde_json::{Value, json};
 
+/// The broker serving a folder of its own, for as long as it's held: a
+/// `Daemon` dropped stops it.
 fn broker(name: &str) -> Daemon {
     let folder: PathBuf =
         std::env::temp_dir().join(format!("jobs-broker-{name}-{}", std::process::id()));
@@ -27,24 +29,62 @@ fn broker(name: &str) -> Daemon {
     Daemon::start(&mut command, socket, folder)
 }
 
+/// Whether this kernel names a socket's peer by pidfd (Linux 6.5 on).
+fn kernel_names_peers() -> bool {
+    use std::os::fd::AsRawFd;
+    let (ours, _theirs) = std::os::unix::net::UnixStream::pair().expect("a socket pair");
+    let mut fd: libc::c_int = -1;
+    let mut length = libc::socklen_t::try_from(size_of::<libc::c_int>()).expect("an int's size");
+    // SAFETY: SO_PEERPIDFD (77) writes one descriptor into an int of the
+    // size `length` gives, and the socket is open for the call.
+    let read = unsafe {
+        libc::getsockopt(
+            ours.as_raw_fd(),
+            libc::SOL_SOCKET,
+            77,
+            (&raw mut fd).cast(),
+            &raw mut length,
+        )
+    };
+    if read == 0 && fd >= 0 {
+        // SAFETY: the kernel just handed this descriptor to this process.
+        unsafe { libc::close(fd) };
+        return true;
+    }
+    false
+}
+
 fn code(answer: &Value) -> &str {
     answer["error"]["code"].as_str().unwrap_or("")
 }
 
 #[test]
 fn hello_names_the_broker() {
-    let mut client = broker("hello").client();
+    let daemon = broker("hello");
+    let mut client = daemon.client();
     let hello = client.ask(&json!({"id": 1, "ask": "hello"}));
     assert_eq!(hello["domain"], "jobs-broker", "{hello}");
 }
 
 #[test]
 fn a_scope_is_never_made_for_a_process_outside_agents_work() {
-    let mut client = broker("scope").client();
+    let daemon = broker("scope");
+    let mut client = daemon.client();
     // The test runs in a build's cgroup, or a terminal's, never an agent's
     // here, since its process isn't started by pi.
     let answer = client.ask(&json!({"id": 1, "ask": "scope", "quest": "q1"}));
     assert!(answer.get("scope").is_none(), "no scope was made: {answer}");
+    // The lent builders run Linux 6.1, which names no peer by pidfd, so
+    // there the refusal can only say so.
+    let unnamed = answer.to_string().contains("names no peer by pidfd");
+    assert_ne!(
+        unnamed,
+        kernel_names_peers(),
+        "refused for want of a pidfd only where the kernel has none: {answer}"
+    );
+    if unnamed {
+        return;
+    }
     assert_ne!(
         code(&answer),
         "no-peer",
@@ -55,7 +95,8 @@ fn a_scope_is_never_made_for_a_process_outside_agents_work() {
 
 #[test]
 fn a_status_says_only_of_units() {
-    let mut client = broker("status").client();
+    let daemon = broker("status");
+    let mut client = daemon.client();
     let answer = client.ask(&json!({
         "id": 1, "ask": "status", "units": ["jobs-sorter.service", "/etc/passwd", 7]
     }));
@@ -76,7 +117,8 @@ fn a_status_says_only_of_units() {
 
 #[test]
 fn an_ask_it_doesnt_know_is_refused() {
-    let mut client = broker("unknown").client();
+    let daemon = broker("unknown");
+    let mut client = daemon.client();
     for ask in ["stop", "start", "restart"] {
         let answer = client.ask(&json!({"id": 1, "ask": ask, "unit": "niri.service"}));
         assert_eq!(code(&answer), "unknown-ask", "{ask}: {answer}");
