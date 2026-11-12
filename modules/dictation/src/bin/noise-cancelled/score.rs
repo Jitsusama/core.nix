@@ -10,7 +10,7 @@
 //! down from 48 kHz, repeated until it's that long, and heard in windows a
 //! second apart, each window's marks fitted to people's with the
 //! polynomials DNSMOS publishes and then averaged, as its own
-//! dnsmos_local.py does.
+//! `dnsmos_local.py` does.
 
 use std::f64::consts::{PI, TAU};
 use std::path::Path;
@@ -164,7 +164,7 @@ const fn narrowed(sample: f64) -> f32 {
 
 /// The windows the model hears of `samples` at 16 kHz: the clip repeated
 /// until it fills one, then each window a second on from the last, as
-/// many as fit, as dnsmos_local.py takes them.
+/// many as fit, as `dnsmos_local.py` takes them.
 pub fn windows(samples: &[f32]) -> Vec<Vec<f32>> {
     if samples.is_empty() {
         return Vec::new();

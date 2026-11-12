@@ -1488,10 +1488,10 @@
     DeepFilterNet, 6 for its gentle one and RNNoise), the voice within 6 dB of how it was
     spoken, and the gentle one keeping more of the room than the full one
   '';
-  noise-cancelled-scores-a-cleaned-clip-better = ''
-    the DNSMOS scorer beside Joel's ear, on the CPU, marks a voice over a room's noise out of 5,
-    and marks the same cleaned by DeepFilterNet at least a mark quieter in the background and
-    better overall
+  noise-cancelled-scores-a-clean-voice-better = ''
+    the DNSMOS scorer beside Joel's ear, on the CPU, marks a voice, the same voice over a room's
+    noise, and that mix cleaned by DeepFilterNet out of 5, and marks the voice alone at least
+    half a mark quieter in the background and better overall than with the noise
   '';
   noise-cancelled-switches-to-the-new-one = ''
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
