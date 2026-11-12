@@ -2,14 +2,15 @@
 //! it, and which of a day's interactions slowed him most.
 //!
 //! Each kind of loss comes from how product research tells a struggle
-//! from a visit that went well: the wait past what feels immediate (about
-//! 400 ms to usable, the Doherty threshold; 100 ms for a frame, where a
-//! response stops feeling instant), the time to his pick past what that
+//! from a visit that went well: the wait past what feels immediate (400 ms
+//! to usable, a spec between the 0.3 s Doherty measured and the 1 s that
+//! keeps a train of thought; 100 ms for a frame, where a response stops
+//! feeling instant), the time to his pick past what that
 //! pick usually takes him where he searched for it by typing (time on
 //! task against his own baseline; time spent reading isn't), the
 //! whole of an opening he typed in and left with nothing (an abandoned
-//! search), and an opening he came straight back to (a u-turn: the first
-//! didn't get him there).
+//! search), and an opening he came straight back to (a u-turn or a
+//! reformulated search: the first didn't get him there).
 
 use crate::trial::Trial;
 use serde::Serialize;
@@ -21,8 +22,13 @@ pub const USABLE_MS: f64 = 400.0;
 pub const STALL_MS: f64 = 100.0;
 /// A key whose frame came later than this lags, the launcher's own bar.
 pub const FELT_MS: f64 = 50.0;
-/// An opening this soon after one that failed him is a second go at it.
+/// The same row picked again this soon is a second go at it.
 pub const AGAIN_MS: i64 = 30_000;
+/// A search this soon after one he left with nothing is a second go at it.
+/// Fitted from his own record: from 25 Oct to 11 Nov, searches came sooner
+/// after a failed search than after a pick only up to about 90 s, and no
+/// sooner after that.
+pub const SEARCHED_AGAIN_MS: i64 = 90_000;
 /// The most an abandoned opening is counted for, since one left open
 /// while he looked away would otherwise outweigh every real struggle.
 pub const GAVE_UP_MOST_MS: f64 = 120_000.0;
@@ -154,14 +160,16 @@ pub fn lost(trial: &Trial, usable: Option<f64>, usual: &Usual) -> Lost {
     it
 }
 
-/// Whether `next` was a second go at what `was` failed to do: it came
-/// within `AGAIN_MS` of `was` closing, and `was` was a search he left
-/// with nothing or the very row he picks again, which didn't do what he
-/// wanted. A different row of the same kind is working down a list, not
-/// a second go. The rows are compared here and never kept.
+/// Whether `next` was a second go at what `was` failed to do: a search
+/// within `SEARCHED_AGAIN_MS` of a search he left with nothing, or the
+/// very row picked again within `AGAIN_MS`, which didn't do what he
+/// wanted. A glance after a failed search isn't searching again, and a
+/// different row of the same kind is working down a list. The rows are
+/// compared here and never kept.
 fn again(was: &Trial, next: &Trial) -> bool {
-    next.at - was.closed() <= AGAIN_MS
-        && (was.missed || (was.picked_one() && was.picked == next.picked))
+    let gap = next.at - was.closed();
+    (was.missed && next.sought() && gap <= SEARCHED_AGAIN_MS)
+        || (was.picked_one() && was.picked == next.picked && gap <= AGAIN_MS)
 }
 
 /// What an interaction showed, by kind and timing alone.
@@ -529,8 +537,49 @@ mod tests {
     #[test]
     fn openings_apart_are_apart() {
         let usual = Usual::of(&[]);
-        let day = [miss(AT, 9000), miss(AT + 9000 + AGAIN_MS + 1, 4000)];
+        let day = [
+            miss(AT, 9000),
+            miss(AT + 9000 + SEARCHED_AGAIN_MS + 1, 4000),
+        ];
         assert_eq!(painful(&day, &Usable::new(vec![]), &usual).len(), 2);
+    }
+
+    #[test]
+    fn a_search_a_minute_after_one_that_failed_is_a_second_go() {
+        let usual = Usual::of(&[]);
+        let day = [miss(AT, 47_000), miss(AT + 47_000 + 55_000, 38_000)];
+        let named = painful(&day, &Usable::new(vec![]), &usual);
+        assert_eq!(named.len(), 1, "a failed search, then another 55 s on");
+        assert_eq!(named[0].openings, 2);
+        assert_eq!(named[0].slowed, "tried again");
+    }
+
+    #[test]
+    fn a_glance_after_a_failed_search_is_not_a_second_go() {
+        let usual = Usual::of(&[]);
+        let glance = Trial {
+            at: AT + 9000 + 10_000,
+            open: 3000,
+            ..Trial::default()
+        };
+        let day = [miss(AT, 9000), glance];
+        let named = painful(&day, &Usable::new(vec![]), &usual);
+        assert_eq!(named.len(), 1, "the glance loses nothing: {named:?}");
+        assert_eq!(
+            named[0].openings, 1,
+            "opening the look list isn't searching"
+        );
+    }
+
+    #[test]
+    fn the_same_row_again_after_half_a_minute_is_apart() {
+        let usual = usual_of("verb:agents", &[2000, 2000, 2000]);
+        let day = [
+            pick(AT, "verb:agents", 2000),
+            pick(AT + 2000 + AGAIN_MS + 1, "verb:agents", 2000),
+        ];
+        let named = painful(&day, &Usable::new(vec![]), &usual);
+        assert!(named.is_empty(), "two picks at his pace, apart: {named:?}");
     }
 
     #[test]
