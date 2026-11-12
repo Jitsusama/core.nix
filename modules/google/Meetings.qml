@@ -14,15 +14,15 @@
 // saying at its side when it was held. It stands, "none" while it holds
 // nothing (keepsRecentOf), since the program keeps 30 days of them.
 //
-// A meeting's Return and what's inside it are still Calendar.qml's
+// A meeting's Return and most of what's inside it are still Calendar.qml's
 // (Calendar.row's, as Now and Meet show it): Return joins its call from
 // ten minutes before it starts, and otherwise steps in to Show in
-// Calendar, and its acts are the shell's, since the rows the daemon serves
-// inside it (src/calendar_inside.rs) don't yet do all Calendar.qml's do:
-// its guests copy an address rather than stepping through to the person,
-// a document on it isn't the document's own row, and Move the Meeting and
-// Open the Transcript are the shell's alone. The google daemon takes those
-// next, guests and documents first, and then the meeting's acts are its.
+// Calendar. Its Guests and Attachments are the rows the daemon serves
+// inside it (src/calendar_inside.rs), each guest People's person and each
+// document Documents' own row where they hold one (ready-rows.md's
+// lends). Its other acts stay the shell's until the daemon serves Move the
+// Meeting's times and call-transcripts Open the Transcript, by Sun 15 Nov;
+// then every act inside a meeting is the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -87,7 +87,8 @@ Provider {
         };
         if (meeting) {
             const joins = Calendar.joinable(meeting);
-            const acts = () => Calendar.acts(meeting, provider);
+            const acts = () => Calendar.acts(meeting, provider)
+                .map(act => provider.servedInside(from, key, act) ?? act);
             Object.assign(fields, {
                 verb: Words.verb(joins ? "verb:calendar:join" : "verb:calendar:see"),
                 later: joins,
@@ -99,6 +100,18 @@ Provider {
             });
         }
         return from.thing(row, key, fields);
+    }
+
+    // The row the daemon serves inside the meeting at `key` in place of
+    // the shell's `act`, for Guests and Attachments, or null for an act
+    // it doesn't yet serve whole, or one it served none of.
+    readonly property var servedActs: ({
+        "verb:calendar:guests": "guests",
+        "verb:calendar:attachments": "attachments"
+    })
+    function servedInside(from, key, act) {
+        const id = provider.servedActs[act?.key];
+        return id ? from.rowAt(`${key}:${id}`) : null;
     }
 
     // Its rows, made only while the launcher is open or its rows are
