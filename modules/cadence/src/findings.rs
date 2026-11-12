@@ -188,7 +188,7 @@ pub fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn found(key: &str) -> Finding {
@@ -201,7 +201,8 @@ mod tests {
         }
     }
 
-    fn day(date: &str, to: i64) -> Day {
+    /// A day that ended at `to`, for the ledger's tests and owe's.
+    pub(crate) fn day(date: &str, to: i64) -> Day {
         Day {
             date: date.to_owned(),
             to,

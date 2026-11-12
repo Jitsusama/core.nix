@@ -172,7 +172,7 @@ mod tests {
 
     use super::*;
     use crate::DAY;
-    use crate::day::Day;
+    use crate::findings::tests::day;
 
     /// 2026-11-14 18:00 UTC.
     const DUE: i64 = 1_794_679_200;
@@ -189,14 +189,6 @@ mod tests {
             due,
             says: format!("{key} is still open"),
             kind: "hole".to_owned(),
-        }
-    }
-
-    fn day(date: &str, to: i64) -> Day {
-        Day {
-            date: date.to_owned(),
-            to,
-            ..Day::default()
         }
     }
 
