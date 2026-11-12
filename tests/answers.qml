@@ -23,6 +23,7 @@ import "answers/keep-awake.js" as KeepAwakeCases
 import "answers/machine.js" as MachineCases
 import "answers/measures.js" as MeasuresCases
 import "answers/networks.js" as NetworksCases
+import "answers/now-drawers.js" as NowDrawersCases
 import "answers/power.js" as PowerCases
 import "answers/shortcuts.js" as ShortcutsCases
 import "answers/sound.js" as SoundCases
@@ -34,13 +35,19 @@ import "answers/warp.js" as WarpCases
 QtObject {
     Component.onCompleted: {
         const failures = [];
-        // Read as this file finds them, where the check copies them.
-        const fromRoot = { maths: Maths, url: file => Qt.resolvedUrl(file) };
+        // Read as this file finds them, where the check copies them. The maths
+        // is given time enough, since its 50 ms patience is a key's budget, which
+        // maths-speed.qml holds: on a loaded builder "5 parsecs in km" came late
+        // and these cases, which judge what's answered, failed (2026-11-12).
+        const patient = {
+            calculate: (expression, waits) => Maths.calculate(expression, waits ?? 0)
+        };
+        const fromRoot = { maths: patient, url: file => Qt.resolvedUrl(file) };
         let asked = 0;
         const places = [AccessoriesCases, AddressesCases, CamerasCases, CharactersCases,
             ClockCases, ColoursCases, CoreCases, HeatCases, KeepAwakeCases, MachineCases,
-            MeasuresCases, NetworksCases, PowerCases, ShortcutsCases, SoundCases, SubnetsCases,
-            SumsCases, TimesCases, WarpCases];
+            MeasuresCases, NetworksCases, NowDrawersCases, PowerCases, ShortcutsCases,
+            SoundCases, SubnetsCases, SumsCases, TimesCases, WarpCases];
         for (const place of places)
             asked += place.run(failures, fromRoot);
 

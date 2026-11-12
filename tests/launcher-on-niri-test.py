@@ -273,6 +273,36 @@ def test_arming_goes_as_the_launcher_shuts(shell: Shell) -> None:
     shell.close_launcher()
 
 
+MOON_PHASES = (
+    "new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous"
+    "|last quarter|waning crescent"
+)
+
+
+def test_the_dates_drawer_says_its_week_and_its_moon_copies_on_return(shell: Shell) -> None:
+    """The date's drawer says its week and season in a sentence, and the moon copies on Return.
+
+    The date and its parts had no drawer, and the moon, the season and the zone each opened a
+    list of figures to copy one by one (Joel, 2026-11-11: "side drawers for just about every
+    item", and "if they have nothing under them, we shouldn't open a submenu for them").
+    """
+    shell.answer("date")
+    shell.launcher_until(
+        lambda shown: (
+            bool(shown["drawer"]["shown"])
+            and str(shown["drawer"]["body"]).startswith("Week ")
+            and {"ISO Date", "Season", "Moon", "Quarter"} <= set(shown["drawer"]["facts"])
+        )
+    )
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Moon" in shown["rows"])
+    shell.down_to("Moon")
+    shell.launcher_until(lambda shown: shown["drawer"]["facts"][:1] == ["Lit"])
+    shell.send_key("ret")
+    shell.launcher_closed()
+    assert re.fullmatch(MOON_PHASES, shell.copied()), shell.copied()
+
+
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's

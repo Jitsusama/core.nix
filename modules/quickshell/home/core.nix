@@ -42,6 +42,7 @@
   "launcher/Numbers.js"
   "launcher/Units.js"
   "launcher/Moment.js"
+  "launcher/NowDrawers.js"
   "launcher/Ago.js"
   "launcher/Colours.js"
   "launcher/Asking.js"

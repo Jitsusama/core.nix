@@ -127,6 +127,7 @@
     "launcher/Ago.js"
     "launcher/Keeping.js"
     "launcher/Moment.js"
+    "launcher/NowDrawers.js"
     "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
@@ -297,6 +298,7 @@
   ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
+    "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
   "launcher/Traffic.qml" = [
