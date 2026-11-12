@@ -48,6 +48,26 @@
     command = "${lib.getExe pkgs.bash} ${../../../tests/activation-token-on-niri.sh} quickshell logs";
   };
 
+  # The wallpaper's picture is read at its screen's own pixels, by niri's
+  # scale for the output, as tests/wallpaper.qml holds Wallpaper.js to, in
+  # Qt's engine.
+  the-wallpaper-is-read-at-its-screens-pixels =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what Qt's engine runs them with.
+    pkgs.runCommandLocal "the-wallpaper-is-read-at-its-screens-pixels" { } ''
+      cp ${../../../tests/wallpaper.qml} wallpaper.qml
+      ${copied [ "Wallpaper.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml wallpaper.qml
+      touch $out
+    '';
+
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
   quickshell-restarts-with-its-files =

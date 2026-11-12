@@ -10,6 +10,7 @@
   "Meters.qml"
   "Facts.qml"
   "Wallpaper.qml"
+  "Wallpaper.js"
   "Lifted.qml"
   "OpenBelow.qml"
   "pieces/Drawers.js"
