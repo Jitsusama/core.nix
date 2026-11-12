@@ -25,6 +25,7 @@
 //! - `top`: Agents' top level, one row for each orchestration.
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
 //! - `windows`: which kitty pane and window each session here is in.
+//! - `tell`: whom a line Joel says from anywhere goes to, and sending it.
 
 pub mod acts;
 pub mod answered;
@@ -44,6 +45,7 @@ pub mod session;
 pub mod sources;
 pub mod standing;
 pub mod summary;
+pub mod tell;
 pub mod top;
 pub mod tree;
 pub mod windows;
