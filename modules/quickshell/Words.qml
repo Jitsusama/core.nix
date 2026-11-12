@@ -71,6 +71,13 @@ Singleton {
         return of(id, state).verb;
     }
 
+    // The key an act takes in normal mode on its row, one letter normal
+    // doesn't already take (each-acts-key-is-free-where-its-pressed), or
+    // "" where it has none (VKCF3Z, 2026-11-12).
+    function actKey(id, state) {
+        return of(id, state).key ?? "";
+    }
+
     // What an action is to the key language, as words.json marks it: an
     // ending action, the one d does (the key language's act ending),
     // carries { act: "ending", ends } where `ends` is what the foot's ask

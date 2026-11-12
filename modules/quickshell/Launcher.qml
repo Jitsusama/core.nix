@@ -2889,7 +2889,31 @@ Scope {
         // way to copy it.
         if (copy && (copy !== choice || copiesOnly(choice)))
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
+        // Each act with a key of its own says it by its name, "e until it's
+        // ended" (VKCF3Z, 2026-11-12).
+        for (const act of keyedActs(choice, actions))
+            keys.push([act.actKey, String(act.name ?? "").toLowerCase()]);
         return keys;
+    }
+
+    // A row's acts that take a key of their own in normal mode (Words.actKey),
+    // never Return's, which is the row's.
+    function keyedActs(choice, actions) {
+        return actions.filter(one => one !== choice && typeof one.actKey === "string"
+            && one.actKey !== "");
+    }
+
+    // Does the selected row's act keyed by `key`, as the foot names it, and
+    // says whether there was one; an act's key means nothing on another row.
+    function doKeyed(key) {
+        if (selectedActions.row !== selected || selected === null)
+            return false;
+        const act = keyedActs(selected, selectedActions.actions)
+            .find(one => one.actKey === key);
+        if (act === undefined)
+            return false;
+        run(act, false);
+        return true;
     }
 
     // A word the foot says for a key, in place of the keys, until the next
@@ -10457,8 +10481,12 @@ Scope {
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()
                         // A key with no meaning here says so, until the next.
-                        onIdled: key => root.say([[ListedKeys.face(key),
-                            (Words.field.hints ?? {}).notHere ?? ""]])
+                        // A key of the row's own acts does it first.
+                        onIdled: key => {
+                            if (!root.doKeyed(key))
+                                root.say([[ListedKeys.face(key),
+                                    (Words.field.hints ?? {}).notHere ?? ""]]);
+                        }
                         // - goes up, as his oil's; at home, with nothing
                         // above, it says so, as any key meaning nothing does.
                         onBackward: {
