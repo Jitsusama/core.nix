@@ -17,6 +17,7 @@ import "answers/cameras.js" as CamerasCases
 import "answers/characters.js" as CharactersCases
 import "answers/clock.js" as ClockCases
 import "answers/colours.js" as ColoursCases
+import "answers/command-examples.js" as CommandExamplesCases
 import "answers/core.js" as CoreCases
 import "answers/heat.js" as HeatCases
 import "answers/keep-awake.js" as KeepAwakeCases
@@ -45,9 +46,10 @@ QtObject {
         const fromRoot = { maths: patient, url: file => Qt.resolvedUrl(file) };
         let asked = 0;
         const places = [AccessoriesCases, AddressesCases, CamerasCases, CharactersCases,
-            ClockCases, ColoursCases, CoreCases, HeatCases, KeepAwakeCases, MachineCases,
-            MeasuresCases, NetworksCases, NowDrawersCases, PowerCases, ShortcutsCases,
-            SoundCases, SubnetsCases, SumsCases, TimesCases, WarpCases];
+            ClockCases, ColoursCases, CommandExamplesCases, CoreCases, HeatCases,
+            KeepAwakeCases, MachineCases, MeasuresCases, NetworksCases, NowDrawersCases,
+            PowerCases, ShortcutsCases, SoundCases, SubnetsCases, SumsCases, TimesCases,
+            WarpCases];
         for (const place of places)
             asked += place.run(failures, fromRoot);
 

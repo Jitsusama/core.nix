@@ -34,7 +34,7 @@ Provider {
             return null;
         const made = at.local ? "" : vendor(at.oui);
         // Who made it is its maker, as a display's or a keyboard's is.
-        const headline = at.local ? "locally set, no maker" : made || "no maker listed";
+        const headline = Addresses.maker(at, made);
         const card = Theme.glyph.card;
         // The maker is the headline, so the rows say only the rest, each
         // part named first.
