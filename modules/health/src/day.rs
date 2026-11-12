@@ -12,9 +12,11 @@ use crate::asks::Asks;
 use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
+use crate::launcher::{self, Launcher};
 use crate::memory::Memory;
 use crate::sessions::{Heard, Said};
 use crate::sign;
+use crate::typing::Sample;
 
 /// The most signatures kept for one thing; past it, the rest are counted
 /// together, so a thing saying something new each line can't fill memory.
@@ -122,6 +124,13 @@ pub struct Day {
     /// guards said them.
     #[serde(default)]
     pub disks: Disks,
+    /// How long the launcher took to show what Joel did, read again from
+    /// the journal on each start, so never resumed.
+    #[serde(default)]
+    pub launcher: Launcher,
+    /// pi-keys' samples of typing into pi, read again each tick.
+    #[serde(default)]
+    pub typing: Vec<Sample>,
 }
 
 /// The agents gone without parking: those at the last look, and every one
@@ -264,6 +273,12 @@ impl Day {
         }
         if let Some(ask) = &entry.ask {
             self.asks.took(ask);
+            return;
+        }
+        if entry.priority > 4
+            && entry.thing == launcher::IDENTIFIER
+            && self.launcher.took(&entry.message)
+        {
             return;
         }
         let event = entry.priority > 4 && !entry.restart;
@@ -510,10 +525,11 @@ fn named(entry: &Entry) -> (String, Kind) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn entry(thing: &str, priority: u8, message: &str) -> Entry {
+    /// A line of `thing`'s at `priority`, saying `message`.
+    pub(crate) fn entry(thing: &str, priority: u8, message: &str) -> Entry {
         Entry {
             at: 1,
             priority,

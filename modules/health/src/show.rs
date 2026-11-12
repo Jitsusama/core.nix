@@ -12,7 +12,9 @@ use crate::agents::{self, Died};
 use crate::day::{Agents, Badness, Boot, Day, Kind, Thing};
 use crate::disk;
 use crate::feel;
+use crate::figures::{self, Side};
 use crate::memory::{self, Memory};
+use crate::typing;
 
 /// The kinds, in the order they're shown when as bad as each other.
 pub const KINDS: [Kind; 6] = [
@@ -41,6 +43,12 @@ pub fn day(day: &Day) -> String {
             clock(pain.at * 1_000_000),
             feel::said(pain)
         );
+    }
+    if let Some(line) = day.launcher.summed() {
+        let _ = writeln!(out, "feel      the launcher: {line}");
+    }
+    if let Some(line) = typing::said(&day.typing) {
+        let _ = writeln!(out, "feel      {line}");
     }
     let mut kinds: Vec<(Kind, Vec<(&String, &Thing)>)> = KINDS
         .iter()
@@ -223,6 +231,12 @@ pub fn asked(day: &Day, words: &str) -> String {
     if words == "died" {
         return the_dead_by_name(day);
     }
+    if words == "launcher" {
+        return launcher_by_part(day);
+    }
+    if words == "figures" {
+        return figures_by_side(day);
+    }
     if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
         let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));
         for (name, thing) in worst_of(day, kind).into_iter().take(SHOWN) {
@@ -256,6 +270,42 @@ pub fn asked(day: &Day, words: &str) -> String {
         }
     }
     out
+}
+
+/// Each part of the launcher Joel used, how long it took and how many went
+/// past its budget.
+fn launcher_by_part(day: &Day) -> String {
+    let mut out = format!("the launcher on {}{}\n", day.date, until(day.to));
+    let said = day.launcher.said();
+    if said.is_empty() {
+        out.push_str("nothing timed\n");
+    }
+    for line in said {
+        let _ = writeln!(out, "{line}");
+    }
+    out
+}
+
+/// Each figure cadence judges the day by, Joel's side first: what he
+/// waited for or saw, then our stand-ins for it.
+fn figures_by_side(day: &Day) -> String {
+    let mut out = format!("figures on {}{}\n", day.date, until(day.to));
+    let all = figures::of(day);
+    for (side, called) in [(Side::His, "his "), (Side::Ours, "ours")] {
+        for (name, value) in all.iter().filter(|(name, _)| figures::side(name) == side) {
+            let _ = writeln!(out, "{called}  {name:<34} {}", figure(*value));
+        }
+    }
+    out
+}
+
+/// A figure, whole when it is and to a tenth when not.
+fn figure(value: f64) -> String {
+    if value.fract().abs() < f64::EPSILON {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    }
 }
 
 /// The day's boots, in the order they happened.
@@ -535,6 +585,48 @@ mod tests {
         assert!(lines[3].ends_with(", finding P3 took 9 s"), "{shown}");
         assert!(!shown.contains("P4"), "three at most: {shown}");
         assert!(!lines[4].starts_with("feel"), "then the kinds: {shown}");
+    }
+
+    #[test]
+    fn the_launcher_and_typing_follow_the_pains_and_each_figure_says_its_side() {
+        let mut felt = a_day();
+        felt.launcher.took(
+            "launcher: 4 drawers in home presented a median 42 ms from the key, the slowest \
+             134 ms, the p99 134 ms, 3 within 50 ms",
+        );
+        felt.typing = vec![crate::typing::Sample {
+            keys: 400,
+            p99_ms: 21.0,
+            ..crate::typing::Sample::default()
+        }];
+        let shown = day(&felt);
+        let lines: Vec<&str> = shown.lines().collect();
+        assert_eq!(
+            lines[1..3],
+            [
+                "feel      the launcher: 1 of 4 timed past their budgets; worst drawers, 1 of 4 \
+                 past 50 ms, the slowest 134 ms",
+                "feel      typing in pi, modelled: 400 keys in 1 sample, the worst p99 21 ms",
+            ],
+            "the launcher or typing in pi doesn't follow the pains: {shown}"
+        );
+        let figures = asked(&felt, "figures");
+        let his = figures
+            .lines()
+            .position(|line| line.contains("launcher.drawers.p99-ms"));
+        let ours = figures
+            .lines()
+            .position(|line| line.contains("typing.worst-p99-ms"));
+        assert!(
+            his < ours
+                && figures.contains("his   launcher.drawers.p99-ms")
+                && figures.contains("ours  typing.worst-p99-ms"),
+            "a figure doesn't say its side, or Joel's don't come first: {figures}"
+        );
+        assert!(
+            asked(&felt, "launcher").contains("4 drawers: a median 42 ms"),
+            "the launcher asked for doesn't say each part"
+        );
     }
 
     #[test]

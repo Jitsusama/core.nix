@@ -7,6 +7,7 @@ use std::process::Command;
 use serde_json::{Map, Value};
 
 use crate::asks::{self, Ask};
+use crate::launcher;
 
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
@@ -29,8 +30,16 @@ pub const SHUTTING_DOWN: &str = "98268866d1d54a499c4e98921d93bc40";
 pub const UNIT_STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
 
 /// What the launcher says once its rows are made after the shell starts,
-/// the moment it's ready to use.
-pub const LAUNCHER_READY: &str = "launcher: home kept as the shell started";
+/// the moment it's ready to use: "launcher: home and 7 places kept as the
+/// shell started", or with no places, as `journalctl --grep` finds it.
+pub const LAUNCHER_READY: &str = "launcher: home (and [0-9]+ places )?kept as the shell started";
+
+/// Whether `message` is the launcher come ready.
+fn is_ready(message: &str) -> bool {
+    message
+        .split_once("launcher: home ")
+        .is_some_and(|(_, rest)| rest.contains("kept as the shell started"))
+}
 
 /// The unit Plymouth runs once a disk asks for its password.
 const PASSWORD_ASKED: &str = "systemd-ask-password-plymouth.service";
@@ -144,7 +153,7 @@ pub fn parse(line: &str) -> Option<Entry> {
             Some(unit) if unit.starts_with(DISK_OPENER) => Some(Mark::Opened),
             _ => None,
         },
-        _ if message.contains(LAUNCHER_READY) => Some(Mark::Ready),
+        _ if is_ready(&message) => Some(Mark::Ready),
         _ => None,
     };
     Some(Entry {
@@ -235,10 +244,11 @@ pub fn followed() -> Vec<Vec<String>> {
             "_PID=1".to_owned(),
             format!("MESSAGE_ID={UNIT_STARTED}"),
         ],
-        // The launcher ready, after each start of the shell.
+        // The launcher ready, after each start of the shell, and how long
+        // it took to show each thing Joel did, which it says as information.
         vec![
-            "SYSLOG_IDENTIFIER=quickshell".to_owned(),
-            format!("--grep={LAUNCHER_READY}"),
+            format!("SYSLOG_IDENTIFIER={}", launcher::IDENTIFIER),
+            format!("--grep={LAUNCHER_READY}|{}", launcher::FOLLOWED),
         ],
         // Each ask for a secret Joel answered, said only as information.
         vec![format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],
@@ -402,11 +412,19 @@ mod tests {
         };
         assert_eq!(
             mark(&said(
-                "launcher: home kept as the shell started, 7989 rows made in 35 ms",
+                "launcher: home and 7 places kept as the shell started, 7054 rows made in 213 ms",
                 ""
             )),
             Some(Mark::Ready),
             "the launcher's rows made is it ready"
+        );
+        assert_eq!(
+            mark(&said(
+                "launcher: home kept as the shell started, 7989 rows made in 35 ms",
+                ""
+            )),
+            Some(Mark::Ready),
+            "the launcher's rows made with no places kept is it ready"
         );
         assert_eq!(
             mark(&said(

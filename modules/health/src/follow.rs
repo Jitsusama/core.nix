@@ -24,6 +24,7 @@ use crate::lid::{self, Looked};
 use crate::memory;
 use crate::sessions;
 use crate::source::Source;
+use crate::typing;
 
 /// How often a changed day is written out and the lid looked at: often
 /// enough that what `health` shows is a moment old, seldom enough to cost
@@ -41,6 +42,7 @@ pub struct Follower {
     lid: Option<Looked>,
     lid_wrong: bool,
     pains: Option<PathBuf>,
+    typing: Option<PathBuf>,
     sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
     presences: Option<PathBuf>,
@@ -78,6 +80,7 @@ impl Follower {
             lid: None,
             lid_wrong: false,
             pains: None,
+            typing: None,
             sessions: None,
             proc: None,
             presences: None,
@@ -238,6 +241,28 @@ impl Follower {
         }
     }
 
+    /// Read typing into pi from pi-keys' samples in `samples`.
+    #[must_use]
+    pub fn timing_typing(self, samples: &Path) -> Self {
+        Self {
+            typing: Some(samples.to_owned()),
+            ..self
+        }
+    }
+
+    /// Take the day's samples of typing into pi; pi-keys adds one a few
+    /// times a day.
+    pub fn time_typing(&mut self) {
+        let Some(samples) = &self.typing else {
+            return;
+        };
+        let typing = typing::read(samples, &self.day.date, &self.zone);
+        if typing != self.day.typing {
+            self.day.typing = typing;
+            self.changed = true;
+        }
+    }
+
     /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once
     /// as a device's fault, and again only after it reads open or the
     /// screen goes dark.
@@ -366,9 +391,12 @@ pub fn follow(into: &Path) -> io::Result<()> {
     let mut follower = Follower::new(&today, into, zone.clone())
         .reading(source)
         .knowing(source.ends()?);
-    // The detector keeps its days beside health's, in the account's state.
+    // The detector and pi-keys keep their days beside health's, in the
+    // account's state.
     if let Some(state) = into.parent() {
-        follower = follower.feeling(&state.join("pain-points"));
+        follower = follower
+            .feeling(&state.join("pain-points"))
+            .timing_typing(&state.join("pi-keys"));
     }
     // systemd gives every account's service its runtime folder, and launchd
     // its agent a temporary folder of its own, where the account's guard
@@ -428,6 +456,7 @@ fn run(
             follower.count_the_dead(wall);
             follower.guard(wall);
             follower.feel();
+            follower.time_typing();
             follower.hear(SESSIONS_A_TICK);
             follower.write()?;
         }
