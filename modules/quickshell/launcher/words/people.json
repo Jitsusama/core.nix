@@ -133,6 +133,11 @@
       "name": "Time There"
     },
     {
+      "id": "people:away",
+      "in": "people",
+      "name": "{place} \u00b7 {time}"
+    },
+    {
       "id": "transcripts",
       "in": "people",
       "name": "Transcripts",

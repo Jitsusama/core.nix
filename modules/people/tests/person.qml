@@ -229,6 +229,16 @@ QtObject {
             Person.placed([{ row: {} }, { row: {} }], holding, standing),
             [{ name: "Held", count: 2 }]);
 
+        // Their time on their row, only where it's apart from Joel's
+        // (VKCF3Z, 0cea8a93): where they are by their zone's last part.
+        const away = "{place} \u00b7 {time}";
+        check("someone elsewhere says where and the time there", [
+            Person.awaySide("Europe/London", 300, "17:02", away),
+            Person.awaySide("America/Argentina/Buenos_Aires", -60, "13:02", away)
+        ], ["London \u00b7 17:02", "Buenos Aires \u00b7 13:02"]);
+        check("someone in Joel's time says none",
+            Person.awaySide("America/Toronto", 0, "12:02", away), "");
+
         if (failures.length > 0) {
             console.warn(`${failures.length} of ${asked} failed:\n${failures.join("\n")}`);
             Qt.exit(1);

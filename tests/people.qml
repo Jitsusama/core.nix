@@ -180,8 +180,10 @@ ShellRoot {
                 expect("reading someone listed merges no one",
                     people.merging.merges === guest.merges,
                     `${people.merging.merges} merges`);
+                // Ada's time follows, as Kolkata's isn't the UTC here.
                 expect("how each stands",
-                    sides(open) === "available, in a call, away, offline", sides(open));
+                    /^available \u00b7 Kolkata \u00b7 \d\d:\d\d, in a call, away, offline$/u
+                        .test(sides(open)), sides(open));
                 expect("a favourite wears a star",
                     open[0].glyph === String.fromCodePoint(0xf04ce), open[0].glyph);
                 expect("one called lately doesn't",
@@ -279,7 +281,11 @@ ShellRoot {
         }),
         seeking("ada", "one listed, found as they stand", () => {
             const ada = found("ada");
-            expect("as they stand", names(ada) === "Ada Brook" && ada[0].side === "available",
+            // Here is UTC, so her Kolkata time, five and a half hours on,
+            // follows how she stands (VKCF3Z, 0cea8a93: "London · 17:02").
+            expect("as they stand, and their time where it's apart from his",
+                names(ada) === "Ada Brook"
+                    && /^available \u00b7 Kolkata \u00b7 \d\d:\d\d$/u.test(ada[0].side),
                 `${names(ada)} ${ada[0]?.side}`);
         }),
         // Among equals, the daemon's order: those found by a name before

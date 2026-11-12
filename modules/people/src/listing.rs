@@ -221,6 +221,9 @@ pub struct Person {
     /// The sources that know them, in the order they're consulted.
     pub from: Vec<String>,
     pub stood: Stood,
+    /// Their time zone by tzdata's name, the first a source's facts give,
+    /// or "" for none.
+    pub zone: String,
 }
 
 /// A record as one person, by its sources in the order they're consulted,
@@ -277,6 +280,14 @@ pub fn person(record: &Record, sources: &[(String, Option<Stands>)]) -> Person {
         spans,
         from: entries.iter().map(|(name, ..)| (*name).clone()).collect(),
         stood: standing(&said),
+        zone: entries
+            .iter()
+            .filter_map(|(_, entry, _)| entry.get("facts").and_then(Value::as_array))
+            .flatten()
+            .filter(|fact| fact.get("as").and_then(Value::as_str) == Some("zone"))
+            .find_map(|fact| fact.get("zone").and_then(Value::as_str))
+            .unwrap_or("")
+            .to_owned(),
     }
 }
 
@@ -330,16 +341,24 @@ impl Person {
     /// `thing`, which Joel's picks remember, name, glyph and hue by the
     /// theme's roles, how they stand as its side's items, their address
     /// under it unless that's their name, and the key their drawer is told
-    /// by. So the shell words and builds nothing of it.
+    /// by. So the shell words and builds nothing of it. Their zone ends the
+    /// side, as a time the shell's clock says, and only where it's apart
+    /// from Joel's (VKCF3Z, 0cea8a93: "London · 17:02").
     pub fn row(&self) -> Value {
         let known = self.key.strip_prefix("person:").unwrap_or(&self.key);
+        let mut side: Vec<Value> = Vec::new();
+        if !self.stood.said.is_empty() {
+            side.push(json!({"said": self.stood.said}));
+        }
+        if !self.zone.is_empty() {
+            side.push(json!({"zone": self.zone, "as": "zone"}));
+        }
         json!({
             "key": format!("row:people:{known}"), "thing": self.key,
             "place": "people", "kind": "person", "name": self.name,
             "glyph": if self.stood.favourite { "favourite" } else { "person" },
             "hue": "person",
-            "side": if self.stood.said.is_empty() { json!([]) }
-                else { json!([{"said": self.stood.said}]) },
+            "side": side,
             "note": if self.name == self.email { "" } else { self.email.as_str() },
             "drawer": drawer::key(self),
         })
@@ -662,6 +681,15 @@ pub(crate) mod tests {
             ),
             (json!("person"), json!("Bo"), json!("bo@example.com")),
             "one no source names is named from their address, and says it under"
+        );
+        let away = person_of(&[(
+            "slack",
+            json!({"facts": [{"name": "Time Zone", "zone": "Europe/London", "as": "zone"}]}),
+        )]);
+        assert_eq!(
+            away.row()["side"],
+            json!([{"zone": "Europe/London", "as": "zone"}]),
+            "their zone is the last of their side, for the shell's clock to say"
         );
         let found = favourite.found();
         assert_eq!(

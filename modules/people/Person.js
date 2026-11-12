@@ -295,6 +295,19 @@ function aloneSide(side, said) {
     return String(said.alone ?? "{side}").replace("{side}", side);
 }
 
+// Someone's time at their row's side, only where it's apart from Joel's
+// (VKCF3Z, 0cea8a93), since the same time says nothing: where they are,
+// by their zone's last part ("Europe/London" is London), and the time
+// there, `time`, by `said`'s {place} and {time}, "London \u00b7 17:02".
+// `apart` is how many minutes their time is from his.
+function awaySide(zone, apart, time, said) {
+    if (apart === 0) {
+        return "";
+    }
+    const place = String(zone).split("/").pop().replace(/_/gu, " ");
+    return String(said).replace("{place}", place).replace("{time}", time);
+}
+
 // How one of those stands on their page: not at all while it holds
 // nothing; the one thing itself where it holds one, as `alone` makes it,
 // so Return does its act with no step between (VKCF3Z, 0cea8a93, after

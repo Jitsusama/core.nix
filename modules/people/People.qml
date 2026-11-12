@@ -487,7 +487,8 @@ Provider {
         // Listed and standing as when last asked, they're the same rows,
         // with no one's text written again to find so.
         const listed = listedPersons();
-        if (listedRows.from === listed)
+        const now = provider.minute;
+        if (listedRows.from === listed && listedRows.minute === now)
             return listedRows.rows;
         keepingBegun(keptListed);
         const rows = listed.map(person => {
@@ -501,20 +502,29 @@ Provider {
             // by the record.
             const record = person.stood ? lister.held[`person:${person.key}`] : null;
             const ready = record ? rowsHeld[`row:people:${person.key}`] : null;
+            // One saying their time is kept for the minute too.
             if (ready)
-                return keptOr(keptListed, person.key, record, () => made(person, person.stood,
-                    ready, () => Ready.drawerServed(ready, lister.held)));
+                return keptAlike(keptListed, person.key, [record, clocked(ready) ? now : 0],
+                    () => made(person, person.stood, ready,
+                        () => Ready.drawerServed(ready, lister.held)));
             const stood = person.stood ?? standOf(person);
             return keptOr(keptListed, person.key, JSON.stringify([person, stood]),
                 () => made(person, stood));
         });
         keptOnly(keptListed);
+        // A minute that moved no one's time leaves the rows as they were,
+        // so it tells the launcher nothing.
+        const same = listedRows.from === listed && rows.length === listedRows.rows.length
+            && rows.every((row, at) => row === listedRows.rows[at]);
         listedRows.from = listed;
+        listedRows.minute = now;
+        if (same)
+            return listedRows.rows;
         listedRows.rows = rows;
         return rows;
     }
     readonly property var keptListed: keeper()
-    readonly property var listedRows: ({ from: null, rows: [] })
+    readonly property var listedRows: ({ from: null, minute: 0, rows: [] })
 
     // A drawer the daemon served, as the drawer draws one: its times said
     // as of now, a zone as the time there (`there`), and a fact that says
@@ -555,8 +565,9 @@ Provider {
                 : stood.favourite ? Theme.glyph.favourite : Theme.glyph.person,
             hue: ready?.hue ?? "person",
             // A ready row's side is its items (ready-rows.md), said here as
-            // one text until ReadyRows.qml draws items (Wed 11 Nov).
-            side: ready ? ready.side.map(item => item.said).join(" ") : stood.said,
+            // one text until ReadyRows.qml draws items (Wed 11 Nov), their
+            // zone as their time where it's apart from his.
+            side: ready ? Ready.sideSaid(ready.side, Date.now(), rowWords) : stood.said,
             note: ready?.note ?? (person.name === person.email ? "" : person.email),
             nested: true,
             later: true,
@@ -626,6 +637,53 @@ Provider {
         const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
         const here = -new Date(now).getTimezoneOffset();
         return `${Zones.clock(new Date(now + minutes * 60000))}, ${Zones.apart(minutes - here)}`;
+    }
+
+    // Someone's time at their row's side, "London · 17:02", or "" where
+    // it's his own or the list doesn't know their zone (Person.js's
+    // awaySide).
+    function away(id) {
+        if (zones === null)
+            zones = settings.zones ? Zones.prepare(read(zonesFile)) : { zones: {}, named: {} };
+        const zone = zones.zones[id];
+        if (!zone)
+            return "";
+        const now = Date.now();
+        const [minutes] = Zones.standing(zone, Math.floor(now / 1000));
+        const here = -new Date(now).getTimezoneOffset();
+        return Person.awaySide(id, minutes - here, Zones.clock(new Date(now + minutes * 60000)),
+            Words.name("people:away"));
+    }
+
+    // The words a row's side is said in: the launcher's times, and a zone
+    // as `away` says it.
+    readonly property var rowWords: Object.assign({ zone: zone => provider.away(zone) },
+        Words.field.times ?? {})
+
+    // Whether a ready row says their time, so it's made again as the
+    // minute turns.
+    function clocked(ready) {
+        return (ready?.side ?? []).some(item => item?.as === "zone");
+    }
+
+    // The minute the listed rows were said in, moved on while they're
+    // wanted, so those saying someone's time are made again (`clocked`);
+    // while they aren't, nothing ticks and nothing is made.
+    property int minute: Math.floor(Date.now() / 60000)
+    Timer {
+        running: provider.wanted
+        repeat: true
+        interval: 60000 - Date.now() % 60000
+        onTriggered: {
+            provider.minute = Math.floor(Date.now() / 60000);
+            interval = 60000 - Date.now() % 60000;
+        }
+        onRunningChanged: {
+            if (!running)
+                return;
+            interval = 60000 - Date.now() % 60000;
+            provider.minute = Math.floor(Date.now() / 60000);
+        }
     }
 
     FileView {
