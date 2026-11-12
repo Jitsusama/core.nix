@@ -82,6 +82,7 @@ mod keyboard;
 mod light;
 mod monitor;
 mod night;
+mod panel;
 mod screen;
 mod steer;
 mod switch;
