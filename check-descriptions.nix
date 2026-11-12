@@ -1656,6 +1656,11 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  opened-programs-get-scopes-of-their-own = ''
+    a program gio starts from its desktop entry gets a scope of its own in app.slice, named for
+    the entry, or starts as it is with no systemd to reach, and a graphical machine names the
+    wrapper that does it for GLib
+  '';
   pain-points-names-what-slowed-him = ''
     pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search

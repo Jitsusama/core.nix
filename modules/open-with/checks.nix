@@ -125,4 +125,33 @@ onLinux {
         ${lib.getExe pkgs.bash} ${./tests/xdg-open-opens-each-kind.sh} ${pkgs.shared-mime-info}
         touch $out
       '';
+
+  # A program gio or the portal starts from its desktop entry, as Chrome for
+  # a link from Slack, gets a scope of its own in app.slice, named for the
+  # entry, and starts as it is where the account's systemd can't be reached;
+  # a graphical machine names the wrapper doing it for GLib. systemd-run is
+  # a stand-in saying what it was asked; gio is the real one
+  # (tests/opened-in-a-scope-of-its-own.sh).
+  opened-programs-get-scopes-of-their-own =
+    let
+      standIn = pkgs.writeShellScriptBin "systemd-run" ''
+        echo "systemd-run $*" >> "$LAUNCHED_LOG"
+        while [ "$1" != -- ]; do shift; done
+        shift
+        exec "$@"
+      '';
+      launched = pkgs.callPackage ./launched.nix { systemd = standIn; };
+      named = graphical.config.environment.sessionVariables.GIO_LAUNCH_DESKTOP or "";
+    in
+    assert lib.assertMsg (
+      named == lib.getExe (pkgs.callPackage ./launched.nix { })
+    ) "A graphical machine's GIO_LAUNCH_DESKTOP isn't the launched wrapper: ${named}";
+    pkgs.runCommandLocal "opened-programs-get-scopes-of-their-own"
+      { nativeBuildInputs = [ pkgs.glib.bin ]; }
+      ''
+        export GIO_LAUNCH_DESKTOP=${lib.getExe launched}
+        ${lib.getExe pkgs.bash} ${./tests/opened-in-a-scope-of-its-own.sh} \
+          ${pkgs.shared-mime-info} ${lib.getExe pkgs.python3}
+        touch $out
+      '';
 }

@@ -20,6 +20,14 @@
 # to, and its own dialog never does, so a GTK 3 module
 # (dialogs-ask-the-portal.c) asks the native chooser in that dialog's place,
 # in every GTK 3 program, such as GIMP and Inkscape.
+#
+# A program gio or the portal starts from its desktop entry gets a scope of
+# its own in app.slice (launched.sh): GLib runs each through
+# GIO_LAUNCH_DESKTOP, which otherwise only says which process the entry
+# started, so it stayed in whatever opened it. On 11 November a Chrome
+# opened for a link ran for most of a day inside the portal's own service
+# in session.slice, out of reach of what weighs Joel's programs by their
+# scopes.
 { lib, pkgs, ... }:
 {
   environment.systemPackages = [
@@ -32,6 +40,7 @@
   };
 
   environment.sessionVariables = {
+    GIO_LAUNCH_DESKTOP = lib.getExe (pkgs.callPackage ./launched.nix { });
     GTK_USE_PORTAL = "1";
     GTK3_MODULES = [
       "${pkgs.callPackage ./dialogs-ask-the-portal.nix { }}/lib/libdialogs-ask-the-portal.so"
