@@ -8,6 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The ready-row form every daemon serves the launcher's rows in: each row's
+# spaced order, and the records a making changed (../ready-rows).
+ready-rows = { path = "../ready-rows" }
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # The history of what moves, with SQLite built in, as spend-watch has it.
 rusqlite = { version = "0.37", features = ["bundled"] }

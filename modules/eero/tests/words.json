@@ -1,0 +1,102 @@
+{
+  "things": [
+    {
+      "id": "eero",
+      "name": "Home Network",
+      "term": "Network/home network",
+      "noun": "nodes",
+      "what": "node",
+      "glyph": "accessPoint",
+      "ask": "which node or device?",
+      "empty": "No word from eero yet.",
+      "said": {
+        "bps": "{n} b/s",
+        "kbps": "{n} kb/s",
+        "mbps": "{n} Mb/s",
+        "gbps": "{n} Gb/s",
+        "down": "{rate} down",
+        "up": "{rate} up",
+        "device": "1 device",
+        "devices": "{count} devices"
+      }
+    },
+    {
+      "id": "eero:internet",
+      "in": "eero",
+      "name": "Internet",
+      "term": "Network/internet",
+      "glyph": "web",
+      "said": {
+        "mesh": "home network {state}",
+        "providerDown": "provider down",
+        "sqmOn": "conferencing and gaming on",
+        "sqmOff": "conferencing and gaming off",
+        "noOutages": "no outages",
+        "outage": "1 outage",
+        "outages": "{count} outages",
+        "inDays": "{outages} in 30 days",
+        "node": "1 node online",
+        "nodes": "{count} nodes online",
+        "offline": "{count} offline",
+        "pending": "{count} pending",
+        "onNow": "{devices} on now",
+        "signedOut": "signed out of eero",
+        "unreachable": "eero unreachable"
+      }
+    },
+    {
+      "id": "eero:node",
+      "in": "eero",
+      "name": "Node",
+      "term": "Network/node",
+      "glyph": "accessPoint",
+      "said": {
+        "gateway": "gateway node",
+        "ethernet": "Ethernet",
+        "wifi": "Wi-Fi",
+        "from": "Wi-Fi from {node}",
+        "over": "Wi-Fi over {radio}",
+        "fromOver": "Wi-Fi from {node} over {radio}",
+        "bars": "{n} of 5 bars",
+        "2.4GHz": "2.4 GHz",
+        "5.2GHz": "5 GHz low",
+        "5.8GHz": "5 GHz high",
+        "5GHz": "5 GHz",
+        "6GHz": "6 GHz",
+        "ghz": "{n} GHz"
+      }
+    },
+    {
+      "id": "eero:gateway",
+      "in": "eero",
+      "name": "Gateway Node",
+      "term": "Network/gateway node",
+      "glyph": "accessPoint"
+    },
+    {
+      "id": "eero:device",
+      "in": "eero",
+      "name": "Device",
+      "term": "Network/device",
+      "said": {
+        "thisMachine": "this machine",
+        "ethernet": "Ethernet",
+        "dbm": "{n} dBm",
+        "channel": "channel {n}",
+        "idle": "idle"
+      }
+    },
+    {
+      "id": "eero:profile",
+      "in": "eero",
+      "name": "Profile",
+      "term": "Network/profile",
+      "glyph": "people",
+      "said": {
+        "paused": "paused",
+        "onNow": "{count} on now",
+        "noneOnNow": "none on now"
+      }
+    }
+  ]
+}

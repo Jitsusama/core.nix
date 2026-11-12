@@ -37,6 +37,7 @@ mod model;
 mod notices;
 mod probe;
 mod read;
+mod rows;
 mod schedule;
 mod session;
 mod status;

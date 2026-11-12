@@ -288,6 +288,7 @@ name = "eero"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "ready-rows",
  "rusqlite",
  "serde",
  "serde_json",
@@ -891,6 +892,13 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "ready-rows"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
 
 [[package]]
 name = "ring"

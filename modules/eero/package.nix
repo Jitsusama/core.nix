@@ -1,10 +1,12 @@
-# eero, built from this directory, its tests run as it builds.
+# eero, built from this directory, its tests run as it builds. Its rows take
+# the form every daemon's do (../ready-rows), so the source is cut from the
+# modules folder holding both, and built from this one.
 { lib, rustPlatform }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "eero";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
@@ -14,8 +16,13 @@ rustPlatform.buildRustPackage {
       ./home-network.json
       # The theme the terminal's colours are tested on.
       ./tests/osaka-jade.json
+      # The launcher's words the rows are tested in.
+      ./tests/words.json
+      ../ready-rows/Cargo.toml
+      ../ready-rows/src
     ];
   };
+  sourceRoot = "${src.name}/eero";
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
     description = "Reads the home network's eero from eero's cloud, at home or away";

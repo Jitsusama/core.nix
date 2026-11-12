@@ -43,6 +43,7 @@
           (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
       slices = {
         "agents.json" = ../../agents/tests/words.json;
+        "eero.json" = ../../eero/tests/words.json;
         "machine.json" = ../../machine/tests/words.json;
         "people.json" = ../../people/tests/words.json;
         "slack.json" = ../../slack/tests/words.json;
