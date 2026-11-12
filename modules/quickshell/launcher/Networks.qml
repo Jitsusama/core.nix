@@ -147,37 +147,45 @@ Provider {
     property var leases: ({})
     property var neighbours: ({})
 
-    // A connection's facts at a glance (glance), for its drawer and the way
-    // out's, each made the turn after it's first asked for rather than
+    // Every listed connection's facts at a glance (glance), by its name, for
+    // its drawer and the way out's, made in a turn of their own rather than
     // inside the launcher's binding that asks: they read files (standing,
     // sys), and a read there changes what the binding read, so it made the
     // drawer again and again, 297,092 loops in one VM run (opens-and-sets,
-    // 2026-11-12). Until they're made, the drawer says only what it is.
-    // They're let go as the connections, their leases or their neighbours
-    // change, and as the launcher opens, so they're said as they stand.
-    readonly property var drawersKept: ({})
-    property int drawersMade: 0
+    // 2026-11-12). Made ahead of the ask, and made again in place as the
+    // connections, their leases or their neighbours change and as the
+    // launcher opens, a drawer shows whole or not yet, never growing under
+    // Joel's eye (VKCF3Z, 2026-11-12, after Address's came part-made). Shut,
+    // changes are gathered into one make a second at most, as a neighbour
+    // table may churn and the closed launcher wakes under five times a
+    // second (VKCF3Z); open, a quarter second after, past the opening's
+    // first frame.
+    property var glances: ({})
     function keptGlance(name, said) {
-        const key = `${name}\n${said}`;
-        const kept = drawersMade >= 0 ? drawersKept[key] : undefined;
-        if (kept !== undefined)
-            return kept;
-        Qt.callLater(() => {
-            if (drawersKept[key] !== undefined)
-                return;
-            drawersKept[key] = glance(name, [said]);
-            drawersMade += 1;
-        });
-        return [];
+        const kept = glances[name];
+        return kept === undefined ? null : kept.filter(fact => fact.value !== said);
     }
-    function letDrawersGo() {
-        for (const key of Object.keys(drawersKept))
-            delete drawersKept[key];
-        drawersMade += 1;
+    function makeGlances() {
+        const now = standing();
+        if (now === null)
+            return;
+        const made = {};
+        for (const link of listed(now))
+            made[link.name] = glance(link.name, []);
+        if (JSON.stringify(made) !== JSON.stringify(glances))
+            glances = made;
     }
-    onLinksChanged: letDrawersGo()
-    onLeasesChanged: letDrawersGo()
-    onNeighboursChanged: letDrawersGo()
+    function glanceSoon() {
+        if (!glancing.running)
+            glancing.start();
+    }
+    Timer {
+        id: glancing
+
+        interval: provider.launcher?.open ? 250 : 1000
+        onTriggered: provider.makeGlances()
+    }
+    onLinksChanged: glanceSoon()
     // The calls to networkd not yet answered, in order: one is sent at a
     // time, the next once the last is answered.
     property var calling: []
@@ -202,8 +210,10 @@ Provider {
         } else {
             networkd.connected = false;
         }
-        if (JSON.stringify([leases, neighbours]) !== before)
+        if (JSON.stringify([leases, neighbours]) !== before) {
+            glanceSoon();
             answered();
+        }
     }
 
     Socket {
@@ -254,8 +264,8 @@ Provider {
 
         function onOpenChanged() {
             if (provider.launcher.open) {
-                provider.letDrawersGo();
                 provider.look();
+                glancing.restart();
             }
         }
     }
@@ -356,7 +366,9 @@ Provider {
                 // What its kind was called, so "wired" still finds Ethernet.
                 once: Words.of(`networks:${link.kind}`).once ?? [],
                 note: link.name === now.out ? "where the machine's traffic leaves" : "",
-                drawer: () => provider.linkDrawer(link.name, name, side)
+                drawer: () => provider.linkDrawer(link.name, name, side),
+                // Not yet made, so a terminal's show asks again (drawerOf).
+                drawerUnread: () => provider.glances[link.name] === undefined
             }, () => provider.partsOf(link.name));
         });
         const out = shown.find(link => link.name === now.out) ?? shown[0] ?? null;
@@ -405,7 +417,9 @@ Provider {
     // A connection's drawer: what it is, then its parts at a glance, the
     // whole list a step in.
     function linkDrawer(name, title, side) {
-        return { eyebrow: eyebrow("connection"), title: title, facts: keptGlance(name, side) };
+        const facts = keptGlance(name, side);
+        return facts === null ? null
+            : { eyebrow: eyebrow("connection"), title: title, facts: facts };
     }
 
     // The address answer's drawer, the way out's: named by the connection
@@ -415,11 +429,10 @@ Provider {
     function addressDrawer(name, title, headline, publics) {
         const seen = publics.filter(row => row.side !== "\u2026" && row.side !== "asking\u2026")
             .map(row => ({ label: row.name, value: row.side }));
-        return {
-            eyebrow: eyebrow("wayOut"),
-            title: title,
-            facts: (name === "" ? [] : keptGlance(name, headline)).concat(seen)
-        };
+        const facts = name === "" ? [] : keptGlance(name, headline);
+        if (facts === null)
+            return null;
+        return { eyebrow: eyebrow("wayOut"), title: title, facts: facts.concat(seen) };
     }
 
     // The rows each connection is kept under, so a cable's link and a
