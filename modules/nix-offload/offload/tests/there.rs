@@ -47,6 +47,14 @@ case "$2" in
         from=${2##*tail -c +}; tail -c "+${from%% *}" "$here/far-runs" ;;
     esac
     exit 0 ;;
+  # Whether changed-checks keeps a base evaluated there: the base
+  # kept-<host> names. Asked before a run, so it's kept apart from it.
+  *"test -e \""*/changed-checks/*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    printf '%s\n' "$1" >> "$here/asked-kept"
+    [ -f "$here/kept-$1" ] || exit 1
+    case "$2" in *"/$(cat "$here/kept-$1")-"*) exit 0 ;; esac
+    exit 1 ;;
 esac
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
@@ -2464,6 +2472,77 @@ fn a_changed_run_both_lent_builders_turn_away_waits_at_the_first_it_asked() {
         "waits at the first, unmarked: {asked:?}"
     );
     assert!(asked[0].1 && asked[1].1, "{asked:?}");
+}
+
+#[test]
+fn a_changed_run_asks_first_the_lent_builder_keeping_its_base_evaluated() {
+    // keep-main keeps each head of main on one lent builder, and on 12
+    // November 23 of 54 runs evaluated their base again on the other.
+    let changed = Changed::new();
+    let more = changed.second();
+    for host in ["nix-offload", "nix-offload-more"] {
+        fs::write(changed.bin.join(format!("kept-{host}")), &changed.head).unwrap();
+        // Each run takes the two in turn by its process, so runs go on
+        // until one whose turn named the other was sent here instead. A
+        // run that passed at the commit is only said again, so each
+        // forgets it.
+        let mut runs = 0;
+        let mut moved = false;
+        while runs < 24 && !moved {
+            let _ = fs::remove_file(changed.bin.join("ssh-sent"));
+            let _ = fs::remove_dir_all(changed.folder.path().join("nix-offload/passed"));
+            let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+            assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+            let asked = changed.asked();
+            assert_eq!(asked.len(), 1, "went beyond the first: {asked:?}");
+            assert_eq!(
+                asked[0].0, host,
+                "didn't go where its base is kept: {asked:?}"
+            );
+            runs += 1;
+            moved = String::from_utf8_lossy(&ran.stderr).contains("so this run asks it first");
+        }
+        assert!(moved, "no run's turn named the other in {runs} runs");
+        fs::remove_file(changed.bin.join(format!("kept-{host}"))).unwrap();
+        let kept_asked = fs::read_to_string(changed.bin.join("asked-kept")).unwrap_or_default();
+        assert_eq!(
+            kept_asked.lines().count(),
+            2 * runs,
+            "each run asks both: {kept_asked}"
+        );
+        fs::remove_file(changed.bin.join("asked-kept")).unwrap();
+    }
+}
+
+#[test]
+fn a_changed_run_whose_keeping_builder_is_busy_goes_to_the_other() {
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("kept-nix-offload-more"), &changed.head).unwrap();
+    fs::write(changed.bin.join("busy-nix-offload-more"), "").unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = changed.asked();
+    assert_eq!(
+        asked,
+        [
+            ("nix-offload-more".to_owned(), true),
+            ("nix-offload".to_owned(), true)
+        ],
+        "didn't ask the keeper first and then the other: {asked:?}"
+    );
+}
+
+#[test]
+fn a_changed_run_with_one_lent_builder_asks_nothing_of_kept_bases() {
+    let changed = Changed::new();
+    fs::write(changed.bin.join("kept-nix-offload"), &changed.head).unwrap();
+    let (ran, _) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        !changed.bin.join("asked-kept").exists(),
+        "asked with nowhere else to go"
+    );
 }
 
 /// A warm VM builder standing in `changed`'s folder, as its lender names it.
