@@ -6,10 +6,8 @@ pragma ComponentBehavior: Bound
 // heard by its session's address, in either case, newest first; a line
 // its session writes, told as only what differs, moves it on to its
 // reply; one made since is heard; and one the node lets go goes. The
-// quest index written while the launcher is shut is read only as it
-// opens, though the orchestrators' file beside it is read at once, and
-// that opening orders the closed ones by what it reads. It exits
-// 0 once every case holds, and otherwise 1, saying which didn't.
+// orchestrators' file is read as it's written, the launcher shut. It
+// exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -35,7 +33,6 @@ ShellRoot {
         id: theLauncher
 
         property bool open: false
-        property bool cataloguing: false
         function enter(row) {
         }
     }
@@ -47,15 +44,9 @@ ShellRoot {
         settings: ({ name: "orchestrators" })
         onTalksChanged: Qt.callLater(root.check)
         onListedChanged: Qt.callLater(root.check)
-        onStartFoldersChanged: Qt.callLater(root.check)
     }
 
-    // The harness's files beside the shell, written as the harness does.
-    FileView {
-        id: questsFile
-        path: `${Sessions.state}/quest-workflow/quests.json`
-        printErrors: false
-    }
+    // The harness's file beside the shell, written as the harness does.
     FileView {
         id: orchestratorsFile
         path: `${Sessions.state}/quest-workflow/orchestrators.json`
@@ -116,29 +107,12 @@ ShellRoot {
                 if (heard("A003") !== "check the lights")
                     return;
                 root.waiting = "the orchestrators read while shut";
-                questsFile.setText(JSON.stringify({ quests: [
-                    { id: "QEST-A", start: "/lamp", resume: { at: "2026-11-01T09:00:00Z" } },
-                    { id: "QEST-B", resume: { at: "2026-11-10T09:00:00Z" } }] }));
                 orchestratorsFile.setText(JSON.stringify({ orchestrators: [
                     { address: "A003", quest: "QEST-A", title: "A lit" },
                     { address: "B001", quest: "QEST-B", title: "B lit" }] }));
             } else if (root.waiting === "the orchestrators read while shut") {
                 if (orchestrators.listed[0]?.title !== "A lit")
                     return;
-                expect("the quest index written while shut is left unread",
-                    orchestrators.startFolders["QEST-A"] === undefined,
-                    JSON.stringify(orchestrators.startFolders));
-                root.waiting = "the quest index read as it opens";
-                theLauncher.open = true;
-            } else if (root.waiting === "the quest index read as it opens") {
-                if (orchestrators.startFolders["QEST-A"] !== "/lamp")
-                    return;
-                // Its first opening read the index only as it opened, so
-                // the closed ones were ordered before what it says of them
-                // came (vm-desktop-looks, 2026-11-11: Beacon then Lamplight).
-                expect("the opening that reads the index orders the closed by it",
-                    JSON.stringify(orchestrators.closedOrder) === '["B001","A003"]',
-                    JSON.stringify(orchestrators.closedOrder));
                 console.log("PASS the talks are heard from the node");
                 Qt.callLater(() => Qt.exit(0));
             }

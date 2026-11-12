@@ -4,8 +4,8 @@
 //! the rows that moved; and does a row's act as the shell asks by it,
 //! steering its session through the node (acts.rs); and serves the
 //! sessions there are to reopen, keeping what Joel says of them
-//! (reopen.rs), and what the sessions landed, keeping what of it he has
-//! read (landed.rs).
+//! (reopen.rs), what the sessions landed, keeping what of it he has
+//! read (landed.rs), and the closed orchestrators (closed.rs).
 //!
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
@@ -51,6 +51,7 @@ const DOMAIN: Domain = Domain {
         "recent",
         "landed",
         "landed-days",
+        "closed",
     ],
 };
 
@@ -201,6 +202,7 @@ fn main() -> ExitCode {
     if let Some(node) = args.node {
         sources::follow(node.clone(), "session", Heard::Sessions, to.clone());
         sources::follow(node.clone(), "job", Heard::Jobs, to.clone());
+        sources::follow(node.clone(), "quest", Heard::Quests, to.clone());
         sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());

@@ -194,29 +194,6 @@ QtObject {
             fills.push("one with no usage said it was full");
         for (const fill of fills)
             failures.push(`how full: ${fill}`);
-        // When a quest's session was last live: the harness's `at` where it
-        // says one, else when a UUIDv7 id says it began, else never.
-        const lives = [
-            [{ id: "01a1b20b-e05f-7367-9461-074e26d23c53", at: "2026-11-07T05:00:00Z" },
-                Date.parse("2026-11-07T05:00:00Z")],
-            [{ id: "01a1b20b-e05f-7367-9461-074e26d23c53" }, 0x01a1b20be05f],
-            [{ id: "01a1b20b-e05f-4367-9461-074e26d23c53" }, 0],
-            [{ id: "not-a-uuid", at: "whenever" }, 0],
-            [null, 0]
-        ];
-        for (const [resume, want] of lives) {
-            const got = SessionRow.liveAt(resume);
-            if (got !== want)
-                failures.push(`last live from ${JSON.stringify(resume)}: ${got}, not ${want}`);
-        }
-        // The closed, the one last live first, those as live as each other
-        // in the order given.
-        const lastLive = SessionRow.lastLiveFirst([{ address: "OLDEST", at: 1 },
-            { address: "NEVER", at: 0 }, { address: "NEWEST", at: 3 },
-            { address: "TIEDA", at: 2 }, { address: "TIEDB", at: 2 }]).join(" ");
-        if (lastLive !== "NEWEST TIEDA TIEDB OLDEST NEVER")
-            failures.push(`the closed, last live first: "${lastLive}"`);
-
         // Which landings there are, whose and whether Joel read each are
         // the agents daemon's (modules/agents/src/landed.rs). Of those it
         // serves, what says what to try waits in For You until he reads
