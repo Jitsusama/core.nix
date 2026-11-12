@@ -9,8 +9,13 @@
 // Whether a row's acts hold nothing a list would add: none steps into rows,
 // and past Return's first, each is a copy, which y does, or its details,
 // which open its drawer. A row with any other act keeps its step in, so
-// that act is still reached, until its drawer offers its acts.
-function actsOnly(acts) {
+// that act is still reached, until its drawer offers its acts. Its daemon
+// may say so where the acts alone can't, as an emoji's copy is asked of
+// the history and still done by y (`served`, ready-rows.md's actsOnly).
+function actsOnly(acts, served) {
+    if (served === true) {
+        return acts.length > 0;
+    }
     return acts.length > 0 && !acts.some(one => one.step === "rows")
         && acts.every((one, at) => at === 0 || one.step === "drawer"
             || (typeof one.copy === "string" && !one.ask));

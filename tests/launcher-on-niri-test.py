@@ -1779,6 +1779,31 @@ def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -
     assert DRAWERS_SAID.search(closed), "the close never said the drawers presented by place"
 
 
+def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
+    """An emoji's row shows the drawer the clipboard's history serves, said from its key.
+
+    Each held no drawer, only a list of Paste and Copy, which Return and y already do (Joel,
+    2026-11-11 22:00: "if they have nothing under them, we shouldn't open a submenu for
+    them"). That it opens no list is tests/ready-rows.qml's, over what the history serves.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("emoji", selecting="Emoji")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Emoji"))
+    shell.normal()
+    shell.launcher_until(drawer_on_selected)
+    title = shell.showing()["drawer"]["title"]
+    since = shell.mark()
+    shell.send_chars("j")
+    shell.launcher_until(functools.partial(drawer_moved, title))
+    said = said_once(shell, since, DRAWER_SAID)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    assert DRAWER_SAID.search(said), f"the emoji's drawer was never said presented: {lines}"
+    stepped_out(shell)
+    shell.close_launcher()
+
+
 def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
     """Give the shell's log since `since` once it holds `line`, else as the wait ends."""
     said = ""

@@ -210,8 +210,8 @@ function drawerOf(drawer, now, said) {
     // where served: a preview's path and size, never its bytes; parts
     // that, where given, are drawn over the eyebrow's one text; and, as
     // Drawer.qml reads a notice's, a body styled where it carries markup
-    // or links, and its picture.
-    for (const field of ["eyebrow", "preview", "eyebrowItems", "styled", "picture"]) {
+    // or links, and its picture; and the raw bits folded behind za.
+    for (const field of ["eyebrow", "preview", "eyebrowItems", "styled", "picture", "nerd"]) {
         if (drawer[field] !== undefined && drawer[field] !== null) {
             drawn[field] = drawer[field];
         }
