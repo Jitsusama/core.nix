@@ -522,7 +522,9 @@
         "turnOff": "turn the desk light off",
         "setTo": "set the desk light to {to}",
         "make": "make the desk light {way} \u00b7 {warmth}",
-        "now": "now {lit}"
+        "now": "now {lit}",
+        "unplugged": "not plugged in",
+        "down": "not answering"
       }
     },
     {
