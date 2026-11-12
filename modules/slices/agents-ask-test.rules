@@ -1,0 +1,116 @@
+// The cases of agents-ask-first.rules and agents-ask-last.rules, run by
+// duktape, polkit's own engine, after agents-ask-polkit.rules, polkit's
+// init.js and a workstation's 10-nixos.rules as polkitd reads it, with
+// the first rules, one that asks (firmware-asks.rules), one that grants
+// (work-slices.rules) and the last rules (modules/slices/checks.nix).
+var account = "/user.slice/user-1000.slice/user@1000.service/";
+var where = {
+  session: account + "agents.slice/kitty-3272-33.scope",
+  host: account + "agents.slice/pi-host-work-background.service",
+  work: account + "jobs.slice/jobs-work.slice/jobs-work-qestabc.slice/work-12-3.scope",
+  terminal: account + "jobs.slice/jobs-awaited.slice/awaited-40-5.scope",
+  app: account + "app.slice/app-niri-kitty-41.scope",
+};
+var pids = { session: 10, host: 11, work: 12, terminal: 13, app: 14 };
+for (var place in where) {
+  processes[pids[place]] = where[place];
+}
+
+function joels(pid) {
+  var subject = new Subject();
+  subject.pid = pid;
+  subject.user = "jitsusama";
+  subject.groups = ["users", "wheel"];
+  subject.seat = "seat0";
+  subject.session = "2";
+  subject.local = true;
+  subject.active = true;
+  return subject;
+}
+
+function asking(id, details) {
+  var action = new Action();
+  action.id = id;
+  for (var key in details) {
+    action["_detail_" + key] = details[key];
+  }
+  return action;
+}
+
+var failed = 0;
+function expect(what, action, place, said) {
+  var answer = polkit._runRules(action, joels(pids[place] || 99));
+  if (answer !== said) {
+    failed += 1;
+    print("FAIL " + what + " from " + place + ": " + answer + ", not " + said);
+  }
+}
+
+var libvirt = asking("org.libvirt.unix.manage", {});
+var firmware = asking("org.freedesktop.fwupd.update-internal", {});
+var weight = asking("org.freedesktop.systemd1.manage-units", {
+  verb: "set-property",
+  unit: "build.slice",
+});
+
+// What no rule answers is polkit's default, which asks Joel: an agent is
+// refused it, and Joel's own terminal and apps are left to it.
+expect("libvirt's system connection", libvirt, "session", "no");
+expect("libvirt's system connection", libvirt, "host", "no");
+expect("libvirt's system connection", libvirt, "work", "no");
+expect("libvirt's system connection", libvirt, "terminal", null);
+expect("libvirt's system connection", libvirt, "app", null);
+
+// A rule that asks an administrator asks Joel, never for an agent.
+expect("writing firmware", firmware, "session", "no");
+expect("writing firmware", firmware, "work", "no");
+expect("writing firmware", firmware, "terminal", "auth_admin_keep");
+expect("writing firmware", firmware, "app", "auth_admin_keep");
+
+// What a rule grants unasked, agents keep.
+expect("a work slice's weight", weight, "session", "yes");
+expect("a work slice's weight", weight, "terminal", "yes");
+
+// A process gone before it's read is refused, since nobody's there to ask.
+expect("libvirt's system connection", libvirt, "gone", "no");
+
+// A grant is read without looking at where it came from.
+spawned = 0;
+polkit._runRules(weight, joels(pids.app));
+if (spawned !== 0) {
+  failed += 1;
+  print("FAIL a grant read a cgroup " + spawned + " times");
+}
+
+// A refusal, and an ask a rule puts to Joel, say where the process ran.
+function says(what, action, place, line) {
+  logged = [];
+  polkit._runRules(action, joels(pids[place] || 99));
+  if (logged.join("\n") !== line) {
+    failed += 1;
+    print("FAIL " + what + " from " + place + " logged: " + logged.join(" | "));
+  }
+}
+says(
+  "libvirt's system connection",
+  libvirt,
+  "session",
+  "refused org.libvirt.unix.manage to pid 10 in " + where.session
+);
+says(
+  "writing firmware",
+  firmware,
+  "terminal",
+  "asks Joel for org.freedesktop.fwupd.update-internal for pid 13 in " + where.terminal
+);
+says(
+  "libvirt's system connection",
+  libvirt,
+  "gone",
+  "refused org.libvirt.unix.manage to pid 99 in a process gone"
+);
+
+if (failed > 0) {
+  throw new Error(failed + " cases failed");
+}
+print("every case held");
