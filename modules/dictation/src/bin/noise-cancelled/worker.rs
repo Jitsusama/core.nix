@@ -12,7 +12,8 @@
 //! at the spot the machine is at (chosen.rs, spot.rs), settled as it starts
 //! being recorded and kept until it stops, so a pick changes the next call
 //! and never one under way. Each cleaner in use has its model loaded once,
-//! however many microphones share it.
+//! however many microphones share it. A call on a microphone never picked
+//! for where it was made offers Choose by Ear once it's over (offer.rs).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -26,6 +27,8 @@ use rtrb::{Consumer, Producer};
 
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, Denoiser, FRAME, Model};
+use crate::offer::Offers;
+use crate::spot::Spot;
 
 /// How long the model stays loaded once nothing records from a source.
 const UNUSED: Duration = Duration::from_mins(2);
@@ -57,6 +60,8 @@ pub struct Ends {
     pub shared: Arc<Shared>,
     /// The microphone's node name, which its pick is kept under.
     pub microphone: String,
+    /// Its name, as the registry describes it.
+    pub description: String,
 }
 
 enum Ask {
@@ -72,13 +77,13 @@ pub struct Worker {
 
 impl Worker {
     /// Starts the thread, which cleans each microphone with the cleaner
-    /// `chosen` says for it, and reads what it needs from `models` when it's first
-    /// needed.
-    pub fn start(models: PathBuf, chosen: Chosen) -> Result<Self, String> {
+    /// `chosen` says for it, reads what it needs from `models` when it's first
+    /// needed, and makes `offers` after calls.
+    pub fn start(models: PathBuf, chosen: Chosen, mut offers: Offers) -> Result<Self, String> {
         let (asks, heard) = mpsc::channel();
         let handle = thread::Builder::new()
             .name("denoiser".into())
-            .spawn(move || run(&models, &chosen, &heard))
+            .spawn(move || run(&models, &chosen, &mut offers, &heard))
             .map_err(|why| format!("the denoiser's thread wouldn't start: {why}"))?;
         Ok(Self {
             asks,
@@ -110,6 +115,8 @@ struct Microphone {
     /// What it cleans with while it's recorded from.
     cleaner: Option<Cleaner>,
     denoiser: Option<Denoiser>,
+    /// When and where it began being recorded from, while it is.
+    began: Option<(Instant, Spot)>,
 }
 
 /// The model, loaded only while it's wanted.
@@ -120,7 +127,7 @@ enum Loaded {
     Refused(Instant),
 }
 
-fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
+fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>) {
     let mut microphones: HashMap<u32, Microphone> = HashMap::new();
     let mut loads: HashMap<Cleaner, Loaded> = HashMap::new();
     let mut last_wanted = Instant::now();
@@ -134,6 +141,7 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
                             ends,
                             cleaner: None,
                             denoiser: None,
+                            began: None,
                         },
                     );
                 }
@@ -144,7 +152,12 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
                 Err(TryRecvError::Disconnected) => return,
             }
         }
-        let wanted = settled(&mut microphones, chosen);
+        let wanted = settled(&mut microphones, chosen, offers);
+        if wanted.is_empty() {
+            offers.stand(chosen);
+        } else {
+            offers.withheld(chosen);
+        }
         if !wanted.is_empty() {
             last_wanted = Instant::now();
             for cleaner in &wanted {
@@ -171,18 +184,35 @@ fn run(models: &Path, chosen: &Chosen, asks: &Receiver<Ask>) {
 
 /// Settles what each microphone cleans with: as `chosen` says for it at
 /// the spot the machine is at when it starts being recorded, kept until it
-/// stops, and nothing once it has. The spot is read only then, once a
-/// pass. Answers every cleaner wanted now, each once.
-fn settled(microphones: &mut HashMap<u32, Microphone>, chosen: &Chosen) -> Vec<Cleaner> {
+/// stops, and nothing once it has, telling `offers` how long it was
+/// recorded from and where. The spot is read only then, once a pass.
+/// Answers every cleaner wanted now, each once.
+fn settled(
+    microphones: &mut HashMap<u32, Microphone>,
+    chosen: &Chosen,
+    offers: &mut Offers,
+) -> Vec<Cleaner> {
     let mut wanted = Vec::new();
     let mut spot = None;
     for microphone in microphones.values_mut() {
         if !microphone.ends.shared.wanted.load(Ordering::Acquire) {
             microphone.cleaner = None;
+            if let Some((began, at)) = microphone.began.take() {
+                let ends = &microphone.ends;
+                offers.heard(
+                    chosen,
+                    &ends.microphone,
+                    &ends.description,
+                    &at,
+                    began.elapsed(),
+                );
+            }
             continue;
         }
+        let began = &mut microphone.began;
         let cleaner = *microphone.cleaner.get_or_insert_with(|| {
             let spot = spot.get_or_insert_with(|| chosen.spot());
+            *began = Some((Instant::now(), spot.clone()));
             let cleaner = chosen.cleaner(Some(&microphone.ends.microphone), Some(spot));
             eprintln!(
                 "noise-cancelled: {} cleans with {cleaner} at {}",
