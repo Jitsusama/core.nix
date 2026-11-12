@@ -14,8 +14,10 @@
 // saying at its side when it was held. It stands, "none" while it holds
 // nothing (keepsRecentOf), since the program keeps 30 days of them.
 //
-// A meeting's Return and most of what's inside it are still Calendar.qml's
-// (Calendar.row's, as Now and Meet show it): Return joins its call from
+// It's the one row of a meeting wherever one shows: Now's next, a
+// person's next or last meeting in People and the meeting a Meet call was
+// all take it (`next`, `lent`). A meeting's Return and most of what's
+// inside it are still Calendar.qml's (Calendar.acts): Return joins its call from
 // ten minutes before it starts, and otherwise steps in to Show in
 // Calendar. Its Guests and Attachments are the rows the daemon serves
 // inside it (src/calendar_inside.rs), each guest People's person and each
@@ -187,4 +189,20 @@ Provider {
     readonly property var next: Google.account === "ready" && Calendar.upNext(Calendar.next)
         ? things.find(row => row.key === `calendar:meeting:${Calendar.next.id}`) ?? null
         : null
+
+    // A meeting another place shows, a person's next or last one or the
+    // meeting a Meet call was, is this one's row, coming or held lately
+    // (ReadyRows.qml's lentOf), so it's one row with its served insides
+    // wherever it shows; null for one the daemon doesn't serve, where
+    // that place makes Calendar.row's. `lentRevision` moves as its rows do.
+    function lent(thing) {
+        const prefix = "calendar:meeting:";
+        const id = String(thing).startsWith(prefix) ? String(thing).slice(prefix.length) : "";
+        if (id === "")
+            return null;
+        if (ready.served(`row:calendar:${id}`))
+            return ready.rowAt(`row:calendar:${id}`);
+        return had.served(`row:held:${id}`) ? had.rowAt(`row:held:${id}`) : null;
+    }
+    readonly property int lentRevision: ready.placings + had.placings
 }
