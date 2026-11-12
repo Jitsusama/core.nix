@@ -90,6 +90,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         environment = {
           # The scripted model takes pi-ai's faux provider from here.
           PI_HOST_PACKAGE_DIR = packageDir;
+          # A key the host takes as given rather than resolving its own, which
+          # the scripted model never reads.
+          PI_PROXY_API_KEY = "sealed-key";
           PI_HOME_REALM = "work";
           PI_OFFLINE = "1";
           PI_SKIP_VERSION_CHECK = "1";
