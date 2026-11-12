@@ -227,6 +227,26 @@ function details(person, there = () => "") {
     };
 }
 
+// Who someone is, said under their name rather than among their facts
+// (VKCF3Z, a807ddcd): their title, then their team, the facts `labels`
+// names, each the first a source gave, as a quiet line of its own that
+// gives way from its end, the team first; and neither left among the
+// facts, since a drawer never says a thing twice. The first source's is
+// theirs, as with every fact, so Slack's title wins over Vault's, Slack
+// being asked first. Knowing neither, the drawer has no line for it.
+function headed(drawer, labels) {
+    const facts = drawer.facts ?? [];
+    const first = label => facts.find(fact => fact.label === label && fact.value)?.value ?? "";
+    const items = [first(labels.title), first(labels.team)].filter(said => said !== "");
+    const kept = Object.assign({}, drawer, {
+        facts: facts.filter(fact => fact.label !== labels.title && fact.label !== labels.team)
+    });
+    if (items.length > 0) {
+        kept.preview = { lines: [items.join(" \u00b7 ")], quiet: true, gives: true };
+    }
+    return kept;
+}
+
 // Every source's acts for them in the one order: the main ways to reach
 // someone first, in the order the sources are consulted (Write in Slack,
 // then Call Them, then Write a Mail), and then each source's others.

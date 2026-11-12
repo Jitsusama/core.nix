@@ -390,10 +390,16 @@ ShellRoot {
                     told.slice(0, 2).join("; "));
                 const facts = told.slice(2);
                 expect("a source's facts are theirs, the time there after their zone",
-                    facts[0] === "Email: ada@example.com" && facts[1] === "Team: Shell"
-                        && facts[2] === "Time Zone: Asia/Kolkata"
-                        && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[3]),
+                    facts[0] === "Email: ada@example.com"
+                        && facts[1] === "Time Zone: Asia/Kolkata"
+                        && /^Time There: \d\d:\d\d, 5 h 30 min ahead$/.test(facts[2]),
                     facts.join("; "));
+                // Her team is said under her name instead, once (VKCF3Z, a807ddcd).
+                const head = open[0].drawer().preview;
+                expect("their team under their name, quiet, and not among the facts",
+                    JSON.stringify(head?.lines) === '["Shell"]' && head.quiet && head.gives
+                        && !facts.some(fact => fact.startsWith("Team:")),
+                    JSON.stringify(head));
                 expect("showing their drawer merges no one", people.merging.merges === merges,
                     `${people.merging.merges - merges} merges`);
                 expect("a favourite says so", steps[5].side === "yes" && steps[5].verb === "unstar",

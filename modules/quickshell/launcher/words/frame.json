@@ -459,6 +459,14 @@
       "why": "A meeting's file is an Attachment, and its drawer's fact naming it says so too; the fact is never a row."
     },
     {
+      "word": "title",
+      "things": [
+        "people:title",
+        "slack:person:title"
+      ],
+      "why": "Slack's Title is a fact of a person's, and People's is how the line under their name finds it among every source's facts; neither is ever a row."
+    },
+    {
       "word": "attachments",
       "things": [
         "verb:calendar:attachments",

@@ -249,6 +249,28 @@ QtObject {
         ]);
         check("none where there's nothing", Person.firsts([{ met: null, wait: null }], null,
             said, labels), []);
+        // Who they are, under their name and out of the facts (VKCF3Z,
+        // a807ddcd): the first source's title, then the team.
+        const heads = { title: "Title", team: "Team" };
+        const told = facts => ({ title: "Ada", facts: facts, body: "" });
+        check("their title then team under their name, and not among the facts",
+            Person.headed(told([
+                { label: "Email", value: "ada@example.com" },
+                { label: "Title", value: "Staff Developer" },
+                { label: "Team", value: "Shell" },
+                { label: "Title", value: "Engineer" }
+            ]), heads), {
+                title: "Ada",
+                facts: [{ label: "Email", value: "ada@example.com" }],
+                body: "",
+                preview: { lines: ["Staff Developer \u00b7 Shell"], quiet: true, gives: true }
+            });
+        check("a team alone where no title's known",
+            Person.headed(told([{ label: "Team", value: "Shell" }]), heads).preview.lines,
+            ["Shell"]);
+        check("no line where neither is known",
+            Person.headed(told([{ label: "Email", value: "ada@example.com" }]), heads).preview,
+            undefined);
         check("someone in Joel's time says none",
             Person.awaySide("America/Toronto", 0, "12:02", away), "");
 

@@ -610,8 +610,10 @@ Provider {
             if (details === null || detailsAt !== minute) {
                 const drawn = served ? drawnFrom(served()) : null;
                 details = drawn ?? Person.details(person, zone => provider.there(zone));
-                if (details)
+                if (details) {
                     details.facts = firstsOf(person).concat(details.facts ?? []);
+                    details = Person.headed(details, headLabels);
+                }
                 detailsAt = minute;
             }
             return details;
@@ -911,6 +913,13 @@ Provider {
     // drawer shown on a key makes no rows but the next meeting's and a
     // call's, rather than one for every meeting and mail they shared, and
     // its details hold for the minute (made's drawer).
+    // The facts their drawer says under their name, by the names sources
+    // give them, Slack's and Vault's alike.
+    readonly property var headLabels: ({
+        title: Words.name("people:title"),
+        team: Words.name("people:team")
+    })
+
     function firstsOf(person) {
         const now = Date.now();
         const coming = next(person)[0] ?? null;

@@ -396,6 +396,16 @@ function wholeItemsFitted(words, room, width, between) {
     return items.join(between);
 }
 
+// A line of items under a drawer's name, as a person's title and team,
+// drawn in `room`: it gives way by whole items from its end, and its
+// first, where that alone doesn't fit, is cut short at a whole word with
+// an ellipsis, so someone's title stays when their team can't (VKCF3Z,
+// a807ddcd: "the team goes first, then the title is cut short").
+function headItems(words, room, width) {
+    const kept = wholeItemsFromEnd(words, room, width);
+    return kept !== "" ? kept : wholeWords(words.split(ITEMS_APART)[0], room, width);
+}
+
 // A drawer's eyebrow as it's drawn in `room`: one given as items
 // (`eyebrowItems`) gives way by whole items, those it keeps least first,
 // a path from its middle; any other gives way as a note does, by whole

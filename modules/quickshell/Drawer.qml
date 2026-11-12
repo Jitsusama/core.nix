@@ -20,7 +20,9 @@
 // styled, a fact whose value isn't known yet null, shown as a fixed
 // placeholder until it is. A preview, as a file's plate has (FileFacts.js),
 // comes right under the name: `{ picture, across, down }` or `{ lines,
-// quiet }`. What doesn't fit is reached by going into it (below).
+// quiet, gives }`, a line that `gives` being items that give way from
+// its end, as a person's title and team (Reading.headItems). What
+// doesn't fit is reached by going into it (below).
 //
 // Home's Now gives a plate of the moment instead (look 3's piece 4,
 // launcher/Now.qml): `{ now: true, eyebrow, seconds, say, groups:
@@ -2005,7 +2007,10 @@ Floating {
                                 width: previewLines.width
                                 y: index * drawer.pitch + drawer.pitch / 2 + drawer.dropped
                                     - baselineOffset
-                                plain: modelData
+                                plain: drawer.preview?.gives === true
+                                    ? Reading.headItems(modelData, width,
+                                        words => Math.ceil(factFace.advanceWidth(words)) + 1)
+                                    : modelData
                                 sought: drawer.washing
                                 leading: 0
                                 elides: true
