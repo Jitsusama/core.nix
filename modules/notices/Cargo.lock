@@ -852,6 +852,7 @@ dependencies = [
 name = "windows"
 version = "0.1.0"
 dependencies = [
+ "daemon-serve",
  "programs",
  "serde_json",
 ]

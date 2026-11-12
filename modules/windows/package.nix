@@ -1,7 +1,8 @@
 # The windows daemon, built from this directory, its tests run as it builds,
 # and given the launcher's words, they read Screens' from them too. It reads
 # the desktop entries through the programs daemon's crate (../programs),
-# serves its rows in the form every daemon's take (../ready-rows), and its
+# serves its rows in the form every daemon's take (../ready-rows), through
+# the serving side every daemon shares (../daemon-serve), and its
 # socket's tests ask it with a crate every daemon's tests share
 # (../daemon-client), so the source is cut from the modules folder holding
 # them all, and built from this one.
@@ -30,6 +31,8 @@ rustPlatform.buildRustPackage rec {
       ../ready-rows/src
       ../daemon-client/Cargo.toml
       ../daemon-client/src
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
     ];
   };
   sourceRoot = "${src.name}/windows";
