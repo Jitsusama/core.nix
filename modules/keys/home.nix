@@ -170,6 +170,16 @@ let
             github/pulls. Empty, the table works it out.
           '';
         };
+        leaves = lib.mkOption {
+          type = lib.types.listOf (lib.types.enum (lib.attrNames layers));
+          default = [ ];
+          example = [ "google-mail" ];
+          description = ''
+            The layers inside this one whose pages the chord is off on,
+            leaving its key to theirs, as Vimium's are off on Google's
+            pages, so the two claiming the same key is no clash.
+          '';
+        };
         run = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -276,6 +286,12 @@ let
 
   spelled = layer: cfg.${layer};
 
+  # Whether a chord above takes the key of one in the layer below, which
+  # it doesn't where it leaves that layer's pages to it.
+  takes =
+    lower: below: above:
+    above.keys == first below.keys && !(lib.elem lower above.leaves);
+
   # Every chord a layer claims that a layer above it also claims.
   clashes = lib.concatLists (
     lib.imap0 (
@@ -291,7 +307,7 @@ let
               above
               below
               ;
-          }) (lib.filter (above: above.keys == first below.keys) (spelled upper))
+          }) (lib.filter (takes lower below) (spelled upper))
         ) (spelled lower)
       ) (lib.filter (lower: !(beside upper lower)) (lib.drop (index + 1) order))
     ) order

@@ -10,6 +10,17 @@
 # each read from its history as Chrome is stepped into (recent-sites), and
 # its own acts there open a repository's page on GitHub, the link copied
 # or the latest download (ChromeProgram.qml).
+#
+# A page speaks Vim's keys through Vimium, the one such extension the
+# browser's managers let it take, whose settings Chrome syncs and no policy
+# sets. So they're written to ~/.config/jitsusama/vimium.json, the file its
+# options page restores a backup from, once, by hand: its own keys with the
+# key language's beside them (../keys/language.toml), as j scrolls, gg goes
+# to the top, Ctrl+o goes back and ZZ closes the tab. Its own H, L and x
+# stay, and f and F show the links' hints. GitHub (vimium.json) and each
+# of Google's pages with a layer of its own (../google/keys.nix), whose
+# keys are their own, are left to them: Vimium is off there, and its keys
+# leave theirs, so Mail's j is Mail's.
 {
   config,
   lib,
@@ -19,6 +30,86 @@
 }:
 let
   grouped = group: map (key: key // { inherit group; });
+
+  # Google's pages with keys of their own, by the layer that lists them
+  # and the addresses Vimium is off at.
+  googlePages = {
+    google-mail = "https?://mail.google.com/*";
+    google-calendar = "https?://calendar.google.com/*";
+    google-meet = "https?://meet.google.com/*";
+    google-docs = "https?://docs.google.com/document/*";
+    google-sheets = "https?://docs.google.com/spreadsheets/*";
+    google-slides = "https?://docs.google.com/presentation/*";
+    google-drive = "https?://drive.google.com/*";
+  };
+  exclusionRules = lib.mapAttrsToList (_: pattern: {
+    inherit pattern;
+    passKeys = "";
+  }) googlePages;
+
+  # Vimium's command for each of the language's acts it has, with what it
+  # does in the launcher's words and the group it's listed in there.
+  vimium = group: command: does: { inherit group command does; };
+  vimiumActs = {
+    down = vimium "scrolling" "scrollDown" "Scroll down";
+    up = vimium "scrolling" "scrollUp" "Scroll up";
+    left = vimium "scrolling" "scrollLeft" "Scroll left";
+    right = vimium "scrolling" "scrollRight" "Scroll right";
+    scroll-down = vimium "scrolling" "scrollDown" "Scroll down a line";
+    scroll-up = vimium "scrolling" "scrollUp" "Scroll up a line";
+    half-down = vimium "scrolling" "scrollPageDown" "Down half a screen";
+    half-up = vimium "scrolling" "scrollPageUp" "Up half a screen";
+    screen-down = vimium "scrolling" "scrollFullPageDown" "Down a screen";
+    screen-up = vimium "scrolling" "scrollFullPageUp" "Up a screen";
+    first = vimium "scrolling" "scrollToTop" "The top of the page";
+    last = vimium "scrolling" "scrollToBottom" "The bottom of the page";
+    jump-back = vimium "pages" "goBack" "Back a page";
+    jump-forward = vimium "pages" "goForward" "Forward a page";
+    search-forward = vimium "finding" "enterFindMode" "Find words on the page";
+    next = vimium "finding" "performFind" "The next words found";
+    previous = vimium "finding" "performBackwardsFind" "The words found before";
+    copy = vimium "links" "copyCurrentUrl" "Copy the page's address";
+    close = vimium "tabs" "removeTab" "Close the tab";
+  };
+
+  # Each act's keys Vimium reads: letters and Ctrl's. Not a named key, as
+  # Page Down, which Chrome scrolls by itself, nor Space, which scrolls the
+  # page, so Space w stays out and ZZ closes.
+  vimiumKeys =
+    act:
+    lib.filter (
+      key: builtins.match "<C-.>|[^<]+" key != null
+    ) config.jitsusama.keyLanguage.acts.${act}.keys;
+
+  # Every act's keys, each with its Vimium command and words.
+  vimiumBinds = lib.concatMap (
+    act: map (key: vimiumActs.${act} // { inherit act key; }) (vimiumKeys act)
+  ) (lib.attrNames vimiumActs);
+
+  # The lines Vimium reads, its modifiers lower case, as it writes them.
+  keyMappings = lib.concatMapStrings (
+    bind: "map ${lib.replaceStrings [ "<C-" ] [ "<c-" ] bind.key} ${bind.command}\n"
+  ) vimiumBinds;
+
+  # A key in the launcher's spelling: <C-d> is Ctrl+d, G is Shift+g and gg
+  # is g g.
+  chordOf =
+    key:
+    lib.concatMapStringsSep " " (
+      token:
+      let
+        ctrl = builtins.match "<C-(.)>" token;
+      in
+      if ctrl != null then
+        "Ctrl+${lib.head ctrl}"
+      else if lib.toLower token != token then
+        "Shift+${lib.toLower token}"
+      else
+        token
+    ) (map lib.head (lib.filter lib.isList (builtins.split "(<C-.>|.)" key)));
+
+  # On a page with Vimium on, as any but GitHub's and Google's own.
+  withVimium = "on a page, with Vimium on";
 
   # A window for one site has no tabs, so these work in the browser's own.
   inBrowser = map (key: key // { when = "in the browser"; });
@@ -82,6 +173,7 @@ let
       {
         chord = "Ctrl+f";
         does = "Find words on the page";
+        when = "in a field, or where Vimium is off";
       }
       {
         chord = "Ctrl+Plus";
@@ -117,7 +209,52 @@ let
         chord = "F11";
         does = "The page on the whole screen";
       }
-    ];
+    ]
+    # Vimium's, the language's and its own, each in the group of the
+    # browser's own like it.
+    ++
+      map
+        (
+          key:
+          key
+          // {
+            when = withVimium;
+            leaves = lib.attrNames googlePages;
+          }
+        )
+        (
+          map (bind: {
+            chord = chordOf bind.key;
+            inherit (bind) act does group;
+          }) vimiumBinds
+          ++ [
+            {
+              chord = "f";
+              does = "Show the links' hints, to follow one";
+              group = "links";
+            }
+            {
+              chord = "Shift+f";
+              does = "Show the links' hints, to open one in a new tab";
+              group = "links";
+            }
+            {
+              chord = "Shift+h";
+              does = "Back a page";
+              group = "pages";
+            }
+            {
+              chord = "Shift+l";
+              does = "Forward a page";
+              group = "pages";
+            }
+            {
+              chord = "x";
+              does = "Close the tab";
+              group = "tabs";
+            }
+          ]
+        );
   # What reads Chrome's sites and its downloads (recent-sites).
   recentSites = lib.getExe (pkgs.callPackage ./recent-sites/package.nix { });
   # The extension's host, chrome-open-tabs, where the machine's own Chrome
@@ -191,6 +328,19 @@ in
   ];
 
   xdg.configFile."quickshell/launcher/ChromeDownloads.js".source = ./ChromeDownloads.js;
+
+  # Vimium's settings, for its options page to restore once, as the comment
+  # at the top says; Chrome syncs them from there.
+  xdg.configFile."jitsusama/vimium.json".text = builtins.toJSON (
+    let
+      own = lib.importJSON ./vimium.json;
+    in
+    own
+    // {
+      inherit keyMappings;
+      exclusionRules = exclusionRules ++ own.exclusionRules;
+    }
+  );
 
   # Chrome's own acts in the launcher (ChromeProgram.qml): Open a
   # Repository on GitHub, through the git repositories under ~/src and
