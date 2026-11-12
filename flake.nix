@@ -317,6 +317,7 @@
         console = ./modules/console/nixos.nix;
         coredump = ./modules/coredump/nixos.nix;
         creative-pebble-x-plus = ./modules/creative-pebble-x-plus/nixos.nix;
+        dbus = ./modules/dbus/nixos.nix;
         ddcutil = ./modules/ddcutil/nixos.nix;
         desk-facts = ./modules/desk-facts/nixos.nix;
         device-check = ./modules/device-check/nixos.nix;

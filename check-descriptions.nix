@@ -3944,7 +3944,8 @@
     tray lit too, under a hundredth of a core, and behind the lock as its files are written
   '';
   vm-desktop-starts-clean = ''
-    the desktop boots without an ordering cycle and its shell without an error, niri alone keeps
+    the desktop boots without an ordering cycle and its shell without an error, each bus finds
+    each service once, niri alone keeps
     its priority, programs wear the theme, the wallpaper stands behind the workspaces, and swipes
     and Bluetooth's agent work
   '';

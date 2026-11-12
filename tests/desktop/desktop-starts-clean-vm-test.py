@@ -88,6 +88,15 @@ def test_every_user_manager_watches_its_own_pressure(desktop: Desktop) -> None:
     desktop.machine.fail("journalctl -b -o cat | grep -F 'pressure threshold'")
 
 
+def test_each_bus_finds_each_service_once(desktop: Desktop) -> None:
+    """Each bus finds each service once.
+
+    A service file found in two of a bus's folders is one it ignores, logged as an error each
+    time the bus starts or reloads, as it does at every switch.
+    """
+    desktop.machine.fail("journalctl -b -o cat | grep -F 'Ignoring duplicate name'")
+
+
 def test_the_power_profile_follows_the_charger_from_boot(desktop: Desktop) -> None:
     """The power profile follows the charger from boot."""
     desktop.machine.wait_until_succeeds(

@@ -36,6 +36,7 @@
     nixosModules.camera
     nixosModules.console
     nixosModules.creative-pebble-x-plus
+    nixosModules.dbus
     nixosModules.ddcutil
     nixosModules.desk-facts
     nixosModules.dictation
