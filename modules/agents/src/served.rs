@@ -97,6 +97,14 @@ impl Made {
     pub fn with_closed(self, closed: Vec<Value>) -> Self {
         Self { closed, ..self }
     }
+
+    /// The same, with the top level's rows after Agents' own (top.rs),
+    /// each given its `order` as theirs are.
+    #[must_use]
+    pub fn with_top(mut self, top: Vec<Value>) -> Self {
+        self.rows.extend(top);
+        self
+    }
 }
 
 fn key_of(id: &str) -> String {
