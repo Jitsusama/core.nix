@@ -3,6 +3,7 @@
 {
   account,
   graphical,
+  holds,
   lib,
   onLinux,
   passesClippy,
@@ -205,6 +206,34 @@ onLinux {
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # The reader builds again for a change to an act a page holds, and for
+  # no other: the key language changes most often for the launcher's lists,
+  # and each rebuild of the reader runs its page tests and takes its
+  # vendored crates to wherever it builds.
+  reader-builds-again-only-for-the-pages-keys =
+    let
+      built = language: (pkgs.callPackage ./package.nix { inherit language; }).drvPath;
+      given = built ../keys/language.toml;
+      adding =
+        kinds:
+        built (
+          builtins.toFile "language.toml" (
+            builtins.readFile ../keys/language.toml
+            + ''
+
+              [acts.an-act-for-the-check]
+              command = "an-act-for-the-check"
+              kinds = ["${kinds}"]
+            ''
+          )
+        );
+    in
+    holds "reader-builds-again-only-for-the-pages-keys"
+      "The reader's derivation should move with an act for pages and only with one: for a list's act it moved (${
+        lib.boolToString (adding "list" != given)
+      }), for a page's it moved (${lib.boolToString (adding "page" != given)})."
+      (adding "list" == given && adding "page" != given);
 
   # clippy finds nothing in the reader, its tests included.
   reader-passes-clippy = passesClippy "reader-passes-clippy" (pkgs.callPackage ./package.nix { });

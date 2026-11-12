@@ -241,7 +241,8 @@ impl In {
 
 use Key::{Char, Ctrl};
 
-/// The key language, as the reader is built with it.
+/// The key language, as the reader is built with it: the acts a page holds
+/// and those of no kind, which its build keeps (package.nix).
 const LANGUAGE: &str = include_str!("../../../keys/language.toml");
 
 /// The acts the reader takes from the language, by their names there, in

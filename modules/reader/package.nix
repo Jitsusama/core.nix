@@ -3,13 +3,17 @@
 # no more, since scanning every face a family ships costs a cold start, and
 # wl-copy, which its copies go to the clipboard through. Its dependencies
 # build once, apart from it (../cargo/dependencies.nix), so a change to it
-# or to the key language compiles only its own crate.
+# or to the key language compiles only its own crate. It takes only the
+# key language's acts it reads, so a change to a list's act, the language's
+# most common, builds nothing of it.
 {
   callPackage,
   copyDesktopItems,
   fetchzip,
   fontconfig,
+  formats,
   fraunces,
+  language ? ../keys/language.toml,
   lib,
   libGL,
   libxkbcommon,
@@ -28,6 +32,14 @@ let
     url = "https://packages.typst.org/preview/mitex-0.2.7.tar.gz";
     hash = "sha256-BG4csWQ2NjjXFIg+mHpTcdXURkR29x8eNugpiTwZpJ0=";
     stripRoot = false;
+  };
+
+  # The acts a page holds, and those of no kind, all the reader reads of
+  # the language (src/keys/mod.rs). Written from what's left, the same
+  # whatever another kind's acts say, so its build stays as it was.
+  inherit (builtins.fromTOML (builtins.readFile language)) acts;
+  spoken = (formats.toml { }).generate "language.toml" {
+    acts = lib.filterAttrs (_: act: !(act ? kinds) || lib.elem "page" act.kinds) acts;
   };
 
   # One folder of one family's faces, for the theme's two the page sets:
@@ -57,16 +69,23 @@ in
   {
     pname = "reader";
     version = "0.1.0";
-    # The key language beside it, which its keys are read from as it builds.
-    src = lib.fileset.toSource {
-      root = ../.;
-      fileset = lib.fileset.unions [
-        ./Cargo.toml
-        ./Cargo.lock
-        ./src
-        ../keys/language.toml
-      ];
-    };
+    # The page's part of the key language beside it, which its keys are
+    # read from as it builds.
+    src = runCommand "source" { } ''
+      cp -r ${
+        lib.fileset.toSource {
+          root = ../.;
+          fileset = lib.fileset.unions [
+            ./Cargo.toml
+            ./Cargo.lock
+            ./src
+          ];
+        }
+      } $out
+      chmod -R u+w $out
+      mkdir $out/keys
+      cp ${spoken} $out/keys/language.toml
+    '';
     sourceRoot = "source/reader";
     cargoLock.lockFile = ./Cargo.lock;
     nativeBuildInputs = [
