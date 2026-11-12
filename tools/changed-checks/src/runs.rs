@@ -107,7 +107,9 @@ impl Run {
         })
     }
 
-    /// Add the run's line to the log at the path, making its folder.
+    /// Add the run's line to the log at the path, making its folder. The
+    /// line goes in one write, which an appending file keeps whole beside
+    /// another run's; `writeln!` writes it in pieces, which interleave.
     pub fn record(&self, log: &Path) -> Result<(), String> {
         let failed = |error: std::io::Error| format!("{}: {error}", log.display());
         if let Some(folder) = log.parent() {
@@ -118,11 +120,48 @@ impl Run {
             .append(true)
             .open(log)
             .map_err(failed)?;
-        writeln!(file, "{}", self.line()).map_err(failed)
+        file.write_all(format!("{}\n", self.line()).as_bytes())
+            .map_err(failed)
     }
 }
 
 /// A duration in seconds, to the tenth, as the log keeps it.
 fn seconds(took: Duration) -> f64 {
     (took.as_secs_f64() * 10.0).round() / 10.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scratch::Scratch;
+
+    #[test]
+    fn runs_logged_at_once_keep_their_lines_whole() {
+        // On 12 November two gates on the lent builder logged at once, and
+        // their lines came out mixed byte by byte, so neither could be read.
+        let scratch = Scratch::new("runs-at-once");
+        let log = scratch.join("runs.jsonl");
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    let mut run = Run::new(&"0".repeat(40), "x86_64-linux");
+                    let mut evaluation = Run::evaluating("tree");
+                    for _ in 0..20 {
+                        evaluation.chunk(40, Duration::from_millis(1500));
+                    }
+                    run.evaluated(evaluation);
+                    for _ in 0..50 {
+                        run.record(&log).expect("logged");
+                    }
+                });
+            }
+        });
+        let text = std::fs::read_to_string(&log).expect("the log");
+        let broken = text
+            .lines()
+            .filter(|line| serde_json::from_str::<Value>(line).is_err())
+            .count();
+        let lines = text.lines().count();
+        assert_eq!(broken, 0, "of {lines} lines, some were mixed");
+    }
 }
