@@ -262,6 +262,15 @@ impl Daemon {
             .min()
     }
 
+    /// A refusal the launcher can say to Joel: its code and message for
+    /// whoever reads the socket, and `said`, the asks thing's words by
+    /// `word`, which the launcher shows in place of "couldn't".
+    fn refusal(&self, code: &str, message: &str, word: &str) -> Value {
+        let mut refused = error(&Value::Null, code, message);
+        refused["error"]["said"] = Value::String(self.config.words.fill(word, &[]));
+        refused
+    }
+
     /// Whether the session in front, the account's display, is locked,
     /// as logind says; one logind can't say is taken as locked.
     fn locked(&self) -> bool {
@@ -296,22 +305,22 @@ impl Daemon {
             .as_str()
             .and_then(|key| key.strip_prefix("row:asks:"))
         else {
-            return error(&Value::Null, "refused", "no such ask");
+            return self.refusal("refused", "no such ask", "gone");
         };
         let id = id.to_owned();
         let mut asks = self.asks();
         let Some(held) = asks.held.get_mut(&id) else {
-            return error(&Value::Null, "refused", "no such ask");
+            return self.refusal("refused", "no such ask", "gone");
         };
         if held.state != State::Waiting {
-            return error(&Value::Null, "refused", "it's already answered");
+            return self.refusal("refused", "it's already answered", "answered");
         }
         if self.locked() {
-            return error(&Value::Null, "refused", "the screen is locked");
+            return self.refusal("refused", "the screen is locked", "locked");
         }
         let now = match self.read(&id) {
             Ok(ask) if self.refused(&ask).is_none() => ask,
-            _ => return error(&Value::Null, "refused", "the ask is gone"),
+            _ => return self.refusal("refused", "the ask is gone", "gone"),
         };
         let tree = tree::read(&self.config.git, Path::new(&now.tree));
         if Some(row::digest(&now, &tree).as_str()) != said["digest"].as_str() {
@@ -319,10 +328,10 @@ impl Daemon {
             held.tree = tree;
             drop(asks);
             self.changed();
-            return error(
-                &Value::Null,
+            return self.refusal(
                 "changed",
                 "the ask changed after it was drawn; read it again",
+                "changed",
             );
         }
         held.state = State::Releasing;
@@ -442,7 +451,7 @@ impl Daemon {
             .as_str()
             .and_then(|key| key.strip_prefix("row:asks:"))
         else {
-            return error(&Value::Null, "refused", "no such ask");
+            return self.refusal("refused", "no such ask", "gone");
         };
         let mut asks = self.asks();
         let Some(held) = asks
@@ -450,7 +459,7 @@ impl Daemon {
             .get_mut(id)
             .filter(|held| held.state == State::Waiting)
         else {
-            return error(&Value::Null, "refused", "it's already answered");
+            return self.refusal("refused", "it's already answered", "answered");
         };
         held.state = State::Refused;
         held.since_ms = now_ms();

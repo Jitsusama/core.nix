@@ -222,6 +222,10 @@ fn a_yes_for_what_changed_since_it_was_drawn_is_refused_and_drawn_again() {
         said["error"]["code"], "changed",
         "a changed tree was released: {said}"
     );
+    assert_eq!(
+        said["error"]["said"], "it changed since it was shown; read it again",
+        "the launcher can't say why: {said}"
+    );
     let again = row(&mut client, &id);
     assert_ne!(
         again["digest"], drawn["digest"],
@@ -247,6 +251,10 @@ fn a_yes_while_locked_reads_nothing() {
         said["error"]["message"], "the screen is locked",
         "a locked yes: {said}"
     );
+    assert_eq!(
+        said["error"]["said"], "not while the screen is locked",
+        "the launcher can't say why: {said}"
+    );
     assert_eq!(setting.op_ran(), 0, "op ran while locked");
 }
 
@@ -270,6 +278,12 @@ fn a_no_refuses_and_reads_nothing() {
         row(&mut client, &id)["acts"],
         json!([]),
         "a refused ask still offered acts"
+    );
+    // A yes from the line as it was drawn, before the no, is refused.
+    let late = act(&mut client, &drawn, 0);
+    assert_eq!(
+        late["error"]["said"], "that ask is already answered",
+        "a yes after the no: {late}"
     );
     assert_eq!(setting.op_ran(), 0, "op ran for a no");
 }

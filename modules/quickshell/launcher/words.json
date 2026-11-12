@@ -494,6 +494,10 @@
         "failed": "couldn't: {why}",
         "refused": "refused",
         "ended": "ended unanswered",
+        "gone": "that ask is gone",
+        "answered": "that ask is already answered",
+        "locked": "not while the screen is locked",
+        "changed": "it changed since it was shown; read it again",
         "none": "none waiting",
         "one": "1 waiting",
         "waiting": "{count} waiting"
