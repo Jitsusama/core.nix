@@ -30,6 +30,8 @@ use std::sync::{Arc, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agents::acts;
+use agents::clock;
+use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::landed::Reading;
 use agents::reopen::Kept;
@@ -114,8 +116,15 @@ fn args() -> Option<Args> {
 /// What the daemon answers of its own, beside its records: what the shell
 /// says, handed `told` to the daemon's loop, and a row's act, done by
 /// asking the node at `node`, refused where there's none, and a line Joel
-/// tells whoever `routes` says hears it.
-fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>, routes: Routes) -> Own {
+/// tells whoever `routes` says hears it. Joel's feedback on one of
+/// `landings` is kept in the file at `kept`.
+fn own(
+    told: mpsc::Sender<Heard>,
+    node: Option<PathBuf>,
+    routes: Routes,
+    landings: Landings,
+    kept: PathBuf,
+) -> Own {
     Box::new(move |said| {
         // The shell says whether the screen is shared, as Quiet.qml knows
         // it from niri's casts, so no amount is served while it is.
@@ -189,6 +198,17 @@ fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>, routes: Routes) -> Own 
         if said["ask"] == "tell" {
             return Some(tell::answer(said, &routes, node.as_deref(), now));
         }
+        // Joel's words on a landing, sent to whoever landed it.
+        if said["ask"] == "feedback" {
+            let at = clock::text_of(i64::try_from(now).unwrap_or(0));
+            return Some(feedback::answer(
+                said,
+                &landings,
+                node.as_deref(),
+                &kept,
+                &at,
+            ));
+        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -217,7 +237,20 @@ fn main() -> ExitCode {
     };
     let (to, heard) = mpsc::channel();
     let routes = Routes::default();
-    let shared = Shared::new(DOMAIN, own(to.clone(), args.node.clone(), routes.clone()));
+    let landings = Landings::default();
+    // Kept beside what Joel has read, never rewritten, for the daily loop
+    // that reads on from where it left off (80ECO2, 2026-11-11).
+    let kept = args.landed.with_file_name("feedback.jsonl");
+    let own = own(
+        to.clone(),
+        args.node.clone(),
+        routes.clone(),
+        landings.clone(),
+        kept,
+    );
+    let shared = Shared::new(DOMAIN, own);
+    // Feedback waits on the node, so it holds up no ask after it.
+    shared.slow(&["feedback"]);
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -266,6 +299,7 @@ fn main() -> ExitCode {
             inputs.hear(more, &paths);
         }
         if !served.take(inputs.made()).is_empty() {
+            landings.hold(served.all());
             shared.change(served.all().cloned().collect(), json!({}));
         }
         // A quest can change whom a line reaches with no row moving.

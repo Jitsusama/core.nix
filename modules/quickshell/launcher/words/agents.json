@@ -81,7 +81,10 @@
         "none": "none today",
         "read": "read",
         "kind": "landing",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "sending": "sending",
+        "sent": "sent to {to}",
+        "unsent": "not sent: {why}"
       },
       "tells": {
         "holding": "What sessions landed in the past 30 days, newest first."
@@ -139,6 +142,15 @@
       "name": "Go To the Session",
       "verb": "go to",
       "glyph": "windows"
+    },
+    {
+      "id": "verb:agents:landed:feedback",
+      "command": "say",
+      "in": "agents:landed",
+      "name": "Say What You Make of It",
+      "verb": "say",
+      "glyph": "reply",
+      "ask": "what do you make of it?"
     },
     {
       "id": "verb:agents:landed:try",
