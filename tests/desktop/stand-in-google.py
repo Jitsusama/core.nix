@@ -208,8 +208,10 @@ def document_row(document: dict[str, object], at: int) -> dict[str, object]:
         "side": [] if viewed is None else [{"at": viewed, "as": "opened", "keep": 1}],
         "drawer": f"drawer:documents:{key}",
         "acts": [
-            {"key": f"verb:{program}:open", "ask": {"open": {"link": link}}},
-            {"key": f"verb:{program}:link", "ask": {"copy": link}},
+            # Opened through google-opens and copied by the shell, as rows.rs's opens serves
+            # them: as asks, which no daemon takes, Return said it couldn't.
+            {"key": f"verb:{program}:open", "open": link, "in": "google-opens"},
+            {"key": f"verb:{program}:link", "copy": link},
         ],
         "held": {"link": link, "viewed": viewed, "mime": document.get("mime", "")},
         "order": (at + 1) * SPACING,
