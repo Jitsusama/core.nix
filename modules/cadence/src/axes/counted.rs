@@ -272,8 +272,8 @@ pub fn timed(trials: &str, since: i64) -> usize {
 pub fn responds(s: &Sources) -> Vec<Reading> {
     let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
     let from = "health's day file";
-    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
-        let spread = figure(&format!("health.launches.{name}.median-ms"))
+    let spread = |name: &str, timed: &str| {
+        figure(&format!("health.launches.{name}.median-ms"))
             .zip(figure(&format!("health.launches.{name}.slowest-ms")))
             .map(|(median, slowest)| {
                 format!(
@@ -281,7 +281,9 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
                     shown(median, " ms"),
                     shown(slowest, " ms")
                 )
-            });
+            })
+    };
+    let program = |says: &'static str, name: &str, budget: f64, timed: &str| {
         Reading::new(
             says,
             figure(&format!("health.launches.{name}.p99-ms")),
@@ -289,7 +291,7 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
             "80ECO2",
         )
         .bar(Bar::AtMost(budget))
-        .detail(spread)
+        .detail(spread(name, timed))
         .from("health's day file, from the windows daemon")
     };
     vec![
@@ -340,6 +342,17 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
         )
         .bar(Bar::AtMost(1_000.0))
         .from("health's day file, from each program's ready line"),
+        // pi's start is kept apart from the daemons' since #3799, as its
+        // resumes run to seconds; the harness owns making it quicker.
+        Reading::new(
+            "the slowest pi in a hundred to show its session {}",
+            figure("health.launches.pi.p99-ms"),
+            " ms",
+            "85PKB2",
+        )
+        .bar(Bar::AtMost(3_000.0))
+        .detail(spread("pi", "pi starting"))
+        .from("health's day file, from pi's ready line"),
         Reading::new(
             "the slowest restart in a switch {}",
             figure("health.switch.restart.slowest-ms"),
@@ -357,28 +370,43 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// How long his apps waited, from the stall cadence day keeps for
-/// app.slice: its CPU wait and its memory stalls, each a share of the
-/// day. They are his side's, since the kernel counts them on his apps
-/// themselves rather than on a builder or a model of him. 80ECO2, who
-/// keeps them, holds both to 1% (2026-11-12).
+/// How long his apps and his desktop waited, from the stalls cadence day
+/// keeps for app.slice and session.slice (niri, the shell and what runs
+/// them): each one's CPU wait and memory stalls, as a share of the day.
+/// They are his side's, since the kernel counts them on his own programs
+/// rather than on a builder or a model of him. 80ECO2, who keeps them,
+/// holds all four to 1% (2026-11-12).
 #[must_use]
 pub fn stalls(day: Option<&BTreeMap<String, f64>>) -> Vec<Reading> {
     let figure = |key: &str| day.and_then(|d| d.get(key).copied());
-    let stall = |says: &'static str, key: &str| {
+    let stall = |says: &'static str, key: &str, from: &'static str| {
         Reading::new(says, figure(key), "%", "80ECO2")
             .bar(Bar::AtMost(1.0))
-            .from("cadence's day, from app.slice's pressure")
+            .from(from)
             .his()
     };
+    let apps = "cadence's day, from app.slice's pressure";
+    let desktop = "cadence's day, from session.slice's pressure";
     vec![
         stall(
             "his apps waiting for the CPU {} of the day",
             "pressure.cpu.app",
+            apps,
         ),
         stall(
             "his apps stalled for memory {} of the day",
             "pressure.memory.app",
+            apps,
+        ),
+        stall(
+            "his desktop waiting for the CPU {} of the day",
+            "pressure.cpu.session",
+            desktop,
+        ),
+        stall(
+            "his desktop stalled for memory {} of the day",
+            "pressure.memory.session",
+            desktop,
         ),
     ]
 }
@@ -594,6 +622,9 @@ not a trial
                 ("health.launches.opened.slowest-ms".to_owned(), 1_300.0),
                 ("health.launches.ended.p99-ms".to_owned(), 150.0),
                 ("health.launches.ready.p99-ms".to_owned(), 1_065.0),
+                ("health.launches.pi.p99-ms".to_owned(), 4_000.0),
+                ("health.launches.pi.median-ms".to_owned(), 1_800.0),
+                ("health.launches.pi.slowest-ms".to_owned(), 28_000.0),
                 ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
                 ("health.switch.restart.median-ms".to_owned(), 900.0),
             ])),
@@ -610,16 +641,26 @@ not a trial
                 "the slowest program in a hundred to its first window 420 ms, at most 300 ms",
                 "the slowest program in a hundred to end once closed 150 ms, at most 200 ms",
                 "the slowest daemon in a hundred to serve again 1,065 ms, at most 1,000 ms",
+                "the slowest pi in a hundred to show its session 4,000 ms, at most 3,000 ms",
                 "the slowest restart in a switch 4,200 ms, at most 5,000 ms",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [false, true, false, true, false, true, false],
-            "only the shutdown, the openings and the daemons are past their bars"
+            [false, true, false, true, false, true, true, false],
+            "only the shutdown, the openings, the daemons and pi are past their bars"
         );
         assert_eq!(
             read[6].detail.as_deref(),
+            Some("a median 1,800 ms, the slowest 28,000 ms; timed from pi starting"),
+            "pi's start says its spread and that it's timed from our side"
+        );
+        assert_eq!(
+            read[6].owner, "85PKB2",
+            "pi's start is the harness's to make quicker"
+        );
+        assert_eq!(
+            read[7].detail.as_deref(),
             Some("a median 900 ms; timed from its stopping to its ready"),
             "a switch's restarts say their median and where they're timed from"
         );
@@ -648,6 +689,8 @@ not a trial
         let day = BTreeMap::from([
             ("pressure.cpu.app".to_owned(), 1.4),
             ("pressure.memory.app".to_owned(), 0.07),
+            ("pressure.cpu.session".to_owned(), 0.48),
+            ("pressure.memory.session".to_owned(), 1.2),
             ("pressure.cpu.jobs".to_owned(), 13.0),
         ]);
         let read = stalls(Some(&day));
@@ -657,16 +700,18 @@ not a trial
             [
                 "his apps waiting for the CPU 1.4% of the day, at most 1%",
                 "his apps stalled for memory 0.1% of the day, at most 1%",
+                "his desktop waiting for the CPU 0.5% of the day, at most 1%",
+                "his desktop stalled for memory 1.2% of the day, at most 1%",
             ]
         );
         assert_eq!(
             read.iter().map(Reading::out).collect::<Vec<_>>(),
-            [true, false],
-            "only the CPU wait is past its bar"
+            [true, false, false, true],
+            "only the apps' CPU wait and the desktop's memory stalls are past their bars"
         );
         assert!(
             stalls(None).iter().all(|r| r.figure().is_none()),
-            "no day kept yet leaves both unread"
+            "no day kept yet leaves all four unread"
         );
     }
 }
