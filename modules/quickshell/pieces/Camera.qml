@@ -61,8 +61,11 @@ Piece {
     kind: "onAir"
     value: programs.length === 0 ? "off" : programs.join(", ")
     title: "Camera"
-    // A program opens a camera by itself, so it's said when it does.
+    // A program opens a camera by itself, so it's said when it does, and
+    // taken back once it's let go: "chrome has MX Brio 705 for Business
+    // open" stayed on Joel's desktop with no camera held (2026-11-11).
     arrives: true
+    withdraws: true
     app: "Camera"
     // The cameras being read. With one, the hint says which and who, and
     // nothing more needs saying; with more, the context says who has each.
