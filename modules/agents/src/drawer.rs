@@ -189,7 +189,8 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
             "title": title,
             "eyebrow": eyebrow(session, &folder),
             "facts": facts,
-            "body": ""
+            // What one standing at the top is for, so Joel needn't know it.
+            "body": session.stands_for()
         }
     })
 }
