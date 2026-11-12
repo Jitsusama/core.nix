@@ -23,6 +23,8 @@
 //! revert after the fact comes too late for (`must-run.txt`). It names
 //! too each VM test that owns a file the change touches, whose subtests
 //! that reach it run first with `run-subtests --there` (`owners.rs`).
+//! Which moved it reads from a run that passed at a clean head, and asks
+//! changed-checks only where none did (`gated.rs`).
 //!
 //! `merge-net ready COMMIT`, asked before a branch's head merges, exits 0
 //! only when the head sits on origin's main as it is now and changed-checks
@@ -48,6 +50,7 @@
 
 mod answers;
 mod apart;
+mod gated;
 mod holds;
 mod lists;
 mod movers;
@@ -241,6 +244,8 @@ fn replaced(installed: io::Result<PathBuf>, running: io::Result<PathBuf>) -> boo
 
 /// Say whether the branch's change runs VM tests before merging, and which.
 fn needs(base: &str) -> Result<ExitCode, String> {
+    let began = state::now();
+    let head = git(&["rev-parse", "HEAD"])?;
     let merge_base = git(&["merge-base", "HEAD", base])?;
     let mut files: Vec<String> = git(&["diff", "--name-only", &merge_base])?
         .lines()
@@ -262,13 +267,34 @@ fn needs(base: &str) -> Result<ExitCode, String> {
             .is_empty()
     {
         println!("no: nothing here needs its VM tests before merging; the net runs them after");
+        gated::keep(&head, began, gated::Asked::Nothing);
         return Ok(ExitCode::SUCCESS);
     }
     // Only a test whose derivation moved from main can give a result main
     // hasn't, so changed-checks is asked which moved; it costs an
     // evaluation, which only a change touching an area or a VM test's
-    // files pays.
-    let said = moved_from(base);
+    // files pays, and none whose gate already passed at its head.
+    let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
+    let came_before = |commit: &str| {
+        Command::new("git")
+            .args(["merge-base", "--is-ancestor", commit, &merge_base])
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    let (said, asked) = gated::moved(
+        &ready::record(&head),
+        clean,
+        &merge_base,
+        &came_before,
+        || moved_from(base),
+    );
+    gated::keep(&head, began, asked);
+    if asked == gated::Asked::Gate {
+        println!(
+            "(a run that passed at {} named what moved, so none was evaluated)",
+            short(&head)
+        );
+    }
     if said.is_none() {
         println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
     }
