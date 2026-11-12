@@ -4,6 +4,8 @@
 
 use serde_json::{Map, Value};
 
+use crate::asks::{self, Ask};
+
 /// systemd's message for a unit whose restart is scheduled, the one line a
 /// restart always leaves, at a priority the warning reader doesn't see.
 pub const RESTART_SCHEDULED: &str = "5eb03494b6584870a536b337290809b3";
@@ -56,6 +58,8 @@ pub struct Entry {
     pub since_boot: i64,
     /// The moment in a boot or a shutdown it marks, when it's one.
     pub mark: Option<Mark>,
+    /// The ask for a secret it answered, when it's secret-asks's line.
+    pub ask: Option<Ask>,
 }
 
 /// A moment in starting or stopping the machine, each said once a boot.
@@ -106,6 +110,9 @@ pub fn parse(line: &str) -> Option<Entry> {
     let message = text("MESSAGE").unwrap_or_default();
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
+    let ask = (identifier.as_deref() == Some(asks::IDENTIFIER))
+        .then(|| asks::of(text))
+        .flatten();
     let thing = match (identifier.as_deref(), unit) {
         (Some("systemd") | None, Some(unit)) => unit,
         (Some(identifier), _) => identifier.to_owned(),
@@ -144,6 +151,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         boot: text("_BOOT_ID").unwrap_or_default(),
         since_boot: micros("__MONOTONIC_TIMESTAMP").unwrap_or_default(),
         mark,
+        ask,
     })
 }
 

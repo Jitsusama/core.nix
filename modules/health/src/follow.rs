@@ -17,6 +17,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::agents;
+use crate::asks;
 use crate::day::{Day, Kind};
 use crate::feel;
 use crate::figures;
@@ -35,7 +36,8 @@ const EVERY: Duration = Duration::from_secs(30);
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
                       _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
-                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC";
+                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC,ASK_OUTCOME,ASK_SHOWN_MS,\
+                      ASK_ITEM_HASH,ASK_ARGV_HASH,ASK_AVOIDABLE";
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
@@ -368,6 +370,11 @@ pub fn follow(into: &Path) -> io::Result<()> {
             "SYSLOG_IDENTIFIER=quickshell",
             &format!("--grep={LAUNCHER_READY}"),
         ],
+        lines.clone(),
+    )?;
+    // Each ask for a secret Joel answered, said only as information.
+    spawn(
+        &[&format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],
         lines.clone(),
     )?;
     // The kernel's notices and information, which is where it says a USB
