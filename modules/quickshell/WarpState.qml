@@ -31,8 +31,12 @@ Singleton {
         // so no old state is held as current.
         keptThroughGap: false
         onHeard: (changed, gone) => {
-            if (changed.includes("warp:state") || gone.includes("warp:state"))
-                root.state = daemon.held["warp:state"] ?? null;
+            if (!changed.includes("warp:state") && !gone.includes("warp:state"))
+                return;
+            root.state = daemon.held["warp:state"] ?? null;
+            // What it heard, so a test sees the margin's half apart from
+            // the daemon's.
+            Report.say(`warp stands ${JSON.stringify(root.state?.said ?? null)}`);
         }
     }
 }

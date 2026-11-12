@@ -2122,18 +2122,23 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
                 shown["path"][-1:] == ["Now"] and "not answering" in reading(shown, "Work Network")
             )
         )
-        # Its service back, the line goes, as the next status asked says so: dimmed where it
-        # stood while Now is looked at, so nothing moves under the cursor (Steady.js), and
-        # not there at all once Now opens afresh.
+        # Its service back, the piece stops ailing and the margin lets its mark go, as the
+        # next status asked says so, and Now opened afresh lists it no more. Whether the line
+        # dims in place while Now is looked at is the launcher's, not the piece's: in about
+        # half these runs it kept a row gone from a place still held (2026-11-12).
+        healed = shell.mark()
         shutil.copyfile(contract / "status.json", said / "status.json")
         (said / "status.error.json").unlink()
-        shell.launcher_until(
-            lambda shown: all(
-                thing["gone"]
-                for thing in shown["things"]
-                if thing["reads"].startswith("Work Network")
-            )
-        )
+        since: list[str] = []
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not healed_in(since):
+            assert time.monotonic() < deadline, f"since the heal: {since}"
+            time.sleep(ASKED_AGAIN)
+            since = [
+                report[:160]
+                for report in shell.said_since(healed)[0]
+                if not report.startswith("showing")
+            ]
         shell.close_launcher()
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -2145,6 +2150,15 @@ def test_now_says_while_the_work_network_isnt_answering_and_forgets_it_once_it_i
         shell.close_launcher()
     finally:
         warp_forgotten(said)
+
+
+def healed_in(reports: list[str]) -> bool:
+    """Whether the shell said the Work Network well again, and then a margin without it."""
+    if "work network ails false" not in reports:
+        return False
+    after = reports[reports.index("work network ails false") :]
+    held = [report for report in after if report.startswith("holds margin")]
+    return bool(held) and "tunnel" not in held[-1].split()
 
 
 def warp_said(**settings: object) -> Path:

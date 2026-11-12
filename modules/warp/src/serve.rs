@@ -367,6 +367,14 @@ fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
         "said": said,
     });
     held.tell(&state, |kinds| kinds.state);
+    // Said in the journal as it changes, which is rarely, so how the work
+    // network stood at any moment, and who was told, can be read back.
+    let watching = held
+        .watches
+        .iter()
+        .filter(|watch| watch.kinds.state)
+        .count();
+    eprintln!("warp: WARP stands {said}, told {watching} watching");
     held.state = Some(state);
 }
 

@@ -28,6 +28,9 @@ Piece {
     glance: active ? ails[0] : ""
     value: active ? ails[0] : said.well ?? ""
     title: Words.name("warp")
+    // Said as it starts or stops ailing, so a test sees the piece apart
+    // from what's made of it.
+    onActiveChanged: Report.say(`work network ails ${active}`)
 
     Timer {
         interval: 5000
