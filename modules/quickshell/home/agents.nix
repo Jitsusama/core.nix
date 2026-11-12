@@ -7,6 +7,8 @@
   "PiSource.js"
   "Sessions.qml"
   "SessionWindows.js"
+  "Told.qml"
+  "Told.js"
   "Viewers.js"
   "WaitingOnYou.qml"
   "Waiting.js"

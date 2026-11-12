@@ -665,6 +665,16 @@ Provider {
     // What the foot says once words have gone to a session.
     property string told: ""
 
+    // The card of Joel's line to the one standing at the top, sent and then
+    // answered in place (Told.qml).
+    Told {
+        id: toldCard
+
+        launcher: provider.launcher
+        talksOf: address => provider.source("orchestrators")?.talks
+            ?.[String(address).toUpperCase()] ?? []
+    }
+
     // A session's own acts, in the one order every session keeps
     // (SessionRow.js), each steering it through its inbox but Go To; an
     // orchestrator's row is its session's, with its talks after them.
@@ -793,6 +803,9 @@ Provider {
                     if (text === "")
                         return;
                     provider.actOn(session, "talk", { text });
+                    const top = String(session.presence?.standsAtTop?.name ?? "");
+                    if (top !== "")
+                        toldCard.sent(session.address, top, text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
                         ?.replace("{name}", session.title) ?? "";
                 }
