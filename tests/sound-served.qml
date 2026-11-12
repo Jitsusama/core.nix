@@ -14,7 +14,8 @@
 // served, lead its parts in Sound's order, Muted's act named Unmute once
 // it's muted, the Volume its drawer's, and each Return asking the daemon,
 // and its Channels, served, each channel inside at its level, and its
-// Profile;
+// Profile, and what its card says last, its drawer's Graph Format said
+// only where the card says another;
 // and where each program's stream is sent is the daemon's targets record,
 // a send asking it once a stream; and the programs playing through a
 // device are served inside it, the drawer's Playing saying the daemon's
@@ -401,7 +402,8 @@ ShellRoot {
                 tell(record);
             when("the parts served", () => partOf("volume")?.targets().length === 1
                 && partOf("channels")?.targets().length === 2
-                && partOf("profile")?.side === "music", levelled);
+                && partOf("profile")?.side === "music"
+                && sound.factsOf(deskSpeakers).length === 2, levelled);
         });
     }
 
@@ -461,7 +463,8 @@ ShellRoot {
 
     // The speakers' Channels, as channels.rs serves them inside their
     // row, and each channel inside that, then a Profile, as parts.rs
-    // serves a Bluetooth device's.
+    // serves a Bluetooth device's, then what desk-facts says of their
+    // card, as desk.rs serves it last.
     function figuresServed() {
         const channels = `row:sound:${deskSpeakers.name}:channels`;
         const channel = (at, name, said, level) => part(`channels:${at}`, {
@@ -480,7 +483,46 @@ ShellRoot {
             thing: `sound:${deskSpeakers.name}:profile`, kind: "figure", order: 1503,
             name: "Profile", glyph: "", hue: "machine", side: [{ said: "music" }],
             note: "its codec and connection are in Bluetooth", acts: []
-        })];
+        }), fact("playing", "Playing At", "48 kHz \u00b7 32 bit", 1504),
+        fact("offers", "Offers", "44.1, 48 kHz", 1505)];
+    }
+
+    function fact(id, name, said, order) {
+        return part(`fact:${id}`, {
+            thing: `fact:sound:Desk:out:${id}`, kind: "fact", order: order, name: name,
+            glyph: "", hue: "voice", side: [{ said: said }],
+            acts: [{ key: "verb:copy", copy: said }],
+            held: { node: deskSpeakers.name, fact: id }
+        });
+    }
+
+    // What its card says is served last among its parts, the one asked
+    // most first, and its drawer says the format the graph moves beside
+    // the card's only where they differ.
+    function factsServed() {
+        const facts = sound.everything()[0].targets()
+            .filter(part => part.key.startsWith("fact:sound:Desk:out:"));
+        expect("its card's facts are served last, each saying what it is",
+            facts.map(one => `${one.name}=${one.side}`).join("; ")
+                === "Playing At=48 kHz \u00b7 32 bit; Offers=44.1, 48 kHz"
+                && sound.everything()[0].targets().slice(-2).every(one => facts.includes(one)),
+            facts.map(one => `${one.key}=${one.side}`).join("; "));
+        const audio = deskSpeakers.audio;
+        const formats = sample => {
+            deskSpeakers.audio = Object.assign({}, audio,
+                { format: { rate: 48000, channels: 2, sample: sample } });
+            return sound.drawerOf(deskSpeakers).facts
+                .filter(one => one.label.endsWith("Format") || one.label === "Playing At")
+                .map(one => `${one.label}=${one.value}`).join("; ");
+        };
+        const float = formats("F32LE");
+        expect("a float graph over an integer card is the Graph Format beside it",
+            float === "Playing At=48 kHz \u00b7 32 bit; Graph Format=48 kHz \u00b7 32 bit float",
+            float);
+        const same = formats("S32LE");
+        expect("one the card already says isn't said again",
+            same === "Playing At=48 kHz \u00b7 32 bit", same);
+        deskSpeakers.audio = audio;
     }
 
     function louderChoice() {
@@ -525,6 +567,7 @@ ShellRoot {
             profile?.side === "music"
                 && profile.note === "its codec and connection are in Bluetooth",
             `${profile?.side}, ${profile?.note}`);
+        factsServed();
         volume.targets()[0].run();
         when("the volume asked", () => root.acted.length === 2, louder);
     }

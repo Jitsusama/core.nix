@@ -63,13 +63,13 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use sound::acts::Move;
 use sound::devices::{Change, Devices, direction};
-use sound::drawer;
 use sound::levels::{channels, format, levels, offered, profile, route};
 use sound::naming::{Naming, followed, read_or_none};
 use sound::parts::served;
 use sound::rows::Words;
 use sound::streams::playing;
 use sound::timing::Timings;
+use sound::{desk, drawer};
 use windows::entries::Entries;
 use windows::marks::Marks;
 
@@ -112,6 +112,8 @@ struct Daemon {
     /// profiler has said of it since.
     timed: bool,
     timings: Timings,
+    /// What desk-facts says of each card, by its key.
+    desk: BTreeMap<String, Value>,
 }
 
 const USAGE: &str = "usage: sound SOCKET [--vocabulary WORDS] [--marks MARKS]";
@@ -159,6 +161,7 @@ fn main() {
         acting: None,
         timed: false,
         timings: Timings::default(),
+        desk: BTreeMap::new(),
     }));
     // A program is named anew each time the desktop entries change.
     let renaming = Arc::clone(&shared);
@@ -170,6 +173,21 @@ fn main() {
     {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || follow(&shared));
+    }
+    // What desk-facts says of each card, read again each time it writes.
+    if let Some(folder) =
+        std::env::var_os("XDG_RUNTIME_DIR").map(|run| PathBuf::from(run).join("desk"))
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || {
+            desk::follow(&folder, |said| {
+                let mut daemon = lock(&shared);
+                if daemon.desk != said {
+                    daemon.desk = said;
+                    refresh(&mut daemon);
+                }
+            });
+        });
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -652,6 +670,7 @@ fn told(shared: &Mutex<Daemon>, change: Change) {
 /// those gone, telling each watch what changed of what it wants.
 fn refresh(daemon: &mut Daemon) {
     let mut records = daemon.devices.records();
+    desk::told(&mut records, &daemon.desk);
     let naming = |given: &str| daemon.naming.named(given);
     let ready = served(&records, &daemon.words, &naming);
     let timings = daemon.timings.records();

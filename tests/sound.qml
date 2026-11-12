@@ -148,37 +148,26 @@ ShellRoot {
     // Shut, a device's parts asked for again with nothing moved, as its
     // spots are a minute after each closing (Launcher.qml's
     // spotsFreshened), make none of them again; nor does its beginning to
-    // run, which gives its node a period and a latency no part says; a
-    // fact said of its card makes its facts alone again; and shown,
-    // they're made as they're asked for.
+    // run, which gives its node a period and a latency no part says; and
+    // shown, they're made as they're asked for. What its card says is
+    // served (tests/sound-served.qml), so it makes nothing here.
     function partsKept() {
         shutLauncher.wanting = false;
         const properties = deskSpeakers.properties;
         const card = { "device.bus": "usb", "alsa.id": "Desk", "alsa.device": "0" };
         deskSpeakers.properties = card;
-        shutSound.facts = { "Desk:out": [{ name: "offers", value: "48 kHz" }] };
         const first = shutSound.verbs(deskSpeakers);
         const before = shutSound.tally.rows;
         const again = shutSound.verbs(deskSpeakers);
         expect("shut, with nothing moved, its parts are made no more",
-            shutSound.tally.rows === before && again === first && first.length > 1,
+            shutSound.tally.rows === before && again === first && first.length > 0,
             `${shutSound.tally.rows - before} made of ${first.length}`);
         deskSpeakers.properties = Object.assign({}, card, { "api.alsa.period-size": "512",
             "node.max-latency": "16384/48000" });
         const running = shutSound.verbs(deskSpeakers);
         expect("nor as it begins to run", shutSound.tally.rows === before && running === first,
             `${shutSound.tally.rows - before} made of ${first.length}`);
-        shutSound.facts = { "Desk:out": [{ name: "playing", value: "48 kHz" },
-            { name: "offers", value: "48 kHz" }] };
-        const told = shutSound.verbs(deskSpeakers);
-        const facts = told.filter(part => part.key.startsWith("fact:"));
-        const others = told.filter(part => !facts.includes(part));
-        expect("a fact said of its card makes its facts alone again",
-            shutSound.tally.rows - before === 2 && facts.length === 2
-            && others.length > 0 && others.every(part => first.includes(part)),
-            `${shutSound.tally.rows - before} made, ${facts.length} facts`);
         deskSpeakers.properties = properties;
-        shutSound.facts = ({});
         shutLauncher.wanting = true;
         const shown = shutSound.tally.rows;
         shutSound.verbs(deskSpeakers);
@@ -199,7 +188,6 @@ ShellRoot {
         card.id = 52;
         card.state = "running";
         card.audio.format = { rate: 48000, channels: 2, sample: "S32LE" };
-        sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         const plate = sound.drawerOf(card);
         expect("a built-in output says so over its name, as it's written",
             plate.eyebrow === "built in \u00b7 output" && plate.eyebrowNames !== true,
@@ -210,13 +198,11 @@ ShellRoot {
             sound.drawerOf(made).eyebrow);
         const said = plate.facts.map(fact => `${fact.label}=${fact.value}`).join("; ");
         const labels = plate.facts.map(fact => fact.label).join(", ");
-        // The kernel's fact is named by the launcher's vocabulary, which
-        // there's none of here, so by its own name.
-        // The graph moves the format the card already says, so it isn't
-        // said again. Its Volume is served, so tests/sound-served.qml
-        // says it.
-        expect("its state, its parts, the kernel's, then what it's known by",
-            labels === "State, Resolution, Playing, Priority, ALSA Device, Graph ID", said);
+        // What the kernel says of its card, and its Volume, are served,
+        // so tests/sound-served.qml says them; with neither, the format
+        // the graph moves is its Format.
+        expect("its state, its parts, its format, then what it's known by",
+            labels === "State, Resolution, Format, Priority, ALSA Device, Graph ID", said);
         expect("what identifies it is marked so, its Graph ID last", plate.facts
             .filter(fact => fact.identifies).map(fact => fact.label).join(", ")
             === "ALSA Device, Graph ID", said);
@@ -229,24 +215,15 @@ ShellRoot {
             levels.join("; ") === "even; left 100%, right 80%; "
             + "front left 9%, front right 8%, rear left 7%; ", levels.join("; "));
         const formats = node => sound.drawerOf(node).facts
-            .filter(fact => fact.label.endsWith("Format") || fact.label === "Playing")
+            .filter(fact => fact.label.endsWith("Format"))
             .map(fact => `${fact.label}=${fact.value}`).join("; ");
         card.audio.format = { rate: 48000, channels: 2, sample: "F32LE" };
-        expect("a float graph over an integer card is the Graph Format beside it",
-            formats(card) === "Playing=48 kHz \u00b7 32 bit; "
-            + "Graph Format=48 kHz \u00b7 32 bit float", formats(card));
-        sound.facts = { "PCH,1:out": [{ name: "playing", value: "44.1 kHz \u00b7 16 bit" }] };
-        expect("as is one at another rate",
-            formats(card) === "Playing=44.1 kHz \u00b7 16 bit; "
-            + "Graph Format=48 kHz \u00b7 32 bit float", formats(card));
-        sound.facts = {};
         expect("one the card doesn't say is its Format",
             formats(card) === "Format=48 kHz \u00b7 32 bit float", formats(card));
         card.state = "suspended";
         card.audio.format = {};
         expect("a suspended one says so, and no format", formats(card) === ""
             && sound.drawerOf(card).facts[0].value === "suspended", formats(card));
-        sound.facts = { "PCH,1:out": [{ name: "playing", value: "48 kHz \u00b7 32 bit" }] };
         expect("what it's known by is as the server says it",
             said.endsWith("Priority=1000; ALSA Device=hw:PCH,1; Graph ID=52"), said);
         card.audio.muted = true;
@@ -259,11 +236,11 @@ ShellRoot {
         sound.timings = { 52: { id: 52, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
             errors: 0 } };
         const keeping = node => sound.drawerOf(node).facts
-            .filter(fact => ["Dropouts", "Load", "Cycle", "Graph Format"].includes(fact.label));
+            .filter(fact => ["Dropouts", "Load", "Cycle", "Format"].includes(fact.label));
         expect("its timing, ahead of its format", keeping(card)
             .map(fact => `${fact.label}=${fact.value}`).join("; ") === "Dropouts=none; "
             + "Load=3.12% of each cycle; Cycle=1,024 frames \u00b7 21.3 ms; "
-            + "Graph Format=48 kHz \u00b7 32 bit float", JSON.stringify(keeping(card)));
+            + "Format=48 kHz \u00b7 32 bit float", JSON.stringify(keeping(card)));
         expect("its load a stroke, its dropouts calm at none", keeping(card)[1].figure?.values[0]
             === 0.0312 && keeping(card)[0].warns === false, JSON.stringify(keeping(card)));
         sound.timings = { 52: Object.assign({}, sound.timings[52], { errors: 2 }) };
