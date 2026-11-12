@@ -1014,11 +1014,22 @@ so it's as sharp at 1.5 as at 2. It keeps beside the marks rather than on
 them, since they say what's true. It takes no keys and no pointer, and
 it's gone wherever the gap can't hold it (fullscreen, the overview) and
 while a call shares the screen; a screenshot shows it, as it shows the
-marks. At rest it draws no frame. When the keys move to another column it's
-there at once: it walks nowhere until a walk moves smoothly at the
-display's rate, its steps in time with the ground it covers, with
-anticipation before it sets off and a settle as it arrives (Joel,
-2026-11-12: "the cat is not animated, it just jerkily moves"). After ten
+marks. At rest it draws no frame. Once the keys rest two seconds on
+another column it walks there, never for keys passing through, so h and l
+tapped along the columns leave it sitting. A walk is animated, moved a
+whole device pixel's step each frame the screen draws, with character
+(Joel, 2026-11-12: "we need proper smooth animations with character to
+them"): it stands and turns its head the way it's going, stops a moment
+to think, draws back a cell crouched, then walks, easing in and out, its
+two strides stepped by the ground it covers so its feet never slide. It
+walks on a cell and a half past its seat, steps back onto it and crouches
+a moment as it stops. The walk's own curve eases in as well as out, the
+one exception to the theme's ease-out, since a cat gathers speed from a
+standstill; its crouch and its steps back are on the theme's curve, and
+all of it stretches with `motion.slowdown`. A walk takes about two
+seconds, an amble beside it and a hurry across the screen. Its column
+moving under it carries it at once, and a seat moved on the way has it
+walk on there without stopping. After ten
 minutes with no keys (`jitsusama.quickshell.cat.dozes`), when Joel is
 away, it curls up asleep
 in a pose of its own, a z above it, one frame and then none; a key wakes
