@@ -2,21 +2,30 @@
 //!
 //! `health follow` is the daemon. It follows every journal the account may
 //! read, the system's, its own and the kernel's, from the day's start, for
-//! warnings and graver and for the restarts systemd schedules. It tallies
+//! warnings and graver, for the restarts systemd schedules, and for the
+//! devices' events the kernel says only as information (a USB device
+//! dropped or reset, a PCI Express link's corrected errors). It tallies
 //! them by kind (programs, services, devices, security), by the thing that
 //! said them and by what was said, its numbers taken out so a line said a
-//! thousand times is one signature counted a thousand times, and keeps the
-//! day in `~/.local/state/health/<date>.json`.
+//! thousand times is one signature counted a thousand times. It times each
+//! boot from the power button to a ready launcher, Joel's password's wait
+//! left out, and each shutdown from the ask to the journal's last line.
+//! Each half minute it looks at the lid, and counts as a device's fault a
+//! lid that reads shut while the laptop's own screen is on and its own keys
+//! are typed on, since every program believes the lid and none says so.
+//! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
 //! `health` reads that file: one line a kind, the worst first, naming its
 //! worst thing. `health services` lists a kind's worst things, and `health
 //! chrome` shows what each thing whose name holds the words kept saying.
+//! `health boot` breaks each boot into its stages.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
 //! day` reads the day and holds it against the days before.
 
 mod day;
 mod follow;
 mod journal;
+mod lid;
 mod show;
 mod sign;
 
@@ -34,6 +43,7 @@ use crate::day::Day;
 const USAGE: &str = "\
 health                 what today's journals said, one line a kind, the worst first
 health KIND            a kind's worst things: programs, services, devices or security
+health boot            each boot's stages, and each shutdown's seconds
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
 health follow          the daemon, which keeps the day's file current

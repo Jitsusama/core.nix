@@ -1,29 +1,36 @@
 //! `health follow`, the daemon: it follows the journals from the start of
 //! the day, tallies what they say, and keeps the day's file current every
 //! half minute, so `health` and `cadence day` read it without asking
-//! anything that runs.
+//! anything that runs. Each half minute it also looks at the lid, which no
+//! journal tells of when it's wrong.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::day::Day;
-use crate::journal::{self, RESTART_SCHEDULED};
+use crate::day::{Day, Kind};
+use crate::journal::{
+    self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
+};
+use crate::lid::{self, Looked};
 
-/// How often a changed day is written out: often enough that what `health`
-/// shows is a moment old, seldom enough to cost nothing.
+/// How often a changed day is written out and the lid looked at: often
+/// enough that what `health` shows is a moment old, seldom enough to cost
+/// nothing.
 const EVERY: Duration = Duration::from_secs(30);
 
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
-                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT";
+                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
+                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC";
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
@@ -31,7 +38,13 @@ pub struct Follower {
     changed: bool,
     into: PathBuf,
     zone: TimeZone,
+    ends: BTreeMap<String, i64>,
+    lid: Option<Looked>,
+    lid_wrong: bool,
 }
+
+/// What the day calls a lid that's wrong.
+const LID_WRONG: &str = "the lid reads shut while the laptop's screen is on and its keys are typed";
 
 impl Follower {
     /// A follower starting `date` empty, writing into `into`. It starts
@@ -44,7 +57,34 @@ impl Follower {
             changed: false,
             into: into.to_owned(),
             zone,
+            ends: BTreeMap::new(),
+            lid: None,
+            lid_wrong: false,
         }
+    }
+
+    /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once
+    /// as a device's fault, and again only after it reads open or the
+    /// screen goes dark.
+    pub fn look_at_lid(&mut self, now: Looked, at: i64) {
+        if lid::wrong(&now, self.lid.as_ref()) && !self.lid_wrong {
+            self.lid_wrong = true;
+            if date_of(at, &self.zone) == self.day.date {
+                self.day.fault("lid", Kind::Devices, LID_WRONG, at);
+                self.changed = true;
+            }
+        }
+        if !now.shut || !now.screen_on {
+            self.lid_wrong = false;
+        }
+        self.lid = Some(now);
+    }
+
+    /// Know when each boot before this one ended, so a shutdown seen
+    /// asked for is timed to its end.
+    #[must_use]
+    pub fn knowing(self, ends: BTreeMap<String, i64>) -> Self {
+        Self { ends, ..self }
     }
 
     /// Take one line of `journalctl -o json`. A line of a new day writes
@@ -66,6 +106,11 @@ impl Follower {
             return Ok(());
         }
         self.day.take(&entry);
+        if entry.mark == Some(Mark::Stopping)
+            && let Some(&end) = self.ends.get(&entry.boot)
+        {
+            self.day.ended(&entry.boot, end);
+        }
         self.changed = true;
         Ok(())
     }
@@ -91,6 +136,26 @@ pub fn file_of(into: &Path, date: &str) -> PathBuf {
     into.join(format!("{date}.json"))
 }
 
+/// When each boot before this one ended, from `journalctl --list-boots -o
+/// json`; this boot, the last listed, hasn't.
+#[must_use]
+pub fn ends_of(boots: &str) -> BTreeMap<String, i64> {
+    let Ok(serde_json::Value::Array(boots)) = serde_json::from_str(boots) else {
+        return BTreeMap::new();
+    };
+    let before = boots.len().saturating_sub(1);
+    boots
+        .iter()
+        .take(before)
+        .filter_map(|boot| {
+            Some((
+                boot["boot_id"].as_str()?.to_owned(),
+                boot["last_entry"].as_i64()?,
+            ))
+        })
+        .collect()
+}
+
 /// Write a day whole, through a file beside it, so a reader never sees half
 /// of one.
 fn write_day(day: &Day, into: &Path) -> io::Result<()> {
@@ -110,7 +175,7 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
         .unwrap_or_default()
 }
 
-/// Follow the journals into `into` until both followers end, which only a
+/// Follow the journals into `into` until every follower ends, which only a
 /// fault does; then the day is written and systemd starts it again.
 ///
 /// # Errors
@@ -119,23 +184,71 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
 pub fn follow(into: &Path) -> io::Result<()> {
     let zone = TimeZone::system();
     let today = date_of(Timestamp::now().as_microsecond(), &zone);
-    let mut follower = Follower::new(&today, into, zone);
+    let boots = Command::new("journalctl")
+        .args(["--list-boots", "--output=json", "--no-pager"])
+        .output()?;
+    let mut follower =
+        Follower::new(&today, into, zone).knowing(ends_of(&String::from_utf8_lossy(&boots.stdout)));
     let (lines, read) = mpsc::channel();
-    // Warnings and graver, and the restarts systemd schedules, which it
-    // says only as information.
+    // Warnings and graver.
     spawn(&["-p", "warning"], lines.clone())?;
-    spawn(&[&format!("MESSAGE_ID={RESTART_SCHEDULED}")], lines)?;
-    let mut running = 2;
+    // What systemd and logind say only as information: a restart
+    // scheduled, the machine started or stopping, and a unit started,
+    // which the day keeps only for the disk's password.
+    spawn(
+        &[
+            &format!("MESSAGE_ID={RESTART_SCHEDULED}"),
+            &format!("MESSAGE_ID={STARTUP_FINISHED}"),
+            &format!("MESSAGE_ID={SHUTTING_DOWN}"),
+            "+",
+            "_PID=1",
+            &format!("MESSAGE_ID={UNIT_STARTED}"),
+        ],
+        lines.clone(),
+    )?;
+    // The launcher ready, after each start of the shell.
+    spawn(
+        &[
+            "SYSLOG_IDENTIFIER=quickshell",
+            &format!("--grep={LAUNCHER_READY}"),
+        ],
+        lines.clone(),
+    )?;
+    // The kernel's notices and information, which is where it says a USB
+    // device dropped or a PCIe link corrected itself; the day keeps only
+    // those and leaves the rest, about a thousand lines an hour.
+    spawn(&["-k", "-p", "notice..info"], lines)?;
+    run(&mut follower, &read, 4, Instant::now, lid::look)?;
+    Err(io::Error::other("the journal followers ended"))
+}
+
+/// Take the followers' lines until `running` of them end, and every half
+/// minute by `now`, however busy the journals are, look at the lid and
+/// write the day.
+fn run(
+    follower: &mut Follower,
+    read: &Receiver<Option<String>>,
+    mut running: usize,
+    mut now: impl FnMut() -> Instant,
+    mut look: impl FnMut() -> Looked,
+) -> io::Result<()> {
+    let mut ticked = now();
     while running > 0 {
-        match read.recv_timeout(EVERY) {
+        let left = EVERY.saturating_sub(now().saturating_duration_since(ticked));
+        match read.recv_timeout(left) {
             Ok(Some(line)) => follower.take(&line)?,
             Ok(None) => running -= 1,
-            Err(RecvTimeoutError::Timeout) => follower.write()?,
+            Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
+        let at = now();
+        if at.saturating_duration_since(ticked) >= EVERY {
+            ticked = at;
+            follower.look_at_lid(look(), Timestamp::now().as_microsecond());
+            follower.write()?;
+        }
     }
-    follower.write()?;
-    Err(io::Error::other("the journal followers ended"))
+    follower.write()
 }
 
 /// Start one journalctl following from the day's start, its lines sent on,
@@ -266,5 +379,92 @@ mod tests {
             "2026-11-11",
             "04:00 UTC is still the day before five hours west"
         );
+    }
+
+    #[test]
+    fn a_shutdown_seen_is_timed_to_its_boots_end() {
+        let boots = r#"[{"index":-1,"boot_id":"old","first_entry":1,"last_entry":40000000},
+            {"index":0,"boot_id":"now","first_entry":41000000,"last_entry":99000000}]"#;
+        let ends = ends_of(boots);
+        assert_eq!(
+            ends.into_iter().collect::<Vec<_>>(),
+            vec![("old".to_owned(), 40_000_000)],
+            "only the boots before this one have ended"
+        );
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower =
+            Follower::new("1970-01-01", into.path(), TimeZone::UTC).knowing(ends_of(boots));
+        follower
+            .take(&format!(
+                r#"{{"__REALTIME_TIMESTAMP":"10000000","_BOOT_ID":"old","MESSAGE_ID":"{SHUTTING_DOWN}","MESSAGE":"System is rebooting."}}"#
+            ))
+            .expect("taken");
+        assert_eq!(
+            follower.day.boots["old"].shutdown(),
+            Some(30_000_000),
+            "from logind's line to the boot's last entry"
+        );
+    }
+
+    #[test]
+    fn a_busy_journal_still_ticks_every_half_minute() {
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        let (lines, read) = mpsc::channel();
+        for second in 0..9 {
+            lines
+                .send(Some(warning(NOON + second)))
+                .expect("a line sent");
+        }
+        lines.send(None).expect("its end sent");
+        // Each look at the clock finds ten seconds gone, so the lines come
+        // far faster than the half minute a quiet journal would wait.
+        let start = Instant::now();
+        let mut asked = 0;
+        let now = || {
+            asked += 1;
+            start + Duration::from_secs(10 * asked)
+        };
+        let mut looks = 0;
+        run(&mut follower, &read, 1, now, || {
+            looks += 1;
+            Looked::default()
+        })
+        .expect("the run");
+        assert!(
+            looks >= 3,
+            "looked {looks} times over ten lines a hundred seconds apart"
+        );
+    }
+
+    #[test]
+    fn a_lid_gone_wrong_is_a_devices_fault_once() {
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
+        let used = |keys| Looked {
+            shut: true,
+            screen_on: true,
+            keys,
+        };
+        for keys in 1..5 {
+            follower.look_at_lid(used(keys), NOON);
+        }
+        let open = Looked {
+            shut: false,
+            ..used(5)
+        };
+        follower.look_at_lid(open, NOON);
+        follower.look_at_lid(used(6), NOON);
+        follower.look_at_lid(used(7), NOON);
+        follower.write().expect("the day is written");
+        let lid = &read(into.path(), "2026-11-12").things["lid"];
+        assert_eq!(lid.kind, Some(Kind::Devices), "a lid is a device");
+        assert_eq!(lid.errors, 2, "once a time it went wrong: {lid:?}");
+        let said: Vec<&str> = lid
+            .signatures
+            .values()
+            .map(|said| said.example.as_str())
+            .collect();
+        assert_eq!(said, [LID_WRONG], "said the way Joel reads it");
     }
 }

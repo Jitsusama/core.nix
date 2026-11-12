@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::journal::{Entry, Whose};
+use crate::journal::{Entry, Mark, Whose};
 use crate::sign;
 
 /// The most signatures kept for one thing; past it, the rest are counted
@@ -33,7 +33,21 @@ const SECURITY: [&str; 12] = [
     "greetd",
 ];
 
+/// What the kernel says only as information that's still a device going
+/// wrong, or going away: a USB device dropped or reset, a PCI Express link's
+/// corrected errors, a processor throttled, firmware that wouldn't load.
+/// Each is said in full in the kernel's own words, and matched as written.
+const DEVICE_EVENTS: [&[&str]; 6] = [
+    &["USB disconnect"],
+    &["reset ", " USB device number "],
+    &["AER: ", " error"],
+    &["throttled"],
+    &["Direct firmware load"],
+    &["failed to load firmware"],
+];
+
 /// Which kind of thing a line is about, as `health` groups them.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -69,6 +83,64 @@ pub struct Day {
     pub to: i64,
     /// Each thing that said anything, by its name.
     pub things: BTreeMap<String, Thing>,
+    /// Each boot that started or stopped in the day, by its id.
+    #[serde(default)]
+    pub boots: BTreeMap<String, Boot>,
+}
+
+/// How one boot started and stopped, as far as the day saw it, each in
+/// microseconds: stages as systemd timed them, moments since the kernel
+/// started, and the shutdown on the wall clock.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Boot {
+    /// When systemd said it had started, on the wall clock.
+    pub started: i64,
+    /// The firmware, before the boot loader.
+    pub firmware: i64,
+    /// The boot loader.
+    pub loader: i64,
+    /// The kernel.
+    pub kernel: i64,
+    /// The initrd, the password's wait among it.
+    pub initrd: i64,
+    /// systemd starting the machine's services.
+    pub userspace: i64,
+    /// When a disk first asked for its password.
+    pub asked: Option<i64>,
+    /// When the last disk opened.
+    pub opened: Option<i64>,
+    /// When the launcher was first ready.
+    pub ready: Option<i64>,
+    /// When the shutdown was asked for, on the wall clock.
+    pub stopping: Option<i64>,
+    /// The boot's last entry, on the wall clock.
+    pub ended: Option<i64>,
+}
+
+impl Boot {
+    /// How long Joel's password took, from the disk asking to it opening.
+    #[must_use]
+    pub fn password(&self) -> i64 {
+        match (self.asked, self.opened) {
+            (Some(asked), Some(opened)) if opened > asked => opened - asked,
+            _ => 0,
+        }
+    }
+
+    /// From the power button to a ready launcher, the password's wait left
+    /// out, once both the boot's stages and the launcher are known.
+    #[must_use]
+    pub fn to_ready(&self) -> Option<i64> {
+        let ready = self.ready?;
+        (self.started > 0).then(|| self.firmware + self.loader + ready - self.password())
+    }
+
+    /// From the shutdown asked for to the boot's last entry.
+    #[must_use]
+    pub fn shutdown(&self) -> Option<i64> {
+        Some(self.ended? - self.stopping?).filter(|took| *took >= 0)
+    }
 }
 
 /// What one thing said in the day.
@@ -84,6 +156,9 @@ pub struct Thing {
     pub traces: u64,
     /// Its restarts, as systemd scheduled them.
     pub restarts: u64,
+    /// A device's events the kernel said only as information.
+    #[serde(default)]
+    pub events: u64,
     /// The times it crashed, and of those, the ones in Joel's own slices.
     pub crashes: u64,
     /// The crashes of it that were his.
@@ -120,11 +195,24 @@ impl Day {
     /// Take one entry into the day.
     pub fn take(&mut self, entry: &Entry) {
         self.to = self.to.max(entry.at);
+        if let Some(mark) = entry.mark {
+            self.mark(entry, mark);
+            return;
+        }
+        let event = entry.priority > 4 && !entry.restart;
+        if event && !(entry.kernel && is_device_event(&entry.message)) {
+            return;
+        }
         let (name, kind) = named(entry);
         let thing = self.things.entry(name).or_default();
         thing.kind = thing.kind.or(Some(kind));
         if entry.restart {
             thing.restarts += 1;
+            return;
+        }
+        if event {
+            thing.events += 1;
+            thing.say(entry);
             return;
         }
         thing.lines += 1;
@@ -143,38 +231,143 @@ impl Day {
     }
 }
 
+impl Day {
+    /// Keep a boot's moment. Each is kept the first time but a disk
+    /// opening, where the last counts, since a machine may open several.
+    fn mark(&mut self, entry: &Entry, mark: Mark) {
+        let boot = self.boots.entry(entry.boot.clone()).or_default();
+        let at = entry.since_boot;
+        match mark {
+            Mark::Started {
+                firmware,
+                loader,
+                kernel,
+                initrd,
+                userspace,
+            } => {
+                *boot = Boot {
+                    started: entry.at,
+                    firmware,
+                    loader,
+                    kernel,
+                    initrd,
+                    userspace,
+                    ..boot.clone()
+                };
+            }
+            Mark::Asked => boot.asked = boot.asked.or(Some(at)),
+            Mark::Opened => boot.opened = boot.opened.max(Some(at)),
+            Mark::Ready => boot.ready = boot.ready.or(Some(at)),
+            Mark::Stopping => boot.stopping = boot.stopping.or(Some(entry.at)),
+        }
+    }
+
+    /// Count a fault health saw itself, which no journal said: a line at
+    /// error, from `name`, of `kind`, saying `message` at `at`.
+    pub fn fault(&mut self, name: &str, kind: Kind, message: &str, at: i64) {
+        self.to = self.to.max(at);
+        let thing = self.things.entry(name.to_owned()).or_default();
+        thing.kind = thing.kind.or(Some(kind));
+        thing.lines += 1;
+        thing.errors += 1;
+        thing.said(message, 3, at);
+    }
+
+    /// Say when a boot that stopped in the day ended, from the journal's
+    /// list of boots; a boot the day didn't see stop is left out.
+    pub fn ended(&mut self, boot: &str, at: i64) {
+        if let Some(boot) = self
+            .boots
+            .get_mut(boot)
+            .filter(|boot| boot.stopping.is_some())
+        {
+            boot.ended = Some(at);
+        }
+    }
+}
+
 impl Thing {
     /// Count what the entry said under its signature.
     fn say(&mut self, entry: &Entry) {
-        let mut signed = sign::signature(&entry.message);
+        self.said(&entry.message, entry.priority, entry.at);
+    }
+
+    /// Count `message`, said at `priority` at `at`, under its signature.
+    fn said(&mut self, message: &str, priority: u8, at: i64) {
+        let mut signed = sign::signature(message);
         if !self.signatures.contains_key(&signed) && self.signatures.len() >= MOST_SIGNATURES {
             THE_REST.clone_into(&mut signed);
         }
-        let first = entry.message.lines().next().unwrap_or_default();
+        let first = message.lines().next().unwrap_or_default();
         let signature = self.signatures.entry(signed).or_insert_with(|| Signature {
-            priority: entry.priority,
-            first: entry.at,
+            priority,
+            first: at,
             example: first.chars().take(400).collect(),
             ..Signature::default()
         });
         signature.count += 1;
-        signature.priority = signature.priority.min(entry.priority);
-        signature.last = signature.last.max(entry.at);
+        signature.priority = signature.priority.min(priority);
+        signature.last = signature.last.max(at);
     }
 
-    /// How bad it is, gravest first, for putting the worst first: Joel's
-    /// crashes, then any crash, traces, errors, restarts and lines.
+    /// How bad it is, for putting the worst first.
     #[must_use]
-    pub const fn badness(&self) -> (u64, u64, u64, u64, u64, u64) {
-        (
-            self.his_crashes,
-            self.crashes,
-            self.traces,
-            self.errors,
-            self.restarts,
-            self.lines,
-        )
+    pub const fn badness(&self) -> Badness {
+        Badness {
+            his_crashes: self.his_crashes,
+            crashes: self.crashes,
+            traces: self.traces,
+            errors: self.errors,
+            restarts: self.restarts,
+            lines: self.lines,
+            events: self.events,
+        }
     }
+}
+
+/// How bad a thing, or things together, were. Its fields are in order of
+/// gravity, so one is worse than another by its first field that differs:
+/// Joel's crashes, then any crash, traces, errors, restarts, warnings, and
+/// last the devices' events, which are often only a cable pulled.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Badness {
+    /// The crashes that were Joel's.
+    pub his_crashes: u64,
+    /// Every crash.
+    pub crashes: u64,
+    /// Stack traces.
+    pub traces: u64,
+    /// Lines at error or graver, crashes among them.
+    pub errors: u64,
+    /// Restarts systemd scheduled.
+    pub restarts: u64,
+    /// Lines at warning or graver, errors among them.
+    pub lines: u64,
+    /// Devices' events.
+    pub events: u64,
+}
+
+impl std::ops::Add for Badness {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            his_crashes: self.his_crashes + other.his_crashes,
+            crashes: self.crashes + other.crashes,
+            traces: self.traces + other.traces,
+            errors: self.errors + other.errors,
+            restarts: self.restarts + other.restarts,
+            lines: self.lines + other.lines,
+            events: self.events + other.events,
+        }
+    }
+}
+
+/// Whether a kernel line said as information is a device's event.
+fn is_device_event(message: &str) -> bool {
+    DEVICE_EVENTS
+        .iter()
+        .any(|words| words.iter().all(|word| message.contains(word)))
 }
 
 /// The thing an entry is about, and its kind: a crashed program by its
@@ -223,7 +416,68 @@ mod tests {
             whose: None,
             restart: false,
             kernel: false,
+            boot: "b".to_owned(),
+            since_boot: 1,
+            mark: None,
         }
+    }
+
+    #[test]
+    fn a_boot_is_timed_to_a_ready_launcher_without_the_password() {
+        let mut day = Day::new("2026-11-11");
+        let at = |since_boot, mark| Entry {
+            since_boot,
+            mark: Some(mark),
+            ..entry("systemd", 6, "")
+        };
+        day.take(&at(2_900_000, Mark::Asked));
+        day.take(&at(26_200_000, Mark::Asked));
+        day.take(&at(23_900_000, Mark::Opened));
+        day.take(&at(37_700_000, Mark::Ready));
+        day.take(&at(48_900_000, Mark::Ready));
+        let boot = &day.boots["b"];
+        assert_eq!(boot.to_ready(), None, "not until systemd says it started");
+        day.take(&at(
+            55_700_000,
+            Mark::Started {
+                firmware: 9_700_000,
+                loader: 500_000,
+                kernel: 400_000,
+                initrd: 24_400_000,
+                userspace: 20_700_000,
+            },
+        ));
+        let boot = &day.boots["b"];
+        assert_eq!(
+            boot.password(),
+            21_000_000,
+            "the first ask to the disk open"
+        );
+        assert_eq!(
+            boot.to_ready(),
+            Some(9_700_000 + 500_000 + 37_700_000 - 21_000_000),
+            "firmware and loader, then to the first ready, less the password"
+        );
+        assert!(day.things.is_empty(), "a boot's moments aren't warnings");
+    }
+
+    #[test]
+    fn a_shutdown_runs_from_its_ask_to_the_boots_last_entry() {
+        let mut day = Day::new("2026-11-11");
+        day.ended("b", 9);
+        assert!(day.boots.is_empty(), "a boot not seen stopping is left out");
+        day.take(&Entry {
+            at: 10_000_000,
+            mark: Some(Mark::Stopping),
+            ..entry("systemd-logind", 5, "System is rebooting.")
+        });
+        assert_eq!(day.boots["b"].shutdown(), None, "not until it ended");
+        day.ended("b", 40_000_000);
+        assert_eq!(
+            day.boots["b"].shutdown(),
+            Some(30_000_000),
+            "from the ask to its last entry"
+        );
     }
 
     #[test]
@@ -332,6 +586,41 @@ mod tests {
             day.things["audit"].kind,
             Some(Kind::Security),
             "the audit log is security"
+        );
+    }
+
+    #[test]
+    fn a_device_event_is_counted_and_other_information_left_out() {
+        let mut day = Day::new("2026-11-12");
+        let kernel = |message| Entry {
+            kernel: true,
+            ..entry("kernel", 6, message)
+        };
+        day.take(&kernel("usb 3-2.1.3: USB disconnect, device number 22"));
+        day.take(&kernel(
+            "usb 2-1: reset SuperSpeed USB device number 2 using xhci_hcd",
+        ));
+        day.take(&kernel(
+            "pcieport 0000:00:1c.0: AER: Corrected error message received from 0000:01:00.0",
+        ));
+        day.take(&kernel("pcieport 0000:00:1c.0: AER: enabled with IRQ 122"));
+        day.take(&kernel("Bluetooth: hci0: Firmware loaded in 1534 usecs"));
+        day.take(&entry("pebble-lights", 6, "USB disconnect seen"));
+        let usb = &day.things["usb"];
+        assert_eq!(usb.kind, Some(Kind::Devices), "a USB event is a device's");
+        assert_eq!(
+            (usb.events, usb.lines),
+            (2, 0),
+            "a disconnect and a reset are events, not warnings"
+        );
+        assert_eq!(
+            day.things["pcieport"].events, 1,
+            "a corrected error is an event; turning AER on isn't"
+        );
+        assert!(
+            !day.things.contains_key("Bluetooth") && !day.things.contains_key("pebble-lights"),
+            "other information is left out: {:?}",
+            day.things.keys().collect::<Vec<_>>()
         );
     }
 
