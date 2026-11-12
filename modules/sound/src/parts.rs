@@ -3,19 +3,21 @@
 //! using it, where it isn't the one chosen; whether it's Muted, one switch;
 //! its Volume, or a microphone's Gain, a setting with its levels a step
 //! in; the programs playing through it or recording from it
-//! (programs.rs); its Port, where its card offers more than one; its
+//! (programs.rs); its Tuning or Voice Processing, the filters in front of
+//! it (filters.rs); its Port, where its card offers more than one; its
 //! Channels (channels.rs); a Bluetooth device's Profile; its Hardware
 //! (hardware.rs); and last, what desk-facts says of its card (desk.rs).
 //! Each act asks the daemon (acts.rs), so the shell runs nothing to do
 //! it.
 //!
-//! The rest of a device's parts, its Level and filters, are still made by
-//! Sound.qml from the sound server.
+//! The one part left, its Level, is still made by Sound.qml, from the
+//! peaks the shell reads.
 
 use serde_json::{Value, json};
 
 use crate::channels::channels_rows;
 use crate::desk::fact_rows;
+use crate::filters::filters_rows;
 use crate::hardware::hardware_rows;
 use crate::programs::{Around, Naming, Sendable, programs_part};
 use crate::rows::{APART, Device, PLACE, Words, bar, carried, kind, percent, rows, switches, worn};
@@ -79,6 +81,7 @@ fn of(device: &Device, top: &Value, around: &Around) -> Vec<Value> {
     parts.push(mute_row(device, words, &parent));
     parts.extend(volume_rows(device, words, &parent));
     parts.extend(programs_part(device, around, &parent));
+    parts.extend(filters_rows(device, devices, words, &parent));
     parts.extend(port_rows(device, words, &parent));
     parts.extend(channels_rows(device, words, &parent));
     parts.extend(profile_row(device, devices, words, &parent));

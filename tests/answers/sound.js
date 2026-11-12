@@ -8,19 +8,6 @@ function run(failures) {
     let asked = 0;
     const machine = Common.checker(failures, () => asked++);
     // What Sound makes of what a device and a stream say of themselves.
-    const soundTuning = Sounds.target("{\n  node.name = \"alsa_output.speaker\"\n}");
-    machine("what a filter aims at", soundTuning, { "node.name": "alsa_output.speaker" });
-    machine("a filter aiming at two things", Sounds.target(
-        "{ alsa.components = \"USB14ed:1012\" media.class = \"Audio/Source\" }"),
-        { "alsa.components": "USB14ed:1012", "media.class": "Audio/Source" });
-    machine("a filter's aim written as JSON", Sounds.target('{"node.name":"mic"}'),
-        { "node.name": "mic" });
-    machine("the device a filter aims at",
-        Sounds.aims(soundTuning, { "node.name": "alsa_output.speaker", "node.nick": "Speaker" }),
-        true);
-    machine("a device it doesn't", Sounds.aims(soundTuning, { "node.name": "headphones" }),
-        false);
-    machine("a filter aiming at nothing", Sounds.aims(Sounds.target(""), {}), false);
     machine("a stream's rate", Sounds.rate("1/44100"), "44.1 kHz");
     machine("a rate in whole kilohertz", Sounds.kilohertz(48000), "48 kHz");
     machine("no rate said", Sounds.rate(undefined), "");

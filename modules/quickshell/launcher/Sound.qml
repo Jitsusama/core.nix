@@ -139,7 +139,6 @@ Provider {
     readonly property var nodes: serverNodes
         .filter(node => !!node.audio && !node.isStream
             && (node.type & PwNodeType.Audio) && (node.isSink || (node.type & PwNodeType.Source)))
-    readonly property var filters: nodes.filter(node => node.properties["filter.smart"] === "true")
     readonly property var devices: nodes
         .filter(node => node.properties["filter.smart"] !== "true" && listed(node))
     readonly property var outputs: devices.filter(node => node.isSink)
@@ -471,9 +470,7 @@ Provider {
                     said("balanced")))) };
             case `sound:${node.name}:tuning`:
             case `sound:${node.name}:voice`:
-                return { value: Plate.runs([row.side].concat(provider.filtersOf(node)
-                    .filter(filter => !!filter.audio)
-                    .map(filter => `${provider.named(filter)} ${provider.level(filter)}`))) };
+                return { value: Plate.runs([row.side].concat(filtersHeld(node).levels)) };
             default:
                 return null;
             }
@@ -583,12 +580,6 @@ Provider {
         return keptAlike(partsKeeping, `sound:${node.name}`, parts, () => parts);
     }
 
-    // What each part made here says, every figure included, by the part.
-    function filtersSaid(node) {
-        return [glyph(kind(node))].concat(filtersOf(node).map(filter => [filter.name,
-            named(filter), filter.audio?.volume, filter.audio?.muted, flowing(filter, node)]));
-    }
-
     // A part the daemon serves inside a device's row, by the last of its
     // key, as it's made, or null while it serves none.
     function servedPart(node, part) {
@@ -628,10 +619,9 @@ Provider {
     }
 
     // Using it, when it isn't the one chosen, then its parts, and what the
-    // kernel says of its card. Using it, Muted, its Volume, its programs,
-    // its Port, its Channels, its Profile, its Hardware and its card's facts
-    // are served; the rest are made here until the daemon serves them too,
-    // each by `kept` (verbs) where it's given, from what that part says.
+    // kernel says of its card. Every part but its Level is served; the
+    // Level is made here, from the peaks the shell reads, by `kept` (verbs)
+    // where it's given, from what it says.
     function partsMade(node, kept) {
         const made = kept ?? ((part, from, make) => make());
         const programs = node.isSink ? "programs" : "recorders";
@@ -639,7 +629,7 @@ Provider {
             made("level", [switches(node), node === metered ? heard : []],
                 () => levelPart(node)),
             volumePart(node), servedPart(node, programs),
-            made("filter", filtersSaid(node), () => filterPart(node)),
+            filterPart(node),
             made("noise", noiseSaid(node), () => noisePart(node)),
             made("by-ear", noiseSaid(node), () => byEarPart(node)), portPart(node),
             servedPart(node, "channels"),
@@ -852,57 +842,18 @@ Provider {
         return streams.every(stream => !stream.audio || stream.audio.muted);
     }
 
-    // The Tuning in front of an output, or the Voice processing in front of
-    // an input: a filter that puts itself before a device, aimed at it by
-    // what it asks a device to be (filter.smart.target), so programs reach
-    // the device through it.
-
-    function filtersOf(node) {
-        return filters.filter(filter => filter.isSink === node.isSink
-            && Sounds.aims(Sounds.target(filter.properties["filter.smart.target"] ?? ""),
-                node.properties));
-    }
-
-    // Whether sound is passing between a filter and its device now: its
-    // other half, a stream sharing its link group, linked and running.
-    function flowing(filter, node) {
-        const group = filter.properties["node.link-group"];
-        return !!group && Pipewire.linkGroups.values.some(link => {
-            const half = node.isSink ? link.source : link.target;
-            const end = node.isSink ? link.target : link.source;
-            return end === node && !!half && half.properties["node.link-group"] === group
-                && link.state === PwLinkState.Active;
-        });
-    }
-
+    // The Tuning in front of an output, or the Voice Processing in front of
+    // an input: the filters aimed at it, whose part, and whether sound
+    // passes through them now, the sound daemon serves (filters.rs).
     function filterPart(node) {
-        const found = filtersOf(node);
-        if (found.length === 0)
-            return null;
-        const id = node.isSink ? "tuning" : "voice";
-        const key = `sound:${node.name}:${id}`;
-        return thingRow({
-            key: key,
-            name: Words.name(`sound:${id}`),
-            side: found.some(filter => provider.flowing(filter, node)) ? said("running")
-                : said("on"),
-            glyph: glyph(kind(node)),
-            note: said(id)
-        }, () => found.filter(filter => !!filter.audio).reduce((rows, filter) => rows.concat([
-            provider.leafRow({
-                key: `${key}:${filter.name}`,
-                name: Words.name("sound:filter"),
-                side: provider.named(filter),
-                note: provider.said(provider.flowing(filter, node) ? "running" : "waiting")
-            }),
-            provider.figureRow({
-                key: `${key}:${filter.name}:level`,
-                name: Words.name(node.isSink ? "sound:volume" : "sound:gain"),
-                side: provider.level(filter),
-                graph: provider.loudness(filter),
-                note: filter.audio ? Sounds.decibels(filter.audio.volume) : ""
-            })
-        ]), []));
+        return servedPart(node, node.isSink ? "tuning" : "voice");
+    }
+
+    // What the served filters part holds: each filter's name, for the
+    // spots, and each said with its level, for the drawer.
+    function filtersHeld(node) {
+        const part = `row:sound:${node.name}:${node.isSink ? "tuning" : "voice"}`;
+        return ready.served(part)?.held ?? { filters: [], levels: [] };
     }
 
     // Its Port, when its card offers it several, as one card's analog
@@ -1298,7 +1249,7 @@ Provider {
     property string spotsStamp: JSON.stringify(ordered(outputs).concat(ordered(inputs))
         .filter(node => !!node.audio).map(node => [node.name, named(node), chosen(node),
             switches(node), ready.served(`row:sound:${node.name}:programs`)?.side ?? [],
-            filtersOf(node).map(filter => filter.name),
+            filtersHeld(node).filters,
             portsServed(node).slice(1).map(choice => choice.held.port),
             Array.from(node.audio.channels ?? []).length, carried(node),
             factsOf(node).map(fact => fact.name)]))
@@ -1324,7 +1275,7 @@ Provider {
             .map(one => [one].concat(steady(ready.served(one))));
         return JSON.stringify([key, steady(row), parts, named(node), kind(node), chosen(node),
             switches(node), ready.served(`${key}:programs`)?.side ?? [],
-            filtersOf(node).map(filter => filter.name),
+            filtersHeld(node).filters,
             Array.from(node.audio.channels ?? []).length, carried(node),
             factsOf(node).map(fact => fact.name)]);
     }
