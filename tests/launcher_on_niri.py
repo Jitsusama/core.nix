@@ -108,9 +108,11 @@ class Shell:
             self.daemon("meaning", os.environ["MEANING"], str(means))
         # The clipboard's history, the store's own when the check gives it as CLIPBOARD, run as
         # its unit runs it, so the launcher's copies and pastes go through it, its rows said in
-        # the launcher's words the check gives as CLIPBOARD_WORDS.
+        # the launcher's words the check gives as CLIPBOARD_WORDS, and Emoji's rows served from
+        # the list it gives as CLIPBOARD_EMOJI, where it gives one.
         if "CLIPBOARD" in os.environ:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"
+            emoji = os.environ.get("CLIPBOARD_EMOJI")
             with (self.log.parent / "clipboard-history.log").open("wb") as log:
                 history = subprocess.Popen(  # noqa: S603, the program the check gives
                     [
@@ -119,6 +121,7 @@ class Shell:
                         str(socket),
                         "--vocabulary",
                         os.environ["CLIPBOARD_WORDS"],
+                        *(["--emoji", emoji] if emoji else []),
                     ],
                     stdout=log,
                     stderr=subprocess.STDOUT,

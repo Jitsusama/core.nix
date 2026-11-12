@@ -285,8 +285,8 @@ pub fn picture(picture: &Picture, words: &Words) -> Value {
 }
 
 /// Words read beside a value, given a capital where they open a name or
-/// a side: "image" as "Image".
-fn capitalised(words: &str) -> String {
+/// a side: "image" as "Image". Emoji's names take theirs here too.
+pub fn capitalised(words: &str) -> String {
     let mut letters = words.chars();
     letters.next().map_or_else(String::new, |first| {
         first.to_uppercase().chain(letters).collect()

@@ -97,6 +97,48 @@ Singleton {
         return under() === null ? "copy" : "paste";
     }
 
+    // A row the history serves, as it reads with no window to paste into,
+    // where the history only copies it: Return says copy, and its paste,
+    // the act `paste` keys, leaves its verbs. What y takes are plain
+    // fields, rather than rows made searchable, since y over hundreds asks
+    // every row (Launcher.qml's actionsOf): its served copy, `copying`,
+    // done by `act`, and what y joins with other rows' copies, `copies`.
+    // Copies' and Emoji's rows read so. The row comes with `verb` as its
+    // getter, made so afresh (Provider.qml's gotten), since redefining a
+    // field it holds loses another's value.
+    function served(row, paste, copying, copies, act) {
+        const verbs = row.verbs;
+        row.run = pasting.saying(row.run);
+        row.verbs = () => {
+            const all = verbs();
+            if (pasting.under() === null)
+                return all.filter(one => one.key !== paste);
+            for (const one of all)
+                if (one.key === paste)
+                    one.run = pasting.saying(one.run);
+            return all;
+        };
+        row.targets = row.verbs;
+        row.operands = () => copying === undefined ? [] : [{
+            key: copying.key,
+            verb: Words.verb(copying.key),
+            copies: copies,
+            run: () => act(copying)
+        }];
+        return row;
+    }
+
+    // A paste's run, saying for the checks that wait on one which program
+    // it goes to.
+    function saying(run) {
+        return () => {
+            const window = pasting.under();
+            if (window !== null)
+                Report.say(`pastes into ${window.app_id ?? ""}`);
+            run();
+        };
+    }
+
     // Whether the history is there to copy and paste.
     function helped() {
         return pasting.helper !== null && pasting.helper.linked;

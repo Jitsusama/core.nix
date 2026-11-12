@@ -468,6 +468,7 @@ Scope {
             key: row.thing ?? key,
             thing: !!row.drawer,
             name: row.name ?? "",
+            // Made its characters once, here (ReadyRows.js's glyphOf).
             glyph: Ready.glyphOf(row.glyph ?? "", Theme.glyph),
             hue: row.hue ?? "",
             side: Ready.sideJoined(items),
