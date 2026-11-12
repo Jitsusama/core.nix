@@ -58,8 +58,11 @@ impl Spans {
 
     /// How long a key arriving at `t` waits for the burst it lands in.
     pub fn residual(&self, t: f64) -> f64 {
-        let _ = t;
-        0.0
+        let after = self.starts.partition_point(|start| *start <= t);
+        match after.checked_sub(1) {
+            Some(i) => (self.ends[i] - t).max(0.0),
+            None => 0.0,
+        }
     }
 }
 
@@ -111,9 +114,45 @@ impl Draw {
 /// Models `count` keys typed at instants drawn from `at_pi`, the spans of
 /// time Joel was at a pi window, on a screen drawing a frame every
 /// `frame` milliseconds.
-pub fn keys(path: &Path, at_pi: &[(f64, f64)], frame: f64, count: usize, draw: &mut Draw) -> Vec<Key> {
-    let _ = (path, at_pi, frame, count, draw);
-    Vec::new()
+pub fn keys(
+    path: &Path,
+    at_pi: &[(f64, f64)],
+    frame: f64,
+    count: usize,
+    draw: &mut Draw,
+) -> Vec<Key> {
+    let total: f64 = at_pi.iter().map(|(from, to)| (to - from).max(0.0)).sum();
+    if total <= 0.0 {
+        return Vec::new();
+    }
+    (0..count)
+        .map(|_| {
+            let start = instant(at_pi, draw.next() * total);
+            let mut t = start;
+            let mut waits = [0.0; 5];
+            for (hop, (_, thread)) in HOPS.iter().enumerate() {
+                waits[hop] = path.of(*thread).residual(t);
+                t += waits[hop] + COST[hop];
+            }
+            let vblank = frame - t.rem_euclid(frame);
+            Key {
+                total: t + vblank - start,
+                waits,
+            }
+        })
+        .collect()
+}
+
+/// The instant `into` milliseconds into the spans laid end to end.
+fn instant(spans: &[(f64, f64)], mut into: f64) -> f64 {
+    for (from, to) in spans {
+        let length = (to - from).max(0.0);
+        if into < length {
+            return from + into;
+        }
+        into -= length;
+    }
+    spans.last().map_or(0.0, |span| span.1)
 }
 
 /// What a sample's keys came to.
@@ -132,8 +171,32 @@ pub struct Summary {
 
 /// Sums up modelled keys, or nothing when there are none.
 pub fn summary(keys: &[Key]) -> Option<Summary> {
-    let _ = keys;
-    None
+    if keys.is_empty() {
+        return None;
+    }
+    let mut totals: Vec<f64> = keys.iter().map(|k| k.total).collect();
+    totals.sort_by(f64::total_cmp);
+    let at = |p: f64| totals[((totals.len() as f64 * p) as usize).min(totals.len() - 1)];
+    let share = |n: usize| n as f64 / keys.len() as f64;
+    let lost = |thread: Thread| {
+        share(
+            keys.iter()
+                .filter(|key| {
+                    HOPS.iter()
+                        .zip(key.waits)
+                        .any(|((_, t), wait)| *t == thread && wait > LOST)
+                })
+                .count(),
+        )
+    };
+    Some(Summary {
+        keys: keys.len(),
+        p50: at(0.5),
+        p99: at(0.99),
+        max: totals[totals.len() - 1],
+        late: share(totals.iter().filter(|t| **t > LATE).count()),
+        lost_at: [lost(Thread::Niri), lost(Thread::Kitty), lost(Thread::Pi)],
+    })
 }
 
 #[cfg(test)]
@@ -154,11 +217,20 @@ mod tests {
 
     #[test]
     fn with_nothing_busy_a_key_costs_its_hops_and_part_of_a_frame() {
-        let keys = keys(&Path::default(), &[(0.0, 60_000.0)], FRAME, 2000, &mut Draw::new(7));
+        let keys = keys(
+            &Path::default(),
+            &[(0.0, 60_000.0)],
+            FRAME,
+            2000,
+            &mut Draw::new(7),
+        );
         assert_eq!(keys.len(), 2000);
         let floor: f64 = COST.iter().sum();
         for key in &keys {
-            assert!(key.total >= floor && key.total <= floor + FRAME + 1e-9, "{key:?}");
+            assert!(
+                key.total >= floor && key.total <= floor + FRAME + 1e-9,
+                "{key:?}"
+            );
             assert_eq!(key.waits, [0.0; 5]);
         }
     }
@@ -168,7 +240,9 @@ mod tests {
         // Half land in a burst, and of those a key is late once its wait,
         // 6.5 ms of hops and its frame pass 33 ms: about 82%, so 41% in all.
         // It loses a frame at pi once the wait passes 16 ms: 84% of half.
-        let busy = (0..300).map(|i| (f64::from(i) * 200.0, f64::from(i) * 200.0 + 100.0)).collect();
+        let busy = (0..300)
+            .map(|i| (f64::from(i) * 200.0, f64::from(i) * 200.0 + 100.0))
+            .collect();
         let path = Path {
             pi: Spans::new(busy),
             ..Path::default()
@@ -199,7 +273,13 @@ mod tests {
             kitty: Spans::new(vec![(0.0, 100_000.0)]),
             ..Path::default()
         };
-        let keys = keys(&path, &[(10_000.0, 20_000.0)], FRAME, 200, &mut Draw::new(5));
+        let keys = keys(
+            &path,
+            &[(10_000.0, 20_000.0)],
+            FRAME,
+            200,
+            &mut Draw::new(5),
+        );
         let sum = summary(&keys).unwrap();
         assert_eq!(sum.lost_at, [0.0, 1.0, 0.0]);
     }
@@ -212,8 +292,20 @@ mod tests {
 
     #[test]
     fn the_same_seed_draws_the_same_keys() {
-        let a = keys(&Path::default(), &[(0.0, 1000.0)], FRAME, 50, &mut Draw::new(9));
-        let b = keys(&Path::default(), &[(0.0, 1000.0)], FRAME, 50, &mut Draw::new(9));
+        let a = keys(
+            &Path::default(),
+            &[(0.0, 1000.0)],
+            FRAME,
+            50,
+            &mut Draw::new(9),
+        );
+        let b = keys(
+            &Path::default(),
+            &[(0.0, 1000.0)],
+            FRAME,
+            50,
+            &mut Draw::new(9),
+        );
         assert_eq!(a, b);
     }
 }

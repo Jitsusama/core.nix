@@ -62,7 +62,10 @@ pub fn schedstat(text: &str) -> Option<(u64, u64)> {
 pub fn stat(text: &str) -> Option<(char, u64)> {
     let rest = text.get(text.rfind(')')? + 2..)?;
     let fields: Vec<&str> = rest.split_whitespace().collect();
-    Some((fields.first()?.chars().next()?, fields.get(9)?.parse().ok()?))
+    Some((
+        fields.first()?.chars().next()?,
+        fields.get(9)?.parse().ok()?,
+    ))
 }
 
 /// One thread's bursts as its readings come.
@@ -85,8 +88,37 @@ impl Bursts {
     /// Takes the reading at `now`, `interval` milliseconds after the last,
     /// and gives the burst it ends, if it ends one.
     pub fn take(&mut self, now: f64, interval: f64, reading: Reading) -> Option<Burst> {
-        let _ = (now, interval, reading);
-        None
+        let Some(last) = self.last.replace(reading) else {
+            return None;
+        };
+        let ran = reading.run.saturating_sub(last.run);
+        let waited = reading.wait.saturating_sub(last.wait);
+        let busy = ran > 0 || waited > 0 || matches!(reading.state, 'R' | 'D');
+        if busy {
+            let open = self.open.get_or_insert(Open {
+                at: now - interval,
+                run: 0,
+                wait: 0,
+                d: 0.0,
+                maj: 0,
+            });
+            open.run += ran;
+            open.wait += waited;
+            open.maj += reading.majflt.saturating_sub(last.majflt);
+            if reading.state == 'D' {
+                open.d += interval;
+            }
+            return None;
+        }
+        let open = self.open.take()?;
+        Some(Burst {
+            at: open.at,
+            ms: now - open.at,
+            cpu: open.run as f64 / 1e6,
+            wait: open.wait as f64 / 1e6,
+            d: open.d,
+            maj: open.maj,
+        })
     }
 
     /// Forgets what came before, as after a gap in sampling: a burst
@@ -139,10 +171,31 @@ mod tests {
     #[test]
     fn its_faults_are_counted_by_burst() {
         let mut bursts = Bursts::default();
-        bursts.take(0.0, 2.0, Reading { majflt: 10, ..at(0, 0, 'S') });
-        bursts.take(2.0, 2.0, Reading { majflt: 13, ..at(1_000_000, 0, 'R') });
+        bursts.take(
+            0.0,
+            2.0,
+            Reading {
+                majflt: 10,
+                ..at(0, 0, 'S')
+            },
+        );
+        bursts.take(
+            2.0,
+            2.0,
+            Reading {
+                majflt: 13,
+                ..at(1_000_000, 0, 'R')
+            },
+        );
         let burst = bursts
-            .take(4.0, 2.0, Reading { majflt: 13, ..at(1_000_000, 0, 'S') })
+            .take(
+                4.0,
+                2.0,
+                Reading {
+                    majflt: 13,
+                    ..at(1_000_000, 0, 'S')
+                },
+            )
             .unwrap();
         assert_eq!(burst.maj, 3);
     }
