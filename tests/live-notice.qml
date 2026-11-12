@@ -26,6 +26,11 @@ QtObject {
             const slack = LiveNotice.of(record, ask, given("tok"), card);
             Expect.same("its card's sender and words are the daemon's", [slack.from,
                 slack.words], [card.from, card.words]);
+            Expect.same("one saying nothing of how it stands says so", slack.said, "");
+            const sent = LiveNotice.of(Object.assign({}, record, { at: 1794505228521 }), ask,
+                given(""), Object.assign({}, card, { said: "sent" }));
+            Expect.same("one sent says so, with when", [sent.said, sent.at],
+                ["sent", 1794505228521]);
 
             Expect.same("it reads as Quickshell's did", [slack.id, slack.appName,
                 slack.appIcon, slack.desktopEntry, slack.summary, slack.body, slack.image,

@@ -87,7 +87,7 @@ Singleton {
     // its mark, a theme role's or a program's own served as its code
     // point, and the hue of what it brings (modules/notices/senders.json,
     // the machine's program marks); and its words plain and styled, with
-    // their links.
+    // their links; and how it says it stands, as "sent", worded.
     function cardOf(record) {
         const sender = record?.sender ?? {};
         return {
@@ -100,7 +100,8 @@ Singleton {
                 plain: record?.body?.plain ?? "",
                 styled: record?.body?.styled ?? "",
                 links: record?.body?.links ?? []
-            }
+            },
+            said: record?.said ?? ""
         };
     }
 

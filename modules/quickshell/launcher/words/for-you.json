@@ -27,7 +27,9 @@
         "unread": "unread",
         "read": "read",
         "notice": "notice",
-        "folds": "{count} in all"
+        "folds": "{count} in all",
+        "sent": "sent",
+        "answered": "answered"
       }
     }
   ]

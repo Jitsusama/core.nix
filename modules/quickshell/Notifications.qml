@@ -44,6 +44,7 @@ import Quickshell.Wayland
 import QtQuick
 import "Columns.js" as Columns
 import "LiveNotice.js" as LiveNotice
+import "When.js" as When
 import "Stack.js" as Stack
 
 Scope {
@@ -856,7 +857,9 @@ Scope {
                     // The notice as a row of its card (NoticeRow.qml), with
                     // no gutter, since one notice isn't a list; on the
                     // right of its signing line how many wait behind it
-                    // and when it came. The frame stands as far from the
+                    // and when it came, or, for one saying how it stands,
+                    // that and its time, "sent · 12:40" (VKCF3Z,
+                    // 2026-11-12). The frame stands as far from the
                     // ink on every side (Joel, 2026-11-03: "feeling quite
                     // cluttered").
                     NoticeRow {
@@ -874,7 +877,9 @@ Scope {
                         onLinked: href => root.follow(href)
                         from: card.from.name
                         when: (more > 0 ? `${more} more \u00b7 ` : "")
-                            + root.since(root.arrivedAt(card.modelData.id) || now, now)
+                            + (card.modelData.said !== ""
+                                ? `${card.modelData.said} \u00b7 ${When.clock(card.modelData.at)}`
+                                : root.since(root.arrivedAt(card.modelData.id) || now, now))
                     }
 
                     // Five seconds when the sender doesn't say, and ten for

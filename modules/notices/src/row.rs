@@ -15,6 +15,10 @@
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).
 //! - `notices-history`, For You's History, the read, its age alone.
+//!
+//! Long because a row, its side and its drawer are one notice's one
+//! reading, which change together, and its cases, nearly half of it, show
+//! each list's rows beside the code making them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -282,6 +286,15 @@ fn says_read(word: &str) -> bool {
             .is_some_and(|after_as| matches!(after_as, "" | "-" | "_" | " "))
 }
 
+/// How a notice says it stands, its `x-said` key worded, or "" for none
+/// or a key there's no word for, as "sent" or "answered" of a talk.
+fn stands<'w>(notice: &Notice, words: &'w Words) -> &'w str {
+    match notice.hint("x-said") {
+        key @ ("sent" | "answered") => words.said(PLACE, key),
+        _ => "",
+    }
+}
+
 /// A notice's row in `place`, not yet given its `order`, its side saying
 /// its standing where `standing` holds words, then its age.
 fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &str) -> Value {
@@ -295,11 +308,19 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         let all = (notice.folds + 1).to_string();
         json!({ "said": words.said(PLACE, "folds").replace("{count}", &all) })
     });
+    // One saying how it stands says so before its moment, "sent · 12:40".
+    let stood = stands(notice, words);
+    let when = if stood.is_empty() {
+        json!({ "at": notice.at, "as": "came" })
+    } else {
+        json!({ "at": notice.at, "as": "moment" })
+    };
     let side: Vec<Value> = (!standing.is_empty())
         .then(|| json!({ "said": standing }))
         .into_iter()
+        .chain((!stood.is_empty()).then(|| json!({ "said": stood })))
         .chain(folds)
-        .chain(std::iter::once(json!({ "at": notice.at, "as": "came" })))
+        .chain(std::iter::once(when))
         .collect();
     // Its words styled as its card draws them where they carry markup or
     // a link, and plain otherwise, so a long log keeps its own lines; its
@@ -384,7 +405,7 @@ impl Rows {
             let one = match self.made.remove(&notice.id) {
                 Some(was) if was.notice == *notice && was.looked == shown => was,
                 _ => {
-                    let sender = signs.sender(&notice.app, &notice.entry);
+                    let sender = signs.sender(&notice.app, &notice.entry, notice.hint("x-from"));
                     Made {
                         notice: notice.clone(),
                         looked: shown,
@@ -393,6 +414,7 @@ impl Rows {
                                 "glyph": sender.glyph, "hue": sender.hue, "name": sender.name,
                             },
                             "body": body::read(&notice.body),
+                            "said": stands(notice, signs.words),
                         }),
                         rows: placed(notice, &sender, signs.words, shown),
                     }
@@ -515,6 +537,57 @@ mod tests {
             rows.card(10).is_none(),
             "gone from the history, its card goes"
         );
+    }
+
+    #[test]
+    fn a_sender_signing_by_its_own_name_and_saying_how_it_stands_reads_so() {
+        // The void's notice of Joel's line to it (VKCF3Z, 2026-11-12):
+        // signed by its name with the agents' mark, and saying it was sent,
+        // then answered, before its time; read, so its side leads with no
+        // "unread".
+        let sent = notice(
+            10,
+            &json!({ "app": "pi", "summary": "is the beacon lit?", "read": true,
+            "body": "", "hints": { "x-from": "The Void", "x-said": "sent" } }),
+        );
+        let mut rows = Rows::default();
+        let [mixed, _, _] = making_into(&mut rows, std::slice::from_ref(&sent), &[]);
+        let card = rows.card(10).expect("its card");
+        assert_eq!(
+            card["sender"],
+            json!({ "glyph": "agent", "hue": "program", "name": "The Void" }),
+            "its own name, the agents' mark and hue"
+        );
+        assert_eq!(card["said"], "sent", "the card says it was sent");
+        assert_eq!(
+            mixed[0]["side"],
+            json!([{ "said": "sent" }, { "at": 10_000, "as": "moment" }]),
+            "then its moment"
+        );
+        let answered = Notice {
+            hints: json!({ "x-from": "The Void", "x-said": "answered" })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            ..sent.clone()
+        };
+        making_into(&mut rows, &[answered], &[]);
+        assert_eq!(rows.card(10).expect("its card")["said"], "answered");
+        let unknown = Notice {
+            hints: json!({ "x-said": "thinking" })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+            ..sent
+        };
+        let [mixed, _, _] = making_into(&mut rows, &[unknown], &[]);
+        assert_eq!(
+            rows.card(10).expect("its card")["said"],
+            "",
+            "a key it hasn't a word for"
+        );
+        assert_eq!(mixed[0]["side"], json!([{ "at": 10_000, "as": "came" }]));
+        assert_eq!(rows.card(10).expect("its card")["sender"]["name"], "Agents");
     }
 
     fn keys(rows: &[Value]) -> Vec<&str> {
