@@ -94,9 +94,10 @@ fn drawer(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers
         .as_deref()
         .and_then(|id| model.nodes.iter().find(|node| node.id == id));
     let how = say(if device.ethernet { "ethernet" } else { "wifi" });
-    let at = on.map(|node| fill(say("onNode"), &[("name", &node_name(node))]));
+    let at = on.map(|node| fill(say("onNode"), &[("name", node_name(node))]));
     let mut facts: Vec<Value> = link(device, words, numbers);
-    facts.extend(what(model, device, &title, words, numbers));
+    facts.extend(what(model, device, words, numbers));
+    facts.extend(where_on(model, device, &title, words));
     facts.extend(roams(model, device, words));
     facts.extend(events(model, device, words));
     json!({
@@ -206,16 +207,8 @@ fn link(device: &Device, words: &Words, numbers: &Numbers) -> Vec<Value> {
     .collect()
 }
 
-/// What it is and which node it's on, what had to be sent again, then
-/// under its own heading its network, addresses, when it was seen, its
-/// profile and whether it's held off.
-fn what(
-    model: &HomeNetwork,
-    device: &Device,
-    title: &str,
-    words: &Words,
-    numbers: &Numbers,
-) -> Vec<Value> {
+/// What it is and which node it's on, and what had to be sent again.
+fn what(model: &HomeNetwork, device: &Device, words: &Words, numbers: &Numbers) -> Vec<Value> {
     let say = |word| words.say("eero:device", word);
     let on = device
         .node
@@ -233,7 +226,7 @@ fn what(
         })
     };
     let ppm = |count: Option<u32>| counted(count.map(u64::from), Some("perMillion"));
-    let mut facts: Vec<Option<Value>> = vec![
+    let facts: Vec<Option<Value>> = vec![
         fact(
             words,
             "eero:device:kind",
@@ -322,6 +315,15 @@ fn what(
                 .flatten(),
             ),
         ),
+    ];
+    facts.into_iter().flatten().collect()
+}
+
+/// Under its own heading, its network, addresses, when it was seen, its
+/// profile and whether it's held off.
+fn where_on(model: &HomeNetwork, device: &Device, title: &str, words: &Words) -> Vec<Value> {
+    let say = |word| words.say("eero:device", word);
+    let mut facts: Vec<Option<Value>> = vec![
         Some(heading(words, "eero:device:where")),
         fact(
             words,
@@ -484,17 +486,14 @@ fn roams(model: &HomeNetwork, device: &Device, words: &Words) -> Vec<Value> {
         .iter()
         .filter_map(|roam| {
             let at = time::to_unix(&roam.at)?;
-            let said = joined(
-                [
-                    from_to(
-                        named(roam.from_node.as_deref()),
-                        named(roam.node.as_deref()),
-                        words,
-                    ),
-                    from_to(roam.from_band.clone(), roam.band.clone(), words),
-                ]
-                .into_iter(),
-            );
+            let said = joined([
+                from_to(
+                    named(roam.from_node.as_deref()),
+                    named(roam.node.as_deref()),
+                    words,
+                ),
+                from_to(roam.from_band.clone(), roam.band.clone(), words),
+            ]);
             Some(json!({"name": said_at::at(at * 1000, Form::Moment), "said": said}))
         })
         .collect();
