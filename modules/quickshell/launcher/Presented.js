@@ -57,7 +57,7 @@ function keysSaid(verb, times, apart) {
 
 // Where a set's time went, each part's median over those stamped with
 // when the shell heard it and when its frame began, or "" where none
-// was: a key from its press, a change from its daemon's line.
+// was: a key from its press.
 function wentTo(times) {
     return partsSwapped(times, [["from", "heard", "before the shell heard it"],
         ["heard", "begun", "in the shell"], ["begun", "at", "from its frame's start"]]);
@@ -145,10 +145,18 @@ function drawn(waiting, place) {
     return kept;
 }
 
+// Where a change's time went: before the shell heard its line, waiting on
+// the pace for its refresh to begin (Pacing.js), which Joel's windows
+// changes' 190 ms in the shell was (2026-11-12), in the shell's refresh
+// and until its frame began, and from its frame's start to the screen.
+const changeParts = [["from", "heard", "before the shell heard it"],
+    ["heard", "refreshed", "waiting on the pace"], ["refreshed", "begun", "in the shell"],
+    ["begun", "at", "from its frame's start"]];
+
 // What the journal says of the changes presented, each `{place, from,
-// at}` and, once the launcher took it and its frame began, `heard` and
-// `begun`: a line a place, in the places' order by name, saying where its
-// time went as a key's does, so a slow update says whether it waited
+// at}` and, once the launcher took it, its refresh began and its frame
+// began, `heard`, `refreshed` and `begun`: a line a place, in the
+// places' order by name, saying where its time went as a key's does, so a slow update says whether it waited
 // before the launcher took it, in the shell, or after its frame began
 // (Joel's 20 changes in machine, 6 past 50 ms, 2026-11-11). Where they
 // name the daemons whose lines set them going, `by`, it says how many
@@ -159,7 +167,7 @@ function changesSaid(changes) {
         const its = changes.filter(each => each.place === place);
         const one = took(its);
         return `launcher: ${one.count} ${one.count === 1 ? "change" : "changes"} in ${place} `
-            + `${tookSaid(one, "the line")}${whose(its)}${wentTo(its)}`;
+            + `${tookSaid(one, "the line")}${whose(its)}${partsSwapped(its, changeParts)}`;
     });
 }
 

@@ -76,10 +76,11 @@ CROWD = "/run/user/1000/crowd"
 # #2602, 2026-11-09). So the times are said, nineteen in twenty and the middle, and what the
 # changes cost the keys is held by what the launcher did instead.
 TAIL = 0.95
-# How often the list may be made again while things change: its pace (Launcher.qml's Pacing).
-# This and taking no change on a key's path held on main too once #2495 landed, so they guard
-# against a return rather than prove this change.
-REFRESHES = 4.0
+# The longest a refresh's cost lets the next wait, in ms: its pace (launcher/Pacing.js), so a
+# list dear to make is made at most four times a second. This and taking no change on a key's
+# path held on main too once #2495 landed, so they guard against a return rather than prove
+# this change.
+PACE = 250.0
 # Each place an arrow is held in, and the sources it doesn't show: home names People but says
 # how the sessions stand itself, Agents shows only its own, and Programs neither.
 PLACES = {"home": ["agents"], "Agents": ["people"], "Programs": ["agents", "people"]}
@@ -197,6 +198,8 @@ class Turns:
         # alone, the frames still coming after it counted at home at 2 as 4.5 a second, though no
         # two refreshes began within the pace's quarter second (net, a99645168, 2026-11-09).
         self.refreshes = 0
+        # The wait each refresh earned by its cost, summed (Launcher.qml's refreshesPaced).
+        self.paced = 0.0
         self.window = 0.0
         self.turns = 0
         # The keys' own span, said beside it to show how far the frames run past it.
@@ -311,6 +314,7 @@ class Turns:
             self.unseen_made[name] = self.unseen_made.get(name, 0) + rows_of(name)
         self.agents_made.append(rows_of("agents"))
         self.refreshes += after["refreshes"] - before["refreshes"]
+        self.paced += after["paced"] - before["paced"]
         self.window += until - since
         self.turns += 1
         self.pressing += (downs[-1] - downs[0]) / 1000 + REPEAT
@@ -348,12 +352,13 @@ class Turns:
             f"{at}, with no Ctrl+] pressed the look for where rows live made {self.walked} rows"
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
-        # The pace lets one refresh at once and one each quarter second after it, so a turn's span
-        # holds at most one more than its share.
-        most = REFRESHES * self.window + self.turns
-        assert self.refreshes <= most, (
+        # The pace lets one refresh at once and each after it once the last one's wait is out,
+        # five times its cost and a quarter second at most, so a turn's span holds every wait
+        # but its last. A coarse timer, Qt's own, may ring up to 5% early.
+        most = 1000 * self.window / 0.95 + PACE * self.turns
+        assert self.paced <= most, (
             f"{at}, the list refreshed {self.refreshes} times in {self.window:.1f} s over "
-            f"{self.turns} turns, past the pace's {most:.0f}"
+            f"{self.turns} turns, earning waits of {self.paced:.0f} ms, past the {most:.0f} ms"
         )
         # A key that composed the list, or drew rows afresh with nothing changing, did the work a
         # change costs on its own path, which the times a loaded builder stretches can't tell.

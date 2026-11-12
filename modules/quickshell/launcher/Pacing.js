@@ -7,12 +7,29 @@
 // what's shown: 86 of Slack's answers, one a tenth of a second just after a
 // restart, held the open launcher for a minute (2026-10-30, 19:14).
 //
-// A pace is when the last refresh began, `at`, and when a paced one is due,
+// How long a change waits is sized by what the last refresh cost: five
+// times it, so the shell spends at most a fifth of its time refreshing,
+// and never more than the pace, `every`. A quarter second after every
+// refresh held Joel's windows changes up to 190 ms behind other sources'
+// refreshes of a few milliseconds while his opening woke them (2026-11-12,
+// 10:16); a dear refresh, as Slack's answers were, still waits the pace.
+//
+// A pace is when the last refresh began, `at`, what the last one cost,
+// `cost`, undefined until one is known, and when a paced one is due,
 // `due`, or null when none waits. The launcher's timer rings at `due`.
+
+const share = 5;
+// Two refreshes within one frame would draw only the second.
+const aFrame = 16;
 
 // A launcher that hasn't refreshed yet.
 function rested() {
-    return { at: 0, due: null };
+    return { at: 0, due: null, cost: undefined };
+}
+
+// How long after the last refresh began the next may, by its cost.
+function apart(cost, every) {
+    return cost === undefined ? every : Math.min(every, Math.max(aFrame, cost * share));
 }
 
 // A source has changed at `now`: whether it's refreshed at once, and the
@@ -21,19 +38,26 @@ function heard(pace, now, every) {
     if (pace.due !== null) {
         return { pace, now: false };
     }
-    const due = pace.at + every;
+    const due = pace.at + apart(pace.cost, every);
     if (due <= now) {
         return { pace, now: true };
     }
-    return { pace: { at: pace.at, due }, now: false };
+    return { pace: { at: pace.at, due, cost: pace.cost }, now: false };
 }
 
 // A refresh began at `now`, however it was asked for, so it takes the one
 // that waited with it: a key's own change or a daemon's answer refreshed
 // at once, or the timer rang late and another change past the pace came
-// beside it, and a refresh left due would follow within the pace.
-function took(now) {
-    return { at: now, due: null };
+// beside it, and a refresh left due would follow within the pace. It keeps
+// the last `pace`'s cost until its own is known, as a source may change
+// from within it.
+function took(now, pace) {
+    return { at: now, due: null, cost: pace === undefined ? undefined : pace.cost };
+}
+
+// The refresh that began at the pace's `at` cost `ms` of the shell's work.
+function costed(pace, ms) {
+    return { at: pace.at, due: pace.due, cost: ms };
 }
 
 // Whether a change heard `ago` ms after the last key is that key's own,
@@ -63,7 +87,7 @@ function sinceKey(now, taken, done) {
 
 // The timer rang: the refresh it waited for is taken.
 function rang(pace) {
-    return { at: pace.at, due: null };
+    return { at: pace.at, due: null, cost: pace.cost };
 }
 
 // A key's acts on their way to the screen, each shown by the first frame

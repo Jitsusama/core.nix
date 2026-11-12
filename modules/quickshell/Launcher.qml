@@ -550,9 +550,11 @@ Scope {
         // nothing new is let go untimed, as a refresh's is.
         const place = source.settings.name;
         updatedFrom(source);
+        // Asked again at once, so it waits on no pace.
+        const refreshedAt = KeyTimes.now();
         Report.say(`asked again by ${place}`);
         if (held.length > 0) {
-            updateDrawn(place, relive(source));
+            updateDrawn(place, relive(source), refreshedAt);
             return;
         }
         const at = current;
@@ -567,7 +569,7 @@ Scope {
             steadying = false;
         }
         root.showMoved(at);
-        updateDrawn(place, true);
+        updateDrawn(place, true, refreshedAt);
     }
 
     // After a refresh, the list stays where it was and moves only to show a
@@ -4794,8 +4796,9 @@ Scope {
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
-        // The first change is taken at once, and those after it within a
-        // quarter second together (launcher/Pacing.js).
+        // The first change is taken at once, and those after it within five
+        // times the last refresh's cost, a quarter second at most, together
+        // (launcher/Pacing.js).
         if (!open) {
             Qt.callLater(refreshDue);
             return;
@@ -4806,11 +4809,14 @@ Scope {
             Qt.callLater(refreshDue);
     }
     readonly property int refreshPace: 250
-    // How many refreshes the open launcher has made, for the check that
-    // it makes at most four a second however fast its sources change, and
-    // how many changes were taken at once as a key's own, for the check
-    // that an arrow takes none.
+    // How many refreshes the open launcher has made, and the wait each
+    // earned by its cost (Pacing.apart), for the check that no refresh
+    // begins before the last one's wait is out however fast its sources
+    // change, so dear ones come at most four a second; and how many
+    // changes were taken at once as a key's own, for the check that an
+    // arrow takes none.
     property int refreshesDone: 0
+    property real refreshesPaced: 0
     property int refreshesKeyed: 0
     property var pace: Pacing.rested()
     // The timer rings when the pace says a refresh is due, and is stopped
@@ -4960,9 +4966,10 @@ Scope {
     function refreshDue() {
         if (refreshing.length === 0)
             return;
-        keepPace(Pacing.took(Date.now()));
+        keepPace(Pacing.took(Date.now(), pace));
         const refreshedAt = pace.at;
         const begun = KeyTimes.now();
+        const wasOpen = open;
         if (open) {
             refreshesDone += 1;
             freshen();
@@ -4987,7 +4994,7 @@ Scope {
         if (done.some(one => one.shown))
             reshow(held.length);
         for (const one of done)
-            updateDrawn(one.source.settings.name, one.shown);
+            updateDrawn(one.source.settings.name, one.shown, begun);
         // Each a span of the opening (Traces.qml), saying which source
         // changed, how long its own work took by the shell's clock, and how
         // many rows the list held after (Y2YBTS, 2026-11-07).
@@ -4999,6 +5006,10 @@ Scope {
         }
         actsRefreshed(done, begun);
         heldAgreed(due);
+        // What it cost sizes how long the next change waits (Pacing.js).
+        pace = Pacing.costed(pace, KeyTimes.now() - begun);
+        if (wasOpen)
+            refreshesPaced += Pacing.apart(pace.cost, refreshPace);
     }
 
     // What an act's rows will be once the daemon it asks has done it, by
@@ -7144,12 +7155,12 @@ Scope {
         // how many changes it took as a key's own, the rows Ctrl+]'s looks
         // for where a row lives made (livesMade), and how often the list was
         // composed and how many rows were drawn afresh, for the check that a
-        // source nobody sees makes none, the list refreshes at most four
-        // times a second, and an arrow takes no change as its own, composes
+        // source nobody sees makes none, the list refreshes no sooner than
+        // its pace lets, and an arrow takes no change as its own, composes
         // nothing and draws no row afresh.
         function made(): string {
             return JSON.stringify({ rows: root.tallies(), looked: root.tallies("looked"),
-                refreshes: root.refreshesDone,
+                refreshes: root.refreshesDone, paced: root.refreshesPaced,
                 keyed: root.refreshesKeyed, walked: root.livesMade, composed: root.rowsMade,
                 drawn: root.rowsDrawn, built: root.rowsBuilt });
         }
@@ -9619,11 +9630,14 @@ Scope {
     property var drawersPresented: []
     // Its frame's start is when the frame presentedAwait waits on began,
     // the next to begin, as a key's is, so its line says where it went.
-    function updateDrawn(place, shown) {
+    // Its refresh began at `refreshed`, so its line says how long it
+    // waited on the pace from when the launcher took it.
+    function updateDrawn(place, shown, refreshed) {
         const from = updatesWaiting[place];
         if (from === undefined)
             return;
-        const one = { place, from, heard: updatesHeard[place], by: updatesBy[place] };
+        const one = { place, from, heard: updatesHeard[place], refreshed,
+            by: updatesBy[place] };
         updatesWaiting = Presented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
         delete updatesBy[place];

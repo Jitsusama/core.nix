@@ -2861,8 +2861,9 @@
   '';
   the-launcher-paces-its-refreshes = ''
     an open launcher takes the first of its sources' changes at once and those after it a pace
-    apart, together, and a refresh taken another way takes the one waiting with it, so no two
-    refreshes begin closer than the pace; and a source's rows are wanted only while it's held,
+    apart, together, the pace five times what the last refresh cost, at least a frame and at most
+    a quarter second, so a storm of changes spends at most a fifth of the time refreshing; and a
+    refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, so a change nobody sees builds none; and a
     key's act is said shown by the first frame begun after its refresh, which another act
     refreshed while that frame is drawn never holds back; and an opening says what its own work
@@ -3897,7 +3898,8 @@
     an arrow held at 30 a second at home, in Agents and in Programs, at scales 2 and 1.5, while
     300 sessions and 2,000 people change, makes no rows for a source the place doesn't show,
     none at all while they're frozen, and none looking for where rows live with no Ctrl+]
-    pressed; refreshes the list at most four times a second and never on a key's path; and
+    pressed; refreshes the list no oftener than its refreshes' costs earn and never on a key's
+    path; and
     composes it no more often than it refreshes, drawing no row afresh while they're frozen;
     and with the launcher shut, 113 sessions moving only their steps cost the shell no sorting
     until it opens
