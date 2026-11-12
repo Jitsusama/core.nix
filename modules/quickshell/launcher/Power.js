@@ -88,7 +88,10 @@ function choiceFacts(daemon, known, said) {
 // The programs whose windows are open, the most windows first, then A to
 // Z, as amounts are (Order.js), each { name, count }, from niri's windows (Niri.qml's, by id),
 // each named by `named` from its app_id, and how many windows in all, a
-// window with no app_id counted there alone.
+// window with no app_id counted there alone. A stopgap against the rule
+// that daemons count and sort (Y2YBTS, 2207fa52): the windows daemon
+// (ZINAWZ) serves it as windows-open:power by Thu 12 Nov 18:00, and
+// Session.qml reads that record in its place the day it lands.
 function byProgram(windows, named) {
     const counted = Object.create(null);
     let open = 0;
