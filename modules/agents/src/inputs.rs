@@ -240,7 +240,11 @@ impl Inputs {
                 .map(str::to_owned)
                 .collect(),
         };
-        recent::recent(self.sessions.records().map(|(_, one)| Session(one)), &shown)
+        let mut served =
+            recent::recent(self.sessions.records().map(|(_, one)| Session(one)), &shown);
+        let place = recent::place(&served, &self.words.recent);
+        served.push(place);
+        served
     }
 
     /// What the sessions landed, each a whole record with its drawer, with
@@ -748,12 +752,19 @@ mod tests {
         let listed: Vec<_> = served
             .all()
             .filter(|record| record["kind"] == "recent")
-            .map(|record| record["recent"]["id"].clone())
+            .filter_map(|record| record["recent"].get("id").cloned())
             .collect();
         assert_eq!(
             listed,
             [json!("x")],
             "X closed; Y is to reopen, Z a closed orchestrator"
+        );
+        assert_eq!(
+            served
+                .get(recent::RECENT)
+                .map(|one| one["place"]["side"].clone()),
+            Some(json!("1")),
+            "and Recent's place counts it"
         );
     }
 

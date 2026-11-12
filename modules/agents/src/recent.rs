@@ -14,11 +14,18 @@ use std::collections::HashSet;
 use serde_json::{Value, json};
 
 use crate::clock;
+use crate::said::Said;
 use crate::served::{PLACE, SPACING};
 use crate::session::{Lives, Session};
 
 /// As many as Recent lists (Recent.js's MOST).
 pub const MOST: usize = 9;
+
+/// Recent's own record, what its place says of what it holds.
+pub const RECENT: &str = "recent:agents";
+
+/// Stubbed until its place is worded.
+const STUB: bool = true;
 
 /// What Recent leaves out, as Agents shows it elsewhere.
 pub struct Shown<'a> {
@@ -47,9 +54,15 @@ fn listed(one: Session) -> Option<Value> {
     let quest = presence["questInfo"]["id"]
         .as_str()
         .or_else(|| presence["quest"].as_str());
+    let name = [title.as_str(), one.address(), id]
+        .into_iter()
+        .find(|one| !one.is_empty())
+        .unwrap_or("")
+        .to_owned();
     Some(json!({
         "id": id,
         "address": one.address(),
+        "name": name,
         "title": title,
         "folder": folder,
         "quest": quest,
@@ -117,6 +130,44 @@ pub fn recent<'a>(sessions: impl IntoIterator<Item = Session<'a>>, shown: &Shown
             })
         })
         .collect()
+}
+
+/// What Recent's place says of the sessions it lists, `served` as
+/// `recent` serves them, as Recent.js's `said` says it: at its side how
+/// many, or its words' `none`; in its drawer their names, newest first,
+/// a name held more than once said once where it's newest, with how
+/// often. Its key starts as each session's does, so the shell makes
+/// Recent again as either moves, and it holds no `recent` of its own, so
+/// the shell never lists it as one.
+pub fn place(served: &[Value], words: &Said) -> Value {
+    if STUB {
+        return json!({"key": RECENT, "kind": "recent", "place": {}});
+    }
+    let names: Vec<&str> = served
+        .iter()
+        .filter_map(|one| one["recent"]["name"].as_str())
+        .collect();
+    let side = if names.is_empty() {
+        words.word("none").to_owned()
+    } else {
+        names.len().to_string()
+    };
+    let mut often: Vec<(&str, usize)> = Vec::new();
+    for name in &names {
+        match often.iter_mut().find(|(one, _)| one == name) {
+            Some((_, count)) => *count += 1,
+            None => often.push((name, 1)),
+        }
+    }
+    let held: Vec<String> = often
+        .into_iter()
+        .map(|(name, count)| match count {
+            1 => name.to_owned(),
+            2 => words.fill("twice", &[("name", name)]),
+            _ => words.fill("times", &[("name", name), ("count", &count.to_string())]),
+        })
+        .collect();
+    json!({"key": RECENT, "kind": "recent", "place": {"side": side, "held": held}})
 }
 
 #[cfg(test)]
@@ -260,5 +311,82 @@ mod tests {
         );
         assert_eq!(served[0]["recent"]["cwd"], json!("/home/x/kelp"));
         assert_eq!(served[0]["recent"]["quest"], json!("QEST-1"));
+    }
+
+    fn words() -> Said {
+        crate::row::Words::from_vocabulary(crate::said::LAUNCHERS)
+            .expect("the launcher's words read")
+            .recent
+    }
+
+    #[test]
+    fn its_place_counts_them_and_names_each_once_newest_first() {
+        let records = [
+            closed(
+                "s-a",
+                "A",
+                "2026-11-11T12:00:00Z",
+                &json!({"title": "Tide Tables"}),
+            ),
+            closed(
+                "s-b",
+                "B",
+                "2026-11-11T11:00:00Z",
+                &json!({"title": "Kelp"}),
+            ),
+            closed(
+                "s-c",
+                "C",
+                "2026-11-11T10:00:00Z",
+                &json!({"title": "Tide Tables"}),
+            ),
+            closed(
+                "s-d",
+                "D",
+                "2026-11-11T09:00:00Z",
+                &json!({"title": "Tide Tables"}),
+            ),
+            closed(
+                "s-e",
+                "E",
+                "2026-11-11T08:00:00Z",
+                &json!({"title": "Kelp"}),
+            ),
+            closed("s-f", "", "2026-11-11T07:00:00Z", &json!({})),
+        ];
+        let served = recent(records.iter().map(Session), &nothing_shown());
+        assert_eq!(
+            served[0]["recent"]["name"],
+            json!("Tide Tables"),
+            "a row is named by its title"
+        );
+        assert_eq!(
+            served[5]["recent"]["name"],
+            json!("s-f"),
+            "else its address, else its id"
+        );
+        let said = place(&served, &words());
+        assert_eq!(said["key"], json!(RECENT), "keyed as Recent's place");
+        assert_eq!(
+            said["place"]["side"],
+            json!("6"),
+            "its side counts every one"
+        );
+        let held = said["place"]["held"].as_array().expect("its names");
+        assert_eq!(
+            held[..2],
+            [json!("Tide Tables, 3 times"), json!("Kelp, twice")],
+            "each name once where it's newest, with how often"
+        );
+        assert_eq!(
+            held.get(2),
+            Some(&json!("s-f")),
+            "and the one named otherwise"
+        );
+        assert_eq!(
+            place(&[], &words())["place"],
+            json!({"side": "none", "held": []}),
+            "holding none, its side says so"
+        );
     }
 }
