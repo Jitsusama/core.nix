@@ -24,6 +24,8 @@ use serde_json::{Value, json};
 const DOMAIN: Domain = Domain {
     name: "quests",
     kinds: &["row", "summary"],
+    sole: &[],
+    named_only: &[],
 };
 
 const USAGE: &str = "usage: quests --vocabulary WORDS --node NODE --socket SOCKET";

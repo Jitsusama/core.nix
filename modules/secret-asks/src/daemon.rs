@@ -45,6 +45,8 @@ use crate::words::Words;
 const DOMAIN: Domain = Domain {
     name: "secret-asks",
     kinds: &["row", "summary"],
+    sole: &[],
+    named_only: &[],
 };
 
 /// The one command an ask may name: this program's checker.
