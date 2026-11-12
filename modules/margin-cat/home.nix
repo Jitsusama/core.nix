@@ -21,12 +21,47 @@
     '';
   };
 
+  options.jitsusama.quickshell.cat.pauses = lib.mkOption {
+    type = lib.types.ints.positive;
+    default = 10;
+    description = ''
+      How many seconds with no keys before the cat counts Joel paused and
+      its scenes grow a little livelier than the single small moves it
+      makes while he types.
+    '';
+  };
+
+  options.jitsusama.quickshell.cat.idles = lib.mkOption {
+    type = lib.types.ints.positive;
+    default = 60;
+    description = ''
+      How many seconds with no keys before the cat counts Joel away from
+      the keys, and may stroll to the gutter beside its column.
+    '';
+  };
+
+  options.jitsusama.quickshell.cat.pace = lib.mkOption {
+    type = lib.types.numbers.positive;
+    default = 1;
+    description = ''
+      How many times sooner than its own rests (MarginCat.js) each of the
+      cat's scenes comes: 45 to 75 s while Joel types, 20 to 40 s once he
+      pauses. A test sets it high to see scenes in seconds, or low to see
+      none.
+    '';
+  };
+
   config = {
     jitsusama.quickshell.surfaces.MarginCat = ./MarginCat.qml;
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
     # Its settings in its own file beside it, read as it starts.
     xdg.configFile."quickshell/surfaces/MarginCat.json".text = builtins.toJSON {
-      inherit (config.jitsusama.quickshell.cat) dozes;
+      inherit (config.jitsusama.quickshell.cat)
+        dozes
+        pauses
+        idles
+        pace
+        ;
     };
 
     # A shared screen shows what Joel shares, not the company he keeps. The

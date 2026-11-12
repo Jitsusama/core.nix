@@ -3224,6 +3224,11 @@
     a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
     pixels of its hue at scales 1.5 and 2, each screen kept as its result
   '';
+  the-margin-cat-plays-more-the-less-he-types-on-niri = ''
+    on a nested niri, the margin's cat makes a single small move in place while keys come, held
+    a moment in a frame each way, plays a mild scene in place once they pause, and strolls to the
+    gutter beside its column once they're gone, a key bringing it straight back
+  '';
   the-margin-cat-sits-above-its-column = ''
     the margin's cat sits a cell above the focused column's top edge over the middle of what's
     seen of it, beside the margin's marks rather than on them, nowhere in fullscreen or a gap too
