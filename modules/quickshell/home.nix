@@ -1719,6 +1719,9 @@ in
       launcherInATerminal
       launcherSay
       pkgs.quickshell
+      # What the timer writes to the journal, at hand: typed in a terminal,
+      # it says what the shell weighs now, part by part.
+      shellWeighs
       pkgs.wf-recorder
       (pkgs.callPackage ./record-window/package.nix { })
       pkgs.jq
