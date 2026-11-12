@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{Axis, Bar, Reading, shown};
-use super::{landings, plans};
+use super::{counted, landings, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -49,6 +49,8 @@ pub struct Sources {
     pub landings: landings::Sources,
     /// The active quests and whether they're worked on and planned.
     pub plans: plans::Sources,
+    /// What code-health and health have already counted.
+    pub counted: counted::Sources,
     /// Now, in seconds, and the moment the reading's day began.
     pub now: i64,
     pub midnight: i64,
@@ -240,8 +242,7 @@ fn quality(s: &Sources) -> Axis {
             .bar(Bar::AtMost(60.0))
             .from("cadence's card"),
             landings::readings(&s.landings, s.now, &TimeZone::system()).2,
-            // Y9XISP's daily code-health read lands by Thu 12 18:00.
-            Reading::new("{} code-health regressions", None, "", "Y9XISP").bar(Bar::AtMost(0.0)),
+            counted::regressions(&s.counted),
         ],
     )
 }
@@ -373,9 +374,7 @@ fn stress(s: &Sources) -> Axis {
             .bar(Bar::AtLeast(70.0))
             .detail(Some(format!("{by_hand} he cleared by hand")))
             .from("the notices' record"),
-            Reading::new("his typed lines that complain {}", None, "%", "1JQPPC")
-                .bar(Bar::AtMost(5.0))
-                .his(),
+            counted::pained(&s.counted),
         ],
     )
 }
@@ -618,6 +617,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         meminfo: text(PathBuf::from("/proc/meminfo")),
         landings: landings::gather(folder, &runtime, now),
         plans: plans::gather(),
+        counted: counted::gather(folder, state_home, now),
         now,
         midnight,
     }
