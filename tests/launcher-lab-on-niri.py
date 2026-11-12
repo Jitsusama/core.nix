@@ -264,13 +264,17 @@ def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[s
     """
     spaced = os.environ.get("LAB_OFFSETS", "0 0.1 0.2 0.4 0.8 1.2 1.6 2 3 5")
     unlinks = os.environ.get("LAB_UNLINK", "1") == "1"
+    # How long a round waits once the new shell has kept home for the chord's
+    # opening, before it says the chord was lost.
+    kept_long_enough = 3
     for offset in [float(each) for each in spaced.split()]:
         shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
-        assert shell.process is not None
+        if shell.process is None:
+            pytest.fail("the lab's shell isn't running")
         heard: dict[str, object] = {}
         stopping = time.monotonic()
 
-        def chorded() -> None:
+        def chorded(heard: dict[str, object] = heard) -> None:
             heard["at"] = time.monotonic()
             said = subprocess.run(  # noqa: S603
                 [os.environ["LAUNCHER_SAY"], "toggle"], capture_output=True, check=False
@@ -301,7 +305,7 @@ def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[s
                 answering = answering or now
                 opened_at = opened_at or (now if shown["open"] else None)
                 kept = kept or (now if shown.get("kept") else None)
-            if opened_at is not None or (kept is not None and now - kept > 3):
+            if opened_at is not None or (kept is not None and now - kept > kept_long_enough):
                 break
             time.sleep(launcher_on_niri.POLL)
         chord.join()
