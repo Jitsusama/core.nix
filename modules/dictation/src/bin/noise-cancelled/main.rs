@@ -34,6 +34,7 @@
 //! a cleaned pick is kept in CHOSEN.
 
 mod chosen;
+mod defaults;
 mod denoise;
 mod loudness;
 mod pipe;

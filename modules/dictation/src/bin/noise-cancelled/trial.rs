@@ -31,9 +31,10 @@ pub use dictation::microphone::{Microphone, default_microphone};
 use serde_json::{Value, json};
 
 use crate::chosen::Chosen;
+use crate::defaults::{default_microphone_is, default_output, dumped};
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
-use crate::score::{Marks, Scorer};
+use crate::score::{self, Marks};
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -583,65 +584,6 @@ fn refused(refusal: &Refusal) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-/// What PipeWire holds now, as pw-dump says it.
-fn dumped(dump: &str) -> Result<Value, String> {
-    let out = Command::new(dump)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|why| format!("asking PipeWire: {why}"))?;
-    serde_json::from_slice(&out.stdout).map_err(|why| format!("reading PipeWire: {why}"))
-}
-
-/// The default output in a dump, by its description: what the clips
-/// play on.
-pub fn default_output(dump: &Value) -> Option<String> {
-    let objects = dump.as_array()?;
-    let default = objects
-        .iter()
-        .filter(|object| object["props"]["metadata.name"] == "default")
-        .filter_map(|object| object["metadata"].as_array())
-        .flatten()
-        .find(|entry| entry["key"] == "default.audio.sink")?;
-    let name = default["value"]["name"].as_str()?;
-    objects.iter().find_map(|object| {
-        let props = &object["info"]["props"];
-        (props["node.name"] == name && props["media.class"] == "Audio/Sink").then(|| {
-            props["node.description"]
-                .as_str()
-                .unwrap_or(name)
-                .to_owned()
-        })
-    })
-}
-
-/// Makes a node the default microphone, as choosing it in Sound does:
-/// `WirePlumber`'s own configured default, which it keeps.
-fn default_microphone_is(metadata: &str, name: &str) -> Result<(), String> {
-    let value = json!({"name": name}).to_string();
-    let status = Command::new(metadata)
-        .args([
-            "-n",
-            "default",
-            "0",
-            "default.configured.audio.source",
-            &value,
-        ])
-        .arg("Spa:String:JSON")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(|why| format!("choosing the microphone: {why}"))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "choosing the microphone: pw-metadata said {status}"
-        ))
-    }
-}
-
 /// Hears the recording out, cleans it every way, and offers the clips.
 fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, models: &Path) {
     let wanted = usize::try_from(SECONDS * u64::from(RATE) * 4).unwrap_or(0);
@@ -717,48 +659,19 @@ fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, mode
     trial.changed();
     // Scored once the clips are offered, so he can listen while it works,
     // with the lock let go; the marks wait for his pick to be shown.
-    let heard: Vec<(Way, Arc<Vec<f32>>)> = trial
+    let heard: Vec<(&'static str, Arc<Vec<f32>>)> = trial
         .clips
         .iter()
-        .map(|clip| (clip.way, Arc::clone(&clip.samples)))
+        .map(|clip| (clip.way.name(), Arc::clone(&clip.samples)))
         .collect();
     drop(trial);
     if heard.is_empty() {
         return;
     }
-    let marks = score_every_way(models, &heard);
+    let marks = score::every_way(models, &heard);
     if let Some(trial) = me.upgrade() {
         trial.lock().scored(generation, marks);
     }
-}
-
-/// Every clip's marks, by the way it was cleaned. A clip the scorer can't
-/// hear is left out, and none at all when it can't load, since the trial
-/// goes on without them.
-fn score_every_way(models: &Path, heard: &[(Way, Arc<Vec<f32>>)]) -> BTreeMap<&'static str, Marks> {
-    let scorer = match Scorer::load(models) {
-        Ok(scorer) => scorer,
-        Err(why) => {
-            eprintln!("noise-cancelled: loading the scorer: {why}");
-            return BTreeMap::new();
-        }
-    };
-    let started = spent();
-    let marks = heard
-        .iter()
-        .filter_map(|(way, samples)| match scorer.marks(samples) {
-            Ok(marks) => Some((way.name(), marks)),
-            Err(why) => {
-                eprintln!("noise-cancelled: scoring {}: {why}", way.name());
-                None
-            }
-        })
-        .collect();
-    eprintln!(
-        "noise-cancelled: scored the clips in {} ms of a core",
-        spent().saturating_sub(started).as_millis()
-    );
-    marks
 }
 
 /// The recording, every way, with each way's share of one core while it
@@ -793,7 +706,7 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
 
 /// The processor time this thread has spent, from the kernel's
 /// scheduler statistics, which count it to the nanosecond.
-fn spent() -> Duration {
+pub fn spent() -> Duration {
     std::fs::read_to_string("/proc/thread-self/schedstat")
         .ok()
         .and_then(|stat| stat.split_whitespace().next()?.parse().ok())

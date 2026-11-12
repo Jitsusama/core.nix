@@ -12,8 +12,10 @@
 //! polynomials DNSMOS publishes and then averaged, as its own
 //! `dnsmos_local.py` does.
 
+use std::collections::BTreeMap;
 use std::f64::consts::{PI, TAU};
 use std::path::Path;
+use std::sync::Arc;
 
 use dictation::openvino::{Compiled, Core, Input};
 use serde_json::{Value, json};
@@ -197,6 +199,38 @@ pub fn fitted(said: [f32; 3]) -> Marks {
         background: fit(BACKGROUND, said[1]),
         overall: fit(OVERALL, said[2]),
     }
+}
+
+/// Every clip's marks, by the way it was cleaned. A clip the scorer can't
+/// hear is left out, and none at all when it can't load, since the trial
+/// goes on without them.
+pub fn every_way(
+    models: &Path,
+    heard: &[(&'static str, Arc<Vec<f32>>)],
+) -> BTreeMap<&'static str, Marks> {
+    let scorer = match Scorer::load(models) {
+        Ok(scorer) => scorer,
+        Err(why) => {
+            eprintln!("noise-cancelled: loading the scorer: {why}");
+            return BTreeMap::new();
+        }
+    };
+    let started = crate::trial::spent();
+    let marks = heard
+        .iter()
+        .filter_map(|(way, samples)| match scorer.marks(samples) {
+            Ok(marks) => Some((*way, marks)),
+            Err(why) => {
+                eprintln!("noise-cancelled: scoring {way}: {why}");
+                None
+            }
+        })
+        .collect();
+    eprintln!(
+        "noise-cancelled: scored the clips in {} ms of a core",
+        crate::trial::spent().saturating_sub(started).as_millis()
+    );
+    marks
 }
 
 #[cfg(test)]

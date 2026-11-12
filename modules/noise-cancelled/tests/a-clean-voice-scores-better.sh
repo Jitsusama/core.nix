@@ -17,7 +17,10 @@ raw=(-t f32 -r 48000 -c 1)
 rms() { sox "${raw[@]}" "$1" -n stat 2>&1 | awk -F: '/RMS +amplitude/ { print $2 + 0 }'; }
 # Brings a clip to `level` RMS, in place.
 level() {
-  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$(echo "$2 / $(rms "$1")" | bc -l)"
+  local now gain
+  now=$(rms "$1")
+  gain=$(echo "$2 / $now" | bc -l)
+  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$gain"
   mv "$1.levelled" "$1"
 }
 
@@ -50,12 +53,16 @@ for clip in voice noisy cleaned; do
 done
 
 mark() { jq -r ".$2" <<<"${marks[$1]}"; }
-better=$(echo "$(mark voice overall) > $(mark noisy overall)" | bc)
+voice_overall=$(mark voice overall)
+noisy_overall=$(mark noisy overall)
+voice_background=$(mark voice background)
+noisy_background=$(mark noisy background)
+better=$(echo "$voice_overall > $noisy_overall" | bc)
 if ((!better)); then
   echo "the voice alone didn't score better overall than with the noise"
   failed=1
 fi
-alone=$(echo "$(mark voice background) - $(mark noisy background) >= 0.5" | bc)
+alone=$(echo "$voice_background - $noisy_background >= 0.5" | bc)
 if ((!alone)); then
   echo "the voice alone didn't score a background half a mark quieter than with the noise"
   failed=1
