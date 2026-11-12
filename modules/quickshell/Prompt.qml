@@ -317,6 +317,13 @@ Item {
     // Escape at rest in normal, which closes nothing but lets go what
     // the launcher shows over the rows, as the key list (Launcher.qml).
     signal rested
+    // Whether the key pressed last is held, its press a repeat, and its
+    // letting go, so what follows the selection waits out a held arrow
+    // and comes as it's let go (Launcher.qml's drawer). Qt on Wayland
+    // sends each repeat as a release and a press it marks as repeats, so
+    // only a release it doesn't mark is the key let go.
+    property bool keyHeld: false
+    signal letGo
     // Normal's -: up to what holds this place. In a text line the arrows
     // only move the caret, and nothing steps in or out by one, since
     // Return goes in (the vi-paradigm spec, Normal).
@@ -1319,7 +1326,14 @@ Item {
         Keys.onEscapePressed: event => prompt.dropped(event) ? undefined
             : prompt.modal ? prompt.tabled(event) : prompt.cancelled()
         onCursorPositionChanged: prompt.rest()
+        Keys.onReleased: event => {
+            if (!event.isAutoRepeat && prompt.keyHeld) {
+                prompt.keyHeld = false;
+                prompt.letGo();
+            }
+        }
         Keys.onPressed: event => {
+            prompt.keyHeld = event.isAutoRepeat;
             if (prompt.dropped(event))
                 return;
             // A key whose release comes late, past the repeat delay, while

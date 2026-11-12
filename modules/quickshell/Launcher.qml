@@ -7160,50 +7160,71 @@ Scope {
     readonly property var drawerWanted: !open ? null : listing ? listedPlate
         : commandPlate(commandLoader.item?.chosenLine ?? null)
             ?? (drawerRow ? drawerOf(drawerRow) : null)
-    // The row the drawer is made for: the selection, once it has rested a
-    // moment, so a key's own frame draws its highlight and never waits on a
-    // drawer being made, and a held arrow's drawer follows once it's let go.
-    // Made on the key's path, a session's or a program's drawer took 56 to
-    // 122 ms a key in a VM (WENUOW, 2026-11-09), and Joel: "the highlight
-    // doesn't always perfectly match my keyboard interactions" (2026-11-08).
+    // The row the drawer is made for: the selection, in the frame after the
+    // key's own, so a key's frame draws its highlight and never waits on a
+    // drawer being made, and a held arrow's once it's let go, so a walk
+    // down the rows makes none on the way (VKCF3Z, 2026-11-11). Made on
+    // the key's path, a session's or a program's drawer took 56 to 122 ms a
+    // key in a VM (WENUOW, 2026-11-09), and Joel: "the highlight doesn't
+    // always perfectly match my keyboard interactions" (2026-11-08). It
+    // followed after a 50 ms wait, which with the 150 ms rest after kept
+    // the drawer 200 ms and more behind his key against his 50 ms bar.
     // Closed, it's let go at once.
     property var drawerRow: null
-    readonly property int drawerFollows: 50
+    // Whether a follow waits for the next frame, so keys handled before one
+    // comes follow once, for where they left the selection.
+    property bool drawerFollowDue: false
     // When the key that selected the row the drawer is for was pressed, on
     // KeyTimes's clock, or 0 where no key did, as when a daemon's rows move
     // the selection, so each drawer is timed from Joel's key to the screen
     // as a key is (Joel, 2026-11-11 20:28: "the drawer in the launcher and
     // its time to appear needs to be kept to the same performance
     // requirements as everything else"). A drawer made again for the same
-    // row, as one out is when its row changes, isn't from the key.
+    // row, as one out is when its row changes, isn't from the key. An
+    // arrow's is from when it was heard where it came with no press time,
+    // as a glide is (arrowed).
     property real drawerKeyAt: 0
     onSelectedChanged: {
-        drawerKeyAt = KeyTimes.pressed();
+        drawerKeyAt = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
         // Once the event that selected it has run, since a step selects
         // its first row and again the row its arriving rows put first, and
         // the first read was thrown away: 4 to 7 ms a step into Desktop in
         // the loaded test machine (2026-11-10).
         Qt.callLater(root.readSelectedActions);
         if (!open || selected === null) {
-            drawerFollowing.stop();
+            drawerFollowDue = false;
             drawerRow = selected;
-        } else {
-            drawerFollowing.restart();
+        } else if (!prompt.keyHeld && !drawerFollowDue) {
+            drawerFollowDue = true;
+            afterFrame(drawerFollow);
         }
     }
-    Timer {
-        id: drawerFollowing
-        interval: root.drawerFollows
-        onTriggered: {
-            const began = KeyTimes.now();
-            const was = root.drawerShows;
-            root.drawerRow = root.selected;
-            root.drawerAsked = Math.round(KeyTimes.now() - began);
-            // A drawer already out is made again for the row at once.
-            if (root.drawerShows !== was)
-                root.drawerMade(began, root.drawerAsked);
-            Report.say(`drawer follows ${root.selected?.key ?? ""}`);
-        }
+    function drawerFollow() {
+        drawerFollowDue = false;
+        if (!open || prompt.keyHeld || drawerRow === selected)
+            return;
+        const began = KeyTimes.now();
+        const was = drawerShows;
+        const out = drawerOut;
+        drawerRow = selected;
+        drawerAsked = Math.round(KeyTimes.now() - began);
+        // A row with none keeps no key for a drawer its row brings later.
+        if (drawerWanted === null)
+            drawerKeyAt = 0;
+        // A drawer already out is made again for the row at once; one
+        // coming out is made as it settles.
+        if (out && drawerShows !== was)
+            drawerMade(began, drawerAsked);
+        Report.say(`drawer follows ${selected?.key ?? ""}`);
+    }
+    // A held arrow let go: its drawer follows at once, timed from the
+    // release, which is when Joel's walk ended.
+    function drawerLetGo() {
+        if (!open || drawerRow === selected)
+            return;
+        const pressed = KeyTimes.pressed();
+        drawerKeyAt = pressed > 0 ? pressed : KeyTimes.now();
+        drawerFollow();
     }
     // How long working out the drawer's row's drawer took when it was last
     // followed, which a drawer that comes out after resting made first.
@@ -7265,6 +7286,12 @@ Scope {
             drawerResting.stop();
             if (!root.sameMoment(drawerShows, drawerWanted))
                 drawerShows = drawerWanted;
+        } else if (drawerWanted !== null && drawerKeyAt > 0) {
+            // One a key brought comes with the row it followed, unrested:
+            // only its going rests, so walking past rows with none to
+            // rows with one never flickers it in and out (VKCF3Z).
+            drawerResting.stop();
+            Qt.callLater(root.drawerSettled);
         } else {
             drawerResting.restart();
         }
@@ -10019,6 +10046,8 @@ Scope {
                             else if (root.asking)
                                 root.back();
                         }
+                        // A held arrow's drawer comes as it's let go.
+                        onLetGo: root.drawerLetGo()
                         // A key with no meaning here says so, until the next.
                         onIdled: key => root.say([[ListedKeys.face(key),
                             (Words.field.hints ?? {}).notHere ?? ""]])
