@@ -13,26 +13,41 @@ use serde_json::{Value, json};
 pub const VERSION: u64 = 1;
 
 /// A daemon as its clients know it: its domain's name and the kinds of
-/// record it keeps, in the order it lists them.
+/// record it keeps, in the order it lists them; of those, the kinds of
+/// which there's one record, keyed by its kind alone, as the windows
+/// daemon's `desktop`, and those an ask gets only by naming them, as its
+/// `focus`, which moves at every opening of the launcher and would wake
+/// every watch naming no kind.
 #[derive(Clone, Copy, Debug)]
 pub struct Domain {
     pub name: &'static str,
     pub kinds: &'static [&'static str],
+    pub sole: &'static [&'static str],
+    pub named_only: &'static [&'static str],
 }
 
 impl Domain {
-    /// The kind a key names: `row` for `row:agents:O`.
+    /// The kind a key names: `row` for `row:agents:O`, and `desktop` for
+    /// the one record of a sole kind, keyed by its kind alone.
     pub fn kind_of<'a>(&self, key: &'a str) -> Option<&'a str> {
+        if let Some(sole) = self.sole.iter().find(|sole| **sole == key) {
+            return Some(sole);
+        }
         let (kind, rest) = key.split_once(':')?;
-        (self.kinds.contains(&kind) && !rest.is_empty()).then_some(kind)
+        (self.kinds.contains(&kind) && !self.sole.contains(&kind) && !rest.is_empty())
+            .then_some(kind)
     }
 
-    /// The kinds an ask names, as one or a list, or every kind when it
-    /// names none; or the first it doesn't keep.
+    /// The kinds an ask names, as one or a list, or every kind but those
+    /// named only when it names none; or the first it doesn't keep.
     fn kinds(&self, said: &Value) -> Result<Vec<String>, String> {
         let named = match said.get("kind") {
             None | Some(Value::Null) => {
-                return Ok(self.kinds.iter().map(|kind| (*kind).to_owned()).collect());
+                let unnamed = self
+                    .kinds
+                    .iter()
+                    .filter(|kind| !self.named_only.contains(kind));
+                return Ok(unnamed.map(|kind| (*kind).to_owned()).collect());
             }
             Some(other) => words(other).ok_or_else(|| other.to_string())?,
         };
@@ -67,6 +82,7 @@ impl Domain {
                 .collect::<Vec<_>>()
         });
         let places = said.get("place").and_then(words);
+        let fields = said.get("fields").and_then(words);
         let every = said
             .get("every")
             .and_then(Value::as_u64)
@@ -79,7 +95,7 @@ impl Domain {
                 keys: keys.unwrap_or_default(),
             },
             "list" => match self.kinds(&said) {
-                Ok(kinds) => Ask::List { id, kinds },
+                Ok(kinds) => Ask::List { id, kinds, places },
                 Err(kind) => Ask::UnknownKind { id, kind },
             },
             "watch" => match self.kinds(&said) {
@@ -88,6 +104,7 @@ impl Domain {
                     kinds,
                     keys,
                     places,
+                    fields,
                     every,
                 },
                 Err(kind) => Ask::UnknownKind { id, kind },
@@ -130,20 +147,23 @@ pub enum Ask {
         id: Value,
         keys: Vec<String>,
     },
-    /// Every record of these kinds.
+    /// Every record of these kinds, or those of them in these places.
     List {
         id: Value,
         kinds: Vec<String>,
+        places: Option<Vec<String>>,
     },
     /// Records of these kinds as they change: all of them, these keys, or
-    /// those in these places; told at once, or, paced `every` so long,
-    /// at most once a pace with all that moved in it, as a shut launcher
-    /// asks.
+    /// those in these places; whole, or only these fields of each, told
+    /// only as one of them moves; told at once, or, paced `every` so
+    /// long, at most once a pace with all that moved in it, as a shut
+    /// launcher asks.
     Watch {
         id: Value,
         kinds: Vec<String>,
         keys: Option<Vec<String>>,
         places: Option<Vec<String>>,
+        fields: Option<Vec<String>>,
         every: Option<Duration>,
     },
     Unwatch {
@@ -170,6 +190,32 @@ pub enum Ask {
     },
 }
 
+/// A record as a watch naming these fields is told it: its key and those
+/// fields alone, or whole for a watch naming none.
+pub fn trimmed(record: &Value, fields: Option<&[String]>) -> Value {
+    let Some(fields) = fields else {
+        return record.clone();
+    };
+    let mut kept = json!({"key": record["key"]});
+    for field in fields {
+        if let Some(value) = record.get(field) {
+            kept[field] = value.clone();
+        }
+    }
+    kept
+}
+
+/// Whether a watch naming these fields is told a record that was this
+/// and is now that: always when it's new or the watch takes it whole, else
+/// only when one of its fields changed, so a watch of when windows were
+/// used hears nothing of a retitle.
+pub fn tells(was: Option<&Value>, now: &Value, fields: Option<&[String]>) -> bool {
+    match (was, fields) {
+        (Some(was), Some(fields)) => fields.iter().any(|field| was.get(field) != now.get(field)),
+        _ => true,
+    }
+}
+
 /// An error answer, by the interface's codes.
 pub fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
@@ -182,7 +228,94 @@ mod tests {
     const ROWS: Domain = Domain {
         name: "agents",
         kinds: &["row"],
+        sole: &[],
+        named_only: &[],
     };
+
+    const WINDOWS: Domain = Domain {
+        name: "windows",
+        kinds: &["window", "desktop", "focus", "row"],
+        sole: &["desktop", "focus"],
+        named_only: &["focus", "row"],
+    };
+
+    #[test]
+    fn a_sole_kind_is_keyed_by_its_kind_alone() {
+        assert_eq!(
+            WINDOWS.kind_of("desktop"),
+            Some("desktop"),
+            "the one desktop"
+        );
+        assert_eq!(
+            WINDOWS.kind_of("desktop:1"),
+            None,
+            "a desktop keyed as many"
+        );
+        assert_eq!(WINDOWS.kind_of("window:12"), Some("window"), "a window");
+        assert_eq!(WINDOWS.kind_of("window"), None, "a window with no id");
+    }
+
+    #[test]
+    fn a_kind_named_only_is_left_out_of_an_ask_naming_none() {
+        let Ask::Watch { kinds, .. } = WINDOWS.ask(r#"{"id":1,"ask":"watch"}"#) else {
+            panic!("a watch of every kind wasn't read as a watch");
+        };
+        assert_eq!(
+            kinds,
+            vec!["window".to_owned(), "desktop".to_owned()],
+            "named none"
+        );
+        let Ask::Watch { kinds, .. } = WINDOWS.ask(r#"{"id":1,"ask":"watch","kind":"focus"}"#)
+        else {
+            panic!("a watch of the focus wasn't read as a watch");
+        };
+        assert_eq!(kinds, vec!["focus".to_owned()], "named");
+    }
+
+    #[test]
+    fn a_watch_of_some_fields_is_told_them_only_as_they_change() {
+        let Ask::Watch { fields, .. } =
+            WINDOWS.ask(r#"{"id":4,"ask":"watch","kind":"window","fields":["order"]}"#)
+        else {
+            panic!("a watch of some fields wasn't read as a watch");
+        };
+        assert_eq!(fields, Some(vec!["order".to_owned()]), "its fields");
+        let fields = ["order".to_owned()];
+        let was = json!({"key": "window:12", "title": "zsh", "order": 100});
+        let retitled = json!({"key": "window:12", "title": "vim", "order": 100});
+        let used = json!({"key": "window:12", "title": "vim", "order": 200});
+        assert!(
+            !tells(Some(&was), &retitled, Some(&fields)),
+            "a retitle told"
+        );
+        assert!(
+            tells(Some(&retitled), &used, Some(&fields)),
+            "a use not told"
+        );
+        assert!(tells(None, &used, Some(&fields)), "a new window not told");
+        assert!(
+            tells(Some(&was), &retitled, None),
+            "a retitle not told whole"
+        );
+        assert_eq!(
+            trimmed(&used, Some(&fields)),
+            json!({"key": "window:12", "order": 200})
+        );
+        assert_eq!(trimmed(&used, None), used, "whole");
+    }
+
+    #[test]
+    fn a_list_may_name_its_places() {
+        assert_eq!(
+            WINDOWS.ask(r#"{"id":5,"ask":"list","kind":"row","place":"displays"}"#),
+            Ask::List {
+                id: json!(5),
+                kinds: vec!["row".into()],
+                places: Some(vec!["displays".into()]),
+            },
+            "a list of one place's rows"
+        );
+    }
 
     #[test]
     fn a_key_names_its_kind_and_its_place() {
@@ -209,6 +342,7 @@ mod tests {
                 kinds: vec!["row".into()],
                 keys: None,
                 places: Some(vec!["agents".into()]),
+                fields: None,
                 every: None,
             },
             "a watch of one place's rows"

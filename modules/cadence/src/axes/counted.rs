@@ -2,7 +2,8 @@
 //! rather than counted again: code-health's regressions, which cadence
 //! day judges into its findings ledger under keys starting `code.`; the
 //! lines where Joel sounded pained, which health counts in its day file;
-//! and the turns making one tool call, which the daily measure counts.
+//! the turns making one tool call, which the daily measure counts; and
+//! the security musts past due, which ISXEG8 files in the ledger.
 //! Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
@@ -41,6 +42,20 @@ pub fn regressions(s: &Sources) -> Reading {
             "found worse than the days before and still open".to_owned(),
         ))
         .from("cadence day's findings, from code-health's figures")
+}
+
+/// ISXEG8's musts open past their date: the ledger's open findings on the
+/// security axis whose answer was due before `now`.
+#[must_use]
+pub fn musts(s: &Sources, now: i64) -> Reading {
+    let late = s.findings.as_ref().map(|all| {
+        all.iter()
+            .filter(|f| f.axis == "security" && f.due < now)
+            .count()
+    });
+    Reading::new("{} security musts past due", late.map(count), "", "ISXEG8")
+        .bar(Bar::AtMost(0.0))
+        .from("cadence day's findings, as ISXEG8 files them")
 }
 
 /// The lines Joel typed today that sounded pained, as health counts them.
@@ -135,12 +150,33 @@ mod tests {
     use super::*;
 
     fn finding(key: &str) -> Entry {
+        on(key, "quality", 0)
+    }
+
+    fn on(key: &str, axis: &str, due: i64) -> Entry {
         serde_json::from_str(&format!(
             r#"{{"key":"{key}","first":"2026-11-12","last":"2026-11-12","last_to":0,
-            "due":0,"words":"rose","axis":"quality","evidence":"","fell_when":"",
+            "due":{due},"words":"rose","axis":"{axis}","evidence":"","fell_when":"",
             "open":true,"late":false}}"#
         ))
         .expect("a finding parses")
+    }
+
+    #[test]
+    fn musts_are_the_security_findings_past_their_date() {
+        let s = Sources {
+            findings: Some(vec![
+                on("must:polkit", "security", 100),
+                on("must:asks", "security", 300),
+                on("crashes:biome", "quality", 100),
+            ]),
+            ..Sources::default()
+        };
+        assert_eq!(
+            musts(&s, 200).words(),
+            "1 security must past due, at most 0"
+        );
+        assert_eq!(musts(&Sources::default(), 200).figure(), None);
     }
 
     #[test]

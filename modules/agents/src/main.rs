@@ -59,6 +59,8 @@ const DOMAIN: Domain = Domain {
         "closed",
         "agent-window",
     ],
+    sole: &[],
+    named_only: &[],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \

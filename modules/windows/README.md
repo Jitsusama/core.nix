@@ -2,8 +2,10 @@
 
 niri's windows, held ready for the launcher over
 `$XDG_RUNTIME_DIR/daemons/windows.sock`, in the shell's daemon interface
-(version 1, as the programs and machine daemons speak it). The shell
-imports it, so a machine with the shell runs it.
+(version 1, as the programs and machine daemons speak it), answered by
+the serving side every daemon shares (`../daemon-serve`), so its socket,
+watches and health are theirs. The shell imports it, so a machine with
+the shell runs it.
 
 It hears niri's event stream on `NIRI_SOCKET` for as long as it runs and
 works every record out again at each event, which takes microseconds
