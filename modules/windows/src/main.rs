@@ -49,10 +49,10 @@ use windows::desktop::{Desktop, Heard, Names};
 use windows::entries::{self, Entries};
 use windows::interface::DOMAIN;
 use windows::light::{Held, Seen};
-use windows::order;
 use windows::screens;
 use windows::screens::acts::{self, Act};
 use windows::screens::vocabulary::{numbered, worded};
+use windows::{open, order};
 
 /// How long to wait before asking niri again once it's gone.
 const NIRI_AGAIN: Duration = Duration::from_secs(2);
@@ -318,6 +318,7 @@ fn refresh(served: &Served, daemon: &mut Daemon) {
         ..
     } = &mut *daemon;
     let mut records = desktop.records(entries, names);
+    records.push(open::record(&records));
     records.sort_by_key(listed);
     if let Some(words) = words {
         let held = light.light();

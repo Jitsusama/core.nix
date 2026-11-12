@@ -481,6 +481,27 @@ fn a_window_closed_is_told_gone() {
 }
 
 #[test]
+fn a_watch_of_whats_open_hears_a_window_closed() {
+    let running = Running::new("open");
+    running.watching();
+    let mut client = running.daemon.client();
+    let said = client.ask(&json!({"id": 2, "ask": "watch", "kind": "windows-open"}));
+    let open = &said["records"][0];
+    assert_eq!(open["key"], "windows-open");
+    assert_eq!(open["open"], 3);
+    assert!(
+        open["programs"]
+            .as_array()
+            .is_some_and(|programs| programs.contains(&json!({"program": "foot", "count": 1}))),
+        "{open}"
+    );
+    running.niri.says(&json!({"WindowClosed": {"id": 13}}));
+    let open = client.changed("windows-open");
+    assert_eq!(open["open"], 2);
+    assert!(!open["programs"].to_string().contains("foot"), "{open}");
+}
+
+#[test]
 fn an_entry_added_names_its_windows_program() {
     let running = Running::new("entry");
     let (mut client, _) = running.watching();
