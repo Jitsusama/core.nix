@@ -1484,10 +1484,10 @@ mod tests {
                 "capacity=36",
                 "capacity_level=Normal",
                 "status=Charging",
-                "energy_now=20000000 \u{b5}Wh",
-                "energy_full=55000000 \u{b5}Wh",
-                "energy_full_design=60000000 \u{b5}Wh",
-                "power_now=30000000 \u{b5}W",
+                "energy_now=20,000,000 \u{b5}Wh",
+                "energy_full=55,000,000 \u{b5}Wh",
+                "energy_full_design=60,000,000 \u{b5}Wh",
+                "power_now=30,000,000 \u{b5}W",
                 "Read From=/sys/class/power_supply/BAT0"
             ],
             "the charge says the energy now, full and designed, and the rate"
