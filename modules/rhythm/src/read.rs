@@ -1,7 +1,35 @@
 //! What rhythm says: to Joel in a terminal, in plain words, and to other
 //! programs in its profile file, as one JSON object.
 
+use crate::clock::civil_from_days;
 use crate::nights::{ENOUGH, Profile, clock_of, weekday_name};
+
+const MONTHS: [&str; 12] = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+];
+
+/// An evening, as days since 1970, as Joel reads a date: 2 October.
+fn date(days: i64) -> String {
+    let (_, month, day) = civil_from_days(days);
+    format!("{day} {}", MONTHS[(month as usize + 11) % 12])
+}
+
+/// An evening as the profile file gives it: 2026-10-02.
+fn iso_date(days: i64) -> String {
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02}")
+}
 
 /// How long before his likely stop the evening's wind-down starts, in
 /// minutes: two and a half hours, so the screen is half as bright two
@@ -33,8 +61,13 @@ pub fn said(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String {
     let mut lines = Vec::new();
     if learned {
         if let Some(usual) = profile.usual {
+            let weeks = profile
+                .from
+                .map_or("in the last four weeks".to_owned(), |from| {
+                    format!("in the four weeks to {}, before you were away", date(from))
+                });
             lines.push(format!(
-                "You usually stop for the night around {}, from {} nights in the last four weeks.",
+                "You usually stop for the night around {}, from {} nights {weeks}.",
                 clock_of(usual),
                 profile.nights
             ));
@@ -102,7 +135,7 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
     format!(
         "{{\"v\": 1, \"basis\": \"{}\", \"nights\": {}, \"usual\": {}, \"weekday\": \"{}\", \
          \"tonight\": \"{}\", \"windDown\": \"{}\", \"sunrise\": {}, \"sunset\": {}, \
-         \"weekdays\": {{{}}}}}\n",
+         \"weekdays\": {{{}}}, \"from\": {}}}\n",
         if learned { "learned" } else { "guess" },
         profile.nights,
         text(profile.usual.map(clock_of)),
@@ -111,7 +144,8 @@ pub fn profile_json(profile: &Profile, weekday: u32, sun: Option<Sun>) -> String
         wind_down(tonight),
         text(sun.map(|sun| clock(sun.rise))),
         text(sun.map(|sun| clock(sun.set))),
-        weekdays.join(", ")
+        weekdays.join(", "),
+        text(profile.from.map(iso_date))
     )
 }
 
