@@ -1694,6 +1694,29 @@ fn a_commit_the_checkout_holds_that_main_doesnt_is_never_taken() {
     assert_eq!(world.read("seen"), "one");
 }
 
+/// Whether main may be fetched is asked only once main must come from the
+/// checkout, so an ask whose folder the host reads runs nothing of the
+/// account's.
+#[test]
+fn a_head_the_host_reads_never_asks_whether_main_may_be_fetched() {
+    let mut world = unfetchable();
+    let asked = world.root.join("asked");
+    world.config.hosted.as_mut().unwrap().may_fetch = Some(vec![
+        shell(),
+        "-c".to_owned(),
+        format!("touch {}; exit 1", asked.display()),
+    ]);
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    world.system(&two);
+    assert_eq!(world.update().1, done(&two));
+    assert!(!asked.exists(), "the account was asked whether to fetch");
+}
+
 /// A machine that has never switched has nowhere to stay, so its ask fails
 /// rather than fetching main.
 #[test]

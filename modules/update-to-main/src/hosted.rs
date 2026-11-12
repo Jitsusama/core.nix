@@ -166,22 +166,19 @@ fn unfetched(
         .filter(|commit| git::descends(&main, last, commit).unwrap_or(false))
         .filter(|commit| holds(config, hosted, commit, head).unwrap_or(false))
         .filter(|commit| folder(config, hosted, commit) != folder(config, hosted, last));
-    match taken {
-        Some(commit) => {
-            eprintln!(
-                "update-to-main: so it takes main at {}, which {} holds",
-                git::short(&commit),
-                hosted.checkout.display()
-            );
-            Ok(commit)
-        }
-        None => {
-            eprintln!(
-                "update-to-main: so main stays at {} until a later ask",
-                git::short(last)
-            );
-            Ok(last.to_owned())
-        }
+    if let Some(commit) = taken {
+        eprintln!(
+            "update-to-main: so it takes main at {}, which {} holds",
+            git::short(&commit),
+            hosted.checkout.display()
+        );
+        Ok(commit)
+    } else {
+        eprintln!(
+            "update-to-main: so main stays at {} until a later ask",
+            git::short(last)
+        );
+        Ok(last.to_owned())
     }
 }
 

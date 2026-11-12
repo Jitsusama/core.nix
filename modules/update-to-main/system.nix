@@ -404,7 +404,9 @@ in
                   fetched, the machine takes it when the host says main
                   holds it and it descends from what the machine last
                   switched to, so the account's word can at most keep the
-                  machine behind main's head.
+                  machine behind main's head. It's taken only while the
+                  host's API answers: on a day the API is down, the machine
+                  stays where it is and only what it follows moves on.
                 '';
               };
               path = mkOption {
