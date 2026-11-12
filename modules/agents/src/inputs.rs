@@ -22,6 +22,7 @@ use crate::row::{self, Known, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
+use crate::top;
 
 /// What each source last said.
 #[derive(Default)]
@@ -297,10 +298,27 @@ impl Inputs {
                 drawer::drawer(*one, orchestrates, &self.words, &drawn)
             })
             .collect();
+        let quests: HashMap<&str, &str> = sessions
+            .iter()
+            .map(|one| (one.address(), one.quest()))
+            .collect();
+        let all_spent = |address: &str| {
+            let quest = quests
+                .get(address)
+                .copied()
+                .filter(|quest| !quest.is_empty())?;
+            if self.sharing {
+                None
+            } else {
+                self.family(quest)
+            }
+        };
+        let top = top::rows(&rows, &top::Known { spent: &all_spent }, &self.words.agents);
         served::made(
             &rows,
             &summary::summary(&states, today_spent, &self.words.agents),
         )
+        .with_top(top)
         .with_drawers(drawers)
         .with_recent(recent)
         .with_reopens(reopens)
@@ -562,8 +580,12 @@ mod tests {
         let keys: Vec<_> = moved.changed.iter().map(|one| one["key"].clone()).collect();
         assert_eq!(
             keys,
-            [json!("row:agents:O"), json!(served::SUMMARY)],
-            "an orchestrator's own question is Joel's, and moves its row and the summary"
+            [
+                json!("row:agents-top:O"),
+                json!("row:agents:O"),
+                json!(served::SUMMARY)
+            ],
+            "an orchestrator's own question is Joel's, and moves its rows and the summary"
         );
         assert_eq!(
             summary_of(&shown),

@@ -89,6 +89,14 @@ impl Made {
     pub fn with_landed(self, landed: Vec<Value>) -> Self {
         Self { landed, ..self }
     }
+
+    /// The same, with the top level's rows after Agents' own (top.rs),
+    /// each given its `order` as theirs are.
+    #[must_use]
+    pub fn with_top(mut self, top: Vec<Value>) -> Self {
+        self.rows.extend(top);
+        self
+    }
 }
 
 fn key_of(id: &str) -> String {
