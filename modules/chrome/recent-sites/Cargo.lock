@@ -22,8 +22,13 @@ dependencies = [
 name = "chrome-recent-sites"
 version = "0.1.0"
 dependencies = [
+ "chrome-session",
  "rusqlite",
 ]
+
+[[package]]
+name = "chrome-session"
+version = "0.1.0"
 
 [[package]]
 name = "fallible-iterator"

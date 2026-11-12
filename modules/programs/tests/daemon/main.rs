@@ -13,8 +13,10 @@
 //! files and zsh's history is read as each is asked; and an ask or kind it
 //! doesn't know is refused. Each module beside this one tests one more of
 //! what it serves, over the same daemon: Programs' rows (rows.rs), their
-//! search and what programs tell (search.rs), and Capture's (taken.rs).
+//! search and what programs tell (search.rs), Capture's (taken.rs), and
+//! what Chrome has open (chrome.rs).
 
+mod chrome;
 mod rows;
 mod search;
 mod taken;
@@ -76,6 +78,8 @@ fn fixture(folder: &Path) -> PathBuf {
     write("shots/.hidden.png", "");
     write("lists/playing", "412\t/films/a.mkv\n");
     write("lists/open", "one\n");
+    // Chrome's profile, its session folder there before it's watched.
+    std::fs::create_dir_all(folder.join("chrome/Sessions")).unwrap();
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
     // Each list says it was read, so a test counts its reads.
     let folders = format!(
@@ -121,6 +125,7 @@ fn fixture(folder: &Path) -> PathBuf {
             "list": ["sh", "-c", folders],
         },
         {"app": "mpv", "kind": "file", "opened": ["cat", at("lists/playing")]},
+        {"app": "chrome", "kind": "site", "session": at("chrome"), "host": true},
         // A list whose command fails, as one whose program isn't set up.
         {"app": "broken", "kind": "file", "list": ["false"]},
         {
@@ -207,6 +212,7 @@ impl Running {
             .arg(&sources)
             .arg(folder.join("words.json"))
             .env("HOME", &folder)
+            .env("XDG_RUNTIME_DIR", &folder)
             .env("XDG_DATA_HOME", folder.join("near"))
             .env("XDG_DATA_DIRS", folder.join("far"))
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))

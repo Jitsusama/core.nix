@@ -1,0 +1,21 @@
+# chrome-session: what Chrome has open now, read from its own session
+# file, a library the programs daemon and chrome-recent-sites name by
+# path, and a program printing it (src/lib.rs says how).
+[package]
+name = "chrome-session"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[features]
+# Session files written as Chrome writes them, for a test standing a
+# profile in for Chrome's, as the programs daemon's do.
+written = []
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "chrome-session"
+path = "src/main.rs"

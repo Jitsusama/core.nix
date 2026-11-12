@@ -11,17 +11,9 @@
 //! last whole write, and never the file Chrome holds. A profile with no
 //! history prints nothing. Google's own windows (Mail, Calendar, Meet,
 //! Drive and the documents) are left out, since their programs keep their
-//! own, as are sign-in pages and this machine's own addresses.
-//!
-//! `chrome-recent-sites open [--tabs-from PROGRAM] [PROFILE]` prints
-//! instead what Chrome has open now, a tab a line (tabs.rs): the id the
-//! extension's host gave it, its window, whether it's in front there, when
-//! it was last looked at in milliseconds since 1970, its address and its
-//! title, tab-separated. Given the host, chrome-open-tabs, it asks it
-//! first, and reads Chrome's session file (session.rs) only when the host
-//! lists nothing, as it does with Chrome closed or refusing the extension;
-//! a tab read from the file has no id, since no command can act on one by
-//! the file's. A page left out above is told of by its title alone.
+//! own, as are sign-in pages and this machine's own addresses, by the rule
+//! what Chrome has open is held to too (../session, which the programs
+//! daemon reads Chrome's open pages with).
 //!
 //! `chrome-recent-sites downloads [PROFILE]` prints the files Chrome
 //! downloaded that are still where it saved them, newest first, at most
@@ -30,8 +22,6 @@
 //! and the address of the page it came from, tab-separated.
 
 mod downloads;
-mod session;
-mod tabs;
 
 use std::collections::HashSet;
 use std::env;
@@ -40,6 +30,7 @@ use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use chrome_session::{host, on_the_web, one_line};
 use rusqlite::Connection;
 
 /// As many as 1 to 9 can pick.
@@ -47,20 +38,6 @@ const MOST: usize = 9;
 
 /// How far back it looks for nine sites.
 const LOOKED_AT: u32 = 5000;
-
-/// Sites left out: Google's own windows, which are programs of their own,
-/// signing in, and this machine.
-const LEFT_OUT: [&str; 9] = [
-    "mail.google.com",
-    "calendar.google.com",
-    "meet.google.com",
-    "drive.google.com",
-    "docs.google.com",
-    "accounts.google.com",
-    "localhost",
-    "127.0.0.1",
-    "::1",
-];
 
 /// The seconds from 1601, where Chrome counts its time from, to 1970.
 const FROM_1601: i64 = 11_644_473_600;
@@ -77,34 +54,6 @@ struct Site {
 /// 1970, or none where it kept none.
 fn since_1970(chrome: i64) -> Option<i64> {
     (chrome > 0).then(|| chrome / 1_000_000 - FROM_1601)
-}
-
-/// The host a web address names, or none when it isn't one.
-fn host(address: &str) -> Option<&str> {
-    let rest = address
-        .strip_prefix("https://")
-        .or_else(|| address.strip_prefix("http://"))?;
-    let authority = &rest[..rest.find(['/', '?', '#']).unwrap_or(rest.len())];
-    let authority = authority.rsplit('@').next().unwrap_or(authority);
-    let host = match authority.strip_prefix('[') {
-        Some(bracketed) => &bracketed[..bracketed.find(']')?],
-        None => authority.split(':').next().unwrap_or(authority),
-    };
-    (!host.is_empty()).then_some(host)
-}
-
-/// Whether an address is a page of the web with no program of its own, so
-/// the launcher gives it a row (`LEFT_OUT`).
-fn on_the_web(address: &str) -> bool {
-    host(address)
-        .map(str::to_ascii_lowercase)
-        .is_some_and(|host| !LEFT_OUT.contains(&host.as_str()))
-}
-
-/// Text said whole on one line, its runs of space and line breaks one
-/// space, so nothing in a title may break the line it's printed on.
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The newest titled page of each site in a history, newest first.
@@ -124,7 +73,7 @@ fn sites(history: &Connection) -> rusqlite::Result<Vec<Site>> {
         let Some(host) = host(&address).map(str::to_ascii_lowercase) else {
             continue;
         };
-        if LEFT_OUT.contains(&host.as_str()) || !seen.insert(host) {
+        if !on_the_web(&address) || !seen.insert(host) {
             continue;
         }
         found.push(Site {
@@ -184,23 +133,14 @@ fn print(lines: impl IntoIterator<Item = String>) -> Result<(), String> {
 
 fn main() -> ExitCode {
     let mut arguments = env::args_os().skip(1).peekable();
-    let open = arguments.next_if(|first| first == "open").is_some();
-    let downloaded = !open && arguments.next_if(|first| first == "downloads").is_some();
-    let asking = if open && arguments.next_if(|next| next == "--tabs-from").is_some() {
-        arguments.next().map(PathBuf::from)
-    } else {
-        None
-    };
+    let downloaded = arguments.next_if(|first| first == "downloads").is_some();
     let profile = match arguments.next() {
         Some(profile) => PathBuf::from(profile),
         None => PathBuf::from(env::var_os("HOME").unwrap_or_default())
             .join(".config/google-chrome/Default"),
     };
     let scratch = env::var_os("XDG_RUNTIME_DIR").map_or_else(env::temp_dir, PathBuf::from);
-    let printed = if open {
-        tabs::open(&profile, asking.as_deref())
-            .and_then(|tabs| print(tabs.iter().map(tabs::Told::line)))
-    } else if downloaded {
+    let printed = if downloaded {
         from_history(&profile, &scratch, |history| {
             downloads::downloads(history, downloads::on_disk)
         })
@@ -371,14 +311,5 @@ mod tests {
     #[test]
     fn a_profile_chrome_never_ran_has_none() {
         assert_eq!(read(&folder("none"), &folder("none-scratch")).unwrap(), []);
-    }
-
-    #[test]
-    fn a_host_is_found_in_any_web_address() {
-        assert_eq!(host("https://user@Example.org:443/a"), Some("Example.org"));
-        assert_eq!(host("http://[::1]:8000/"), Some("::1"));
-        assert_eq!(host("https://example.org?q"), Some("example.org"));
-        assert_eq!(host("file:///etc/hosts"), None);
-        assert_eq!(host("https:///nothing"), None);
     }
 }

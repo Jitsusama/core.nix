@@ -6,15 +6,16 @@
 # google-chrome's /usr/share, and where the module's own file is linked.
 # Chromium starts without a screen, and the first case passes once it has
 # unpacked the extension into its profile with its two permissions granted.
-# The second opens two pages and asks the extension's host, through the
-# commands the account's Chrome module gives the launcher (modules/chrome/
-# home.nix), which find it by the file this module writes for Chrome, to
-# list them, bring one to the front and close the other, as the launcher
-# does. Chromium without a screen opens one page alone, so that
+# The second opens two pages and asks the extension's host to list them,
+# as the programs daemon asks its socket where the account's Chrome source
+# says it's there, then, through the commands that source gives the
+# launcher (modules/chrome/home.nix), which find it by the file this module
+# writes for Chrome, brings one to the front and closes the other, as the
+# launcher does. Chromium without a screen opens one page alone, so that
 # case gives it a virtual X screen. The third needs no extension: Chromium
-# opens two pages served here, and chrome-recent-sites reads both, in one
+# opens two pages served here, and chrome-session reads both, in one
 # window with one in front, from the session file Chromium writes, as the
-# launcher reads Chrome's. The script is chrome-extension-vm-test.py.
+# programs daemon reads Chrome's. The script is chrome-extension-vm-test.py.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -61,7 +62,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       pkgs.chromium
       pkgs.curl
       pkgs.xvfb-run
-      (pkgs.callPackage ../modules/chrome/recent-sites/package.nix { })
+      (pkgs.callPackage ../modules/chrome/session/package.nix { })
       (pkgs.runCommandLocal "chromium-takes-the-open-tabs-extension" { } ''
         mkdir -p $out/share/chromium/extensions
         ln -s /usr/share/google-chrome/extensions/${id}.json $out/share/chromium/extensions/

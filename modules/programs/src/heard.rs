@@ -1,6 +1,7 @@
 //! What the daemon hears of its folders through inotify, for as long as
 //! it runs: the folders of entries and of file kinds, the profile links a
-//! data folder is reached through, and each source's file and folders. A
+//! data folder is reached through, each source's file and folders, and the
+//! session folder of a profile whose open pages a source reads. A
 //! part of the daemon's own (main.rs), kept apart from how it answers, so
 //! neither file grows past reading.
 
@@ -26,6 +27,9 @@ pub struct Heard {
     files: Vec<(String, usize)>,
     /// The sources it's one of the folders of, whose every change counts.
     lists: Vec<usize>,
+    /// The sources whose open pages are read from the session it's the
+    /// folder of, whose every change counts, as Chrome's `Sessions`.
+    sessions: Vec<usize>,
 }
 
 /// Watches every folder of entries and of file kinds, and the folder of
@@ -80,6 +84,17 @@ pub fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
             }
         }
     }
+    // A profile Chrome has never run in has no session folder to hear
+    // until the daemon starts again, after the switch or the login that
+    // follows; until then each step into it, and each get, reads it still.
+    for (at, source) in shared.sources.iter().enumerate() {
+        let Some(profile) = &source.session else {
+            continue;
+        };
+        if let Some(watch) = notify.watch(&Path::new(profile).join("Sessions")) {
+            folders.entry(watch).or_default().sessions.push(at);
+        }
+    }
     folders
 }
 
@@ -104,6 +119,7 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
         read_named(shared, &looked);
         let mut entries = false;
         let mut lists = HashSet::new();
+        let mut sessions = HashSet::new();
         for (watch, name) in changes {
             let Some(heard) = folders.get(&watch) else {
                 continue;
@@ -117,6 +133,7 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
                     .map(|(_, at)| *at),
             );
             lists.extend(heard.lists.iter().copied());
+            sessions.extend(heard.sessions.iter().copied());
         }
         if entries {
             entries_changed(shared);
@@ -129,6 +146,13 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
             };
             if watching {
                 start(shared, at, Run::List);
+            }
+        }
+        for at in sessions {
+            let opened = shared.sources[at].opened_key();
+            let watching = opened.is_some_and(|key| watched(&lock(&shared.daemon), &key));
+            if watching {
+                start(shared, at, Run::Opened);
             }
         }
     }

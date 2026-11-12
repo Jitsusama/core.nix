@@ -27,7 +27,11 @@
       printing a tab a line (its id, which `go` and `close` are given, or
       nothing where neither can act on it, its window, whether it's in front
       there, when it was last looked at, its address and its title, a tab
-      between each), read as the program is stepped into; and where it
+      between each), read as the program is stepped into; or, as Chrome's
+      does, `session`, its profile's folder, which the programs daemon reads
+      those tabs from itself, with no command, as it's stepped into and as
+      Chrome writes the session while it's watched, asking the extension's
+      host on its socket first where `host` is true; and where it
       can, `go` and `close`, the commands going to and closing one ({id}).
       Without `go`, Go To brings forward the window the tab is in; without
       `close`, there's no Close It. A file source may say what's open now

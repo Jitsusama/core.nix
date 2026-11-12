@@ -7,7 +7,7 @@
   "hardware/microsoft-surface-laptop-4-1958/firmware/tests/offers-its-firmware.sh" = 1;
   "modules/backlight/src/monitor/tests.rs" = 1;
   "modules/bluetooth-disk-prompt/seal-test.sh" = 1;
-  "modules/chrome/recent-sites/src/session.rs" = 1;
+  "modules/chrome/session/src/session.rs" = 1;
   "modules/collector/tests/collector.rs" = 1;
   "modules/desk-facts/facts.rs" = 2;
   "modules/device-check/tests/devices-that-stop-working-are-named.sh" = 1;
