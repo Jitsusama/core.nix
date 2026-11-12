@@ -15,6 +15,7 @@
 //! Usage: pi-keys sample [--minutes N] [--wait N] [--call-check PROGRAM]
 
 mod burst;
+mod context;
 mod model;
 mod path;
 
