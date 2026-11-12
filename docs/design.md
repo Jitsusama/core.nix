@@ -62,6 +62,27 @@ one is answered for it in [the surfaces table][surfaces].
 12. **Fast.** Inside the latency budgets, at the panel's full refresh rate,
     with nothing spawned or polled that needn't be.
 
+## Written for Joel
+
+Anything put in front of Joel to read is written for him, not for the
+agents that made it: a look on his look list, a page, a brief, a landing's
+line, a notice. Joel, 2026-11-11, of a research synthesis sent him: "anything
+that is sent for me to look at needs to be written for me, like what the UX
+canon says is not written for humans to read. i tried, it is too hard for
+me to parse."
+
+- **What it means for him comes first.** It opens with what changes for him
+  or what he's asked to do, then why, in short sentences of plain words.
+- **An example of his own.** Each point carries one thing from his own
+  machine (a row, a count, a window), never an abstract case.
+- **The working stays one step away.** Citations, identifiers, codes,
+  numbered rules and field names stay out of what he reads, kept in a
+  record for agents beside it: a research document, a drawer's facts, a
+  page's text twin.
+- **Why it's there comes with it.** A look says what it is, why it matters
+  to him now, what he's asked to do, or that nothing is and it's just to
+  see, and which quest it belongs to, so he can place it days later.
+
 ## The Quality Bar
 
 A surface is done only when all of this is true, and nothing is shown to Joel

@@ -210,6 +210,16 @@ constrain".
   but generally, not a fan of sans-serif" (2026-11-04). His non-monospace
   is the serif: nothing of ours sets a sans unless it earns it, beating
   Fraunces and Monaspace side by side in shots at 1.5 and 2.
+- **Words written for agents.** Of a research synthesis sent him to read:
+  "anything that is sent for me to look at needs to be written for me, like
+  what the UX canon says is not written for humans to read. i tried, it is
+  too hard for me to parse" (2026-11-11). And of the looks waiting for him:
+  "by the time i find them the context of why they exist is lost". Whatever
+  is put in front of him to read opens with what it means for him, in short
+  plain words, with an example from his own machine, and says why it's
+  there and what it asks of him; sources, identifiers and numbered rules
+  stay one step away, in a record for agents. docs/design.md's Written for
+  Joel says how.
 - **Polish that changes nothing he'd feel.** "i think you do have some
   general improvements here, but the UI still doesn't feel materially
   changed. what actually has impacted your design choices? you don't seem
