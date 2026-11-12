@@ -2695,7 +2695,8 @@
   '';
   the-launcher-finds-the-desk-light = ''
     the launcher says how the desk light is lit, its drawer its lumens, node and serial, sets its
-    brightness, warmth and power through litra, and the bar hears changes but not a camera
+    brightness, warmth and power through litra, and the bar hears changes but not a camera; with
+    no light its row stays, saying it isn't plugged in or litra isn't answering
   '';
   the-launcher-finds-the-keyboards-keys = ''
     a key is found by what it types, and shown where it is, and the board's Layer and Lights hold

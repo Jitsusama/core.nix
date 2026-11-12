@@ -254,9 +254,18 @@ Provider {
         return Words.of("light")?.said?.[id] ?? "";
     }
 
+    // The desk light's answer. With no light its row stays where Machine's
+    // head names it, dimmed, saying whether none is plugged in or litra
+    // isn't answering, with nothing inside it to set (Y2YBTS, 2026-11-12:
+    // a place whose source is away keeps its row).
     function deskTold() {
         if (DeskLight.light === null)
-            return null;
+            return {
+                headline: "",
+                rows: [],
+                note: said(DeskLight.answering ? "unplugged" : "down"),
+                gone: true
+            };
         return {
             headline: said("is").replace("{lit}", deskLit()),
             rows: deskParts(),
@@ -320,9 +329,9 @@ Provider {
     // Setting the desk light to a share, a warmth, or on or off, Return
     // doing it.
     function setDesk(share, kelvin, power) {
-        const shown = deskTold();
-        if (shown === null)
+        if (DeskLight.light === null)
             return null;
+        const shown = deskTold();
         return Object.assign(deskDone(share, kelvin, power), {
             verb: Words.command("command:desk").verb,
             stays: true,
@@ -332,8 +341,10 @@ Provider {
     }
 
     function stepDesk(way) {
+        if (DeskLight.light === null)
+            return null;
         const shown = deskTold();
-        if (shown === null || !DeskLight.light.on)
+        if (!DeskLight.light.on)
             return shown;
         const kelvin = DeskLight.light.kelvin + (way === "warmer" ? -warmthStep : warmthStep);
         const kept = Math.max(DeskLight.warmest, Math.min(DeskLight.coolest, kelvin));
