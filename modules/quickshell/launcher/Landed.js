@@ -17,12 +17,13 @@ function isChange(ref) {
     return CHANGE.test(ref) && !DOCUMENT.test(ref);
 }
 
-// Those of `rows` that wait in For You's To Try: each saying what Joel
-// should try, while he hasn't read it (`read` null). One without a line
-// to try is only Landed's to list, and asks nothing of him (VKCF3Z and
-// Y2YBTS, 2026-11-10).
+// Those of `rows` that wait in For You's To Try: each whose line asks
+// Joel to try something, as the daemon says (`tries`), while he hasn't
+// read it (`read` null). One whose line asks nothing of him, as "Nothing
+// to try", or with none, is only Landed's to list (VKCF3Z and Y2YBTS,
+// 2026-11-10; VKCF3Z, 2026-11-11).
 function toTry(rows) {
-    return rows.filter(one => one.person !== "" && one.read === null);
+    return rows.filter(one => one.tries === true && one.read === null);
 }
 
 // Those that waited there and he has read since, for For You's History,
@@ -30,7 +31,7 @@ function toTry(rows) {
 // the shell kept when (`read` true) has no time to say, so it isn't
 // History's.
 function triedRead(rows) {
-    return rows.filter(one => one.person !== "" && typeof one.read === "number")
+    return rows.filter(one => one.tries === true && typeof one.read === "number")
         .map(one => ({ one, at: one.read }));
 }
 

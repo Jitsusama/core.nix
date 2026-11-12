@@ -230,12 +230,20 @@ QtObject {
             landing("A", "core.nix#2140", "2026-11-07T11:31:00Z",
                 { url: "https://github.com/o/core.nix/pull/2140" }),
             landing("A", "PLAN-20261106-2ZPAI5#4", "2026-11-07T11:30:00Z",
-                { person: "try Stop twice" }),
+                { person: "try Stop twice", tries: true }),
             landing("B", "core.nix#2138", "2026-11-07T11:20:00Z"),
             landing("D", "core.nix#2200", "2026-11-07T09:00:00Z", { quest: "QEST-20261106-KP0L6A",
                 repo: "Jitsusama/core.nix", machine: "skiff" }),
-            landing("E", "o#1", "2026-11-07T08:00:00Z", { person: "try it", read: 1000 }),
-            landing("E", "o#2", "2026-11-07T07:00:00Z", { person: "try it", read: true })
+            landing("E", "o#1", "2026-11-07T08:00:00Z", { person: "try it", tries: true,
+                read: 1000 }),
+            landing("E", "o#2", "2026-11-07T07:00:00Z", { person: "try it", tries: true,
+                read: true }),
+            // A line the daemon says asks nothing of him is Landed's alone,
+            // read or not.
+            landing("F", "o#3", "2026-11-07T06:00:00Z", { person: "Nothing to try",
+                tries: false }),
+            landing("F", "o#4", "2026-11-07T05:00:00Z", { person: "Nothing to try",
+                tries: false, read: 900 })
         ];
         const keysOf = rows => rows.map(one => one.key).join(" | ");
         const toTry = keysOf(Landed.toTry(served));
