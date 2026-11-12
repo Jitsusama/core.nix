@@ -311,8 +311,11 @@ def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict
 def test_a_twin_outranks_its_microphone_once_a_cleaned_pick_is_kept(
     joel: Joel, offered: dict[str, Any]
 ) -> None:
-    """Plugged in again after a pick, the microphone's twin ranks above it for a cleaned pick."""
+    """Plugged in again once a cleaned pick is kept, the microphone's twin ranks above it."""
     assert offered["microphone"] == DESCRIPTION
+    # The blind pick before may have been raw, which keeps nothing, so a cleaned one is kept
+    # here as the trial keeps it.
+    joel.run(f"printf '%s\\n' 'rnnoise {MICROPHONE} network=none' >> {PICKED}")
     joel.run("systemctl --user stop microphone")
     joel.wait_until_said(f"{DESCRIPTION}, Noise Cancelled is gone", ANSWERS_WITHIN)
     plug_in(joel, "microphone-again")
@@ -321,9 +324,5 @@ def test_a_twin_outranks_its_microphone_once_a_cleaned_pick_is_kept(
         f" | grep -cF {shlex.quote(f'offering {DESCRIPTION}')}) -ge 2",
         ANSWERS_WITHIN,
     )
-    kept = joel.run(f"cat {PICKED} 2>/dev/null || true").strip()
     rank = twin_rank(joel)
-    if kept:
-        assert rank == str(RANK + 1), f"after a cleaned pick, the twin ranks {rank!r}"
-    else:
-        assert rank == "null", f"after a raw pick alone, the twin ranks {rank!r}"
+    assert rank == str(RANK + 1), f"after a cleaned pick, the twin ranks {rank!r}"
