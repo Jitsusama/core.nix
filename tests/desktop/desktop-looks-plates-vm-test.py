@@ -352,11 +352,12 @@ def clock_plate_shown(desktop: Desktop, scale: str) -> None:
 def test_a_shortcuts_plate_says_its_keys_and_where_it_works_on_the_cards_lines(
     desktop: Desktop, at_each_scale: list[str]
 ) -> None:
-    """A chord's plate is what it does under its layer, then its Keys, Also and Works.
+    """A chord's plate is what it does under where it works, then its Keys and each Also.
 
     Every row's drawer gives what its line couldn't fit (docs/design.md, the drawer), and a
-    chord's line holds one chord: its plate gives each way to do it and where it works, each
-    fact beside its name on the card's lines, shot at both of Joel's scales to judge.
+    chord's line holds one chord: its plate gives each way to do it, one a line, written as
+    the row writes keys, each fact beside its name on the card's lines, shot at both of
+    Joel's scales to judge.
     """
     title = "Go to the workspace below"
     for scale in at_each_scale:
@@ -368,9 +369,10 @@ def test_a_shortcuts_plate_says_its_keys_and_where_it_works_on_the_cards_lines(
         desktop.type_in("workspace below", selecting=title)
         desktop.down_to(title)
         drawer = plate_shown(desktop, scale, facts_laid(desktop, title))
-        assert drawer["eyebrow"] == "Desktop", f"at {scale} the chord's layer: {drawer}"
-        assert drawer["drawnFacts"][:1] == ["Keys"], f"at {scale} its facts: {drawer}"
-        assert "Works" in drawer["drawnFacts"], f"at {scale} it says not where: {drawer}"
+        # Its eyebrow says where it works, so Works is left to the chords it narrows.
+        assert drawer["eyebrow"] == "on this desktop \u00b7 shortcut", f"at {scale}: {drawer}"
+        assert drawer["drawnFacts"][:2] == ["Keys", "Also"], f"at {scale} its facts: {drawer}"
+        assert "Works" not in drawer["drawnFacts"], f"at {scale} it says where twice: {drawer}"
         facts = drawer["lines"]["facts"]
         assert things_apart(facts, wrapped=drawer["factsWrapped"] > 0), (
             f"at {scale} the chord's facts are off the pitch: {drawer}"

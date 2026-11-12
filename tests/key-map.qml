@@ -80,25 +80,38 @@ ShellRoot {
                 && desktop.heldNames.slice(0, 3).join(", ") === "Windows, Columns, Workspaces",
                 `${desktop.count}|${desktop.heldNames} ${desktop.side}`);
             // The touchscreen's swipes are the desktop's: one doing what a
-            // chord does is that chord's row, the swipe in words in its note,
-            // and found by "swipe".
+            // chord does is that chord's row, the swipe in words in its
+            // drawer, its note saying only where (VKCF3Z, 358703a5), and
+            // found by "swipe".
             const below = map.all.filter(one => one.name === "Go to the workspace below"
                 && String(one.key).startsWith("shortcut:desktop:"));
             expect("a swipe joins its chord's row", below.length === 1
-                && below[0].note.includes("3 fingers up"), below.map(one => one.note).join("; "));
+                && below[0].note === "on the desktop", below.map(one => one.note).join("; "));
             // Every chord's drawer says a little more than its line: its
             // keys, every other way to do it, where it works and what it
             // runs (docs/design.md, Every row says a little more beside it).
             const facts = one => (typeof one.drawer === "function" ? one.drawer().facts : [])
                 .map(fact => fact.label).join(", ");
-            expect("a chord's drawer says its keys, its swipe and where it works",
-                facts(below[0]).startsWith("Keys, Also, Works"), facts(below[0]));
+            expect("a chord's drawer says its keys and each other way, one a line",
+                facts(below[0]).startsWith("Keys, Also, ") && !facts(below[0]).includes("Works"),
+                facts(below[0]));
+            // As its row draws them, and its eyebrow says where it works, so
+            // Works is there only where it narrows that (VKCF3Z, 358703a5).
+            const plate = below[0].drawer();
+            const values = plate.facts.map(fact => fact.value);
+            expect("a chord's drawer writes its keys as its row does",
+                / \+ /u.test(values[0]) && !/\S\+/u.test(values.join(" "))
+                    && values.includes("3 fingers up"), values.join(" | "));
+            expect("a desktop chord's eyebrow says where",
+                plate.eyebrow === "on this desktop \u00b7 shortcut", plate.eyebrow);
             const undrawn = map.all.filter(one => !one.verbs && facts(one) === "");
             expect("every chord has a drawer", undrawn.length === 0,
                 names(undrawn.slice(0, 3)).join(", "));
             const processes = map.all.find(one => String(one.key).startsWith("shortcut:btop:"));
             expect("a program's chord works in it, by its name",
-                (processes?.note ?? "").startsWith("in Processes"), processes?.note ?? "none");
+                (processes?.note ?? "").startsWith("in Processes")
+                    && processes.drawer().eyebrow === "in Processes \u00b7 shortcut",
+                processes?.note ?? "none");
             expect("a swipe found by its word", map.search("swipe below").rows
                 .some(one => one.name === "Go to the workspace below"),
                 names(map.search("swipe below").rows.slice(0, 3)).join(", "));

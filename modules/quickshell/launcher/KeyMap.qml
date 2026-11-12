@@ -103,10 +103,9 @@ Provider {
             glyph: glyph === "" ? bind.glyph : glyph,
             hue: layer.name === "desktop" ? "action" : "program",
             chord: bind.chord,
-            note: [workedIn(layer, bind)]
-                .concat((bind.also ?? []).length > 0
-                    ? [`also ${bind.also.map(chord => spelled(chord)).join(", ")}`] : [])
-                .join("; "),
+            // Where it works; the other chords doing it are its drawer's,
+            // which has room for them (VKCF3Z, 358703a5).
+            note: workedIn(layer, bind),
             // A little more than its line (docs/design.md, Every row says a
             // little more beside it): its keys in words, every chord doing
             // it and where it works, made as it's shown. A thing, so the
@@ -126,21 +125,46 @@ Provider {
     // Where a chord works, and when: a layer with no place of its own above
     // is in its program, by the name its row has ("in Processes").
     function workedIn(layer, bind) {
-        const place = places[layer.name] ?? `in ${Words.name(`shortcuts:${layer.name}`)}`;
+        const place = placeOf(layer);
         return bind.when ? `${place}, ${bind.when}` : place;
     }
 
-    // A chord's drawer: its keys in words, any other chord doing the same,
-    // where it works and when. The command a desktop one runs is raw, as a
+    function placeOf(layer) {
+        return places[layer.name] ?? `in ${Words.name(`shortcuts:${layer.name}`)}`;
+    }
+
+    // A chord as its row draws it (Chord.qml): its keys a + apart, those
+    // pressed one after another a space, so a drawer writes it the same
+    // way as the row beside it (VKCF3Z, 358703a5).
+    function spaced(chord) {
+        if (typeof chord === "string" || (chord ?? [])[0]?.written)
+            return spelled(chord);
+        return (chord ?? []).map((key, index) => index === 0 ? key.text
+            : `${key.after === true ? " " : " + "}${key.text}`).join("");
+    }
+
+    // A chord's drawer: its keys as its row draws them, any other chord
+    // doing the same, one a line, and when it works, where that narrows
+    // the place its eyebrow names, as every drawer's names where it is and
+    // what (VKCF3Z, 358703a5). The command a desktop one runs is raw, as a
     // path is, so it isn't a fact (VKCF3Z, b8b34908).
     function drawerOf(layer, bind) {
         const fact = (id, value) => ({ label: Words.name(`shortcuts:${id}`), value: value });
+        const said = Words.of("shortcuts").said ?? {};
+        const place = layer.name === "desktop" ? said.desktop ?? placeOf(layer) : placeOf(layer);
+        // Each other way a fact of its own, the first named Also and the
+        // rest under it unnamed, since a value beside its name keeps to
+        // one line (Drawer.qml, besideOnOneLine).
+        const also = (bind.also ?? []).map((chord, index) => ({
+            label: index === 0 ? Words.name("shortcuts:also") : "",
+            value: spaced(chord)
+        }));
         return {
-            eyebrow: Words.name(`shortcuts:${layer.name}`),
+            eyebrow: (said.eyebrow ?? "{place}").replace("{place}", place),
             title: bind.does,
-            facts: [fact("keys", spelled(bind.chord)),
-                fact("also", (bind.also ?? []).map(chord => spelled(chord)).join(", ")),
-                fact("where", workedIn(layer, bind))].filter(one => one.value !== "")
+            facts: [fact("keys", spaced(bind.chord))].concat(also,
+                [fact("where", bind.when ? workedIn(layer, bind) : "")])
+                .filter(one => one.value !== "")
         };
     }
 

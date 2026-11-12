@@ -719,7 +719,11 @@
       "term": "Keyboards/shortcut",
       "noun": "shortcuts",
       "glyph": "shortcuts",
-      "ask": "which shortcut?"
+      "ask": "which shortcut?",
+      "said": {
+        "eyebrow": "{place} \u00b7 shortcut",
+        "desktop": "on this desktop"
+      }
     },
     {
       "id": "actions",
