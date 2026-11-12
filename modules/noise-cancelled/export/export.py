@@ -24,11 +24,21 @@ FRAME = 480
 # How far a cleaned sample may stray from PyTorch's, out of full scale 1;
 # the processor computes in single precision as PyTorch does.
 AGREED = 1e-4
+# Upstream's own thresholds on the predicted SNR, as its command line
+# (enhance_wav.rs) and its plugin set them: below the least, a frame is
+# taken as all noise and zeroed; above the others, the band gains or the
+# deep filter are left out as not needed. torchDF keeps tract's older
+# -10, 30 and 20 dB, which zeroed a tenth of a voice's frames in steady
+# noise and left the deep filter out of half of them in a room.
+THRESHOLDS = {"min_db_thresh": -15.0, "max_db_erb_thresh": 35.0, "max_db_df_thresh": 35.0}
 
 
 def pipeline(checkpoint: str) -> TorchDFPipeline:
-    """Load DeepFilterNet 3's streaming pipeline from its checkpoint."""
-    return TorchDFPipeline(device="cpu", model_base_dir=checkpoint)
+    """Load DeepFilterNet 3's streaming pipeline, at upstream's thresholds."""
+    made = TorchDFPipeline(device="cpu", model_base_dir=checkpoint)
+    for name, db in THRESHOLDS.items():
+        getattr(made.torch_streaming_model, name).fill_(db)
+    return made
 
 
 def speech_in_noise() -> np.ndarray:

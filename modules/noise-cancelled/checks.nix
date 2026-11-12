@@ -60,4 +60,52 @@
           ${model.source}/assets/noise_freesound_573577.wav
         touch $out
       '';
+
+  # Every cleaner, as the scorer hears it, in two noises:
+  # tests/every-cleaner-keeps-the-voice.sh says what it proves.
+  noise-cancelled-keeps-the-voice-it-cleans =
+    let
+      dictation = pkgs.callPackage ../dictation/package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+      models = pkgs.callPackage ./models.nix { };
+    in
+    pkgs.runCommand "noise-cancelled-keeps-the-voice-it-cleans"
+      {
+        nativeBuildInputs = [
+          pkgs.bc
+          pkgs.jq
+          pkgs.sox
+        ];
+      }
+      ''
+        $BASH ${./tests/every-cleaner-keeps-the-voice.sh} ${./tests/clips.sh} \
+          ${dictation}/bin/noise-cancelled ${models} \
+          ${model.source}/assets/clean_freesound_33711.wav \
+          ${model.source}/assets/noise_freesound_573577.wav
+        touch $out
+      '';
+
+  # The scorer beside Joel's ear, on a voice, the same voice in noise, and
+  # that cleaned: tests/a-clean-voice-scores-better.sh says what it proves.
+  noise-cancelled-scores-a-clean-voice-better =
+    let
+      dictation = pkgs.callPackage ../dictation/package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+      models = pkgs.callPackage ./models.nix { };
+    in
+    pkgs.runCommand "noise-cancelled-scores-a-clean-voice-better"
+      {
+        nativeBuildInputs = [
+          pkgs.bc
+          pkgs.jq
+          pkgs.sox
+        ];
+      }
+      ''
+        $BASH ${./tests/a-clean-voice-scores-better.sh} ${./tests/clips.sh} \
+          ${dictation}/bin/noise-cancelled ${models} \
+          ${model.source}/assets/clean_freesound_33711.wav \
+          ${model.source}/assets/noise_freesound_573577.wav
+        touch $out
+      '';
 }

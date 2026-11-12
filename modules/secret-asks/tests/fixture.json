@@ -1,0 +1,143 @@
+{
+  "hello": {
+    "id": 1,
+    "version": 1,
+    "domain": "secret-asks",
+    "state": "answering",
+    "since": 1794459000000,
+    "sources": {}
+  },
+  "records": [
+    {
+      "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35",
+      "kind": "row",
+      "row": {
+        "acts": [
+          {
+            "ask": {
+              "ask": "release",
+              "digest": "f43483967d8d8191479ec745a436cadecb8bfe84e44fa40c5c6676f201b08da9",
+              "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
+            },
+            "key": "verb:release"
+          },
+          {
+            "ask": {
+              "ask": "refuse",
+              "digest": "f43483967d8d8191479ec745a436cadecb8bfe84e44fa40c5c6676f201b08da9",
+              "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
+            },
+            "key": "verb:refuse"
+          }
+        ],
+        "attention": 1794459000000,
+        "digest": "f43483967d8d8191479ec745a436cadecb8bfe84e44fa40c5c6676f201b08da9",
+        "drawer": {
+          "body": "To try the release line.",
+          "eyebrow": "8IDU4E · Release the Package Index",
+          "facts": [
+            {
+              "identifies": true,
+              "name": "Runs",
+              "said": "secret-asks received"
+            },
+            {
+              "identifies": true,
+              "name": "In",
+              "said": "~/src/package-index at 4f2a91c03b1d"
+            },
+            {
+              "hue": "warning",
+              "name": "Changes",
+              "said": "2 not committed"
+            },
+            {
+              "name": "Given As",
+              "said": "RELEASED, for 1 min"
+            },
+            {
+              "as": "moment",
+              "at": 1794459600000,
+              "name": "Ends"
+            }
+          ],
+          "title": "op://Private/Release Test/password"
+        },
+        "glyph": "passwords",
+        "hue": "action",
+        "key": "row:asks:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35",
+        "kind": "ask",
+        "name": "op://Private/Release Test/password",
+        "note": "8IDU4E · Release the Package Index",
+        "order": 1024,
+        "place": "asks",
+        "side": [
+          {
+            "as": "came",
+            "at": 1794459000000
+          }
+        ],
+        "state": "waiting",
+        "thing": "ask:3f0c9e2a7b5d41e8a6c2f9d01b7e4a35"
+      }
+    },
+    {
+      "key": "row:asks:9b1e4d7c2a5f48e3b6d0c9a8f7e6d5c4",
+      "kind": "row",
+      "row": {
+        "acts": [],
+        "attention": null,
+        "digest": "514ec6267aec8ed21ebf1eb12f816add2082ba224ac9299e6d56cd57619917e2",
+        "drawer": {
+          "body": "To try the release line.",
+          "eyebrow": "8IDU4E · Release the Package Index",
+          "facts": [
+            {
+              "identifies": true,
+              "name": "Runs",
+              "said": "secret-asks received"
+            },
+            {
+              "identifies": true,
+              "name": "In",
+              "said": "~/src/package-index at 4f2a91c03b1d"
+            },
+            {
+              "name": "Given As",
+              "said": "RELEASED, for 1 min"
+            },
+            {
+              "name": "Outcome",
+              "said": "ran, exit 0"
+            }
+          ],
+          "title": "op://Private/Release Test/password"
+        },
+        "glyph": "passwords",
+        "hue": "machine",
+        "key": "row:asks:9b1e4d7c2a5f48e3b6d0c9a8f7e6d5c4",
+        "kind": "ask",
+        "name": "op://Private/Release Test/password",
+        "note": "8IDU4E · Release the Package Index",
+        "order": 2048,
+        "place": "asks",
+        "side": [
+          {
+            "as": "came",
+            "at": 1794458400000
+          }
+        ],
+        "state": "ran",
+        "thing": "ask:9b1e4d7c2a5f48e3b6d0c9a8f7e6d5c4"
+      }
+    },
+    {
+      "key": "summary:asks",
+      "kind": "summary",
+      "summary": {
+        "place": "asks",
+        "said": "1 waiting"
+      }
+    }
+  ]
+}

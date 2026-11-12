@@ -227,6 +227,10 @@
     the jobs sorter takes real time from work under jobs.service, jobs-work.slice and
     jobs-timed.slice, and from nothing that holds Joel's own terminal work
   '';
+  an-agent-raises-no-polkit-prompt = ''
+    a workstation's polkit rules refuse a process in agents.slice or jobs-work.slice, or one gone,
+    whatever would ask Joel for a password, leave his terminal and apps to ask, and keep a grant
+  '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, and leaves Joel's own calls,
     a call naming a slice and a call to the system manager as they were
@@ -884,8 +888,14 @@
     line's repeats as one signature, counts a device dropped, reset or correcting its errors though
     the kernel says it only as information, times a boot to a ready launcher without the password's
     wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's
-    screen is on and its keys typed, keeps a day by kind and writes it every half minute however
-    busy the journals, and shows it a line a kind, the gravest first
+    screen is on and its keys typed, keeps the pain-points detector's ranking, counts a tool call
+    that failed, was refused or was made twice running and Joel's words that sound pained, reading
+    each session's log on from where it stopped and never twice, keeps what pi and the shell hold
+    by their copies' ages and the day's most through a restart, counts an agent whose presence says
+    busy or listening though its process is gone and keeps the day's deaths after their presences
+    go, keeps a day by kind and writes it
+    every half minute however busy the journals, and shows the three worst pains in plain words,
+    then a line a kind, the gravest first
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
@@ -1478,6 +1488,16 @@
     DeepFilterNet, 6 for its gentle one and RNNoise), the voice within 6 dB of how it was
     spoken, and the gentle one keeping more of the room than the full one
   '';
+  noise-cancelled-keeps-the-voice-it-cleans = ''
+    every noise-cancelled cleaner, as the DNSMOS scorer hears it, makes a voice in a room's noise
+    and in pink noise sound better overall, and leaves the voice mark no more than 0.3 under the
+    noisy one's, so a cleaner that cuts holes in the voice is refused
+  '';
+  noise-cancelled-scores-a-clean-voice-better = ''
+    the DNSMOS scorer beside Joel's ear, on the CPU, marks a voice, the same voice over a room's
+    noise, and that mix cleaned by DeepFilterNet out of 5, and marks the voice alone at least
+    half a mark quieter in the background and better overall than with the noise
+  '';
   noise-cancelled-switches-to-the-new-one = ''
     a switch restarts noise-cancelled after it reloads the units, so the microphones offered are
     never the old program's
@@ -1586,7 +1606,10 @@
     pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
     with nothing; joins an opening that came straight back to a failed search or the same row,
-    ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path
+    ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
+    reads pi's logs from where it stopped, counting only what Joel typed, what a message waited past
+    a second for its reply, a provider's error, a stopped turn or a message said again, at most two
+    minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or its line
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
@@ -2037,6 +2060,18 @@
   '';
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
+  '';
+  secret-asks-keeps-the-item-to-its-yes = ''
+    a yes releases the one item to the checker alone, which says its length and never the value;
+    an ask for another item reads nothing and draws no row; a yes for a line that changed since it
+    was drawn is refused and drawn again; a yes while locked reads nothing; and a no refuses
+  '';
+  secret-asks-passes-clippy = ''
+    clippy finds nothing in the secret-asks daemon or its tests
+  '';
+  secret-asks-runs-with-its-item = ''
+    the secret-asks daemon runs on its socket with the item the machine names, read through op's
+    wrapper, and a switch restarts it
   '';
   session-backup-passes-clippy = ''
     clippy finds nothing in session-backup or its tests

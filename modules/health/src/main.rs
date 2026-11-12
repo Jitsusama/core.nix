@@ -13,19 +13,32 @@
 //! Each half minute it looks at the lid, and counts as a device's fault a
 //! lid that reads shut while the laptop's own screen is on and its own keys
 //! are typed on, since every program believes the lid and none says so.
+//! And it keeps how using the machine felt: the day's most painful
+//! interactions, as the pain-points detector beside it ranks them. It
+//! reads the agents' sessions' logs on from where it stopped, for the
+//! tools: a call that failed, was refused or was made twice running; and
+//! for Joel's words, a line he typed that sounds like something hurt.
+//! And each half minute it keeps what every pi session and the shell hold
+//! in memory and swap, by how long each has run, so one that grows as it
+//! ages shows, and counts the agents that died: a session whose presence
+//! says busy or listening though its process is gone.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
-//! `health` reads that file: one line a kind, the worst first, naming its
-//! worst thing. `health services` lists a kind's worst things, and `health
+//! `health` reads that file: the day's three most painful interactions,
+//! then one line a kind, the worst first, naming its worst thing. `health services` lists a kind's worst things, and `health
 //! chrome` shows what each thing whose name holds the words kept saying.
 //! `health boot` breaks each boot into its stages.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
 //! day` reads the day and holds it against the days before.
 
+mod agents;
 mod day;
+mod feel;
 mod follow;
 mod journal;
 mod lid;
+mod memory;
+mod sessions;
 mod show;
 mod sign;
 
@@ -42,8 +55,11 @@ use crate::day::Day;
 /// What `health --help` says.
 const USAGE: &str = "\
 health                 what today's journals said, one line a kind, the worst first
-health KIND            a kind's worst things: programs, services, devices or security
+health KIND            a kind's worst things: words, programs, services, devices,
+                       security or tools
 health boot            each boot's stages, and each shutdown's seconds
+health memory          what pi and the shell hold, by how long each copy has run
+health died            the agents that died, and those gone since before today
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
 health follow          the daemon, which keeps the day's file current
