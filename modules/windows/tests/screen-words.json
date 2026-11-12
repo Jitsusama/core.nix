@@ -74,7 +74,7 @@
     {
       "id": "displays:resolution",
       "name": "Resolution",
-      "tells": { "does": "Sets how many pixels this screen runs at, niri choosing the rate." }
+      "tells": { "does": "Sets how many pixels this screen runs at, its rate following." }
     },
     {
       "id": "displays:variable",

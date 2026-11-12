@@ -200,7 +200,7 @@
         "screen resolution"
       ],
       "tells": {
-        "does": "Sets how many pixels this screen runs at, niri choosing the rate."
+        "does": "Sets how many pixels this screen runs at, its rate following."
       }
     },
     {
