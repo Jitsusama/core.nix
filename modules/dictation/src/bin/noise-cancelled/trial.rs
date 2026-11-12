@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
+use crate::loudness;
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -180,6 +181,8 @@ pub struct Trial {
     stage: Stage,
     why: Option<String>,
     microphone: Option<Microphone>,
+    /// What the clips play on: the default output, as Sound names it.
+    output: Option<String>,
     until: Option<u64>,
     /// The clips by letter, while ready.
     clips: Vec<Clip>,
@@ -215,6 +218,7 @@ impl Trial {
                 stage: Stage::Idle,
                 why: None,
                 microphone: None,
+                output: None,
                 until: None,
                 clips: Vec::new(),
                 ways: Vec::new(),
@@ -343,8 +347,9 @@ impl Trial {
             self.refuse(&why);
             return Err(why);
         }
-        let microphone = dumped(&self.tools.dump).and_then(|dump| {
-            default_microphone(&dump).ok_or_else(|| "there's no microphone to record".to_owned())
+        let dump = dumped(&self.tools.dump);
+        let microphone = dump.as_ref().map_err(Clone::clone).and_then(|dump| {
+            default_microphone(dump).ok_or_else(|| "there's no microphone to record".to_owned())
         });
         let microphone = match microphone {
             Ok(microphone) => microphone,
@@ -366,6 +371,7 @@ impl Trial {
         self.stage = Stage::Recording;
         self.until = Some(now() + SECONDS * 1000);
         self.microphone = Some(microphone);
+        self.output = dump.ok().as_ref().and_then(default_output);
         let me = self.me.clone();
         let models = self.models.clone();
         std::thread::spawn(move || recorded(&me, generation, recorder, &models));
@@ -374,6 +380,11 @@ impl Trial {
 
     fn play(&mut self, letter: usize) -> Result<(), String> {
         self.hush();
+        // Asked again as each clip plays, since Joel may have moved to his
+        // headset since he recorded.
+        if let Ok(dump) = dumped(&self.tools.dump) {
+            self.output = default_output(&dump);
+        }
         let mut player = Command::new(&self.tools.play)
             .args(["--rate", &RATE.to_string(), "--channels", "1"])
             .args(["--format", "f32", "--raw", "-"])
@@ -544,6 +555,12 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
     })
 }
 
+/// The default output in a dump, by its description: what the clips
+/// play on.
+pub const fn default_output(_dump: &Value) -> Option<String> {
+    None
+}
+
 /// Makes a node the default microphone, as choosing it in Sound does:
 /// `WirePlumber`'s own configured default, which it keeps.
 fn default_microphone_is(metadata: &str, name: &str) -> Result<(), String> {
@@ -670,6 +687,9 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
         let cost = spent().saturating_sub(started).as_secs_f64() / length;
         clips.push((Way::Cleaned(cleaner), cleaned, cost));
     }
+    // Matched after the costs are taken, since calls never pay for it.
+    let mut heard: Vec<&mut Vec<f32>> = clips.iter_mut().map(|(_, samples, _)| samples).collect();
+    loudness::matched(&mut heard);
     Ok(clips)
 }
 

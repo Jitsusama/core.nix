@@ -217,6 +217,28 @@ fn the_default_microphone_is_found_through_its_twin() {
 }
 
 #[test]
+fn the_clips_play_on_the_default_output() {
+    let dump = json!([
+        {"type": "PipeWire:Interface:Metadata", "props": {"metadata.name": "default"},
+         "metadata": [{"subject": 0, "key": "default.audio.sink",
+                       "value": {"name": "headset"}}]},
+        {"info": {"props": {"node.name": "speakers", "node.description": "Speakers",
+                            "media.class": "Audio/Sink"}}},
+        {"info": {"props": {"node.name": "headset", "node.description": "Pebble V3",
+                            "media.class": "Audio/Sink"}}},
+    ]);
+    assert_eq!(default_output(&dump).as_deref(), Some("Pebble V3"));
+}
+
+#[test]
+fn the_record_says_where_the_clips_play() {
+    let trial = trial(Vec::new());
+    ready(&trial);
+    trial.lock().output = Some("Pebble V3".to_owned());
+    assert_eq!(trial.lock().record()["output"], "Pebble V3");
+}
+
+#[test]
 fn every_shuffle_offers_each_way_once() {
     let mut seen = std::collections::HashSet::new();
     for seed in 0..200 {
