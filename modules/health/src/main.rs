@@ -33,7 +33,8 @@
 //! `health boot` breaks each boot into its stages. `health launcher` times
 //! each part of the launcher against its budget in docs/design.md,
 //! `health launches` each program's openings and ends as the windows
-//! daemon timed them and each daemon's ready as it said it, and
+//! daemon timed them, each daemon's ready and pi's start as it said it,
+//! and each service a restart had gone, and
 //! `health figures` says each figure's side: his, what Joel waited for or
 //! saw, or ours, what the machine and its agents did or a model reckons.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence

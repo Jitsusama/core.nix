@@ -945,8 +945,11 @@
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
     launcher part and pi's modelled typing against their budgets, keeps each program's openings
-    and ends as the windows daemon timed them and each daemon's ready as it said it as ours, and
-    says each figure's side
+    and ends as the windows daemon timed them and each daemon's ready as it said it as ours, holds
+    pi's start to its own budget apart from the daemons', times a service's restart from its
+    stopping to its ready line, the shell's ready or else its start, leaving a start alone, a stop
+    long before and a ready long after, reads a service's stopping and start from systemd and not a
+    scope's, and says each figure's side
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a

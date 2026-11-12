@@ -80,6 +80,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         since_boot: 0,
         mark: None,
         ask: None,
+        job: None,
     })
 }
 

@@ -4,7 +4,10 @@
 //! process started, and its process ending after its last window went.
 //! Beside them, how long each of our daemons took to be ready, from the
 //! line each says once it is, such as dictation's "ready in 1065 ms" or
-//! meaning's "bge loaded on the NPU in 688 ms".
+//! meaning's "bge loaded on the NPU in 688 ms", and how long each pi took
+//! to show its first session, from its own "pi: ready in 889 ms". And how
+//! long each service a switch restarted was gone: from systemd stopping it
+//! to its ready line, or to its start where it says none.
 //!
 //! Both are our side's figures, stand-ins for what Joel waits on: an
 //! opening is timed from the process's start, not from the key that asked
@@ -15,6 +18,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::journal::{Entry, Job};
 use crate::launcher::percent;
 
 /// What the windows daemon writes its journal as.
@@ -38,6 +42,24 @@ pub const READY_FOLLOWED: &str = r"\b(ready|loaded)\b.* in [0-9]+ ms\b";
 /// Budgets hold it for a daemon serving again.
 pub const READY_MS: u64 = 1_000;
 
+/// What pi writes its journal as.
+pub const PI: &str = "pi";
+
+/// A pi's budget from starting to its first session shown, the spec the
+/// improvement system set for it (2026-11-11).
+pub const PI_MS: u64 = 3_000;
+
+/// A service's budget from stopping to serving again, the spec the
+/// improvement system set for a switch's restarts (2026-11-11).
+pub const RESTARTED_MS: u64 = 5_000;
+
+/// How long after stopping a start still counts as a restart, in
+/// microseconds: a stop systemd gives up on takes 90 s.
+const RESTART_WITHIN: i64 = 120_000_000;
+
+/// How long after its start a ready line is still its restart's.
+const READY_WITHIN: i64 = 60_000_000;
+
 /// The day's openings and ends, read again from the journal on each
 /// start, so never resumed.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +73,17 @@ pub struct Launches {
     pub outlived: BTreeMap<String, u64>,
     /// How long each daemon took to be ready, as it said, in milliseconds.
     pub ready: BTreeMap<String, Vec<u64>>,
+    /// How long each pi took to show its first session, in milliseconds.
+    pub pi: BTreeMap<String, Vec<u64>>,
+    /// How long each service was gone in a restart, in milliseconds.
+    pub restarted: BTreeMap<String, Vec<u64>>,
+    /// When each service started to stop, in microseconds, until it starts.
+    #[serde(skip)]
+    stopping: BTreeMap<String, i64>,
+    /// Each service started again, with when it stopped and started,
+    /// until it says it's ready.
+    #[serde(skip)]
+    restarting: BTreeMap<String, (i64, i64)>,
 }
 
 /// How one of the two went over the day.
@@ -81,14 +114,59 @@ impl Spread<'_> {
 }
 
 impl Launches {
+    /// Take one entry, saying whether it was one of these: a service
+    /// stopping or started, or a line `took` takes.
+    pub fn heard(&mut self, entry: &Entry) -> bool {
+        let unit = &entry.thing;
+        match entry.job {
+            Some(Job::Stopping) => {
+                self.stopping.insert(unit.clone(), entry.at);
+            }
+            Some(Job::Started) => {
+                let Some(stopped) = self.stopping.remove(unit) else {
+                    return true;
+                };
+                if entry.at.saturating_sub(stopped) <= RESTART_WITHIN {
+                    let gone = millis(entry.at.saturating_sub(stopped));
+                    self.restarted.entry(unit.clone()).or_default().push(gone);
+                    self.restarting.insert(unit.clone(), (stopped, entry.at));
+                }
+            }
+            None if self.took(unit, &entry.message) => self.served(entry),
+            None => return false,
+        }
+        true
+    }
+
+    /// A service saying it's ready soon after a restart started it: that
+    /// restart lasted until now.
+    pub fn served(&mut self, entry: &Entry) {
+        let Some(unit) = &entry.ran_in else { return };
+        let Some((stopped, started)) = self.restarting.remove(unit) else {
+            return;
+        };
+        if entry.at.saturating_sub(started) > READY_WITHIN {
+            return;
+        }
+        if let Some(gone) = self.restarted.get_mut(unit).and_then(|all| all.last_mut()) {
+            *gone = millis(entry.at.saturating_sub(stopped));
+        }
+    }
+
     /// Take one line `thing` said, saying whether it was one of these: an
-    /// opening or end from the windows daemon, or any program's ready.
+    /// opening or end from the windows daemon, a pi's start, or any
+    /// program's ready.
     pub fn took(&mut self, thing: &str, message: &str) -> bool {
         if thing != IDENTIFIER {
             let Some(ms) = ready_in(message) else {
                 return false;
             };
-            self.ready.entry(thing.to_owned()).or_default().push(ms);
+            let taken = if thing == PI {
+                &mut self.pi
+            } else {
+                &mut self.ready
+            };
+            taken.entry(thing.to_owned()).or_default().push(ms);
             return true;
         }
         if let Some(rest) = message.strip_prefix("opened ") {
@@ -141,6 +219,18 @@ impl Launches {
         spread(&self.ready, READY_MS)
     }
 
+    /// How long each pi took to show its first session, once any said.
+    #[must_use]
+    pub fn pi_starts(&self) -> Option<Spread<'_>> {
+        spread(&self.pi, PI_MS)
+    }
+
+    /// How long services were gone in a restart, once any was.
+    #[must_use]
+    pub fn restarts(&self) -> Option<Spread<'_>> {
+        spread(&self.restarted, RESTARTED_MS)
+    }
+
     /// How many ends the daemon stopped waiting for.
     #[must_use]
     pub fn outlived(&self) -> u64 {
@@ -159,6 +249,12 @@ impl Launches {
         }
         if let Some(ready) = self.readies() {
             parts.push(said(&ready, ("daemon ready", "daemons ready"), READY_MS));
+        }
+        if let Some(pi) = self.pi_starts() {
+            parts.push(said(&pi, ("pi started", "pis started"), PI_MS));
+        }
+        if let Some(restarted) = self.restarts() {
+            parts.push(said(&restarted, ("restart", "restarts"), RESTARTED_MS));
         }
         match self.outlived() {
             0 => {}
@@ -180,6 +276,8 @@ impl Launches {
             .chain(self.ended.keys())
             .chain(self.outlived.keys())
             .chain(self.ready.keys())
+            .chain(self.pi.keys())
+            .chain(self.restarted.keys())
             .collect();
         names.sort();
         names.dedup();
@@ -190,6 +288,8 @@ impl Launches {
             most(&self.opened)
                 .max(most(&self.ended))
                 .max(most(&self.ready))
+                .max(most(&self.pi))
+                .max(most(&self.restarted))
                 .unwrap_or_default()
         };
         names.sort_by_key(|name| std::cmp::Reverse(slowest(name)));
@@ -206,6 +306,8 @@ impl Launches {
                     one(&self.opened, "opened"),
                     one(&self.ended, "ended"),
                     one(&self.ready, "ready"),
+                    one(&self.pi, "started"),
+                    one(&self.restarted, "restarted"),
                 ]
                 .into_iter()
                 .flatten()
@@ -235,7 +337,12 @@ fn ready_in(message: &str) -> Option<u64> {
     })
 }
 
-/// One of the three over the day, or none when none was timed.
+/// Microseconds as whole milliseconds.
+fn millis(micros: i64) -> u64 {
+    u64::try_from(micros / 1_000).unwrap_or_default()
+}
+
+/// One of them over the day, or none when none was timed.
 fn spread(taken: &BTreeMap<String, Vec<u64>>, bar_ms: u64) -> Option<Spread<'_>> {
     let mut all: Vec<u64> = taken.values().flatten().copied().collect();
     all.sort_unstable();
@@ -257,7 +364,7 @@ fn spread(taken: &BTreeMap<String, Vec<u64>>, bar_ms: u64) -> Option<Spread<'_>>
     })
 }
 
-/// One of the three in words.
+/// One of them in words.
 fn said(spread: &Spread, (one, many): (&str, &str), bar_ms: u64) -> String {
     let late = match spread.late {
         0 => format!("none past {bar_ms} ms"),
@@ -281,6 +388,7 @@ mod tests {
     use super::*;
     use crate::day::Day;
     use crate::day::tests::entry;
+    use crate::journal::Mark;
 
     fn day(lines: &[&str]) -> Launches {
         let mut launches = Launches::default();
@@ -424,6 +532,101 @@ mod tests {
             Launches::default().said(),
             None,
             "a day with none said something"
+        );
+    }
+
+    #[test]
+    fn a_restart_is_timed_from_stopping_to_its_ready_line_or_else_its_start() {
+        let mut day = Day::new("2026-11-12");
+        let job = |unit: &str, at, job| Entry {
+            at,
+            job: Some(job),
+            ..entry(unit, 6, "")
+        };
+        let said = |thing: &str, at, message: &str, mark| Entry {
+            at,
+            mark,
+            ..entry(thing, 6, message)
+        };
+        day.take(&job("google.service", 1_000_000, Job::Stopping));
+        day.take(&job("google.service", 1_064_000, Job::Started));
+        day.take(&job("dictation.service", 2_000_000, Job::Stopping));
+        day.take(&job("dictation.service", 2_200_000, Job::Started));
+        day.take(&said(
+            "dictation",
+            3_300_000,
+            "dictation: ready in 1065 ms",
+            None,
+        ));
+        day.take(&said(
+            "dictation",
+            3_400_000,
+            "dictation: ready in 90 ms",
+            None,
+        ));
+        day.take(&job("quickshell.service", 4_000_000, Job::Stopping));
+        day.take(&job("quickshell.service", 4_100_000, Job::Started));
+        day.take(&said(
+            "quickshell",
+            6_500_000,
+            "launcher: home kept as the shell started",
+            Some(Mark::Ready),
+        ));
+        day.take(&job("meaning.service", 5_000_000, Job::Started));
+        day.take(&job("sound.service", 5_000_000, Job::Stopping));
+        day.take(&job("sound.service", 605_000_000, Job::Started));
+        day.take(&job("notices.service", 7_000_000, Job::Stopping));
+        day.take(&job("notices.service", 7_100_000, Job::Started));
+        day.take(&said(
+            "notices",
+            90_000_000,
+            "notices: loaded in 5 ms",
+            None,
+        ));
+        assert_eq!(
+            day.launches.restarted,
+            BTreeMap::from([
+                ("dictation.service".to_owned(), vec![1_300]),
+                ("google.service".to_owned(), vec![64]),
+                ("notices.service".to_owned(), vec![100]),
+                ("quickshell.service".to_owned(), vec![2_500]),
+            ]),
+            "a restart wasn't timed to its ready line, its start, or the shell's ready; or a \
+             start alone, a stop long before or a ready long after was taken for one"
+        );
+        let restarts = day.launches.restarts().expect("restarts were timed");
+        assert_eq!(
+            (restarts.median_ms, restarts.slowest, restarts.late),
+            (100, (2_500, "quickshell.service"), 0),
+            "the restarts' spread was misread"
+        );
+        assert!(
+            day.things.is_empty(),
+            "a restart's lines were counted as warnings"
+        );
+    }
+
+    #[test]
+    fn a_pis_start_is_held_to_its_own_budget_apart_from_the_daemons() {
+        let mut launches = Launches::default();
+        for line in [
+            "pi: ready in 889 ms, session 01a1d0f7-99f2-72a3-b390-9ab085c4dda4",
+            "pi: ready in 4120 ms, session 01a1c28f-032e-7954-aad3-8ec9694a15aa",
+        ] {
+            assert!(launches.took(PI, line), "a pi's start wasn't taken: {line}");
+        }
+        assert_eq!(
+            launches.readies(),
+            None,
+            "a pi's start was taken for a daemon's ready"
+        );
+        assert_eq!(
+            launches.said().as_deref(),
+            Some(
+                "2 pis started: a median 889 ms, the slowest 4120 ms (pi); 1 past 3000 ms \
+                 (50%)"
+            ),
+            "pi's starts weren't said against their own budget"
         );
     }
 

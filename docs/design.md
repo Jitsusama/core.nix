@@ -1053,6 +1053,8 @@ hold every surface to:
 | a program started      | its first window               | 300 ms                                   |
 | its last window closed | its process ended              | 200 ms                                   |
 | a daemon started       | it says it's ready             | 1 s                                      |
+| pi started             | its first session shown        | 3 s                                      |
+| a service stopped      | it's ready again               | 5 s, as a switch restarts it             |
 
 A surface meets the first by never being made at the chord. The launcher's
 surface stays mapped, a clear pixel that takes no keys while closed, and a
@@ -1069,7 +1071,13 @@ for them (2026-11-11), timed by the windows daemon from the process's start
 and from its window gone, since niri never says the key that asked; health
 says them each day (`health launches`). A daemon is held to the specs'
 second for serving again, from the line it says once it's ready, such as
-dictation's "ready in 1065 ms", which health reads from any program.
+dictation's "ready in 1065 ms", which health reads from any program; pi
+is held to its own 3 s from its "pi: ready in 889 ms". A service a switch
+restarts is timed from systemd stopping it to its ready line, or to its
+start where it says none. The launcher starts a program through niri, so
+the program's opening stands for its spawn to first frame; the trip from
+the launcher's ask to niri starting it goes untimed, held by the chord's
+round trip above.
 
 ## First, and Light
 
