@@ -18,6 +18,7 @@
 
 mod burst;
 mod context;
+mod install;
 mod model;
 mod path;
 
