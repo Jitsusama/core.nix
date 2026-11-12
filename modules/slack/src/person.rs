@@ -28,6 +28,8 @@ pub const WRITE: &str = "verb:person:slack";
 /// The words a person's facts and act are said in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Words {
+    /// "Title", the fact of what their profile says they do.
+    pub title: String,
     /// "Status", the fact of their status's words and emoji.
     pub status: String,
     /// "Presence", the fact of whether they're active or away.
@@ -59,6 +61,7 @@ impl Words {
     /// `verb:person:slack` lack.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
         Ok(Words {
+            title: word(vocabulary, "slack:person:title", &["name"])?,
             status: word(vocabulary, "slack:person:status", &["name"])?,
             presence: word(vocabulary, "slack:person:presence", &["name"])?,
             zone: word(vocabulary, "slack:person:zone", &["name"])?,
@@ -123,8 +126,10 @@ fn conversations(found: &Found, words: &Words) -> Vec<Value> {
     })]
 }
 
-/// Their drawer's facts, each only while Slack says it, in the order
-/// Slack.js gave them: status, presence, then time zone; or, for an
+/// Their drawer's facts, each only while Slack says it: their title,
+/// which says who they are, first, under their name as People's drawer
+/// heads it (VKCF3Z, 0cea8a93), then, in the order Slack.js gave them,
+/// status, presence and time zone; or, for an
 /// address Slack knows nobody by, that it knows no one there, where the
 /// status would stand, since the two never show together.
 fn facts(found: &Found, words: &Words) -> Vec<Value> {
@@ -137,6 +142,9 @@ fn facts(found: &Found, words: &Words) -> Vec<Value> {
         .collect::<Vec<_>>()
         .join(" ");
     let mut facts = Vec::new();
+    if !found.title.is_empty() {
+        facts.push(json!({"name": words.title, "said": found.title}));
+    }
     if !status.is_empty() {
         facts.push(json!({"name": words.status, "said": status}));
     }
@@ -181,6 +189,7 @@ mod tests {
             status: "at lunch".into(),
             emoji: "\u{1f96a}".into(),
             handle: "ada".into(),
+            title: "Analyst".into(),
             conversation: None,
         }
     }
@@ -191,6 +200,7 @@ mod tests {
         assert_eq!(
             said["facts"],
             json!([
+                {"name": "Title", "said": "Analyst"},
                 {"name": "Status", "said": "\u{1f96a} at lunch"},
                 {"name": "Presence", "said": "In a huddle"},
                 {"name": "Time Zone", "zone": "Europe/London", "as": "zone"}
@@ -206,6 +216,7 @@ mod tests {
     #[test]
     fn a_fact_slack_doesnt_say_is_left_out() {
         let quiet = Found {
+            title: String::new(),
             presence: String::new(),
             status: String::new(),
             emoji: String::new(),

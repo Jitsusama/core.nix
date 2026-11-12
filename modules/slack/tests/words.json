@@ -63,6 +63,11 @@
       "name": "Time Zone"
     },
     {
+      "id": "slack:person:title",
+      "in": "people",
+      "name": "Title"
+    },
+    {
       "id": "verb:person:slack",
       "command": "compose",
       "argument": "slack",
