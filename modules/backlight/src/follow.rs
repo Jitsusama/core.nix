@@ -35,16 +35,25 @@ pub struct Follow {
     share: f64,
     /// What the clock says the evening leaves now.
     clock: f64,
-    /// Whether the share has been taken from the screen itself, as the first
-    /// light heard does, so a start deep in the evening eases from where the
-    /// screen is rather than jumping to the clock's.
-    seen: bool,
-    /// Whether Joel picked a brightness this evening, which holds until the
-    /// morning.
-    held: bool,
+    /// How the share moves toward the clock's.
+    hold: Hold,
     /// What Joel set in each light in the evening, which the evening never
     /// dims past again.
     floor: Option<Curve>,
+}
+
+/// How the evening's share moves toward what the clock says.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Hold {
+    /// Not at all until the screen's been seen with some light, when the
+    /// share is taken from it, so a start deep in the evening eases from
+    /// where the screen is rather than jumping to the clock's.
+    Unseen,
+    /// A minute's ease at a time.
+    Easing,
+    /// Not at all: Joel picked a brightness this evening, which holds until
+    /// the morning.
+    Held,
 }
 
 impl Follow {
@@ -61,8 +70,7 @@ impl Follow {
             shut: false,
             share: 1.0,
             clock: 1.0,
-            seen: false,
-            held: false,
+            hold: Hold::Unseen,
             floor: None,
         }
     }
@@ -81,7 +89,7 @@ impl Follow {
 
     /// Whether a brightness Joel picked holds for the rest of the evening.
     pub fn holding(&self) -> bool {
-        self.held
+        self.hold == Hold::Held
     }
 
     /// The curve, as it has learned to be.
@@ -132,8 +140,8 @@ impl Follow {
             return false;
         }
         self.lux = Some(lux);
-        if !self.seen {
-            self.seen = true;
+        if self.hold == Hold::Unseen {
+            self.hold = Hold::Easing;
             if self.clock < 1.0 {
                 self.share = shown / self.curve.level_at(lux);
             }
@@ -171,7 +179,7 @@ impl Follow {
         self.halt();
         let lux = self.lux.filter(|_| !self.shut)?;
         if self.clock < 1.0 || self.share < 1.0 {
-            self.held = true;
+            self.hold = Hold::Held;
             self.share = level / self.curve.level_at(lux);
             self.floor
                 .get_or_insert_with(|| Curve::through([]))
@@ -235,9 +243,12 @@ impl Follow {
     pub fn dims(&mut self, clock: f64, shown: f64, now: Instant) {
         self.clock = clock;
         if clock >= 1.0 {
-            self.held = false;
+            self.hold = match self.hold {
+                Hold::Held => Hold::Easing,
+                hold => hold,
+            };
         }
-        if !self.seen || self.held {
+        if self.hold != Hold::Easing {
             return;
         }
         let share = eased(self.share, clock);
