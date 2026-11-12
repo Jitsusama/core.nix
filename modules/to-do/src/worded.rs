@@ -1,6 +1,7 @@
 //! Each to-do worded as For You says it, beside its item on its record
 //! (stream.rs), so the agents daemon makes For You's rows from words
-//! already said and the shell words none (Y2YBTS, 2026-11-10: the to-do
+//! already said and the shell words only its acts, by their keys, as it
+//! words every served act (Y2YBTS, 2026-11-10: the to-do
 //! daemon serves each to-do ready, the agents daemon joins it with its
 //! session, quest and window, weighs it and serves the rows). It's what
 //! Now.qml's `item`, `drawerOf` and NeedsYou.js's `note` say from the
@@ -20,7 +21,9 @@
 //! - `drawer`: its title, its facts and its body, its steps numbered then
 //!   why only Joel can do it; each fact names its id, so the agents
 //!   daemon lays its own (weight, where, session) among them in place;
-//! - `acts`: Mark It Done and Put It Off, each an ask back on this socket.
+//! - `acts`: Mark It Done and Put It Off, each an ask back on this socket
+//!   under its verb's own key, which the shell words (ready-rows.md's
+//!   `{key, ask}`), the ask carrying which to-do.
 //!
 //! A time is `{at, as}` for the shell to word against its own clock, so a
 //! record changes only when its to-do does.
@@ -28,10 +31,13 @@
 use serde_json::{Value, json};
 
 use crate::todo::as_javascript;
-use crate::words::{ACTS, Words};
+use crate::words::Words;
 
 /// What For You marks a to-do with, a glyph role in the theme.
 const GLYPH: &str = "waitsOnJoel";
+
+/// The acts on a to-do this daemon answers, by their ids, Return's first.
+const ACTS: [&str; 2] = ["done", "notNow"];
 
 /// A to-do's words, laid on its record: `key` is its identity, `now`
 /// whether Joel can do it now.
@@ -67,10 +73,8 @@ pub fn worded(record: &mut Value, item: &Value, key: &str, now: bool, words: &Wo
     record["acts"] = ACTS
         .iter()
         .map(|act| {
-            let named = words.act(act);
             json!({
-                "key": format!("verb:on:waiting:{act}:{key}"),
-                "name": named.name, "verb": named.verb, "glyph": named.glyph, "hue": "action",
+                "key": format!("verb:on:waiting:{act}"),
                 "ask": {"ask": "act", "act": act, "item": key},
             })
         })
