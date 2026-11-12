@@ -808,10 +808,17 @@ Provider {
     // serves once the row's selected (looking).
     function placePlate() {
         const joined = networks.find(network => network.connected) ?? null;
-        return Plate.plate(on, networks, joined === null ? null : {
-            name: joined.name,
-            side: sideOf(joined),
-            drawn: joined.served ? ready.drawerOf(joined.served) : null
-        }, Words.of("wifi").said ?? {}, [Words.name("wifi:signal"), Words.name("wifi:connected")]);
+        return Plate.plate({
+            on: on,
+            networks: networks,
+            joined: joined === null ? null : {
+                name: joined.name,
+                side: sideOf(joined),
+                drawn: joined.served ? ready.drawerOf(joined.served) : null
+            }
+        }, {
+            said: Words.of("wifi").said ?? {},
+            leading: [Words.name("wifi:signal"), Words.name("wifi:connected")]
+        });
     }
 }

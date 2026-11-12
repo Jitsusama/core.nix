@@ -9,23 +9,26 @@
 // off, that it's off (VKCF3Z, 2026-11-12: every row says a little more, its
 // eyebrow saying where and what, "on this machine · wireless").
 
-// `on` whether the radio is; `networks` the networks Wireless lists, by
-// their `name`; `joined` the one joined, as `{ name, side, drawn }`, its
-// side as its row says it and `drawn` its drawer as ReadyRows draws it, or
-// null until it's read, or `joined` null on none; `said` the place's own
-// words; `leading` the facts' labels said first, in their order.
-function plate(on, networks, joined, said, leading) {
+// `heard` is how Wi-Fi stands: `on`, whether the radio is; `networks`, the
+// networks Wireless lists, by their `name`; and `joined`, the one joined as
+// `{ name, side, drawn }`, its side as its row says it and `drawn` its
+// drawer as ReadyRows draws it, or null until it's read, or `joined` null
+// on none. `words` are the place's own `said` and `leading`, the facts'
+// labels said first, in their order.
+function plate(heard, words) {
+    const { on, networks, joined } = heard;
+    const { said, leading } = words;
     const eyebrow = said.eyebrow ?? "";
     if (joined === null) {
         return {
-            eyebrow: eyebrow,
+            eyebrow,
             title: (on ? said.unjoined : said.off) ?? "",
             body: networks.map(network => network.name).join(", "),
             facts: []
         };
     }
     if (!joined.drawn) {
-        return { eyebrow: eyebrow, title: joined.name, body: joined.side ?? "", facts: [] };
+        return { eyebrow, title: joined.name, body: joined.side ?? "", facts: [] };
     }
     const rank = fact => {
         const at = leading.indexOf(fact.label);
@@ -33,8 +36,8 @@ function plate(on, networks, joined, said, leading) {
     };
     // Sorted with each fact's place as the tie, so the rest keep wifid's
     // order whatever the engine's sort.
-    const facts = (joined.drawn.facts ?? []).map((fact, at) => ({ fact: fact, at: at }))
+    const facts = (joined.drawn.facts ?? []).map((fact, at) => ({ fact, at }))
         .sort((a, b) => rank(a.fact) - rank(b.fact) || a.at - b.at)
         .map(each => each.fact);
-    return Object.assign({}, joined.drawn, { eyebrow: eyebrow, title: joined.name, facts: facts });
+    return Object.assign({}, joined.drawn, { eyebrow, title: joined.name, facts });
 }

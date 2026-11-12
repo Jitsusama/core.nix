@@ -302,14 +302,12 @@
     },
     {
       "id": "traffic",
-      "once": ["Speed"],
       "name": "Traffic",
       "term": "Network/traffic",
       "question": "speed",
       "glyph": "traffic",
       "answers": [
-        "speed",
-        "traffic"
+        "speed"
       ],
       "said": {
         "eyebrow": "on this machine \u00b7 network card",
