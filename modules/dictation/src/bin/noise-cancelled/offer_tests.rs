@@ -195,3 +195,40 @@ fn an_offer_standing_stays_through_a_restart() {
     restarted.stand(&chosen);
     assert!(standing(&chosen).is_some(), "and stands it again");
 }
+
+#[test]
+fn the_trial_is_told_the_offer_standing_and_when_it_was_made() {
+    let chosen = picks("told");
+    assert_eq!(super::standing(&chosen), Value::Null, "none stands yet");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    called(&mut offers, &chosen, &desk());
+    offers.stand(&chosen);
+    let told = super::standing(&chosen);
+    assert_eq!(told["node"], MV7);
+    assert_eq!(told["spot"], "the desk");
+    assert!(
+        told["since"].as_u64().is_some_and(|since| since > 0),
+        "it doesn't say when it was made: {told}"
+    );
+}
+
+#[test]
+fn an_offer_coming_and_going_is_heard() {
+    let chosen = picks("heard");
+    let offer = file(&chosen);
+    let folder = offer.parent().expect("the picks have a folder");
+    std::fs::create_dir_all(folder).expect("the folder is made");
+    let (moved, heard) = std::sync::mpsc::channel();
+    watched(&offer, move || {
+        let _ = moved.send(());
+    })
+    .expect("the offer is watched");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    called(&mut offers, &chosen, &desk());
+    offers.stand(&chosen);
+    let came = heard.recv_timeout(Duration::from_secs(5));
+    assert!(came.is_ok(), "the offer coming wasn't heard");
+    taken(&chosen).expect("the offer is taken");
+    let went = heard.recv_timeout(Duration::from_secs(5));
+    assert!(went.is_ok(), "the offer going wasn't heard");
+}

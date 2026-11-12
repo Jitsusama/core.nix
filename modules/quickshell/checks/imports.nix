@@ -282,7 +282,9 @@
   "launcher/Showing.js" = [ "launcher/Order.js" ];
   "launcher/Sound.qml" = [
     "Fuzzy.js"
+    "launcher/Ago.js"
     "launcher/ByEar.js"
+    "launcher/ForYou.js"
     "launcher/Numbers.js"
     "launcher/Order.js"
     "launcher/Plate.js"

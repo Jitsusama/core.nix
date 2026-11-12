@@ -23,7 +23,11 @@
 //   its cost revealed (ByEar.js works each step out, and NoiseCancelling
 //   holds the trial). Leaving it, by Escape or by closing, discards it.
 //   Beneath Record, Name This Spot takes Joel's name for where he is,
-//   whose picks are kept under it.
+//   whose picks are kept under it. Record records the input it's under.
+//
+// After a call on a microphone at a spot Joel's ear hasn't chosen for it
+// there, For You holds one thing to do, Choose by Ear for it, while it's
+// plugged in (forYou); taking it or saying No Thanks is the last of it.
 //
 // A Bluetooth device's Codec and its link are Bluetooth's (Accessories.qml),
 // so they're said there, and Sound says only what its sound is for now,
@@ -55,7 +59,9 @@ import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "Ago.js" as Ago
 import "ByEar.js" as ByEar
+import "ForYou.js" as ForYou
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Plate.js" as Plate
@@ -1146,14 +1152,112 @@ Provider {
             hue: "action",
             side: ByEar.standing(soundSaid, NoiseCancelling.record),
             note: said("by-ear")
-        }), () => provider.byEarRows());
+        }), () => provider.byEarRows(node));
         row.verb = Words.verb("sound:by-ear");
         return row;
     }
 
-    function byEarRows() {
+    function byEarRows(node) {
         return ByEar.rows(soundSaid, NoiseCancelling.record, NoiseCancelling.state, Date.now())
-            .map(row => provider.byEarRow(row));
+            .map(row => provider.byEarRow(ByEar.aimed(row, node.name)));
+    }
+
+    // For You's one thing to do while the daemon offers Choose by Ear, after
+    // a call on a microphone at a spot Joel's ear hasn't chosen for it there
+    // (noise-cancelled's offer.rs), as Now gathers each source's (ForYou.js's
+    // given), and only while that microphone is plugged in. Return steps
+    // into its Choose by Ear, and a step in holds No Thanks; either is the
+    // last of it, since the daemon offers a microphone at a spot once. Made
+    // again only as the offer or the inputs change, never with a trial's
+    // steps, which change the record many times a second.
+    readonly property string offerSaid: {
+        const offered = ByEar.offer(NoiseCancelling.record);
+        const here = offered !== null && inputs.some(node => node.name === offered.node);
+        return JSON.stringify(here ? offered : null);
+    }
+    readonly property var forYou: {
+        const offered = JSON.parse(offerSaid);
+        return offered === null ? [] : [{
+            row: provider.offerRow(offered),
+            thing: { kind: "todo", ready: true, takes: 1, since: offered.since ?? null }
+        }];
+    }
+
+    // The offer's row: the microphone it's for, where at its side, Return
+    // going to that microphone's Choose by Ear, ready to record.
+    function offerRow(offered) {
+        const words = "sound:offer";
+        const device = `sound:${offered.node}`;
+        const noThanks = thing({
+            key: `${words}:no-thanks`,
+            name: Words.name(`${words}:no-thanks`),
+            verb: Words.verb(`${words}:no-thanks`),
+            glyph: Words.glyph(`${words}:no-thanks`),
+            hue: "action",
+            run: () => NoiseCancelling.act(ByEar.taking(), null)
+        });
+        return thing({
+            key: words,
+            what: "on",
+            // What it is and where it's from, which For You filters by.
+            forYou: { kind: "do", source: "sound" },
+            name: Words.name(words, "", { microphone: offered.microphone }),
+            verb: Words.verb(words),
+            glyph: Words.glyph(words),
+            hue: "strong",
+            side: offered.spot,
+            stays: true,
+            drawer: () => provider.offerDrawer(offered),
+            verbs: () => [noThanks],
+            targets: () => [noThanks],
+            run: () => {
+                provider.launcher?.goTo({
+                    // From the top, through Machine, which holds Sound.
+                    trail: ["category:computer", "collection:sound", device, `${device}:by-ear`],
+                    spot: "sound:by-ear:now"
+                });
+                NoiseCancelling.act(ByEar.taking(), null);
+            }
+        });
+    }
+
+    // The offer's drawer, in the facts every For You drawer gives (Now.qml's
+    // drawerOf): where it's from and that it's a thing to do, what it
+    // weighs, how long it takes, since when it has waited and what clears
+    // it; its words say why it's there, then what to do.
+    function offerDrawer(offered) {
+        const now = Date.now();
+        const say = Object.assign({}, Words.of("on:waiting").said ?? {}, {
+            clock: at => provider.clocked(at),
+            ago: at => Ago.ago(at, now)
+        });
+        const weighed = { kind: "todo", ready: true, takes: 1, since: offered.since ?? null };
+        const fact = (id, value) => ({ label: Words.name(id), value: String(value) });
+        const offerWords = Words.of("sound:offer");
+        const tells = offerWords.tells ?? {};
+        const facts = [
+            fact("on:waiting:weight", ForYou.weightSaid(weighed, now, say)),
+            fact("on:waiting:takes", ForYou.filled(say.takes, { minutes: weighed.takes })),
+            fact("on:waiting:since", weighed.since === null ? ""
+                : provider.clocked(weighed.since)),
+            fact("on:waiting:clears", offerWords.said?.clears ?? "")
+        ].filter(one => one.value !== "");
+        return {
+            eyebrow: ForYou.filled(say.from, { from: Words.name("sound"), kind: say.todo }),
+            eyebrowNames: true,
+            title: Words.name("sound:offer", "", { microphone: offered.microphone }),
+            facts: facts,
+            body: [ByEar.offerWhy(tells, offered), tells.steps ?? ""]
+                .filter(one => one !== "").join("\n\n")
+        };
+    }
+
+    // A time as the clock says it: today's by its hour, and another day's
+    // with its day, as For You's own are.
+    function clocked(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
     }
 
     // A step's row as ByEar.js lays it: an act asking the daemon on

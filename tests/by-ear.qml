@@ -237,6 +237,34 @@ QtObject {
             `sound:by-ear:clip:${clip}`)));
         same("no spot said", keys(idle), ["sound:by-ear:now"]);
 
+        // Record records the input Choose by Ear is opened under, by its node,
+        // the default or not, again too; opened for none, the default.
+        const aimed = (laid, at) => ByEar.asked(ByEar.aimed(laid[at], "mv7"));
+        same("record aims", aimed(ByEar.rows(said, record({}), "answering", 0), 0),
+            { ask: "act", act: "record", microphone: "mv7" });
+        same("record again aims", aimed(ByEar.rows(said, ready, "answering", 0), 0),
+            { ask: "act", act: "record", microphone: "mv7" });
+        same("a clip aims nothing", aimed(ByEar.rows(said, ready, "answering", 0), 1),
+            { ask: "act", act: "play", clip: "A" });
+
+        // The offer the daemon makes after a call on a microphone at a spot
+        // never picked for there, while it stands and is whole; taking it or
+        // putting it off asks the same act, and why it's there is the new
+        // microphone's or the new spot's words.
+        const offered = { microphone: "Shure MV7", node: "mv7", spot: "the desk",
+            key: "home=6366013", new: "spot", since: 5000 };
+        same("an offer", ByEar.offer(record({ offer: offered })), offered);
+        same("no offer", ByEar.offer(record({ offer: null })), null);
+        same("an offer with no node", ByEar.offer(record({
+            offer: { microphone: "Shure MV7", spot: "the desk" } })), null);
+        same("no record, no offer", ByEar.offer(null), null);
+        same("taking", ByEar.taking(), { ask: "act", act: "offered" });
+        const tells = { "why-microphone": "{microphone} is new",
+            "why-spot": "{microphone} is new at {spot}" };
+        same("a new spot", ByEar.offerWhy(tells, offered), "Shure MV7 is new at the desk");
+        same("a new microphone", ByEar.offerWhy(tells,
+            Object.assign({}, offered, { new: "microphone" })), "Shure MV7 is new");
+
         // Leaving discards anything but idle, and asks nothing of an idle
         // trial or a daemon not there.
         same("leaving idle", ByEar.leaving(record({})), null);

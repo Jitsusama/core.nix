@@ -6,7 +6,9 @@ stand-in microphone has nothing worth cleaning for. This speaks the daemon inter
 hello, a watch of kind `trial` answered with its one record, `trial:now`, and each act answered
 `taken`, the record told whole to every watch as it changes. A recording runs a second, then
 cleans for a moment, so a walk through it takes seconds; the clips aren't shuffled, so a test
-knows what it picked: A is RNNoise, B DeepFilterNet gentle, C DeepFilterNet full, D none.
+knows what it picked: A is RNNoise, B DeepFilterNet gentle, C DeepFilterNet full, D none. An
+offer of Choose by Ear the service left in its state folder is told from the start, as the real
+one tells it, until `offered` takes it.
 """
 
 import json
@@ -23,6 +25,8 @@ SECONDS = 1
 CLEANING = 0.5
 REVEALED = {"A": "rnnoise", "B": "deepfilternet-gentle", "C": "deepfilternet", "D": "raw"}
 COSTS = {"raw": 0, "rnnoise": 0.012, "deepfilternet": 0.31, "deepfilternet-gentle": 0.3}
+# Where the service leaves an offer after a call, beside the picks.
+OFFER = Path.home() / ".local/state/noise-cancelled/offer"
 
 lock = threading.Lock()
 watchers: list[Connection] = []
@@ -47,6 +51,16 @@ def idle() -> dict[str, object]:
         "costs": None,
         "running": record.get("running", "raw") if record else "raw",
     }
+
+
+def standing() -> object:
+    """Give the offer the service left, with when it was made, or None."""
+    try:
+        offer = json.loads(OFFER.read_text())
+    except OSError, ValueError:
+        return None
+    offer["since"] = int(OFFER.stat().st_mtime * 1000)
+    return offer
 
 
 def change(fields: dict[str, object]) -> None:
@@ -102,6 +116,9 @@ def act(said: dict[str, object]) -> dict[str, object]:
         )
     elif name == "discard":
         change(idle())
+    elif name == "offered":
+        OFFER.unlink(missing_ok=True)
+        change({"offer": None})
     else:
         return {"id": said.get("id"), "error": {"code": "refused", "message": "not now"}}
     return {"id": said.get("id"), "taken": True}
@@ -149,7 +166,7 @@ class Connection(socketserver.StreamRequestHandler):
             self.wfile.flush()
 
 
-record.update(idle())
+record.update(idle(), offer=standing())
 SOCKET.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 SOCKET.unlink(missing_ok=True)
 # Each client on a thread of its own, as the daemon serves each, so the shell's held connection

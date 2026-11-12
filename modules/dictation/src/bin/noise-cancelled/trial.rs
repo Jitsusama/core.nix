@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use dictation::daemon::{self, Answers, Shared, VERSION, Watches, error, now};
 // The A/B starts from the microphone as it is: its own node, found
 // through its twin when the twin is the default.
-pub use dictation::microphone::{Microphone, default_microphone};
+pub use dictation::microphone::{Microphone, default_microphone, named};
 use serde_json::{Value, json};
 
 use crate::chosen::Chosen;
@@ -168,6 +168,8 @@ pub struct Trial {
     /// been let go drops what it finishes.
     generation: u64,
     acted: Instant,
+    /// Choose by Ear offered after a call (offer.rs), as it stands.
+    offer: Value,
 }
 
 impl Trial {
@@ -178,8 +180,10 @@ impl Trial {
         refusals: Vec<Refusal>,
         tools: Tools,
     ) -> Arc<Shared<Self>> {
+        let offer = crate::offer::standing(&running);
         Arc::new_cyclic(|me| {
             Shared::new(Self {
+                offer,
                 me: me.clone(),
                 models,
                 running,
@@ -247,6 +251,7 @@ impl Trial {
             "costs": self.picked.map(|_| &self.costs),
             "marks": self.picked.and_then(|_| self.marked()),
             "running": self.runs().name(),
+            "offer": self.offer,
         })
     }
 
@@ -264,6 +269,15 @@ impl Trial {
     }
 
     /// Tells every watch the record changed.
+    /// Reads the offer again, as it's come or gone, telling it if it moved.
+    pub fn offer_moved(&mut self) {
+        let offer = crate::offer::standing(&self.running);
+        if offer != self.offer {
+            self.offer = offer;
+            self.changed();
+        }
+    }
+
     fn changed(&mut self) {
         self.heard = now();
         let record = self.record();
@@ -360,7 +374,7 @@ impl Trial {
     fn act(&mut self, said: &Value) -> Result<(), String> {
         self.acted = Instant::now();
         match said["act"].as_str().unwrap_or_default() {
-            "record" => self.start_recording(),
+            "record" => self.start_recording(said["microphone"].as_str()),
             "play" => {
                 let letter = self.letter(said)?;
                 self.play(letter)
@@ -378,7 +392,11 @@ impl Trial {
                 Ok(())
             }
             "name" => self.name_spot(said["name"].as_str().unwrap_or_default()),
-            "offered" => crate::offer::taken(&self.running),
+            "offered" => {
+                crate::offer::taken(&self.running)?;
+                self.offer_moved();
+                Ok(())
+            }
             other => Err(format!("no act {other:?}")),
         }
     }
@@ -390,7 +408,8 @@ impl Trial {
         Ok(())
     }
 
-    fn start_recording(&mut self) -> Result<(), String> {
+    /// Records `microphone`, by its node name, or the default without one.
+    fn start_recording(&mut self, microphone: Option<&str>) -> Result<(), String> {
         if matches!(self.stage, Stage::Recording | Stage::Cleaning) {
             return Err("it's already recording".to_owned());
         }
@@ -401,7 +420,11 @@ impl Trial {
         }
         let dump = dumped(&self.tools.dump);
         let microphone = dump.as_ref().map_err(Clone::clone).and_then(|dump| {
-            default_microphone(dump).ok_or_else(|| "there's no microphone to record".to_owned())
+            match microphone {
+                Some(name) => named(dump, name),
+                None => default_microphone(dump),
+            }
+            .ok_or_else(|| "there's no microphone to record".to_owned())
         });
         let microphone = match microphone {
             Ok(microphone) => microphone,
@@ -756,11 +779,10 @@ pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> 
         "noise-cancelled: choosing by ear, {} running",
         running.cleaner(None, None)
     );
+    let offer = running.beside("offer");
     let trial = Trial::shared(models.to_path_buf(), running, refusals, Tools::default());
-    let listener = match crate::handed() {
-        Some(listener) => listener,
-        None => daemon::listen(socket)?,
-    };
+    crate::offer::told_to(&trial, offer.as_deref());
+    let listener = crate::handed().map_or_else(|| daemon::listen(socket), Ok)?;
     {
         let trial = Arc::clone(&trial);
         std::thread::spawn(move || daemon::answer_all(&trial, &listener));

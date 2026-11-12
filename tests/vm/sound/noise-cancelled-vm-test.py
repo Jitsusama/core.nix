@@ -44,6 +44,9 @@ TRIAL = f"{RUNTIME}/noise-cancelled.sock"
 REFUSALS = "/etc/noise-cancelled-refusals.json"
 # Where the trial keeps a pick, for the service to clean with from then on.
 PICKED = f"{RUNTIME}/noise-cancelled/cleaner"
+# Where the service offers Choose by Ear after a call, beside the pick, and keeps what's offered.
+OFFER = f"{RUNTIME}/noise-cancelled/offer"
+KEPT_OFFERED = f"{RUNTIME}/noise-cancelled/offered"
 # Where WirePlumber keeps the microphone chosen, as Sound chooses it.
 CHOSEN = (
     '.[] | select(.props["metadata.name"] == "default") | .metadata[]'
@@ -208,6 +211,8 @@ def test_the_microphone_rests_once_nothing_records(joel: Joel, noise: tuple[floa
 @pytest.fixture(scope="module")
 def offered(joel: Joel, values: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """Choose by Ear's record once it has recorded the sentence and cleaned it every way."""
+    # Its folder made first, as the unit's StateDirectory makes it, so the offer is heard there.
+    joel.run(f"mkdir -p {RUNTIME}/noise-cancelled")
     joel.run(
         f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['model']}"
         f" deepfilternet {REFUSALS} {PICKED}"
@@ -257,3 +262,26 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert spot.startswith("network="), f"the VM is at no home's node: {kept!r}"
         assert picked["spot"].startswith("away"), f"the spot named: {picked['spot']!r}"
         assert picked["running"] == picked["picked"]["cleaner"]
+
+
+def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict[str, Any]) -> None:
+    """An offer the service writes beside the picks, the trial hears and tells; taken, it goes."""
+    assert offered["microphone"] == DESCRIPTION
+    offer = json.dumps(
+        {
+            "microphone": DESCRIPTION,
+            "node": MICROPHONE,
+            "spot": "away",
+            "key": "network=none",
+            "new": "microphone",
+        }
+    )
+    # Written whole and moved in, as the service writes it.
+    joel.run(f"printf '%s\\n' {shlex.quote(offer)} > {OFFER}.writing && mv {OFFER}.writing {OFFER}")
+    get = shlex.quote(json.dumps({"id": 1, "ask": "get"}))
+    told = shlex.quote(f'"node":"{MICROPHONE}"')
+    joel.wait_for(f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {told}", ANSWERS_WITHIN)
+    assert joel.ask({"id": 6, "ask": "act", "act": "offered"}) == {"id": 6, "taken": True}
+    assert joel.trial()["offer"] is None, "the offer taken is still told"
+    kept = joel.run(f"cat {KEPT_OFFERED}").strip()
+    assert kept == f"{MICROPHONE} network=none", f"what's kept as offered: {kept!r}"

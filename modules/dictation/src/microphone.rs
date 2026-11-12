@@ -35,9 +35,14 @@ pub fn default_microphone(dump: &Value) -> Option<Microphone> {
         .filter_map(|object| object["metadata"].as_array())
         .flatten()
         .find(|entry| entry["key"] == "default.audio.source")?;
-    let named = default["value"]["name"].as_str()?;
-    let name = named.strip_prefix(OURS).unwrap_or(named);
-    objects.iter().find_map(|object| {
+    named(dump, default["value"]["name"].as_str()?)
+}
+
+/// A microphone in a pw-dump by its node name, or by its twin's, so
+/// Choose by Ear records the one it was opened for, the default or not.
+pub fn named(dump: &Value, name: &str) -> Option<Microphone> {
+    let name = name.strip_prefix(OURS).unwrap_or(name);
+    dump.as_array()?.iter().find_map(|object| {
         let props = &object["info"]["props"];
         (props["node.name"] == name && props["media.class"] == "Audio/Source").then(|| Microphone {
             name: name.to_owned(),
@@ -93,6 +98,16 @@ mod tests {
         assert_eq!(microphone.name, "mv7");
         assert_eq!(microphone.description, "Shure MV7");
         assert_eq!(microphone.twin(), "noise-cancelled.mv7");
+    }
+
+    #[test]
+    fn a_microphone_is_found_by_its_name_or_its_twins() {
+        let dumped = dump("someone-else", true);
+        let description = named(&dumped, "mv7").map(|microphone| microphone.description);
+        assert_eq!(description.as_deref(), Some("Shure MV7"));
+        let name = named(&dumped, "noise-cancelled.mv7").map(|microphone| microphone.name);
+        assert_eq!(name.as_deref(), Some("mv7"));
+        assert_eq!(named(&dumped, "gone"), None);
     }
 
     #[test]

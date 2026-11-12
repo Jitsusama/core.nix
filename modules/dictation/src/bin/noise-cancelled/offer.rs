@@ -14,15 +14,22 @@
 //!
 //! `offer` is one JSON object: the microphone's name and node, the spot's
 //! name and key, and whether the microphone or the spot is the new one.
+//! The trial tells it to the launcher as it comes and goes, with when it
+//! was made, and For You shows it as a thing to do.
 
 use std::fmt::Write as _;
-use std::time::Duration;
+use std::path::Path;
+use std::sync::{Arc, mpsc};
+use std::time::{Duration, UNIX_EPOCH};
 
+use dictation::daemon::Shared;
+use dictation::watch::{self, Change};
 use serde_json::{Value, json};
 
 use crate::chosen::{Chosen, written};
 use crate::refusals::Refusal;
 use crate::spot::Spot;
+use crate::trial::Trial;
 
 /// How long a microphone is recorded from before it counts as a call.
 pub const CALL: Duration = Duration::from_mins(1);
@@ -159,23 +166,85 @@ fn offered(chosen: &Chosen, node: &str, key: &str) -> bool {
         })
 }
 
-/// The offer as `offer` holds it.
+/// The offer standing beside `chosen`'s picks, as the trial tells it,
+/// with `since`, when it was made, in milliseconds since the epoch; null
+/// while none stands.
+pub fn standing(chosen: &Chosen) -> Value {
+    let Some(file) = chosen.beside("offer") else {
+        return Value::Null;
+    };
+    let Some(offer) = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|said| read(&said))
+    else {
+        return Value::Null;
+    };
+    let since = std::fs::metadata(&file)
+        .and_then(|about| about.modified())
+        .ok()
+        .and_then(|at| at.duration_since(UNIX_EPOCH).ok())
+        .map(|at| u64::try_from(at.as_millis()).unwrap_or(u64::MAX));
+    let mut told = told(&offer);
+    told["since"] = json!(since);
+    told
+}
+
+/// Hears `file` come and go, from the kernel's inotify on its folder, so
+/// nothing looks while nothing changes, calling `moved` each time.
+pub fn watched(file: &Path, moved: impl Fn() + Send + 'static) -> Result<(), String> {
+    let folder = file
+        .parent()
+        .ok_or_else(|| format!("{} has no folder", file.display()))?;
+    let (changes, heard) = mpsc::channel();
+    watch::watch(folder, changes)?;
+    let file = file.to_owned();
+    std::thread::spawn(move || {
+        for change in heard {
+            let (Change::Came(path) | Change::Went(path)) = change;
+            if path == file {
+                moved();
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Tells the trial each time its offer comes or goes, so the launcher hears it as it does.
+/// An offer that can't be heard is said once, and Choose by Ear carries on without it.
+pub fn told_to(trial: &Arc<Shared<Trial>>, offer: Option<&Path>) {
+    let Some(offer) = offer else { return };
+    let me = Arc::downgrade(trial);
+    let moved = move || {
+        if let Some(trial) = me.upgrade() {
+            trial.lock().offer_moved();
+        }
+    };
+    if let Err(why) = watched(offer, moved) {
+        eprintln!("noise-cancelled: an offer of Choose by Ear won't be heard: {why}");
+    }
+}
+
+/// The offer as `offer` holds it, one line.
 fn said(offer: &Offer) -> String {
+    let mut said = told(offer).to_string();
+    said.push('\n');
+    said
+}
+
+/// The offer's fields, as `offer` holds them.
+fn told(offer: &Offer) -> Value {
     let new = if offer.new_microphone {
         "microphone"
     } else {
         "spot"
     };
-    let mut said = json!({
+    json!({
         "microphone": offer.microphone,
         "node": offer.node,
         "spot": offer.spot.name,
         "key": offer.spot.key,
         "new": new,
     })
-    .to_string();
-    said.push('\n');
-    said
 }
 
 /// An offer from what `offer` holds, or none when it doesn't read.
