@@ -289,6 +289,19 @@ fn a_name_saying_nothing_or_too_much_is_refused() {
 }
 
 #[test]
+fn a_cleaned_pick_kept_anywhere_is_known() {
+    let chosen = Chosen::new(Some(folder("any").join("cleaner")), Cleaner::DeepFilterNet);
+    assert!(!chosen.any_picked(), "nothing was picked yet");
+    chosen
+        .choose(MV7, &desk(), Cleaner::RNNoise)
+        .expect("the pick is kept");
+    assert!(
+        chosen.any_picked(),
+        "the MV7's pick at the desk went unseen"
+    );
+}
+
+#[test]
 fn nowhere_to_keep_it_keeps_nothing() {
     let chosen = Chosen::new(None, Cleaner::DeepFilterNet);
     chosen

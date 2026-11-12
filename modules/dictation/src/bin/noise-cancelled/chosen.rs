@@ -101,6 +101,12 @@ impl Chosen {
         })
     }
 
+    /// Whether Joel has kept a cleaned pick for any microphone anywhere,
+    /// after which a microphone's twin is the better guess than itself.
+    pub fn any_picked(&self) -> bool {
+        !self.picks().is_empty()
+    }
+
     /// Whether Joel has named the spot with `key`.
     pub fn named(&self, key: &str) -> bool {
         self.names().iter().any(|(named, _)| named == key)

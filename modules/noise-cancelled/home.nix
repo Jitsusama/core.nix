@@ -30,7 +30,9 @@
 # nothing restarted. A spot it's never been picked at takes its newest pick
 # anywhere, and a microphone never picked for the most picked. A raw pick
 # makes the microphone itself the one calls hear, though its twin was
-# before, and settles Choose by Ear's offer for it there. Joel's own
+# before, and settles Choose by Ear's offer for it there. Once a cleaned
+# pick is kept, each twin ranks one above its microphone, so when the
+# microphone chosen goes, WirePlumber falls back to a twin. Joel's own
 # names for spots, such as "the desk", are kept beside it in spots. Each clip
 # is scored by DNSMOS too (models.nix), its marks shown after the pick, and
 # the pick and every clip's marks, numbers alone and never the sound, kept

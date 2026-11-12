@@ -48,6 +48,8 @@ const CUSHION: usize = 2 * FRAME;
 struct Microphone {
     name: String,
     description: String,
+    /// Its rank among the sources, for the session manager to choose by.
+    priority: Option<String>,
 }
 
 impl Microphone {
@@ -67,8 +69,21 @@ impl Microphone {
                 .or_else(|| props.get("node.nick"))
                 .unwrap_or(name)
                 .to_owned(),
+            priority: props.get("priority.session").map(str::to_owned),
         })
     }
+}
+
+/// The rank a microphone's twin takes among the sources, from the
+/// microphone's own `priority.session`: one above it once Joel has kept a
+/// cleaned pick, so that when the microphone chosen goes, the session
+/// manager falls back to a twin rather than to a microphone it cleans; and none before,
+/// so nothing changes until he picks.
+fn rank(priority: Option<&str>, chosen: &Chosen) -> Option<i64> {
+    if !chosen.any_picked() {
+        return None;
+    }
+    priority?.parse::<i64>().ok()?.checked_add(1)
 }
 
 /// Serves until PipeWire goes away.
@@ -83,6 +98,8 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     let registry = core
         .get_registry_rc()
         .map_err(|why| format!("PipeWire's registry: {why}"))?;
+    // The picks, read again as each microphone comes, for its twin's rank.
+    let ranking = chosen.clone();
     let worker = Rc::new(Worker::start(models.to_path_buf(), chosen, offers)?);
     let pairs: Rc<RefCell<HashMap<u32, Pair>>> = Rc::default();
     // Each link from a source, by its id, to the microphone whose pair
@@ -128,7 +145,8 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
                 let Some(microphone) = global.props.and_then(Microphone::of) else {
                     return;
                 };
-                match Pair::new(&core, &worker, global.id, &microphone) {
+                let ranked = rank(microphone.priority.as_deref(), &ranking);
+                match Pair::new(&core, &worker, global.id, &microphone, ranked) {
                     Ok(pair) => {
                         eprintln!("noise-cancelled: offering {}", pair.description);
                         pairs.borrow_mut().insert(global.id, pair);
@@ -193,6 +211,7 @@ impl Pair {
         worker: &Worker,
         id: u32,
         microphone: &Microphone,
+        ranked: Option<i64>,
     ) -> Result<Self, String> {
         let description = format!("{}, Noise Cancelled", microphone.description);
         let group = format!("{OURS}{}", microphone.name);
@@ -218,6 +237,9 @@ impl Pair {
             props.insert(*pw::keys::MEDIA_CLASS, "Audio/Source");
             props.insert(*pw::keys::NODE_NAME, group.as_str());
             props.insert(*pw::keys::NODE_DESCRIPTION, description.as_str());
+            if let Some(ranked) = ranked {
+                props.insert(*pw::keys::PRIORITY_SESSION, ranked.to_string());
+            }
             props
         })
         .map_err(|why| format!("its source: {why}"))?;
@@ -440,3 +462,7 @@ fn mono() -> Result<Vec<u8>, String> {
     .map(|(cursor, _)| cursor.into_inner())
     .map_err(|why| format!("its format wouldn't serialize: {why:?}"))
 }
+
+#[cfg(test)]
+#[path = "pipe_tests.rs"]
+mod tests;
