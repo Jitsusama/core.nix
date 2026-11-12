@@ -514,7 +514,10 @@ fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
 }
 
 /// Runs a source's command on a thread of its own, or, while it runs
-/// already, once more after it, so the last change always counts.
+/// already, once more after it, so the last change always counts. A list
+/// is read once more only if it's still due as the read ends: one asked
+/// for by a change the running read already took, as a watch beginning
+/// does a moment after the change that's read, would read it twice.
 fn start(shared: &Arc<Shared>, at: usize, what: Run) {
     {
         let mut daemon = lock(&shared.daemon);
@@ -528,7 +531,9 @@ fn start(shared: &Arc<Shared>, at: usize, what: Run) {
         loop {
             read_source(&shared, at, what);
             let mut daemon = lock(&shared.daemon);
-            if !daemon.again.remove(&(at, what)) {
+            let again = daemon.again.remove(&(at, what))
+                && (what == Run::Opened || due(&shared, &daemon, at));
+            if !again {
                 daemon.running.remove(&(at, what));
                 return;
             }
