@@ -17,6 +17,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::{ASKING, Words};
+use crate::interface::refused;
 
 /// niri wakes the screens at any key, so the key that asked to turn them
 /// all off, still held or let go just after, would wake them at once:
@@ -299,15 +300,8 @@ pub fn answered(
     named: &str,
     words: &Words,
 ) -> Value {
-    let refused = |code: &str, said: Option<String>| {
-        let mut error = json!({"code": code, "message": code});
-        if let Some(said) = said {
-            error["said"] = Value::String(said);
-        }
-        json!({"id": id, "error": error})
-    };
     let Some(answer) = answer else {
-        return refused("no-answer", None);
+        return refused(id, "no-answer", "niri didn't answer the screen act", "");
     };
     let not_done = match act {
         Act::On(_) | Act::Wake(_) => Some(&words.not_on),
@@ -333,13 +327,17 @@ pub fn answered(
             .next()
             .map(|first| first.to_lowercase().chain(letters).collect())
             .unwrap_or_default();
-        let said = not_done.map(|words| words.replace("{thing}", thing).replace("{why}", &why));
-        return refused("refused", said);
+        let said = not_done.map_or_else(String::new, |words| {
+            words.replace("{thing}", thing).replace("{why}", &why)
+        });
+        return refused(id, "refused", &format!("niri refused it: {why}"), &said);
     }
     if answer["Ok"]["OutputConfigChanged"] == "OutputWasMissing" {
         return refused(
+            id,
             "unplugged",
-            Some(words.is_unplugged.replace("{name}", named)),
+            "niri says the output was missing",
+            &words.is_unplugged.replace("{name}", named),
         );
     }
     json!({"id": id, "done": true})

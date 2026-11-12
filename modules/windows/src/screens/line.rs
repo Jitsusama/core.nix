@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 use super::acts::{Act, Set};
 use super::settings::{self, Choice, Setting};
 use super::{Words, mode_of, named_of, runs, scale};
+use crate::interface::refused;
 
 /// What a multiple is typed with after it, "1.5x" or "1.5×".
 const MULTIPLE_UNITS: [char; 3] = ['x', 'X', '\u{d7}'];
@@ -74,18 +75,12 @@ pub fn asked(
     outputs: &BTreeMap<String, Value>,
     words: Option<&Words>,
 ) -> Result<Act, Value> {
-    let refused = |code: &str, said: Option<String>| {
-        let mut error = json!({"code": code, "message": code});
-        if let Some(said) = said {
-            error["said"] = Value::String(said);
-        }
-        json!({"id": id, "error": error})
-    };
     if said["do"] != "line" {
-        return Act::asked(said).ok_or_else(|| refused("unknown-act", None));
+        return Act::asked(said)
+            .ok_or_else(|| refused(id, "unknown-act", "the ask names no screen act", ""));
     }
     let Some(words) = words else {
-        return Err(refused("no-rows", None));
+        return Err(refused(id, "no-rows", "no words are read, so no rows", ""));
     };
     let name = said["output"].as_str().unwrap_or_default();
     let Some(output) = outputs
@@ -93,8 +88,10 @@ pub fn asked(
         .filter(|output| output["logical"].is_object())
     else {
         return Err(refused(
+            id,
             "unplugged",
-            Some(words.is_unplugged.replace("{name}", name)),
+            &format!("niri lists no lit screen {name}"),
+            &words.is_unplugged.replace("{name}", name),
         ));
     };
     let option = said["option"].as_str().unwrap_or_default();
@@ -111,7 +108,12 @@ pub fn asked(
         .into_iter()
         .find(|setting| settings::option(&words.told.part(setting.id)) == option)
     else {
-        return Err(refused("unknown-option", None));
+        return Err(refused(
+            id,
+            "unknown-option",
+            &format!("{name} has no setting {option}"),
+            "",
+        ));
     };
     let typed = match &said["typed"] {
         Value::String(typed) => typed.clone(),
@@ -125,14 +127,16 @@ pub fn asked(
             done: "set".to_owned(),
         })),
         None => Err(refused(
+            id,
             "not-offered",
-            Some(not_offered(
+            &format!("{name} offers no {option} {typed}"),
+            &not_offered(
                 &setting,
                 option,
                 &typed,
                 &named_of(outputs, name, words),
                 words,
-            )),
+            ),
         )),
     }
 }

@@ -40,6 +40,18 @@ pub const DOMAIN: Domain = Domain {
     named_only: &NAMED_ONLY,
 };
 
+/// A refusal with words for Joel beside its cause, as the ready-rows form
+/// has it and the machine daemon says it: `said` is what the shell shows,
+/// and `message` the cause, for whoever reads the answer. Empty words are
+/// left out, so the shell says its own.
+pub fn refused(id: &Value, code: &str, message: &str, said: &str) -> Value {
+    let mut answer = error(id, code, message);
+    if !said.is_empty() {
+        answer["error"]["said"] = json!(said);
+    }
+    answer
+}
+
 #[cfg(test)]
 mod tests {
     use daemon_serve::asks::{Ask, place_of};
