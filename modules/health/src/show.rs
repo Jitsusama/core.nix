@@ -8,8 +8,8 @@ use std::fmt::Write as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::agents::{self, Died};
-use crate::day::{Agents, Badness, Boot, Day, Kind, Thing};
+use crate::agents::{self, Agents, Died};
+use crate::day::{Badness, Boot, Day, Kind, Thing};
 use crate::disk;
 use crate::feel;
 use crate::figures::{self, Side};
@@ -242,6 +242,15 @@ pub fn asked(day: &Day, words: &str) -> String {
     }
     if words == "figures" {
         return figures_by_side(day);
+    }
+    if words == "busy" {
+        let said = day.busy.said();
+        let said = if said.is_empty() {
+            "nothing weighed\n".to_owned()
+        } else {
+            said
+        };
+        return format!("busy on {}{}\n{said}", day.date, until(day.to));
     }
     if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
         let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));

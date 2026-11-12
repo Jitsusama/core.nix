@@ -15,6 +15,7 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::agents;
+use crate::busy;
 use crate::day::{Day, Kind};
 use crate::disk;
 use crate::feel;
@@ -46,6 +47,7 @@ pub struct Follower {
     sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
     presences: Option<PathBuf>,
+    cgroups: Option<(PathBuf, String)>,
     guards: Vec<PathBuf>,
     guards_stopped: Vec<PathBuf>,
 }
@@ -84,6 +86,7 @@ impl Follower {
             sessions: None,
             proc: None,
             presences: None,
+            cgroups: None,
             guards: Vec::new(),
             guards_stopped: Vec::new(),
         }
@@ -123,6 +126,36 @@ impl Follower {
             }
         }
         self.guards_stopped = look.stopped;
+    }
+
+    /// Weigh whose work kept the processors busy, from the groups beneath
+    /// `cgroups`, the account's under its `manager`, named for their
+    /// quests by the presences being counted.
+    #[must_use]
+    pub fn weighing(self, cgroups: &Path, manager: &str) -> Self {
+        Self {
+            cgroups: Some((cgroups.to_owned(), manager.to_owned())),
+            ..self
+        }
+    }
+
+    /// Every five minutes, keep what each group used since the last look
+    /// in the hour of `at`.
+    pub fn weigh(&mut self, at: i64) {
+        let (Some((cgroups, manager)), Some(presences), Some(proc)) =
+            (&self.cgroups, &self.presences, &self.proc)
+        else {
+            return;
+        };
+        if date_of(at, &self.zone) != self.day.date || !self.day.busy.due(at) {
+            return;
+        }
+        let hour = Timestamp::from_microsecond(at)
+            .map(|at| at.to_zoned(self.zone.clone()).hour())
+            .unwrap_or_default();
+        let groups = busy::look(cgroups, manager, presences, proc);
+        self.day.busy.saw(at, &format!("{hour:02}"), groups);
+        self.changed = true;
     }
 
     /// Look for the agents that died among the sessions' presences.
@@ -414,6 +447,13 @@ pub fn follow(into: &Path) -> io::Result<()> {
             .hearing(&home.join(".pi/agent/sessions"))
             .counting_the_dead(&home.join(PRESENCES));
     }
+    let manager = source
+        .processes()
+        .and_then(|proc| fs::read_to_string(proc.join("self/cgroup")).ok())
+        .and_then(|cgroup| busy::manager_of(&cgroup));
+    if let (Some(cgroups), Some(manager)) = (source.cgroups(), manager) {
+        follower = follower.weighing(cgroups, &manager);
+    }
     if let Some(kept) = fs::read(file_of(into, &today))
         .ok()
         .and_then(|kept| serde_json::from_slice(&kept).ok())
@@ -454,6 +494,7 @@ fn run(
             follower.look_at_lid(look(), wall);
             follower.mind(wall);
             follower.count_the_dead(wall);
+            follower.weigh(wall);
             follower.guard(wall);
             follower.feel();
             follower.time_typing();

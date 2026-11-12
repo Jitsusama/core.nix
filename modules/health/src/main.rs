@@ -21,7 +21,10 @@
 //! And each half minute it keeps what every pi session and the shell hold
 //! in memory and swap, by how long each has run, so one that grows as it
 //! ages shows, and counts the agents that died: a session whose presence
-//! says busy or listening though its process is gone.
+//! says busy or listening though its process is gone. Each five minutes
+//! it weighs whose work kept the processors busy, each quest's sessions and
+//! commands, his apps' slice and each of the machine's services, by the
+//! hour.
 //! It keeps the day in `~/.local/state/health/<date>.json`, with the
 //! figures cadence day holds it to beside the tally: the slowest boot and
 //! shutdown, each kind's errors, the minutes lost, the most each watched
@@ -35,6 +38,7 @@
 //! `health launches` each program's openings and ends as the windows
 //! daemon timed them, each daemon's ready and pi's start as it said it,
 //! and each service a restart had gone, and
+//! `health busy` names each hour's busiest three, in core-minutes, and
 //! `health figures` says each figure's side: his, what Joel waited for or
 //! saw, or ours, what the machine and its agents did or a model reckons.
 //! `--day 2026-11-12` reads another day. Health judges nothing; `cadence
@@ -42,6 +46,7 @@
 
 mod agents;
 mod asks;
+mod busy;
 mod day;
 mod disk;
 mod feel;
@@ -80,6 +85,7 @@ health died            the agents that died, and those gone since before today
 health launcher        each part of the launcher, timed against its budget
 health launches        each program's openings, ends and ready, the slowest first
 health figures         each figure cadence holds the day to, his first, then ours
+health busy            whose work kept the processors busy, an hour a line
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
 health follow          the daemon, which keeps the day's file current

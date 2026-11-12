@@ -108,6 +108,16 @@ impl Source {
         }
     }
 
+    /// Where each group of processes says what processor time it used,
+    /// which only Linux's cgroups say.
+    #[must_use]
+    pub fn cgroups(self) -> Option<&'static Path> {
+        match self {
+            Self::Journal => Some(Path::new("/sys/fs/cgroup")),
+            Self::UnifiedLog => None,
+        }
+    }
+
     /// Where the system's disk guard says how the disks stand.
     #[must_use]
     pub fn guard_status(self) -> PathBuf {

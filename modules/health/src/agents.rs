@@ -26,6 +26,33 @@ pub struct Died {
     pub title: String,
 }
 
+/// The agents gone without parking: those at the last look, and every one
+/// that died in the day, each by session.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Agents {
+    /// When they were last looked for, in microseconds since the epoch.
+    pub looked: i64,
+    /// Gone at the last look, whenever each died.
+    pub gone: BTreeMap<String, Died>,
+    /// Each that died in the day, kept though its presence goes.
+    pub died: BTreeMap<String, Died>,
+}
+
+impl Agents {
+    /// Keep what a look at `at` found gone, those that died on `date`
+    /// among them.
+    pub fn saw(&mut self, at: i64, gone: BTreeMap<String, Died>, died_today: impl Fn(i64) -> bool) {
+        self.looked = at;
+        for (session, died) in &gone {
+            if died_today(died.at) {
+                self.died.insert(session.clone(), died.clone());
+            }
+        }
+        self.gone = gone;
+    }
+}
+
 /// Look in `presences` for sessions whose owner is gone from `proc` and
 /// that didn't park, by session.
 #[must_use]
