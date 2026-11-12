@@ -65,46 +65,52 @@ function run(failures) {
         ["held GNOME", "firmware balanced", "processor balance_performance"]);
     machine("a profile on before the firmware's been read says nothing it hasn't",
         choice("balanced", { on: true, firmware: undefined, processor: undefined }), []);
-    // What a lock leaves open: the windows, then whose, the most first,
-    // then by name, four named and the rest counted.
+    // What a lock leaves open, from the windows daemon's windows-open
+    // record, counted and ordered there (ZINAWZ, #3718): the windows,
+    // then whose in the daemon's order, four named and the windows of the
+    // rest counted, a window of no program among them, so the figures
+    // add up to the windows open (Y2YBTS, 2026-11-12).
     const openWords = { window: "1 window", windows: "{count} windows", more: "{count} more" };
-    const windows = apps => apps.reduce((all, app, id) => Object.assign(all,
-        { [id]: { app_id: app } }), {});
-    const named = id => ({ kitty: "kitty", "google-chrome": "Chrome" })[id] ?? id;
-    machine("what a lock leaves open", Power.openSaid(Power.byProgram(windows(["kitty",
-        "google-chrome", "kitty", "slack", "zed", "mpv", "google-chrome", "kitty", ""]),
-    named), openWords), { windows: "9 windows", programs: "kitty 3 \u00b7 Chrome 2 \u00b7 mpv 1"
-        + " \u00b7 slack 1 \u00b7 1 more" });
-    machine("one window open", Power.openSaid(Power.byProgram(windows(["kitty"]), named),
-        openWords), { windows: "1 window", programs: "kitty 1" });
-    machine("none open says nothing", Power.openSaid(Power.byProgram({}, named), openWords),
+    const open = (count, programs) => Power.openOf({ key: "windows-open", open: count,
+        programs: programs.map(([program, many]) => ({ program, count: many })) });
+    machine("what a lock leaves open", Power.openSaid(open(9, [["kitty", 3], ["Chrome", 2],
+        ["mpv", 1], ["slack", 1], ["zed", 1]]), openWords),
+    { windows: "9 windows", programs: "kitty 3 \u00b7 Chrome 2 \u00b7 mpv 1 \u00b7 slack 1"
+        + " \u00b7 2 more" });
+    machine("a window of no program is counted in the rest",
+        Power.openSaid(open(3, [["kitty", 2]]), openWords),
+        { windows: "3 windows", programs: "kitty 2 \u00b7 1 more" });
+    machine("one window open", Power.openSaid(open(1, [["kitty", 1]]), openWords),
+        { windows: "1 window", programs: "kitty 1" });
+    machine("none open says nothing", Power.openSaid(open(0, []), openWords),
         { windows: "", programs: "" });
+    machine("before the windows daemon answers, nothing is said open",
+        Power.openSaid(Power.openOf(null), openWords), { windows: "", programs: "" });
     // Lock's drawer leads with what it does and what keeps running, then
     // its key and whose windows stay open; with none open, only that it
     // locks, and no key where it has none.
     const lockWords = Object.assign({ lead: "Locks the screen; {windows} keep running.",
         one: "Locks the screen; {windows} keeps running.", alone: "Locks the screen." },
     openWords);
-    machine("Lock's drawer", Power.lockSaid(Power.byProgram(windows(["kitty", "kitty"]), named),
-        "Super L", lockWords), { lead: "Locks the screen; 2 windows keep running.", facts: [
+    machine("Lock's drawer", Power.lockSaid(open(2, [["kitty", 2]]), "Super L", lockWords), { lead: "Locks the screen; 2 windows keep running.", facts: [
         { id: "session:Lock:key", value: "Super L" },
         { id: "session:Lock:open", value: "kitty 2" }] });
     machine("Lock's drawer with one window open says it keeps running",
-        Power.lockSaid(Power.byProgram(windows(["kitty"]), named), "Super L", lockWords).lead,
+        Power.lockSaid(open(1, [["kitty", 1]]), "Super L", lockWords).lead,
         "Locks the screen; 1 window keeps running.");
     machine("Lock's drawer with nothing open and no key",
-        Power.lockSaid(Power.byProgram({}, named), "", lockWords),
+        Power.lockSaid(open(0, []), "", lockWords),
         { lead: "Locks the screen.", facts: [] });
     // Ending the session's drawer says what it ends: how many windows in
     // its lead, and whose in its Ends; with none open, only what it does.
     const endWords = Object.assign({ lead: "Reboots the machine, closing {windows}.",
         alone: "Reboots the machine." }, openWords);
-    machine("Reboot's drawer", Power.endingSaid(Power.byProgram(windows(["kitty", "kitty",
-        "google-chrome"]), named), "session:Reboot:ends", endWords),
+    machine("Reboot's drawer", Power.endingSaid(open(3, [["kitty", 2], ["Chrome", 1]]),
+        "session:Reboot:ends", endWords),
     { lead: "Reboots the machine, closing 3 windows.", facts: [
         { id: "session:Reboot:ends", value: "kitty 2 \u00b7 Chrome 1" }] });
     machine("Reboot's drawer with nothing open",
-        Power.endingSaid(Power.byProgram({}, named), "session:Reboot:ends", endWords),
+        Power.endingSaid(open(0, []), "session:Reboot:ends", endWords),
         { lead: "Reboots the machine.", facts: [] });
     // How bright a room is, from the light sensor's lux.
     machine("a dark room", Power.roomLevel(0), 0);
