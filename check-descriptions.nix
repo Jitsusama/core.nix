@@ -1620,7 +1620,8 @@
     his turn back, pi's own share past a second (its queue, tools and preparing of calls), a
     provider's error, a stopped turn or a message said again, never the model's thinking, at most
     two minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or
-    its line
+    its line; and reads Chrome's history from its bytes in memory, asking only when each visit
+    began and how, to count reloads a minute apart and going back within seconds, keeping no page
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
