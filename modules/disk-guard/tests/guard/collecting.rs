@@ -232,6 +232,18 @@ impl Store {
     }
 
     fn config_keeping(&self, filling: &str, nearly_full: &str, garbage: &str) -> Config {
+        self.config_linking(filling, nearly_full, garbage, "null")
+    }
+
+    /// A config whose linking runs in `hours`, a JSON string or null for
+    /// any hour, so the other cases here run whatever the hour.
+    fn config_linking(
+        &self,
+        filling: &str,
+        nearly_full: &str,
+        garbage: &str,
+        hours: &str,
+    ) -> Config {
         Config::parse(&format!(
             r#"{{ "version": 1, "scope": "system", "status_file": true,
                  "bands": {{ "filling": "{filling}", "nearly_full": "{nearly_full}",
@@ -240,7 +252,7 @@ impl Store {
                           "temp_roots": "{0}/temproots", "roots": "{0}/gcroots",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  {garbage}
-                 "dedupe": {{ "systemd_run": "{0}/bin/systemd-run" }},
+                 "dedupe": {{ "systemd_run": "{0}/bin/systemd-run", "hours": {hours} }},
                  "boot": "{0}/boot",
                  "sources": {{}} }}"#,
             self.root.display()
@@ -1191,6 +1203,54 @@ fn a_run_stops_when_the_moment_ends_and_isnt_counted_done() {
     store.step_until(&mut guard, |store| store.deduped().len() == 2);
     assert_eq!(store.deduped()[1]["outcome"], "reclaimed");
     assert_eq!(store.linked(), ["optimise 5", "stopped", "optimise 5"]);
+}
+
+/// The local hours from `from` to `to` minutes past now, as the config
+/// writes them.
+fn hours_from_now(from: i64, to: i64) -> String {
+    let minute = i64::from(disk_guard::clock::minute_of_day(now()).unwrap());
+    let at = |offset: i64| {
+        let of_day = (minute + offset).rem_euclid(24 * 60);
+        format!("{:02}:{:02}", of_day / 60, of_day % 60)
+    };
+    format!("\"{}-{}\"", at(from), at(to))
+}
+
+#[test]
+fn linking_waits_for_its_hours() {
+    let store = Store::new();
+    let later = hours_from_now(60, 120);
+    let mut guard = store.guard(store.config_linking("0%", "0%", "", &later));
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    steps_then_wait(&mut guard, &CALM);
+    assert!(store.linked().is_empty(), "{:?}", store.linked());
+}
+
+#[test]
+fn a_run_stops_when_its_hours_end_and_isnt_counted_done() {
+    let store = Store::new();
+    fs::write(store.root.join("slow"), "").unwrap();
+    let now_on = hours_from_now(-1, 60);
+    let mut guard = store.guard(store.config_linking("0%", "0%", "", &now_on));
+    store.step_until(&mut guard, |store| !store.linked().is_empty());
+    let past = Tick {
+        wall: now() + 3.0 * 3600.0,
+        ..tick()
+    };
+    let started = Instant::now();
+    while store.deduped().is_empty() {
+        assert!(started.elapsed() < AT_IDLE, "{:?}", store.linked());
+        guard.step(&past, &CALM).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        store.linked().contains(&"stopped".to_owned()),
+        "{:?}",
+        store.linked()
+    );
+    assert_eq!(store.deduped()[0]["outcome"], "kept");
 }
 
 #[test]

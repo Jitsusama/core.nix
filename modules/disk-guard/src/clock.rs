@@ -55,6 +55,21 @@ pub fn stamp(wall: f64) -> String {
     )
 }
 
+/// The local minute of the day at a wall time, from midnight, through the
+/// C library as `stamp` reads it; none for a time it can't place.
+pub fn minute_of_day(wall: f64) -> Option<u32> {
+    let whole = std::time::Duration::try_from_secs_f64(wall).ok()?.as_secs();
+    let seconds = libc::time_t::try_from(whole).ok()?;
+    // SAFETY: tm is plain data, zeroed is a valid value, and localtime_r
+    // writes only the struct it's given.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    // SAFETY: as above; seconds lives for the call.
+    if unsafe { libc::localtime_r(&raw const seconds, &raw mut tm) }.is_null() {
+        return None;
+    }
+    u32::try_from(tm.tm_hour * 60 + tm.tm_min).ok()
+}
+
 /// One reading of the clocks, in seconds: wall time, time since boot
 /// without suspends, time spent suspended since boot, and the boot's id.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -159,7 +159,10 @@ or launchd, and [`home.nix`][2] the account's.
   newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing
   stalls on the disk or memory, since it can wait without cost, stopping
-  when the moment ends. An account's guard on the same filesystem asks it to
+  when the moment ends. It runs only in the night's hours, 01:30 to 07:00
+  unless `dedupe.hours` says otherwise, and stops when they end: a run
+  reads every file not yet linked, and on a disk with no I/O scheduler its
+  idle weight holds back nothing of that. An account's guard on the same filesystem asks it to
   collect rather than collecting itself; with no system daemon answering, it
   collects with `nix store gc --max` once nearly full.
 - **Footprint.** A file's size and blocks are what it holds once read; on a
