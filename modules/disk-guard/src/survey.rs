@@ -385,9 +385,13 @@ fn offer_git(repo: &Path, world: &World, offers: &mut Vec<Offer>) {
 /// The quest workspaces in `path`, judged by their quests' READMEs in
 /// `quests`, and in each one still at work the browser profiles its `tmp/`
 /// holds at rest and what else it left there unwritten, but for what a
-/// process works in.
+/// process works in. Use is judged only of an entry old enough to offer,
+/// and before it's sized, which walks all of it; where processes work is
+/// read once, as there can be tens of thousands of entries to ask of.
 fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<Offer>) {
     let Some(device) = device(path) else { return };
+    let places = activity::Workplaces::new(world.processes, world.me);
+    let worked_in = |path: &Path| places.work_in(path);
     let (over, working): (Vec<_>, Vec<_>) = workspaces::find(path, quests)
         .into_iter()
         .partition(workspaces::over);
@@ -405,7 +409,8 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
         }
         let a_profile = |path: &Path| profiles.iter().any(|profile| profile.path == path);
         for entry in scratch::entries(&tmp) {
-            if a_profile(&entry.path) || worked_in(&entry.path, world) {
+            let young = scratch::idle(&entry, world.awake, world.now) < scratch::QUEST_UNWRITTEN;
+            if young || a_profile(&entry.path) || worked_in(&entry.path) {
                 continue;
             }
             let size = || size(&entry.path, world);
@@ -420,8 +425,9 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
                 });
             }
         }
-        for entry in scratch::entries(&workspace.path) {
-            if scratch::kept_beside_tmp(&entry.path) || worked_in(&entry.path, world) {
+        for entry in scratch::beside_tmp(&workspace.path) {
+            let idle = scratch::idle(&entry, world.awake, world.now);
+            if idle < scratch::QUEST_SCRATCH_UNWRITTEN || worked_in(&entry.path) {
                 continue;
             }
             let size = || size(&entry.path, world);
@@ -453,15 +459,6 @@ fn offer_workspaces(path: &Path, quests: &Path, world: &World, offers: &mut Vec<
             });
         }
     }
-}
-
-/// Whether a process works in `path`: sits in it, runs from it, or holds
-/// or maps a file in it.
-fn worked_in(path: &Path, world: &World) -> bool {
-    matches!(
-        activity::judge(world.processes, world.me, path, None),
-        Use::Busy(_)
-    )
 }
 
 /// What's left in a temporary directory, but for any a process names as its

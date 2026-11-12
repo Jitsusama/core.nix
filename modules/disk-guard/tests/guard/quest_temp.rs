@@ -122,3 +122,100 @@ fn what_a_quest_at_work_left_beside_its_tmp_is_offered_but_what_it_keeps() {
         }
     );
 }
+
+// On 12 November a laptop's guard spent 88% of a core on its passes once
+// it read what quests left beside their tmp/: it judged each of 7,805
+// entries against every process's open files before asking its age, and
+// most were too young to offer anyway. Asking the age first, a survey of
+// thousands of young entries among hundreds of busy processes takes no
+// time; the other way round it's billions of comparisons.
+#[test]
+fn young_quest_scratch_is_never_judged_against_the_processes() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let workspace = dir(&workspaces.join("QEST-20200101-ABCDEF"));
+    let tmp = dir(&workspace.join("tmp"));
+    for n in 0..2_000 {
+        file(&tmp.join(format!("run-{n}")), "x");
+        file(&workspace.join(format!("lab-{n}")), "x");
+    }
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    let elsewhere = home.join("elsewhere");
+    let busy: Vec<_> = (0..500)
+        .map(|pid| Process {
+            pid: pid + 10,
+            uid: unsafe { libc::geteuid() },
+            files: (0..1_000).map(|n| elsewhere.join(format!("{n}"))).collect(),
+            readable: true,
+            ..Process::default()
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let found = offers(&config, &busy, &|_| false);
+    let took = started.elapsed();
+    assert!(found.is_empty(), "nothing is old enough: {found:?}");
+    assert!(
+        took < std::time::Duration::from_secs(10),
+        "a survey of young scratch took {took:?}, as if each entry were judged"
+    );
+}
+
+// Old entries must be asked whether a process works in them, and on the
+// same laptop a fresh survey still spent minutes of CPU doing it, one pass
+// over every process's files per entry. Read once into an index, where
+// processes work answers thousands of old entries at a lookup each.
+#[test]
+fn old_quest_scratch_is_judged_against_the_processes_once() {
+    let home = tempfile::tempdir().unwrap();
+    let home = real(home.path());
+    let quests = dir(&home.join("quests"));
+    file(
+        &quests.join("QEST-20200101-ABCDEF/README.md"),
+        "---\nid: QEST-20200101-ABCDEF\nstatus: active\nupdated: 2020-01-01\n---\n# At work\n",
+    );
+    let workspaces = dir(&home.join("workspaces"));
+    let workspace = dir(&workspaces.join("QEST-20200101-ABCDEF"));
+    let tmp = dir(&workspace.join("tmp"));
+    for n in 0..2_000 {
+        for entry in [
+            tmp.join(format!("run-{n}")),
+            workspace.join(format!("lab-{n}")),
+        ] {
+            file(&entry, "x");
+            written_ago(&entry, 8.0 * DAY);
+        }
+    }
+    let config = config(&format!(
+        r#""workspaces": {{ "kind": "workspaces", "path": "{}", "quests": "{}" }}"#,
+        workspaces.display(),
+        quests.display()
+    ));
+    let elsewhere = home.join("elsewhere");
+    let busy: Vec<_> = (0..500)
+        .map(|pid| Process {
+            pid: pid + 10,
+            uid: unsafe { libc::geteuid() },
+            files: (0..1_000).map(|n| elsewhere.join(format!("{n}"))).collect(),
+            readable: true,
+            ..Process::default()
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let found = offers(&config, &busy, &|_| false);
+    let took = started.elapsed();
+    assert_eq!(found.len(), 4_000, "every old entry is offered");
+    assert!(
+        took < std::time::Duration::from_secs(10),
+        "a survey of old scratch took {took:?}, as if each entry were judged alone"
+    );
+}
