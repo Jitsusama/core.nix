@@ -107,7 +107,8 @@ STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
 ORCHESTRATING = "Orchestrating Quest"
-# Longer than the two seconds a session's drawer must stay on its row to read its answer.
+# The two seconds a session's drawer must stay on its row to read its answer, and a while longer.
+A_STAY = 2.0
 PAST_A_STAY = 2.5
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
@@ -787,7 +788,8 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
          "from": "joel", "text": asked},
         {"stage": "replied", "at": "2026-11-11T21:01:00.000Z", "text": answer},
     ]  # fmt: skip
-    talk.write_text("".join(json.dumps(line) + "\n" for line in lines))
+    unread = "".join(json.dumps(line) + "\n" for line in lines)
+    talk.write_text(unread)
     try:
         shell.close_launcher()
         shell.as_account(shell.ipc("toggle"))
@@ -808,17 +810,27 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
             return facts[:2] == ["You Asked", "Its Answer"] and values[:2] == [asked, answered]
 
         assert shell.showing()["selected"] is None, shell.showing()
-        # Passed over: found, then gone again at one more letter.
-        shell.send_key("backspace")
-        shell.launcher_until(answering)
-        showed = time.monotonic()
-        shell.send_chars("x")
-        shell.launcher_until(lambda shown: not answering(shown))
-        passing = time.monotonic() - showed
-        time.sleep(PAST_A_STAY)
-        assert '"stage":"read"' not in talk.read_text(), (
-            f"a drawer passed over in {passing:.1f} s was read"
-        )
+        # Passed over: found, then gone again at one more letter. The shell's drawer is out
+        # only between the Backspace sent and its going seen, so that bounds it: under a
+        # stay, a read is wrong. A loaded builder can stretch it past one, where a read is
+        # right, so that pass proves nothing and is tried again with the talk unread.
+        for _ in range(3):
+            sent = time.monotonic()
+            shell.send_key("backspace")
+            shell.launcher_until(answering)
+            shell.send_chars("x")
+            shell.launcher_until(lambda shown: not answering(shown))
+            out = time.monotonic() - sent
+            # Past a stay, the shell would have read it by now if it reads a pass-over.
+            time.sleep(PAST_A_STAY)
+            read = '"stage":"read"' in talk.read_text()
+            if out < A_STAY:
+                assert not read, f"a drawer out at most {out:.1f} s was read"
+                break
+            talk.write_text(unread)
+        else:
+            slow = "no pass over a drawer took under two seconds in three"
+            raise AssertionError(slow)
         shell.send_key("backspace")
         shell.launcher_until(answering)
         deadline = time.monotonic() + 10
