@@ -159,7 +159,17 @@ Singleton {
     // pi run without a login shell can't reach its model, and exits at
     // once, so a window started that way blinked and went (Joel,
     // 2026-10-28).
+    // Where the harness's config says sessions Joel starts run in one of
+    // pi's hosts (5KBYD7's start hosted, harness #1434), its decider is
+    // asked first, and one it hosts opens only a viewer (starting).
     function start(quest, folder, orchestrates) {
+        if (startsHosted) {
+            starting.createObject(root, { quest, folder, orchestrates });
+            return;
+        }
+        startWindow(quest, folder, orchestrates);
+    }
+    function startWindow(quest, folder, orchestrates) {
         const told = orchestrates ? ["QUEST_WORKFLOW_ORCHESTRATE=1"] : [];
         root.inSessions("pi-session", ["--directory", folder,
             "env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`].concat(told,
@@ -1368,6 +1378,102 @@ Singleton {
     // window opens as it always did, so a decider that hangs, or isn't
     // installed, costs a spawn three seconds at most (2QZBX9, [00cc6a34]).
     readonly property int decidesWithin: 3000
+
+    // Whether the harness's config says sessions Joel starts run in pi's
+    // host: its quest-workflow.startHost, "attended" for it. Said nothing
+    // of, a start opens its window at once, never asking, since asking
+    // costs every start about 550 ms (5KBYD7: 544, 615 and 552 ms, and 856
+    // to orchestrate).
+    readonly property bool startsHosted: {
+        try {
+            const said = JSON.parse(harnessConfig.text() || "{}");
+            return said?.["quest-workflow"]?.startHost === "attended";
+        } catch (error) {
+            return false;
+        }
+    }
+    FileView {
+        id: harnessConfig
+        path: `${Quickshell.env("XDG_CONFIG_HOME") || `${root.home}/.config`}`
+            + "/pi/agentic-harness.pi/config.json"
+        blockLoading: true
+        printErrors: false
+        // Read again whenever it's written, as Joel's settings change it.
+        watchChanges: true
+        onFileChanged: reload()
+    }
+
+    // One start on a quest asked of the decider, in its folder, as the
+    // harness's contract says: `hosted <host> <session>` last, on exit 0,
+    // opens a viewer of it in the host, focused, and no window of pi's;
+    // kept out (exit 3), failing, or no word of opening in time, its window
+    // opens as it always did, told why where the decider says. Once it's
+    // said it's opening, no window opens unless it fails, however long the
+    // host takes.
+    Component {
+        id: starting
+
+        Process {
+            id: begun
+
+            required property string quest
+            required property string folder
+            required property bool orchestrates
+            property bool opening: false
+            property bool settled: false
+            property string last: ""
+
+            function settle(hosted) {
+                if (settled)
+                    return;
+                settled = true;
+                const [said, host, id] = last.split(" ");
+                const named = /^[A-Za-z0-9._-]+$/;
+                if (hosted && said === "hosted" && named.test(host ?? "") && named.test(id ?? "")) {
+                    root.inSessions("pi-hosted", root.viewing(["mycelium", "--realm",
+                        host.replace(/-attended$/, ""), "attach", "--host", host, "--session", id]),
+                        null, `pi-hosted.${id}`);
+                    console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`);
+                    Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
+                        + " in pi's host");
+                    return;
+                }
+                if (last.startsWith("quest-workflow.startHost ")) {
+                    console.info(`sessions: ${quest} starts in a window, since ${last}`);
+                    Report.say(last);
+                }
+                root.startWindow(quest, folder, orchestrates);
+            }
+
+            workingDirectory: folder
+            command: ["env", `QUEST_WORKFLOW_AUTOLOAD_ID=${quest}`].concat(root.decider,
+                ["--start"], orchestrates ? ["--orchestrate"] : [])
+            running: true
+            stdout: SplitParser {
+                onRead: line => {
+                    begun.last = line.trim();
+                    if (begun.last.startsWith("opening "))
+                        begun.opening = true;
+                }
+            }
+            onExited: code => {
+                begun.settle(code === 0);
+                begun.destroy();
+            }
+
+            property Timer patience: Timer {
+                running: true
+                interval: root.decidesWithin
+                onTriggered: {
+                    if (begun.opening || begun.settled)
+                        return;
+                    begun.settle(false);
+                    // Ended by the terminate signal, so it opens nothing.
+                    begun.running = false;
+                }
+            }
+        }
+    }
 
     // One fresh session's decision, in its folder with what it starts with.
     // Hosted, it opens nothing, since its host runs it; kept out (exit 3),

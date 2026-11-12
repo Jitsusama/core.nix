@@ -118,28 +118,30 @@ ShellRoot {
     }
 
     function startedOn(quest) {
-        return Niri.spawns.filter(command => command.includes(`QUEST_WORKFLOW_AUTOLOAD_ID=${quest} `));
+        const told = `QUEST_WORKFLOW_AUTOLOAD_ID=${quest} `;
+        return Niri.spawns.filter(command => command.includes(told));
     }
 
     // Hosted, a viewer of it opens and no window of pi; kept out, a window
     // opens as it always did.
     function starting() {
-        Expect.expect("one started in pi's host opens no window", startedOn("QEST-HOSTED").length === 0,
-            Niri.spawns.join("\n"));
+        Expect.expect("one started in pi's host opens no window",
+            startedOn("QEST-HOSTED").length === 0, Niri.spawns.join("\n"));
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
             || startedOn("QEST-PLAIN").length === 0)
             return;
-        Expect.expect("its viewer is named for it", viewer[0].includes(" --class pi-hosted.s-begun "),
-            viewer[0]);
+        Expect.expect("its viewer is named for it",
+            viewer[0].includes(" --class pi-hosted.s-begun "), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
         const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`
             + ` orchestrate=${orchestrates ? 1 : 0}`;
         Expect.expect("each is asked in its folder, with whether it orchestrates",
-            lines.includes(started("QEST-HOSTED", true)) && lines.includes(started("QEST-AWAY", false))
-            && lines.includes(started("QEST-PLAIN", false)), lines.join("\n"));
+            [started("QEST-HOSTED", true), started("QEST-AWAY", false),
+                started("QEST-PLAIN", false)].every(line => lines.includes(line)),
+            lines.join("\n"));
         config.setText("{}");
         stage = "unset";
     }
