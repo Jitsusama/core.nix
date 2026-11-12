@@ -83,6 +83,9 @@ onLinux {
         pkgs.lib.filter (key: pkgs.lib.hasInfix "Vimium" (key.when or "")) home.jitsusama.keys.chrome
       );
       own = [
+        "Ctrl+l"
+        "Ctrl+f"
+        "Escape Return"
         "F7"
         "Ctrl+Shift+a"
         "Space"

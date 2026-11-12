@@ -393,7 +393,8 @@
   chrome-leaves-vimium-out-unasked = ''
     an account whose machine doesn't ask for Vimium gets no Vimium settings and no launcher row
     that needs Vimium, so a managed Chrome's launcher lists no keys it can't take, and it still
-    lists Chrome's own for caret browsing, searching tabs and moving by the screen or to an end
+    lists Chrome's own for the address, finding and following a link found, caret browsing,
+    searching tabs and moving by the screen or to an end
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
