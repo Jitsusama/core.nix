@@ -22,7 +22,7 @@ function run(failures, fromRoot) {
         "slowed by the processor \u00b7 cargo \u00b7 1 of 16 cores");
     lag("a wait on memory, by the program holding the most",
         said({ trouble: ["it waited", "it swapped"], worst: "memory",
-            top: { of: "memory", name: "firefox", resident_b: 6237000000 } }),
+            top: { of: "memory", name: "firefox", resident_b: 6_237_000_000 } }),
         "slowed by memory \u00b7 firefox \u00b7 6.24 GB");
     lag("a wait on the processor in its first window, its cause alone",
         said({ trouble: ["it waited"], worst: "cpu" }), "slowed by the processor");

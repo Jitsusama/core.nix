@@ -1372,8 +1372,11 @@ fn a_wait_on_memory_is_told_with_the_program_holding_the_most() {
     std::fs::write(folder.join(".writing"), window.to_string()).unwrap();
     std::fs::rename(folder.join(".writing"), folder.join("status.json")).unwrap();
     let top = &client.changed("status:lag-watch")["said"]["top"];
-    assert_eq!((&top["of"], &top["name"]), (&json!("memory"), &json!("kitty")),
-        "told {top}");
+    assert_eq!(
+        (&top["of"], &top["name"]),
+        (&json!("memory"), &json!("kitty")),
+        "told {top}"
+    );
 }
 
 // A guard long silent is told with how its unit stands, asked of

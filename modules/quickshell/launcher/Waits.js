@@ -8,20 +8,23 @@
 .pragma library
 .import "Numbers.js" as Numbers
 
-// Bytes in SI units, to three digits: "6.24 GB".
+// The units a program's memory is said in, each a thousand of the last.
 const UNITS = ["B", "kB", "MB", "GB", "TB"];
 const KILO = 1000;
 
 // Lag's words, by id, with each {name} filled, or "" where they say none.
 function filled(words, id, fill) {
-    let said = (words ?? {})[id];
-    if (typeof said !== "string")
+    let said = words?.[id];
+    if (typeof said !== "string") {
         return "";
-    for (const key of Object.keys(fill ?? {}))
+    }
+    for (const key of Object.keys(fill ?? {})) {
         said = said.replace(`{${key}}`, fill[key]);
+    }
     return said;
 }
 
+// Bytes in SI units, to three digits: "6.24 GB".
 function sized(bytes, settings) {
     let scaled = Number(bytes);
     let unit = 0;
@@ -36,15 +39,18 @@ function sized(bytes, settings) {
 // processor's in cores of all it has, at least one, since the program
 // most behind a wait used some; memory's by what it holds.
 function behind(top, words, settings) {
-    if (!top || !top.name)
+    const name = top?.name;
+    if (!name) {
         return "";
-    if (top.of === "cpu" && Number(top.cores) > 0) {
-        const all = Number(top.cores);
-        const used = Math.min(all, Math.max(1, Math.round(Number(top.share_ratio) * all)));
-        return filled(words, "cores", { name: top.name, used: used, all: all });
     }
-    if (top.of === "memory" && Number(top.resident_b) > 0)
-        return filled(words, "holds", { name: top.name, held: sized(top.resident_b, settings) });
+    const all = Number(top.cores);
+    if (top.of === "cpu" && all > 0) {
+        const used = Math.min(all, Math.max(1, Math.round(Number(top.share_ratio) * all)));
+        return filled(words, "cores", { name, used, all });
+    }
+    if (top.of === "memory" && Number(top.resident_b) > 0) {
+        return filled(words, "holds", { name, held: sized(top.resident_b, settings) });
+    }
     return "";
 }
 
@@ -53,12 +59,14 @@ function behind(top, words, settings) {
 // cause it has no words for, lag-watch's own sentence, or how many.
 function headline(window, words, settings) {
     const trouble = Array.isArray(window?.trouble) ? window.trouble : [];
-    if (trouble.length === 0)
+    if (trouble.length === 0) {
         return filled(words, "calm");
+    }
     const cause = filled(words, `cause:${window.worst ?? ""}`);
-    if (cause === "")
+    if (cause === "") {
         return trouble.length === 1 ? trouble[0]
             : filled(words, "several", { count: trouble.length });
+    }
     const program = behind(window.top, words, settings);
     return program === "" ? cause : `${cause} \u00b7 ${program}`;
 }

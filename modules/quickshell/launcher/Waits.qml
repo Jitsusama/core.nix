@@ -2,9 +2,10 @@
 // one word for it, or "slow", how he asks. It's listed first in Machine,
 // before the processor, the memory, heat and the disk it points at:
 // Joel went to Machine asking why the laptop was slow and gave up after
-// ten seconds with Lag 13th of 15 (VKCF3Z, 2026-11-12). lag-watch (modules/lag-watch) writes its last ten
-// seconds to a file as each ends, which the machine daemon tells the
-// shell as it's renamed in (Watchers.qml), so nothing is spawned or read
+// ten seconds with Lag 13th of 15 (VKCF3Z, 2026-11-12). lag-watch
+// (modules/lag-watch) writes its last ten seconds to a file as each
+// ends, which the machine daemon tells the shell as it's renamed in
+// (Watchers.qml), so nothing is spawned or read
 // here, and it's answered again only until its first ten seconds are
 // told. A machine without lag-watch has no Waits (home.nix).
 //

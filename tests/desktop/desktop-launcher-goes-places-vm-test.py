@@ -704,8 +704,7 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     )
     desktop.down_to("Power")
     desktop.launcher_until(
-        lambda shown: re.match(r"\d+%", str((shown["selected"] or {}).get("side", "")))
-        is not None
+        lambda shown: re.match(r"\d+%", str((shown["selected"] or {}).get("side", ""))) is not None
     )
     desktop.step_in("ret")
     desktop.launcher_until(
@@ -1047,9 +1046,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(
-        lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True)
-    )
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
     desktop.down_to("Network")
     desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)
