@@ -1,7 +1,8 @@
-# tuple-call, built from this directory, its tests run as it builds. Its
-# socket's tests ask it with a crate every daemon's tests share
+# tuple-call, built from this directory, its tests run as it builds. It
+# serves with the serving side every daemon shares (../../daemon-serve),
+# and its socket's tests ask it with a crate every daemon's tests share
 # (../../daemon-client), so the source is cut from the modules folder
-# holding both, and built from this one.
+# holding them all, and built from this one.
 {
   lib,
   rustPlatform,
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../../daemon-client/Cargo.toml
       ../../daemon-client/src
+      ../../daemon-serve/Cargo.toml
+      ../../daemon-serve/src
     ];
   };
   sourceRoot = "${src.name}/tuple/call";

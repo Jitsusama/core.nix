@@ -1,7 +1,8 @@
 //! tuple-call SOCKET TUPLE
 //!
 //! The call Joel's in, held for the shell and anything else that asks,
-//! over SOCKET in the shell's daemon interface (ask.rs): one record,
+//! over SOCKET in the shell's daemon interface (../../daemon-serve serves
+//! it, as it serves every daemon of the shell): one record,
 //! `call:current`, said whole to each watch as it changes (lib.rs says
 //! what it holds). TUPLE is the tuple command.
 //!
@@ -34,21 +35,27 @@
 //! back as this starts, so Joel's last calls outlive a restart.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 
+use daemon_serve::asks::Domain;
+use daemon_serve::serve::{self, Own};
 use inotify::{EventMask, Inotify, WatchMask};
 use serde_json::{Value, json};
 
 use tuple_call::Held;
-use tuple_call::ask::{self, Ask, KEY, VERSION, error};
+use tuple_call::ask::{self, Act, refused};
+
+/// The daemon as its clients know it: Tuple's, keeping the one call.
+const DOMAIN: Domain = Domain {
+    name: "tuple",
+    kinds: &[ask::KIND],
+};
 use tuple_call::recent::Recent;
 use tuple_call::stream::{self, Line};
 
@@ -88,29 +95,30 @@ impl Standing {
     }
 }
 
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    told: Sender<String>,
-}
-
-/// Everything the threads share.
+/// What the threads hold of the call.
 struct Daemon {
     held: Held,
     standing: Standing,
-    watches: Vec<Watch>,
     /// The record as last said, less when.
     said: Value,
     /// When it last changed, in milliseconds since the epoch.
     heard: i64,
-    since: i64,
     /// Recent as its file last kept it, and the file.
     saved: Recent,
     recent: PathBuf,
 }
 
-type Shared = Arc<(Mutex<Daemon>, Condvar)>;
+/// Everything the threads share: the call, woken as it changes, and
+/// what serves it, handed each change.
+struct Calls {
+    daemon: Mutex<Daemon>,
+    moved: Condvar,
+    /// Set once, as it starts, since what serves it answers the acts,
+    /// which change the call.
+    serving: OnceLock<Arc<serve::Shared>>,
+}
+
+type Shared = Arc<Calls>;
 
 fn now() -> i64 {
     SystemTime::now()
@@ -136,7 +144,7 @@ fn main() {
         eprintln!("usage: tuple-call SOCKET TUPLE");
         std::process::exit(64);
     };
-    let listener = match listen(Path::new(&socket)) {
+    let listener = match serve::listen(Path::new(&socket)) {
         Ok(listener) => listener,
         Err(why) => {
             eprintln!("<3>couldn't listen on {socket}: {why}");
@@ -158,19 +166,26 @@ fn main() {
     held.recent = Recent::read(&std::fs::read_to_string(&recent).unwrap_or_default());
     let saved = held.recent.clone();
     let said = held.record();
-    let shared: Shared = Arc::new((
-        Mutex::new(Daemon {
+    let shared: Shared = Arc::new(Calls {
+        daemon: Mutex::new(Daemon {
             held,
             standing: Standing::Starting,
-            watches: Vec::new(),
             said,
             heard: began,
-            since: began,
             saved,
             recent,
         }),
-        Condvar::new(),
-    ));
+        moved: Condvar::new(),
+        serving: OnceLock::new(),
+    });
+    let doing = Doing {
+        tuple: tuple.clone(),
+        room,
+    };
+    let serving = serve::Shared::new(DOMAIN, acts(&shared, doing));
+    serving.slow(ask::ACTS);
+    let _ = shared.serving.set(Arc::clone(&serving));
+    tell(&shared, &lock(&shared));
     let (wake, woken) = mpsc::channel();
     {
         let shared = Arc::clone(&shared);
@@ -185,50 +200,17 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || end_rings(&shared));
     }
-    let doing = Arc::new(Doing { tuple, room });
-    for (connection, stream) in (1u64..).zip(listener.incoming()) {
-        let Ok(stream) = stream else { continue };
-        let shared = Arc::clone(&shared);
-        let doing = Arc::clone(&doing);
-        std::thread::spawn(move || serve(&shared, &doing, stream, connection));
+    // The socket systemd holds for it (tuple-call.socket), taken as
+    // daemon-serve takes every daemon's, served for as long as this runs.
+    serve::accept(serving, listener);
+    loop {
+        std::thread::park();
     }
-}
-
-/// The socket systemd holds for it (tuple-call.socket), so the shell
-/// never finds it missing while the daemon starts or starts again; or,
-/// run by hand, its own, in a folder only Joel reads, replacing one left
-/// behind.
-fn listen(socket: &Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process, as the first
-/// descriptor after the standard three, when it says so (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    let given = unsafe { UnixListener::from_raw_fd(3) };
-    // A copy closed on exec, so the tuple commands it runs don't hold the
-    // socket open, which the descriptor as handed over isn't.
-    given.try_clone().ok()
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Daemon> {
     shared
-        .0
+        .daemon
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -254,33 +236,39 @@ fn changed(shared: &Shared, daemon: &mut Daemon) {
     if record_now != daemon.said {
         daemon.said = record_now;
         daemon.heard = now();
-        let told = record(daemon);
-        daemon.watches.retain(|watch| {
-            watch
-                .told
-                .send(json!({"id": watch.id, "changed": [told]}).to_string())
-                .is_ok()
-        });
+        tell(shared, daemon);
     }
-    shared.1.notify_all();
+    shared.moved.notify_all();
+}
+
+/// Hands what serves the shell the record and how Tuple stands, which it
+/// tells each watch once either changes.
+fn tell(shared: &Shared, daemon: &Daemon) {
+    if let Some(serving) = shared.serving.get() {
+        serving.change(vec![record(daemon)], sources(&daemon.standing));
+    }
+}
+
+/// How Tuple stands, as the interface says a source does: by its word,
+/// and why, once it's refused.
+fn sources(standing: &Standing) -> Value {
+    match standing {
+        Standing::Refused(why) => json!({"tuple": {"state": "refused", "reason": why}}),
+        other => json!({"tuple": other.word()}),
+    }
 }
 
 /// Says how Tuple stands, telling every watch once that changes, so a
 /// client hears a sign-in go or come as Tuple says so.
-fn stand(daemon: &mut Daemon, standing: Standing) {
+fn stand(shared: &Shared, daemon: &mut Daemon, standing: Standing) {
     if daemon.standing == standing {
         return;
     }
     if let Standing::Refused(why) = &standing {
         eprintln!("<4>{why}");
     }
-    let word = standing.word();
     daemon.standing = standing;
-    for watch in &daemon.watches {
-        let _ = watch
-            .told
-            .send(json!({"id": watch.id, "sources": {"tuple": word}}).to_string());
-    }
+    tell(shared, daemon);
 }
 
 /// Follows Tuple's stream whenever its daemon answers on `socket`.
@@ -304,7 +292,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
             };
             let mut daemon = lock(shared);
             daemon.held.follow(None, now());
-            stand(&mut daemon, standing);
+            stand(shared, &mut daemon, standing);
             changed(shared, &mut daemon);
             wait = if began.elapsed() >= FOLLOWED_FOR {
                 LOOKS_AGAIN
@@ -314,7 +302,7 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
         } else {
             let mut daemon = lock(shared);
             daemon.held.follow(None, now());
-            stand(&mut daemon, Standing::Starting);
+            stand(shared, &mut daemon, Standing::Starting);
             changed(shared, &mut daemon);
             wait = LOOKS_AGAIN;
         }
@@ -376,7 +364,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 // The record goes first, so whoever hears that Tuple
                 // answers already holds what its state said.
                 changed(shared, &mut daemon);
-                stand(&mut daemon, standing);
+                stand(shared, &mut daemon, standing);
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
@@ -400,7 +388,7 @@ fn end_rings(shared: &Shared) {
     loop {
         let Some(ends) = daemon.held.log.ends() else {
             daemon = shared
-                .1
+                .moved
                 .wait(daemon)
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             continue;
@@ -414,7 +402,7 @@ fn end_rings(shared: &Shared) {
         }
         let left = Duration::from_millis(u64::try_from(left).unwrap_or(0));
         daemon = shared
-            .1
+            .moved
             .wait_timeout(daemon, left)
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .0;
@@ -560,123 +548,26 @@ struct Doing {
     room: PathBuf,
 }
 
-/// Answers one client until it goes.
-fn serve(shared: &Shared, doing: &Arc<Doing>, stream: UnixStream, connection: u64) {
-    let Ok(reading) = stream.try_clone() else {
-        return;
-    };
-    let (told, lines) = mpsc::channel::<String>();
-    let mut writing = stream;
-    std::thread::spawn(move || {
-        for line in lines {
-            if writeln!(writing, "{line}").is_err() {
-                break;
-            }
-        }
-    });
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
-        let (id, asked) = ask::read(&line);
-        if answer(shared, &id, &asked, connection, &told) {
-            continue;
-        }
-        // An act runs Tuple's command, on a thread of its own.
-        let shared = Arc::clone(shared);
-        let doing = Arc::clone(doing);
-        let told = told.clone();
-        std::thread::spawn(move || {
-            let _ = told.send(act(&shared, &doing, &id, &asked).to_string());
-        });
-    }
-    lock(shared)
-        .watches
-        .retain(|watch| watch.connection != connection);
-}
-
-/// Answers one of the interface's own asks, saying whether it was one
-/// rather than an act. The answer is sent while the daemon is held, so
-/// it's never said after a change it doesn't hold.
-fn answer(
-    shared: &Shared,
-    id: &Value,
-    asked: &Ask,
-    connection: u64,
-    told: &Sender<String>,
-) -> bool {
-    let mut daemon = lock(shared);
-    let answer = match asked {
-        Ask::Hello => json!({
-            "id": id, "version": VERSION, "domain": "tuple", "state": "answering",
-            "since": daemon.since, "sources": {"tuple": daemon.standing.word()},
-        }),
-        Ask::Health => {
-            let reason = match &daemon.standing {
-                Standing::Refused(why) => why.as_str(),
-                _ => "",
-            };
-            json!({
-                "id": id, "version": VERSION, "state": "answering",
-                "sources": {"tuple": {"state": daemon.standing.word(), "reason": reason}},
-                "watching": daemon.watches.len(),
-            })
-        }
-        Ask::Get { keys } => {
-            let records: Vec<Value> = if keys.iter().any(|key| key == KEY) {
-                vec![record(&daemon)]
-            } else {
-                Vec::new()
-            };
-            json!({"id": id, "records": records})
-        }
-        Ask::List => json!({"id": id, "records": [record(&daemon)]}),
-        Ask::Watch => {
-            // A watch asked again by its id replaces the one before.
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == *id));
-            daemon.watches.push(Watch {
-                connection,
-                id: id.clone(),
-                told: told.clone(),
-            });
-            let _ = told.send(json!({"id": id, "records": [record(&daemon)]}).to_string());
-            // How Tuple stands may have changed since hello said it, with
-            // no watch yet to tell, so the watch hears it as it begins.
-            json!({"id": id, "sources": {"tuple": daemon.standing.word()}})
-        }
-        Ask::Unwatch => {
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == *id));
-            json!({"id": id, "unwatched": true})
-        }
-        Ask::UnknownKind { kind } => error(
-            id,
-            "unknown-kind",
-            &format!("this daemon keeps only {}, not {kind}", ask::KIND),
-        ),
-        Ask::Unknown { ask } => error(id, "unknown-ask", &format!("no ask {ask:?}")),
-        _ => return false,
-    };
-    let _ = told.send(answer.to_string());
-    true
+/// What answers the call's acts, each on a thread of its own (ask's
+/// `ACTS`), which daemon-serve asks as a client asks one; it answers
+/// none of the interface's own asks, which daemon-serve answers.
+fn acts(shared: &Shared, doing: Doing) -> Own {
+    let shared = Arc::clone(shared);
+    Box::new(move |said| ask::act(said).map(|asked| act(&shared, &doing, &asked)))
 }
 
 /// Does one of the call's acts through Tuple's command, answering once
 /// it's done.
-fn act(shared: &Shared, doing: &Doing, id: &Value, asked: &Ask) -> Value {
+fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     let arguments: Vec<&str> = match asked {
-        Ask::Join { link } if link.is_empty() => {
-            return error(id, "refused", "that isn't a call's link");
-        }
-        Ask::Join { link } => vec!["call", "join", link],
-        Ask::Leave => vec!["call", "leave"],
-        Ask::Mute { muted: true } => vec!["call", "mute"],
-        Ask::Mute { muted: false } => vec!["call", "unmute"],
-        Ask::Share => vec!["share"],
-        Ask::Accept => vec!["call", "accept"],
-        Ask::Open => return open(shared, doing, id),
-        _ => return error(id, "unknown-ask", "not an act"),
+        Act::Join { link } if link.is_empty() => return refused("that isn't a call's link"),
+        Act::Join { link } => vec!["call", "join", link],
+        Act::Leave => vec!["call", "leave"],
+        Act::Mute { muted: true } => vec!["call", "mute"],
+        Act::Mute { muted: false } => vec!["call", "unmute"],
+        Act::Share => vec!["share"],
+        Act::Accept => vec!["call", "accept"],
+        Act::Open => return open(shared, doing),
     };
     let output = Command::new(&doing.tuple)
         .args(&arguments)
@@ -686,32 +577,30 @@ fn act(shared: &Shared, doing: &Doing, id: &Value, asked: &Ask) -> Value {
         Ok(output) if output.status.success() => {
             // Once Tuple says it's done, which it does as well when he
             // already was, that's how Joel stands, ahead of its stream.
-            if let Ask::Mute { muted } = asked {
+            if let Act::Mute { muted } = asked {
                 let mut daemon = lock(shared);
                 if let Some(live) = &mut daemon.held.live {
                     live.joel.muted = *muted;
                 }
                 changed(shared, &mut daemon);
             }
-            json!({"id": id, "done": true})
+            json!({"done": true})
         }
         Ok(output) => {
             let said = String::from_utf8_lossy(&output.stderr);
             let why = said.lines().rev().find(|line| !line.trim().is_empty());
-            error(
-                id,
-                "refused",
+            refused(
                 why.map_or_else(|| format!("tuple ended: {}", output.status), str::to_owned)
                     .as_str(),
             )
         }
-        Err(why) => error(id, "refused", &format!("couldn't run tuple: {why}")),
+        Err(why) => refused(&format!("couldn't run tuple: {why}")),
     }
 }
 
 /// Opens Joel's room with `tuple new`, answering with the link it prints
 /// as it does, and keeping it.
-fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
+fn open(shared: &Shared, doing: &Doing) -> Value {
     let mut child = match Command::new(&doing.tuple)
         .arg("new")
         .stdin(Stdio::null())
@@ -720,12 +609,12 @@ fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
         .spawn()
     {
         Ok(child) => child,
-        Err(why) => return error(id, "refused", &format!("couldn't run tuple: {why}")),
+        Err(why) => return refused(&format!("couldn't run tuple: {why}")),
     };
     let Some(stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
-        return error(id, "refused", "tuple new printed nothing");
+        return refused("tuple new printed nothing");
     };
     let mut lines = BufReader::new(stdout).lines();
     let found = lines
@@ -739,7 +628,7 @@ fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
         let _ = child.wait();
     });
     let Some(link) = found else {
-        return error(id, "refused", "tuple new printed no link");
+        return refused("tuple new printed no link");
     };
     keep(&doing.room, &link);
     let mut daemon = lock(shared);
@@ -748,7 +637,7 @@ fn open(shared: &Shared, doing: &Doing, id: &Value) -> Value {
     // came to his call.
     daemon.held.began(String::new(), now());
     changed(shared, &mut daemon);
-    json!({"id": id, "done": true, "link": link})
+    json!({"done": true, "link": link})
 }
 
 /// Keeps the room's link.

@@ -195,7 +195,9 @@ impl Drop for Running {
 trait Following {
     /// The record as a watch is told of it, once `wanted` holds of it.
     fn until(&mut self, what: &str, wanted: impl Fn(&Value) -> bool) -> Value;
-    /// How Tuple stands, as a watch is told once it's `word`.
+    /// How Tuple stands, once it's `word`: as health says it already, or
+    /// as a watch is told once it changes. A watch asked for without a
+    /// hello, as these ask, is told only what moves after it begins.
     fn stands(&mut self, word: &str);
     /// The call as a watch of it begins.
     fn watch(&mut self) -> Value;
@@ -215,6 +217,10 @@ impl Following for Client {
     }
 
     fn stands(&mut self, word: &str) {
+        let health = self.ask(&json!({"id": "stands", "ask": "health"}));
+        if health["sources"]["tuple"]["state"] == word {
+            return;
+        }
         loop {
             let said = self.heard();
             if said["sources"]["tuple"] == word {
@@ -263,8 +269,6 @@ fn a_stopped_tuple_is_never_started_and_its_call_is_none() {
         (&record["key"], &record["kind"], &record["state"]),
         (&json!("call:current"), &json!("call"), &json!("none"))
     );
-    // A watch hears how Tuple stands as it begins, whatever changed
-    // since hello said it.
     client.stands("starting");
     std::thread::sleep(Duration::from_millis(300));
     assert_eq!(running.read("bin/followed"), [] as [std::string::String; 0]);
