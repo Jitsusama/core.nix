@@ -223,7 +223,7 @@ fn guests(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Ve
         let Some(email) = email else {
             continue;
         };
-        let by = email.to_lowercase();
+        let by = email.trim().to_lowercase();
         if seen.contains(&by) {
             continue;
         }
@@ -236,6 +236,9 @@ fn guests(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Ve
         rows.push(json!({
             "key": format!("{parent}:{by}"),
             "thing": format!("{}:guest:{by}", within.thing),
+            // Who they are is People's to say, where it knows them, its row
+            // stepping through to them (ready-rows.md's lends).
+            "lends": format!("person:{by}"),
             "place": within.place,
             "kind": "guest",
             "parent": parent,
@@ -254,7 +257,9 @@ fn guests(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Ve
 }
 
 /// The files on it, each a row inside Attachments opening it in Google's
-/// window.
+/// window, a document of Docs, Sheets or Slides the document itself, so
+/// Documents' row for it shows where Documents holds it (ready-rows.md's
+/// lends).
 fn attachments(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec<Value> {
     let (_, glyph) = words.act("calendar:attachment");
     meeting
@@ -262,9 +267,13 @@ fn attachments(within: &Within, parent: &str, meeting: &Meeting, words: &Words) 
         .iter()
         .enumerate()
         .map(|(at, file)| {
-            json!({
+            let thing = match (&file.id, file.kind) {
+                (Some(id), Some(_)) => format!("gdoc:{id}"),
+                _ => format!("{}:attachment:{}", within.thing, file.link),
+            };
+            let mut row = json!({
                 "key": format!("{parent}:{at}"),
-                "thing": format!("{}:attachment:{}", within.thing, file.link),
+                "thing": &thing,
                 "place": within.place,
                 "kind": "attachment",
                 "parent": parent,
@@ -274,7 +283,11 @@ fn attachments(within: &Within, parent: &str, meeting: &Meeting, words: &Words) 
                 "hue": "program",
                 "side": [],
                 "acts": [opens("calendar:attachment", &file.link)],
-            })
+            });
+            if thing.starts_with("gdoc:") {
+                row["lends"] = json!(thing);
+            }
+            row
         })
         .collect()
 }

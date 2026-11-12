@@ -18,7 +18,7 @@ pub(super) fn zone() -> TimeZone {
     TimeZone::fixed(tz::offset(-4))
 }
 
-fn words() -> Words {
+pub(super) fn words() -> Words {
     Words::read(&vocabulary()).expect("calendar's words didn't read")
 }
 

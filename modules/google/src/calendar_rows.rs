@@ -696,3 +696,7 @@ mod words_tests;
 #[cfg(test)]
 #[path = "calendar_rows_told_tests.rs"]
 mod told_tests;
+
+#[cfg(test)]
+#[path = "calendar_rows_lent_tests.rs"]
+mod lent_tests;
