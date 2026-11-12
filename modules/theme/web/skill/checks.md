@@ -209,6 +209,9 @@ On a throttled middling phone (4 times slower CPU, a fast 4G network):
 - **The published copy is the local copy.** After publishing, fetch every file
   back and compare it; open the live page and look, never trusting the
   publish's own report.
+- **A local site is on its home** (`SKILL.md`, Where a Site Lives): its row
+  is in `sites.json`, the home was rebuilt from it, and every page opens
+  with the strip whose first link goes home and whose ask is the row's.
 
 ## Looking
 
