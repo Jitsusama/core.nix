@@ -21,7 +21,8 @@
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
 //! just ended against the days before it and sends the orchestrator its note
-//! (daily.rs).
+//! (daily.rs). Each finding goes in its ledger and to the owner its key's
+//! prefix names, or to the watcher (findings.rs).
 //!
 //! `cadence axes`, typed by Joel, shows the nine axes he holds the machine
 //! to, each against its bar with its owner, and `cadence axes <axis>`
@@ -29,13 +30,14 @@
 //!
 //!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS]
 //!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
-//!     cadence day [--orchestrator ADDRESS]
+//!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
 //!     cadence axes [AXIS]
 
 mod axes;
 mod card;
 mod daily;
 mod day;
+mod findings;
 mod idle;
 mod judge;
 mod mesh;
@@ -86,7 +88,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--restart WORDS \
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
-                 cadence day [--orchestrator ADDRESS]\n       \
+                 {DAY_USAGE}\n       \
                  cadence axes [AXIS]"
             );
             return ExitCode::from(2);
@@ -122,22 +124,27 @@ fn main() -> ExitCode {
     }
 }
 
+const DAY_USAGE: &str =
+    "cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]";
+
 fn day(mut args: impl Iterator<Item = String>) -> ExitCode {
-    let orchestrator = match (args.next().as_deref(), args.next()) {
-        (None, _) => None,
-        (Some("--orchestrator"), Some(address)) if args.next().is_none() => Some(address),
-        _ => {
-            eprintln!("usage: cadence day [--orchestrator ADDRESS]");
-            return ExitCode::from(2);
+    let mut told = daily::Told::default();
+    while let Some(flag) = args.next() {
+        match (flag.as_str(), args.next()) {
+            ("--orchestrator", Some(v)) => told.orchestrator = Some(v),
+            ("--watcher", Some(v)) => told.watcher = Some(v),
+            ("--owner", Some(v)) if v.contains('=') => {
+                let (prefix, address) = v.split_once('=').unwrap_or_default();
+                told.owners.insert(prefix.to_owned(), address.to_owned());
+            }
+            _ => {
+                eprintln!("usage: {DAY_USAGE}");
+                return ExitCode::from(2);
+            }
         }
-    };
+    }
     let ran = folders().and_then(|(_, state_home, folder)| {
-        daily::run(
-            &folder,
-            &state_home,
-            orchestrator.as_deref(),
-            now_ms() / 1000,
-        )
+        daily::run(&folder, &state_home, &told, now_ms() / 1000)
     });
     match ran {
         Ok(()) => ExitCode::SUCCESS,

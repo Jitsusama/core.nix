@@ -22,6 +22,9 @@
 # failed units, out-of-memory kills, pressure, switches) against the seven
 # before it, keeps it in day/ beside them, and sends the orchestrator a note of
 # what got worse and better, so a regression is named the day it appears.
+# Each finding stays in findings.jsonl until its figure is back two days,
+# goes once to the owner `owners` names for it, and to the orchestrator
+# once more if it's still open past its date.
 {
   config,
   lib,
@@ -73,6 +76,21 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "The mesh address asked when the watcher doesn't answer or is gone.";
+    };
+    owners = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        crashes = "ADDRESS";
+        "switch." = "ADDRESS";
+      };
+      description = ''
+        The mesh address each finding of `cadence day` goes to, by the
+        prefix of its key, the longest matching: `crashes:biome`,
+        `failed:quickshell.service`, `pressure.cpu.jobs`, `oom.machine`,
+        `switch.minutes.longest`. A finding no prefix matches goes to the
+        watcher.
+      '';
     };
     revive = {
       restart = lib.mkOption {
@@ -135,10 +153,22 @@ in
             (lib.getExe package)
             "day"
           ]
-          ++ lib.optionals (cfg.orchestrator != null) [
-            "--orchestrator"
-            cfg.orchestrator
-          ]
+          ++ lib.optionals (cfg.orchestrator != null) (
+            [
+              "--orchestrator"
+              cfg.orchestrator
+            ]
+            ++ lib.optionals (cfg.watcher != null) [
+              "--watcher"
+              cfg.watcher
+            ]
+            ++ lib.concatLists (
+              lib.mapAttrsToList (prefix: address: [
+                "--owner"
+                "${prefix}=${address}"
+              ]) cfg.owners
+            )
+          )
         );
         # journalctl and coredumpctl, as the account has them.
         Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];

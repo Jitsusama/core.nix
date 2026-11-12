@@ -124,10 +124,10 @@ pub fn judge(day: &Day, before: &[Day]) -> Judged {
     judged
 }
 
-/// The day's note, in at most ten lines: what got worse, what got
-/// better, and how much was read.
+/// The day's note, in at most ten lines: the findings past their date in
+/// `late`, what got worse, what got better, and how much was read.
 #[must_use]
-pub fn note(day: &Day, judged: &Judged, before: usize) -> String {
+pub fn note(day: &Day, judged: &Judged, before: usize, late: &[String]) -> String {
     let mut lines = vec![format!(
         "Day to {}: {} worse, {} better, of {} figures read ({} held against {} days before).",
         day.date,
@@ -143,7 +143,8 @@ pub fn note(day: &Day, judged: &Judged, before: usize) -> String {
         .iter()
         .map(|f| format!("- Worse: {}.", f.words));
     let better = judged.better.iter().map(|b| format!("- Better: {b}."));
-    let all: Vec<String> = worse.chain(better).collect();
+    let late = late.iter().map(|l| format!("- {l}."));
+    let all: Vec<String> = late.chain(worse).chain(better).collect();
     let shown = all.len().min(room);
     lines.extend(all.iter().take(shown).cloned());
     if all.len() > shown {
@@ -275,7 +276,7 @@ mod tests {
             .map(|_| day(&[("switch.minutes.median", 30.0)], &[]))
             .collect();
         let judged = judge(&day(&[("switch.minutes.median", 10.0)], &[]), &before);
-        let note = note(&day(&[], &[]), &judged, before.len());
+        let note = note(&day(&[], &[]), &judged, before.len(), &[]);
         assert!(
             note.contains("- Better: a switch's median length went from 30 min to 10 min."),
             "a shorter switch wasn't said as better: {note}"
@@ -297,15 +298,19 @@ mod tests {
             worse,
             ..Judged::default()
         };
-        let note = note(&day(&[], &[]), &judged, 7);
+        let note = note(&day(&[], &[]), &judged, 7, &["Late: x".to_owned()]);
         assert_eq!(
             note.lines().count(),
             10,
             "the note ran past ten lines: {note}"
         );
         assert!(
-            note.ends_with("- And 12 more in day/2026-11-12.json.\n"),
+            note.ends_with("- And 13 more in day/2026-11-12.json.\n"),
             "the note didn't say where the rest are: {note}"
+        );
+        assert!(
+            note.lines().nth(1) == Some("- Late: x."),
+            "a finding past its date didn't come first: {note}"
         );
     }
 }
