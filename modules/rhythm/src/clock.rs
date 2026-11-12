@@ -63,9 +63,8 @@ pub fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     era * 146_097 + of_era_days - 719_468
 }
 
-/// The civil date of a day counted from 1970-01-01, the other way round,
-/// for the tests' clock.
-#[cfg(test)]
+/// The civil date of a day counted from 1970-01-01, the other way round:
+/// the date a reading names, and the tests' clock.
 pub fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let days = days + 719_468;
     let era = days.div_euclid(146_097);

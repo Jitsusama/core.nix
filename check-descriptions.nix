@@ -2035,10 +2035,13 @@
     rhythm finds each night's stop at the last busy minute before four hours' sleep, never at
     dinner, lunch or a stray key, makes four weeks' middle usual with each weekday's own habit,
     the latest nights weighing most so a change shows within a week, guesses midnight and says so
-    with under a week of nights, reads only the times Joel typed from
-    zsh's history and pi's logs, and says it in plain words and its profile file; and it suggests a
-    walk only in daylight after a long stretch at the machine, an hour and a half apart, at most
-    three a day and one in poor weather, saying the weather and the sunset
+    with under a week of nights unless the four weeks before a break hold enough, keeps a year of
+    nights past the minutes and, once they span two months and an hour and a half of daylight,
+    leans tonight's stop with the day's length by at most an hour, reads only the times Joel
+    typed from zsh's history and pi's logs, each seeded night stopping at its last, and says it
+    in plain words and its profile file; and it suggests a walk only in daylight after a long
+    stretch at the machine, an hour and a half apart, at most three a day and one in poor
+    weather, saying the weather and the sunset
   '';
   rhythm-passes-clippy = ''
     clippy finds nothing in rhythm or its tests
