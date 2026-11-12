@@ -12,10 +12,6 @@
 # light it was heard in, what the curve asks there and whether it follows
 # the light now are told in $XDG_RUNTIME_DIR/backlight-now for Screens'
 # Brightness, emptied as the daemon stops.
-# From jitsusama.backlight.evening.start to its end, by the local clock,
-# the built-in screen eases to half the brightness the light asks for, as
-# the light research found dimming does most for the body clock
-# (src/evening.rs); a pick then is learned as the day would want it.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
 # panel at the same share of its own brightest (src/monitor/), once
 # udev opens its bus to the seat, as modules/ddcutil does. What such a
@@ -52,14 +48,6 @@ let
   );
 
   nightWhite = toString config.jitsusama.backlight.night.kelvin;
-
-  evening =
-    let
-      inherit (config.jitsusama.backlight) evening;
-    in
-    if evening.start == null then "off" else "${evening.start}-${evening.end}";
-
-  clock = lib.types.strMatching "([01][0-9]|2[0-3]):[0-5][0-9]";
 in
 {
   options.jitsusama.backlight.night.kelvin = lib.mkOption {
@@ -71,28 +59,6 @@ in
       The built-in screen's white at night, in kelvin, eased into over the
       half hour after sunset and out of over the half hour before sunrise;
       6500, the screen's own, keeps it from warming at all.
-    '';
-  };
-
-  options.jitsusama.backlight.evening.start = lib.mkOption {
-    type = lib.types.nullOr clock;
-    # Three hours before a midnight bed, the evening the light research
-    # (RSCH-20261108-HGB8JZ) keeps dim, until Joel picks his own bedtime.
-    default = "21:30";
-    description = ''
-      When the built-in screen starts to dim for the evening, by the local
-      clock, as "21:30": it eases to half the brightness the light asks for
-      over the half hour after, never under about 20 nits. Null keeps it
-      from dimming at all.
-    '';
-  };
-
-  options.jitsusama.backlight.evening.end = lib.mkOption {
-    type = clock;
-    default = "05:00";
-    description = ''
-      When the evening's dimming ends, by the local clock: the screen eases
-      back to the brightness the light asks for over the half hour after.
     '';
   };
 
@@ -166,7 +132,7 @@ in
       After = [ "graphical-session.target" ];
     };
     Service = {
-      ExecStart = "${lib.getExe package} ${standard} ${nightWhite} ${evening}";
+      ExecStart = "${lib.getExe package} ${standard} ${nightWhite}";
       Restart = "on-failure";
       RestartSec = 1;
       # A monitor's facts go with the daemon however it ends, a stop or a
