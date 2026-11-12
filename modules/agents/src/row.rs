@@ -562,4 +562,50 @@ mod tests {
         let held: Vec<_> = fold.held.iter().map(Shown::key).collect();
         assert_eq!(held, ["agent:A", "agent:B"]);
     }
+
+    #[test]
+    fn a_session_standing_at_the_top_is_never_folded_and_goes_by_its_own_name() {
+        // Joel looked for the void and found nothing: it was one of 23 in
+        // its orchestrator's fold (QCXZEB, 2026-11-12).
+        let top = json!({"name": "The Void", "keywords": ["void", "say it once"]});
+        let records = [
+            json!({"presence": {"addresses": ["O"], "busy": true}}),
+            json!({"presence": {"addresses": ["A"], "orchestratedBy": "O"}}),
+            json!({"presence": {"addresses": ["B"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["V"], "orchestratedBy": "O", "busy": true,
+                "questInfo": {"title": "Say It Once"}, "standsAtTop": top}}),
+        ];
+        let sessions: Vec<_> = records.iter().map(Session).collect();
+        let given = given();
+        let none = |_: &str| None::<String>;
+        let unlisted = |_: &str| None::<(String, String)>;
+        let windowed = |_: Session| true;
+        let known = Known {
+            joel_can: &given.joel_can,
+            jobs: &given.jobs,
+            spent: &none,
+            family: &none,
+            listed: &unlisted,
+            windowed: &windowed,
+            sharing: false,
+        };
+        let shown = rows(&sessions, &known, &words());
+        let keys: Vec<_> = shown.iter().map(Shown::key).collect();
+        assert_eq!(
+            keys,
+            ["agent:O", "agents:fold:O", "agent:V"],
+            "at the top, under nobody"
+        );
+        let Shown::Session(row) = &shown[2] else {
+            panic!("its own row: {shown:?}")
+        };
+        assert_eq!((row.name.as_str(), row.depth), ("The Void", 0));
+        assert!(
+            row.also.ends_with(" void say it once"),
+            "found by its words too: {}",
+            row.also
+        );
+        assert_eq!(row.ranked.belongs, "", "it belongs to no orchestration");
+        assert_eq!(row.returns, "talk", "Return talks to it, at work or not");
+    }
 }
