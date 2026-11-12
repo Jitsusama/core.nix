@@ -259,13 +259,17 @@ Provider {
     // answering, with nothing inside it to set (Y2YBTS, 2026-11-12: a
     // place whose source is away keeps its row). It's never gone, since a
     // show skips a gone row and a terminal's show must find the row
-    // Machine names, as Heat's held row is (Heat.qml's unheld).
+    // Machine names, as Heat's held row is (Heat.qml's unheld). It says it
+    // has parts, since a place holds an answer only with its parts or
+    // whole (Launcher.qml's resolved), so Machine keeps it in its place.
     function deskTold() {
         if (DeskLight.light === null)
             return {
                 headline: "",
+                glyph: Theme.glyph.lamp,
                 rows: [],
-                note: said(DeskLight.answering ? "unplugged" : "down")
+                note: said(DeskLight.answering ? "unplugged" : "down"),
+                parted: true
             };
         return {
             // Its side says only how it's lit, never its name again
