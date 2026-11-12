@@ -4,17 +4,39 @@
 # (2QZBX9, harness #1406). Each start is noted in $DECIDED, with the
 # folder, the quest and the model it was given, and a terminate signal
 # heard is noted there too, with when, in milliseconds since the epoch.
+# Asked to --start a session on a quest (5KBYD7's start hosted, harness
+# #1434), the quest says how it goes instead, and the start is noted with
+# its folder and whether it orchestrates.
 set -euo pipefail
 : "${DECIDED:?the check names the file each decision is noted in}"
 
-id="" model=""
+id="" model="" start="" orchestrate=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--session-id) id="$2" && shift 2 ;;
 	--model) model="$2" && shift 2 ;;
+	--start) start=1 && shift ;;
+	--orchestrate) orchestrate=1 && shift ;;
 	*) shift ;;
 	esac
 done
+
+if [ -n "$start" ]; then
+	quest=${QUEST_WORKFLOW_AUTOLOAD_ID:-}
+	echo "started $quest in $PWD orchestrate=$orchestrate" >>"$DECIDED"
+	case "$quest" in
+	QEST-HOSTED)
+		echo "opening harbour-attended"
+		echo "hosted harbour-attended s-begun"
+		;;
+	QEST-AWAY)
+		echo "quest-workflow.startHost is attended, but the host isn't listening"
+		exit 3
+		;;
+	*) exit 3 ;;
+	esac
+	exit 0
+fi
 
 # Heard before it's noted as asked, so a signal that comes once the
 # check reads the note always finds the trap.

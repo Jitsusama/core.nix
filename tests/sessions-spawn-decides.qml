@@ -5,8 +5,11 @@ pragma ComponentBehavior: Bound
 // the decider first: the one it hosts opens no window, the one it keeps out
 // opens told why, the one it says nothing of in three seconds opens once
 // it's ended, and the one it fails on opens as before; a saved one opens
-// at once, never asked. It exits 0 once that holds, and otherwise 1, saying
-// what didn't.
+// at once, never asked. Then, with the harness's config saying sessions start
+// in its host, three are started on quests: the one hosted opens only a
+// viewer, the ones kept out open their windows; and once the config says
+// nothing, one opens its window never asked. It exits 0 once that holds,
+// and otherwise 1, saying what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -54,6 +57,10 @@ ShellRoot {
                 handing();
             else if (stage === "deciding")
                 deciding();
+            else if (stage === "starting")
+                starting();
+            else if (stage === "unset")
+                unset();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -103,8 +110,59 @@ ShellRoot {
             lines.join("\n"));
         Expect.expect("a saved one is never asked", !lines.some(line => line.includes("s-saved")),
             lines.join("\n"));
+        Expect.expect("the config says sessions start in pi's host", Sessions.startsHosted, "");
+        Sessions.start("QEST-HOSTED", root.folder, true);
+        Sessions.start("QEST-AWAY", root.folder, false);
+        Sessions.start("QEST-PLAIN", root.folder, false);
+        stage = "starting";
+    }
+
+    function startedOn(quest) {
+        return Niri.spawns.filter(command => command.includes(`QUEST_WORKFLOW_AUTOLOAD_ID=${quest} `));
+    }
+
+    // Hosted, a viewer of it opens and no window of pi; kept out, a window
+    // opens as it always did.
+    function starting() {
+        Expect.expect("one started in pi's host opens no window", startedOn("QEST-HOSTED").length === 0,
+            Niri.spawns.join("\n"));
+        const viewer = Niri.spawns.filter(command => command.includes(
+            " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
+        if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
+            || startedOn("QEST-PLAIN").length === 0)
+            return;
+        Expect.expect("its viewer is named for it", viewer[0].includes(" --class pi-hosted.s-begun "),
+            viewer[0]);
+        decided.reload();
+        const lines = decided.text().split("\n");
+        const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`
+            + ` orchestrate=${orchestrates ? 1 : 0}`;
+        Expect.expect("each is asked in its folder, with whether it orchestrates",
+            lines.includes(started("QEST-HOSTED", true)) && lines.includes(started("QEST-AWAY", false))
+            && lines.includes(started("QEST-PLAIN", false)), lines.join("\n"));
+        config.setText("{}");
+        stage = "unset";
+    }
+
+    // Said nothing of, a start opens its window at once, never asking.
+    function unset() {
+        if (Sessions.startsHosted)
+            return;
+        Sessions.start("QEST-QUIET", root.folder, false);
+        Expect.expect("with nothing said, a start opens its window at once",
+            startedOn("QEST-QUIET").length === 1, Niri.spawns.join("\n"));
+        decided.reload();
+        Expect.expect("and its decider is never asked", !decided.text().includes("QEST-QUIET"),
+            decided.text());
         console.log("a spawn kept in the background opens no window");
         Qt.exit(0);
+    }
+
+    FileView {
+        id: config
+
+        path: `${Quickshell.env("HOME")}/.config/pi/agentic-harness.pi/config.json`
+        blockLoading: true
     }
 
     FileView {
