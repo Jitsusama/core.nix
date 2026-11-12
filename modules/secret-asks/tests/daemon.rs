@@ -170,9 +170,39 @@ fn row(client: &mut Client, id: &str) -> Value {
 
 /// Asks the daemon what a row's act asks, as the launcher sends it.
 fn act(client: &mut Client, row: &Value, at: usize) -> Value {
+    client.ask(&acting(row, at))
+}
+
+/// The ask a row's act sends.
+fn acting(row: &Value, at: usize) -> Value {
     let mut asked = row["acts"][at]["ask"].clone();
     asked["id"] = json!(7);
-    client.ask(&asked)
+    asked
+}
+
+/// The answer to a row's act and the row it draws again, in whichever order
+/// the daemon says them: asking alone passes over the watch's pushes, and
+/// one the daemon sent before its answer would be lost.
+fn act_and_row(client: &mut Client, row: &Value, at: usize, id: &str) -> (Value, Value) {
+    let asked = acting(row, at);
+    client.send(&asked);
+    let key = format!("row:asks:{id}");
+    let (mut answer, mut drawn) = (None, None);
+    while answer.is_none() || drawn.is_none() {
+        let said = client.heard();
+        if said["id"] == asked["id"] && said.get("changed").is_none() {
+            answer = Some(said);
+        } else if let Some(record) = said["changed"]
+            .as_array()
+            .and_then(|records| records.iter().find(|record| record["key"] == key))
+        {
+            drawn = Some(record["row"].clone());
+        }
+    }
+    (
+        answer.expect("the act was answered"),
+        drawn.expect("the row was drawn again"),
+    )
 }
 
 #[test]
@@ -262,7 +292,7 @@ fn a_yes_for_what_changed_since_it_was_drawn_is_refused_and_drawn_again() {
     let id = setting.ask(ITEM);
     let drawn = row(&mut client, &id);
     std::fs::write(setting.folder.join("tree/new"), "a change").expect("a change is made");
-    let said = act(&mut client, &drawn, 0);
+    let (said, again) = act_and_row(&mut client, &drawn, 0, &id);
     assert_eq!(
         said["error"]["code"], "changed",
         "a changed tree was released: {said}"
@@ -271,7 +301,6 @@ fn a_yes_for_what_changed_since_it_was_drawn_is_refused_and_drawn_again() {
         said["error"]["said"], "it changed since it was shown; read it again",
         "the launcher can't say why: {said}"
     );
-    let again = row(&mut client, &id);
     assert_ne!(
         again["digest"], drawn["digest"],
         "the row wasn't drawn again"
@@ -314,11 +343,8 @@ fn a_no_refuses_and_reads_nothing() {
     let mut client = setting.watching();
     let id = setting.ask(ITEM);
     let drawn = row(&mut client, &id);
-    assert_eq!(
-        act(&mut client, &drawn, 1)["refused"],
-        true,
-        "the no wasn't taken"
-    );
+    let (said, after) = act_and_row(&mut client, &drawn, 1, &id);
+    assert_eq!(said["refused"], true, "the no wasn't taken: {said}");
     assert_eq!(
         setting.answer(&id)["why"],
         "refused by Joel",
@@ -329,11 +355,7 @@ fn a_no_refuses_and_reads_nothing() {
         reading.contains("ASK_OUTCOME=refused\n"),
         "a no isn't read: {reading}"
     );
-    assert_eq!(
-        row(&mut client, &id)["acts"],
-        json!([]),
-        "a refused ask still offered acts"
-    );
+    assert_eq!(after["acts"], json!([]), "a refused ask still offered acts");
     // A yes from the line as it was drawn, before the no, is refused.
     let late = act(&mut client, &drawn, 0);
     assert_eq!(
