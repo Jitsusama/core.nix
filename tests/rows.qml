@@ -26,8 +26,8 @@
 // view, relative to the cursor row's absolute one in text, or all absolute,
 // right-aligned on each row's baseline, from a handful of numbers however
 // many rows there are, and none at all off normal. A row's mark, whatever
-// its shape, stands at one optical size, its ink on the capitals' middle,
-// and its glyph is measured once, however many rows show it after. A
+// its shape, stands at one optical size, its ink on the capitals' middle
+// and starting on the mark column, and its glyph is measured once, however many rows show it after. A
 // status line's dot before Return goes with Return, the room held for a
 // wider word before it. A side of items on the cursor row says its words
 // in the row's ink and the dots between them muted. It exits 0 once every
@@ -278,13 +278,15 @@ ShellRoot {
             }
             Choice { id: valued; width: root.panel; name: "Date"; side: root.day; glyph: "$" }
             // Marks of every shape down one column: wide, square-ish, tall and
-            // narrow, and one already the em's size.
+            // narrow, one already the em's size, and one of the text's own
+            // drawn small in its advance, as Later's is.
             Row {
                 id: marks
                 Choice { width: 160; name: "Keyboard"; glyph: Theme.glyph.keyboard }
                 Choice { width: 160; name: "People"; glyph: Theme.glyph.people }
                 Choice { width: 160; name: "Bluetooth"; glyph: Theme.glyph.bluetooth }
                 Choice { width: 160; name: "Things"; glyph: Theme.glyph.category }
+                Choice { width: 160; name: "Later"; glyph: Theme.glyph.queued }
             }
             // Each mark's outline, which a Column passes over unseen.
             Repeater {
@@ -676,6 +678,13 @@ ShellRoot {
             expect("a mark's ink stands on the capitals' middle",
                 Math.abs(middle - capsMiddle) <= 0.5,
                 `${shown}, middle ${middle} against ${capsMiddle}`);
+            // Its ink's left edge stands on the mark column, the row's
+            // inset, wherever its glyph's origin is, so every row's mark
+            // keeps one column (Joel, 2026-11-11: Later's stood right of it).
+            const inkLeft = mark.mapToItem(row, 0, 0).x + box.x / fine;
+            expect("a mark's ink starts on the mark column",
+                Math.abs(inkLeft - Theme.space.rung.inset) <= 0.5,
+                `${shown}, its ink from ${inkLeft} against ${Theme.space.rung.inset}`);
         }
     }
 
