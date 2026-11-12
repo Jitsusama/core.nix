@@ -295,17 +295,9 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
         "only the answer given says so"
     );
     assert_eq!(
-        (
-            inside[6]["kind"].clone(),
-            first(inside[6]),
-            inside[6]["moves"]["telling"].clone()
-        ),
-        (
-            json!("move"),
-            json!({"key": "verb:more", "step": "rows"}),
-            json!("Telling Ada Lovelace and Grace Hopper")
-        ),
-        "Move steps into the times the shell makes, till they're served"
+        (inside[6]["kind"].clone(), first(inside[6])),
+        (json!("move"), json!({"key": "verb:more", "step": "rows"})),
+        "Move steps into its later times, found by the shell for a time typed there"
     );
     assert_eq!(
         (first(inside[9]), inside[9]["side"].clone()),

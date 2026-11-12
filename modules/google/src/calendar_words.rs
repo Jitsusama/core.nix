@@ -40,6 +40,12 @@ pub struct Words {
     pub cancel_sure: String,
     /// What Move's sure row starts with, "Move It".
     pub move_sure: String,
+    /// The later times Move offers, by name, in `LATER`'s order.
+    pub move_later: Vec<String>,
+    /// "{sure} to {when}", where a sure row moves it to.
+    pub move_to: String,
+    /// "clashes with {title}", the meeting a time would overlap.
+    pub move_clashes: String,
     /// The glyph role every call in Meet's Recent shows.
     pub call_glyph: String,
     /// "{first} and {second}", who a call was with.
@@ -50,6 +56,24 @@ pub struct Words {
     /// meeting that do them.
     pub acts: BTreeMap<String, (String, String)>,
 }
+
+/// How far Move the Meeting offers to take one: by minutes, or by days
+/// at the same time on the clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Later {
+    Minutes(i64),
+    Days(i64),
+}
+
+/// The later times Move offers, each by its state of `verb:calendar:move`
+/// in the vocabulary (Calendar.js's `LATER`).
+pub(crate) const LATER: [(&str, Later); 5] = [
+    ("quarter", Later::Minutes(15)),
+    ("half", Later::Minutes(30)),
+    ("hour", Later::Minutes(60)),
+    ("tomorrow", Later::Days(1)),
+    ("week", Later::Days(7)),
+];
 
 /// Each act a row inside a meeting does, by its id in the vocabulary.
 const ACTS: [&str; 16] = [
@@ -208,6 +232,12 @@ impl Words {
             earlier: word("calendar:meeting", &["said", "earlier"])?,
             cancel_sure: word("verb:calendar:cancel", &["sure"])?,
             move_sure: word("verb:calendar:move", &["sure"])?,
+            move_later: LATER
+                .iter()
+                .map(|(state, _)| word("verb:calendar:move", &["states", state, "name"]))
+                .collect::<Result<_, String>>()?,
+            move_to: word("verb:calendar:move", &["said", "to"])?,
+            move_clashes: word("verb:calendar:move", &["said", "clashes"])?,
             call_glyph: word("meet:held", &["glyph"])?,
             with_two: word("meet:held", &["said", "two"])?,
             with_others: word("meet:held", &["said", "others"])?,

@@ -13,20 +13,28 @@
 //! look each minute does, rather than the shell reading the clock to
 //! choose.
 //!
-//! Two of its acts are still the shell's, each named for what takes it
-//! next: Move the Meeting's later times and one typed there, which need
-//! Calendar.qml's clock and its reading of a typed time (the google daemon
-//! answers them on ask next), and Open the Transcript, which only
-//! call-transcripts knows (it serves that row next). Move's row is served
-//! here stepping into rows, with `kind: "move"`, so the shell makes only
-//! what's inside it; the transcript's isn't served.
+//! Move the Meeting steps in to the later times it offers, each a row
+//! saying its day and times and the meeting it would clash with, holding
+//! the one row asking Joel to be sure, whose Return moves it. Two things
+//! are still the shell's, each named for what takes it next: a time typed
+//! inside Move, which Calendar.js reads till the daemon answers it as a
+//! search within Move's row, so Move's row is served with `kind: "move"`
+//! for the shell to find; and Open the Transcript, which only
+//! call-transcripts knows (it serves that row next), so it isn't served.
 
 use serde_json::{Value, json};
 
-use crate::calendar::Meeting;
-use crate::calendar_words::Words;
+use jiff::tz::TimeZone;
+use jiff::{Span, Timestamp};
+
+use crate::calendar::{Answer, Meeting};
+use crate::calendar_rows::dated_between;
+use crate::calendar_words::{LATER, Later, Words};
 use crate::compose;
-use crate::rows::opens;
+use crate::rows::{fill, opens};
+
+/// Milliseconds in a minute, as the meetings' times count.
+const MINUTE: i64 = 60_000;
 
 /// How soon before its start Return on a meeting joins its call rather
 /// than showing it: ten minutes (Calendar.js's `TAKES_OVER`).
@@ -58,6 +66,10 @@ pub(crate) struct Within<'a> {
     pub place: &'a str,
     pub drawer: &'a str,
     pub details: &'a Value,
+    /// The zone Joel's clock reads, which a day later keeps the time on.
+    pub zone: &'a TimeZone,
+    /// Joel's meetings, which a time Move offers may clash with.
+    pub others: &'a [Meeting],
 }
 
 /// Every row inside the meeting's row, made from its acts as
@@ -92,11 +104,15 @@ pub(crate) fn inside(
                     row["side"] = json!([{"said": words.word("yourAnswer")}]);
                 }
             }
-            // What the shell's later times need to say, till they're served.
             "verb:calendar:move" => {
                 row["acts"] = json!([more()]);
+                // Found by the shell, which reads a time typed inside it.
                 row["kind"] = json!("move");
-                row["moves"] = json!({"sure": act["sure"], "telling": act["telling"]});
+                let key = row["key"].as_str().unwrap_or_default().to_owned();
+                rows.push(row);
+                let telling = act["telling"].as_str().unwrap_or_default();
+                rows.extend(later(within, &key, meeting, telling, words));
+                continue;
             }
             "verb:calendar:guests" | "verb:calendar:attachments" => {
                 row["acts"] = json!([more()]);
@@ -148,6 +164,118 @@ fn acted(within: &Within, parent: &str, id: &str, verb: &str, depth: u8, words: 
         "glyph": glyph,
         "hue": "action",
         "side": [],
+    })
+}
+
+/// The later times Move offers, each a row inside Move named for how far
+/// it takes the meeting, lasting as long, its day and times below and at
+/// its side the first of Joel's other meetings it would overlap; each
+/// holding the one row asking Joel to be sure, which names who Google
+/// tells and whose Return moves it (Calendar.js's `later` and `clashes`).
+/// Each is keyed by when it would start, so a row holds still as the
+/// meeting is served again.
+fn later(
+    within: &Within,
+    parent: &str,
+    meeting: &Meeting,
+    telling: &str,
+    words: &Words,
+) -> Vec<Value> {
+    let lasts = meeting.end - meeting.start;
+    let mut rows = Vec::new();
+    for ((_, by), name) in LATER.iter().zip(&words.move_later) {
+        let Some(start) = shifted(meeting.start, *by, within.zone) else {
+            continue;
+        };
+        let end = start + lasts;
+        let Ok(iso) = Timestamp::from_millisecond(start) else {
+            continue;
+        };
+        let key = format!("{parent}:{iso}");
+        let dated = dated_between(meeting, start, end, within.zone, words);
+        let side: Vec<Value> = clash(meeting, start, end, within.others)
+            .map(|other| {
+                let title = if other.title.is_empty() {
+                    words.untitled.as_str()
+                } else {
+                    other.title.as_str()
+                };
+                json!({"said": fill(&words.move_clashes, &[("title", title)])})
+            })
+            .into_iter()
+            .collect();
+        let (_, glyph) = words.act("verb:calendar:move");
+        rows.push(json!({
+            "key": &key,
+            "thing": format!("{}:move:{iso}", within.thing),
+            "place": within.place,
+            "kind": "time",
+            "parent": parent,
+            "depth": 2,
+            "name": name,
+            "glyph": glyph,
+            "hue": "action",
+            "side": side,
+            "note": &dated,
+            "acts": [more()],
+        }));
+        let to = fill(
+            &words.move_to,
+            &[("sure", &words.move_sure), ("when", &dated)],
+        );
+        rows.push(json!({
+            "key": format!("{key}:sure"),
+            "thing": format!("{}:move:{iso}:sure", within.thing),
+            "place": within.place,
+            "kind": "act",
+            "parent": &key,
+            "depth": 3,
+            "name": fill(
+                words.fact("telling", "sure"),
+                &[("sure", &to), ("telling", telling)],
+            ),
+            "glyph": glyph,
+            "hue": "alert",
+            "sure": true,
+            "side": [],
+            "acts": [{
+                "key": "verb:calendar:move",
+                "ask": {"move": {"id": meeting.id, "start": start, "end": end}},
+            }],
+        }));
+    }
+    rows
+}
+
+/// A meeting's start moved by minutes, or by days at the same time on
+/// Joel's clock, which a change of the clocks between doesn't move.
+fn shifted(start: i64, by: Later, zone: &TimeZone) -> Option<i64> {
+    match by {
+        Later::Minutes(minutes) => Some(start + minutes * MINUTE),
+        Later::Days(days) => {
+            let at = Timestamp::from_millisecond(start)
+                .ok()?
+                .to_zoned(zone.clone());
+            let moved = at.checked_add(Span::new().days(days)).ok()?;
+            Some(moved.timestamp().as_millisecond())
+        }
+    }
+}
+
+/// The first of Joel's other meetings a meeting moved to run from `start`
+/// to `end` would overlap: not one all day, nor one he said no to.
+fn clash<'a>(
+    meeting: &Meeting,
+    start: i64,
+    end: i64,
+    others: &'a [Meeting],
+) -> Option<&'a Meeting> {
+    others.iter().find(|other| {
+        other.id != meeting.id
+            && !other.all_day
+            && other.answer != Some(Answer::No)
+            && other.start < end
+            && other.end > start
     })
 }
 

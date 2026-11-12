@@ -187,7 +187,28 @@
       "name": "Move the Meeting",
       "verb": "move",
       "glyph": "moveMeeting",
-      "sure": "Move It"
+      "sure": "Move It",
+      "states": {
+        "quarter": {
+          "name": "15 Minutes Later"
+        },
+        "half": {
+          "name": "30 Minutes Later"
+        },
+        "hour": {
+          "name": "An Hour Later"
+        },
+        "tomorrow": {
+          "name": "Tomorrow, Same Time"
+        },
+        "week": {
+          "name": "Next Week, Same Time"
+        }
+      },
+      "said": {
+        "to": "{sure} to {when}",
+        "clashes": "clashes with {title}"
+      }
     },
     {
       "id": "verb:calendar:yes",

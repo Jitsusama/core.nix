@@ -165,6 +165,8 @@ pub fn meetings(
             place: each.place,
             drawer: &drawn,
             details: &details,
+            zone,
+            others: meetings,
         };
         let acts = acts(each.meeting, words);
         rows.push(row);
@@ -667,6 +669,25 @@ fn dated(meeting: &Meeting, zone: &TimeZone, words: &Words) -> String {
     )
 }
 
+/// Its day and times in full, were it moved to run from `start` to `end`:
+/// "Monday 26 October · 15:15 to 15:45" (Calendar.js's `dated`), as Move's
+/// times say where they'd take it.
+pub(crate) fn dated_between(
+    meeting: &Meeting,
+    start: i64,
+    end: i64,
+    zone: &TimeZone,
+    words: &Words,
+) -> String {
+    let moved = Meeting {
+        start,
+        end,
+        all_day: false,
+        ..meeting.clone()
+    };
+    [dated(&moved, zone, words), span(&moved, zone, words)].join(BETWEEN)
+}
+
 /// A time on Joel's clock, "09:05".
 fn clock(time: i64, zone: &TimeZone) -> String {
     Timestamp::from_millisecond(time).map_or_else(
@@ -696,6 +717,10 @@ mod words_tests;
 #[cfg(test)]
 #[path = "calendar_rows_told_tests.rs"]
 mod told_tests;
+
+#[cfg(test)]
+#[path = "calendar_rows_move_tests.rs"]
+mod move_tests;
 
 #[cfg(test)]
 #[path = "calendar_rows_lent_tests.rs"]
