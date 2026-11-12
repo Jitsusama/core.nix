@@ -123,6 +123,40 @@ pub fn pained(s: &Sources) -> Reading {
     .his()
 }
 
+/// What the machine held, from health's day file: the fullest disk, held to
+/// the disk guard's nearly-full band, and the most pi and the shell held at
+/// once. The memory peaks carry no bar until the split of resources sets
+/// one, so they're shown and never in spec.
+#[must_use]
+pub fn held(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file";
+    vec![
+        Reading::new(
+            "the fullest disk {} in use",
+            figure("health.disk.most-used-percent"),
+            "%",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(90.0))
+        .from(from),
+        Reading::new(
+            "the most pi held at once {}",
+            figure("health.memory.pi.most-mib"),
+            " MiB",
+            "80ECO2",
+        )
+        .from(from),
+        Reading::new(
+            "the most the shell held at once {}",
+            figure("health.memory.quickshell.most-mib"),
+            " MiB",
+            "80ECO2",
+        )
+        .from(from),
+    ]
+}
+
 /// How fast the machine answers Joel, from health's day file: the slowest
 /// boot to a ready launcher with his password left out, the slowest
 /// shutdown, and the minutes the day's worst moments cost him, each timed
@@ -335,6 +369,32 @@ mod tests {
                 "asks for an item and command already asked for today: no reading yet",
                 "of asks a minted token would have spared: no reading yet",
             ]
+        );
+    }
+
+    #[test]
+    fn what_the_machine_held_comes_from_healths_figures() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.disk.most-used-percent".to_owned(), 93.0),
+                ("health.memory.pi.most-mib".to_owned(), 4096.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = held(&s);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the fullest disk 93% in use, at most 90%",
+                "the most pi held at once 4,096 MiB",
+                "the most the shell held at once: no reading yet",
+            ]
+        );
+        assert_eq!(
+            read.iter().map(Reading::out).collect::<Vec<_>>(),
+            [true, false, false],
+            "only the disk has a bar to be past"
         );
     }
 

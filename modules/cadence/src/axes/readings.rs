@@ -141,47 +141,46 @@ fn resources(s: &Sources) -> Axis {
     let figure = |key: &str| s.day.as_ref().and_then(|d| d.figures.get(key).copied());
     let (_, swap) = crate::records::memory(&s.meminfo);
     let now = crate::records::avg300(&s.pressure);
-    axis(
-        "resources",
-        vec![
-            bill,
-            changes,
-            landings::harness(&s.harness, s.now, &TimeZone::system()),
-            Reading::new(
-                "spent on cache rewrites after compaction {}",
-                s.measures.last().and_then(|m| after_compaction(m)),
-                "$",
-                "QCXZEB",
+    let mut readings = vec![
+        bill,
+        changes,
+        landings::harness(&s.harness, s.now, &TimeZone::system()),
+        Reading::new(
+            "spent on cache rewrites after compaction {}",
+            s.measures.last().and_then(|m| after_compaction(m)),
+            "$",
+            "QCXZEB",
+        )
+        .bar(Bar::AtMost(100.0))
+        .from("the daily measure's cache rewrites")
+        .held(DISAGREE),
+        Reading::new(
+            "agents' CPU pressure {} over the day",
+            figure("pressure.cpu.jobs"),
+            "%",
+            "5FWIUS",
+        )
+        .bar(Bar::AtMost(15.0))
+        .detail(now.map(|n| {
+            format!(
+                "the machine's {} now, {} GiB of swap",
+                shown(n, "%"),
+                shown(swap, "")
             )
-            .bar(Bar::AtMost(100.0))
-            .from("the daily measure's cache rewrites")
-            .held(DISAGREE),
-            Reading::new(
-                "agents' CPU pressure {} over the day",
-                figure("pressure.cpu.jobs"),
-                "%",
-                "5FWIUS",
-            )
-            .bar(Bar::AtMost(15.0))
-            .detail(now.map(|n| {
-                format!(
-                    "the machine's {} now, {} GiB of swap",
-                    shown(n, "%"),
-                    shown(swap, "")
-                )
-            }))
-            .from("cadence's day, lag-watch's figures"),
-            Reading::new(
-                "{} machine-wide out-of-memory kills over the day",
-                figure("oom.machine"),
-                "",
-                "80ECO2",
-            )
-            .bar(Bar::AtMost(0.0))
-            .from("cadence's day, the kernel's journal"),
-            counted::one_call(s.measures.last().map(String::as_str)),
-        ],
-    )
+        }))
+        .from("cadence's day, lag-watch's figures"),
+        Reading::new(
+            "{} machine-wide out-of-memory kills over the day",
+            figure("oom.machine"),
+            "",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from("cadence's day, the kernel's journal"),
+        counted::one_call(s.measures.last().map(String::as_str)),
+    ];
+    readings.extend(counted::held(&s.counted));
+    axis("resources", readings)
 }
 
 fn time(s: &Sources) -> Axis {
