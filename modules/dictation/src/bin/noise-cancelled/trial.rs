@@ -491,12 +491,19 @@ impl Trial {
         }
         self.hush();
         let way = self.clips[letter].way;
-        if let (Way::Cleaned(cleaner), Some(microphone)) = (way, self.microphone.as_ref()) {
-            // Kept first, so the microphone calls hear is never the twin
-            // cleaning some other way than the one picked.
+        if let Some(microphone) = self.microphone.as_ref() {
             let spot = self.spot.clone().unwrap_or_else(|| self.running.spot());
-            self.running.choose(&microphone.name, &spot, cleaner)?;
-            default_microphone_is(&self.tools.metadata, &microphone.twin())?;
+            if let Way::Cleaned(cleaner) = way {
+                // Kept first, so the microphone calls hear is never the twin
+                // cleaning some other way than the one picked.
+                self.running.choose(&microphone.name, &spot, cleaner)?;
+                default_microphone_is(&self.tools.metadata, &microphone.twin())?;
+            } else {
+                // Calls hear the microphone itself, though a twin was chosen
+                // before, and Choose by Ear isn't offered for it there again.
+                default_microphone_is(&self.tools.metadata, &microphone.name)?;
+                crate::offer::settled(&self.running, &microphone.name, &spot.key)?;
+            }
         }
         eprintln!(
             "noise-cancelled: {} picked by ear, over {}",

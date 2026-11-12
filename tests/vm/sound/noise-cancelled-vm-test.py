@@ -251,7 +251,7 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
     chosen = joel.run(f"pw-dump | jq -r {shlex.quote(CHOSEN)}").strip()
     kept = joel.run(f"cat {PICKED} 2>/dev/null || true").strip()
     if picked["picked"]["cleaner"] == "raw":
-        assert chosen != OFFERED
+        assert chosen == MICROPHONE, f"a raw pick left calls hearing {chosen!r}"
         assert kept == "", f"a raw pick kept {kept!r} for the service"
     else:
         assert chosen == OFFERED
