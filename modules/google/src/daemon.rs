@@ -594,6 +594,7 @@ mod tests {
             cc: String::new(),
             others: Vec::new(),
             subject: "Engines".into(),
+            invitation: None,
             sent: false,
             went: Vec::new(),
             at: 1_000,

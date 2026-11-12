@@ -25,6 +25,7 @@ pub mod document_rows;
 pub mod done;
 pub mod drive;
 pub mod files;
+pub mod invitation;
 pub mod link;
 pub mod mail;
 pub mod meet;

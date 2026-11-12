@@ -44,6 +44,7 @@ QtObject {
             toTwo: "{one} and {other}",
             toMore: "{who} and {count} more",
             toPeople: "{count} people",
+            accepted: "accepted",
             date: (date, format) => Qt.formatDate(date, format)
         };
         const standup = {
@@ -278,6 +279,28 @@ QtObject {
         check("its side's sender stays whole beside the time",
             Mail.besideItems(lunch, now, said).map(item => [item.said, item.stays]),
             [["Ada Lovelace", true], ["14:02", true]]);
+        // Calendar's mail about a meeting is named by the meeting, says its
+        // answer before the time, outlasting who sent it, and keeps when the
+        // meeting is for its details (VKCF3Z, through XY9H5C c07ccf58).
+        const accepted = Object.assign({}, lunch, {
+            from: "Chad Cromwell", address: "chad@example.com",
+            subject: "Accepted: Joel / Chad 1:1 @ Every 2 weeks from 11:30am to 12pm on Monday "
+                + "(AST) (Chad Cromwell)",
+            invitation: { answer: "accepted", meeting: "Joel / Chad 1:1",
+                when: "Every 2 weeks from 11:30am to 12pm on Monday (AST)", who: "Chad Cromwell" }
+        });
+        check("an answer's side says it before the time",
+            Mail.besideItems(accepted, now, said).map(item => [item.said, item.keep]),
+            [["Chad Cromwell", 1], ["accepted", 2], ["14:02", 2]]);
+        check("an answer's details are named by its meeting, when it is first",
+            Mail.details(accepted, "No Subject", now, said).title, "Joel / Chad 1:1");
+        check("an answer's details say when its meeting is",
+            Mail.details(accepted, "No Subject", now, said).facts[0],
+            { label: "When", value: "Every 2 weeks from 11:30am to 12pm on Monday (AST)" });
+        check("an answer's name is its meeting", Mail.titled(accepted, "No Subject"),
+            "Joel / Chad 1:1");
+        check("other mail's name is its subject", Mail.titled(lunch, "No Subject"),
+            "Lunch & a walk?");
         check("when it came, in full, as a meeting's day is", Mail.dated(lunch.at, now, said),
             "Monday 26 October, 14:02");
         check("when it came last year, in full",

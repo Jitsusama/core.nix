@@ -12117,7 +12117,13 @@
         "gone": "gone from Gmail",
         "readHere": "read here",
         "archivedHere": "archived here",
-        "sender": "{name} <{address}>"
+        "sender": "{name} <{address}>",
+        "invited": "invited",
+        "updated": "updated",
+        "accepted": "accepted",
+        "tentative": "maybe",
+        "declined": "declined",
+        "cancelled": "cancelled"
       }
     },
     {

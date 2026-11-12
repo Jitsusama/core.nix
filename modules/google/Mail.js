@@ -75,11 +75,18 @@ function wentTo(went, said, most = NAMED) {
 // Hopper and 3 more · 14:02", giving way by whole names, "to Ada Lovelace
 // and 4 more", or only when it went where it names nobody. Neither item
 // gives way whole, and the time never gives way at all: past them the
-// row's name gives way (VKCF3Z, c7d9e2bd, 635ac574).
+// row's name gives way (VKCF3Z, c7d9e2bd, 635ac574). Mail Calendar sent
+// about a meeting says its answer before the time, as the google daemon's
+// rows do (rows.rs), outlasting who sent it: "accepted · 2 Nov". The
+// daemon reads the answer from the subject; this words it only until a
+// person's Recent reads the daemon's rows.
 function besideItems(mail, now, said) {
-    const when = { said: came(mail.at, now, said), keep: 2, stays: true };
+    const when = [{ said: came(mail.at, now, said), keep: 2, stays: true }];
+    if (mail.invitation) {
+        when.unshift({ said: String(said[mail.invitation.answer] ?? ""), keep: 2 });
+    }
     const ways = mail.sent === true ? wentWays(mail.went ?? [], said) : [mail.from];
-    return ways[0] === "" ? [when] : [{ said: ways[0], ways, keep: 1, stays: true }, when];
+    return ways[0] === "" ? when : [{ said: ways[0], ways, keep: 1, stays: true }, ...when];
 }
 
 // Every way a sent mail's row may say who it went to, most names first:
@@ -119,6 +126,15 @@ function sender(mail) {
     return mail.from === "" ? mail.address : `${mail.from} <${mail.address}>`;
 }
 
+// Its name: the meeting Calendar's mail is about, which the google daemon
+// read from its subject (invitation.rs), or its subject, or `untitled`.
+function titled(mail, untitled) {
+    if (mail.invitation) {
+        return mail.invitation.meeting;
+    }
+    return mail.subject === "" ? untitled : mail.subject;
+}
+
 // Its details, as the launcher's drawer shows them beside its row: its
 // subject, who it's from and to, when it came, the files it carries by
 // name, and what it says, every one plain text, since they're someone
@@ -126,6 +142,8 @@ function sender(mail) {
 function details(mail, untitled, now, said) {
     const attachments = mail.attachments ?? [];
     const facts = [
+        // When the meeting Calendar's mail is about is, as Calendar words it.
+        { label: "When", value: mail.invitation?.when ?? "" },
         { label: "From", value: sender(mail) },
         { label: "To", value: mail.to ?? "" },
         // Copied to, as every mail program shows it, and only when someone was.
@@ -137,7 +155,7 @@ function details(mail, untitled, now, said) {
         }
     ];
     return {
-        title: mail.subject === "" ? untitled : mail.subject,
+        title: titled(mail, untitled),
         facts: facts.filter(fact => fact.value !== ""),
         body: mail.body ?? ""
     };
