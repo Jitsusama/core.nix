@@ -1176,6 +1176,26 @@ QtObject {
         ];
         for (const [what, said, room, want] of titles)
             holds(`a title's breaks: ${what}`, Identifier.titleBreaks(said, room, width), want);
+        // A title is one line where it fits, else two balanced, never one
+        // word alone below where it could share, and past two it ends at a
+        // whole word (VKCF3Z's wrap rule 4, 2026-11-11).
+        const titleLines = [
+            ["one that fits is one line", "Week 46", 100, ["Week 46"]],
+            ["two lines as near the same width as the words allow",
+                "One two three four five six", 200, ["One two three", "four five six"]],
+            ["never one word alone below, as filling the first would leave it",
+                "Shared drive folder kept", 200, ["Shared drive", "folder kept"]],
+            ["one word below only where nothing else fits", "Aaaa Bbbb Cccccccccccc", 160,
+                ["Aaaa Bbbb", "Cccccccccccc"]],
+            ["past two, the second ends at a whole word",
+                "One two three four five six seven eight", 100, ["One two", "three\u2026"]],
+            ["a word too wide alone keeps its breaks inside it", "Server time.harbour.test",
+                100, ["Server time.\u200bharbour.\u200btest"]],
+            ["an empty title is no line", "", 100, []]
+        ];
+        for (const [what, said, room, want] of titleLines)
+            holds(`a title's lines: ${what}`, Identifier.titleLines(said, room, width, "\u2026"),
+                want);
         // A list alone in a value, on one line, giving way to a tail.
         const kinds = ["PDF", "HTML", "PNG", "JPEG"].map(said => ({ said }));
         const lines = [
