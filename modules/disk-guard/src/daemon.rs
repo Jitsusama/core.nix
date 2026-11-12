@@ -2004,6 +2004,15 @@ impl Guard {
         Ok(())
     }
 
+    /// When each build's artifacts were last opened: a copy, so a long
+    /// survey never holds up what hears the opens.
+    fn uses_now(&self) -> Uses {
+        self.uses
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     /// Every process, scanned for the pass to judge by, and what every
     /// source offers.
     /// What the sources offer now, or with `part`, only what its sources
@@ -2028,18 +2037,14 @@ impl Guard {
             scan.unheard().map(str::to_owned),
         );
         let boot = crate::sys::boot(Path::new("/proc/stat"))?;
-        // A copy, so a long survey never holds up what hears the opens.
-        let uses = self
-            .uses
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone();
+        let uses = self.uses_now();
         let (predicates, answers) = (&self.predicates, &mut self.answers);
         // A tree a finished quest cut is finished with it, whatever its
         // branch says: its builds were the quest's. So is one nobody holds
         // any more, its builds having been its holders'. A pid holds its
         // tree only while it runs as the process that started then; one
-        // that can't be read can't be ruled out, so holds it.
+        // that can't be read can't be ruled out, so holds it. A tree held
+        // is never finished, whatever its branch or its quest says.
         let running = |pid: u32, started: f64| {
             processes.iter().any(|process| {
                 let since = boot.wall + crate::units::float(process.start_ticks) / boot.ticks;
@@ -2049,9 +2054,6 @@ impl Guard {
         let quests_over = spent_trees(&self.config, running, (&tick.boot, &boot));
         let held = held_trees(&self.config, running);
         let mut finished = |dir: &Path| {
-            // On 12 November a session merged its branch and went on in the
-            // tree its broker recorded it holding, and twice the guard took
-            // the tree's packages within the half hour after a merge.
             if held.iter().any(|tree| dir.starts_with(tree)) {
                 return false;
             }
@@ -2751,7 +2753,9 @@ fn spent_trees(
 }
 
 /// The trees a broker's record names a holder of still `running`, which
-/// nothing finishes while it holds them.
+/// nothing finishes while it holds them: on 12 November a session merged
+/// its branch and went on in the tree its broker recorded it holding, and
+/// twice the guard took the tree's packages within the half hour after.
 fn held_trees(config: &Config, running: impl Fn(u32, f64) -> bool + Copy) -> Vec<PathBuf> {
     config
         .sources
