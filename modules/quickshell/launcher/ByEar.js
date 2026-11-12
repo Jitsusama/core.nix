@@ -167,8 +167,9 @@ function recordRow(said, record, state) {
 function where(said, record, playing) {
     const output = typeof record.output === "string" && record.output !== ""
         ? record.output : null;
-    if (output === null)
+    if (output === null) {
         return playing ? told(said, "by-ear-playing") : "";
+    }
     return told(said, playing ? "by-ear-playing-on" : "by-ear-on", { output });
 }
 
