@@ -83,5 +83,16 @@ QtObject {
             { due: [key("y")], waited: null });
         Expect.expect("the sources are asked only when a key could be held",
             asked === before, `asked ${asked - before} times`);
+
+        // A key is counted from what the field read before it, a held key's
+        // text too, though it isn't searched yet: from what was last
+        // searched, the held key's letters were counted again, eight
+        // letters for kitty's five (80ECO2, 2026-11-12).
+        Expect.same("a key comes after the held one",
+            Awaited.before(at([], { due: [key("ki")] }, true, false), "k"), "ki");
+        Expect.same("or after the last one due",
+            Awaited.before(at([key("kit")], { due: [key("ki")] }, true, false), "k"), "kit");
+        Expect.same("or, with none, after what was searched",
+            Awaited.before(at([], null, true, false), "k"), "k");
     }
 }

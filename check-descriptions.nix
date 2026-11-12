@@ -2763,7 +2763,8 @@
     the programs daemon's answer takes its own order, the list shown again
   '';
   the-launcher-holds-still-as-it-refreshes = ''
-    a list the launcher shows keeps its order and its selection as what's in it changes
+    a list the launcher shows keeps its order and its selection as what's in it changes, but an
+    answer given only while nothing else was goes once something comes
   '';
   the-launcher-closes-only-for-keys-it-held = ''
     the open launcher holds its keys once its card is active and niri says no window has them,
@@ -2772,7 +2773,8 @@
   '';
   the-launcher-holds-a-key-for-its-answers = ''
     a key whose search awaits a daemon's answer is held for it, a key typed over it drops its
-    search, and Return or anything else that reads what was found searches it at once
+    search, and Return or anything else that reads what was found searches it at once; the next
+    key's letters count from the held key's text
   '';
   a-place-reads-alike-everywhere = ''
     a place's row says nothing after its name; at its right it says how it stands where it says,

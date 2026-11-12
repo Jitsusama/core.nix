@@ -19,6 +19,17 @@
 // there, as Write in Slack stands dimmed until Slack answers. A row is
 // known by `id`; rows alike in it pair off in their order, so two windows
 // titled alike keep their places.
+// The rows shown that may stand where they are as the list is said again:
+// what ends a search comes after it all and is made again with it, so it's
+// no row to hold in place (held, it stood dimmed above the one made
+// again). An answer there only while nothing else was, as Ask's for two
+// plain words, goes once it gives way (`gaveWay`) to what came after it,
+// as the notices daemon's finds come a moment after the key, rather than
+// standing dimmed above them with the selection on it.
+function standing(shown, gaveWay) {
+    return shown.filter(row => !row.endedBy && !(gaveWay && row.answered));
+}
+
 function kept(shown, now, id) {
     const waiting = {};
     now.forEach((row, at) => {

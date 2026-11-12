@@ -20,6 +20,14 @@
 // Answers null when there's nothing to search; { hold: sources, due } to
 // hold the key for them; or { due, waited } to search now, `waited` the
 // held key whose wait this ends, or null where typing went over it.
+// What the field read before the key now coming, so a trial counts only the
+// letters it brought: the text the last key not yet searched left there,
+// `due`'s or the held key's, or else `searched`, what was last searched.
+function before(now, searched) {
+    const keys = (now.held?.due ?? []).concat(now.due);
+    return keys.length > 0 ? keys[keys.length - 1].text : searched;
+}
+
 function next(now, waitingOn) {
     if (now.due.length === 0 && (now.typing || now.held === null)) {
         return null;
