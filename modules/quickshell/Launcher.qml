@@ -6635,7 +6635,8 @@ Scope {
         search(prompt.text);
         // Its key's time holds the wait, said apart in the journal.
         if (waited && searchParts)
-            searchParts.waited = Date.now() - waited.began;
+            Object.assign(searchParts, Awaited.waitedOf(waited, Date.now(), answersWaitedFor,
+                waited.timedOut === true));
         if (!asking)
             due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed));
     }
@@ -6663,6 +6664,9 @@ Scope {
             const waited = root.answersAwaited;
             if (waited === null)
                 return;
+            // Ended by its bound, so the time past it was the thread's
+            // other work, said apart in the key's line (Awaited.waitedOf).
+            waited.timedOut = true;
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             console.info(`launcher: "${waited.text}" listed without`
