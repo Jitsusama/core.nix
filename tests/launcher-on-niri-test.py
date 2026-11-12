@@ -2055,8 +2055,19 @@ def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> N
 
 
 def drawer_on(row: str, shown: Json) -> bool:
-    """Say whether the drawer is out on the row named, selected."""
-    return drawer_on_selected(shown) and cast("Json", shown["selected"])["name"] == row
+    """Say whether the row named is selected with its drawer out, or makes none.
+
+    A row whose source can't answer here makes no drawer, as Work Network's does with no
+    warp-cli to read (2026-11-12), so the walk passes it rather than waiting on it. An
+    answer's drawer is titled by what it answers rather than its row's name, as Address's
+    "no address" is, so the drawer out is the one the row makes.
+    """
+    selected = cast("Json", shown.get("selected") or {})
+    if selected.get("name") != row:
+        return False
+    made = cast("Json | None", selected.get("drawer"))
+    drawer = cast("Json", shown["drawer"])
+    return made is None or (bool(drawer["shown"]) and drawer["title"] == made.get("title"))
 
 
 def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
