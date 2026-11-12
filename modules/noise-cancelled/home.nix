@@ -21,11 +21,13 @@
 # starts from its socket, holds what he said only in memory, and may reach
 # no network. It records nothing while a call is on, or while anything in
 # jitsusama.noise-cancelled.refuseWhile says not to. A cleaned pick is kept
-# for the microphone it was recorded from, in
-# ~/.local/state/noise-cancelled/cleaner, which the service reads as each
-# microphone starts being recorded, so his next call on it cleans as he
-# picked, in place of jitsusama.noise-cancelled.cleaner, with nothing
-# restarted; a microphone never picked for takes the most picked. Each clip
+# for the microphone it was recorded from at the spot the machine was at
+# (spot.rs: the home network's node, the network, the screens and docks),
+# in ~/.local/state/noise-cancelled/cleaner, which the service reads as
+# each microphone starts being recorded, so his next call on it there
+# cleans as he picked, in place of jitsusama.noise-cancelled.cleaner, with
+# nothing restarted. A spot it's never been picked at takes its newest pick
+# anywhere, and a microphone never picked for the most picked. Each clip
 # is scored by DNSMOS too (models.nix), its marks shown after the pick, and
 # the pick and every clip's marks, numbers alone and never the sound, kept
 # beside it in ~/.local/state/noise-cancelled/scored.

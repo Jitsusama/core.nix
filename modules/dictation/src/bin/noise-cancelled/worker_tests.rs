@@ -3,6 +3,7 @@ use std::f32::consts::TAU;
 use rtrb::RingBuffer;
 
 use super::*;
+use crate::spot::Where;
 
 /// A microphone that's recorded from, with the test's ends of its rings:
 /// where it hears, and where its cleaned sound comes out.
@@ -124,14 +125,33 @@ fn a_model_that_wont_load_is_refused() {
     );
 }
 
-/// Picks kept in a file of the test's own, as the trial writes them.
+/// Picks kept in a file of the test's own, as the trial writes them, on a
+/// machine that knows nothing of where it is, so its spot is
+/// `network=none`.
 fn picked(name: &str, said: &str) -> (Chosen, PathBuf) {
     let file = std::env::temp_dir().join(format!("worker-{name}-{}", std::process::id()));
     std::fs::write(&file, said).expect("the picks are written");
+    let nowhere = file.with_extension("nowhere");
     (
-        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet),
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).within(Where::at(&nowhere)),
         file,
     )
+}
+
+#[test]
+fn a_microphone_cleans_with_its_pick_at_the_spot_its_at() {
+    let (chosen, file) = picked(
+        "spot",
+        "deepfilternet-gentle mv7 network=none\nrnnoise mv7 home=6366013\n",
+    );
+    let mut microphones = HashMap::from([(1, named("mv7").0)]);
+    settled(&mut microphones, &chosen);
+    assert_eq!(
+        microphones[&1].cleaner,
+        Some(Cleaner::DeepFilterNetGentle),
+        "the MV7 should clean with its pick here, not its newest at home"
+    );
+    let _ = std::fs::remove_file(&file);
 }
 
 #[test]
@@ -155,7 +175,7 @@ fn a_pick_cleans_from_the_next_recording() {
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
     settled(&mut microphones, &chosen);
     chosen
-        .choose("mv7", Cleaner::DeepFilterNetGentle)
+        .choose("mv7", &chosen.spot(), Cleaner::DeepFilterNetGentle)
         .expect("picked again");
     settled(&mut microphones, &chosen);
     assert_eq!(

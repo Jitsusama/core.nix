@@ -250,7 +250,10 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
         assert kept == "", f"a raw pick kept {kept!r} for the service"
     else:
         assert chosen == OFFERED
-        assert kept == f"{picked['picked']['cleaner']} {MICROPHONE}", (
+        cleaner, microphone, spot = kept.split(" ")
+        assert (cleaner, microphone) == (picked["picked"]["cleaner"], MICROPHONE), (
             f"the pick should be kept for the microphone recorded, not {kept!r}"
         )
+        assert spot.startswith("network="), f"the VM is at no home's node: {kept!r}"
+        assert picked["spot"].startswith("away"), f"the spot named: {picked['spot']!r}"
         assert picked["running"] == picked["picked"]["cleaner"]
