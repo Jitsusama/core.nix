@@ -220,6 +220,15 @@ pub const MEASURES: &[Measure] = &[
         bar: Some(50.0),
         floor: 5.0,
     },
+    Measure {
+        key: "launcher.drawers.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "a row's details' median time in the launcher, key to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 5.0,
+    },
     // Only the pieces that aren't light: update-to-main leaves the light
     // ones, a written file or a folder of links, to the laptop by design,
     // and builds the rest here only when the builders can't.

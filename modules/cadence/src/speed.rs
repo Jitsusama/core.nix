@@ -16,6 +16,7 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     let mut usable = Vec::new();
     let mut keys = Batches::default();
     let mut changes = Batches::default();
+    let mut drawers = Batches::default();
     for line in journal.lines() {
         let Some((_, said)) = line.split_once("launcher: ") else {
             continue;
@@ -26,9 +27,15 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
             usable.extend(first_number(rest));
         } else if said.contains(" keys presented a median ") {
             keys.add(said);
-        } else if said.contains(" in ") && said.contains(" presented a median ") {
+        } else if !said.contains(" presented a median ") {
+            continue;
+        } else if said.contains(" change in ") || said.contains(" changes in ") {
             // "N changes in agents presented ...", or "1 change in ...".
             changes.add(said);
+        } else if said.contains(" drawer in ") || said.contains(" drawers in ") {
+            // "N drawers in programs presented ...": a row's details
+            // following the key that landed on it.
+            drawers.add(said);
         }
     }
     let mut figures = BTreeMap::new();
@@ -42,6 +49,7 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
     put("launcher.keys.presented", median(&keys.medians));
     put("launcher.keys.late", keys.late());
     put("launcher.changes.presented", median(&changes.medians));
+    put("launcher.drawers.presented", median(&drawers.medians));
     figures
 }
 
@@ -124,6 +132,13 @@ the p99 20 ms, 1 within 50 ms
   INFO qml: launcher: 3 keys landed a median 79 ms from the key, the slowest 89 ms, 0 within 50 ms
   INFO qml: launcher: 1 change in on presented a median 76 ms from the line, the slowest \
 76 ms, 0 within 50 ms
+  INFO qml: launcher: 2 changes in wifi presented a median 30 ms from the line, the slowest \
+31 ms, the p99 31 ms, 2 within 50 ms, from machine 2: a median 1 ms before the shell heard it
+  INFO qml: launcher: 4 drawers in programs presented a median 24 ms from the key, the \
+slowest 40 ms, the p99 40 ms, 4 within 50 ms: a median 1 ms before it followed, 3 until its \
+frame began and 20 from its frame's start
+  INFO qml: launcher: drawer for \"↓\" presented 24 ms from the key: a median 1 ms before it \
+followed
   INFO qml: launcher: \"↓\" took 4 ms to its frame, 2 ms searching
 ";
         let figures = launcher(journal);
@@ -132,7 +147,8 @@ the p99 20 ms, 1 within 50 ms
             ("launcher.opening.usable", 312.0),
             ("launcher.keys.presented", 60.0),
             ("launcher.keys.late", 75.0),
-            ("launcher.changes.presented", 76.0),
+            ("launcher.changes.presented", 30.0),
+            ("launcher.drawers.presented", 24.0),
         ]
         .map(|(k, v)| (k.to_owned(), v))
         .into();
