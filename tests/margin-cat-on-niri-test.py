@@ -3,12 +3,11 @@
 modules/quickshell/checks/margin.nix runs this through pytest in tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run, as the graphical account has it with the cat's
 module (modules/margin-cat). Where over a column it sits, beside the margin's marks or nowhere,
-is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's strides; here,
-only that niri's real layout reaches it, that it rests two seconds before trotting over in a
-few frames, and never for a tap along the columns, that its layer is one taking no keys, that
-it goes in fullscreen, where the gap it sits in is gone, that it dozes off after a minute with
-no keys and stretches as the screen unlocks, and that niri draws it in whole pixels at 1.5 and
-at 2, each screen kept as the check's result.
+is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml); here, only that niri's real
+layout reaches it, that its layer is one taking no keys, that it goes in fullscreen, where the
+gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
+screen unlocks, and that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
+check's result.
 """
 
 from __future__ import annotations
@@ -33,9 +32,8 @@ if TYPE_CHECKING:
 
 # What the cat says each time it's placed (modules/margin-cat/MarginCat.qml).
 SITS = "sits cat "
-# How long the keys rest on a column before the cat trots there, how many strides its walk
-# takes, and the most frames it may draw for a focus move (modules/margin-cat/MarginCat.js).
-RESTS, STRIDES, FOCUS_MOVE = 2.0, 9, 12
+# How long the cat's last frame, or its hearing the lock's word, may take to land.
+LANDS = 2.0
 # How long with no keys draws none of its frames, how long after the last key it may take to
 # be heard asleep, its 45 s doze here (modules/quickshell/checks/margin.nix) and some, and the
 # frames that curling up may draw.
@@ -59,10 +57,19 @@ def shell() -> Iterator[Shell]:
     """Give the account's whole shell once its cat has said where it sits, started once.
 
     Every case reads the cat's reports, so none starts before the cat's surface is loaded.
+    Once they're done, nothing the cat did in any of them may have looped a binding or read
+    a place left unworked: Joel's shell logged loops on `column` five times from 16:52 to
+    16:59 on 2026-11-12, as a walk's handlers set where it sat while its column was said.
     """
     with launcher_on_niri.running() as started:
         heard(started, lambda _: True, 0)
         yield started
+        faults = [
+            line
+            for line in started.log.read_text(errors="replace").splitlines()
+            if ("Binding loop" in line or "TypeError" in line) and "MarginCat" in line
+        ]
+        assert not faults, f"the cat looped or read nothing: {faults}"
 
 
 @pytest.fixture(autouse=True)
@@ -98,7 +105,7 @@ def placed(said: str) -> Json | None:
 
 
 def sits_over(shell: Shell, window: Json, since: int) -> None:
-    """Wait until the cat says it sits on this window's column, over its middle, its walk done.
+    """Wait until the cat says it sits on this window's column, over its middle.
 
     It sits a cell of air above the column's top, so its feet stand clear of the border. Each
     report is held to the window and column it names itself, never to where the windows are
@@ -107,7 +114,7 @@ def sits_over(shell: Shell, window: Json, since: int) -> None:
 
     def over(said: str) -> bool:
         at = placed(said)
-        if at is None or at["walking"] or at.get("window") != window["id"]:
+        if at is None or at.get("window") != window["id"]:
             return False
         column = json.loads(said.split(" over ", 1)[1])
         if column is None:
@@ -168,18 +175,6 @@ def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
     )
 
 
-def walked(shell: Shell, since: int) -> int:
-    """Give how many strides the cat has said it took since the mark.
-
-    Each is a place it walked to; it says where it is again as the column under it changes too,
-    so a stride said twice in the same place is one.
-    """
-    said, _ = shell.said_since(since)
-    reports = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
-    places = [(at["x"], at["y"]) for at in reports if at is not None and at["walking"]]
-    return sum(1 for at, before in zip(places, [None, *places], strict=False) if at != before)
-
-
 def counting(shell: Shell) -> str:
     """Give the command that counts the shell's frames by window (Frames.qml)."""
     return f"qs -p {shell.folder} ipc call frames"
@@ -191,43 +186,6 @@ def cat_frames(shell: Shell) -> tuple[int, Json]:
     return sum(count for name, count in drawn.items() if name.startswith("cat ")), drawn
 
 
-def test_the_cat_trots_over_once_the_keys_rest(shell: Shell) -> None:
-    """Two seconds after the keys move to another column, it trots there in a few frames.
-
-    From the key to the cat sitting over its new column it draws at most 12 frames, nine of
-    them its walk (VKCF3Z, 2026-11-12: "a focus move draws at most 12"), and it rests two
-    seconds first, so a glance along the columns doesn't set it off.
-    """
-    since = shell.mark()
-    first = shell.opened("a column to trot to")
-    second = shell.opened("a column to trot from")
-    sits_over(shell, second, since)
-    shell.as_account(f"{counting(shell)} start")
-    since = shell.mark()
-    moved = time.monotonic()
-    shell.as_account("niri msg action focus-column-left")
-    sits_over(shell, first, since)
-    rested = time.monotonic() - moved
-    cat, drawn = cat_frames(shell)
-    assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
-    assert walked(shell, since) == STRIDES, f"the cat took {walked(shell, since)} strides"
-    assert cat <= FOCUS_MOVE, f"the cat drew {cat} frames for a focus move: {drawn}"
-
-
-def test_tapping_along_the_columns_never_sets_it_running(shell: Shell) -> None:
-    """Tapping h then l, back within the rest, leaves the cat sitting where it was."""
-    since = shell.mark()
-    shell.opened("a column tapped past")
-    sat = shell.opened("a column the cat stays on")
-    sits_over(shell, sat, since)
-    since = shell.mark()
-    shell.as_account("niri msg action focus-column-left")
-    time.sleep(RESTS / 4)
-    shell.as_account("niri msg action focus-column-right")
-    time.sleep(RESTS + 1)
-    assert walked(shell, since) == 0, f"tapping set the cat off: {walked(shell, since)} strides"
-
-
 def test_the_cat_dozes_off_with_no_keys_drawing_nothing_more(shell: Shell) -> None:
     """With no keys it draws nothing, then curls up asleep in a frame, and a key wakes it.
 
@@ -237,7 +195,7 @@ def test_the_cat_dozes_off_with_no_keys_drawing_nothing_more(shell: Shell) -> No
     since = shell.mark()
     sits_over(shell, shell.opened("a column to doze over"), since)
     # Its last frame over the new column lands a moment after it says it sits there.
-    time.sleep(RESTS)
+    time.sleep(LANDS)
     since = shell.mark()
     shell.send_key("F24")
     shell.as_account(f"{counting(shell)} start")
@@ -249,7 +207,7 @@ def test_the_cat_dozes_off_with_no_keys_drawing_nothing_more(shell: Shell) -> No
         f"the cat drew {still} frames in {IDLE:.0f} s with no keys: {drawn}; it said {sat}"
     )
     shell.reported(SITS, asleep, since, timedelta(seconds=DOZES))
-    time.sleep(RESTS)
+    time.sleep(LANDS)
     dozed, drawn = cat_frames(shell)
     assert dozed <= POSED, f"the cat drew {dozed} frames dozing off: {drawn}"
     since = shell.mark()
@@ -279,7 +237,7 @@ def test_the_cat_stretches_as_the_screen_unlocks(shell: Shell) -> None:
     )
     marker.write_text("locked\n")
     # The cat hears the lock's word by watching its file, a moment after it's written.
-    time.sleep(RESTS)
+    time.sleep(LANDS)
     since = shell.mark()
     marker.write_text("unlocked\n")
     heard(shell, stretching, since)
@@ -309,7 +267,8 @@ def test_leaving_and_coming_back_at_1_5_works_its_place_out_once(shell: Shell) -
 
     Its window's scale and the screen's differ at a fractional scale, so showing or hiding the
     window moved the scale its place is worked out from: Joel's shell logged a binding loop on
-    `place` 327 times from 15:12 to 15:57 on 2026-11-12, three around each launcher opening.
+    `place` 327 times from 15:12 to 15:57 on 2026-11-12, three around each launcher opening,
+    and read a place left undefined meanwhile ("Cannot read property 'x' of undefined").
     """
     since = shell.mark()
     filling = shell.opened("a column to leave at 1.5")
@@ -329,9 +288,9 @@ def test_leaving_and_coming_back_at_1_5_works_its_place_out_once(shell: Shell) -
             looped = [
                 line
                 for line in log.read().decode(errors="replace").splitlines()
-                if "Binding loop" in line and "MarginCat" in line
+                if ("Binding loop" in line or "TypeError" in line) and "MarginCat" in line
             ]
-        assert not looped, f"the cat's place depended on itself: {looped}"
+        assert not looped, f"the cat's place depended on itself, or went unread: {looped}"
     finally:
         shell.as_account("niri msg output winit scale 1")
 
