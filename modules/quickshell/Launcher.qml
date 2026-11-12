@@ -6998,7 +6998,12 @@ Scope {
         const words = [];
         if (typeof item.text === "string" && typeof item.contentWidth === "number"
             && item.text !== "" && item.width > 0) {
-            const at = item.mapToItem(into, 0, 0);
+            // A mark is drawn back by its glyph's bearing so its ink starts
+            // on the mark column (Mark.qml), so where its ink starts is
+            // where it stands, not its drawn-back origin.
+            const drawn = item.mapToItem(into, 0, 0);
+            const at = { x: drawn.x + (typeof item.drawnBack === "number" ? item.drawnBack : 0),
+                y: drawn.y };
             const spare = Math.max(0, item.width - item.contentWidth);
             const inset = item.horizontalAlignment === Qt.AlignRight ? spare
                 : item.horizontalAlignment === Qt.AlignHCenter ? spare / 2 : 0;
