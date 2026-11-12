@@ -114,11 +114,34 @@ WORKS_ON = (
     " spent and what it needs from Joel, from the node, with nothing guessed and nothing"
     " said twice, held to the launcher's family and its keys."
 )
+# They landed minutes before the walk, inside the day a landing waits in To Try for.
+LANDED = datetime.now(UTC)
 LANDINGS = [
-    {"at": "2026-11-07T11:31:00Z", "ref": "core.nix#2140", "what": STOPPED},
-    {"at": "2026-11-07T11:25:00Z", "ref": "PLAN-20261107-PAUSED#2", "what": "Ticked alone"},
-    {"at": "2026-11-07T11:19:00Z", "ref": "core.nix#2138", "what": CLOSING, "person": TRY},
+    {"at": (LANDED - timedelta(minutes=1)).isoformat(), "ref": "core.nix#2140", "what": STOPPED},
+    {
+        "at": (LANDED - timedelta(minutes=2)).isoformat(),
+        "ref": "PLAN-20261107-PAUSED#2",
+        "what": "Ticked alone",
+    },
+    {
+        "at": (LANDED - timedelta(minutes=3)).isoformat(),
+        "ref": "core.nix#2138",
+        "what": CLOSING,
+        "person": TRY,
+    },
 ]
+
+
+def landed_today() -> str:
+    """Say what Landed counts of the walk's changes landed on today's date where it runs."""
+    today = datetime.now().astimezone().date()
+    count = sum(
+        1
+        for one in LANDINGS
+        if "core.nix#" in one["ref"]
+        and datetime.fromisoformat(one["at"]).astimezone().date() == today
+    )
+    return f"{count} today" if count else "none today"
 
 
 # How full a session's context is, and its turns today, as the harness's usage keeps them by
@@ -535,8 +558,9 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
-    # None of them landed today, and what's to read is For You's alone to count.
-    assert shell.showing()["selected"]["side"] == "none today", shell.showing()
+    # It counts what landed today, a plan item ticked alone not among them, and what's to
+    # read is For You's alone to count.
+    assert shell.showing()["selected"]["side"] == landed_today(), shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"] == [STOPPED, CLOSING])
     assert shell.showing()["selected"]["side"] not in {"", "core.nix#2140"}, shell.showing()
