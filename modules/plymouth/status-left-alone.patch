@@ -1,0 +1,35 @@
+Leaves systemd's own setting for its status lines alone, for plymouth:
+attaching to the console told PID 1 to write a line for every unit, over
+the machine's systemd.show_status=error, and those lines go through
+plymouthd's terminal. On 11 November a shutdown's plymouthd and console
+stalled on a docked screen's graphics, PID 1 blocked in the write for
+29 s, and the account's 5 s stop limit fired only once it woke. A
+failure is still written, as the machine asks.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -1798,17 +1798,18 @@
+ static void
+ tell_systemd_to_print_details (state_t *state)
+ {
+-        ply_trace ("telling systemd to start printing details");
+-        if (kill (1, SIGRTMIN + 20) < 0)
+-                ply_trace ("could not tell systemd to print details: %m");
++        /* The machine's systemd.show_status says what PID 1 writes: a
++         * line for each unit would go through this terminal, and PID 1
++         * waits on the write while plymouthd or the console is stuck. */
++        ply_trace ("leaving systemd's status lines as the machine set them");
+ }
+ 
+ static void
+ tell_systemd_to_stop_printing_details (state_t *state)
+ {
+-        ply_trace ("telling systemd to stop printing details");
+-        if (kill (1, SIGRTMIN + 21) < 0)
+-                ply_trace ("could not tell systemd to stop printing details: %m");
++        /* Nothing was asked of it, so there's nothing to take back; a
++         * signal here would drop an administrator's own SetShowStatus. */
++        ply_trace ("leaving systemd's status lines as the machine set them");
+ }
+ #endif
+ 

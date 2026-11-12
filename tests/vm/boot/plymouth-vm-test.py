@@ -488,6 +488,30 @@ def test_a_slow_job_is_said_while_it_runs_and_goes_when_it_ends(opened: Boot) ->
     )
 
 
+def test_a_splash_leaves_systemds_status_lines_as_the_machine_set_them(opened: Boot) -> None:
+    """A splash attached to the console leaves systemd writing only what the machine asked.
+
+    Attaching once told systemd to write a line a unit through the splash's terminal, and on
+    one shutdown a splash stalled by its screen held systemd in that write for 29 s.
+    """
+    machine = opened.machine
+    shown = (
+        "busctl get-property org.freedesktop.systemd1 /org/freedesktop/systemd1"
+        " org.freedesktop.systemd1.Manager ShowStatus"
+    )
+    assert machine.succeed(shown).split() == ["b", "false"], "the machine shows only failures"
+    opened.bare()
+    # plymouthd attaches as it starts, before it answers a ping, and systemd takes a signal
+    # ahead of the bus, so once it answers, what attaching asked of systemd is done.
+    machine.succeed("systemctl restart plymouth-start.service")
+    machine.wait_until_succeeds(f"{opened.plymouth} --ping", timeout=READING)
+    try:
+        said = machine.succeed(shown).split()
+    finally:
+        machine.succeed("systemd-run --wait --collect plymouth quit")
+    assert said == ["b", "false"], f"the splash turned systemd's lines on: {said}"
+
+
 def test_a_security_key_waiting_for_a_touch_is_asked_for_until_it_is_touched(
     opened: Boot,
 ) -> None:
