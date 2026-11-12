@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 
 use crate::measure::{self, File};
+use crate::merges::Merged;
 
 /// Every file's path at `reference` under `under`, from the folder read,
 /// and the text of each that's code or a folder's note.
@@ -66,6 +67,67 @@ pub fn files(
         .map(|((path, _), text)| File { path, text })
         .collect();
     Ok((paths, files))
+}
+
+/// Each change merged into `reference`'s own line since `since`, in Unix
+/// seconds: each merge on its first-parent line, and the earliest author
+/// time of the commits it brought in. A change merged by a squash or a
+/// fast-forward leaves no merge, so it isn't counted. Each is titled by its
+/// body's first line, where a pull request's merge keeps the request's
+/// title, or by its subject when the body is empty.
+pub fn merged(checkout: &str, reference: &str, since: i64) -> Result<Vec<Merged>, String> {
+    let since = format!("--since=@{since}");
+    let format = "--format=%H%x09%ct%x09%P%x09%s%x09%b";
+    let log = git(
+        checkout,
+        &[
+            "log",
+            "-z",
+            "--first-parent",
+            "--merges",
+            &since,
+            format,
+            reference,
+        ],
+        None,
+    )?;
+    let mut merged = Vec::new();
+    for record in String::from_utf8_lossy(&log).split('\0') {
+        let mut parts = record.splitn(5, '\t');
+        let (Some(merge), Some(at), Some(parents), Some(subject), body) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) else {
+            continue;
+        };
+        let title = body
+            .and_then(|body| body.lines().map(str::trim).find(|line| !line.is_empty()))
+            .unwrap_or(subject);
+        let mut parents = parents.split(' ');
+        let (Some(line_before), Some(brought), Ok(at)) =
+            (parents.next(), parents.next(), at.parse::<i64>())
+        else {
+            continue;
+        };
+        let range = format!("{line_before}..{brought}");
+        let authored = git(checkout, &["log", "--format=%at", &range], None)?;
+        let first = String::from_utf8_lossy(&authored)
+            .lines()
+            .filter_map(|time| time.parse::<i64>().ok())
+            .min();
+        if let Some(first) = first {
+            merged.push(Merged {
+                merge: merge.to_owned(),
+                title: title.to_owned(),
+                first,
+                landed: at,
+            });
+        }
+    }
+    Ok(merged)
 }
 
 /// Each object's text from `git cat-file --batch`'s answer: a line of
@@ -143,6 +205,77 @@ mod tests {
             batch(answered).expect("a whole answer wasn't read"),
             ["one", "", "t\nwo"],
             "a file's text was cut at a newline inside it, or an empty one lost"
+        );
+    }
+
+    /// When the test's repository starts, as a real date, since git reads
+    /// `--since=@` only as a time once it is a date's size.
+    const START: i64 = 1_700_000_000;
+
+    /// Run git in `folder` `at` seconds after `START`, as the test's own
+    /// author, reading no configuration of the machine's.
+    fn commit_at(folder: &std::path::Path, at: i64, arguments: &[&str]) {
+        let when = format!("@{} +0000", START + at);
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(folder)
+            .args(arguments)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Ada")
+            .env("GIT_AUTHOR_EMAIL", "ada@example.com")
+            .env("GIT_COMMITTER_NAME", "Ada")
+            .env("GIT_COMMITTER_EMAIL", "ada@example.com")
+            .env("GIT_AUTHOR_DATE", &when)
+            .env("GIT_COMMITTER_DATE", &when)
+            .stdout(Stdio::null())
+            .status()
+            .expect("git couldn't be started");
+        assert!(status.success(), "git {arguments:?} failed");
+    }
+
+    #[test]
+    fn a_merge_is_timed_from_the_first_edit_it_brought_in() {
+        let folder = tempfile::tempdir().expect("no folder for the repository");
+        let path = folder.path();
+        let empty = ["commit", "-q", "--allow-empty", "-m"];
+        commit_at(path, 1_000, &["init", "-q", "-b", "main"]);
+        commit_at(path, 1_000, &[empty.as_slice(), &["start"]].concat());
+        commit_at(path, 2_000, &["checkout", "-q", "-b", "change"]);
+        commit_at(path, 2_000, &[empty.as_slice(), &["first edit"]].concat());
+        commit_at(path, 2_600, &[empty.as_slice(), &["second edit"]].concat());
+        commit_at(path, 3_000, &["checkout", "-q", "main"]);
+        commit_at(path, 3_000, &[empty.as_slice(), &["meanwhile"]].concat());
+        commit_at(
+            path,
+            5_600,
+            &[
+                "merge",
+                "-q",
+                "--no-ff",
+                "-m",
+                "Merge pull request #1 from change",
+                "-m",
+                "Show the change",
+                "change",
+            ],
+        );
+        let checkout = path.to_str().expect("the folder's path isn't text");
+        let timed = merged(checkout, "main", START + 1_500).expect("the merges weren't read");
+        assert_eq!(timed.len(), 1, "not one merge: {timed:?}");
+        assert_eq!(
+            (
+                timed[0].title.as_str(),
+                timed[0].first - START,
+                timed[0].landed - START
+            ),
+            ("Show the change", 2_000, 5_600),
+            "the merge wasn't timed from its first edit, or titled by its body"
+        );
+        let later = merged(checkout, "main", START + 6_000).expect("the merges weren't read");
+        assert!(
+            later.is_empty(),
+            "a merge before the day was read: {later:?}"
         );
     }
 

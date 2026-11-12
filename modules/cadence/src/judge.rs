@@ -231,6 +231,44 @@ mod tests {
     }
 
     #[test]
+    fn a_repositorys_count_is_worse_at_any_rise_and_its_time_past_a_fifth() {
+        let before: Vec<Day> = (0..3)
+            .map(|_| {
+                day(
+                    &[
+                        ("code.core.long-files", 60.0),
+                        ("code.core.edit-to-merge", 60.0),
+                    ],
+                    &[],
+                )
+            })
+            .collect();
+        let a_tenth = judge(
+            &day(
+                &[
+                    ("code.core.long-files", 66.0),
+                    ("code.core.edit-to-merge", 66.0),
+                ],
+                &[],
+            ),
+            &before,
+        );
+        let found: Vec<&str> = a_tenth.worse.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(
+            found,
+            ["code.core.long-files"],
+            "a tenth more long files wasn't found, or a tenth longer to merge was"
+        );
+        let a_third = judge(&day(&[("code.core.edit-to-merge", 80.0)], &[]), &before);
+        let said = "core's median time from a change's first edit to its merge went from \
+                    60 min to 80 min";
+        assert_eq!(
+            a_third.worse[0].words, said,
+            "a third longer to merge wasn't said so"
+        );
+    }
+
+    #[test]
     fn too_few_days_before_are_said_and_not_judged() {
         let before = vec![day(&[("switch.minutes.median", 5.0)], &["tec"])];
         let judged = judge(
