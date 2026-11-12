@@ -65,6 +65,7 @@ Scope {
         const was = card.asking;
         card.asking = asking.createObject(root, {
             address: card.address,
+            began: Date.now(),
             command: Told.command({
                 id: replacing ? card.id : 0,
                 from: card.from,
@@ -87,6 +88,7 @@ Scope {
             id: process
 
             property string address: ""
+            property real began: 0
             property bool heard: false
 
             running: true
@@ -98,6 +100,10 @@ Scope {
                         process.heard = true;
                         if (card?.asking === process && /^\d+$/.test(said)) {
                             card.id = Number(said);
+                            // How long Return, or the reply, took to reach
+                            // the notices as a card, held to Joel's 50 ms.
+                            console.info(`told: the ${card.said} card reached the notices `
+                                + `${Date.now() - process.began} ms after it was asked`);
                             if (card.behind) {
                                 card.behind = false;
                                 Qt.callLater(root.follow);
