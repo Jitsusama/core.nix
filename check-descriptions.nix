@@ -1681,7 +1681,7 @@
   pain-points-names-what-slowed-him = ''
     pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
-    with nothing; joins an opening that came straight back to a failed search or the same row,
+    still typed with nothing, not one he cleared to read the lists; joins an opening that came straight back to a failed search or the same row,
     ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
     reads pi's logs from where it stopped, or anew when another build kept them, counting only
     what Joel typed up to the call that hands
