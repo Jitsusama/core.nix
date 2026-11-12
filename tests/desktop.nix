@@ -1022,8 +1022,18 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         systemd.user.services.dictation.Service.ExecStart = lib.mkForce "${standInDictation}";
         # The google program would ask Google, as an account nobody signed
         # in to in the VM; the test starts the stand-in when it wants it.
-        systemd.user.services.google.Service.ExecStart =
-          lib.mkForce "${standInGoogle} %t/daemons/google.sock";
+        # It has Calendar's rows made by the program's own google-rows, in
+        # the launcher's words, as the program says them.
+        systemd.user.services.google.Service.ExecStart = lib.mkForce (
+          lib.concatStringsSep " " [
+            "${standInGoogle}"
+            "%t/daemons/google.sock"
+            "${pkgs.callPackage ../modules/google/package.nix { }}/bin/google-rows"
+            "${pkgs.writeText "words.json" (
+              builtins.toJSON config.home-manager.users.${account}.jitsusama.quickshell.launcher.words
+            )}"
+          ]
+        );
         # tuple-call follows a stand-in for Tuple's command, whose stream
         # says what the test writes (desktop/tuple-stand-in.sh), since no
         # call can be made in the VM.

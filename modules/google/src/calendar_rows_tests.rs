@@ -202,7 +202,7 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
 }
 
 /// A call Ada holds, with Grace asked, a file on it and Joel going.
-fn planned() -> Meeting {
+pub(super) fn planned() -> Meeting {
     let mut meeting = one("e1", MONDAY + HOUR);
     meeting.title = "Plan & Review".into();
     meeting.link = Some("https://meet.google.com/abc-defg-hij".into());

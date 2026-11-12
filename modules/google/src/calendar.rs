@@ -30,8 +30,8 @@ use crate::done::Done;
 use crate::drive;
 use crate::link::{self, Kind};
 
-/// One meeting, as the shell is told it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+/// One meeting, as the shell is told it, and as google-rows reads it back.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meeting {
     /// The event's own id, which answering it names.
     pub id: String,
@@ -91,7 +91,7 @@ pub struct Meeting {
 
 /// Someone on a meeting, by the name the calendar gives, or their address
 /// when it gives none.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Person {
     pub name: String,
     pub email: Option<String>,
@@ -100,7 +100,7 @@ pub struct Person {
 /// A file on a meeting: its title, where it opens, and, for one of Docs,
 /// Sheets or Slides, Drive's id for it and its kind, which make it the
 /// document it is.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Attachment {
     pub title: String,
     pub link: String,
@@ -110,14 +110,14 @@ pub struct Attachment {
 
 /// A call's number to dial into it by, as its conference shows it, and the
 /// PIN it then asks for, when it asks one.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Dial {
     pub number: String,
     pub pin: Option<String>,
 }
 
 /// Someone asked to a meeting, and how they answered.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Guest {
     pub name: String,
     pub email: Option<String>,
@@ -127,7 +127,7 @@ pub struct Guest {
 /// How a series repeats, as its rule says it (RFC 5545's RRULE), in what
 /// the shell words it from: every two weeks on Monday and Wednesday, every
 /// month on the last Friday, until 31 December.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Repeats {
     pub every: Every,
     /// How many of them from one to the next: 2 for every other week.
@@ -144,7 +144,7 @@ pub struct Repeats {
     pub until: Option<i64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Every {
     Day,
@@ -156,7 +156,7 @@ pub enum Every {
 /// A day of the week a series falls on: 0 Sunday to 6 Saturday, as the
 /// shell's dates count them, and which of them in its month when the rule
 /// says, 1 the first and -1 the last.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Weekday {
     pub day: u8,
     pub nth: Option<i8>,

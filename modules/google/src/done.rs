@@ -12,7 +12,7 @@
 //! learnt on the looks the program already makes, never by asking more
 //! often (watch.rs).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// How long a thing done is still told, so a shell that was away when it
@@ -20,7 +20,7 @@ use serde_json::Value;
 pub const KEPT: i64 = 12 * 60 * 60 * 1000;
 
 /// How a thing stopped wanting Joel, the way it went.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Went {
     /// Read in Gmail, or anywhere but here.
@@ -41,7 +41,7 @@ pub enum Went {
 
 /// When and how a thing stopped wanting Joel, `at` in milliseconds since
 /// the epoch.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Done {
     pub how: Went,
     pub at: i64,
