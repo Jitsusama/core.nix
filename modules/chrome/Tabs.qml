@@ -8,7 +8,10 @@
 // session, and the daemon ranks them for what's typed (search.rs), so
 // the shell only draws them. Return goes to the Chrome window the page is
 // in front of, found by its title as Chrome titles its windows, else
-// Chrome's newest window; inside are Go To and Copy the Link.
+// Chrome's newest window; inside are Go To and Copy the Link. Kitty's tabs
+// are served among them (src/kitty_tabs.rs), one Tabs for both (VKCF3Z,
+// 2026-11-12), and a kitty tab's Return asks the daemon to go to it;
+// inside are Go to the Tab, Close the Tab and Copy the Title.
 //
 // Its bookmarks are found the same way (Joel, 2026-11-11: "searchable
 // chrome bookmarks would be nice"), served ready too (modules/programs/
@@ -34,13 +37,16 @@ Provider {
         place: "tabs"
         maker: provider
         drawn: provider.launcher?.open ?? false
-        make: (row, key) => ready.thing(row, key, {
+        // A page whose Return goes to its program is gone to here, to the
+        // window it's in front of; a kitty tab's Return asks the daemon,
+        // which goes to the tab itself (modules/programs/src/kitty_tabs.rs),
+        // where the program's newest window could be another tab's.
+        make: (row, key) => ready.thing(row, key, Object.assign({
             what: "site",
             component: "site",
             hue: row.hue || "program",
-            later: true,
-            run: () => provider.goTo(row)
-        })
+            later: true
+        }, row.acts?.[0]?.go ? { run: () => provider.goTo(row) } : {}))
     }
     // Named, so a test can tell it records as the daemon would.
     readonly property alias served: ready

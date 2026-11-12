@@ -1,0 +1,37 @@
+{
+  "things": [
+    {
+      "id": "tabs:tab",
+      "in": "tabs",
+      "name": "Tab",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:tabs:go",
+      "command": "buffer",
+      "in": "tabs:tab",
+      "name": "Go to the Tab",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:tabs:close",
+      "command": "close",
+      "in": "tabs:tab",
+      "name": "Close the Tab",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "verb:tabs:title",
+      "command": "yank",
+      "in": "tabs:tab",
+      "name": "Copy the Title",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

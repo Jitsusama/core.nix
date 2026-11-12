@@ -990,7 +990,7 @@
       "noun": "tabs",
       "glyph": "web",
       "ask": "which tab?",
-      "empty": "No tabs open in Chrome.",
+      "empty": "No tabs open in Kitty or Chrome.",
       "none": "none open"
     },
     {
