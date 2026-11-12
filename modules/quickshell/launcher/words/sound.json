@@ -170,6 +170,20 @@
       }
     },
     {
+      "id": "sound:by-ear:spot",
+      "in": "sound:by-ear",
+      "name": "Name This Spot",
+      "verb": "name",
+      "ask": "what do you call where you are? such as the desk",
+      "glyph": "location",
+      "states": {
+        "named": {
+          "name": "Rename This Spot",
+          "verb": "rename"
+        }
+      }
+    },
+    {
       "id": "sound:by-ear:recording",
       "in": "sound:by-ear",
       "name": "Recording"

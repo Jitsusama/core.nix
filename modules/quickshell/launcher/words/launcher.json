@@ -687,7 +687,9 @@
         "by-ear-the-microphone": "the microphone",
         "by-ear-cost": "{share} of a core while cleaning",
         "by-ear-scored": "sounds {mark} of 5 \u00b7 {cost}",
-        "by-ear-down": "its socket starts it on the next ask"
+        "by-ear-down": "its socket starts it on the next ask",
+        "by-ear-spot-unnamed": "the laptop's name for here; give it yours, like the desk",
+        "by-ear-spot-named": "picks here are kept under it, and stay when it's renamed"
       }
     },
     {

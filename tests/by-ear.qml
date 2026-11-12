@@ -45,7 +45,9 @@ QtObject {
         "by-ear-the-microphone": "the microphone",
         "by-ear-cost": "{share} of a core while cleaning",
         "by-ear-scored": "sounds {mark} of 5 \u00b7 {cost}",
-        "by-ear-down": "its socket starts it on the next ask"
+        "by-ear-down": "its socket starts it on the next ask",
+        "by-ear-spot-unnamed": "the laptop's name for here; give it yours, like the desk",
+        "by-ear-spot-named": "picks here are kept under it, and stay when it's renamed"
     })
 
     // The record as the daemon sends it idle, with `fields` laid over.
@@ -206,6 +208,34 @@ QtObject {
             [["sound:by-ear:down", "", "not answering", "its socket starts it on the next ask"]]);
         same("starting row", says(ByEar.rows(said, null, "starting", 0)),
             [["sound:by-ear:down", "", "starting", ""]]);
+
+        // Where Joel is, once the daemon says, second at every step: the
+        // laptop's name for it until he gives it his own, Return asking him
+        // for one, and then his, to rename. What he types goes to the daemon
+        // as the name act, which trims and judges it.
+        const here = { spot: "Main Floor", spot_named: false };
+        const unnamed = ByEar.rows(said, record(here), "answering", 0);
+        same("spot unnamed", says(unnamed)[1], ["sound:by-ear:spot", "", "Main Floor",
+            "the laptop's name for here; give it yours, like the desk"]);
+        same("spot asks for words", [unnamed[1].state, unnamed[1].names,
+            ByEar.asked(unnamed[1])], ["", true, null]);
+        same("spot named", ((row) => [row.state, row.side, row.note])(ByEar.rows(said,
+            record({ spot: "the desk", spot_named: true }), "answering", 0)[1]),
+            ["named", "the desk", "picks here are kept under it, and stay when it's renamed"]);
+        same("names", ByEar.naming("the couch"), { ask: "act", act: "name", name: "the couch" });
+        same("spot keeps its key", ["idle", "recording", "cleaning", "refused"].map(stage =>
+            keys(ByEar.rows(said, record(Object.assign({ stage, why: "a call is on" }, here)),
+                "answering", 0))), [["sound:by-ear:now", "sound:by-ear:spot"],
+            ["sound:by-ear:now", "sound:by-ear:spot"], ["sound:by-ear:now", "sound:by-ear:spot"],
+            ["sound:by-ear:now", "sound:by-ear:spot"]]);
+        same("spot before the clips", keys(ByEar.rows(said, Object.assign({}, ready, here),
+            "answering", 0)), ["sound:by-ear:now", "sound:by-ear:spot"]
+            .concat(["A", "B", "C", "D"].map(clip => `sound:by-ear:clip:${clip}`)));
+        same("spot before what was picked", keys(ByEar.rows(said,
+            Object.assign({}, picked, here), "answering", 0)), ["sound:by-ear:now",
+            "sound:by-ear:spot"].concat(["A", "B", "C", "D"].map(clip =>
+            `sound:by-ear:clip:${clip}`)));
+        same("no spot said", keys(idle), ["sound:by-ear:now"]);
 
         // Leaving discards anything but idle, and asks nothing of an idle
         // trial or a daemon not there.
