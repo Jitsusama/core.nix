@@ -106,14 +106,17 @@ mod tests {
         let (ours, _theirs) = UnixStream::pair().expect("a socket pair");
         let peer = match Peer::of(&ours) {
             // The lent builders run Linux 6.1, which has no SO_PEERPIDFD;
-            // the machines the broker serves run later ones.
+            // there the refusal itself is what's held to.
             Err(error) if error.kind() == io::ErrorKind::Unsupported => {
-                eprintln!("skipped: {error}");
+                assert!(
+                    error.to_string().contains("names no peer by pidfd"),
+                    "a kernel without SO_PEERPIDFD is named as the cause: {error}"
+                );
                 return;
             }
             read => read.expect("this process is its own peer"),
         };
-        assert_eq!(peer.pid, std::process::id());
+        assert_eq!(peer.pid, std::process::id(), "the peer is this process");
         assert!(peer.alive(), "and it's running");
         assert!(
             peer.cgroup.starts_with("0::"),

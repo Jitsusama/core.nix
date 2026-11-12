@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn a_quest_names_only_a_slice_of_agents_work() {
-        assert!(is_quest("qest2026102585pkb2"));
+        assert!(is_quest("qest2026102585pkb2"), "a quest's own name is one");
         for quest in ["", "QEST", "a-b", "../x", "a.slice", "a b", &"a".repeat(41)] {
             assert!(!is_quest(quest), "{quest:?} could name another slice");
         }
@@ -214,6 +214,9 @@ mod tests {
         ] {
             assert!(!is_unit(name), "{name:?} isn't a unit");
         }
-        assert!(!is_unit(&format!("{}.service", "a".repeat(250))));
+        assert!(
+            !is_unit(&format!("{}.service", "a".repeat(250))),
+            "a name past systemd's 255 characters isn't a unit"
+        );
     }
 }
