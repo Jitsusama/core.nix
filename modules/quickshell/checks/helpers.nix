@@ -148,6 +148,7 @@ let
       cp ${../../neovim/Neovim.js} qs/launcher/Neovim.js
       cp ${../../chrome/ChromeProgram.qml} qs/launcher/chrome.qml
       cp ${../../chrome/ChromeDownloads.js} qs/launcher/ChromeDownloads.js
+      cp ${../../chrome/Tabs.qml} qs/launcher/tabs.qml
       # The greeter runs beside the account's files, as greetd's module lays
       # them out, with what it's built with standing in.
       cp ${

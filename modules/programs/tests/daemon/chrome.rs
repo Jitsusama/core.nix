@@ -1,7 +1,8 @@
 //! What Chrome has open, read by the daemon itself with no command: from
 //! the profile's session file, as its watch begins and again as Chrome
 //! writes the file while it's watched, and from the extension's host on
-//! its socket first, where it's there.
+//! its socket first, where it's there; and its pages as rows of their
+//! own place, told as it writes the file.
 
 use std::io::{Read as _, Write as _};
 use std::os::unix::net::UnixListener;
@@ -58,6 +59,34 @@ fn chromes_open_pages_are_read_from_its_session_and_again_as_it_writes_it() {
         addresses,
         ["https://a.example.org/", "https://b.example.org/"],
         "the newer session file's tabs, told as Chrome wrote it"
+    );
+}
+
+#[test]
+fn chromes_pages_are_rows_of_their_own_told_as_it_writes_its_session() {
+    let running = Running::new("chrome-tabs");
+    sessioned(&running, 1, &["https://a.example.org/"]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "tabs"}));
+    let a = client.changed("row:tabs:https://a.example.org/");
+    assert_eq!(
+        a["row"]["name"], "Title 10",
+        "a page's row isn't named by its title: {a}"
+    );
+    assert_eq!(
+        a["row"]["side"],
+        json!([{"said": "a.example.org", "keep": 1}]),
+        "a page's row isn't said by its site: {a}"
+    );
+    sessioned(
+        &running,
+        2,
+        &["https://a.example.org/", "https://b.example.org/"],
+    );
+    let b = client.changed("row:tabs:https://b.example.org/");
+    assert_eq!(
+        b["row"]["name"], "Title 11",
+        "a page opened since wasn't told: {b}"
     );
 }
 

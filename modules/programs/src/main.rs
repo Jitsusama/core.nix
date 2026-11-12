@@ -35,7 +35,8 @@
 //! typed (search.rs). Capture's Recent's rows are made as a watch of them
 //! begins and as what was taken changes, worded from the launcher's
 //! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
-//! tells its lists changed has them read again (told.rs).
+//! tells its lists changed has them read again (told.rs). Chrome's open
+//! tabs are rows of their own while watched (tabs.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
@@ -43,6 +44,7 @@ mod heard;
 mod named;
 mod rows;
 mod search;
+mod tabs;
 mod taken;
 mod told;
 mod watch;
@@ -121,9 +123,10 @@ struct Daemon {
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
-    /// Programs' rows as last told, and Capture's.
+    /// Programs' rows as last told, Capture's and Chrome's tabs'.
     rows: Kept,
     taken: Kept,
+    tabs: Kept,
 }
 
 struct Shared {
@@ -188,6 +191,7 @@ fn main() {
             catalogue: None,
             rows: Kept::default(),
             taken: Kept::default(),
+            tabs: Kept::default(),
         }),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
@@ -433,6 +437,9 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             if taking && taken::watched(&daemon) {
                 taken::make(shared, &mut daemon, &[]);
             }
+            if what == Run::Opened && source.session.is_some() && tabs::watched(&daemon) {
+                tabs::make(shared, &mut daemon);
+            }
         }
         Err(why) => {
             // A list never read says it's empty and why, so a watch
@@ -542,6 +549,7 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
         read_named(shared, keys);
         taken::ahead(shared, keys);
     }
+    tabs::read(shared);
 }
 
 /// What a get or a list reads first, on this thread: the entries not yet
@@ -688,6 +696,7 @@ fn answer(
                 if names_rows(&kinds, keys.as_deref()) {
                     match place.as_deref() {
                         Some("taken") => taken::make(shared, &mut daemon, &folders),
+                        Some("tabs") => tabs::make(shared, &mut daemon),
                         _ => rows::make(shared, &mut daemon, &shown),
                     }
                 }
