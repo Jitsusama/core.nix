@@ -623,6 +623,7 @@ gather (
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
+    ./modules/jobs-broker/checks.nix
     ./modules/kernel/checks.nix
     ./modules/key-counts/checks.nix
     ./modules/keys/checks.nix

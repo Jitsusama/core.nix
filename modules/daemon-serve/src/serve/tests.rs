@@ -312,9 +312,8 @@ fn a_peered_ask_is_answered_knowing_who_asked() {
             let mut length = 12u32;
             // SAFETY: SO_PEERCRED fills three u32s (pid, uid, gid) into a
             // buffer of that size, which `length` says.
-            let read = unsafe {
-                libc_getsockopt(fd, 1, 17, said.as_mut_ptr().cast(), &raw mut length)
-            };
+            let read =
+                unsafe { libc_getsockopt(fd, 1, 17, said.as_mut_ptr().cast(), &raw mut length) };
             // SAFETY: zeroed, and filled when the call succeeded.
             let [pid, _, _] = unsafe { said.assume_init() };
             (read == 0).then(|| json!({"who": pid}))

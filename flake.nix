@@ -190,6 +190,7 @@
           inherit (self.homeModules) niri quickshell;
         };
         inlyne = ./modules/inlyne/home.nix;
+        jobs-broker = ./modules/jobs-broker/home.nix;
         jq = ./modules/jq/home.nix;
         keys = ./modules/keys/home.nix;
         kitty = moduleFrom ./modules/kitty/home.nix { inherit (self.homeModules) quickshell; };

@@ -85,7 +85,10 @@ pub fn quest_for(origin: &Origin, asked: Option<&str>) -> Option<String> {
 
 /// The slice a scope for this quest goes in.
 pub fn slice_for(quest: Option<&str>) -> String {
-    quest.map_or_else(|| WORK.to_owned(), |quest| format!("jobs-work-{quest}.slice"))
+    quest.map_or_else(
+        || WORK.to_owned(),
+        |quest| format!("jobs-work-{quest}.slice"),
+    )
 }
 
 /// The scope made for this process, named so polkit's rules know it as an
@@ -124,10 +127,7 @@ mod tests {
             origin(&at("agents.slice/pi-85pkb2.scope")),
             Some(Origin::Agent)
         );
-        assert_eq!(
-            origin(&at("jobs.slice/jobs.service")),
-            Some(Origin::Holder)
-        );
+        assert_eq!(origin(&at("jobs.slice/jobs.service")), Some(Origin::Holder));
         assert_eq!(
             origin(&at(
                 "jobs.slice/jobs-work.slice/jobs-work-qest2026102585pkb2.slice/work-1.scope"
@@ -155,7 +155,11 @@ mod tests {
         ] {
             assert_eq!(origin(&at(path)), None, "{path} isn't an agent's");
         }
-        assert_eq!(origin("0::/system.slice/sshd.service\n"), None, "no user manager");
+        assert_eq!(
+            origin("0::/system.slice/sshd.service\n"),
+            None,
+            "no user manager"
+        );
         assert_eq!(origin(""), None, "no cgroup at all");
     }
 
@@ -175,7 +179,10 @@ mod tests {
             quest: Some("kept".to_owned()),
         };
         assert_eq!(quest_for(&under, Some("other")), Some("kept".to_owned()));
-        assert_eq!(quest_for(&Origin::Agent, Some("asked")), Some("asked".to_owned()));
+        assert_eq!(
+            quest_for(&Origin::Agent, Some("asked")),
+            Some("asked".to_owned())
+        );
         assert_eq!(quest_for(&Origin::Holder, None), None);
     }
 
@@ -187,7 +194,12 @@ mod tests {
 
     #[test]
     fn a_status_is_asked_only_of_a_units_name() {
-        for name in ["jobs-sorter.service", "pi-host@a.service", "x-2d.slice", "a\\x2db.scope"] {
+        for name in [
+            "jobs-sorter.service",
+            "pi-host@a.service",
+            "x-2d.slice",
+            "a\\x2db.scope",
+        ] {
             assert!(is_unit(name), "{name} is a unit");
         }
         for name in [
