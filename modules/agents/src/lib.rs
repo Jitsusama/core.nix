@@ -22,6 +22,7 @@
 //! - `recent`: the sessions closed this boot that Recent lists.
 //! - `landed`: what the sessions landed, and what of it Joel has read.
 //! - `closed`: the closed orchestrators, and what reopening each needs.
+//! - `top`: Agents' top level, one row for each orchestration.
 
 pub mod acts;
 pub mod clock;
@@ -40,4 +41,5 @@ pub mod session;
 pub mod sources;
 pub mod standing;
 pub mod summary;
+pub mod top;
 pub mod tree;
