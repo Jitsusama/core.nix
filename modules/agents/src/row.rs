@@ -187,6 +187,18 @@ fn text<'a>(presence: Option<&'a Value>, field: &str) -> Option<&'a str> {
     presence?.pointer(field)?.as_str()
 }
 
+/// What else a row is found by: an orchestration's short id and title as
+/// its quest lists them, then the words a session standing at the top goes
+/// by, each after a space.
+fn known_as(listed: Option<(String, String)>, keywords: &[&str]) -> String {
+    let mut known = listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    for keyword in keywords {
+        known.push(' ');
+        known.push_str(keyword);
+    }
+    known
+}
+
 /// A session's row, `place`d in the tree.
 pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row {
     let presence = session.presence();
@@ -239,18 +251,12 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         || spent.unwrap_or_default(),
         |all| words.agents.fill("allOf", &[("spent", &all)]),
     );
-    let listed = if place.orchestrates {
-        (known.listed)(address)
-    } else {
-        None
-    };
-    let mut known_as =
-        listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    let listed = place
+        .orchestrates
+        .then(|| (known.listed)(address))
+        .flatten();
     let at_top = session.at_top();
-    for keyword in at_top.iter().flat_map(|(_, keywords)| keywords) {
-        known_as.push(' ');
-        known_as.push_str(keyword);
-    }
+    let known_as = known_as(listed, at_top.as_ref().map_or(&[], |(_, words)| words));
     let full = if stands == Stands::Off {
         String::new()
     } else {
