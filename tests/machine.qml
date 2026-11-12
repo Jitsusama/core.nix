@@ -81,6 +81,25 @@ ShellRoot {
                 total: 9 }, { name: "/" });
             expect("a healthy disk says its room beside it, with no drawer",
                 healthy.side === "7 B free" && !healthy.drawer, JSON.stringify(healthy.drawer));
+            // Disk's Space speaks for / while every disk is in one band, as
+            // the disk piece does (#3768): on 12 November it said the 47 GB
+            // build disk's 10.9 GB free while / had over 300. A disk in a
+            // worse band still leads.
+            const bands = ["healthy", "filling"];
+            const guarding = disks => Object.assign({}, guard, { disks, holders: [],
+                worse: (one, other) => bands.indexOf(one.band) > bands.indexOf(other.band) });
+            const build = band => ({ path: "/var/cache/cargo-builds", band, free: 10, total: 47 });
+            const root = { path: "/", band: "healthy", free: 300, total: 1000 };
+            const space = disks => machine.guardParts(guarding(disks))[0];
+            const even = space([build("healthy"), root]);
+            expect("Space says the room on / while every disk has room",
+                even.side === "300 B free" && even.note === "on /, one of 2",
+                `${even.side}; ${even.note}`);
+            const filling = space([root, build("filling")]);
+            expect("a disk in a worse band speaks for the rest",
+                filling.side === "10 B free"
+                && filling.note === "on /var/cache/cargo-builds, the least of 2",
+                `${filling.side}; ${filling.note}`);
             theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
             expect("Machine's place asks nothing of the disks", !machine.disksWanted, "it did");
