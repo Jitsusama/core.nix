@@ -135,11 +135,12 @@ ShellRoot {
             Expect.expect("each found by its site, a bookmark by its folder too",
                 words === "github.com, mail.google.com, docs.example.org, wiki.example.org Work",
                 words);
+            const asked = tabs.served.link.asked;
             const waiting = searched("doc");
             Expect.expect("while the daemon's asked, the tabs holding the letters stand",
                 waiting === "Notes", waiting);
             Expect.expect("what's typed is asked of the daemon",
-                tabs.served.asking === "doc", tabs.served.asking);
+                tabs.served.link.asked === asked + 1, tabs.served.link.asked - asked);
             tabs.served.answered("o", { id: 1, words: "o", marks: {}, keys: [
                 "row:tabs:https://docs.example.org/", "row:tabs:https://github.com/jitsusama/core.nix"
             ] });
