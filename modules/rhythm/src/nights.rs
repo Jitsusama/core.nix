@@ -38,14 +38,14 @@ const STRAY: i64 = 2 * 3600;
 pub const ENOUGH: usize = 7;
 pub const GUESS: u32 = 6 * 60;
 /// The weeks each reading looks back over, in days.
-const USUAL_DAYS: i64 = 28;
+pub const USUAL_DAYS: i64 = 28;
 const WEEKDAY_DAYS: i64 = 56;
 const WEEKDAY_NIGHTS: usize = 3;
 /// How many days back a night's weight halves, toward what's usual and
 /// toward its weekday's, and what the newest night weighs.
-const USUAL_HALVES: i64 = 7;
+pub const USUAL_HALVES: i64 = 7;
 const WEEKDAY_HALVES: i64 = 14;
-const NEWEST: u32 = 1 << 10;
+pub const NEWEST: u32 = 1 << 10;
 
 /// A night Joel stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,6 +152,9 @@ pub struct Profile {
     /// The evening the readings end at, where it isn't today's: the last
     /// he was here, after a break.
     pub from: Option<i64>,
+    /// How far the day's light moves tonight's stop from what the weeks
+    /// say, in minutes, earlier below zero (season.rs).
+    pub drift: i32,
 }
 
 impl Profile {
@@ -211,6 +214,7 @@ impl Profile {
             usual: middle(recent),
             weekdays,
             from: None,
+            drift: 0,
         }
     }
 
@@ -481,6 +485,30 @@ mod tests {
             night_at(found[0].stop, fixed(TORONTO)),
             Some(found[0]),
             "the same night"
+        );
+    }
+
+    #[test]
+    fn the_day_s_light_moves_a_learned_stop_and_not_the_guess() {
+        let profile = Profile {
+            drift: -30,
+            ..Profile::of(&four_weeks(), WEDNESDAY)
+        };
+        let (stop, learned) = Profile::of(&four_weeks(), WEDNESDAY).tonight(3);
+        assert_eq!(
+            profile.tonight(3),
+            (stop - 30, learned),
+            "half an hour earlier"
+        );
+        let few: Vec<Night> = four_weeks().into_iter().rev().take(ENOUGH - 1).collect();
+        let guessed = Profile {
+            drift: -30,
+            ..Profile::of(&few, WEDNESDAY)
+        };
+        assert_eq!(
+            guessed.tonight(3),
+            (GUESS, false),
+            "the guess stays midnight"
         );
     }
 

@@ -161,7 +161,31 @@ mod tests {
             usual: Some(6 * 60 + 40),
             weekdays,
             from: None,
+            drift: 0,
         }
+    }
+
+    #[test]
+    fn a_shorter_day_s_lean_is_said() {
+        let leaning = Profile {
+            drift: -20,
+            ..learned()
+        };
+        let read = said(&leaning, 4, None);
+        assert!(
+            read.contains("it's likely around 00:20"),
+            "tonight's, moved: {read}"
+        );
+        assert!(
+            read.contains("That's 20 minutes earlier than the weeks say, for the shorter day."),
+            "why: {read}"
+        );
+        let json = profile_json(&leaning, 4, None);
+        assert!(json.contains("\"drift\": -20"), "the lean in {json}");
+        assert!(
+            !said(&learned(), 4, None).contains("than the weeks say"),
+            "no lean, nothing said"
+        );
     }
 
     #[test]
@@ -226,6 +250,7 @@ mod tests {
             usual: Some(6 * 60 + 40),
             weekdays: [None; 7],
             from: None,
+            drift: 0,
         };
         let read = said(&few, 4, None);
         assert!(
