@@ -263,7 +263,7 @@ def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell)
     # does (VKCF3Z, 2026-11-12), and it's closed armed, never done.
     for typed, action, arms in [
         ("power off", "Power Off", "turns off"),
-        ("reboot", "Reboot", "restarts"),
+        ("reboot", "Reboot", "reboots"),
         ("log out", "Log Out", "logs out"),
     ]:
         shell.answer(typed)
@@ -291,7 +291,7 @@ def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell)
     shell.answer("reboot")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Reboot")
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: shown["armed"] == "again restarts")
+    shell.launcher_until(lambda shown: shown["armed"] == "again reboots")
     shell.send_key("left")
     shell.launcher_until(lambda shown: shown["armed"] == "")
     # Past the key language's wait, so this Return isn't the last one doubled.

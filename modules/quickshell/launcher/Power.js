@@ -148,7 +148,7 @@ function lockSaid(open, chord, said) {
 
 // The drawer of a row that ends the session, Log Out's, Reboot's or Power
 // Off's, an act's that ends something (VKCF3Z, 37e49991): its lead says
-// what it does and how many windows it closes, "Restarts the machine,
+// what it does and how many windows it closes, "Reboots the machine,
 // closing 14 windows.", and its Ends fact, by the id `ends`, whose they
 // are. `open` is byProgram's.
 function endingSaid(open, ends, said) {
