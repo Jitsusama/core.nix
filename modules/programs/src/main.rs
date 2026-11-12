@@ -36,10 +36,14 @@
 //! begins and as what was taken changes, worded from the launcher's
 //! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
 //! tells its lists changed has them read again (told.rs). Chrome's open
-//! tabs are rows of their own while watched (tabs.rs).
+//! tabs are rows of their own while watched (tabs.rs). kitty's open list
+//! leaves out the panes the agents daemon names, and Programs counts
+//! their windows apart, as it tells (agents.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
+mod agents;
+mod follow;
 mod heard;
 mod named;
 mod rows;
@@ -127,6 +131,7 @@ struct Daemon {
     rows: Kept,
     taken: Kept,
     tabs: Kept,
+    agents: agents::Agents,
 }
 
 struct Shared {
@@ -192,6 +197,7 @@ fn main() {
             rows: Kept::default(),
             taken: Kept::default(),
             tabs: Kept::default(),
+            agents: agents::Agents::default(),
         }),
         notify,
         previewer: Mutex::new(Previewer::new(std::env::var("PROGRAMS_PREVIEW").ok())),
@@ -212,6 +218,11 @@ fn main() {
         let shared = Arc::clone(&shared);
         let windows = rows::socket(&socket);
         std::thread::spawn(move || rows::hear(&shared, &windows));
+    }
+    {
+        let shared = Arc::clone(&shared);
+        let agents = agents::socket(&socket);
+        std::thread::spawn(move || agents::hear(&shared, &agents));
     }
     for (connection, stream) in (1u64..).zip(listener.incoming()) {
         let Ok(stream) = stream else {
@@ -430,7 +441,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
                 daemon.listers[at] = source::listers(&printed);
             }
             let record = match what {
-                Run::List => Some(source::recent(source, &printed)),
+                Run::List => Some(agents::listed(&mut daemon, at, source, &printed)),
                 Run::Opened => source::opened(source, &printed),
             };
             keep(&mut daemon, record.into_iter().collect(), &[]);

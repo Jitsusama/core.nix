@@ -52,7 +52,10 @@
       reads what's in them itself, a file a line newest first, its time in
       seconds, its size and its path, a tab between, as find's
       `%T@\t%s\t%p` prints them, and again on every change in one, as
-      what was taken lately is (Taken.qml).
+      what was taken lately is (Taken.qml). One with a `name` may say
+      `without = "agents"`, as kitty's open list does: the daemon serves it
+      without the panes the agents daemon says are agents' windows, and
+      says how many it left out as `agents`.
     '';
   };
 }

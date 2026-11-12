@@ -15,6 +15,7 @@
 //! milliseconds), and none it doesn't have: what a source doesn't say is
 //! null, never a guess. Words are the shell's.
 
+pub mod agent_panes;
 pub mod command;
 pub mod entry;
 pub mod folder;

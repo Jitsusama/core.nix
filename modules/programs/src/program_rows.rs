@@ -8,40 +8,58 @@
 //! What the shell attaches to a row, its acts and its drawer, it makes
 //! by the row's `id` (launcher/Applications.qml).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ready_rows::order::by_name;
 use serde_json::{Value, json};
 
-/// What one program has open: how many windows, and the niri id of the
-/// one looked at last, with when that was.
+/// What one program has open: how many windows of Joel's own and of
+/// agents', and the niri id of the one looked at last, his own before any
+/// agent's, with when that was.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Opened {
     pub windows: usize,
+    pub agents: usize,
     pub latest: Option<u64>,
     looked: u64,
+    latest_theirs: bool,
 }
 
 /// What each program has open, by its entry's id, from the windows
-/// daemon's `window` records: each counts for its `owner`, and the one
+/// daemon's `window` records: each counts for its `owner`, an agent's
+/// apart, those whose keys `agents` names (`agent_panes.rs`), and the one
 /// with the largest `order` is the one looked at last.
 #[must_use]
-pub fn opened<'a>(windows: impl IntoIterator<Item = &'a Value>) -> BTreeMap<String, Opened> {
+pub fn opened<'a>(
+    windows: impl IntoIterator<Item = &'a Value>,
+    agents: &BTreeSet<String>,
+) -> BTreeMap<String, Opened> {
     let mut by: BTreeMap<String, Opened> = BTreeMap::new();
     for window in windows {
         let Some(owner) = window["owner"].as_str() else {
             continue;
         };
-        let id = window["key"]
-            .as_str()
+        let key = window["key"].as_str();
+        let id = key
             .and_then(|key| key.strip_prefix("window:"))
             .and_then(|id| id.parse::<u64>().ok());
+        let theirs = key.is_some_and(|key| agents.contains(key));
         let looked = window["order"].as_u64().unwrap_or(0);
         let one = by.entry(owner.to_owned()).or_default();
-        one.windows += 1;
-        if one.latest.is_none() || looked > one.looked {
+        if theirs {
+            one.agents += 1;
+        } else {
+            one.windows += 1;
+        }
+        let later = if theirs == one.latest_theirs {
+            looked > one.looked
+        } else {
+            one.latest_theirs
+        };
+        if one.latest.is_none() || later {
             one.latest = id;
             one.looked = looked;
+            one.latest_theirs = theirs;
         }
     }
     by
@@ -85,12 +103,19 @@ fn listed(program: &Value, shown: &[String]) -> bool {
 fn row(program: &Value, open: Option<&Opened>) -> Value {
     let id = text(&program["id"]);
     let what = text(&program["generic_name"]).to_lowercase();
-    let windows = match open.map_or(0, |open| open.windows) {
-        0 => String::new(),
-        1 => "1 window".to_owned(),
-        many => format!("{many} windows"),
+    let agents = open.map_or(0, |open| open.agents);
+    let windows = match (open.map_or(0, |open| open.windows), agents) {
+        (0, _) => String::new(),
+        (1, 0) => "1 window".to_owned(),
+        (many, 0) => format!("{many} windows"),
+        (yours, _) => format!("{yours} yours"),
     };
-    let count = [what.as_str(), windows.as_str()]
+    let theirs = if agents == 0 {
+        String::new()
+    } else {
+        format!("{agents} agents'")
+    };
+    let count = [what.as_str(), windows.as_str(), theirs.as_str()]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
@@ -135,7 +160,7 @@ mod tests {
             window(9, "zathura", 0),
             json!({ "key": "window:11", "order": 900 }),
         ];
-        let by = opened(&windows);
+        let by = opened(&windows, &BTreeSet::new());
         assert_eq!(
             by.len(),
             2,
@@ -158,7 +183,10 @@ mod tests {
             program("chrome", "Google Chrome", "Web Browser"),
             program("inkscape", "Inkscape", "Vector Graphics Editor"),
         ];
-        let by = opened(&[window(1, "zathura", 1), window(2, "chrome", 2)]);
+        let by = opened(
+            &[window(1, "zathura", 1), window(2, "chrome", 2)],
+            &BTreeSet::new(),
+        );
         let made = rows(&programs, &by, &[]);
         let ids: Vec<&str> = made.iter().map(|row| row["id"].as_str().unwrap()).collect();
         assert_eq!(ids, ["chrome", "zathura", "inkscape", "kitty"]);
@@ -171,11 +199,14 @@ mod tests {
             program("zathura", "Zathura", "Document Viewer"),
             program("chrome", "Google Chrome", "Web Browser"),
         ];
-        let by = opened(&[
-            window(4, "kitty", 4),
-            window(6, "kitty", 6),
-            window(8, "chrome", 8),
-        ]);
+        let by = opened(
+            &[
+                window(4, "kitty", 4),
+                window(6, "kitty", 6),
+                window(8, "chrome", 8),
+            ],
+            &BTreeSet::new(),
+        );
         let made = rows(&programs, &by, &[]);
         let of = |id: &str| made.iter().find(|row| row["id"] == id).unwrap();
         assert_eq!(of("kitty")["key"], "row:programs:kitty");
@@ -188,6 +219,33 @@ mod tests {
         assert_eq!(of("zathura")["count"], "document viewer");
         assert_eq!(of("zathura")["verb"], "start");
         assert_eq!(of("zathura")["window"], Value::Null);
+    }
+
+    #[test]
+    fn agents_windows_are_counted_apart_and_return_goes_to_joels_own() {
+        let programs = [program("kitty", "kitty", "Terminal emulator")];
+        let windows = [
+            window(4, "kitty", 4),
+            window(6, "kitty", 60),
+            window(8, "kitty", 80),
+        ];
+        let agents = BTreeSet::from(["window:6".to_owned(), "window:8".to_owned()]);
+        let made = rows(&programs, &opened(&windows, &agents), &[]);
+        assert_eq!(
+            made[0]["count"], "terminal emulator \u{b7} 1 yours \u{b7} 2 agents'",
+            "his own counted apart from the agents': {made:?}"
+        );
+        assert_eq!(
+            made[0]["window"], 4,
+            "Return goes to his own, though an agent's was looked at later"
+        );
+        let theirs = BTreeSet::from(["window:4".to_owned()]);
+        let only = rows(&programs, &opened(&windows[..1], &theirs), &[]);
+        assert_eq!(
+            (&only[0]["count"], &only[0]["window"]),
+            (&json!("terminal emulator \u{b7} 1 agents'"), &json!(4)),
+            "only an agent's open, it's counted and gone to: {only:?}"
+        );
     }
 
     #[test]

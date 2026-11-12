@@ -62,6 +62,17 @@ pub struct Source {
     /// watched (`opened` gives way to it).
     #[serde(default)]
     pub session: Option<Session>,
+    /// What its list is served without: `agents`, kitty's open list
+    /// without the panes the agents daemon names as agents' (agents.rs).
+    #[serde(default)]
+    pub without: Option<Without>,
+}
+
+/// What a list is served without.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Without {
+    Agents,
 }
 
 /// Where a source's Chrome keeps what it has open.
