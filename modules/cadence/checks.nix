@@ -18,7 +18,7 @@ onLinux {
   # from their records; a merge off the machine past twenty minutes, slow
   # VM waits, high pressure, a fresh kill and the net's lag at each doubling
   # are each asked about once; an overdue card is asked for; a question
-  # unanswered twenty minutes, or a watcher gone ten, goes to the steward
+  # unanswered twenty minutes, or a watcher gone ten, goes to the orchestrator
   # once; a question lands whole and wakes a parked session; the card says
   # the hour's merges, switches and runs; a failed fetch of core is tried
   # again, and a second failure leaves the tick to go on; of the

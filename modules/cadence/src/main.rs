@@ -5,30 +5,31 @@
 //! the runs nix-offload sent, the net's round, the machine's pressure and
 //! memory), writes the last hour's card to `card.txt` in its state folder,
 //! and asks the watcher, by its mesh address, a question for each target
-//! newly missed. A card overdue it sends the steward itself. When the watcher leaves a question
-//! unanswered for twenty minutes, or is gone for ten, it asks the steward
-//! above it instead, once. Given no watcher, it writes the card alone.
+//! newly missed. A card overdue it sends the orchestrator above the
+//! watcher itself. When the watcher leaves a question unanswered for
+//! twenty minutes, or is gone for ten, it asks that orchestrator instead,
+//! once. Given no watcher, it writes the card alone.
 //!
 //! Given `--restart`, each tick first revives, before anything that needs
-//! the network: every orchestrator (each `--orchestrator`, and any that
+//! the network: every orchestrator (each `--revive`, and any that
 //! hears its own orchestration's group or that others name as theirs) and
 //! every session of one whose pi died is started again on its own log, its window put back, and the
-//! steward told (revive.rs says which are left down).
+//! orchestrator told (revive.rs says which are left down).
 //!
-//! Given a steward, each tick also tells an orchestrator of any session of
+//! Given an orchestrator, each tick also tells an orchestrator of any session of
 //! its that has sat idle two hours, once for each idle spell (idle.rs).
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
-//! just ended against the days before it and sends the steward its note
+//! just ended against the days before it and sends the orchestrator its note
 //! (daily.rs).
 //!
 //! `cadence axes`, typed by Joel, shows the nine axes he holds the machine
 //! to, each against its bar with its owner, and `cadence axes <axis>`
 //! steps into one (axes.rs).
 //!
-//!     cadence tick [--watcher ADDRESS --steward ADDRESS]
-//!         [--restart WORDS [--orchestrator ADDRESS]... [--skip ADDRESS]...]
-//!     cadence day [--steward ADDRESS]
+//!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS]
+//!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
+//!     cadence day [--orchestrator ADDRESS]
 //!     cadence axes [AXIS]
 
 mod axes;
@@ -69,7 +70,7 @@ const DAY: i64 = 86_400;
 
 struct Args {
     watcher: Option<String>,
-    steward: Option<String>,
+    orchestrator: Option<String>,
     restart: Option<String>,
     orchestrators: Vec<String>,
     skip: Vec<String>,
@@ -83,9 +84,9 @@ fn main() -> ExitCode {
         Some("axes") => return axes::run(args),
         _ => {
             eprintln!(
-                "usage: cadence tick [--watcher ADDRESS --steward ADDRESS] [--restart WORDS \
-                 [--orchestrator ADDRESS]... [--skip ADDRESS]...]\n       \
-                 cadence day [--steward ADDRESS]\n       \
+                "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--restart WORDS \
+                 [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
+                 cadence day [--orchestrator ADDRESS]\n       \
                  cadence axes [AXIS]"
             );
             return ExitCode::from(2);
@@ -93,7 +94,7 @@ fn main() -> ExitCode {
     }
     let mut parsed = Args {
         watcher: None,
-        steward: None,
+        orchestrator: None,
         restart: None,
         orchestrators: Vec::new(),
         skip: Vec::new(),
@@ -102,9 +103,9 @@ fn main() -> ExitCode {
         let value = args.next();
         match (flag.as_str(), value) {
             ("--watcher", Some(v)) => parsed.watcher = Some(v),
-            ("--steward", Some(v)) => parsed.steward = Some(v),
+            ("--orchestrator", Some(v)) => parsed.orchestrator = Some(v),
             ("--restart", Some(v)) => parsed.restart = Some(v),
-            ("--orchestrator", Some(v)) => parsed.orchestrators.push(v),
+            ("--revive", Some(v)) => parsed.orchestrators.push(v),
             ("--skip", Some(v)) => parsed.skip.push(v),
             _ => {
                 eprintln!("cadence: {flag} isn't a flag it takes, or has no value");
@@ -122,16 +123,21 @@ fn main() -> ExitCode {
 }
 
 fn day(mut args: impl Iterator<Item = String>) -> ExitCode {
-    let steward = match (args.next().as_deref(), args.next()) {
+    let orchestrator = match (args.next().as_deref(), args.next()) {
         (None, _) => None,
-        (Some("--steward"), Some(address)) if args.next().is_none() => Some(address),
+        (Some("--orchestrator"), Some(address)) if args.next().is_none() => Some(address),
         _ => {
-            eprintln!("usage: cadence day [--steward ADDRESS]");
+            eprintln!("usage: cadence day [--orchestrator ADDRESS]");
             return ExitCode::from(2);
         }
     };
     let ran = folders().and_then(|(_, state_home, folder)| {
-        daily::run(&folder, &state_home, steward.as_deref(), now_ms() / 1000)
+        daily::run(
+            &folder,
+            &state_home,
+            orchestrator.as_deref(),
+            now_ms() / 1000,
+        )
     });
     match ran {
         Ok(()) => ExitCode::SUCCESS,
@@ -158,11 +164,11 @@ fn run(args: &Args) -> io::Result<()> {
         root: state_home.join("pi/agentic-harness.pi"),
     };
     let now = now_ms() / 1000;
-    if let (Some(restart), Some(steward)) = (&args.restart, &args.steward) {
+    if let (Some(restart), Some(orchestrator)) = (&args.restart, &args.orchestrator) {
         let data_home =
             env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
         let reviving = start::Reviving {
-            steward: steward.clone(),
+            orchestrator: orchestrator.clone(),
             watcher: args.watcher.clone(),
             orchestrators: args.orchestrators.clone(),
             skip: args.skip.clone(),
@@ -177,7 +183,7 @@ fn run(args: &Args) -> io::Result<()> {
             Err(err) => eprintln!("cadence: reviving: {err}"),
         }
     }
-    if args.steward.is_some() {
+    if args.orchestrator.is_some() {
         // Like reviving, this doesn't wait on the card, and a line that
         // can't be sent mustn't keep the card from being written.
         // pi's own folder, where it keeps each session's log.
@@ -191,7 +197,7 @@ fn run(args: &Args) -> io::Result<()> {
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
 
-    let (Some(watcher), Some(steward)) = (&args.watcher, &args.steward) else {
+    let (Some(watcher), Some(orchestrator)) = (&args.watcher, &args.orchestrator) else {
         return Ok(());
     };
     let path = folder.join("state.json");
@@ -202,14 +208,14 @@ fn run(args: &Args) -> io::Result<()> {
     for question in watch::tick(&snapshot, &mut state) {
         let to = match question.to {
             To::Watcher => watcher,
-            To::Steward => steward,
+            To::Orchestrator => orchestrator,
         };
         let text = match question.to {
             To::Watcher => format!(
                 "{} Answer with re set to this question once handled.",
                 question.text
             ),
-            To::Steward => question.text.clone(),
+            To::Orchestrator => question.text.clone(),
         };
         let message = message(to, question.to.intent(), text);
         mesh.send(&message)?;
@@ -222,7 +228,7 @@ fn run(args: &Args) -> io::Result<()> {
             "{card}Sent by cadence, as the session keeping the cycle fast sent none this hour; \
              tokens, sessions and the top bottleneck come with its next."
         );
-        mesh.send(&message(steward, "fyi", text))?;
+        mesh.send(&message(orchestrator, "fyi", text))?;
         state.carded = Some(now);
     }
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
@@ -260,8 +266,12 @@ fn tell_idle(mesh: &Mesh, logs: &Path, folder: &Path, now: i64) -> io::Result<()
             told.spells.remove(&tell.session);
             continue;
         }
-        // Told as the steward is: nothing waits on its answer.
-        match mesh.send(&message(&tell.to, To::Steward.intent(), tell.text.clone())) {
+        // Told as the orchestrator is: nothing waits on its answer.
+        match mesh.send(&message(
+            &tell.to,
+            To::Orchestrator.intent(),
+            tell.text.clone(),
+        )) {
             Ok(()) => println!("{}", tell.text),
             Err(err) => {
                 // Not told, so the next tick tells it again.
@@ -410,7 +420,7 @@ fn gather(
         .as_deref()
         .map(|a| mesh.sent_by(a))
         .unwrap_or_default();
-    let steward = args.steward.as_deref().map(|s| format!("@{s}"));
+    let orchestrator = args.orchestrator.as_deref().map(|s| format!("@{s}"));
     Ok(Snapshot {
         now,
         landings,
@@ -445,7 +455,8 @@ fn gather(
         last_card: sent
             .iter()
             .filter(|m| {
-                steward.as_ref().is_some_and(|s| m.to.contains(s)) && m.text.starts_with("Card ")
+                orchestrator.as_ref().is_some_and(|s| m.to.contains(s))
+                    && m.text.starts_with("Card ")
             })
             .filter_map(|m| mesh::stamped_at(&m.id))
             .max()

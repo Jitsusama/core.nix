@@ -1,6 +1,6 @@
 //! `cadence day`: reads the day just ended from the machine's records,
 //! keeps it as `day/<date>.json` beside the days before, holds it against
-//! them, writes the note to `day/<date>.txt`, and sends it to the steward.
+//! them, writes the note to `day/<date>.txt`, and sends it to the orchestrator.
 //! A program does it, not a session, so the loop costs no model turns.
 
 use std::fs;
@@ -16,8 +16,13 @@ use crate::mesh::Mesh;
 use crate::{DAY, command, message, write_whole};
 
 /// Reads, keeps and judges the day that ends at `now`, and sends its note
-/// to `steward` when one is given.
-pub fn run(folder: &Path, state_home: &Path, steward: Option<&str>, now: i64) -> io::Result<()> {
+/// to `orchestrator` when one is given.
+pub fn run(
+    folder: &Path,
+    state_home: &Path,
+    orchestrator: Option<&str>,
+    now: i64,
+) -> io::Result<()> {
     let days = folder.join("day");
     fs::create_dir_all(&days)?;
     let today = read(state_home, now - DAY, now);
@@ -33,11 +38,11 @@ pub fn run(folder: &Path, state_home: &Path, steward: Option<&str>, now: i64) ->
     )?;
     write_whole(&days.join(format!("{}.txt", today.date)), &note)?;
     print!("{note}");
-    if let Some(steward) = steward {
+    if let Some(orchestrator) = orchestrator {
         let mesh = Mesh {
             root: state_home.join("pi/agentic-harness.pi"),
         };
-        mesh.send(&message(steward, "fyi", note))?;
+        mesh.send(&message(orchestrator, "fyi", note))?;
     }
     Ok(())
 }
