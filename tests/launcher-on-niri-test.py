@@ -1811,6 +1811,42 @@ def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
+    """A drawer out whose kind makes cheaply reaches the screen in the frame its key does.
+
+    Each drawer came the frame after its key, waiting a whole refresh for its swap: 16 ms of
+    Joel's median of 69 from the key, against his 50 (2026-11-12), while making one took a
+    median of 2. So one whose kind made in under 3 ms of late comes in the key's own frame,
+    and its line says so (VKCF3Z, 2026-11-12, d4c660a6). Home's first places make theirs in
+    0 to 2 ms here, where a program's takes 4 to 6, so the walk is over home's.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.normal()
+    # Down to the third place and back, twice, so each of the first three has made its
+    # drawer before the key that's measured, which brings the third's again.
+    for key in "jjjkkjjk":
+        title = (shell.showing()["drawer"] or {}).get("title", "")
+        shell.send_chars(key)
+        shell.launcher_until(functools.partial(drawer_moved, title))
+    since = shell.mark()
+    title = shell.showing()["drawer"]["title"]
+    shell.send_chars("j")
+    shell.launcher_until(functools.partial(drawer_moved, title))
+    said = said_once(shell, since, DRAWER_SAID)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    assert any(line.endswith("in the key's frame") for line in lines), lines
+    keys = json.loads(shell.as_account(shell.ipc("keysPresented")))
+    drawers = json.loads(shell.as_account(shell.ipc("drawersPresented")))
+    drawer = drawers[-1]
+    brought = next((one for one in keys if one["from"] == drawer["from"]), None)
+    assert brought is not None, f"no key pressed when the drawer's was: {drawer}, {keys[-3:]}"
+    assert drawer["at"] == brought["at"], (
+        f"the drawer came after its key's frame: {drawer}, {brought}"
+    )
+    shell.close_launcher()
+
+
 def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
     """Give the shell's log since `since` once it holds `line`, else as the wait ends."""
     said = ""

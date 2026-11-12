@@ -109,7 +109,7 @@ const drawerParts = [["from", "followed", "before it followed"],
 // be read as he goes.
 function drawerSaid(one) {
     return `launcher: drawer for "${one.key}" presented ${Math.round(one.at - one.from)} ms `
-        + `from the key${partsSwapped([one], drawerParts)}`;
+        + `from the key${partsSwapped([one], drawerParts)}, ${one.came ?? "the frame after"}`;
 }
 
 // The drawers presented since the launcher opened, a line a place, as a

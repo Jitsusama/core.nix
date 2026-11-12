@@ -7059,6 +7059,12 @@ Scope {
             return JSON.stringify(root.keysPresented);
         }
 
+        // Each drawer a key brought since it opened, from that key's press
+        // and when niri presented it, with the frame it came in, as JSON.
+        function drawersPresented(): string {
+            return JSON.stringify(root.drawersPresented);
+        }
+
         // Each key presented where its glide came to rest, as keysPresented
         // says them, as JSON.
         function keysLanded(): string {
@@ -7477,6 +7483,16 @@ Scope {
     // Whether a follow waits for the next frame, so keys handled before one
     // comes follow once, for where they left the selection.
     property bool drawerFollowDue: false
+    // How long each kind of drawer, by its place, took to make of late, by
+    // which one out comes in its key's own frame where its kind is cheap
+    // (Pacing.js's drawerJoinsKey), and whether the one followed last did.
+    // Kept while shut, as the cost is the place's and not the opening's,
+    // so the first key of the next opening is decided from evidence too.
+    property var drawerMakings: ({})
+    property bool drawerJoined: false
+    function drawerKindOf(row) {
+        return row?.from?.settings?.name ?? "home";
+    }
     // When the key that selected the row the drawer is for was pressed, on
     // KeyTimes's clock, or 0 where no key did, as when a daemon's rows move
     // the selection, so each drawer is timed from Joel's key to the screen
@@ -7497,8 +7513,14 @@ Scope {
         if (!open || selected === null) {
             drawerFollowDue = false;
             drawerRow = selected;
+        } else if (!prompt.keyHeld && drawerOut
+            && Pacing.drawerJoinsKey(drawerMakings, drawerKindOf(selected), prompt.keyHeld)) {
+            drawerFollowDue = false;
+            drawerJoined = true;
+            drawerFollow();
         } else if (!prompt.keyHeld && !drawerFollowDue) {
             drawerFollowDue = true;
+            drawerJoined = false;
             afterFrame(drawerFollow);
         }
     }
@@ -7516,8 +7538,11 @@ Scope {
             drawerKeyAt = 0;
         // A drawer already out is made again for the row at once; one
         // coming out is made as it settles.
-        if (out && drawerShows !== was)
+        if (out && drawerShows !== was) {
+            drawerMakings = Pacing.drawerMade(drawerMakings, drawerKindOf(drawerRow),
+                drawerAsked);
             drawerMade(began, drawerAsked);
+        }
         Report.say(`drawer follows ${selected?.key ?? ""}`);
     }
     // A held arrow let go: its drawer follows at once, timed from the
@@ -7527,6 +7552,7 @@ Scope {
             return;
         const pressed = KeyTimes.pressed();
         drawerKeyAt = pressed > 0 ? pressed : KeyTimes.now();
+        drawerJoined = false;
         drawerFollow();
     }
     // How long working out the drawer's row's drawer took when it was last
@@ -7554,8 +7580,9 @@ Scope {
             return;
         const key = drawerRow?.key ?? "";
         const made = KeyTimes.now();
+        const came = Pacing.drawerCame(drawerJoined);
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
-            place: drawerRow?.from?.settings?.name ?? "home" } : null;
+            place: drawerKindOf(drawerRow), came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {
@@ -7575,9 +7602,10 @@ Scope {
             const waiting = Math.round(begun - made);
             const drawing = Math.round(now - begun);
             root.drawerTimedLast = {
-                key, took, making, waiting, drawing, count: root.drawerTimedLast.count + 1
+                key, took, making, waiting, drawing, came,
+                count: root.drawerTimedLast.count + 1
             };
-            trials.drawerTimed(key, took, { making, waiting, drawing });
+            trials.drawerTimed(key, took, { making, waiting, drawing, came });
         });
     }
     property bool drawerOut: false

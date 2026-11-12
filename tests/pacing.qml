@@ -417,7 +417,10 @@ QtObject {
             Presented.drawerSaid(drawer),
             'launcher: drawer for "agent:Y2YBTS" presented 90 ms from the key: a median '
             + "50 ms before it followed, 10 until its frame began and 30 from its "
-            + "frame's start");
+            + "frame's start, the frame after");
+        check(failures, "and says when it came in its key's own frame",
+            Presented.drawerSaid(Object.assign({ came: Pacing.drawerCame(true) }, drawer))
+                .endsWith("frame's start, in the key's frame"), true);
         const drawers = Presented.drawersSaid([drawer,
             { key: "program:kitty", place: "programs", from: 0, followed: 5, begun: 15, at: 40 },
             { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
@@ -442,7 +445,7 @@ QtObject {
             Presented.drawerSaid(Object.assign({ swapped: 1064 }, drawer)),
             'launcher: drawer for "agent:Y2YBTS" presented 90 ms from the key: a median '
             + "50 ms before it followed, 10 until its frame began and 30 from its "
-            + "frame's start (4 to its swap and 26 after it)");
+            + "frame's start (4 to its swap and 26 after it), the frame after");
         const swapped = Presented.drawersSaid([
             Object.assign({ swapped: 1062 }, drawer),
             { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
@@ -564,9 +567,43 @@ QtObject {
             storm(100).each >= every, true);
     }
 
+    // A drawer comes in its key's own frame where its kind made in under
+    // 3 ms of late and no key is held, decided before it's made, never by
+    // timing it in the frame; otherwise the frame after, so the highlight
+    // never waits on it (VKCF3Z, 2026-11-12, d4c660a6).
+    function drawers(failures) {
+        check(failures, "a kind not yet made comes the frame after",
+            Pacing.drawerJoinsKey({}, "home", false), false);
+        let made = {};
+        for (const making of [1, 2, 1])
+            made = Pacing.drawerMade(made, "home", making);
+        check(failures, "one whose kind makes in under 3 ms comes in the key's frame",
+            Pacing.drawerJoinsKey(made, "home", false), true);
+        check(failures, "never while a key is held",
+            Pacing.drawerJoinsKey(made, "home", true), false);
+        check(failures, "another kind is decided by its own makings",
+            Pacing.drawerJoinsKey(made, "agents", false), false);
+        for (const making of [9, 13, 7])
+            made = Pacing.drawerMade(made, "home", making);
+        check(failures, "one whose kind's median reaches 3 ms comes the frame after",
+            Pacing.drawerJoinsKey(made, "home", false), false);
+        for (let at = 0; at < 8; at++)
+            made = Pacing.drawerMade(made, "home", 1);
+        check(failures, "only its last eight count", made.home.length, 8);
+        check(failures, "so a kind grown cheap comes in the key's frame again",
+            Pacing.drawerJoinsKey(made, "home", false), true);
+        const before = { home: [1] };
+        Pacing.drawerMade(before, "home", 5);
+        check(failures, "what was kept is left as it was", before.home.length, 1);
+        check(failures, "its journal line says which it took",
+            [true, false].map(joined => Pacing.drawerCame(joined)).join("; "),
+            "in the key's frame; the frame after");
+    }
+
     function run() {
         const failures = [];
         const every = 250;
+        drawers(failures);
 
         const first = Pacing.heard(Pacing.rested(), 1000, every);
         check(failures, "the first change is taken at once", first.now, true);
