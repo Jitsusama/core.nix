@@ -80,6 +80,18 @@ impl Chosen {
             .unwrap_or(self.configured)
     }
 
+    /// Whether Joel has named the spot with `key`.
+    pub fn named(&self, key: &str) -> bool {
+        let _ = key;
+        false
+    }
+
+    /// Keeps `name` as Joel's for `spot`, answering the spot as named.
+    pub fn name(&self, spot: &Spot, name: &str) -> Result<Spot, String> {
+        let _ = name;
+        Ok(spot.clone())
+    }
+
     /// A file called `name` beside the picks', for what's kept with them,
     /// or none when no pick is kept.
     pub fn beside(&self, name: &str) -> Option<PathBuf> {

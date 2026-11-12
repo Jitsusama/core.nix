@@ -224,6 +224,67 @@ fn a_file_naming_no_cleaner_cleans_as_nix_says() {
     );
 }
 
+/// Picks kept in `folder`, at a machine that knows nothing of where it
+/// is, so its spot is `network=none`, called "away".
+fn somewhere(folder: &Path) -> Chosen {
+    Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet)
+        .within(Where::at(&folder.join("machine")))
+}
+
+#[test]
+fn a_spot_takes_the_name_joel_gives_it() {
+    let folder = folder("named");
+    let chosen = somewhere(&folder);
+    let away = chosen.spot();
+    assert_eq!(away.name, "away");
+    assert!(!chosen.named(&away.key), "a spot nobody named is named");
+    let named = chosen
+        .name(&away, "  the couch ")
+        .expect("the name is kept");
+    assert_eq!(named.key, away.key, "naming moved the spot's picks");
+    assert_eq!(named.name, "the couch");
+    assert_eq!(
+        somewhere(&folder).spot().name,
+        "the couch",
+        "another process reads the name"
+    );
+    assert!(somewhere(&folder).named(&away.key));
+}
+
+#[test]
+fn a_spot_renamed_keeps_only_its_new_name() {
+    let folder = folder("renamed");
+    let chosen = somewhere(&folder);
+    chosen.name(&desk(), "the desk").expect("the desk is named");
+    chosen
+        .name(&chosen.spot(), "the couch")
+        .expect("the couch is named");
+    chosen
+        .name(&chosen.spot(), "the sofa")
+        .expect("the couch is renamed");
+    assert_eq!(chosen.spot().name, "the sofa");
+    let said = std::fs::read_to_string(folder.join("spots")).expect("the names are kept");
+    assert_eq!(
+        said,
+        format!("{} the desk\nnetwork=none the sofa\n", desk().key),
+        "a rename should leave one line a spot"
+    );
+}
+
+#[test]
+fn a_name_saying_nothing_or_too_much_is_refused() {
+    let folder = folder("unnamed");
+    let chosen = somewhere(&folder);
+    let away = chosen.spot();
+    for name in ["", "   ", "the\ncouch", &"long ".repeat(9)] {
+        assert!(
+            chosen.name(&away, name).is_err(),
+            "{name:?} was taken as a name"
+        );
+    }
+    assert_eq!(chosen.spot().name, "away", "a refused name was kept");
+}
+
 #[test]
 fn nowhere_to_keep_it_keeps_nothing() {
     let chosen = Chosen::new(None, Cleaner::DeepFilterNet);

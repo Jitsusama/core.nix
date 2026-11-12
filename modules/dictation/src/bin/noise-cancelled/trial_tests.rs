@@ -209,6 +209,31 @@ fn a_pick_is_kept_at_the_spot_recorded_at() {
 }
 
 #[test]
+fn a_spot_is_named_as_joel_says() {
+    let folder = std::env::temp_dir().join(format!("trial-named-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    let said = ask(&trial, r#"{"id":1,"ask":"watch","kind":"trial"}"#);
+    assert_eq!(said["records"][0]["spot"], "away");
+    assert_eq!(said["records"][0]["spot_named"], false);
+    let said = ask(
+        &trial,
+        r#"{"id":2,"ask":"act","act":"name","name":"the couch"}"#,
+    );
+    assert_eq!(said["taken"], true, "naming was refused: {said}");
+    let record = trial.lock().record();
+    assert_eq!(record["spot"], "the couch");
+    assert_eq!(record["spot_named"], true);
+    let said = ask(&trial, r#"{"id":3,"ask":"act","act":"name","name":" "}"#);
+    assert_eq!(
+        said["error"]["code"], "refused",
+        "a blank name was taken: {said}"
+    );
+    assert_eq!(trial.lock().record()["spot"], "the couch");
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
 fn it_says_the_default_microphones_own_cleaner_running() {
     let file = std::env::temp_dir().join(format!("trial-default-{}", std::process::id()));
     std::fs::write(&file, "rnnoise mv7\ndeepfilternet-gentle laptop\n").expect("picks kept");
