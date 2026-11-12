@@ -826,9 +826,11 @@ def test_a_later_time_the_daemon_serves_moves_the_meeting_once_joel_is_sure(
     )
     machine.fail(f"test -s {asked}")
     machine.send_key("ret")
-    moved = '{"move":{"id":"standup","start":'
+    # The daemon's ask comes with its fields in its own order, so it's
+    # matched by what it says, not where.
     machine.wait_until_succeeds(
-        f"grep -qF {shlex.quote(moved)} {asked}", timeout=dt.timedelta(seconds=30)
+        f"grep -F '{{\"move\":' {asked} | grep -qF '\"id\":\"standup\"'",
+        timeout=dt.timedelta(seconds=30),
     )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))

@@ -331,7 +331,10 @@ Singleton {
     // guest, as People's rows, so each steps through to the person (VKCF3Z's
     // design: the guests, before Attachments), counting those on it, so it's
     // there as the meeting's other rows are, each guest's name filling in
-    // as People knows them; none with nobody on it, or no People.
+    // as People knows them; none with nobody on it, or no People. Programs ›
+    // Calendar steps into the daemon's served Guests instead (Meetings.qml);
+    // this goes once Now and Meet show the daemon's rows too, by Fri 13 Nov
+    // 18:00, as do attaching() and moving() below.
     function guesting(meeting, provider) {
         const emails = Said.guestEmails(meeting);
         const people = () => {
@@ -368,7 +371,8 @@ Singleton {
     // 6abd5c3e), counting them as Recent does: each of Docs, Sheets or
     // Slides as the document it is (Drive.qml), the one from Recent when
     // he's opened it lately, which says when, and any other file a row
-    // opening its link in Google's window.
+    // opening its link in Google's window. The daemon's served Attachments
+    // take its place in Programs › Calendar; this goes with guesting().
     function attaching(meeting, provider) {
         const key = "verb:calendar:attachments";
         const files = meeting.attachments;
@@ -435,7 +439,9 @@ Singleton {
     // its day and times and the meeting it would clash with, and to one
     // typed there, which Launcher.qml asks for (`typed`) and lists first.
     // Return on a time steps in to a row naming who Google tells, and a
-    // second Return moves it, keeping the launcher, as Cancel does.
+    // second Return moves it, keeping the launcher, as Cancel does. The
+    // daemon serves the later times in Programs › Calendar; this goes with
+    // guesting(), and Calendar.js's typed() once the daemon answers it.
     function moving(meeting, provider) {
         const key = "verb:calendar:move";
         return provider.thing({
