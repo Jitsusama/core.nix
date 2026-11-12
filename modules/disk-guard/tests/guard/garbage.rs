@@ -390,6 +390,10 @@ fn temporary_roots_are_read_from_each_process_s_file() {
     assert!(temp_roots(&dir.path().join("nowhere")).is_empty());
 }
 
+// The two below give Linux's /proc as a folder of stand-ins. A Mac reads
+// its processes through libproc and never opens the folder, so it proves
+// its own reading on live processes, in macos.rs.
+#[cfg(target_os = "linux")]
 #[test]
 fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
     let dir = tempfile::tempdir().unwrap();
@@ -437,6 +441,7 @@ fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
     assert!(nowhere.paths.is_empty() && nowhere.links.is_empty());
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn a_process_holds_the_store_paths_its_command_line_and_environment_name() {
     let dir = tempfile::tempdir().unwrap();
