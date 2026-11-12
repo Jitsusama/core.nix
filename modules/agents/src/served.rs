@@ -65,6 +65,8 @@ pub struct Made {
     landed: Vec<Value>,
     /// Each closed orchestrator, a whole record (closed.rs).
     closed: Vec<Value>,
+    /// Which window each session here is in, a whole record (windows.rs).
+    windows: Vec<Value>,
 }
 
 impl Made {
@@ -96,6 +98,12 @@ impl Made {
     #[must_use]
     pub fn with_closed(self, closed: Vec<Value>) -> Self {
         Self { closed, ..self }
+    }
+
+    /// The same, with which window each session here is in.
+    #[must_use]
+    pub fn with_windows(self, windows: Vec<Value>) -> Self {
+        Self { windows, ..self }
     }
 
     /// The same, with the top level's rows after Agents' own (top.rs),
@@ -189,6 +197,7 @@ pub fn made(shown: &[Shown], summary: &str) -> Made {
         recent: Vec::new(),
         landed: Vec::new(),
         closed: Vec::new(),
+        windows: Vec::new(),
     }
 }
 
@@ -297,7 +306,8 @@ impl Served {
             .chain(made.reopens)
             .chain(made.recent)
             .chain(made.landed)
-            .chain(made.closed);
+            .chain(made.closed)
+            .chain(made.windows);
         for whole in wholes {
             if let Some(key) = whole["key"].as_str() {
                 records.insert(key.to_owned(), whole);
