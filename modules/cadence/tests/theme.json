@@ -1,0 +1,5 @@
+{
+  "colours": { "alert": "#FF6F5F" },
+  "terminal": { "red": "#00FF00", "bright_red": "#FF705F" },
+  "marks": { "failed": { "glyph": "x" } }
+}
