@@ -1671,11 +1671,11 @@ fn an_answer_changes_joels_own_and_is_held_at_once() {
     let stand_in = StandIn::new(invited);
     let path = credentials("answer", now().timestamp().as_millisecond() + 3_600_000);
     let mut watch = Watch::new(Google::new(stand_in.origins()), path, None);
-    watch.look(&now());
+    let held = watch.look(&now()).meetings[0].answer;
     let asked = watch.answering("e1", Answer::Maybe).meetings[0].clone();
     assert_eq!(
         (asked.given, asked.answer),
-        (Some(Answer::Maybe), Some(Answer::Waiting)),
+        (Some(Answer::Maybe), held),
         "an answer asked is his at once, and still Google's own until it takes it"
     );
     let state = watch.answer("e1", Answer::Maybe, &now()).clone();

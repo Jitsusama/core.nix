@@ -56,6 +56,7 @@ use jiff::{Timestamp, Zoned};
 
 use google::api::{Google, Origins};
 use google::ask::{self, Ask};
+use google::calendar::Answer;
 use google::daemon::Daemon;
 use google::files::Places;
 use google::mail::Tidy;
@@ -146,11 +147,7 @@ fn main() -> ExitCode {
             Ok(line) => {
                 let now = Zoned::now();
                 let state = match ask::read(&line) {
-                    // Noted his as it's asked, then again as Google takes it.
-                    Some(Ask::Answer { id, with }) => {
-                        tell(watch.answering(&id, with));
-                        watch.answer(&id, with, &now)
-                    }
+                    Some(Ask::Answer { id, with }) => answer(&mut watch, &id, with, &now, &tell),
                     Some(Ask::Cancel { id }) => watch.cancel(&id, &now),
                     Some(Ask::Move { id, start, end }) => watch.reschedule(&id, start, end, &now),
                     Some(Ask::Read { id }) => watch.tidy(&id, Tidy::Read, &now),
@@ -218,6 +215,19 @@ fn vocabulary(path: &Path) -> Result<(Vocabulary, Vec<String>), String> {
     let text = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
     let whole = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     Ok(Vocabulary::read(&whole))
+}
+
+/// Answers the meeting `id` `with`, told as Joel's the moment it's asked
+/// and again as Google takes it or refuses it.
+fn answer<'a>(
+    watch: &'a mut Watch,
+    id: &str,
+    with: Answer,
+    now: &Zoned,
+    tell: impl Fn(&State),
+) -> &'a State {
+    tell(watch.answering(id, with));
+    watch.answer(id, with, now)
 }
 
 /// Whether an ask last made then is due again, a wait on; never made, it is.
