@@ -16,7 +16,8 @@
 //!   its time up.
 //! - `rest`, `wake` and `raise { notice }`: off the screen, back, and back
 //!   unread.
-//! - `mark { notices, read, how? }`, `seen`, and `settle { standing }`.
+//! - `mark { notices, read, how? }`, `seen`, and `settle { standing }`. A
+//!   notice marked read where it came from, `how` saying where, closes.
 //! - `quiet { sharing }`: whether the shell holds notices while Joel
 //!   shares his screen, which only the shell sees.
 
@@ -204,7 +205,10 @@ impl State {
             "raise" => done(one.is_some_and(|id| self.holding.raise(id, now))),
             "mark" => {
                 let read = said["read"].as_bool().unwrap_or(true);
-                done(self.holding.mark(&many, read, said["how"].as_str(), now))
+                let how = said["how"].as_str();
+                let marked = self.holding.mark(&many, read, how, now);
+                let elsewhere = read && how.is_some_and(|how| how != "withdrawn");
+                done(marked | (elsewhere && self.close_read_elsewhere(now)))
             }
             "seen" => done(self.holding.seen()),
             "settle" => {
@@ -230,6 +234,24 @@ impl State {
 
     /// Closes every one named, saying whether any was, rather than
     /// stopping at the first closed.
+    /// Closes every notice still open that was read where it came from, as
+    /// one of Slack's read in Slack: Slack never closes its own, so 24 read
+    /// there still sat open in Super+N on 2026-11-12, waiting on Joel to
+    /// put away what he'd already read. Each closes as its time being up,
+    /// never as put away, which says Joel did it, and keeps where it was
+    /// read for History. Every one is closed, not only those just marked,
+    /// so those read before this rule close with the next.
+    fn close_read_elsewhere(&mut self, now: i64) -> bool {
+        let read: Vec<u32> = self
+            .holding
+            .notices()
+            .iter()
+            .filter(|notice| notice.live && notice.read && notice.read_how.is_some())
+            .map(|notice| notice.id)
+            .collect();
+        self.close_all(&read, Closed::Expired, now)
+    }
+
     fn close_all(&mut self, ids: &[u32], why: Closed, now: i64) -> bool {
         let mut any = false;
         for id in ids {
@@ -573,5 +595,40 @@ mod tests {
         assert_eq!(unknown["error"]["code"], "unknown-ask");
         // Marked unread and raised change it; an unknown ask doesn't.
         assert_eq!((unmarked.1, raised.1, shouted), (true, true, false));
+    }
+
+    #[test]
+    fn a_notice_read_elsewhere_closes_and_one_read_here_stays_open() {
+        let mut state = state("read-elsewhere");
+        let slack = state.notify(sent("[ada] from Ada", &[]), 1);
+        let earlier = state.notify(sent("[bob] from Bob", &[]), 2);
+        let here = state.notify(sent("[cy] from Cy", &[]), 3);
+        // Read in Slack before this daemon closed such a notice, as 24 of
+        // Joel's were on 2026-11-12, and one read here.
+        state.holding.mark(&[earlier], true, Some("readInSlack"), 4);
+        state.holding.mark(&[here], true, None, 4);
+        let (_, changed) = state.ask(
+            &json!({ "ask": "mark", "notices": [slack], "read": true, "how": "readInSlack" }),
+            5,
+        );
+        let stands = |id| {
+            let notice = state.holding.get(id).expect("held");
+            (notice.live, notice.left.clone(), notice.read_how.clone())
+        };
+        assert!(changed, "marking it read changed it");
+        assert_eq!(
+            [stands(slack), stands(earlier), stands(here)],
+            [
+                (false, Some("expired".into()), Some("readInSlack".into())),
+                (false, Some("expired".into()), Some("readInSlack".into())),
+                (true, None, None)
+            ],
+            "read in Slack, closed and still saying where it was read; read here, still open"
+        );
+        assert_eq!(
+            state.owed,
+            [Signal::Closed(earlier, 1), Signal::Closed(slack, 1)],
+            "Slack is told each closed, newest first, as they're held"
+        );
     }
 }
