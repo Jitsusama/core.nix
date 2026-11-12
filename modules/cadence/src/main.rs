@@ -41,6 +41,7 @@ mod findings;
 mod health;
 mod idle;
 mod judge;
+mod machine;
 mod mesh;
 mod net;
 mod records;
