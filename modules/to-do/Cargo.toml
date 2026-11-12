@@ -9,6 +9,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The serving side of the shell's daemon interface every daemon holds.
+daemon-serve = { path = "../daemon-serve" }
 inotify = { version = "0.11", default-features = false }
 jiff = "0.2"
 libc = "0.2"

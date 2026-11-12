@@ -1,4 +1,4 @@
-//! The records the daemon holds for the shell (serve.rs): each to-do as
+//! The records the daemon holds for the shell (daemon-serve): each to-do as
 //! its owner wrote it, with what the daemon found of it and what Joel
 //! said of it; each look the agents left him; and what waits counted
 //! whole, so the bar's For You mark can light from one record.

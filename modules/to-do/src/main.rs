@@ -8,8 +8,8 @@
 //! mycelium node, says each as it stands.
 //!
 //! It holds what it found for the shell too, over a socket in the shell's
-//! daemon interface (serve.rs), beside each to-do as its owner wrote it,
-//! Joel's own word on it, the looks the agents left him, and what waits
+//! daemon interface (daemon-serve, Joel's word answered by acts.rs),
+//! beside each to-do as its owner wrote it, Joel's own word on it, the looks the agents left him, and what waits
 //! counted whole (stream.rs), so the bar's For You mark lights from one
 //! record rather than the shell watching three folders.
 //!
@@ -41,11 +41,11 @@
 //! between wakes, and the folders it hears, each of which only that loop
 //! reads; the pieces it calls on are modules of their own.
 
+mod acts;
 mod bounded;
 mod interface;
 mod judge;
 mod pace;
-mod serve;
 mod session;
 mod settle;
 mod sources;
@@ -66,9 +66,12 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use daemon_serve::serve::{self, Shared};
 use inotify::{Inotify, WatchDescriptor, WatchMask, Watches};
 use serde_json::json;
 
+use acts::Acts;
+use interface::DOMAIN;
 use judge::Facts;
 use pace::{Pace, Run};
 use todo::{Knowing, Sandbox, Signal, ToDo};
@@ -147,7 +150,7 @@ struct Daemon {
     /// The looks and Joel's word as last read, for the shell.
     beside: stream::Beside,
     /// What the shell is told, where a socket is served.
-    shared: Option<Arc<serve::Shared>>,
+    shared: Option<(Arc<Shared>, Arc<Acts>)>,
     /// The words each to-do is said in for For You, where it's given them.
     words: Option<words::Words>,
 }
@@ -476,7 +479,7 @@ impl Daemon {
     /// Tells the shell every record as it stands, where a socket is
     /// served; only those that changed reach a watch.
     fn tell_shell(&self) {
-        let Some(shared) = &self.shared else {
+        let Some((shared, acts)) = &self.shared else {
             return;
         };
         let sources = json!({
@@ -491,6 +494,7 @@ impl Daemon {
             &self.beside.settled,
             self.words.as_ref(),
         );
+        acts.told(&records);
         shared.change(records, sources);
     }
 
@@ -628,9 +632,10 @@ fn run(
     fixed.extend(told.iter().map(|t| t.watch.clone()));
     let shared = match socket {
         Some(socket) => {
-            let shared = serve::Shared::new(paths.settled.clone());
+            let acts = Acts::new(paths.settled.clone());
+            let shared = Shared::new(DOMAIN, acts.own());
             serve::accept(Arc::clone(&shared), serve::listen(&socket)?);
-            Some(shared)
+            Some((shared, acts))
         }
         None => None,
     };
