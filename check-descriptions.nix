@@ -3250,6 +3250,11 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-stays-light-on-niri = ''
+    opening every place the desktop's chords open and typing at home, three rounds over, the
+    third round keeps no more than a tenth more of the shell's JavaScript heap live than the
+    second, as Qt's collector says after each closing's collection
+  '';
   the-desktop-reads-the-documents = ''
     the shell reads the documents from the google program's state, none from one saying none,
     knows which Google program opens each kind, and says only when Joel last opened a document
