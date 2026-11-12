@@ -65,7 +65,9 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
 }
 
 /// The one sentence the machine's row shows: its worst disk's, or when
-/// every disk has room and none is filling fast, how much its tightest has.
+/// every disk has room and none is filling fast, how much the system disk
+/// has, or without it the tightest watched: a small build disk with room
+/// leading would read as a machine nearly full.
 pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     let Some(worst) = rooms.iter().max_by_key(|room| room.band) else {
         return "Not watching any disk yet.".to_owned();
@@ -81,7 +83,11 @@ pub fn machine(rooms: &[Room], home: Option<&Path>) -> String {
     if let Some((room, _)) = filling {
         return filesystem(room, home);
     }
-    let tightest = rooms.iter().min_by_key(|room| room.free).unwrap_or(worst);
+    let tightest = rooms
+        .iter()
+        .find(|room| room.path == Path::new("/"))
+        .or_else(|| rooms.iter().min_by_key(|room| room.free))
+        .unwrap_or(worst);
     format!(
         "Plenty of room: {} free on {}.",
         shown(tightest.free),
