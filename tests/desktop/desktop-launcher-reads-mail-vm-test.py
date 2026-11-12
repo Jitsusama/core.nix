@@ -1196,6 +1196,13 @@ def test_mail_is_marked_read_or_archived_from_its_acts_and_the_launcher_stays(
     desktop.close_launcher()
 
 
+# How long the shell's clients of a socket just gone take to try it again
+# and hear the file go, and how long after that a client still polling
+# every 2 s would be seen trying it four times.
+SOCKET_GOING_SETTLES = 4
+SOCKET_MISSING_WATCHED = 8
+
+
 def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop: Desktop) -> None:
     """A daemon whose socket isn't there is asked again only once it appears, not every 2 s."""
     machine = desktop.machine
@@ -1204,21 +1211,28 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
     hellos = f"{runtime}/slack-hellos"
     missing = "ServerNotFoundError"
     # Slack's daemon as it is before Joel signs in: no socket at all.
-    since = desktop.as_account("date +%s").strip()
     desktop.as_account(f"systemctl --user stop slack-stand-in.service; rm -f {made} {hellos}")
     try:
-        # A span to show the shell isn't trying: one every 2 s would be 6
-        # for each of its two clients of Slack's daemon, Search Slack and
-        # what's unread. The socket going may cost each a try or two, as a
-        # dropped connection is tried again once and the file going is
-        # heard.
-        time.sleep(12)
+        # The socket going costs each of the shell's clients of Slack's
+        # daemon a try or two, as a dropped connection is tried again once
+        # and the file going is heard, and how many clients are live
+        # changes as places move to the daemon: with a third, For You's
+        # Slack rows, a count from the stop gave 6 against the 4 two
+        # allowed (2026-11-12). So those settle first, and then a span
+        # shows the shell isn't trying: one every 2 s would be 4 for each
+        # client in 8 s, where the file only appearing asks none.
+        time.sleep(SOCKET_GOING_SETTLES)
+        since = desktop.as_account("date +%s").strip()
+        time.sleep(SOCKET_MISSING_WATCHED)
         tries = desktop.as_account(
             f"journalctl --user -u quickshell --since @{since} --no-pager -o cat"
             f" | grep -c {missing}; true"
         ).strip()
-        allowed = 4
-        assert int(tries) <= allowed, f"the shell tried a missing socket {tries} times in 12 s"
+        allowed = 1
+        assert int(tries) <= allowed, (
+            f"the shell tried a missing socket {tries} times in"
+            f" {SOCKET_MISSING_WATCHED} s, long after it went"
+        )
         # Once it's made, the shell says hello, with no clock to wait on.
         desktop.as_account("systemctl --user start slack-stand-in.service")
         machine.wait_until_succeeds(f"test -s {hellos}", timeout=30)
