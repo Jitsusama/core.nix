@@ -299,7 +299,10 @@ let
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
-  imports = [ ./probe.nix ];
+  imports = [
+    ./probe.nix
+    ./tiers.nix
+  ];
 
   options.jitsusama.slices.disks = lib.mkOption {
     description = ''
@@ -727,6 +730,16 @@ in
             "--orchestrators"
             "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
           ]
+          # Each quest's slice inside its tier's, as tiers.nix says.
+          + lib.optionalString (config.jitsusama.slices.tiers != [ ]) (
+            " "
+            + lib.escapeShellArgs [
+              "--tiers"
+              "/etc/jobs-sorter/tiers.json"
+              "--parents"
+              "%t/jobs/parents.json"
+            ]
+          )
           # The session window Joel is at, as niri says, and those he was at
           # in the last ten minutes, three in all, rank as his own programs:
           # an app's weight, a floor inside agents.slice's own and oomd's

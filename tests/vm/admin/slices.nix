@@ -35,13 +35,25 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   };
 
   # The numbers only have to be ones the kernel takes: a virtual disk's
-  # speed says nothing of a real one's.
+  # speed says nothing of a real one's. Its agents' work is ranked into
+  # three tiers too, which the disk's sharing leaves alone.
   nodes.ordered = {
     imports = [ self.nixosModules.slices ];
     users.users.alice = {
       isNormalUser = true;
       linger = true;
     };
+    jitsusama.slices.tiers = [
+      {
+        name = "first";
+        quests = [ "QEST-20261024-FIRST0" ];
+      }
+      { name = "second"; }
+      {
+        name = "third";
+        quests = [ "QEST-20261024-THIRD0" ];
+      }
+    ];
     jitsusama.slices.disks.vda = {
       model = {
         rbps = 1000000000;

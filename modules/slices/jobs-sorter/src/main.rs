@@ -1157,7 +1157,14 @@ fn split(
             let environ = fs::read(format!("/proc/{}/environ", piece.root)).ok()?;
             weights.place(slice, &environ)
         });
-        let into = placed.as_ref().map_or(slice, |(quest, _)| quest.as_str());
+        let unlisted = by_quest
+            .as_deref()
+            .and_then(|weights| weights.unlisted(slice));
+        let into = placed
+            .as_ref()
+            .map(|(quest, _)| quest.as_str())
+            .or(unlisted.as_deref())
+            .unwrap_or(slice);
         let name = format!("work-{}-{}.scope", piece.root, piece.start);
         let description = format!("{} ({}), work from {unit}", piece.comm, piece.root);
         let result = Command::new("busctl")

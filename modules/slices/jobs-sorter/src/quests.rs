@@ -147,6 +147,15 @@ impl Weights {
         self.tiers = Some(tiers);
     }
 
+    /// Where work for no weighed quest goes under `base`: the unranked
+    /// tier's slice when ranking by tiers, so it never weighs as much as a
+    /// whole tier beside them; otherwise nowhere but `base`.
+    pub fn unlisted(&self, base: &str) -> Option<String> {
+        self.tiers
+            .as_ref()
+            .and(tiers::slice_for(base, tiers::UNRANKED))
+    }
+
     /// The slice a quest's work goes in under `base`: inside its tier's,
     /// when ranking by tiers.
     fn quest_slice(&self, base: &str, quest: &str) -> Option<String> {
@@ -276,6 +285,18 @@ mod tests {
         assert_eq!(
             weights.place("jobs-work.slice", b"PI_QUEST=QEST-20261023-R82FBP\0"),
             Some(("jobs-work-unranked-qest20261023r82fbp.slice".into(), 200))
+        );
+    }
+
+    #[test]
+    fn work_for_no_weighed_quest_goes_unranked_only_when_ranking() {
+        assert_eq!(
+            ranked().unlisted("jobs-work.slice"),
+            Some("jobs-work-unranked.slice".into())
+        );
+        assert_eq!(
+            Weights::new(PathBuf::new()).unlisted("jobs-work.slice"),
+            None
         );
     }
 

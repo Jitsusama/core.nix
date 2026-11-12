@@ -195,6 +195,31 @@ def measured(started: None, machines: dict[str, BaseMachine], values: dict[str, 
     return held
 
 
+@pytest.fixture(scope="module")
+def ranked(measured: Account) -> Account:
+    """Wait for the holders on the measured machine, whose sorter ranks quests into tiers."""
+    for holder in ["timed", "awaited"]:
+        measured.machine.wait_until_succeeds(
+            f"systemctl -M alice@ --user is-active {holder}.service", timeout=APPEARING
+        )
+    return measured
+
+
+def parent_quests(account: Account, parents: dict[str, str]) -> None:
+    """Write each open quest's parent where the harness keeps them."""
+    account.machine.succeed("install -d -o alice -m 700 /run/user/1000/jobs")
+    account.machine.succeed(
+        f"echo '{json.dumps(parents)}' > /run/user/1000/jobs/parents.json.tmp"
+        " && mv /run/user/1000/jobs/parents.json.tmp /run/user/1000/jobs/parents.json"
+    )
+
+
+def used(account: Account, path: str) -> int:
+    """Give the CPU, in microseconds, a cgroup has used."""
+    stat = account.read(f"{path}/cpu.stat")
+    return int(next(line.split()[1] for line in stat.splitlines() if line.startswith("usage_usec")))
+
+
 def latency(account: Account, name: str, under: str = ACCOUNT) -> str:
     """Give the latency target the kernel holds for the slice, under its holder's cgroup."""
     return account.read(f"{under}/{name}.slice/io.latency")
@@ -449,6 +474,83 @@ def test_quests_share_the_cpu_by_weight(jobs: Account) -> None:
     # Four to one by weight, within what a virtual CPU's scheduling allows.
     assert LEAST_RATIO < ratio < MOST_RATIO, f"heavy against light: {ratio:.2f}"
     jobs.machine.succeed(f"systemctl -M alice@ --user stop {heavy} {light}")
+
+
+def test_work_goes_in_the_tier_of_its_nearest_ranked_quest(ranked: Account) -> None:
+    """A quest's work goes in its tier, its nearest ranked ancestor's, or else unranked."""
+    ranked.weigh_quests(
+        {"QEST-20261024-FIRST0": 100, "QEST-20261024-CHILD0": 100, "QEST-20261024-THIRD0": 100}
+    )
+    parent_quests(ranked, {"QEST-20261024-CHILD0": "QEST-20261024-FIRST0"})
+    into = f"{JOBS}/jobs.service"
+    for seconds, quest in [
+        (1101, "QEST-20261024-FIRST0"),
+        (1102, "QEST-20261024-CHILD0"),
+        (1103, "QEST-20261024-THIRD0"),
+        (1104, "QEST-20260101-UNLIST"),
+        (1105, None),
+    ]:
+        ranked.write_into_jobs(f"tier-{seconds}", into, f"{ranked.sleep} {seconds}", quest)
+    first = "jobs-work.slice/jobs-work-first.slice"
+    ranked.wait_until_in(1101, f"{first}/jobs-work-first-qest20261024first0.slice/work-")
+    ranked.wait_until_in(1102, f"{first}/jobs-work-first-qest20261024child0.slice/work-")
+    third = "jobs-work.slice/jobs-work-third.slice/jobs-work-third-qest20261024third0.slice"
+    ranked.wait_until_in(1103, f"{third}/work-")
+    # Work for a quest pi's sessions don't list, or for none, waits behind every tier.
+    for seconds in [1104, 1105]:
+        ranked.wait_until_in(seconds, "jobs-work.slice/jobs-work-unranked.slice/work-.*\\.scope$")
+    for tier, weight in [("first", 640), ("second", 320), ("third", 160), ("unranked", 80)]:
+        assert ranked.read(f"{WORK}/jobs-work-{tier}.slice/cpu.weight") == str(weight), tier
+
+
+def test_a_quest_moving_tier_is_said_and_its_next_work_follows(ranked: Account) -> None:
+    """A quest whose parent changes tier is said to move, and its next work goes there."""
+    ranked.weigh_quests({"QEST-20261024-MOVER0": 100})
+    parent_quests(ranked, {"QEST-20261024-MOVER0": "QEST-20261024-FIRST0"})
+    into = f"{JOBS}/jobs.service"
+    ranked.write_into_jobs("tier-1106", into, f"{ranked.sleep} 1106", "QEST-20261024-MOVER0")
+    ranked.wait_until_in(1106, "jobs-work-first.slice/jobs-work-first-qest20261024mover0.slice/")
+    parent_quests(ranked, {"QEST-20261024-MOVER0": "QEST-20261024-THIRD0"})
+    ranked.machine.wait_until_succeeds(
+        "journalctl _SYSTEMD_USER_UNIT=jobs-sorter.service -o cat | grep -qx"
+        " 'QEST-20261024-MOVER0 moved from the first tier to third.'",
+        timeout=APPEARING,
+    )
+    ranked.write_into_jobs("tier-1107", into, f"{ranked.sleep} 1107", "QEST-20261024-MOVER0")
+    ranked.wait_until_in(1107, "jobs-work-third.slice/jobs-work-third-qest20261024mover0.slice/")
+
+
+def test_the_first_tier_runs_four_times_the_third(ranked: Account) -> None:
+    """While both want the CPU, the first tier's work runs four times as much as the third's."""
+    ranked.weigh_quests({"QEST-20261024-FIRST1": 100, "QEST-20261024-THIRD1": 100})
+    parent_quests(
+        ranked,
+        {
+            "QEST-20261024-FIRST1": "QEST-20261024-FIRST0",
+            "QEST-20261024-THIRD1": "QEST-20261024-THIRD0",
+        },
+    )
+    for unit, quest in [
+        ("spin-first", "QEST-20261024-FIRST1"),
+        ("spin-third", "QEST-20261024-THIRD1"),
+    ]:
+        ranked.write_into_jobs(
+            unit,
+            f"{JOBS}/jobs.service",
+            f'exec {ranked.taskset} -c 0 {ranked.bash} -c "while :; do :; done"',
+            quest,
+        )
+    first = f"{WORK}/jobs-work-first.slice/jobs-work-first-qest20261024first1.slice"
+    third = f"{WORK}/jobs-work-third.slice/jobs-work-third-qest20261024third1.slice"
+    for path in [first, third]:
+        ranked.machine.wait_until_succeeds(f"test -d {path}", timeout=APPEARING)
+    ranked.machine.succeed("sleep 1")
+    was = used(ranked, first), used(ranked, third)
+    ranked.machine.succeed("sleep 5")
+    ratio = (used(ranked, first) - was[0]) / max(used(ranked, third) - was[1], 1)
+    # 640 against 160 by the tiers' weights, within what a virtual CPU's scheduling allows.
+    assert LEAST_RATIO < ratio < MOST_RATIO, f"first against third: {ratio:.2f}"
+    ranked.machine.succeed("systemctl -M alice@ --user stop spin-first spin-third")
 
 
 def test_agents_lose_real_time_and_joel_keeps_it(jobs: Account) -> None:
