@@ -1234,3 +1234,43 @@ def test_a_shut_launcher_hears_agents_rows_once_a_pace_and_opening_is_told_at_on
         ),
         timedelta(seconds=5),
     )
+
+
+def test_the_first_letter_typed_at_home_finds_agents_rows_made_after_a_change_while_shut(
+    shell: Shell,
+) -> None:
+    """A session arriving while the launcher's shut has its row made once the opening's drawn.
+
+    So the first letter typed at home makes none of Agents' rows: Joel's made 176 to 185 of them,
+    11 to 17 ms of letters that took 56 to 81 (RCTRF8, 2026-11-12).
+    """
+    shell.launcher_closed()
+    taken = sortings_taken(shell)
+    lay("TIDEPL", "Tidepool Quest", {"state": "listening", "busy": False})
+    deadline = time.monotonic() + 10
+    while sortings_taken(shell) == taken:
+        assert time.monotonic() < deadline, "the shell never took the arriving session"
+        time.sleep(0.1)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    made_settled(shell)
+    before = made_by_agents(shell)
+    shell.type_in("tidepool", selecting="Tidepool Quest")
+    made = made_by_agents(shell) - before
+    assert made == 0, f"typing at home made {made} of Agents' rows"
+
+
+# How long Agents makes no row before an opening's work is taken as done: many frames.
+SETTLED = 0.5
+
+
+def made_settled(shell: Shell) -> None:
+    """Wait until Agents has made no row for a while, the opening's work done."""
+    deadline = time.monotonic() + 10
+    made, still_since = made_by_agents(shell), time.monotonic()
+    while time.monotonic() - still_since < SETTLED:
+        assert time.monotonic() < deadline, "Agents never stopped making rows"
+        time.sleep(0.1)
+        now = made_by_agents(shell)
+        if now != made:
+            made, still_since = now, time.monotonic()

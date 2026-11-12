@@ -190,6 +190,14 @@ Provider {
     // nothing; `placings` says they moved.
     readonly property var placing: ({ keys: [] })
     readonly property var wrapped: ({})
+    // What each row was wrapped from, all but its order, so a row the
+    // daemon tells again only for its place, as a session turning moves
+    // every row after it, keeps its wrap: 96 of the 124 rows told in 90 s
+    // on Joel's laptop moved only their order (2026-11-12).
+    readonly property var wrappedFrom: ({})
+    function wrapSign(served) {
+        return served ? JSON.stringify(Object.assign({}, served, { order: 0 })) : "";
+    }
     property int placings: 0
     // Says Recent's records moved, so only Recent is made again.
     property int recentMoves: 0
@@ -218,7 +226,10 @@ Provider {
         if (!moved.some(rowKey))
             return;
         for (const key of moved) {
-            delete wrapped[key];
+            if (wrappedFrom[key] !== wrapSign(held[key]?.row)) {
+                delete wrapped[key];
+                delete wrappedFrom[key];
+            }
             const at = placedKeys.indexOf(key);
             if (at >= 0)
                 placedKeys.splice(at, 1);
@@ -240,6 +251,25 @@ Provider {
             placedKeys.splice(low, 0, key);
         }
         placings += 1;
+        wrapAhead();
+    }
+
+    // While the launcher's open, what moved is wrapped the frame after
+    // it's drawn, or after the opening's own, rather than by the next
+    // letter that wants Agents' rows: Joel's first letters at home made
+    // 176 to 185 of them, 11 to 17 ms of letters that took 56 to 81
+    // (RCTRF8, 2026-11-12). Shut, nothing is, as nothing reads them.
+    property bool wrapAsked: false
+    function wrapAhead() {
+        const launcher = provider.launcher;
+        if (wrapAsked || !launcher?.open || typeof launcher.afterFrame !== "function")
+            return;
+        wrapAsked = true;
+        launcher.afterFrame(() => {
+            provider.wrapAsked = false;
+            if (provider.opened())
+                provider.laidOut();
+        });
     }
 
     // Every row at the tree's top, in the daemon's order, a fold holding
@@ -252,7 +282,21 @@ Provider {
         const orchestrators = source("orchestrators");
         if (!orchestrators)
             return rows;
-        return rows.concat(shutOrchestrators.map(one => closedRow(one, orchestrators)));
+        return rows.concat(shutOrchestrators.map(one => closedKept(one, orchestrators)));
+    }
+
+    // A closed orchestrator's row, kept while it and its folder say the
+    // same, as its sessions' are; kept by a key of its own, since the
+    // daemon's record of it is told as moved whenever any closed one is.
+    function closedKept(one, orchestrators) {
+        const key = `shut:${one.address}`;
+        const gone = orchestrators.goneFrom(one);
+        const sign = JSON.stringify([one, gone?.side ?? null, !!gone?.afresh]);
+        if (wrappedFrom[key] !== sign) {
+            wrapped[key] = closedRow(one, orchestrators);
+            wrappedFrom[key] = sign;
+        }
+        return wrapped[key];
     }
 
     // The closed orchestrators, as the daemon serves them (closed.rs): each
@@ -283,6 +327,12 @@ Provider {
         if (served.kind === "fold") {
             const members = (served.held?.members ?? []).map(one => rowOf(one, held))
                 .filter(row => row !== null);
+            // Kept as its members are, and handed them afresh, which makes
+            // no row.
+            if (key in wrapped) {
+                wrapped[key].held = members;
+                return wrapped[key];
+            }
             const row = thingRow({
                 key: served.row,
                 name: served.name,
@@ -290,8 +340,10 @@ Provider {
                 hue: served.hue,
                 copiesNothing: true,
                 depth: served.depth
-            }, () => members);
+            }, () => row.held);
             row.held = members;
+            wrapped[key] = row;
+            wrappedFrom[key] = wrapSign(served);
             return row;
         }
         if (!(key in wrapped)) {
@@ -299,6 +351,7 @@ Provider {
             if (session === null)
                 return null;
             wrapped[key] = sessionRow(session, served);
+            wrappedFrom[key] = wrapSign(served);
         }
         return wrapped[key];
     }
@@ -1021,6 +1074,7 @@ Provider {
 
         function onOpenChanged() {
             provider.lookForFolders();
+            provider.wrapAhead();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open)
                 provider.drawerWanted = "";
