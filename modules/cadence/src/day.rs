@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, gate, health, machine, passed};
+use crate::{builders, gate, health, machine, passed, phases};
 
 /// One day's figures, kept as `day/<date>.json` in cadence's folder so the
 /// next days are held against it.
@@ -99,8 +99,9 @@ impl Measure {
 
 /// Every figure the day reads: the delivery cycle's here, the machine's
 /// own from health in machine.rs, the builders' in builders.rs, the merge
-/// gate's in gate.rs, how long gates took in passed.rs, and each
-/// repository's from code-health in health.rs.
+/// gate's in gate.rs, how long gates took in passed.rs and where that
+/// time went in phases.rs, and each repository's from code-health in
+/// health.rs.
 pub fn measures() -> impl Iterator<Item = &'static Measure> {
     MEASURES
         .iter()
@@ -108,6 +109,7 @@ pub fn measures() -> impl Iterator<Item = &'static Measure> {
         .chain(builders::MEASURES)
         .chain(gate::MEASURES)
         .chain(passed::MEASURES)
+        .chain(phases::MEASURES)
         .chain(health::MEASURES)
 }
 

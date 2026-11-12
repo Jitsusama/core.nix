@@ -21,9 +21,9 @@ use crate::health;
 use crate::judge;
 use crate::machine;
 use crate::mesh::Mesh;
-use crate::passed;
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
+use crate::{passed, phases};
 
 /// Whom the day is told to: the orchestrator its note, each owner its
 /// findings by the prefix of their keys, and the watcher what no owner has.
@@ -121,6 +121,16 @@ fn launcher(since: &str, until: &str) -> BTreeMap<String, f64> {
     speed::launcher(&shell.unwrap_or_default())
 }
 
+/// Puts the figures of what a change waits on before it merges into
+/// `day`: the builders, merge-net's answers, how long gates took and
+/// where that time went.
+fn gates(day: &mut Day, state_home: &Path) {
+    builders::read(day, state_home);
+    gate::read(day, state_home);
+    passed::read(day, state_home);
+    phases::read(day, state_home);
+}
+
 fn read(state_home: &Path, from: i64, to: i64) -> Day {
     let since = format!("--since=@{from}");
     let until = format!("--until=@{to}");
@@ -215,9 +225,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         day.figures
             .insert("switch.minutes.longest".to_owned(), longest);
     }
-    builders::read(&mut day, state_home);
-    gate::read(&mut day, state_home);
-    passed::read(&mut day, state_home);
+    gates(&mut day, state_home);
 
     day.figures
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
