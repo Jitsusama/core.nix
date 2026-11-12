@@ -1773,6 +1773,25 @@ def stepped_into_programs(shell: Shell) -> int:
     return int(laid_out(shell)["factsHeld"])
 
 
+def test_a_closed_program_holding_only_new_windows_starts_on_return(shell: Shell) -> None:
+    """Return on a closed program whose step holds only its New Windows starts it, unstepped.
+
+    Programs › Foot Server, closed, stepped into a list of New Window and New Window Below,
+    so Return opened a list of acts where it should do the first (Y2YBTS's sweep, 2026-11-12:
+    a row holding only acts never opens a submenu). Foot's server opens no window, so its
+    start is seen as the launcher closing; the server is stopped after.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    shell.down_to("Foot Server")
+    try:
+        shell.send_key("ret")
+        shell.launcher_closed()
+    finally:
+        shell.as_account("pkill -f 'foot --server' || true")
+
+
 def drawer_moved(was: str, shown: Json) -> bool:
     """Say whether the drawer is out on the selected row, titled otherwise than it was."""
     return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was
