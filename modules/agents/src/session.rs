@@ -44,9 +44,30 @@ impl<'a> Session<'a> {
             .unwrap_or("")
     }
 
-    /// The address of the session orchestrating it, or none.
+    /// The address of the session orchestrating it, or none. One standing
+    /// at the top is under none, whoever orchestrates it, since what it's
+    /// for is being found there.
     pub fn under(self) -> &'a str {
+        if self.at_top().is_some() {
+            return "";
+        }
         self.said("orchestratedBy").unwrap_or("")
+    }
+
+    /// What it stands at Agents' top as, if its presence says it does
+    /// (`standsAtTop`): a session Joel goes to by name, such as the void,
+    /// as its name and the words beyond it typing finds it by.
+    pub fn at_top(self) -> Option<(&'a str, Vec<&'a str>)> {
+        let top = self.presence()?.get("standsAtTop")?;
+        let name = top.get("name")?.as_str().filter(|name| !name.is_empty())?;
+        let keywords = top
+            .get("keywords")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        Some((name, keywords))
     }
 
     /// Pi's own id for it, by which its spend and jobs are kept.
@@ -66,16 +87,17 @@ impl<'a> Session<'a> {
             .unwrap_or("")
     }
 
-    /// Its quest's whole title and its folder's name (Sessions.named):
+    /// Its quest's whole title, or the name it stands at the top by, and
+    /// its folder's name (Sessions.named):
     /// from its record's quest and folder, or, for a record from before
     /// the harness published them, from its window's label; its address
     /// where nothing names it.
     pub fn named(self) -> (String, String) {
         let label = labelled(self.said("title").unwrap_or(""));
         let title = self
-            .presence()
-            .and_then(|presence| presence.pointer("/questInfo/title"))
-            .and_then(Value::as_str)
+            .at_top()
+            .map(|(name, _)| name)
+            .or_else(|| self.presence()?.pointer("/questInfo/title")?.as_str())
             .filter(|title| !title.is_empty())
             .map_or(label.0, str::to_owned);
         let folder = self.said("cwd").unwrap_or("").trim_end_matches('/');

@@ -244,7 +244,13 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     } else {
         None
     };
-    let known_as = listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    let mut known_as =
+        listed.map_or_else(String::new, |(short, title)| format!(" {short} {title}"));
+    let at_top = session.at_top();
+    for keyword in at_top.iter().flat_map(|(_, keywords)| keywords) {
+        known_as.push(' ');
+        known_as.push_str(keyword);
+    }
     let full = if stands == Stands::Off {
         String::new()
     } else {
@@ -275,7 +281,13 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         state: stands.id(),
-        returns: standing::returns(stands, windowed),
+        // One standing at the top is gone to to be told something, the
+        // void above all, so Return talks to it however it stands.
+        returns: if at_top.is_some() {
+            "talk"
+        } else {
+            standing::returns(stands, windowed)
+        },
         acts: standing::acts(stands, windowed, session.here()),
         ranked: Ranked {
             note: joined(&[&under, &noted]),
