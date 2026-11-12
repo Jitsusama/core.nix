@@ -16,6 +16,14 @@
 //! WARP, `connect` or `disconnect`, as `warp connect` does, and answers
 //! with what that printed.
 //!
+//! How WARP stands is a second kind, `warp-state`, and its one record,
+//! `warp:state`: its status and reason, as words under `said`, or
+//! `{ error }` while warp-cli can't say, with when that began where it was
+//! seen to. It's what the listening warp-cli tells, so the margin, which
+//! watches it all the time to say when the work network ails, sets off
+//! none of the link's reads; where nothing can listen, as while WARP's
+//! service is down, the status is asked once, and again five seconds on.
+//!
 //! Each connection is served on a thread of its own, its lines written by
 //! another, so a client that stops reading holds no other back; one with
 //! more than a few hundred lines unread is hung up on.
@@ -32,13 +40,16 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::ask::{Ask, Listening};
+use crate::ask::{Ask, Listening, Said, Unasked};
 
 /// The interface's version this speaks.
 const VERSION: u64 = 1;
-/// The one kind it keeps, and the one record of it.
+/// The link's kind, and the one record of it.
 const KIND: &str = "warp";
 const KEY: &str = "warp:link";
+/// How WARP stands, and the one record of it.
+const STATE_KIND: &str = "warp-state";
+const STATE_KEY: &str = "warp:state";
 /// How often the link is read while watched, and how old what's held may
 /// be and still answer for now: WARP's figures move by the second, and
 /// warp-cli's five answers take about 80 ms together.
@@ -48,6 +59,10 @@ const FRESH: Duration = Duration::from_secs(2);
 /// warp-cli is then run twice a minute while WARP is shown rather than in
 /// a loop, and the two-second reads still say each change meanwhile.
 const LISTEN_AGAIN: Duration = Duration::from_secs(30);
+/// How long a status asked where nothing could listen is held before a
+/// listener is tried again, while WARP's service isn't answering, so it's
+/// said back within seconds of answering again.
+const STATE_AGAIN: Duration = Duration::from_secs(5);
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
 const QUEUED: usize = 256;
@@ -55,10 +70,18 @@ const QUEUED: usize = 256;
 /// process is out of descriptors, so the loop doesn't spin a core.
 const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 
+/// Which of the two kinds an ask names.
+#[derive(Clone, Copy)]
+struct Kinds {
+    link: bool,
+    state: bool,
+}
+
 /// One watch a client holds.
 struct Watch {
     connection: u64,
     id: Value,
+    kinds: Kinds,
     told: SyncSender<String>,
     /// Its connection, to hang up on once it stops reading.
     stream: Arc<UnixStream>,
@@ -67,6 +90,8 @@ struct Watch {
 struct Held {
     /// The link as last read, and when.
     link: Option<(Value, Instant)>,
+    /// How WARP stands, as last told or asked while anyone watched.
+    state: Option<Value>,
     watches: Vec<Watch>,
     /// Whether it's to be read at once, rather than when it's next due.
     now: bool,
@@ -83,6 +108,27 @@ impl Held {
             .as_ref()
             .filter(|(_, at)| at.elapsed() < FRESH)
             .map(|(link, _)| link)
+    }
+
+    /// Whether anyone watches the link, which only then is read.
+    fn reads(&self) -> bool {
+        self.watches.iter().any(|watch| watch.kinds.link)
+    }
+
+    /// Tells each watch of a kind a record changed, and hangs up on any
+    /// connection whose lines aren't being read, dropping its watches,
+    /// rather than telling it less than it asked for.
+    fn tell(&mut self, record: &Value, wants: impl Fn(Kinds) -> bool) {
+        let mut stuck = Vec::new();
+        for watch in self.watches.iter().filter(|watch| wants(watch.kinds)) {
+            let told = json!({"id": watch.id, "changed": [record]});
+            if watch.told.try_send(told.to_string()).is_err() {
+                stuck.push(watch.connection);
+                let _ = watch.stream.shutdown(Shutdown::Both);
+            }
+        }
+        self.watches
+            .retain(|watch| !stuck.contains(&watch.connection));
     }
 }
 
@@ -125,6 +171,7 @@ pub fn serve(socket: &Path, cli: impl Ask + Send + 'static) -> std::io::Result<(
     let shared = Arc::new(Shared {
         held: Mutex::new(Held {
             link: None,
+            state: None,
             watches: Vec::new(),
             now: false,
             listening: None,
@@ -182,17 +229,21 @@ fn handed() -> Option<UnixListener> {
 }
 
 /// Reads the link while anyone watches it, as each read comes due or at
-/// once when asked to, and sleeps while nobody does, once it has stopped
-/// the warp-cli listening for them.
+/// once when asked to, and sleeps while nobody does; once nobody watches
+/// either kind, it stops the warp-cli listening for them, and lets go of
+/// how WARP stood, which nothing then keeps current.
 fn read_loop<A: Ask>(shared: &Shared<A>) {
     loop {
         let mut held = lock(&shared.held);
-        while held.watches.is_empty() && !held.now {
-            if let Some(stop) = held.listening.take() {
-                drop(held);
-                stop();
-                held = lock(&shared.held);
-                continue;
+        while !held.reads() && !held.now {
+            if held.watches.is_empty() {
+                held.state = None;
+                if let Some(stop) = held.listening.take() {
+                    drop(held);
+                    stop();
+                    held = lock(&shared.held);
+                    continue;
+                }
             }
             held = shared
                 .woken
@@ -218,9 +269,11 @@ fn read_loop<A: Ask>(shared: &Shared<A>) {
     }
 }
 
-/// Holds a warp-cli listening to WARP's status while anyone watches, and
-/// has the link read at once on each change it tells, rather than when
-/// the next read comes due; `read_loop` stops it once nobody watches.
+/// Holds a warp-cli listening to WARP's status while anyone watches,
+/// holds how WARP stands as each line tells it, and has the link read at
+/// once on each change, while it's watched, rather than when the next
+/// read comes due; `read_loop` stops it once nobody watches. Where none
+/// can listen, or one ends by itself, the status is asked instead.
 fn listen_loop<A: Ask>(shared: &Shared<A>) {
     loop {
         {
@@ -233,7 +286,7 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
             }
         }
         let Some(Listening { lines, stop }) = shared.cli.listen() else {
-            std::thread::sleep(LISTEN_AGAIN);
+            ask_instead(shared);
             continue;
         };
         {
@@ -249,8 +302,12 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
         let mut last = None;
         for line in lines.lines() {
             let Ok(line) = line else { break };
+            if let Some((status, reason)) = told(&line) {
+                stand(shared, &json!({"status": status, "reason": reason}));
+            }
             if changed(&line, &mut last) {
-                lock(&shared.held).now = true;
+                let mut held = lock(&shared.held);
+                held.now = held.reads();
                 shared.woken.notify_all();
             }
         }
@@ -258,9 +315,81 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
         let ended = lock(&shared.held).listening.take();
         if let Some(stop) = ended {
             stop();
-            std::thread::sleep(LISTEN_AGAIN);
+            ask_instead(shared);
         }
     }
+}
+
+/// Asks how WARP stands where no warp-cli is listening, and holds it, then
+/// waits before one is tried again: five seconds while WARP's service
+/// isn't answering, so it's said back soon after it is, and half a
+/// minute otherwise, as where warp-cli can't listen at all, while the
+/// link's two-second reads carry on for whoever watches it.
+fn ask_instead<A: Ask>(shared: &Shared<A>) {
+    let said = standing(shared.cli.ask(&["status"]));
+    let failed = said.get("error").is_some();
+    if !lock(&shared.held).watches.is_empty() {
+        stand(shared, &said);
+    }
+    std::thread::sleep(if failed { STATE_AGAIN } else { LISTEN_AGAIN });
+}
+
+/// How WARP stands as one status ask says it, in the words a listening
+/// warp-cli tells: its status and reason, or the error code warp-cli
+/// gives, as `FailedToConnectToDaemon` is while its service is down.
+fn standing(said: Result<Said, Unasked>) -> Value {
+    match said {
+        Ok(said) => {
+            let printed: Value = serde_json::from_str(&said.text).unwrap_or(Value::Null);
+            match stands(&printed) {
+                Some((status, reason)) if said.ok => json!({"status": status, "reason": reason}),
+                _ => json!({"error": printed["code"].as_str().unwrap_or("unreadable")}),
+            }
+        }
+        Err(Unasked::Missing(_)) => json!({"error": "missing"}),
+        Err(Unasked::Stuck(_)) => json!({"error": "stuck"}),
+    }
+}
+
+/// Holds how WARP stands, and tells each watch of it, when it's other
+/// than what's held. When it began is said only where it was seen to
+/// begin, since a state first heard may have stood for hours.
+fn stand<A: Ask>(shared: &Shared<A>, said: &Value) {
+    let mut held = lock(&shared.held);
+    if held
+        .state
+        .as_ref()
+        .is_some_and(|state| state["said"] == *said)
+    {
+        return;
+    }
+    let since = held.state.as_ref().map(|_| now_ms());
+    let state = json!({
+        "key": STATE_KEY,
+        "kind": STATE_KIND,
+        "read_at_ms": now_ms(),
+        "since_ms": since,
+        "said": said,
+    });
+    held.tell(&state, |kinds| kinds.state);
+    held.state = Some(state);
+}
+
+/// The status and reason a line of warp-cli's tells, a reason being a
+/// word, or a word holding figures, as `NetworkDegraded` is; nothing for a
+/// line of anything else, as its DNS logs are.
+fn told(line: &str) -> Option<(String, String)> {
+    stands(&serde_json::from_str::<Value>(line).ok()?)
+}
+
+fn stands(said: &Value) -> Option<(String, String)> {
+    let status = said["status"].as_str()?;
+    let reason = match &said["reason"] {
+        Value::String(word) => word.clone(),
+        Value::Object(named) => named.keys().next().cloned().unwrap_or_default(),
+        _ => String::new(),
+    };
+    Some((status.to_owned(), reason))
 }
 
 /// Whether a line a listening warp-cli wrote tells a status or a reason
@@ -269,28 +398,17 @@ fn listen_loop<A: Ask>(shared: &Shared<A>) {
 /// figures moving are the two-second reads' to say; and a line of
 /// anything else, as its DNS logs are, sets nothing off.
 fn changed(line: &str, last: &mut Option<(String, String)>) -> bool {
-    let Ok(said) = serde_json::from_str::<Value>(line) else {
+    let Some(now) = told(line) else {
         return false;
     };
-    let Some(status) = said["status"].as_str() else {
-        return false;
-    };
-    // A reason is a word, or a word holding figures, as NetworkDegraded is.
-    let reason = match &said["reason"] {
-        Value::String(word) => word.clone(),
-        Value::Object(named) => named.keys().next().cloned().unwrap_or_default(),
-        _ => String::new(),
-    };
-    let now = Some((status.to_owned(), reason));
+    let now = Some(now);
     let first = last.is_none();
     let moved = *last != now;
     *last = now;
     moved && !first
 }
 
-/// Reads the link afresh, holds it, and tells every watch. A connection
-/// whose lines aren't being read is hung up on, and its watches dropped,
-/// rather than told less than it asked for.
+/// Reads the link afresh, holds it, and tells every watch of it.
 fn read<A: Ask>(shared: &Shared<A>) {
     let reading = lock(&shared.reading);
     let link = json!({
@@ -301,16 +419,7 @@ fn read<A: Ask>(shared: &Shared<A>) {
     });
     let mut held = lock(&shared.held);
     drop(reading);
-    let mut stuck = Vec::new();
-    for watch in &held.watches {
-        let told = json!({"id": watch.id, "changed": [link]});
-        if watch.told.try_send(told.to_string()).is_err() {
-            stuck.push(watch.connection);
-            let _ = watch.stream.shutdown(Shutdown::Both);
-        }
-    }
-    held.watches
-        .retain(|watch| !stuck.contains(&watch.connection));
+    held.tell(&link, |kinds| kinds.link);
     held.link = Some((link, Instant::now()));
 }
 
@@ -340,6 +449,9 @@ fn answer_each<A: Ask>(shared: &Shared<A>, stream: UnixStream, connection: u64) 
     lock(&shared.held)
         .watches
         .retain(|watch| watch.connection != connection);
+    // So the reading loop, which may sleep with no link to read, stops
+    // the listener once this was the last watch.
+    shared.woken.notify_all();
 }
 
 /// An error answer, by the interface's codes.
@@ -347,14 +459,38 @@ fn error(id: &Value, code: &str, message: &str) -> Value {
     json!({"id": id, "error": {"code": code, "message": message}})
 }
 
-/// Whether an ask names only the kind kept here, or none.
-fn names_its_kind(said: &Value) -> bool {
-    match &said["kind"] {
-        Value::Null => true,
-        Value::String(kind) => kind == KIND,
-        Value::Array(kinds) => kinds.iter().all(|kind| kind == KIND),
-        _ => false,
+/// The kinds an ask names, both where it names none, or nothing where it
+/// names one not kept here; an ask naming keys asks only theirs.
+fn kinds_named(said: &Value) -> Option<Kinds> {
+    let named: Vec<&str> = match &said["kind"] {
+        Value::Null => vec![KIND, STATE_KIND],
+        Value::String(kind) => vec![kind.as_str()],
+        Value::Array(kinds) => kinds
+            .iter()
+            .map(|kind| kind.as_str().unwrap_or(""))
+            .collect(),
+        _ => return None,
+    };
+    if !named.iter().all(|kind| [KIND, STATE_KIND].contains(kind)) {
+        return None;
     }
+    let keyed = |key: &str| {
+        said["keys"]
+            .as_array()
+            .is_none_or(|keys| keys.iter().any(|asked| asked == key))
+    };
+    Some(Kinds {
+        link: named.contains(&KIND) && keyed(KEY),
+        state: named.contains(&STATE_KIND) && keyed(STATE_KEY),
+    })
+}
+
+/// What's held of these kinds: the link while it's fresh, and how WARP
+/// stands while anyone watches it.
+fn held_of(held: &Held, kinds: Kinds) -> Vec<Value> {
+    let link = held.fresh().filter(|_| kinds.link);
+    let state = held.state.as_ref().filter(|_| kinds.state);
+    link.into_iter().chain(state).cloned().collect()
 }
 
 /// Answers one ask, and says whether its answer could be queued; one
@@ -374,27 +510,32 @@ fn answer<A: Ask>(
         ("act", Some(act @ ("connect" | "disconnect"))) => Some(printed(&[act], &shared.cli)),
         _ => None,
     };
-    if asked == "get" && lock(&shared.held).fresh().is_none() {
+    let kinds = kinds_named(said);
+    if asked == "get"
+        && kinds.is_some_and(|kinds| kinds.link)
+        && lock(&shared.held).fresh().is_none()
+    {
         read(shared);
     }
     let mut held = lock(&shared.held);
-    let answer = match asked {
-        "hello" | "health" => json!({
+    let answer = match (asked, kinds) {
+        ("hello" | "health", _) => json!({
             "id": id, "version": VERSION, "domain": KIND, "state": "answering",
             "since": held.since, "sources": {}, "watches": held.watches.len(),
         }),
-        _ if !names_its_kind(said) => error(
+        (_, None) => error(
             &id,
             "unknown-kind",
             &format!("no kind {} here", said["kind"]),
         ),
-        "get" | "list" => {
-            let records: Vec<&Value> = held.fresh().into_iter().collect();
-            json!({"id": id, "records": records})
+        ("get" | "list", Some(kinds)) => {
+            json!({"id": id, "records": held_of(&held, kinds)})
         }
-        "watch" => {
-            let records: Vec<Value> = held.fresh().into_iter().cloned().collect();
-            if records.is_empty() {
+        ("watch", Some(kinds)) => {
+            let records = held_of(&held, kinds);
+            // Only the link is read for a watch; how WARP stands is the
+            // listener's to tell, once the watch wakes it.
+            if kinds.link && held.fresh().is_none() {
                 held.now = true;
             }
             // A watch asked again by its id replaces the one before.
@@ -403,18 +544,20 @@ fn answer<A: Ask>(
             held.watches.push(Watch {
                 connection,
                 id: id.clone(),
+                kinds,
                 told: told.clone(),
                 stream: Arc::clone(hangup),
             });
             shared.woken.notify_all();
             json!({"id": id, "records": records})
         }
-        "unwatch" => {
+        ("unwatch", Some(_)) => {
             held.watches
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
+            shared.woken.notify_all();
             json!({"id": id, "unwatched": true})
         }
-        "act" => match switched {
+        ("act", Some(_)) => match switched {
             Some(switched) => {
                 // How the link then goes is read at once, and told after
                 // this answer, since the read waits on this lock.
@@ -436,7 +579,6 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use super::*;
-    use crate::ask::{Said, Unasked};
     use crate::contract::{self, Contract};
 
     /// warp-cli as the contract answers it, but for a link that goes down
@@ -611,6 +753,30 @@ mod tests {
             asked.load(Ordering::SeqCst),
             0,
             "a state watch sets off none of the link's reads"
+        );
+    }
+
+    #[test]
+    fn a_status_asked_says_how_warp_stands_or_why_it_cant() {
+        let asked = |ok, text: &str| {
+            standing(Ok(Said {
+                ok,
+                text: text.into(),
+            }))
+        };
+        assert_eq!(
+            asked(true, &contract::file("status.degraded.json")),
+            json!({"status": "Connected", "reason": "NetworkDegraded"})
+        );
+        assert_eq!(
+            asked(false, &contract::file("daemon-down.json")),
+            json!({"error": "FailedToConnectToDaemon"}),
+            "WARP's service down is said by warp-cli's own code"
+        );
+        assert_eq!(asked(true, ""), json!({"error": "unreadable"}));
+        assert_eq!(
+            standing(Err(Unasked::Missing("warp-cli".into()))),
+            json!({"error": "missing"})
         );
     }
 
