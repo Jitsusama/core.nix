@@ -35,7 +35,6 @@ mod oneway;
 mod probe;
 mod proof;
 mod qdisc;
-mod quiet;
 mod rate;
 mod record;
 mod replay;
@@ -592,7 +591,7 @@ fn run(options: &Options) -> ExitCode {
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-        sets.vpnbulk = quiet_vpns(&vpns.0, &mut heard, rides, t);
+        read_vpns(&vpns.0, &mut heard, rides);
         let text = classes::transaction(TABLE, &sets, &reach);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
@@ -689,11 +688,10 @@ struct Vpn {
     mark: Option<String>,
 }
 
-/// What the shaper has heard of a VPN's CAKE: whether it carries only bulk,
-/// and what it held when last read.
+/// What the shaper has heard of a VPN's CAKE: what it held and dropped
+/// when last read.
 #[derive(Default)]
 struct Heard {
-    quiet: quiet::Quiet,
     held: Option<(u64, u64)>,
     drops: Option<u64>,
 }
@@ -705,21 +703,18 @@ fn since(before: Option<u64>, now: u64) -> u64 {
     before.map_or(0, |b| now.saturating_sub(b))
 }
 
-/// The marks of the VPNs carrying only bulk now, whose own packets go as
-/// bulk on the connection. Each VPN's CAKE is counted at every step, and
-/// whether any held a queue is counted to the primary uplink they ride,
-/// whose queue it is.
-fn quiet_vpns(
+/// Counts each VPN's CAKE at every step: whether any held a queue, and
+/// what they dropped, are counted to the primary uplink they ride, whose
+/// queue it is.
+fn read_vpns(
     vpns: &BTreeMap<String, Vpn>,
     heard: &mut BTreeMap<String, Heard>,
     primary: Option<&mut Shaped>,
-    t: f64,
-) -> Vec<String> {
+) {
     heard.retain(|name, _| vpns.contains_key(name));
-    let mut marks = Vec::new();
     let mut read = (0, 0);
     let mut dropped = 0;
-    for (name, vpn) in vpns {
+    for name in vpns.keys() {
         let json = sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default();
         let h = heard.entry(name.clone()).or_default();
         if let Some(now) = qdisc::holding(&json) {
@@ -729,29 +724,18 @@ fn quiet_vpns(
         if let Some(now) = qdisc::drops(&json) {
             dropped += since(h.drops.replace(now), now);
         }
-        let Some(unbulk) = qdisc::unbulk_bytes(&json) else {
-            continue;
-        };
-        if h.quiet.sample(unbulk, t)
-            && let Some(mark) = &vpn.mark
-        {
-            marks.push(mark.clone());
-        }
     }
     if let Some(s) = primary {
         s.vpn_reads.0 += read.0;
         s.vpn_reads.1 += read.1;
         s.dropped += dropped;
     }
-    marks.sort();
-    marks.dedup();
-    marks
 }
 
 /// The mark a VPN's own packets carry, read from the routing rules.
 fn vpn_mark(name: &str) -> Option<String> {
     let rules = sh(&words("ip -j rule show")).unwrap_or_default();
-    quiet::mark_of(&rules, name, |table| {
+    cost::mark_of(&rules, name, |table| {
         sh(&words(&format!("ip -j route show table {table}"))).unwrap_or_default()
     })
 }

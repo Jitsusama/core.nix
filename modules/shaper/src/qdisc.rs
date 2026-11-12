@@ -287,21 +287,6 @@ pub fn counted_bytes(json: &str) -> Option<u64> {
     Some(cake["bytes"].as_u64()? + u64::from(VPN_OVERHEAD) * cake["packets"].as_u64()?)
 }
 
-/// The bytes the CAKE in `tc -s -j qdisc show dev` has sent from every tin
-/// but bulk, or none without a CAKE.
-pub fn unbulk_bytes(json: &str) -> Option<u64> {
-    let Ok(Value::Array(all)) = serde_json::from_str::<Value>(json) else {
-        return None;
-    };
-    let tins = all.iter().find(|q| q["kind"] == "cake")?["tins"].as_array()?;
-    Some(
-        tins.iter()
-            .skip(1)
-            .map(|tin| tin["sent_bytes"].as_u64().unwrap_or(0))
-            .sum(),
-    )
-}
-
 /// What the CAKE in `tc -s -j qdisc show dev` holds now, in bytes, and the
 /// packets it has dropped or marked, every tin together, or none without a
 /// CAKE.
@@ -456,14 +441,6 @@ mod tests {
         assert_eq!(counted_bytes(json), Some(13_800));
         assert_eq!(counted_bytes(r#"[{"kind":"fq_codel","bytes":3000}]"#), None);
         assert_eq!(counted_bytes(""), None);
-    }
-
-    #[test]
-    fn what_a_cake_sent_outside_bulk_is_every_other_tins_bytes() {
-        let json = r#"[{"kind":"cake","tins":[
-            {"sent_bytes":9000},{"sent_bytes":100},{"sent_bytes":20},{"sent_bytes":3}]}]"#;
-        assert_eq!(unbulk_bytes(json), Some(123));
-        assert_eq!(unbulk_bytes(r#"[{"kind":"fq_codel"}]"#), None);
     }
 
     #[test]
