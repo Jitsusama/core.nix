@@ -3,6 +3,8 @@
 //! else), never where. A run of reloads a minute apart says a page
 //! wouldn't do what he wanted, and going back within seconds says a page
 //! wasn't the one he meant, so both rank beside the launcher's moments.
+//! Reloads under a second and a half apart, three gaps in a row, are a
+//! page reloading itself rather than him, and count for nothing.
 //!
 //! Chrome holds its history under a lock while it writes it, so the file's
 //! bytes are read into memory and opened there, read-only, and never
@@ -34,6 +36,11 @@ pub const AGAIN_MS: i64 = 60_000;
 pub const BACK_MS: i64 = 10_000;
 /// A go lost him this at most, as in the launcher and pi.
 const MOST_MS: i64 = 120_000;
+/// Reloads this close together, `PAGE_GAPS` gaps in a row, are a page
+/// reloading itself: in three weeks of his history a gap this short came
+/// alone or not at all, apart from one page that reloaded 35 times.
+const QUICK_MS: i64 = 1500;
+const PAGE_GAPS: u32 = 3;
 
 /// One visit: when it began, in milliseconds since the epoch, and how.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,7 +90,35 @@ pub fn painful(profiles: &[Vec<Visit>], since: i64, until: i64) -> Vec<Painful> 
         let profile = u32::try_from(profile).unwrap_or(u32::MAX);
         let mut reloads: Vec<i64> = Vec::new();
         let mut was: Option<Visit> = None;
+        // The last reload, his or the page's, and how many quick gaps in a
+        // row led to it.
+        let mut last_reload: Option<i64> = None;
+        let mut quick = 0;
         for &visit in visits {
+            if visit.reload() {
+                let gap = last_reload.map(|last| visit.at - last);
+                quick = if gap.is_some_and(|gap| gap < QUICK_MS) {
+                    quick + 1
+                } else {
+                    0
+                };
+                last_reload = Some(visit.at);
+            } else {
+                last_reload = None;
+                quick = 0;
+            }
+            if quick >= PAGE_GAPS {
+                // The quick reloads before this one were the page's too,
+                // so his go ended before them.
+                if quick == PAGE_GAPS {
+                    let his = reloads.len().saturating_sub(PAGE_GAPS as usize - 1);
+                    reloads.truncate(his);
+                    named.extend(reloaded(&reloads, profile));
+                    reloads.clear();
+                }
+                was = Some(visit);
+                continue;
+            }
             let joins = visit.reload()
                 && reloads
                     .last()
