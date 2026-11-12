@@ -447,9 +447,7 @@ impl Recorder {
 /// cycle's latency the transcript doesn't notice, so a late recorder loses
 /// only its own sound.
 fn props(name: &str) -> String {
-    format!(
-        "{{ node.name = \"{name}\" node.description = \"Call transcript\" node.async = true }}"
-    )
+    format!("{{ node.name = \"{name}\" node.description = \"Call transcript\" node.async = true }}")
 }
 
 /// How much a recorder's pipe holds: 1 MiB, about 16 s of its sound, the
