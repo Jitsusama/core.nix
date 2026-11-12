@@ -12,6 +12,7 @@ use zbus::Connection;
 use crate::dbus::RelayProxy;
 use crate::evening::local_minute;
 use crate::night::Place;
+use crate::panel::Panel;
 use crate::warmth::{WHITE, Warmth};
 use crate::{Backlight, RELAY_RESTS, ask, kept_say, night, switch, wall, write_whole};
 
@@ -317,9 +318,28 @@ impl Backlight<'_> {
         self.night.due = Some(Instant::now());
     }
 
+    /// logind says the lid opened or shut (panel.rs).
+    pub(crate) fn lid(&mut self, shut: bool) {
+        if let Some(shut) = self.lid.said(shut, Instant::now()) {
+            self.lid_is(shut);
+        }
+    }
+
+    /// The laptop's own panel, looked at while logind says the lid is shut:
+    /// lit, the compositor has seen the lid used, so it's open.
+    fn look_at_panel(&mut self, now: Instant) {
+        let lit = self.panel.as_ref().is_some_and(Panel::lit);
+        if let Some(shut) = self.lid.looked(lit, now) {
+            if !shut {
+                eprintln!("<6>the lid's switch says shut, but its own screen is lit for someone");
+            }
+            self.lid_is(shut);
+        }
+    }
+
     /// The lid opened or shut, and the light heard is the lid's until it
     /// opens (follow.rs).
-    pub(crate) fn lid(&mut self, shut: bool) {
+    fn lid_is(&mut self, shut: bool) {
         if let Some((keys, _)) = &mut self.keyboard {
             keys.lid(shut);
         }
@@ -430,6 +450,7 @@ impl Backlight<'_> {
             warmth,
             night,
             self.evening_due,
+            self.lid.wake(),
         ]
         .into_iter()
         .flatten()
@@ -468,6 +489,9 @@ impl Backlight<'_> {
         }
         if self.evening_due.is_some_and(|due| due <= now) {
             self.look_at_evening(now);
+        }
+        if self.lid.wake().is_some_and(|due| due <= now) {
+            self.look_at_panel(now);
         }
         self.keyboard_step(now).await;
         self.warmth_step(now).await;
