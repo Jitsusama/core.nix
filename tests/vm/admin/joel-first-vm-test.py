@@ -1,12 +1,12 @@
 """Joel's shell keeps drawing on time while agents' work bursts for memory.
 
 joel-first.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-It replays 12 November's 16:33 freeze at an eighth of optimus's size. Agents' sessions, their
-work, the work other sessions wait on and Joel's apps first hold what they held then, each in its
-slice, the sessions and the build using theirs over and over as they did. A stand-in shell then
-draws a frame every 16 ms in session.slice, and a few seconds in, a fetch in agents.slice and a
-grep and three smaller commands in jobs.slice want a quarter more of memory within seconds, as
-they did. Every slice stays under its own ceiling, and only together do they pass memory.
+It replays 12 November's 16:33 freeze on a machine of an eighth of optimus's memory. Agents'
+sessions, their work, the work other sessions wait on and Joel's apps first hold memory, each in
+its slice, the sessions and the build using theirs over and over. A stand-in shell then draws a
+frame every 16 ms in session.slice, and a few seconds in, a fetch in agents.slice and a grep and
+three smaller commands in jobs.slice burst for more, as they did. As then, every slice stays
+under its own ceiling, and together they pass memory by a fifth.
 """
 
 from __future__ import annotations
@@ -23,24 +23,23 @@ ACCOUNT = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
 RUNTIME = "/run/user/1000"
 FILES = "/home/alice"
 
-# What each slice held on optimus at 17:06, in MiB, divided by eight: agents'
-# sessions 20 GiB in 80 windows, kept here as 20; jobs 13.7 GiB, most of it a
-# build's and a grep's reading; shared's file cache 4.7 GiB; Joel's apps 5.9.
+# What each slice holds, in MiB. Joel's apps and the shell hold what they
+# held on optimus at 17:06 divided by eight, 5.9 GiB and 2.5. The rest is
+# sized as 16:33 was: agents' sessions, with the fetch's 3.5 GiB, half read
+# and half its own, and jobs, with the grep's reading and three commands of
+# 1.4 to 1.8 GiB, each just under its slice's ceiling of today, and shared's
+# file cache under its own, so that only together do they pass memory.
 SESSIONS = 20
-SESSION = 128
-JOBS_HELD = 1024
-JOBS_READ = 512
-SHARED_READ = 512
+SESSION = 150
+JOBS_HELD = 1536
+SHARED_READ = 1000
 APPS = 768
-# The shell's scene, session.slice's 2.5 GiB divided by eight.
 SCENE = 320
-# The burst: the fetch's 3.5 GiB, half read and half its own, the grep's
-# 7.1 GiB of reading, and three commands of 1.4 to 1.8 GiB beside them.
-FETCH_HELD = 224
-FETCH_READ = 224
-GREP_READ = 896
+FETCH_HELD = 450
+FETCH_READ = 450
+GREP_READ = 1000
 COMMANDS = 3
-COMMAND = 200
+COMMAND = 350
 # How often each walks what it holds, in seconds: a session's collector now
 # and then, a build and the burst's work all the time.
 SESSION_WALK = 3
@@ -54,7 +53,6 @@ BURST_AFTER = 5
 LATEST = 50
 
 READS = {
-    "built": JOBS_READ,
     "pushed": SHARED_READ,
     "fetched": FETCH_READ,
     "grepped": GREP_READ,
@@ -124,7 +122,6 @@ def loaded(machine: BaseMachine, values: dict[str, Any]) -> Account:
     for n in range(SESSIONS):
         account.work_with(f"session-{n}", "agents.slice", SESSION, SESSION_WALK)
     account.work_with("build", "jobs.slice", JOBS_HELD, WORK_WALK)
-    account.read("built", "jobs.slice")
     account.read("pushed", "shared.slice")
     return account
 
