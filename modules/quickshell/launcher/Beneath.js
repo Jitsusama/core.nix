@@ -20,3 +20,18 @@ function actsOnly(acts, served) {
         && acts.every((one, at) => at === 0 || one.step === "drawer"
             || (typeof one.copy === "string" && !one.ask));
 }
+
+// The row a step into rows enters: the row itself, or, where the act names
+// one `into`, that row inside it, under the row's own name, so the path
+// still says the meeting as Joel's hand learned (VKCF3Z's 74464630). It's
+// made over the inside row, so what that row works out stays live.
+function entered(row, named) {
+    return named ? Object.assign(Object.create(named), { name: row?.name ?? named.name }) : row;
+}
+
+// The rows inside a row, the one its Return steps into first, as Return's
+// own act leads a shell row's (Catalogue.js's leading).
+function led(rows, first) {
+    return first && rows.includes(first) ? [first].concat(rows.filter(one => one !== first))
+        : rows;
+}

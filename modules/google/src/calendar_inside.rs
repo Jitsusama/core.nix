@@ -7,11 +7,11 @@
 //! and Attachments a row each that steps in to who and what is on it; and
 //! Cancel a row that steps in to the one row asking Joel to be sure.
 //! Return on the meeting itself joins its call from ten minutes before it
-//! starts until it ends, and shows its details in the drawer otherwise
-//! (or, where the launcher has no step into a drawer, steps in to its
-//! acts), so the row is served again as that turns, which the daemon's
-//! look each minute does, rather than the shell reading the clock to
-//! choose.
+//! starts until it ends, and otherwise steps in to its Show in Calendar
+//! (an act's `into`), listed first among its acts, its drawer opening by
+//! resting as every drawer does. The row is served again as that turns,
+//! which the daemon's look each minute does, rather than the shell
+//! reading the clock to choose.
 //!
 //! Move the Meeting steps in to the later times it offers, each a row
 //! saying its day and times and the meeting it would clash with, holding
@@ -29,7 +29,7 @@ use jiff::tz::TimeZone;
 use jiff::{Span, Timestamp};
 
 use crate::calendar::{Answer, Meeting};
-use crate::calendar_rows::dated_between;
+use crate::calendar_rows::{dated_between, dated_fully};
 use crate::calendar_words::{LATER, Later, Words};
 use crate::compose;
 use crate::rows::{asks, fill, opens};
@@ -46,14 +46,15 @@ fn more() -> Value {
     json!({"key": "verb:more", "step": "rows"})
 }
 
-/// A meeting row's own acts at `now`: Return joining its call while it's
-/// on, from ten minutes before, or else showing its details in the drawer,
-/// then the step into its acts.
-pub(crate) fn returns(meeting: &Meeting, now: i64) -> Vec<Value> {
+/// The acts of the meeting row `key` at `now`: Return joining its call
+/// while it's on, from ten minutes before, or else stepping into its Show
+/// in Calendar, listed first, as the shell did (VKCF3Z and Y2YBTS,
+/// 2026-11-12), then the step into its acts. Its drawer opens by resting.
+pub(crate) fn returns(meeting: &Meeting, now: i64, key: &str) -> Vec<Value> {
     let on = !meeting.all_day && now >= meeting.start - TAKES_OVER && now < meeting.end;
     let first = match meeting.link.as_deref().filter(|_| on) {
         Some(link) => opens("verb:calendar:join", link),
-        None => json!({"key": "verb:details", "step": "drawer"}),
+        None => json!({"key": "verb:calendar:see", "step": "rows", "into": format!("{key}:see")}),
     };
     vec![first, more()]
 }
@@ -66,7 +67,6 @@ pub(crate) struct Within<'a> {
     pub thing: &'a str,
     pub place: &'a str,
     pub drawer: &'a str,
-    pub details: &'a Value,
     /// The zone Joel's clock reads, which a day later keeps the time on.
     pub zone: &'a TimeZone,
     /// Joel's meetings, which a time Move offers may clash with.
@@ -339,13 +339,15 @@ fn clash<'a>(
     })
 }
 
-/// What's known of it, each a row inside Show in Calendar: each of its
-/// drawer's facts, named by what it says, which Return copies, the fact's
-/// name as the drawer says it at its side; what it's about on one line, copied whole; then
-/// Open in Calendar, its page in Google's window, where it's changed
-/// (Calendar.qml's `facts`, as it was).
+/// What's known of it, each a row inside Show in Calendar named by what
+/// it says, which Return copies, with what it is at its side: its day and
+/// times, where, Joel's answer, its call, who holds it and each guest with
+/// how they answered, copying an address where one is known; what it's
+/// about on one line, copied whole; then Open in Calendar, its page in
+/// Google's window, where it's changed (Calendar.qml's `facts`, as the
+/// shell showed them).
 fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec<Value> {
-    let value = |id: &str, name: &str, copy: &str, side: &str, note: &str| {
+    let value = |id: &str, name: &str, copy: &str, side: &str| {
         json!({
             "key": format!("{parent}:{id}"),
             "thing": format!("{}:fact:{id}", within.thing),
@@ -354,29 +356,44 @@ fn facts(within: &Within, parent: &str, meeting: &Meeting, words: &Words) -> Vec
             "parent": parent,
             "depth": 2,
             "name": name,
-            "hue": "text",
+            "hue": "voice",
             "side": [{"said": side}],
-            "note": note,
             "acts": [{"key": "verb:copy", "copy": copy}],
         })
     };
-    let served = within.details["facts"].as_array().into_iter().flatten();
-    let mut rows: Vec<Value> = served
-        .filter_map(|fact| {
-            let name = fact["name"].as_str()?;
-            let said = fact["said"].as_str()?;
-            let id = name.to_lowercase().replace(' ', "-");
-            let note = fact["qualifier"].as_str().unwrap_or_default();
-            Some(value(&id, said, said, name, note))
-        })
-        .collect();
+    let dated = dated_fully(meeting, within.zone, words);
+    let mut rows = vec![value("when", &dated, &dated, words.word("whenSide"))];
+    if let Some(place) = meeting.place.as_deref().filter(|place| !place.is_empty()) {
+        rows.push(value("where", place, place, words.word("whereSide")));
+    }
+    if let Some(answer) = meeting.answer {
+        let said = words.answer(answer);
+        rows.push(value("answer", said, said, words.word("yourAnswer")));
+    }
+    if let Some(link) = &meeting.link {
+        rows.push(value("call", link, link, words.word("callSide")));
+    }
+    if let Some(holder) = &meeting.organizer {
+        let copy = holder.email.as_deref().unwrap_or(&holder.name);
+        rows.push(value(
+            "holder",
+            &holder.name,
+            copy,
+            words.word("holderSide"),
+        ));
+    }
+    for (at, guest) in meeting.guests.iter().enumerate() {
+        let copy = guest.email.as_deref().unwrap_or(&guest.name);
+        let id = format!("guest:{at}");
+        rows.push(value(&id, &guest.name, copy, words.answer(guest.answer)));
+    }
     if let Some(about) = meeting
         .about
         .as_deref()
         .filter(|about| !about.trim().is_empty())
     {
         let line = about.split_whitespace().collect::<Vec<_>>().join(" ");
-        rows.push(value("about", &line, about, words.word("aboutSide"), ""));
+        rows.push(value("about", &line, about, words.word("aboutSide")));
     }
     if let Some(page) = &meeting.page {
         let verb = "verb:calendar:open";

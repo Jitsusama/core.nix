@@ -490,6 +490,27 @@ QtObject {
             Beneath.actsOnly(asked, true), true);
         Expect.same("while one it doesn't keeps its second act reached",
             Beneath.actsOnly(asked, undefined), false);
+        Expect.same("nor one whose Return steps into a row inside it", Beneath.actsOnly([
+            { key: "verb:calendar:see", step: "rows", into: "row:calendar:m:see" }, copy]),
+            false);
+        // A meeting with nothing to join steps into its Show in Calendar on
+        // Return, entered as the meeting and leading its acts, as the shell
+        // made it (VKCF3Z's 74464630).
+        const meeting = { key: "calendar:meeting:m", name: "Standup" };
+        const see = { key: "calendar:meeting:m:see", name: "Show in Calendar",
+            verbs: () => ["at ten"] };
+        const join = { key: "calendar:meeting:m:join", name: "Join the Meeting" };
+        const entered = Beneath.entered(meeting, see);
+        Expect.same("a step into a row inside enters it under the row's own name",
+            [entered.name, entered.key, entered.verbs()], ["Standup", see.key, ["at ten"]]);
+        Expect.same("and with none named, the row itself",
+            Beneath.entered(meeting, null) === meeting, true);
+        Expect.same("the row Return steps into leads the rows inside",
+            Beneath.led([join, see], see).map(one => one.name), ["Show in Calendar",
+                "Join the Meeting"]);
+        Expect.same("and with none, they keep their order",
+            Beneath.led([join, see], null).map(one => one.name), ["Join the Meeting",
+                "Show in Calendar"]);
     }
 
     // Whether a row told again moved only, as a daemon making room between
