@@ -10,8 +10,9 @@
 //! row the notices place doesn't serve comes with its row, as ready-rows.md
 //! says a search's answer does, so the place need serve only a page: all
 //! 1,000 of Joel's rows were held for searches alone, about 11 MB of the
-//! shell's heap kept live in the lab (2026-11-12). Only those come, since
-//! one letter finds nearly every notice, about 1.5 MB to send a key.
+//! shell's heap kept live in the lab (2026-11-12). Only those come, and
+//! only for the first of those found, since one letter finds nearly every
+//! notice, about 1.5 MB to send a key.
 
 use std::collections::BTreeMap;
 
@@ -21,6 +22,15 @@ use serde_json::{Value, json};
 use crate::body;
 use crate::notice::Notice;
 use crate::row;
+
+/// How many of the notices an answer lists, first first, come with their
+/// row where the place doesn't serve it: about three screens of the
+/// launcher's list, some 72 KB. Every found one came before, 1.46 MB for
+/// "s" and 577 KB for "st" on Joel's 1,000 notices (2026-11-12), which
+/// the shell parsed on its main thread, reading notices 103 to 116 ms
+/// after his keys. One found further down still lists where the place
+/// serves its row, as the newest hundred are.
+const FOUND_ROWS: usize = 30;
 
 /// One notice's texts made ready to match, kept while what it said is the
 /// same, so a key matches and makes nothing ready.
@@ -112,6 +122,7 @@ impl Searched {
             .collect();
         let found: serde_json::Map<String, Value> = keys
             .iter()
+            .take(FOUND_ROWS)
             .filter_map(|key| Some((key.clone(), unserved.get(key)?.clone())))
             .collect();
         json!({
@@ -200,6 +211,38 @@ mod tests {
             all_served["rows"],
             json!({}),
             "with every row served, none comes: {all_served}"
+        );
+    }
+
+    #[test]
+    fn an_answer_carries_the_rows_of_its_first_page_alone() {
+        let found = u32::try_from(FOUND_ROWS).expect("a page fits") + 10;
+        let notices: Vec<Notice> = (1..=found).map(|id| notice(id, "Standup", "")).collect();
+        let unserved: BTreeMap<String, Value> = (1..=found)
+            .map(|id| (format!("row:notices:{id}"), json!({ "id": id })))
+            .collect();
+        let mut searched = Searched::default();
+        let answer = searched.answer(&notices, "s", &unserved);
+        let listed = keys(&answer);
+        assert_eq!(
+            listed.len(),
+            notices.len(),
+            "every one found is listed: {answer}"
+        );
+        let rows = answer["rows"].as_object().cloned().unwrap_or_default();
+        assert_eq!(
+            rows.len(),
+            FOUND_ROWS,
+            "only a page of rows comes: {} of {}",
+            rows.len(),
+            listed.len()
+        );
+        assert!(
+            listed[..FOUND_ROWS]
+                .iter()
+                .all(|key| rows.contains_key(*key)),
+            "and they're the first listed, best and newest: {:?}",
+            rows.keys().collect::<Vec<_>>()
         );
     }
 
