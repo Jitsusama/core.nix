@@ -328,6 +328,14 @@ QtObject {
         check(failures, "a set's median", took.median, 50);
         check(failures, "its slowest", took.slowest, 80);
         check(failures, "and how many within 50 ms, 50 itself among them", took.within, 2);
+        // The daily loop reads a day's p99 from the closings' lines, since
+        // one slow key in a hundred is what the median hides and the
+        // slowest overstates (7QEY1S, 2026-11-11 [fde359bb]): the nearest
+        // rank, so of 200 keys the 198th.
+        const hundreds = Presented.took(Array.from({ length: 200 },
+            (_, at) => ({ from: 0, at: 200 - at })));
+        check(failures, "a set's p99 is its nearest rank", hundreds.p99, 198);
+        check(failures, "which for a few is the slowest", took.p99, 80);
         const said = Presented.changesSaid([
             { place: "windows", from: 100, at: 130 },
             { place: "quests", from: 0, at: 70 },
@@ -335,9 +343,9 @@ QtObject {
         ]);
         check(failures, "a line a place, by name", said.join("\n"),
             "launcher: 1 change in quests presented a median 70 ms from the line, "
-            + "the slowest 70 ms, 0 within 50 ms\n"
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms\n"
             + "launcher: 2 changes in windows presented a median 30 ms from the line, "
-            + "the slowest 90 ms, 1 within 50 ms");
+            + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms");
         check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
         // Joel's 20 changes in machine took a median 36 ms, 6 past 50, and
         // nothing said whether they waited in the shell or after their
@@ -352,10 +360,10 @@ QtObject {
         check(failures, "a change says where its time went, each part's median apart",
             parted.join("\n"),
             "launcher: 3 changes in machine presented a median 40 ms from the line, "
-            + "the slowest 90 ms, 2 within 50 ms: a median 2 ms before the shell heard it, "
-            + "10 in the shell and 25 from its frame's start\n"
+            + "the slowest 90 ms, the p99 90 ms, 2 within 50 ms: a median 2 ms before the "
+            + "shell heard it, 10 in the shell and 25 from its frame's start\n"
             + "launcher: 1 change in quests presented a median 70 ms from the line, "
-            + "the slowest 70 ms, 0 within 50 ms");
+            + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms");
         // Joel's changes in Now missed 50 ms on both sides of the shell, and
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many
@@ -368,7 +376,7 @@ QtObject {
         ]);
         check(failures, "a change says whose line set it going", whose.join("\n"),
             "launcher: 4 changes in on presented a median 60 ms from the line, "
-            + "the slowest 70 ms, 1 within 50 ms, from machine 2, wifi 1");
+            + "the slowest 70 ms, the p99 70 ms, 1 within 50 ms, from machine 2, wifi 1");
 
         // Joel's 12:06 keys each came to their frame in 10 to 53 ms but
         // were presented a median 101 ms from the key, and nothing said
@@ -381,17 +389,46 @@ QtObject {
         check(failures, "keys say where their time went, each part's median apart",
             Presented.keysSaid("presented", keys, true),
             "launcher: 3 keys presented a median 100 ms from the key, the slowest 300 ms, "
-            + "1 within 50 ms: a median 10 ms before the shell heard it, 20 in the shell "
-            + "and 20 from its frame's start");
+            + "the p99 300 ms, 1 within 50 ms: a median 10 ms before the shell heard it, "
+            + "20 in the shell and 20 from its frame's start");
         check(failures, "keys said landed say how long alone",
             Presented.keysSaid("landed", keys.slice(0, 1), false),
             "launcher: 1 keys landed a median 100 ms from the key, the slowest 100 ms, "
-            + "0 within 50 ms");
+            + "the p99 100 ms, 0 within 50 ms");
         check(failures, "as do keys timed with no frame begun",
             Presented.keysSaid("presented", [{ from: 0, at: 70 }], true),
             "launcher: 1 keys presented a median 70 ms from the key, the slowest 70 ms, "
-            + "0 within 50 ms");
+            + "the p99 70 ms, 0 within 50 ms");
         check(failures, "no keys say nothing", Presented.keysSaid("presented", [], true), "");
+
+        // Joel's 235 drawers on 2026-11-11 were timed only from the work
+        // begun for each to its frame, a median 14 ms, though each followed
+        // its key by 50 ms and more and reached the screen 25 to 46 ms after
+        // its frame (Joel, 20:28: "the drawer in the launcher and its time
+        // to appear needs to be kept to the same performance requirements
+        // as everything else"). Each is said from the key that selected its
+        // row, as it's presented, with where its time went.
+        const drawer = { key: "agent:Y2YBTS", place: "agents", from: 1000, followed: 1050,
+            begun: 1060, at: 1090 };
+        check(failures, "a drawer says its time from the key as it's presented",
+            Presented.drawerSaid(drawer),
+            'launcher: drawer for "agent:Y2YBTS" presented 90 ms from the key: a median '
+            + "50 ms before it followed, 10 until its frame began and 30 from its "
+            + "frame's start");
+        const drawers = Presented.drawersSaid([drawer,
+            { key: "program:kitty", place: "programs", from: 0, followed: 5, begun: 15, at: 40 },
+            { key: "agent:KP0L6A", place: "agents", from: 2000, followed: 2010, begun: 2020,
+                at: 2040 },
+            { key: "agent:16V6F4", place: "agents", from: 3000, at: 3045 }]);
+        check(failures, "and at the close a line a place, by name, as changes are",
+            drawers.join("\n"),
+            "launcher: 3 drawers in agents presented a median 45 ms from the key, the slowest "
+            + "90 ms, the p99 90 ms, 2 within 50 ms: a median 10 ms before it followed, 10 "
+            + "until its frame began and 20 from its frame's start\n"
+            + "launcher: 1 drawer in programs presented a median 40 ms from the key, the "
+            + "slowest 40 ms, the p99 40 ms, 1 within 50 ms: a median 5 ms before it "
+            + "followed, 10 until its frame began and 25 from its frame's start");
+        check(failures, "none presented says nothing", Presented.drawersSaid([]).length, 0);
     }
 
     // Joel's closing at 14:36 on 2026-11-11 made Sound's 111 rows and
