@@ -41,6 +41,8 @@ OPENING = dt.timedelta(seconds=30)
 LOOKING = dt.timedelta(seconds=5)
 # How long a sample may take to go into the hinge's pipe, which waits while nothing reads it.
 WRITING = 10
+# How long lid-hinge waits, once the laptop's own keys go untouched, before a dark light counts.
+HANDS_OFF = dt.timedelta(seconds=30)
 # Near shut and wide open, in the hinge sensor's steps of a degree.
 WIDE_OPEN = 100
 COMING_DOWN = (60, 30, 10)
@@ -137,7 +139,7 @@ def test_a_lid_shut_wide_open_in_the_light_keeps_running(laptop: Laptop) -> None
 
 
 def test_a_lid_slammed_shut_sleeps_once_the_light_goes_dark(laptop: Laptop) -> None:
-    """A lid slammed shut from wide open sleeps once the light goes dark."""
+    """A lid slammed shut from wide open sleeps once the light goes dark, untyped on."""
     laptop.light(10000)
     laptop.hinge(WIDE_OPEN)
     before = laptop.said("until the light goes dark")
@@ -145,5 +147,23 @@ def test_a_lid_slammed_shut_sleeps_once_the_light_goes_dark(laptop: Laptop) -> N
     laptop.wait_to_say("until the light goes dark", before)
     laptop.machine.fail(ASLEEP)
     laptop.light(0)
+    laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
+    laptop.open_and_settle()
+
+
+def test_a_doubted_lid_typed_on_keeps_running_in_the_dark(laptop: Laptop) -> None:
+    """A doubted close goes unbelieved while the laptop's own keys are typed on, dark or not."""
+    laptop.light(10000)
+    laptop.hinge(WIDE_OPEN)
+    before = laptop.said("until the light goes dark")
+    laptop.lid(shut=True)
+    laptop.wait_to_say("until the light goes dark", before)
+    laptop.light(0)
+    typing = dt.timedelta()
+    while typing <= HANDS_OFF + LOOKING:
+        laptop.machine.send_key("shift")
+        laptop.machine.sleep(LOOKING)
+        typing += LOOKING
+    laptop.machine.fail(ASLEEP)
     laptop.machine.wait_until_succeeds(ASLEEP, timeout=FALLING_ASLEEP)
     laptop.open_and_settle()

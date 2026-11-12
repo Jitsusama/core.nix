@@ -10,17 +10,24 @@
 //! nothing once the switch says shut, true or not, so the angle can't be asked after the
 //! switch. What tells a real close from a false one is the angle read before it: a lid coming
 //! down passes through the last few degrees, and one wide open hasn't moved. So a shut switch
-//! is believed at once when the hinge last read under `NEAR_SHUT` degrees. A lid slammed
-//! from wide open is faster than the hub reads, so that alone would doubt it too: a doubted
-//! close is believed once a light sensor in the lid that saw light at the switch reads dark,
-//! as a shut lid covers it, within two seconds of shutting on the laptop this was written
-//! for. Where no light sensor saw light at the switch, in a dark room or a laptop without
-//! one, there is nothing to tell by, and the switch is believed as it would be without this.
-//! A doubt lasts as long as the switch says shut, up to `DOUBTED_AT_MOST`. An opened switch is
-//! always believed.
+//! is believed at once when the hinge read under `NEAR_SHUT` degrees within `MOVING` of a
+//! reading over it. A reading under it alone says nothing: the hub sends a stale one as the
+//! lid opens, and on the laptop this was written for one came in the same second as a false
+//! close, with the lid open and typed on.
+//!
+//! A lid slammed from wide open is faster than the hub reads, so that alone would doubt it
+//! too. A doubted close is believed once a light sensor in the lid that saw light at the switch
+//! reads dark, as a shut lid covers it, or where none saw light, in a dark room or a laptop
+//! without one. The hub reads no light either once the switch says shut, so a dark reading
+//! counts only once the laptop's own keys and touchpad have gone untouched for `HANDS_OFF`:
+//! nobody types on a shut lid. A doubt lasts as long as the switch says shut, up to
+//! `DOUBTED_AT_MOST` after they were last used. A believed close is doubted again once they
+//! are used, from `SETTLING` after the switch; whatever else is plugged in can be used with
+//! the lid shut. An opened switch is always believed.
 //!
 //! The hinge is heard from its IIO buffer, which udev turns on, so it wakes this only when the
-//! angle changes; the light sensors are read only while a close is doubted, once a second.
+//! angle changes. The light, and the interrupts of the laptop's keyboard and its i2c-hid
+//! devices, are read only while the lid is shut or a close is doubted, once a second.
 //! `LID_HINGE_IIO` and `LID_HINGE_NODES` name where IIO's devices and their nodes are, for a
 //! test's stand-ins.
 
@@ -39,13 +46,24 @@ use std::time::{Duration, Instant};
 /// nearly shut on a desk read about 30°, and one in use reads 90° to 115°.
 const NEAR_SHUT: f64 = 45.0;
 
+/// How soon before a reading under `NEAR_SHUT` one over it must have come, for the lid to be
+/// coming down rather than the hub sending a stale reading.
+const MOVING: Duration = Duration::from_secs(10);
+
+/// How long the laptop's own keys and touchpad must go untouched before a dark light sensor
+/// is believed.
+const HANDS_OFF: Duration = Duration::from_secs(30);
+
+/// How long after a switch shuts the keys and touchpad say nothing, while a palm lifts off.
+const SETTLING: Duration = Duration::from_secs(2);
+
 /// Readings under this are the hub's zero for a shut switch, not an angle.
 const NO_ANGLE: f64 = 1.0;
 
 /// What a light sensor must fall to, of what it read at the switch, to read dark.
 const DARK_SHARE: f64 = 0.05;
 
-/// How often the light is read while a close is doubted.
+/// How often the light and the hands are read while the lid is shut or a close doubted.
 const LOOK_AGAIN: Duration = Duration::from_secs(1);
 
 /// How often the hinge is looked for while there's none: the sensor hub's devices come a
@@ -53,9 +71,9 @@ const LOOK_AGAIN: Duration = Duration::from_secs(1);
 /// switch are only heard once the hinge is.
 const LOOK_FOR_HINGE: Duration = Duration::from_secs(2);
 
-/// How long a close is doubted before it's believed anyway. A false close seen on the laptop
-/// this was written for lasted two minutes, and a lid shut in a lit room should sleep in a
-/// bag before long.
+/// How long a close is doubted, after the laptop's own keys and touchpad were last used, before
+/// it's believed anyway. A false close seen on the laptop this was written for lasted two
+/// minutes, and a lid shut in a lit room should sleep in a bag before long.
 const DOUBTED_AT_MOST: Duration = Duration::from_mins(10);
 
 /// The name of the switch this offers, which udev's rule leaves showing.
@@ -124,17 +142,29 @@ enum Verdict {
     Used,
 }
 
-/// A close not believed yet: when it came, and what each light sensor read at it.
+/// A close not believed yet: when it came, and what each light sensor read at it, or none
+/// where the light can't tell, as when the keys opened a close already believed.
 struct Doubt {
     since: Instant,
-    light: Vec<Option<f64>>,
+    light: Option<Vec<Option<f64>>>,
 }
 
-/// Whether the lid is shut, from its switch, the hinge's angle and the light.
+/// Whether the lid is shut, from its switch, the hinge's angle, the light and the hands on the
+/// laptop's own keys and touchpad.
 struct Judge {
     switch_shut: bool,
     offered_shut: bool,
+    /// The hinge's last angle, for the journal.
     hinge: Option<f64>,
+    /// When the hinge last read over `NEAR_SHUT`, since the switch last opened.
+    open_at: Option<Instant>,
+    /// Whether the hinge was seen coming down past `NEAR_SHUT`.
+    coming_down: bool,
+    /// When the switch last said shut.
+    shut_at: Option<Instant>,
+    /// The laptop's own keys and touchpad: how many presses so far, and when the last came.
+    presses: Option<u64>,
+    pressed: Option<Instant>,
     doubt: Option<Doubt>,
 }
 
@@ -145,6 +175,11 @@ impl Judge {
             switch_shut: shut,
             offered_shut: shut,
             hinge: None,
+            open_at: None,
+            coming_down: false,
+            shut_at: None,
+            presses: None,
+            pressed: None,
             doubt: None,
         }
     }
@@ -152,13 +187,21 @@ impl Judge {
     /// A reading of the hinge's angle. Only those while the switch reads open say how the
     /// lid came down.
     /// Says whether the lid has just come down past `NEAR_SHUT`.
-    fn hinge(&mut self, degrees: f64, _now: Instant) -> bool {
+    fn hinge(&mut self, degrees: f64, now: Instant) -> bool {
         if self.switch_shut || degrees < NO_ANGLE {
             return false;
         }
-        let was_near = self.hinge.is_some_and(|before| before < NEAR_SHUT);
         self.hinge = Some(degrees);
-        degrees < NEAR_SHUT && !was_near
+        let was = self.coming_down;
+        if degrees >= NEAR_SHUT {
+            self.open_at = Some(now);
+            self.coming_down = false;
+        } else if !was {
+            self.coming_down = self
+                .open_at
+                .is_some_and(|at| now.saturating_duration_since(at) <= MOVING);
+        }
+        self.coming_down && !was
     }
 
     /// The lid's own switch, with the light each sensor reads as it changes.
@@ -169,17 +212,21 @@ impl Judge {
         self.switch_shut = shut;
         if !shut {
             self.doubt = None;
+            self.shut_at = None;
             // Opening, it reads its way up again from the first degrees.
             self.hinge = None;
+            self.open_at = None;
+            self.coming_down = false;
             return self.offer(false, Verdict::Open);
         }
-        if self.hinge.is_some_and(|degrees| degrees < NEAR_SHUT) {
+        self.shut_at = Some(now);
+        if self.coming_down {
             return self.offer(true, Verdict::Shut("the hinge was nearly shut"));
         }
-        if !light.iter().flatten().any(|&lux| lux > 0.0) {
-            return self.offer(true, Verdict::Shut("no light sensor saw light to tell by"));
-        }
-        self.doubt = Some(Doubt { since: now, light });
+        self.doubt = Some(Doubt {
+            since: now,
+            light: Some(light),
+        });
         Verdict::Doubted
     }
 
@@ -188,19 +235,23 @@ impl Judge {
         let Some(doubt) = &self.doubt else {
             return Verdict::Unchanged;
         };
-        let dark = doubt
-            .light
-            .iter()
-            .zip(light)
-            .any(|(then, now)| match (then, now) {
+        let used = self.pressed.map_or(doubt.since, |at| at.max(doubt.since));
+        let untouched = now.saturating_duration_since(used);
+        if let Some(then) = doubt.light.as_ref().filter(|_| untouched >= HANDS_OFF) {
+            if !then.iter().flatten().any(|&lux| lux > 0.0) {
+                self.doubt = None;
+                return self.offer(true, Verdict::Shut("no light sensor saw light to tell by"));
+            }
+            let dark = then.iter().zip(light).any(|(then, now)| match (then, now) {
                 (Some(then), Some(now)) => *then > 0.0 && *now <= then * DARK_SHARE,
                 _ => false,
             });
-        if dark {
-            self.doubt = None;
-            return self.offer(true, Verdict::Shut("the light went dark"));
+            if dark {
+                self.doubt = None;
+                return self.offer(true, Verdict::Shut("the light went dark"));
+            }
         }
-        if now.duration_since(doubt.since) >= DOUBTED_AT_MOST {
+        if untouched >= DOUBTED_AT_MOST {
             self.doubt = None;
             return self.offer(true, Verdict::Shut("it stayed shut too long to doubt"));
         }
@@ -211,8 +262,31 @@ impl Judge {
         self.doubt.is_some()
     }
 
-    fn keys(&mut self, _count: u64, _now: Instant) -> Verdict {
-        Verdict::Unchanged
+    /// Whether the light and the hands need reading: while the lid is offered shut, or doubted.
+    fn watching(&self) -> bool {
+        self.offered_shut || self.doubting()
+    }
+
+    /// How many presses the laptop's own keys and touchpad have had so far. Any since the last
+    /// count are a hand on the laptop, so a shut lid it believed is open again, and doubted.
+    fn keys(&mut self, count: u64, now: Instant) -> Verdict {
+        let pressed = self.presses.is_some_and(|before| before != count);
+        self.presses = Some(count);
+        if !pressed {
+            return Verdict::Unchanged;
+        }
+        self.pressed = Some(now);
+        let settled = self
+            .shut_at
+            .is_none_or(|at| now.saturating_duration_since(at) >= SETTLING);
+        if !(self.switch_shut && self.offered_shut && settled) {
+            return Verdict::Unchanged;
+        }
+        self.doubt = Some(Doubt {
+            since: now,
+            light: None,
+        });
+        self.offer(false, Verdict::Used)
     }
 
     fn offer(&mut self, shut: bool, verdict: Verdict) -> Verdict {
@@ -442,8 +516,36 @@ fn light(root: &Path) -> Vec<Option<f64>> {
         .collect()
 }
 
-fn presses(_interrupts: &str, _names: &[String]) -> Option<u64> {
-    None
+/// The presses so far of the devices `names` names, from `/proc/interrupts`, which counts each
+/// line's interrupts on every CPU and ends it with the devices on it; none when none is there.
+fn presses(interrupts: &str, names: &[String]) -> Option<u64> {
+    interrupts
+        .lines()
+        .skip(1)
+        .filter(|line| {
+            line.split_whitespace()
+                .last()
+                .is_some_and(|name| names.iter().any(|wanted| wanted == name))
+        })
+        .map(|line| {
+            line.split_whitespace()
+                .skip(1)
+                .map_while(|field| field.parse::<u64>().ok())
+                .sum::<u64>()
+        })
+        .reduce(|all, one| all + one)
+}
+
+/// The presses so far of the laptop's own keyboard, on i8042, and its i2c-hid devices, the
+/// touchpad among them, which each name their interrupt line after themselves.
+fn hands() -> Option<u64> {
+    let mut names = vec!["i8042".to_owned()];
+    if let Ok(entries) = fs::read_dir("/sys/bus/i2c/drivers/i2c_hid_acpi") {
+        names.extend(entries.flatten().filter_map(|entry| {
+            Some(entry.file_name().to_str()?.strip_prefix("i2c-")?.to_owned())
+        }));
+    }
+    presses(&fs::read_to_string("/proc/interrupts").ok()?, &names)
 }
 
 fn checked(result: c_int) -> io::Result<c_int> {
@@ -609,7 +711,7 @@ fn run() -> io::Result<()> {
             });
         }
         let timeout = [
-            judge.doubting().then_some(LOOK_AGAIN),
+            judge.watching().then_some(LOOK_AGAIN),
             hinge.is_none().then_some(LOOK_FOR_HINGE),
         ]
         .into_iter()
@@ -641,6 +743,16 @@ fn run() -> io::Result<()> {
         // Before the switch, since the angles came before it.
         hear(hinge.as_mut(), &mut judge)?;
         let now = Instant::now();
+        // Every wake, so presses long before a close aren't taken for a hand on a shut lid.
+        if let Some(count) = hands()
+            && judge.keys(count, now) == Verdict::Used
+        {
+            eprintln!(
+                "lid-hinge: the lid is open: its switch says shut, but the laptop's own keys \
+                 or touchpad were used"
+            );
+            offered.say(false)?;
+        }
         let verdict = if fds[0].revents & POLLIN != 0 && lid_events(&mut lid)? {
             let shut = lid_shut(&lid)?;
             let seen = judge
@@ -650,7 +762,7 @@ fn run() -> io::Result<()> {
             if verdict == Verdict::Doubted {
                 eprintln!(
                     "lid-hinge: the lid's switch says shut with the hinge last at {seen}, \
-                     so the lid stays open until the light goes dark"
+                     so the lid stays open until the light goes dark with no hands on it"
                 );
             }
             verdict
