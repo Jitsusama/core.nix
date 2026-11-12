@@ -76,6 +76,8 @@ import json, os, sys
 with open(os.environ["STAND_IN_ASKED"], "w") as asked:
     json.dump(sys.argv[1:], asked)
 out = sys.argv[sys.argv.index("--out") + 1]
+if os.environ.get("STAND_IN_OFFLOAD_SAYS"):
+    print(os.environ["STAND_IN_OFFLOAD_SAYS"], file=sys.stderr)
 if not os.environ.get("STAND_IN_NO_PICTURES"):
     open(os.path.join(out, "desktop.png"), "w").close()
 sys.exit(int(os.environ.get("STAND_IN_OFFLOAD_STATUS", "0")))
@@ -376,6 +378,31 @@ def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
     ) in said
     assert "vm-desktop-y failed" not in said
     assert stand_in.ran() is None
+
+
+@pytest.mark.usefixtures("stand_in")
+def test_a_check_that_isnt_a_vm_test_is_refused_and_never_excused(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # As 2RCBOJ's run of a nested-niri check on 11 November: it has no
+    # subtests, so its evaluation failed, and the quarantine called it a pass.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "the-launcher-answers-on-niri"}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+    monkeypatch.setenv(
+        "STAND_IN_OFFLOAD_SAYS",
+        "error: run-subtests: the-launcher-answers-on-niri isn't a VM test, so it has no "
+        "subtests; build it whole",
+    )
+
+    assert tool.main(["--there", "the-launcher-answers-on-niri", "x"]) == tool.USAGE
+    said = capsys.readouterr().err
+    assert "isn't a VM test" in said
+    assert "quarantines it" not in said
 
 
 @pytest.mark.usefixtures("stand_in")

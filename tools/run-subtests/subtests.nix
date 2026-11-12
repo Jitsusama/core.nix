@@ -15,11 +15,16 @@ let
   # names it here too.
   test = pkgs.lib.getAttrFromPath (pkgs.lib.splitString "." check) checks;
 in
-test.overrideTestDerivation (_: {
-  buildCommand = ''
-    mkdir -p $out
-    export LOGFILE=/dev/null
-    ${pkgs.lib.getExe run-subtests} --driver ${test.driver} --out $out \
-      ${pkgs.lib.escapeShellArgs ([ check ] ++ words)}
-  '';
-})
+# A check that isn't a VM test, such as one on a nested niri, has no
+# subtests to pick; run-subtests knows this refusal by its words.
+if !(test ? overrideTestDerivation) then
+  throw "run-subtests: ${check} isn't a VM test, so it has no subtests; build it whole"
+else
+  test.overrideTestDerivation (_: {
+    buildCommand = ''
+      mkdir -p $out
+      export LOGFILE=/dev/null
+      ${pkgs.lib.getExe run-subtests} --driver ${test.driver} --out $out \
+        ${pkgs.lib.escapeShellArgs ([ check ] ++ words)}
+    '';
+  })

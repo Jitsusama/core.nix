@@ -66,6 +66,10 @@ KEYWORD = re.compile(r"[A-Za-z0-9_ -]+")
 # The words -k reads as its own, which a word may not be alone.
 OPERATORS = frozenset({"and", "or", "not"})
 
+# What subtests.nix says of a check that isn't a VM test, and so has no
+# subtests: its evaluation fails, which must never read as the check failing.
+NOT_A_VM_TEST = "isn't a VM test, so it has no subtests"
+
 # Where the net keeps its quarantine list, and the main it's read from, so a
 # branch can't quarantine its own failure.
 QUARANTINE = "tools/merge-net/quarantine.json"
@@ -335,12 +339,16 @@ def there(options: Options) -> int | None:
     command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
     print(f"building {options.check}'s subtests where nix-offload builds", file=sys.stderr)
     try:
-        status = subprocess.run(  # noqa: S603
-            [*command, flake, f"legacyPackages.{system}.subtests"],
-            check=False,
-        ).returncode
+        status, refused = offloaded([*command, flake, f"legacyPackages.{system}.subtests"])
     except FileNotFoundError:
         return None
+    if refused:
+        print(
+            f"run-subtests: {options.check} isn't a VM test; build it whole with "
+            f"nix-offload there . checks.{system}.{options.check}",
+            file=sys.stderr,
+        )
+        return USAGE
     if status == USAGE:
         return None
     listed = out / "subtests"
@@ -349,6 +357,20 @@ def there(options: Options) -> int | None:
     else:
         say_pictures(out, options.check)
     return status
+
+
+def offloaded(command: list[str]) -> tuple[int, bool]:
+    """Run nix-offload, and give its status and whether it refused the check.
+
+    Its errors are shown as they come, and read for subtests.nix's refusal
+    of a check that isn't a VM test.
+    """
+    refused = False
+    with subprocess.Popen(command, stderr=subprocess.PIPE, text=True) as running:  # noqa: S603
+        for line in running.stderr or ():
+            sys.stderr.write(line)
+            refused = refused or NOT_A_VM_TEST in line
+    return running.returncode, refused
 
 
 def say_pictures(out: Path, check: str) -> None:
