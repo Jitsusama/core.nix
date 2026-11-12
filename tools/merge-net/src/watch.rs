@@ -1475,6 +1475,7 @@ fn search(
     if fixed()? {
         return Ok(None);
     }
+    let bad = bad.filter(|commit| !never_built(state, commit, &narrowed));
     let failing = bad.clone().unwrap_or_else(|| head.to_owned());
     let log = state.log(&failing, &narrowed, 2);
     let log = if log.exists() {
@@ -1515,6 +1516,38 @@ fn search(
     })))
 }
 
+/// Whether every failed run of `subtests` at `commit` stopped at a build
+/// of something it needs, before the test ran. A search narrowed to the
+/// subtests that failed at its head looks for what broke those, and a
+/// merge where nothing ran says nothing of them. On 12 November
+/// vm-desktop-launcher-moves-windows' kitty trial counted too many
+/// letters at the head, and the four merges after its last pass didn't
+/// build, #3613 having broken slack-people, so the search blamed #3613,
+/// whose break was reverted already, rather than say it couldn't tell.
+fn never_built(state: &State, commit: &str, subtests: &str) -> bool {
+    if !subtests.contains("::") {
+        return false;
+    }
+    let runs: Vec<Vec<String>> = (1..=FAILURES)
+        .map(|run| {
+            let run = u32::try_from(run).unwrap_or(0);
+            crate::world::lines_of(&state.log(commit, subtests, run)).collect()
+        })
+        .collect();
+    let built_none = runs.iter().all(|lines| {
+        lines.iter().any(|line| line.contains("Cannot build"))
+            && !lines.iter().any(|line| line.starts_with("vm-test-run"))
+    });
+    if built_none {
+        state.say(&format!(
+            "{subtests} never ran at {}, where something it needs didn't build, so that \
+             merge isn't blamed for it",
+            short(commit)
+        ));
+    }
+    built_none
+}
+
 /// Hold switching on what a search found and revert it, list a test that
 /// failed at the base too, or keep a test whose search couldn't tell to
 /// run again at the next head. A test main's newest head passes is none of
@@ -1551,8 +1584,8 @@ fn settle(
             }))?;
             state.say(&format!(
                 "{test} fails at {}, but its search couldn't tell which merge broke it, since a \
-                 run stalled or no builder took it: switches go on, and it runs again at the \
-                 next head",
+                 run stalled, no builder took it, or it didn't build where the search needed \
+                 it: switches go on, and it runs again at the next head",
                 short(head)
             ));
             state.find(&json!({
@@ -1853,6 +1886,9 @@ mod tests {
         running: Vec<String>,
         /// The subtest pytest names in each failed run's log.
         fails_in: Option<String>,
+        /// Commits where a failed run's log says only that something it
+        /// needs didn't build, so the test never ran.
+        unbuilt: Vec<String>,
     }
 
     impl Stand {
@@ -2001,7 +2037,9 @@ mod tests {
             } else {
                 left[0]
             };
-            if let Some(subtest) = self.fails_in.as_ref().filter(|_| exit != 0) {
+            if exit != 0 && self.unbuilt.iter().any(|at| at == commit) {
+                let _ = fs::write(log, "error: Cannot build '/nix/store/x-needed.drv'.\n");
+            } else if let Some(subtest) = self.fails_in.as_ref().filter(|_| exit != 0) {
                 let line = format!("vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n");
                 let _ = fs::write(log, line);
             }
@@ -3371,6 +3409,39 @@ mod tests {
         let kept = state.hold().expect("the test is kept to run again");
         assert_eq!(kept["test"], "vm-a");
         assert_eq!(kept["unsettled"], true);
+    }
+
+    #[test]
+    fn a_merge_where_the_failing_subtest_never_built_is_blamed_for_none() {
+        let state = state("search-unbuilt");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            unbuilt: names("m1 m2"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m1", "vm-a::test_b", &[1, 1])
+        .exits("m2", "vm-a::test_b", &[1, 1])
+        .exits("m3", "vm-a::test_b", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "m1 failed only to build, which says nothing of test_b, so it's reverted for none"
+        );
+        assert!(
+            !state.hold_file().exists(),
+            "no merge is known to have broken test_b, so a switch isn't held"
+        );
+        let kept = state.hold().expect("the test is kept to run again");
+        assert_eq!(kept["unsettled"], true, "{kept}");
     }
 
     #[test]
