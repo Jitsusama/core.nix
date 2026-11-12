@@ -256,7 +256,7 @@ Singleton {
     Daemon {
         id: calls
 
-        socket: `${root.runtime}/daemons/tuple.sock`
+        socket: `${root.runtime}/daemons/tuple-call.sock`
         kind: "call"
         onHeard: root.took(calls.held["call:current"] ?? root.none)
     }

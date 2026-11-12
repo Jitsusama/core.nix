@@ -643,7 +643,7 @@ fn waiting(run: &std::path::Path) -> PathBuf {
 
 /// Where `run` answers asks.
 fn socket(run: &std::path::Path) -> PathBuf {
-    run.with_extension("daemons").join("slack.sock")
+    run.with_extension("daemons").join("slack-unreads.sock")
 }
 
 /// Asks a running slack-unreads one thing over its socket, and what it

@@ -1200,7 +1200,7 @@ def test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears(desktop:
     """A daemon whose socket isn't there is asked again only once it appears, not every 2 s."""
     machine = desktop.machine
     runtime = "/run/user/1000"
-    made = f"{runtime}/daemons/slack.sock"
+    made = f"{runtime}/daemons/slack-unreads.sock"
     hellos = f"{runtime}/slack-hellos"
     missing = "ServerNotFoundError"
     # Slack's daemon as it is before Joel signs in: no socket at all.

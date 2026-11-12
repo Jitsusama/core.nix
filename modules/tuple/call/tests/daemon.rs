@@ -106,7 +106,7 @@ impl Running {
         let tuple = folder.join("bin/tuple");
         std::fs::write(&tuple, format!("#!{shell}\n{TUPLE}")).unwrap();
         std::fs::set_permissions(&tuple, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let socket = folder.join("run/daemons/tuple.sock");
+        let socket = folder.join("run/daemons/tuple-call.sock");
         let tuples = answering.then(|| answering_at(&folder));
         let program = env!("CARGO_BIN_EXE_tuple-call");
         let command = match launcher.split_first() {
@@ -232,7 +232,7 @@ impl Following for Client {
 /// The daemon, run by `command`, over the test's folders.
 fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
     command
-        .arg(folder.join("run/daemons/tuple.sock"))
+        .arg(folder.join("run/daemons/tuple-call.sock"))
         .arg(folder.join("bin/tuple"))
         .env("XDG_RUNTIME_DIR", folder.join("run"))
         .env("XDG_DATA_HOME", folder.join("data"))
