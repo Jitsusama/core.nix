@@ -14,6 +14,7 @@
 //! leaves the launcher's own record, and what he typed to pi is never
 //! written or sent anywhere.
 
+mod chrome;
 mod pain;
 mod pi;
 mod trial;
