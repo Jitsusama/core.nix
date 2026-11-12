@@ -42,13 +42,18 @@ let
   op = "${osConfig.security.wrapperDir or "/run/wrappers/bin"}/op";
   manager = pkgs.callPackage ./manager/package.nix { };
   systemctl = "${pkgs.systemd}/bin/systemctl";
-  # 1Password opened from its desktop entry, its unit started first, so
-  # the app runs in the unit, which says it's open, and the second run
-  # hands the unit's app its window, as 1Password runs once a session.
-  inItsUnit = pkgs.writeShellScript "1password-in-its-unit" ''
-    ${systemctl} --user start onepassword.service || true
-    exec ${lib.getExe' app.package "1password"} "$@"
-  '';
+  # 1Password opened from its desktop entry in its unit, asked again if the
+  # unit restarted under it (in-its-unit.sh).
+  inItsUnit = lib.getExe (
+    pkgs.writeShellApplication {
+      name = "1password-in-its-unit";
+      runtimeInputs = [ pkgs.systemd ];
+      text = lib.concatLines [
+        "app=${lib.getExe' app.package "1password"}"
+        (builtins.readFile ./in-its-unit.sh)
+      ];
+    }
+  );
   # op's completion, as op's package has it.
   opCompletion = pkgs.runCommandLocal "op-zsh-completion" { } ''
     install -D -m 444 ${cli.package}/share/zsh/site-functions/_op \

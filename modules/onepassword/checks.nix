@@ -39,6 +39,44 @@ onLinux {
       touch $out
     '';
 
+  # 1Password opened from its entry (in-its-unit.sh) hands its window to
+  # the unit's app once while the unit stays up, and once more when the
+  # unit restarted under it, as when the app died making the window.
+  onepassword-opens-its-window-when-its-unit-starts-again =
+    let
+      # systemctl saying the unit's invocation as a file holds it, and
+      # 1Password counting its runs and, when told to, dying as its unit
+      # starts again.
+      systemctl = pkgs.writeShellScriptBin "systemctl" ''
+        case "$*" in *show*) cat "$STATE/invocation" ;; esac
+      '';
+      app = pkgs.writeShellScript "1password" ''
+        echo "$*" >> "$STATE/runs"
+        if [ -e "$STATE/dies" ]; then
+          rm "$STATE/dies"
+          echo second > "$STATE/invocation"
+          exit 133
+        fi
+      '';
+    in
+    pkgs.runCommandLocal "onepassword-opens-its-window-when-its-unit-starts-again"
+      { nativeBuildInputs = [ systemctl ]; }
+      # Kept in Nix because each line runs the script Nix gives it with the
+      # stand-ins Nix makes above, or reads what they wrote.
+      ''
+        fail() { echo "$1"; exit 1; }
+        { echo 'app=${app}'; cat ${./in-its-unit.sh}; } > in-its-unit
+        export STATE=$PWD
+        echo first > invocation
+        bash -euo pipefail in-its-unit --x || fail "an opening with its unit up failed"
+        [ "$(cat runs)" = --x ] || fail "an opening with its unit up ran: $(cat runs)"
+        rm runs
+        touch dies
+        bash -euo pipefail in-its-unit --x || fail "an opening its unit restarted under failed"
+        [ "$(wc -l < runs)" = 2 ] || fail "a restarted opening ran $(wc -l < runs) times"
+        touch $out
+      '';
+
   # The account's zsh is given op's own completion, the very file the op
   # the system wraps was built with, from the account's own profile, which
   # home-manager puts on zsh's fpath.
