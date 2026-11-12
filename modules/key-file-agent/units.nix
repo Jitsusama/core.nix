@@ -8,6 +8,10 @@
 # proxy (systemd-socket-proxyd) to an ssh-agent of the key's own, which
 # binds a socket beside it and forks once it's bound, so the key is added
 # before anything is served. It holds only that key and asks nothing.
+#
+# Both sit in agents.slice, as the TPM's agents do: what they sign is the
+# agents' work, not Joel's programs'. agents.slice's oomd kills under
+# pressure, so both ask to be spared, as a killed agent loses its key.
 { lib, pkgs }:
 name: key:
 let
@@ -40,7 +44,11 @@ in
         "${inner}.service"
       ];
     };
-    Service.ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd %t/${inner}.sock";
+    Service = {
+      ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd %t/${inner}.sock";
+      Slice = "agents.slice";
+      ManagedOOMPreference = "avoid";
+    };
   };
 
   services.${inner} = {
@@ -57,6 +65,8 @@ in
       ExecStartPre = "${rm} -f %t/${inner}.sock";
       ExecStart = "${sshAgent} -a %t/${inner}.sock";
       ExecStartPost = "${env} SSH_AUTH_SOCK=%t/${inner}.sock ${sshAdd} -q ${key}";
+      Slice = "agents.slice";
+      ManagedOOMPreference = "avoid";
     };
   };
 }

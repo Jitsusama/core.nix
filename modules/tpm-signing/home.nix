@@ -75,6 +75,12 @@ in
       ExecStart = "${sshTpmAgent} --key-dir ${config.xdg.dataHome}/${agentKeys}";
       # As ssh-tpm-agent's own unit has it.
       SuccessExitStatus = 2;
+      # The agents' signatures are agents' work, so it sits with them rather
+      # than among Joel's programs, where its 457 s of processor by 23:00
+      # on 11 November counted as his. agents.slice's oomd kills under
+      # pressure, and a killed agent loses its keys, so it asks to be spared.
+      Slice = "agents.slice";
+      ManagedOOMPreference = "avoid";
     };
   };
 

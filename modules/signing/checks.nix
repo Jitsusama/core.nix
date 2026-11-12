@@ -125,4 +125,40 @@ in
           ${./tests/empty-signature.sig}
         touch $out
       '';
+
+  # The agents that serve the agents' and nodes' keys sit with the agents
+  # rather than among Joel's programs, where their processor counted as his,
+  # and ask oomd to spare them there. With a TPM or without. Joel's own
+  # login key's agent stays with his programs: it is his.
+  the-signers-sit-with-the-agents =
+    let
+      linked =
+        tpm:
+        account (bareNixos [
+          self.nixosModules.workstation
+          {
+            jitsusama.firmware.tpm = tpm;
+            home-manager.sharedModules = [ { jitsusama.linkKeys = [ "personal" ]; } ];
+          }
+        ]);
+      service = home: name: home.systemd.user.services.${name}.Service;
+      sliceOf = home: name: (service home name).Slice or null;
+      spared = home: name: ((service home name).ManagedOOMPreference or null) == "avoid";
+      withAgents = home: lib.all (name: sliceOf home name == "agents.slice" && spared home name);
+    in
+    holds "the-signers-sit-with-the-agents"
+      "An agent serving the agents' key or a realm's link key sits outside agents.slice or isn't spared by oomd there, or Joel's login key's agent sits with the agents."
+      (
+        sliceOf (linked true) "ssh-tpm-agent" == null
+        && withAgents (linked true) [
+          "agent-signing"
+          "personal-link"
+        ]
+        && withAgents (linked false) [
+          "agent-signing"
+          "agent-signing-agent"
+          "personal-link"
+          "personal-link-agent"
+        ]
+      );
 }

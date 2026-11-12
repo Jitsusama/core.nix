@@ -3238,6 +3238,10 @@
     git's signing program signs with Joel's key at a terminal and the agent's over pipes or with
     SIGN_AS, and takes back a signature that doesn't verify
   '';
+  the-signers-sit-with-the-agents = ''
+    the agents serving the agents' key and a realm's link key sit in agents.slice, spared by
+    oomd there, with a TPM or without, and Joel's login key's agent stays with his programs
+  '';
   the-splash-keeps-systemd-quiet = ''
     with the splash, systemd writes only failures to the console
   '';
