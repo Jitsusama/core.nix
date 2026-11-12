@@ -37,6 +37,7 @@
 mod chosen;
 mod defaults;
 mod denoise;
+mod lane;
 mod loudness;
 mod pipe;
 mod refusals;
