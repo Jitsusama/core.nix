@@ -138,10 +138,11 @@ ShellRoot {
         const lines = decided.text().split("\n");
         const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`
             + ` orchestrate=${orchestrates ? 1 : 0}`;
-        Expect.expect("each is asked in its folder, with whether it orchestrates",
-            [started("QEST-HOSTED", true), started("QEST-AWAY", false),
-                started("QEST-PLAIN", false)].every(line => lines.includes(line)),
-            lines.join("\n"));
+        // Each is asked in its folder, with whether it orchestrates, which
+        // is looked for again until it's read, as the first stage's are.
+        if (![started("QEST-HOSTED", true), started("QEST-AWAY", false),
+            started("QEST-PLAIN", false)].every(line => lines.includes(line)))
+            return;
         config.setText("{}");
         stage = "unset";
     }
