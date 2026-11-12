@@ -286,6 +286,22 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
     }
 }
 
+impl Row {
+    /// Says first at its right that it answered a talk Joel hasn't read,
+    /// given way last, flat or under its orchestrator alike (Joel,
+    /// 2026-11-11: "how do i know when a sessions answers a talk?").
+    pub fn answered(&mut self, said: &str) {
+        let item = Item {
+            said: said.to_owned(),
+            keep: 6,
+        };
+        self.side_items.insert(0, item.clone());
+        self.side = said_of(&self.side_items);
+        self.ranked.side_items.insert(0, item);
+        self.ranked.side = said_of(&self.ranked.side_items);
+    }
+}
+
 fn said_of(items: &[Item]) -> String {
     items
         .iter()

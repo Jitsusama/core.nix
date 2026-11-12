@@ -89,6 +89,34 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + of_cycle - 719_468
 }
 
+/// `ms` since 1970 as RFC 3339 text in UTC, `2026-11-10T22:41:32.003Z`,
+/// as the harness writes a talk's times, after Howard Hinnant's
+/// `civil_from_days`.
+pub fn text_of(ms: i64) -> String {
+    let days = ms.div_euclid(86_400_000);
+    let of_day = ms.rem_euclid(86_400_000);
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let of_era = shifted.rem_euclid(146_097);
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{:03}Z",
+        of_day / 3_600_000,
+        of_day / 60_000 % 60,
+        of_day / 1000 % 60,
+        of_day % 1000
+    )
+}
+
 /// Today's date where Joel is, `2026-11-10`, through the C library as
 /// modules/disk-guard reads the local time; none where it can't say.
 pub fn today() -> String {
@@ -122,6 +150,19 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn a_moment_is_written_as_the_harness_writes_it_and_read_back() {
+        for text in [
+            "1970-01-01T00:00:00.000Z",
+            "2026-11-10T22:41:32.003Z",
+            "2028-02-29T23:59:59.999Z",
+            "2000-03-01T00:00:00.000Z",
+        ] {
+            let ms = ms_of(&json!(text)).expect("a time");
+            assert_eq!(text_of(ms), text, "{ms} written back");
+        }
+    }
 
     #[test]
     fn a_count_of_milliseconds_is_taken_as_it_is() {
