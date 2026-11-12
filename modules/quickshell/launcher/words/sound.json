@@ -227,7 +227,7 @@
       "id": "sound:offer:no-thanks",
       "in": "sound:offer",
       "name": "No Thanks",
-      "verb": "put off",
+      "verb": "decline",
       "glyph": "dismiss"
     },
     {

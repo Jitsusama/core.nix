@@ -266,7 +266,7 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
 
 def test_an_offer_beside_the_picks_is_told_until_taken(joel: Joel, offered: dict[str, Any]) -> None:
     """An offer the service writes beside the picks, the trial hears and tells; taken, it goes."""
-    assert offered
+    assert offered["microphone"] == DESCRIPTION
     offer = json.dumps(
         {
             "microphone": DESCRIPTION,
