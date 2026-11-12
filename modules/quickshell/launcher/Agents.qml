@@ -254,20 +254,24 @@ Provider {
         wrapAhead();
     }
 
-    // While the launcher's open, what moved is wrapped the frame after
-    // it's drawn, or after the opening's own, rather than by the next
-    // letter that wants Agents' rows: Joel's first letters at home made
-    // 176 to 185 of them, 11 to 17 ms of letters that took 56 to 81
-    // (RCTRF8, 2026-11-12). Shut, nothing is, as nothing reads them.
+    // While Agents' rows are shown, what moved is wrapped the frame after
+    // it's drawn rather than by the next key. Unseen, as at home, which
+    // reads only Agents' count, nothing is, since a row made for nobody is
+    // work a held key waits on (vm-desktop-launcher-keeps-up, ZINAWZ,
+    // 2026-11-12). The first letter at home makes only the rows whose words
+    // changed meanwhile, as a row moved only in order keeps its wrap: it
+    // once made 176 to 185 of them, 11 to 17 ms of letters that took 56 to
+    // 81 (RCTRF8, 2026-11-12).
     property bool wrapAsked: false
     function wrapAhead() {
         const launcher = provider.launcher;
-        if (wrapAsked || !launcher?.open || typeof launcher.afterFrame !== "function")
+        if (wrapAsked || !provider.wanted || !launcher?.open
+            || typeof launcher.afterFrame !== "function")
             return;
         wrapAsked = true;
         launcher.afterFrame(() => {
             provider.wrapAsked = false;
-            if (provider.opened())
+            if (provider.opened() && provider.wanted)
                 provider.laidOut();
         });
     }
