@@ -124,5 +124,12 @@
     "owner_pr": 3734,
     "reason": "has been broken since #3734, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-keeps-up"
+  },
+  {
+    "at": 1794514033,
+    "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
+    "owner_pr": 3757,
+    "reason": "failed, then passed, at 1e94ca1cd67d",
+    "test": "vm-a-hidden-queue-is-taken-back"
   }
 ]
