@@ -15,10 +15,12 @@
 //! `offer` is one JSON object: the microphone's name and node, the spot's
 //! name and key, and whether the microphone or the spot is the new one.
 
-use std::path::PathBuf;
+use std::fmt::Write as _;
 use std::time::Duration;
 
-use crate::chosen::Chosen;
+use serde_json::{Value, json};
+
+use crate::chosen::{Chosen, written};
 use crate::refusals::Refusal;
 use crate::spot::Spot;
 
@@ -46,31 +48,156 @@ pub struct Offers {
 }
 
 impl Offers {
-    pub fn new(_chosen: &Chosen, refusals: Vec<Refusal>) -> Self {
+    /// Offers kept beside `chosen`'s picks, kept from standing while any
+    /// of `refusals` holds; one standing as the service starts stays.
+    pub fn new(chosen: &Chosen, refusals: Vec<Refusal>) -> Self {
+        let waiting = chosen
+            .beside("offer")
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .and_then(|said| read(&said));
         Self {
             refusals,
-            waiting: None,
-            standing: false,
+            standing: waiting.is_some(),
+            waiting,
         }
     }
 
+    /// After `microphone`, by its `node`, was recorded from at `spot` for
+    /// `lasted`: waits to offer Choose by Ear for it there, if that was a
+    /// call, it's never been picked for there, and it's never been
+    /// offered there. The newest call's waits in place of any before.
     pub fn heard(
         &mut self,
-        _chosen: &Chosen,
-        _node: &str,
-        _microphone: &str,
-        _spot: &Spot,
-        _lasted: Duration,
+        chosen: &Chosen,
+        node: &str,
+        microphone: &str,
+        spot: &Spot,
+        lasted: Duration,
     ) {
+        if lasted < CALL || chosen.picked(node, Some(&spot.key)) || offered(chosen, node, &spot.key)
+        {
+            return;
+        }
+        self.waiting = Some(Offer {
+            node: node.to_owned(),
+            microphone: microphone.to_owned(),
+            spot: spot.clone(),
+            new_microphone: !chosen.picked(node, None),
+        });
     }
 
-    pub fn withheld(&mut self, _chosen: &Chosen) {}
+    /// While something records: withdraws the offer, to stand again once
+    /// nothing does.
+    pub fn withheld(&mut self, chosen: &Chosen) {
+        if self.standing {
+            self.standing = false;
+            removed(chosen);
+        }
+    }
 
-    pub fn stand(&mut self, _chosen: &Chosen) {}
+    /// While nothing records: lets the offer stand unless a refusal holds,
+    /// and forgets it once it's been taken or picked for.
+    pub fn stand(&mut self, chosen: &Chosen) {
+        let Some(offer) = &self.waiting else {
+            return;
+        };
+        if chosen.picked(&offer.node, Some(&offer.spot.key))
+            || offered(chosen, &offer.node, &offer.spot.key)
+        {
+            self.waiting = None;
+            self.withheld(chosen);
+            return;
+        }
+        let standing = !self.refusals.iter().any(Refusal::holds);
+        if standing == self.standing {
+            return;
+        }
+        self.standing = standing;
+        if !standing {
+            removed(chosen);
+            return;
+        }
+        let Some(file) = chosen.beside("offer") else {
+            return;
+        };
+        if let Err(why) = written(&file, &said(offer)) {
+            eprintln!("noise-cancelled: Choose by Ear couldn't be offered: {why}");
+            self.standing = false;
+        }
+    }
 }
 
-pub fn taken(_chosen: &Chosen) -> Result<(), String> {
+/// Takes the offer standing, as Joel took it or put it off: its
+/// microphone and spot are kept as offered, and it's withdrawn.
+pub fn taken(chosen: &Chosen) -> Result<(), String> {
+    let (Some(file), Some(kept)) = (chosen.beside("offer"), chosen.beside("offered")) else {
+        return Ok(());
+    };
+    let Some(offer) = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|said| read(&said))
+    else {
+        return Ok(());
+    };
+    if !offered(chosen, &offer.node, &offer.spot.key) {
+        let mut lines = std::fs::read_to_string(&kept).unwrap_or_default();
+        let _ = writeln!(lines, "{} {}", offer.node, offer.spot.key);
+        written(&kept, &lines)?;
+    }
+    removed(chosen);
     Ok(())
+}
+
+/// Whether Choose by Ear was offered for `node` at the spot `key`.
+fn offered(chosen: &Chosen, node: &str, key: &str) -> bool {
+    chosen
+        .beside("offered")
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .is_some_and(|said| {
+            said.lines()
+                .any(|line| line.split_once(' ') == Some((node, key)))
+        })
+}
+
+/// The offer as `offer` holds it.
+fn said(offer: &Offer) -> String {
+    let new = if offer.new_microphone {
+        "microphone"
+    } else {
+        "spot"
+    };
+    let mut said = json!({
+        "microphone": offer.microphone,
+        "node": offer.node,
+        "spot": offer.spot.name,
+        "key": offer.spot.key,
+        "new": new,
+    })
+    .to_string();
+    said.push('\n');
+    said
+}
+
+/// An offer from what `offer` holds, or none when it doesn't read.
+fn read(said: &str) -> Option<Offer> {
+    let said: Value = serde_json::from_str(said).ok()?;
+    let text = |name: &str| said[name].as_str().map(str::to_owned);
+    Some(Offer {
+        node: text("node")?,
+        microphone: text("microphone")?,
+        spot: Spot {
+            key: text("key")?,
+            name: text("spot")?,
+        },
+        new_microphone: said["new"].as_str() == Some("microphone"),
+    })
+}
+
+/// Withdraws the offer standing, if one does.
+fn removed(chosen: &Chosen) {
+    if let Some(file) = chosen.beside("offer") {
+        let _ = std::fs::remove_file(file);
+    }
 }
 
 #[cfg(test)]
