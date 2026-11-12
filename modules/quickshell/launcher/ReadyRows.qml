@@ -465,7 +465,7 @@ Scope {
     // A served row, the record of `key`'s, as a place draws one, made by
     // its provider: its words, its drawer read as it's shown, and its acts
     // as its verbs, Return doing the first. A row whose acts step into rows
-    // steps into those inside it. `fields` are the place's own, over these,
+    // steps into those, Return's `into` first. `fields` are the place's own, over these,
     // so a place's `make` is `(row, key) => ready.thing(row, key, {...})`;
     // the row is given rather than looked up, as an act's `becomes` is made
     // by it too. It's a collection's member, its name made ready to match
@@ -483,7 +483,7 @@ Scope {
         let acted = null;
         const verbs = () => {
             if (steps)
-                return inside(key);
+                return Beneath.led(inside(key), first?.into ? rowAt(first.into) : null);
             if (acted === null) {
                 repeats[key] = repeats[key] ?? {};
                 const kept = Ready.actKeys(acts, repeats[key]);
@@ -655,7 +655,7 @@ Scope {
         }
         case "step":
             if (one.step === "rows")
-                launcher?.enter(rowAt(key));
+                launcher?.enter(Beneath.entered(rowAt(key), one.into ? rowAt(one.into) : null));
             else
                 launcher?.intoDrawer(rowAt(key));
             return;

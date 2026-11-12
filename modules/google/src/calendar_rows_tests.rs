@@ -172,7 +172,11 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     let returns = |now: i64| {
         top(&meetings(&[invited.clone()], &[], now, &zone(), &words()))[0]["acts"][0].clone()
     };
-    let details = json!({"key": "verb:details", "step": "drawer"});
+    let see = |key: &str| {
+        json!({"key": "verb:calendar:see", "step": "rows",
+            "into": format!("{key}:see")})
+    };
+    let details = see(rows[0]["key"].as_str().unwrap_or_default());
     let join = json!({"key": "verb:calendar:join", "open": "https://meet.google.com/abc-defg-hij",
         "in": "google-opens"});
     assert_eq!(
@@ -182,7 +186,8 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
             returns(MONDAY + HOUR + 29 * MINUTE),
         ],
         [details.clone(), join.clone(), join],
-        "Return joins from ten minutes before it starts until it ends, showing it before"
+        "Return joins from ten minutes before it starts until it ends, stepping into its Show in \
+         Calendar before"
     );
     assert_eq!(
         rows[0]["acts"][1],
@@ -191,7 +196,8 @@ fn a_meetings_time_is_the_shells_to_word_and_its_note_its_times_and_answer_until
     );
     assert_eq!(rows[1]["today"], false);
     assert_eq!(
-        rows[1]["acts"][0], details,
+        rows[1]["acts"][0],
+        see(rows[1]["key"].as_str().unwrap_or_default()),
         "nothing to join without a call"
     );
     assert_eq!(rows[2]["key"], "row:held:over");

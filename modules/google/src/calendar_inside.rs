@@ -7,11 +7,11 @@
 //! and Attachments a row each that steps in to who and what is on it; and
 //! Cancel a row that steps in to the one row asking Joel to be sure.
 //! Return on the meeting itself joins its call from ten minutes before it
-//! starts until it ends, and shows its details in the drawer otherwise
-//! (or, where the launcher has no step into a drawer, steps in to its
-//! acts), so the row is served again as that turns, which the daemon's
-//! look each minute does, rather than the shell reading the clock to
-//! choose.
+//! starts until it ends, and otherwise steps in to its Show in Calendar
+//! (an act's `into`), listed first among its acts, its drawer opening by
+//! resting as every drawer does. The row is served again as that turns,
+//! which the daemon's look each minute does, rather than the shell
+//! reading the clock to choose.
 //!
 //! Move the Meeting steps in to the later times it offers, each a row
 //! saying its day and times and the meeting it would clash with, holding
@@ -46,14 +46,15 @@ fn more() -> Value {
     json!({"key": "verb:more", "step": "rows"})
 }
 
-/// A meeting row's own acts at `now`: Return joining its call while it's
-/// on, from ten minutes before, or else showing its details in the drawer,
-/// then the step into its acts.
-pub(crate) fn returns(meeting: &Meeting, now: i64) -> Vec<Value> {
+/// The acts of the meeting row `key` at `now`: Return joining its call
+/// while it's on, from ten minutes before, or else stepping into its Show
+/// in Calendar, listed first, as the shell did (VKCF3Z and Y2YBTS,
+/// 2026-11-12), then the step into its acts. Its drawer opens by resting.
+pub(crate) fn returns(meeting: &Meeting, now: i64, key: &str) -> Vec<Value> {
     let on = !meeting.all_day && now >= meeting.start - TAKES_OVER && now < meeting.end;
     let first = match meeting.link.as_deref().filter(|_| on) {
         Some(link) => opens("verb:calendar:join", link),
-        None => json!({"key": "verb:details", "step": "drawer"}),
+        None => json!({"key": "verb:calendar:see", "step": "rows", "into": format!("{key}:see")}),
     };
     vec![first, more()]
 }

@@ -16,19 +16,16 @@
 //
 // It's the one row of a meeting wherever one shows: Now's next, a
 // person's next or last meeting in People and the meeting a Meet call was
-// all take it (`next`, `lent`). A meeting's Return and most of what's
-// inside it are still Calendar.qml's (Calendar.acts): Return joins its call from
-// ten minutes before it starts, and otherwise steps in to Show in
-// Calendar. Its Guests and Attachments are the rows the daemon serves
-// inside it (src/calendar_inside.rs), each guest People's person and each
-// document Documents' own row where they hold one (ready-rows.md's
-// lends), and Move the Meeting, its later times and the row asking Joel
-// to be sure of each, and a time typed inside it, which the daemon reads
-// as a search within Move's row, and Open the Transcript, which
-// call-transcripts lends where a call was written down, none standing
-// where it doesn't (ready-rows.md's lentOnly). Its other acts stay
-// Calendar.acts' till they go, by Sun 15 Nov; then every act inside a
-// meeting is the daemon's.
+// all take it (`next`, `lent`). A meeting's Return and everything inside
+// it are the daemon's (src/calendar_inside.rs): Return joins its call
+// from ten minutes before it starts, and otherwise steps in to Show in
+// Calendar (ready-rows.md's `into`). Each guest inside is People's person
+// and each document Documents' own row where they hold one (ready-rows.md's
+// lends); a time typed inside Move the Meeting the daemon reads as a
+// search within Move's row; and Open the Transcript is call-transcripts'
+// where a call was written down, none standing where it doesn't
+// (ready-rows.md's lentOnly). Calendar.row and Calendar.acts stand only
+// for a meeting the daemon doesn't serve.
 import qs
 import Quickshell
 import QtQuick
@@ -86,43 +83,21 @@ Provider {
     readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/google.sock`
 
     // A meeting's row as `from` serves it, made a meeting's part of
-    // Calendar, so a program's Recent and Programs' counts find it, with
-    // Return and its acts Calendar.qml's, as it holds the meeting now.
-    // Like Calendar.row's, it holds verbs and no targets, so a step into
-    // one that stays (Show in Calendar) is led by Return's own act
-    // (Launcher.qml's keepsOpen), where the served inside rows would be.
+    // Calendar, so a program's Recent and Programs' counts find it. Its
+    // Return and the rows inside it are the daemon's: Return joins, or
+    // steps in to Show in Calendar under the meeting's name, which then
+    // leads the rows inside (ready-rows.md's `into`).
     function made(from, row, key) {
         if (row.kind === "move")
             return provider.moving(from, row, key);
-        const meeting = provider.meetingOf(row.held?.id ?? "");
-        const fields = {
+        return from.thing(row, key, {
             what: "meeting",
             component: "meeting",
             of: "program:google-calendar",
             part: row.name ?? "",
             today: row.today === true,
             at: row.held?.start ?? 0
-        };
-        if (meeting) {
-            const joins = Calendar.joinable(meeting);
-            const acts = () => Calendar.acts(meeting, provider)
-                .map(act => provider.servedInside(from, key, act) ?? act);
-            Object.assign(fields, {
-                verb: Words.verb(joins ? "verb:calendar:join" : "verb:calendar:see"),
-                later: joins,
-                stays: !joins,
-                run: joins ? () => Calendar.join(meeting)
-                    : () => provider.launcher?.enter(Calendar.seeing(meeting, provider, row.name)),
-                verbs: acts,
-                targets: undefined
-            });
-        }
-        return from.thing(row, key, fields);
-    }
-
-    // The meeting held as `id`, coming or held lately, or null.
-    function meetingOf(id) {
-        return Calendar.meeting(id) ?? Calendar.had.find(each => each.id === id) ?? null;
+        });
     }
 
     // Move the Meeting as the daemon serves it, stepping in to its later
@@ -156,21 +131,6 @@ Provider {
                 launcher?.reshow(launcher.held.length, true);
             }
         });
-    }
-
-    // The row the daemon serves inside the meeting at `key` in place of
-    // the shell's `act`, for Guests, Attachments, Move and the transcript
-    // lent, or null for an act it doesn't yet serve whole, or one it served
-    // none of.
-    readonly property var servedActs: ({
-        "verb:calendar:guests": "guests",
-        "verb:calendar:attachments": "attachments",
-        "verb:calendar:move": "move",
-        "verb:calendar:transcript": "transcript"
-    })
-    function servedInside(from, key, act) {
-        const id = provider.servedActs[act?.key];
-        return id ? from.rowAt(`${key}:${id}`) : null;
     }
 
     // Its rows, made only while the launcher is open or its rows are

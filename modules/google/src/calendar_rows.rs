@@ -303,8 +303,10 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
     } else {
         (format!("calendar:meeting:{id}"), "meeting", &words.glyph)
     };
+    let key = format!("row:{}:{}", listed.place, listed.id);
+    let acts = returns(meeting, now, &key);
     json!({
-        "key": format!("row:{}:{}", listed.place, listed.id),
+        "key": key,
         "thing": thing,
         "place": listed.place,
         "kind": kind,
@@ -318,7 +320,7 @@ fn row(listed: &Listed, now: i64, zone: &TimeZone, words: &Words) -> Value {
         // Whether it's today's, so Calendar's row counts today's meetings.
         "today": on_or_before(meeting.start, now, zone),
         "drawer": format!("drawer:{}:{}", listed.place, listed.id),
-        "acts": returns(meeting, now),
+        "acts": acts,
         "held": {
             "id": id,
             "link": meeting.link,
