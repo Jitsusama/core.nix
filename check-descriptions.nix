@@ -1798,7 +1798,9 @@
     wait out, models keys only over the time Joel was at a pi window, each waiting at niri, kitty
     and pi for the burst it lands in and then for the screen's next frame, counts a late key and
     the thread that lost it a frame, reads niri's focused window and frame, and finds the window's
-    scope and pi as the jobs-sorter finds them, a bare class in the shared kitty finding none
+    scope and pi as the jobs-sorter finds them, a bare class in the shared kitty finding none,
+    and reads what a sample ran beside: the CPU's waiting, the load, and the pi and package
+    versions a pi runs, keeping nothing else of its environment
   '';
   pi-keys-passes-clippy = ''
     clippy finds nothing in pi-keys or its tests

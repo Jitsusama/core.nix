@@ -8,7 +8,9 @@
 //! three threads a key passes every 2 ms, without privilege: niri's main
 //! thread, the kitty drawing the window and pi's main thread. From their
 //! bursts it models what a key waited (src/model.rs), and appends one line
-//! to $XDG_STATE_HOME/pi-keys/<UTC day>.jsonl, for cadence's daily read.
+//! to $XDG_STATE_HOME/pi-keys/<UTC day>.jsonl, for cadence's daily read,
+//! with what it ran beside: the CPU's contention, and which windows, pi
+//! and pi packages it read (src/context.rs).
 //! It reads only /proc, /sys and niri's answers, never touches a window,
 //! and stops the moment a call starts.
 //!
@@ -192,6 +194,8 @@ struct Sampler {
     at_pi: Vec<(f64, f64)>,
     since: Option<f64>,
     windows: HashSet<u64>,
+    /// The pi processes of the windows read.
+    pis: HashSet<u32>,
     gaps: u32,
     focus_asked: f64,
 }
@@ -232,6 +236,7 @@ impl Sampler {
         self.at = window.as_ref().and_then(threads_of);
         if let Some(found) = self.at.as_ref() {
             self.windows.insert(found.window);
+            self.pis.insert(found.pi.tid);
             self.since = Some(now);
             if let Some(frame) = ask(&self.socket, "FocusedOutput")
                 .as_deref()
@@ -269,7 +274,30 @@ impl Sampler {
     }
 
     /// The sample's line, or None when no time at a pi window was read.
-    fn line(self, ended: u64, call: bool) -> Option<serde_json::Value> {
+    fn line(self, ended: u64, call: bool, cpu_waited: f64) -> Option<serde_json::Value> {
+        let mut window_ids: Vec<u64> = self.windows.iter().copied().collect();
+        window_ids.sort_unstable();
+        let mut pis = HashSet::new();
+        let mut packages = HashSet::new();
+        let root = env_dir("XDG_DATA_HOME", ".local/share").join("pi-packages");
+        for &pid in &self.pis {
+            pis.extend(
+                fs::read(format!("/proc/{pid}/environ"))
+                    .ok()
+                    .as_deref()
+                    .and_then(context::pi_version),
+            );
+            packages.extend(context::loaded_by(&root, pid));
+        }
+        let sorted = |set: HashSet<String>| {
+            let mut list: Vec<String> = set.into_iter().collect();
+            list.sort();
+            list
+        };
+        let load1 = fs::read_to_string("/proc/loadavg")
+            .ok()
+            .as_deref()
+            .and_then(context::load1);
         let [niri, kitty, pi] = self.spans;
         let path = model::Path {
             niri: model::Spans::new(niri),
@@ -302,6 +330,11 @@ impl Sampler {
             "frame_ms": round(self.frame, 2),
             "gaps": self.gaps,
             "windows": self.windows.len(),
+            "window_ids": window_ids,
+            "pi": sorted(pis),
+            "packages": sorted(packages),
+            "cpu_waited": round(cpu_waited, 4),
+            "load1": load1,
             "call": call,
         }))
     }
@@ -336,6 +369,7 @@ fn sample(settings: &Settings) -> ExitCode {
         at_pi: Vec::new(),
         since: None,
         windows: HashSet::new(),
+        pis: HashSet::new(),
         gaps: 0,
         focus_asked: f64::NEG_INFINITY,
     };
@@ -345,6 +379,7 @@ fn sample(settings: &Settings) -> ExitCode {
         started: 0.0,
     };
     let enough = settings.minutes * 60_000.0;
+    let waited_from = cpu_waited_us();
     let begun = Instant::now();
     let ms = || begun.elapsed().as_secs_f64() * 1000.0;
     let (mut last, mut next, mut call) = (ms(), Instant::now(), false);
@@ -366,8 +401,16 @@ fn sample(settings: &Settings) -> ExitCode {
         }
     }
     sampler.away(last);
+    // The share of the sample some task waited for a CPU: near 0 on an
+    // idle machine, near 1 when every moment had something queued.
+    let cpu_waited = match (waited_from, cpu_waited_us()) {
+        (Some(from), Some(to)) if last > 0.0 => {
+            u32::try_from(to.saturating_sub(from)).map_or(1.0, f64::from) / (last * 1000.0)
+        }
+        _ => 0.0,
+    };
     let ended = seconds_now();
-    let Some(line) = sampler.line(ended, call) else {
+    let Some(line) = sampler.line(ended, call, cpu_waited.min(1.0)) else {
         eprintln!("pi-keys: no time at a pi window was sampled, so no sample");
         return ExitCode::SUCCESS;
     };
@@ -444,6 +487,11 @@ fn threads_of(window: &Window) -> Option<At> {
         kitty: Watched::open(window.pid?)?,
         pi: Watched::open(path::pi_of(&named)?)?,
     })
+}
+
+/// How long some task has waited for a CPU since boot, in microseconds.
+fn cpu_waited_us() -> Option<u64> {
+    context::waited(&fs::read_to_string("/proc/pressure/cpu").ok()?)
 }
 
 fn processes(scope: &FsPath) -> Vec<u32> {

@@ -9,32 +9,77 @@ use std::path::Path;
 
 /// How long, in microseconds since boot, some task has waited for a CPU,
 /// from /proc/pressure/cpu's `some` line.
-pub fn waited(_pressure: &str) -> Option<u64> {
-    None
+pub fn waited(pressure: &str) -> Option<u64> {
+    pressure
+        .lines()
+        .find_map(|line| line.strip_prefix("some "))?
+        .split_whitespace()
+        .find_map(|field| field.strip_prefix("total="))?
+        .parse()
+        .ok()
 }
 
 /// The one-minute load average, from /proc/loadavg.
-pub fn load1(_loadavg: &str) -> Option<f64> {
-    None
+pub fn load1(loadavg: &str) -> Option<f64> {
+    loadavg.split_whitespace().next()?.parse().ok()
 }
 
 /// The pi a process runs, as its package folder's name (`pi-1.5.0`), from
 /// its environment's bytes; nothing else of the environment is kept.
-pub fn pi_version(_environ: &[u8]) -> Option<String> {
-    None
+pub fn pi_version(environ: &[u8]) -> Option<String> {
+    let dir = environ
+        .split(|byte| *byte == 0)
+        .find_map(|entry| entry.strip_prefix(b"PI_PACKAGE_DIR="))?;
+    let dir = Path::new(std::str::from_utf8(dir).ok()?);
+    Some(dir.file_name()?.to_str()?.to_owned())
 }
 
 /// The versions of pi's packages the process `pid` says it loaded, each
 /// as `<package>@<first twelve of its version>`, from the `loaded/<pid>`
 /// file each package keeps under pi-packages' folder `root`.
-pub fn loaded_by(_root: &Path, _pid: u32) -> Vec<String> {
-    Vec::new()
+pub fn loaded_by(root: &Path, pid: u32) -> Vec<String> {
+    let mut found = Vec::new();
+    // A package sits at <host>/<owner>/<name>, so nothing deeper is
+    // walked, which keeps out each version's own files.
+    let mut dirs = vec![(root.to_path_buf(), 0)];
+    while let Some((dir, depth)) = dirs.pop() {
+        if let Some(name) = fs::read_to_string(dir.join("loaded").join(pid.to_string()))
+            .ok()
+            .as_deref()
+            .and_then(named)
+        {
+            found.push(name);
+        }
+        if depth < 3 {
+            dirs.extend(
+                fs::read_dir(&dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+                    .map(|entry| (entry.path(), depth + 1)),
+            );
+        }
+    }
+    found.sort();
+    found
 }
 
-/// The package and version a `loaded/<pid>` file's text names.
+/// The package and version a `loaded/<pid>` file's text names: its root
+/// is `<package>/versions/<version>`.
 fn named(text: &str) -> Option<String> {
-    let _ = (text, fs::read_dir("."));
-    None
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    let root = Path::new(value["root"].as_str()?);
+    let version = root.file_name()?.to_str()?;
+    let versions = root.parent()?;
+    if versions.file_name()? != "versions" {
+        return None;
+    }
+    let package = versions.parent()?.file_name()?.to_str()?;
+    Some(format!(
+        "{package}@{}",
+        version.get(..12).unwrap_or(version)
+    ))
 }
 
 #[cfg(test)]
