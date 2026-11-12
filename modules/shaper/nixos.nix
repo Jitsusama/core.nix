@@ -49,6 +49,7 @@
 }:
 let
   shaper = pkgs.callPackage ./package.nix { };
+  callIsOn = pkgs.callPackage ../calls/package.nix { };
   # `shaper proof` loads the link with curl only while swayidle says Joel
   # is away, a-call-is-on says no call is on and pw-dump shows nothing
   # playing, and reads the default route with ip; systemd-run and
@@ -63,7 +64,7 @@ let
     pkgs.iproute2
     pkgs.pipewire
     pkgs.swayidle
-    (pkgs.callPackage ../calls/package.nix { })
+    callIsOn
   ];
   shaperCommand = pkgs.symlinkJoin {
     name = "shaper";
@@ -193,7 +194,10 @@ in
     before = [ "network-pre.target" ];
     after = [ "nftables.service" ];
     requires = [ "nftables.service" ];
+    # While a-call-is-on says a call is on, an app's UDP goes as video
+    # (shaper.nft says why).
     path = [
+      callIsOn
       pkgs.iproute2
       pkgs.iputils
       pkgs.nftables

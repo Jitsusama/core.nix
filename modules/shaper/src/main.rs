@@ -511,6 +511,51 @@ fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> cla
     local
 }
 
+/// How often the shaper asks whether a call is on: a-call-is-on reads each
+/// account's PipeWire in about 40 ms, so asking costs about 2% of a core,
+/// and a call goes as best effort for at most this long after it starts.
+const CALL_EVERY: Duration = Duration::from_secs(2);
+
+/// Whether a call is on in any account, as a-call-is-on last said, and when
+/// it was last asked.
+#[derive(Default)]
+struct Call {
+    on: bool,
+    asked: Option<Instant>,
+}
+
+impl Call {
+    /// Asks a-call-is-on again once `CALL_EVERY` has passed, says so in the
+    /// journal when the answer changes, and gives the `calling` set's
+    /// members. When it can't tell, what was last known stands.
+    fn heed(&mut self, now: Instant, users: &Path) -> Vec<String> {
+        if self.asked.is_none_or(|at| now - at >= CALL_EVERY) {
+            self.asked = Some(now);
+            let asked = Command::new("a-call-is-on")
+                .arg(users)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            let on = match asked.map(|s| s.code()) {
+                Ok(Some(0)) => Some(true),
+                Ok(Some(1)) => Some(false),
+                _ => None,
+            };
+            if let Some(on) = on
+                && on != self.on
+            {
+                if on {
+                    eprintln!("a call is on, so what apps send by UDP goes as video");
+                } else {
+                    eprintln!("no call is on, so apps' UDP to 443 goes as a page's again");
+                }
+                self.on = on;
+            }
+        }
+        classes::calling(self.on)
+    }
+}
+
 fn refill(text: &str) {
     let child = Command::new("nft")
         .args(["-f", "-"])
@@ -553,6 +598,7 @@ fn run(options: &Options) -> ExitCode {
     let mut last_resent: Option<(u64, Instant)> = None;
     let mut heard: BTreeMap<String, Heard> = BTreeMap::new();
     let mut primary: Option<String> = None;
+    let mut call = Call::default();
     let mut live = options.one_way.then(|| {
         let learned = options.state.join("learned.json");
         live::Live::new(&options.record, SystemTime::now(), &learned)
@@ -602,6 +648,7 @@ fn run(options: &Options) -> ExitCode {
         // the sets are also written every few seconds, changed or not.
         let mut sets = classes::read(&options.cgroups);
         sets.bulk5 = classes::untyped(&options.cgroups, &sessions);
+        sets.calling = call.heed(now, &options.users);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, &mut heard, rides);
         let text = classes::transaction(TABLE, &sets, &reach);
