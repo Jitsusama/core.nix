@@ -64,6 +64,9 @@ struct Run {
     at: i64,
     built: Option<Built>,
     evaluated: Vec<Evaluated>,
+    /// How many checks it named, or none for a keep of main's side, which
+    /// compares nothing and is no gate.
+    named: Option<u64>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +90,10 @@ pub fn figures(text: &str, from: i64, to: i64) -> BTreeMap<String, f64> {
         .lines()
         .filter_map(|line| serde_json::from_str::<Run>(line).ok())
         .filter(|run| (from..to).contains(&run.at))
+        // A keep evaluates main's side by design, ahead of any gate: on 12
+        // November 19 of the 134 lines home were keeps, 14 evaluating main,
+        // which counted put the gates' share at 50 in 134 for 36 in 115.
+        .filter(|run| run.named.is_some())
         .collect();
     let minutes = |of: &str| -> Vec<f64> {
         runs.iter()
@@ -180,6 +187,36 @@ mod tests {
         assert!(
             super::figures("", 0, 10).is_empty(),
             "a day with nothing brought home had figures"
+        );
+    }
+
+    /// A keep's line: main's side evaluated ahead of any gate, naming and
+    /// building nothing.
+    fn kept(at: i64) -> String {
+        serde_json::json!({ "at": at, "base": "a", "built": null, "evaluated": [{ "of": "base",
+            "chunks": [], "seconds": 400.0 }], "named": null, "seconds": 400.0,
+            "system": "x86_64-linux" })
+        .to_string()
+    }
+
+    #[test]
+    fn a_keep_of_mains_side_is_no_gate() {
+        let text = [
+            run(1_000, 300.0, Some(120.0), Some(60.0)),
+            run(2_000, 600.0, None, None),
+            kept(3_000),
+            kept(4_000),
+        ]
+        .join("\n");
+        let figures = figures(&text, 1_000, 10_000);
+        assert_eq!(
+            figures.get("gate.evaluating-main"),
+            Some(&50.0),
+            "one of the day's two gates evaluated main again; keeps do so by design"
+        );
+        assert!(
+            super::figures(&kept(3_000), 1_000, 10_000).is_empty(),
+            "a day of keeps alone had gates"
         );
     }
 }
