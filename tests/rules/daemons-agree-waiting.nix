@@ -65,5 +65,4 @@
     "shown"
     "speaks"
   ];
-  to-do = [ "speaks" ];
 }
