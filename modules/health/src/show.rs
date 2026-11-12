@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::day::{Day, Kind, Thing};
+use crate::day::{Badness, Day, Kind, Thing};
 
 /// The kinds, in the order they're shown when as bad as each other.
 const KINDS: [Kind; 4] = [
@@ -98,24 +98,24 @@ fn worst_of(day: &Day, kind: Kind) -> Vec<(&String, &Thing)> {
 }
 
 /// The badness of things together.
-fn total(things: &[(&String, &Thing)]) -> (u64, u64, u64, u64, u64, u64) {
-    things.iter().fold((0, 0, 0, 0, 0, 0), |sum, (_, thing)| {
-        let bad = thing.badness();
-        (
-            sum.0 + bad.0,
-            sum.1 + bad.1,
-            sum.2 + bad.2,
-            sum.3 + bad.3,
-            sum.4 + bad.4,
-            sum.5 + bad.5,
-        )
-    })
+fn total(things: &[(&String, &Thing)]) -> Badness {
+    things
+        .iter()
+        .fold(Badness::default(), |sum, (_, thing)| sum + thing.badness())
 }
 
 /// Badness in words, gravest first, leaving out what's none: "3 crashes
 /// (1 yours), 12 errors, 1,470 warnings from 21".
-fn counted(bad: &(u64, u64, u64, u64, u64, u64), things: usize) -> String {
-    let (his, crashes, traces, errors, restarts, lines) = *bad;
+fn counted(bad: &Badness, things: usize) -> String {
+    let Badness {
+        his_crashes: his,
+        crashes,
+        traces,
+        errors,
+        restarts,
+        lines,
+        events,
+    } = *bad;
     let mut parts = Vec::new();
     if crashes > 0 {
         let yours = if his > 0 {
@@ -140,6 +140,9 @@ fn counted(bad: &(u64, u64, u64, u64, u64, u64), things: usize) -> String {
     let warnings = lines.saturating_sub(errors);
     if warnings > 0 {
         parts.push(plural(warnings, "warning", "warnings"));
+    }
+    if events > 0 {
+        parts.push(plural(events, "event", "events"));
     }
     let from = if things > 1 {
         format!(" from {things}")
@@ -215,6 +218,13 @@ mod tests {
             .insert("chrome".into(), thing(Kind::Programs, 28, 28, 28, 1));
         day.things
             .insert("iwlwifi".into(), thing(Kind::Devices, 12, 12, 0, 0));
+        day.things.insert(
+            "usb".into(),
+            Thing {
+                events: 22,
+                ..thing(Kind::Devices, 0, 0, 0, 0)
+            },
+        );
         day
     }
 
@@ -228,8 +238,8 @@ mod tests {
             "a crash is worse than any number of warnings"
         );
         assert_eq!(
-            lines[2], "devices   12 errors; worst: iwlwifi, 12 errors",
-            "errors come before warnings"
+            lines[2], "devices   12 errors, 22 events from 2; worst: iwlwifi, 12 errors",
+            "errors come before warnings, and a device's events last"
         );
         assert_eq!(
             lines[3],

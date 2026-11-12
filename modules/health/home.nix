@@ -1,7 +1,8 @@
 # What the machine said about itself today, kept for Joel and for cadence:
 # health, a program of core's own (src/main.rs), follows every journal the
-# account may read from the day's start, for warnings and graver and for
-# the restarts systemd schedules, and keeps the day's tally by kind, thing
+# account may read from the day's start, for warnings and graver, for the
+# restarts systemd schedules and for the devices' events the kernel says
+# only as information, and keeps the day's tally by kind, thing
 # and signature in ~/.local/state/health/<date>.json. `health` shows it a
 # line a kind, the worst first; `health <thing>` shows what it kept saying.
 { lib, pkgs, ... }:

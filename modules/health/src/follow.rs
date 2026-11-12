@@ -110,7 +110,7 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
         .unwrap_or_default()
 }
 
-/// Follow the journals into `into` until both followers end, which only a
+/// Follow the journals into `into` until every follower ends, which only a
 /// fault does; then the day is written and systemd starts it again.
 ///
 /// # Errors
@@ -124,8 +124,12 @@ pub fn follow(into: &Path) -> io::Result<()> {
     // Warnings and graver, and the restarts systemd schedules, which it
     // says only as information.
     spawn(&["-p", "warning"], lines.clone())?;
-    spawn(&[&format!("MESSAGE_ID={RESTART_SCHEDULED}")], lines)?;
-    let mut running = 2;
+    spawn(&[&format!("MESSAGE_ID={RESTART_SCHEDULED}")], lines.clone())?;
+    // The kernel's notices and information, which is where it says a USB
+    // device dropped or a PCIe link corrected itself; the day keeps only
+    // those and leaves the rest, about a thousand lines an hour.
+    spawn(&["-k", "-p", "notice..info"], lines)?;
+    let mut running = 3;
     while running > 0 {
         match read.recv_timeout(EVERY) {
             Ok(Some(line)) => follower.take(&line)?,

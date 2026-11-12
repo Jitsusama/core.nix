@@ -33,7 +33,21 @@ const SECURITY: [&str; 12] = [
     "greetd",
 ];
 
+/// What the kernel says only as information that's still a device going
+/// wrong, or going away: a USB device dropped or reset, a PCI Express link's
+/// corrected errors, a processor throttled, firmware that wouldn't load.
+/// Each is said in full in the kernel's own words, and matched as written.
+const DEVICE_EVENTS: [&[&str]; 6] = [
+    &["USB disconnect"],
+    &["reset ", " USB device number "],
+    &["AER: ", " error"],
+    &["throttled"],
+    &["Direct firmware load"],
+    &["failed to load firmware"],
+];
+
 /// Which kind of thing a line is about, as `health` groups them.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
@@ -84,6 +98,9 @@ pub struct Thing {
     pub traces: u64,
     /// Its restarts, as systemd scheduled them.
     pub restarts: u64,
+    /// A device's events the kernel said only as information.
+    #[serde(default)]
+    pub events: u64,
     /// The times it crashed, and of those, the ones in Joel's own slices.
     pub crashes: u64,
     /// The crashes of it that were his.
@@ -120,11 +137,20 @@ impl Day {
     /// Take one entry into the day.
     pub fn take(&mut self, entry: &Entry) {
         self.to = self.to.max(entry.at);
+        let event = entry.priority > 4 && !entry.restart;
+        if event && !(entry.kernel && is_device_event(&entry.message)) {
+            return;
+        }
         let (name, kind) = named(entry);
         let thing = self.things.entry(name).or_default();
         thing.kind = thing.kind.or(Some(kind));
         if entry.restart {
             thing.restarts += 1;
+            return;
+        }
+        if event {
+            thing.events += 1;
+            thing.say(entry);
             return;
         }
         thing.lines += 1;
@@ -162,19 +188,64 @@ impl Thing {
         signature.last = signature.last.max(entry.at);
     }
 
-    /// How bad it is, gravest first, for putting the worst first: Joel's
-    /// crashes, then any crash, traces, errors, restarts and lines.
+    /// How bad it is, for putting the worst first.
     #[must_use]
-    pub const fn badness(&self) -> (u64, u64, u64, u64, u64, u64) {
-        (
-            self.his_crashes,
-            self.crashes,
-            self.traces,
-            self.errors,
-            self.restarts,
-            self.lines,
-        )
+    pub const fn badness(&self) -> Badness {
+        Badness {
+            his_crashes: self.his_crashes,
+            crashes: self.crashes,
+            traces: self.traces,
+            errors: self.errors,
+            restarts: self.restarts,
+            lines: self.lines,
+            events: self.events,
+        }
     }
+}
+
+/// How bad a thing, or things together, were. Its fields are in order of
+/// gravity, so one is worse than another by its first field that differs:
+/// Joel's crashes, then any crash, traces, errors, restarts, warnings, and
+/// last the devices' events, which are often only a cable pulled.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Badness {
+    /// The crashes that were Joel's.
+    pub his_crashes: u64,
+    /// Every crash.
+    pub crashes: u64,
+    /// Stack traces.
+    pub traces: u64,
+    /// Lines at error or graver, crashes among them.
+    pub errors: u64,
+    /// Restarts systemd scheduled.
+    pub restarts: u64,
+    /// Lines at warning or graver, errors among them.
+    pub lines: u64,
+    /// Devices' events.
+    pub events: u64,
+}
+
+impl std::ops::Add for Badness {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        Self {
+            his_crashes: self.his_crashes + other.his_crashes,
+            crashes: self.crashes + other.crashes,
+            traces: self.traces + other.traces,
+            errors: self.errors + other.errors,
+            restarts: self.restarts + other.restarts,
+            lines: self.lines + other.lines,
+            events: self.events + other.events,
+        }
+    }
+}
+
+/// Whether a kernel line said as information is a device's event.
+fn is_device_event(message: &str) -> bool {
+    DEVICE_EVENTS
+        .iter()
+        .any(|words| words.iter().all(|word| message.contains(word)))
 }
 
 /// The thing an entry is about, and its kind: a crashed program by its
@@ -332,6 +403,41 @@ mod tests {
             day.things["audit"].kind,
             Some(Kind::Security),
             "the audit log is security"
+        );
+    }
+
+    #[test]
+    fn a_device_event_is_counted_and_other_information_left_out() {
+        let mut day = Day::new("2026-11-12");
+        let kernel = |message| Entry {
+            kernel: true,
+            ..entry("kernel", 6, message)
+        };
+        day.take(&kernel("usb 3-2.1.3: USB disconnect, device number 22"));
+        day.take(&kernel(
+            "usb 2-1: reset SuperSpeed USB device number 2 using xhci_hcd",
+        ));
+        day.take(&kernel(
+            "pcieport 0000:00:1c.0: AER: Corrected error message received from 0000:01:00.0",
+        ));
+        day.take(&kernel("pcieport 0000:00:1c.0: AER: enabled with IRQ 122"));
+        day.take(&kernel("Bluetooth: hci0: Firmware loaded in 1534 usecs"));
+        day.take(&entry("pebble-lights", 6, "USB disconnect seen"));
+        let usb = &day.things["usb"];
+        assert_eq!(usb.kind, Some(Kind::Devices), "a USB event is a device's");
+        assert_eq!(
+            (usb.events, usb.lines),
+            (2, 0),
+            "a disconnect and a reset are events, not warnings"
+        );
+        assert_eq!(
+            day.things["pcieport"].events, 1,
+            "a corrected error is an event; turning AER on isn't"
+        );
+        assert!(
+            !day.things.contains_key("Bluetooth") && !day.things.contains_key("pebble-lights"),
+            "other information is left out: {:?}",
+            day.things.keys().collect::<Vec<_>>()
         );
     }
 

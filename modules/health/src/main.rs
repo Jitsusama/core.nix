@@ -2,7 +2,9 @@
 //!
 //! `health follow` is the daemon. It follows every journal the account may
 //! read, the system's, its own and the kernel's, from the day's start, for
-//! warnings and graver and for the restarts systemd schedules. It tallies
+//! warnings and graver, for the restarts systemd schedules, and for the
+//! devices' events the kernel says only as information (a USB device
+//! dropped or reset, a PCI Express link's corrected errors). It tallies
 //! them by kind (programs, services, devices, security), by the thing that
 //! said them and by what was said, its numbers taken out so a line said a
 //! thousand times is one signature counted a thousand times, and keeps the
