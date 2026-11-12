@@ -466,6 +466,9 @@ in
         && unit.Service.NotifyAccess == "all"
         && unit.Service.Slice == "agents.slice"
         && first unit.Service.RestartPreventExitStatus == "78"
+        && unit.Service.WatchdogSec == "2min"
+        && unit.Unit.StartLimitIntervalSec == 600
+        && unit.Unit.StartLimitBurst == 3
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)
@@ -488,7 +491,7 @@ in
       hostsIn = services: lib.filter (lib.hasPrefix "pi-host-") (lib.attrNames services);
     in
     holds "pi-hosts-start-with-the-session"
-      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
+      "A realm's pi host isn't started with the session, runs another pi or node, says ready before it listens, runs outside agents.slice, restarts after a refusal or at a switch, isn't watched for a wedged loop, restarts without limit, misses its realm's environment or the folders it puts first on PATH, or a machine naming no realm, or a Mac, gets one."
       (
         starts "attended"
         && starts "background"

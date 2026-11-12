@@ -1806,8 +1806,8 @@
     account's session where the harness is installed, run by the host's pi and its own node, ready
     once it says so, in agents.slice with its realm's environment and its folders first on its
     PATH, left stopped after refusing
-    what it was given and left running through a switch, and a machine naming none, or a Mac,
-    gets none
+    what it was given and left running through a switch, watched by a two-minute watchdog and
+    started at most three times in ten minutes, and a machine naming none, or a Mac, gets none
   '';
   pi-hosts-refuse-an-unproven-runtime = ''
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
@@ -4049,6 +4049,11 @@
   '';
   vm-pebble-speakers-are-tuned = ''
     a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
+  '';
+  vm-pi-hosts-recover = ''
+    a realm's background pi host, its unit as the module renders it on a stand-in node, is
+    killed by the watchdog and started again once its loop stops pinging, and one that crashes
+    at every start is started three times, then left failed with start-limit-hit
   '';
   vm-plugging-in-wakes-it = ''
     every USB 2 and 1.1 root hub may wake the machine, so a cable plugged into a sleeping laptop

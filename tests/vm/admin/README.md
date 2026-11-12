@@ -4,7 +4,8 @@ What a machine lets its administrators do and how it keeps itself in hand,
 on machines booted in QEMU: switching and updating its system, tuning its
 memory and its slices, asking before firmware is written, tracing niri,
 stopping libvirt at once, putting a check's VM ahead of the builds beside
-it, and giving root only the builders it trusts. Each test's opening
+it, giving root only the builders it trusts, and restarting a wedged pi
+host. Each test's opening
 comment says what it proves and what stands in for what a VM lacks.
 
 | File                                | Holds                                                           |
@@ -15,6 +16,8 @@ comment says what it proves and what stands in for what a VM lacks.
 | `niri-off-cpu.nix`, `-vm-test.py`   | an account in wheel tracing its own niri, and nobody else       |
 | `offload-lines.nix`, `-vm-test.py`  | root's Nix given only the builders nix-offload's lines trust    |
 | `offload-lines-gcloud.sh`           | that test's stand-in gcloud, saying what it lent                |
+| `pi-hosts-recover.nix`, `-vm-test.py` | a wedged pi host restarted, and one crashing at every start left down |
+| `pi-hosts-recover-host.sh`          | that test's stand-in node, saying ready and pinging as a host does |
 | `slices.nix`, `-vm-test.py`         | the disk latency and weight the kernel gives each slice         |
 | `slices-foreground-wakes.sh`        | that test's foreground program, timing how late it wakes        |
 | `switch-system.nix`, `-vm-test.py`  | an administrator switching to a system it has run, no password  |
