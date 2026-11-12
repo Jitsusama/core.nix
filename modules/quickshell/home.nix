@@ -2131,7 +2131,13 @@ in
     # command among them, which would then have every session's window
     # opened in it (ISXEG8, 2026-11-11). The fence empties the runtime
     # folder, so no fenced command reaches the socket, and kitty takes
-    # remote control only there, never through a window's terminal. It runs in
+    # remote control only there, never through a window's terminal. Any
+    # unfenced program of Joel's can use the socket, to read or type into
+    # every session window; that same account can already read each
+    # session's environment, so the fence stays the boundary. A password
+    # wouldn't narrow it: kitty asks on screen about a request with an
+    # unknown one, which a program could repeat into prompts for Joel
+    # (ISXEG8, 2026-11-12). It runs in
     # agents.slice, where kitty puts each session's scope. Its window is
     # classed pi-sessions-kept, so the shell, which numbers that kitty's
     # windows as niri lists them, leaves out the one niri never shows.
