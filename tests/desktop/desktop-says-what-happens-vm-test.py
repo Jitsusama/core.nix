@@ -174,7 +174,18 @@ def a_line_on(drawer: Json, past: int = 0) -> bool:
 # The sequences whose first key waits Joel's timeoutlen for the rest, and how many times one
 # is pressed before its coming apart is a failure, and how long each try waits.
 WAITING = frozenset(
-    {"spc right", "spc left", "spc ?", "Z Z", "g g", "g v", "ctrl-w l", "ctrl-w h", "ctrl-w w"}
+    {
+        "spc right",
+        "spc left",
+        "spc ?",
+        "Z Z",
+        "g g",
+        "g v",
+        "z a",
+        "ctrl-w l",
+        "ctrl-w h",
+        "ctrl-w w",
+    }
 )
 TRIES = 3
 TRIED = timedelta(seconds=10)
@@ -193,6 +204,8 @@ class InTheDrawer:
     # More lines than its facts take between its title and its words: Arrived, Left and
     # Urgency, each a name and a value, a value wrapped included.
     FACT_LINES = 12
+    # The lines its prose shows while the drawer's fold is shut (Drawer.qml's proseMost).
+    SHOWN_FOLDED = 5
 
     def __init__(self, desktop: Desktop) -> None:
         """Send the notice, and open the launcher on its row."""
@@ -224,8 +237,28 @@ class InTheDrawer:
             lambda shown: shown["drawer"]["out"] and shown["drawer"]["title"] == self.TITLE
         )
         desktop.normal()
+        self.unfold()
         self.rows = desktop.showing()
         assert self.rows["drawer"]["cursor"] is None, self.rows["drawer"]
+
+    def unfold(self) -> None:
+        """Open the drawer's fold, which holds the log past its first five lines, by za.
+
+        A drawer's prose shows five lines while its fold is shut (VKCF3Z's wrap rule 4), the
+        last cut with an ellipsis; the fold stays as left from opening to opening, so only the
+        first of these subtests finds it shut.
+        """
+        drawer = self.drawer()
+        if drawer["folded"] is False:
+            return
+        assert drawer["bodyLines"] == self.SHOWN_FOLDED, drawer
+        assert str(drawer["bodyDrawn"]).endswith("\u2026"), drawer
+        self.pressed_until(
+            "z a",
+            lambda shown: (
+                shown["drawer"]["folded"] is False and shown["drawer"]["bodyLines"] >= self.LINES
+            ),
+        )
 
     def press(self, keys: str) -> None:
         """Press each key named, all in one batch, as Desktop.press_at_once does."""

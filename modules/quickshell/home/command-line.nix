@@ -9,5 +9,6 @@
   "ListedKeys.js"
   "DrawerFigure.js"
   "DrawerPage.js"
+  "DrawerProse.js"
   "Identifier.js"
 ]
