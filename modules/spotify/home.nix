@@ -80,8 +80,8 @@ let
     last = "The bottom of the page";
   };
   otherActs = {
-    jump-back = "Back a page";
-    jump-forward = "Forward a page";
+    jump-back = "Back to the page before";
+    jump-forward = "On to the page after";
     search-forward = "Filter the list";
   };
 
