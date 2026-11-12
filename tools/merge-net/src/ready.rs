@@ -14,7 +14,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::apart::{apart, checks_apart, descriptions_apart};
+use crate::apart::{LISTS, apart, checks_apart, descriptions_apart, lines_apart};
 
 /// Whether nix-offload's record for a commit holds a changed-checks run that
 /// passed there and built what it named, against a base `on_main` says
@@ -241,8 +241,8 @@ fn names(text: &str, file: &str, path: &str) -> bool {
 }
 
 /// Whether `file`, which the branch shares with main, is a JSON file,
-/// check-descriptions.nix or a folder's checks.nix, both changed `apart`,
-/// so it stands as two files would. One naming a path
+/// check-descriptions.nix, a folder's checks.nix or a list of modules,
+/// both changed `apart`, so it stands as two files would. One naming a path
 /// either side renamed or deleted stays shared, as `shared` holds. `base`
 /// gives a file where the branch was checked from, and `checked` where it
 /// was checked at.
@@ -259,6 +259,13 @@ pub fn stands_apart(
     let checks = file == "checks.nix" || file.ends_with("/checks.nix");
     let read: fn(&str, &str, &str, &str) -> bool = if file == "check-descriptions.nix" {
         descriptions_apart
+    } else if file == "checks.nix" {
+        // The root's checks.nix gives checks and lists every folder's.
+        |base, branch, main, head| {
+            checks_apart(base, branch, main, head) || lines_apart(base, branch, main, head)
+        }
+    } else if LISTS.contains(&file) {
+        lines_apart
     } else if checks {
         checks_apart
     } else if json {
@@ -719,6 +726,40 @@ mod tests {
             ),
             "another Nix file was read as checks"
         );
+    }
+
+    #[test]
+    fn lists_of_modules_given_a_line_each_stand_apart() {
+        // 12 November's case: two changes each listed a module of its own.
+        let base = "[\n  ./a\n  ./c\n]\n";
+        let (ours, theirs) = ("[\n  ./a\n  ./b\n  ./c\n]\n", "[\n  ./0\n  ./a\n  ./c\n]\n");
+        let head = "[\n  ./0\n  ./a\n  ./b\n  ./c\n]\n";
+        let (at_head, at_main) = (|_: &str| head.to_owned(), |_: &str| theirs.to_owned());
+        let (at_base, checked) = (|_: &str| base.to_owned(), |_: &str| ours.to_owned());
+        for (file, list) in LISTS
+            .iter()
+            .map(|file| (*file, true))
+            .chain([("a.nix", false)])
+        {
+            let files = owned(&[file]);
+            let (branch, main) = (
+                Side {
+                    changed: &files,
+                    gone: &[],
+                    text: &at_head,
+                },
+                Side {
+                    changed: &files,
+                    gone: &[],
+                    text: &at_main,
+                },
+            );
+            assert_eq!(
+                stands_apart(file, &branch, &main, &at_base, &checked),
+                list,
+                "{file}, given a line by each side, was judged wrongly"
+            );
+        }
     }
 
     #[test]

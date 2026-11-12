@@ -15,6 +15,8 @@
 //! - `already-runs.json`: a hold whose bad merge the machine already runs,
 //!   kept like a hold but leaving switches alone, since holding them keeps
 //!   only fixes off the machine.
+//! - `answers.jsonl`: a line for each hold, run again and pass `ready`
+//!   answered, with the files it turned on (`answers.rs`).
 //! - `findings/`: a file for each failure, for a session to tell its owner.
 //! - `logs/`: each run's log, kept three days, and the net's own in
 //!   `net.log`.

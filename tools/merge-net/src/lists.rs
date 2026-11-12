@@ -2,6 +2,11 @@
 //! rebase still needs before it merges: only its own check, which takes
 //! a minute where changed-checks takes ten.
 
+use std::process::ExitCode;
+
+use crate::answers::{Verdict, keep};
+use crate::state::short;
+
 /// A list each change adds a line to, which on a busy day main moves in
 /// the minutes a run at a rebased head takes: on 9 November #2576 was
 /// refused five times after a green run, each time because main had moved
@@ -73,6 +78,49 @@ pub fn lists(shared: &[String], record: &str, quarantine: &str) -> Lists {
         }
     }
     Lists::Need(need)
+}
+
+/// What `ready` says of `commit`, when every file it shares with main's
+/// moves is a list each change adds to: whether each holds there with its
+/// own check passed, as its record and `quarantine`, the net's list there,
+/// say, merging by `passes` when it may, which holds a ready one back
+/// while an earlier gate runs. None when some file isn't one.
+pub fn say(
+    commit: &str,
+    shared: &[String],
+    quarantine: &str,
+    passes: &dyn Fn(&str) -> ExitCode,
+) -> Option<ExitCode> {
+    match lists(shared, &crate::ready::record(commit), quarantine) {
+        Lists::Need(need) if need.is_empty() => {
+            return Some(passes(&format!(
+                "ready: {} sits on origin's main, and main moved only lists of its ({}), whose \
+                 own checks passed there",
+                short(commit),
+                shared.join(", ")
+            )));
+        }
+        Lists::Need(need) => {
+            eprintln!(
+                "merge-net: main has since moved only lists of {} ({}); build {} there, \
+                 committed so it's sent, and merge again",
+                short(commit),
+                shared.join(", "),
+                need.iter()
+                    .map(|check| format!("`nix-offload there . checks.{}.{check}`", crate::SYSTEM))
+                    .collect::<Vec<_>>()
+                    .join(" and ")
+            );
+            keep(commit, Verdict::Regate, shared);
+        }
+        Lists::Broken(why) => eprintln!(
+            "merge-net: {} at {} no longer reads as the net's list: {why}",
+            crate::world::QUARANTINE,
+            short(commit)
+        ),
+        Lists::NotAll => return None,
+    }
+    Some(ExitCode::FAILURE)
 }
 
 /// Whether the quarantine list reads as a list of tests, each once.
