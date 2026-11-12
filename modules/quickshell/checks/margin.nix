@@ -109,6 +109,23 @@
       touch $out
     '';
 
+  # Now's Home Network piece says what ails the home network, worst first,
+  # and nothing while eero is out of reach, as tests/home-network-ails.qml
+  # holds pieces/HomeNetwork.js to records shaped as the eero daemon keeps.
+  now-says-what-ails-the-home-network =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "now-says-what-ails-the-home-network" { } ''
+      cp ${../../../tests/home-network-ails.qml} home-network-ails.qml
+      ${copied [ "pieces/HomeNetwork.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml home-network-ails.qml
+      touch $out
+    '';
+
   # Every glyph in the margin stands the same height on the gap's middle
   # line, however tall its font draws it, and they line up from the corner
   # by how much each asks, in the colour that says so, and For You's tray

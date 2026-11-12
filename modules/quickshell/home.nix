@@ -506,6 +506,7 @@ let
     battery = ./pieces/Battery.qml;
     devices = ./pieces/Devices.qml;
     network = ./pieces/Network.qml;
+    homeNetwork = ./pieces/HomeNetwork.qml;
     volume = ./pieces/Volume.qml;
     awake = ./pieces/Awake.qml;
     profile = ./pieces/Profile.qml;
@@ -1537,6 +1538,15 @@ in
         label = "network";
         sign = "wireless";
         collapse = 10;
+      };
+      # Only while something ails the home network, from the eero daemon,
+      # beside the network this machine is on.
+      homeNetwork = {
+        order = 41;
+        source = "homeNetwork";
+        label = "home network";
+        tier = "when";
+        mark = "web";
       };
       volume = {
         order = 50;

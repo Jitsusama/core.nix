@@ -1459,6 +1459,11 @@
     Now lists what wants Joel first, then what reaches other people, what's playing and the modes
     left on, by name within each, and a group it doesn't know last
   '';
+  now-says-what-ails-the-home-network = ''
+    Now's Home Network piece says the internet down while this machine finds it out from home,
+    and otherwise only what eero says ails, worst first: the internet, the provider, the nodes'
+    network and each node off line, and nothing while eero is out of reach
+  '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one
   '';
