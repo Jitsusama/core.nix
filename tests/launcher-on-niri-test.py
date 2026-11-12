@@ -2772,6 +2772,63 @@ def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
     assert change["at"] >= change["from"], f"said {change}, presented before its line"
 
 
+def agent_window(address: str, window: Json, title: str) -> Json:
+    """Give a session's window as the agents daemon serves it, paired with niri's window."""
+    return {
+        "key": f"agent-window:agents:{address}",
+        "kind": "agent-window",
+        "address": address,
+        "kitty": {"id": "1", "within": "unix:@kitty-1"},
+        "app_id": f"pi-hosted.{address}",
+        "window": f"window:{window['id']}",
+        "title": title,
+        "orchestration": None,
+    }
+
+
+def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
+    """Desktop's Windows lists agents' windows as one Agents row, where the one used last was.
+
+    The agents daemon says which windows are agents' (VKCF3Z's ruling, 2026-11-11); the row
+    names the session Return goes to and how many more, and the other windows keep their order.
+    """
+
+    def windows_listed() -> list[Json]:
+        path = shlex.quote("\u203adesktop\u203awindows")
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        return cast("list[Json]", json.loads(shell.as_account(asked)).get("rows", []))
+
+    def folded() -> bool:
+        names = [row["name"] for row in windows_listed()]
+        return "Agents" in names and "Heron Notes" in names
+
+    served = StandIn(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "agents.sock")
+    wren = shell.opened("Wren Agent")
+    heron = shell.opened("Heron Notes")
+    finch = shell.opened("Finch Agent")
+    here = shell.opened("Here Notes")
+    try:
+        agents = [
+            agent_window("WREN01", wren, "Wren Work"),
+            agent_window("FINCH1", finch, "Finch Work"),
+        ]
+        served.told(agents, [])
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while not folded():
+            assert time.monotonic() < deadline, f"Windows never folded: {windows_listed()}"
+            time.sleep(launcher_on_niri.POLL)
+        rows = windows_listed()
+        names = [row["name"] for row in rows]
+        assert names[:2] == ["Agents", "Heron Notes"], f"not in the order used: {names}"
+        assert "Wren Agent" not in names, f"an agents' window was listed loose: {names}"
+        assert "Finch Agent" not in names, f"an agents' window was listed loose: {names}"
+        assert rows[0].get("side") == "Finch Work \u00b7 1 more", f"said {rows[0]}"
+    finally:
+        served.close()
+        for window in (wren, heron, finch, here):
+            shell.close(window)
+
+
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
     """No answer raised an error, and Quickshell warned of nothing it drew."""
     log = shell.log.read_text(errors="replace").splitlines()

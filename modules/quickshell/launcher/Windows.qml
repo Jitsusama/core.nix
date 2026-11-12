@@ -20,11 +20,14 @@
 // it and a few letters find any other, there by its program's name too,
 // since everything there is a window. Those waiting on Joel come next,
 // before the rest, so what needs him is a key away. It adds no row of its own to the
-// search, where each window is already found by itself.
+// search, where each window is already found by itself. Agents' windows
+// give way there to one Agents row, where the one used last would be,
+// and Tab steps into them (AgentWindows.js); typed, each is found alone.
 import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "AgentWindows.js" as AgentWindows
 import "HeldWindows.js" as HeldWindows
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
@@ -126,15 +129,93 @@ Provider {
         && daemon.state !== "not answering" && !provider.orderKept
         && provider.launcher?.open !== false
     function everything() {
-        const heard = daemon.answeredThisWatch;
         if (provider.waiting)
             return [];
-        const others = provider.held.order.map(key => provider.kept[key])
-            .filter(window => window !== undefined
-                && (heard ? !window.focused : window.id !== Niri.current));
+        return provider.promoted(provider.folded(provider.loose()));
+    }
+
+    // The one used last first, then those waiting on Joel, then the rest.
+    function promoted(others) {
         const rest = others.slice(1);
         return others.slice(0, 1).concat(rest.filter(window => window.waiting),
             rest.filter(window => !window.waiting));
+    }
+
+    // Every window's row but the one Joel's in, used last first.
+    function loose() {
+        const heard = daemon.answeredThisWatch;
+        return provider.held.order.map(key => provider.kept[key])
+            .filter(window => window !== undefined
+                && (heard ? !window.focused : window.id !== Niri.current));
+    }
+
+    // The agents' windows as the agents daemon pairs them with the windows
+    // daemon's, each session's record by its window's key. Watched while
+    // the shell runs, as a session starting or ending is all it tells, so
+    // the first frame of any opening folds them. Down, none folds.
+    property var agents: ({})
+    Daemon {
+        id: agentsDaemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        kind: "agent-window"
+        watching: ({ place: "agents" })
+        answersWhole: true
+        onHeard: provider.agentsHeard()
+        onStateChanged: provider.agentsHeard()
+    }
+    function agentsHeard() {
+        provider.agents = agentsDaemon.state === "not answering" ? {}
+            : AgentWindows.agentsOf(Object.values(agentsDaemon.held));
+        if (provider.wanted)
+            provider.changed();
+    }
+
+    // The rows with every agents' window given way to the one Agents row,
+    // where the agents' window used last would be: made again only as
+    // what it says moves, so a list read again finds the same row.
+    property var fold: ({ said: "", row: null, inside: [] })
+    function folded(rows) {
+        const made = AgentWindows.foldOf(rows, provider.agents,
+            Words.of("windows:agents").said.more);
+        if (made === null)
+            return rows;
+        if (made.said !== provider.fold.said)
+            provider.fold = { said: made.said, inside: made.inside,
+                row: provider.foldRow(made.lead, made.side, made.needing) };
+        const fold = AgentWindows.foldKey();
+        return made.listed.map(key => key === fold ? provider.fold.row : made.byKey[key]);
+    }
+
+    // The one Agents row: Return goes to the agents' window used last, as
+    // Super+Tab then Return always went to the window used last, and its
+    // side names that window's session so he sees where (VKCF3Z,
+    // 2026-11-11 [23daa469]).
+    function foldRow(lead, side, needing) {
+        return thing({
+            thing: true,
+            key: "windows:agents",
+            is: "windows:agents",
+            verb: Words.verb("windows:agents"),
+            name: Words.name("windows:agents"),
+            glyph: Words.glyph("windows:agents"),
+            hue: "program",
+            side: side,
+            waiting: needing > 0,
+            count: AgentWindows.needed(needing, Words.of("windows:agents").said),
+            run: () => Niri.act({ FocusWindow: { id: lead } }),
+            verbs: () => provider.agentsInside()
+        });
+    }
+
+    // Inside it, the agents' windows by orchestration, each its own row as
+    // Windows makes it, a step in under its orchestrator's own window.
+    function agentsInside() {
+        const placed = AgentWindows.depths(
+            AgentWindows.byOrchestration(provider.fold.inside, provider.agents));
+        return placed.map(one => ({ row: provider.kept[one.key], depth: one.depth }))
+            .filter(one => one.row !== undefined)
+            .map(one => provider.gotten(one.row, { depth: () => one.depth }));
     }
 
     // Every window's key as its row says it, and This Window's, for a pick
@@ -148,7 +229,9 @@ Provider {
             const title = provider.tidy(window.title ?? "", program) || program;
             return { key: `window:${window.app_id}:${title}` };
         });
-        return Niri.current === null ? keys : keys.concat([{ key: "windows:this" }]);
+        const agents = Object.keys(provider.agents).length > 0 ? [{ key: "windows:agents" }] : [];
+        return (Niri.current === null ? keys : keys.concat([{ key: "windows:this" }]))
+            .concat(agents);
     }
 
     // What a pi window is about, ready to match, kept while it reads the
@@ -192,7 +275,7 @@ Provider {
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
-        const others = everything();
+        const others = provider.waiting ? [] : provider.promoted(provider.loose());
         const found = [];
         others.forEach((window, recency) => {
             const hit = matched(window, words, need);

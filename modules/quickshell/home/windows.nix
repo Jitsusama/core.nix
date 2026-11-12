@@ -2,4 +2,5 @@
 # place's list; README.md says which list a file goes in.
 [
   "NiriRecords.js"
+  "launcher/AgentWindows.js"
 ]
