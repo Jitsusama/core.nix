@@ -386,6 +386,24 @@ def test_the_power_acts_are_found_by_their_names_and_by_the_names_they_had(shell
     shell.close_launcher()
 
 
+def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
+    """Do Not Disturb, off, has a drawer saying until when Return holds notices.
+
+    Joel wants every row to say a little more beside it (2026-11-11), and Desktop's Do Not
+    Disturb had none; what each fact says is tests/piece-drawers.qml's, and this is its one
+    path through the launcher.
+    """
+    shell.answer("do not")
+    shell.launcher_until(
+        lambda shown: (
+            drawer_on_selected(shown)
+            and shown["drawer"]["title"] == "Do Not Disturb"
+            and shown["drawer"]["facts"] == ["For an Hour", "Sharing the Screen"]
+        )
+    )
+    shell.close_launcher()
+
+
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> None:
     """An answer asked for holds its row from the keystroke."""
     typed = "weather lima"

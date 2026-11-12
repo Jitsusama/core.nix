@@ -214,9 +214,13 @@ QtObject {
             },
             tells: {
                 kept: "Turned on by hand.",
-                shared: "On while the screen is shared."
+                shared: "On while the screen is shared.",
+                off: "New notices wait in the notices list rather than showing."
             }
         };
+        told.said.until = "until {time}";
+        told.said.sharing = "comes on by itself";
+        told.said.unshared = "stays off";
         const kept = Drawers.quiet({ since: "13:05", held: 1, kept: true }, told);
         expect("do not disturb says since when and what it held, why last, never until when",
             [kept.eyebrow].concat(said(kept), kept.body), [
@@ -227,6 +231,19 @@ QtObject {
         expect("on for a share, with no start known, says what it held and why",
             said(sharing).concat(sharing.body),
             ["[on:quiet:held] 4 notices", "On while the screen is shared."]);
+        // Off, Desktop's row says what Return would do and until when, and whether a
+        // share turns it on, so it says more than its line (Joel, 2026-11-11: every row
+        // has a drawer).
+        const off = Drawers.quiet({ off: true, hour: "14:05", whileSharing: true }, told);
+        expect("off, it says until when Return holds them, what a share does, and what it does",
+            [off.eyebrow].concat(said(off), off.body), [
+                "on this desktop \u00b7 do not disturb", "[session:quiet:60] until 14:05",
+                "[on:quiet:sharing] comes on by itself",
+                "New notices wait in the notices list rather than showing."
+            ]);
+        const unshared = Drawers.quiet({ off: true, hour: "14:05", whileSharing: false }, told);
+        expect("off, with a share left to Joel, it says a share leaves it off",
+            said(unshared), ["[session:quiet:60] until 14:05", "[on:quiet:sharing] stays off"]);
     }
 
     function run() {

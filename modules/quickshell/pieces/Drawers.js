@@ -193,8 +193,21 @@ function recording(length, what, told) {
 // Do not disturb: since when, how many notices it has held, and why it's
 // on, as its words: its figures in told.said and its sentences in
 // told.tells. Until when is the row's own side, so it isn't said again.
+// Off, as Desktop's row shows it, it says until when Return would hold them
+// (`hour`) and whether a shared screen turns it on by itself, so the row
+// says more than its line (Joel, 2026-11-11: every row has a drawer).
 function quiet(state, told) {
     const { named, said, tells } = told;
+    if (state.off) {
+        return {
+            eyebrow: said.eyebrow,
+            facts: drawn([
+                fact(named, "session:quiet:60", filled(said.until, { time: state.hour })),
+                fact(named, "on:quiet:sharing", state.whileSharing ? said.sharing : said.unshared)
+            ]),
+            body: tells.off
+        };
+    }
     const held = state.held === 1 ? said.one : filled(said.many, { count: state.held });
     return {
         eyebrow: said.eyebrow,

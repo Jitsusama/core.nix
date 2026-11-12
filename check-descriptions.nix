@@ -92,7 +92,8 @@
   a-piece-says-all-it-knows = ''
     the drawers of Now's own pieces, the disk, the notices waiting, lag, a screen share, a
     recording and do not disturb, say where and what they are, then what moves first, and their
-    identifiers last, leaving out what they can't say and what the row's side already says
+    identifiers last, leaving out what they can't say and what the row's side already says; and
+    do not disturb, off, says until when Return would hold notices and what a screen share does
   '';
   a-player-says-all-it-knows = ''
     a media player's drawer says everything its player tells MPRIS, what moves first and what

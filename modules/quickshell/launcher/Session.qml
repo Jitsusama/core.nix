@@ -11,6 +11,7 @@ import "Power.js" as Power
 import "Interfaces.js" as Interfaces
 import "Awake.js" as Awake
 import "Captured.js" as Captured
+import "../pieces/Drawers.js" as Drawers
 
 Provider {
     id: provider
@@ -236,13 +237,32 @@ Provider {
         return "";
     }
 
+    // What Do Not Disturb's drawer says (pieces/Drawers.js's quiet): while
+    // on, what Now's piece says of it; while off, until when Return would
+    // hold notices and whether a shared screen turns it on by itself.
+    function quietDrawer() {
+        const words = Words.of("on:quiet");
+        const at = when => when > 0 ? Qt.formatDateTime(new Date(when), "HH:mm") : "";
+        return Object.assign({ title: Words.name("session:quiet") }, Drawers.quiet({
+            off: !Quiet.on,
+            hour: at(Date.now() + 3_600_000),
+            whileSharing: Options.doNotDisturb.whileSharing,
+            since: at(Quiet.began),
+            held: Quiet.held.length,
+            kept: Quiet.kept
+        }, { named: id => Words.name(id), said: words.said, tells: words.tells }));
+    }
+
     // Do not disturb (Quiet.qml): Return holds notices for an hour, and the
-    // right arrow offers holding them until it's ended.
+    // right arrow offers holding them until it's ended. It's a thing, so
+    // its drawer says more than its line (Joel, 2026-11-11).
     readonly property var quiet: said("session:quiet", Quiet.on ? "on" : "", {
         side: Quiet.on ? Quiet.lasts : "for an hour",
         chord: bound(holds),
         hue: "voice",
         stays: true,
+        thing: true,
+        drawer: () => quietDrawer(),
         run: () => Quiet.on ? Quiet.end() : Quiet.keep(60),
         verbs: Quiet.on ? null : () => [60, 0].map(minutes => provider.said(
             `session:quiet:${minutes}`, "", {

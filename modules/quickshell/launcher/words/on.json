@@ -258,11 +258,15 @@
       "said": {
         "eyebrow": "on this desktop \u00b7 do not disturb",
         "one": "1 notice",
-        "many": "{count} notices"
+        "many": "{count} notices",
+        "until": "until {time}",
+        "sharing": "comes on by itself",
+        "unshared": "stays off"
       },
       "tells": {
         "kept": "Turned on by hand.",
-        "shared": "On while the screen is shared."
+        "shared": "On while the screen is shared.",
+        "off": "New notices wait in the notices list rather than showing."
       }
     },
     {
@@ -274,6 +278,11 @@
       "id": "on:quiet:held",
       "in": "on",
       "name": "Held"
+    },
+    {
+      "id": "on:quiet:sharing",
+      "in": "on",
+      "name": "Sharing the Screen"
     },
     {
       "id": "on:plate",
