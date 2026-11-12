@@ -219,6 +219,7 @@ mod tests {
                 seconds: 300.0,
                 waited: Some(30.0),
                 status: 0,
+                ..Run::default()
             }],
             cpu_avg300: Some(12.0),
             joel_cpu_avg300: Some(1.0),
