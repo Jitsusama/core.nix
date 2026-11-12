@@ -855,11 +855,11 @@ def test_the_weathers_here_follows_the_laptop(desktop: Desktop) -> None:
     def nowhere(shown: Json) -> bool:
         return (shown["selected"] or {}).get("name") == "where?"
 
-    # whereabouts runs, GeoClue having taken it as a client without a
-    # word against it, and with no geolocation service to ask, it has found
-    # nothing.
-    machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active whereabouts"))
-    refused = desktop.as_account("journalctl --user -u whereabouts -p err --no-pager -o cat")
+    # whereabouts runs, as location.service, GeoClue having taken it as a
+    # client without a word against it, and with no geolocation service to
+    # ask, it has found nothing.
+    machine.wait_until_succeeds(desktop.in_session("systemctl --user is-active location"))
+    refused = desktop.as_account("journalctl --user -u location -p err --no-pager -o cat")
     assert refused.strip() == "", f"whereabouts was refused: {refused}"
     assert desktop.here_kept() is None
     # The VM sets no time zone and no place, so here is nowhere until

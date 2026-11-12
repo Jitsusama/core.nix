@@ -26,7 +26,7 @@ rustPlatform.buildRustPackage rec {
   meta = {
     description = "Holds where the laptop is, from GeoClue, and the clock's zone, over a socket";
     license = lib.licenses.mit;
-    mainProgram = "whereabouts";
+    mainProgram = "location";
     platforms = lib.platforms.linux;
   };
 }

@@ -2300,7 +2300,7 @@ in
     # the launcher's words it serves Location's rows too, worded and ready
     # to draw. A GeoClue that refuses or goes is asked again a minute on,
     # while the socket goes on answering.
-    systemd.user.services.whereabouts = {
+    systemd.user.services.location = {
       Unit = {
         Description = "Holds where the laptop is and the clock's zone ready for the shell";
         PartOf = [ "graphical-session.target" ];
@@ -2317,7 +2317,10 @@ in
       Service = {
         ExecStart = lib.concatStringsSep " " (
           [
-            (lib.getExe whereabouts)
+            # Run by its name, so ps -ef reads location rather than a
+            # store path (docs/daemons.md, Shown).
+            "@${lib.getExe whereabouts}"
+            "location"
             "%t/daemons/location.sock"
             "/"
           ]
@@ -2347,13 +2350,10 @@ in
 
     # Its socket, held by systemd whether or not the daemon runs, so the
     # shell asking while it starts, or starts again, waits on it rather
-    # than finding no socket. It's named for its domain, so it names the
-    # daemon it hands its listener to, which systemd would otherwise look
-    # for as location.service and refuse.
+    # than finding no socket.
     systemd.user.sockets.location = {
       Unit.Description = "Where the shell asks where the laptop is";
       Socket = {
-        Service = "whereabouts.service";
         ListenStream = "%t/daemons/location.sock";
         SocketMode = "0600";
         DirectoryMode = "0700";
