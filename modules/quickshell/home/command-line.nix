@@ -10,5 +10,6 @@
   "DrawerFigure.js"
   "DrawerPage.js"
   "DrawerProse.js"
+  "DrawerValue.js"
   "Identifier.js"
 ]

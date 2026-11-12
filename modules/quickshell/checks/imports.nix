@@ -19,10 +19,10 @@
   "Copied.qml" = [ "Copied.js" ];
   "Daemon.qml" = [ "Hearing.js" ];
   "Devices.js" = [ "Crossing.js" ];
-  "DrawerPage.js" = [
+  "DrawerPage.js" = [ "Search.js" ];
+  "DrawerValue.js" = [
     "Identifier.js"
     "Reading.js"
-    "Search.js"
   ];
   "Editing.js" = [ "Typing.js" ];
   "FileFacts.js" = [ "When.js" ];

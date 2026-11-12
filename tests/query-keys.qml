@@ -2,7 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, Search.js, Reading.js,
+// ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, DrawerValue.js, Search.js,
+// Reading.js,
 // LineEditing.js, Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
@@ -18,6 +19,7 @@ import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
 import "DrawerFigure.js" as Figure
 import "DrawerProse.js" as Prose
+import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 
 QtObject {
@@ -1100,7 +1102,7 @@ QtObject {
                 [{ said: "ab\ud83c\udf89cdefgh" }], " ", 60, ["ab\u2026gh"]]
         ];
         for (const [what, items, between, wide, want] of cases)
-            holds(`a drawer's value: ${what}`, Page.valueLines(items, between, wide, width), want);
+            holds(`a drawer's value: ${what}`, Value.valueLines(items, between, wide, width), want);
         // An identifier's value, as a program's Desktop ID: whole where it
         // fits, else broken at its own marks, a dot among them but never a
         // figure's (VKCF3Z, 2026-11-09; Y2YBTS: "only an identifier's
@@ -1140,7 +1142,7 @@ QtObject {
                 [":::", ":::", "::"]]
         ];
         for (const [what, said, wide, want] of identifiers)
-            holds(`a drawer's identifier: ${what}`, Page.identifierLines(said, wide, width), want);
+            holds(`a drawer's identifier: ${what}`, Value.identifierLines(said, wide, width), want);
         // Whether an identifier's lines, as drawn, open on no mark but after
         // a space, which the drawer reports as valuesWhole (Y2YBTS,
         // 2026-11-09).
@@ -1175,7 +1177,7 @@ QtObject {
             ["a short run with digits is still a word", "usb-1d50abc", ["usb-", "1d50abc"]]
         ];
         for (const [what, said, want] of read)
-            holds(`an identifier's words: ${what}`, Page.identifierWords(said), want);
+            holds(`an identifier's words: ${what}`, Value.identifierWords(said), want);
         // A title breaks at its spaces, and inside a word only where the word
         // is too wide for a line alone: "10.12.03.svg" stood split at a dot
         // beside a space at 2 (RTOIMQ, 2026-11-09).
@@ -1227,7 +1229,7 @@ QtObject {
             ["nothing to list is no line", [], 200, []]
         ];
         for (const [what, items, wide, want] of lines)
-            holds(`a drawer's list: ${what}`, Page.valueLine(items, "{count} more", wide, width),
+            holds(`a drawer's list: ${what}`, Value.valueLine(items, "{count} more", wide, width),
                 want);
         // A lead's one line: where and when never give way, and what follows
         // gives way at a whole word (VKCF3Z, 6ea9cd26).
@@ -1243,16 +1245,16 @@ QtObject {
                 ["in Slack \u00b7 14:02"]]
         ];
         for (const [what, wide, want] of leads)
-            holds(`a drawer's lead: ${what}`, Page.leadLine(kept, asked, wide, width), want);
-        holds("a lead is measured as the line it's drawn on", Page.besideText({
+            holds(`a drawer's lead: ${what}`, Value.leadLine(kept, asked, wide, width), want);
+        holds("a lead is measured as the line it's drawn on", Value.besideText({
             value: asked, valueItems: kept, gives: asked }, 300, width),
             "in Slack \u00b7 14:02 \u00b7 Can you\u2026");
         // What's measured beside a name, to choose a table or a list.
         const opens = { value: kinds.map(kind => kind.said).join(" \u00b7 "), valueItems: kinds,
             tail: "{count} more" };
         holds("a list with a tail is measured as the line it's drawn on, never whole",
-            Page.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
-        holds("any other value is measured whole", Page.besideText({ value: 42,
+            Value.besideText(opens, 200, width), "PDF \u00b7 HTML \u00b7 2 more");
+        holds("any other value is measured whole", Value.besideText({ value: 42,
             valueItems: kinds, between: " " }, 60, width), "42");
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
