@@ -3,6 +3,7 @@
 //! half minute, so `health` and `cadence day` read it without asking
 //! anything that runs.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
@@ -15,7 +16,9 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::day::Day;
-use crate::journal::{self, RESTART_SCHEDULED};
+use crate::journal::{
+    self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
+};
 
 /// How often a changed day is written out: often enough that what `health`
 /// shows is a moment old, seldom enough to cost nothing.
@@ -23,7 +26,8 @@ const EVERY: Duration = Duration::from_secs(30);
 
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
-                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT";
+                      _SYSTEMD_USER_UNIT,COREDUMP_COMM,COREDUMP_CGROUP,MESSAGE_ID,_TRANSPORT,\
+                      KERNEL_USEC,INITRD_USEC,USERSPACE_USEC";
 
 /// The day being tallied, and where it's written.
 pub struct Follower {
@@ -31,6 +35,7 @@ pub struct Follower {
     changed: bool,
     into: PathBuf,
     zone: TimeZone,
+    ends: BTreeMap<String, i64>,
 }
 
 impl Follower {
@@ -44,7 +49,15 @@ impl Follower {
             changed: false,
             into: into.to_owned(),
             zone,
+            ends: BTreeMap::new(),
         }
+    }
+
+    /// Know when each boot before this one ended, so a shutdown seen
+    /// asked for is timed to its end.
+    #[must_use]
+    pub fn knowing(self, ends: BTreeMap<String, i64>) -> Self {
+        Self { ends, ..self }
     }
 
     /// Take one line of `journalctl -o json`. A line of a new day writes
@@ -66,6 +79,11 @@ impl Follower {
             return Ok(());
         }
         self.day.take(&entry);
+        if entry.mark == Some(Mark::Stopping)
+            && let Some(&end) = self.ends.get(&entry.boot)
+        {
+            self.day.ended(&entry.boot, end);
+        }
         self.changed = true;
         Ok(())
     }
@@ -89,6 +107,26 @@ impl Follower {
 #[must_use]
 pub fn file_of(into: &Path, date: &str) -> PathBuf {
     into.join(format!("{date}.json"))
+}
+
+/// When each boot before this one ended, from `journalctl --list-boots -o
+/// json`; this boot, the last listed, hasn't.
+#[must_use]
+pub fn ends_of(boots: &str) -> BTreeMap<String, i64> {
+    let Ok(serde_json::Value::Array(boots)) = serde_json::from_str(boots) else {
+        return BTreeMap::new();
+    };
+    let before = boots.len().saturating_sub(1);
+    boots
+        .iter()
+        .take(before)
+        .filter_map(|boot| {
+            Some((
+                boot["boot_id"].as_str()?.to_owned(),
+                boot["last_entry"].as_i64()?,
+            ))
+        })
+        .collect()
 }
 
 /// Write a day whole, through a file beside it, so a reader never sees half
@@ -119,17 +157,41 @@ pub fn date_of(at: i64, zone: &TimeZone) -> String {
 pub fn follow(into: &Path) -> io::Result<()> {
     let zone = TimeZone::system();
     let today = date_of(Timestamp::now().as_microsecond(), &zone);
-    let mut follower = Follower::new(&today, into, zone);
+    let boots = Command::new("journalctl")
+        .args(["--list-boots", "--output=json", "--no-pager"])
+        .output()?;
+    let mut follower =
+        Follower::new(&today, into, zone).knowing(ends_of(&String::from_utf8_lossy(&boots.stdout)));
     let (lines, read) = mpsc::channel();
-    // Warnings and graver, and the restarts systemd schedules, which it
-    // says only as information.
+    // Warnings and graver.
     spawn(&["-p", "warning"], lines.clone())?;
-    spawn(&[&format!("MESSAGE_ID={RESTART_SCHEDULED}")], lines.clone())?;
+    // What systemd and logind say only as information: a restart
+    // scheduled, the machine started or stopping, and a unit started,
+    // which the day keeps only for the disk's password.
+    spawn(
+        &[
+            &format!("MESSAGE_ID={RESTART_SCHEDULED}"),
+            &format!("MESSAGE_ID={STARTUP_FINISHED}"),
+            &format!("MESSAGE_ID={SHUTTING_DOWN}"),
+            "+",
+            "_PID=1",
+            &format!("MESSAGE_ID={UNIT_STARTED}"),
+        ],
+        lines.clone(),
+    )?;
+    // The launcher ready, after each start of the shell.
+    spawn(
+        &[
+            "SYSLOG_IDENTIFIER=quickshell",
+            &format!("--grep={LAUNCHER_READY}"),
+        ],
+        lines.clone(),
+    )?;
     // The kernel's notices and information, which is where it says a USB
     // device dropped or a PCIe link corrected itself; the day keeps only
     // those and leaves the rest, about a thousand lines an hour.
     spawn(&["-k", "-p", "notice..info"], lines)?;
-    let mut running = 3;
+    let mut running = 4;
     while running > 0 {
         match read.recv_timeout(EVERY) {
             Ok(Some(line)) => follower.take(&line)?,
@@ -269,6 +331,31 @@ mod tests {
             date_of(NOON - 8 * 3_600_000_000, &west),
             "2026-11-11",
             "04:00 UTC is still the day before five hours west"
+        );
+    }
+
+    #[test]
+    fn a_shutdown_seen_is_timed_to_its_boots_end() {
+        let boots = r#"[{"index":-1,"boot_id":"old","first_entry":1,"last_entry":40000000},
+            {"index":0,"boot_id":"now","first_entry":41000000,"last_entry":99000000}]"#;
+        let ends = ends_of(boots);
+        assert_eq!(
+            ends.into_iter().collect::<Vec<_>>(),
+            vec![("old".to_owned(), 40_000_000)],
+            "only the boots before this one have ended"
+        );
+        let into = tempfile::tempdir().expect("a folder");
+        let mut follower =
+            Follower::new("1970-01-01", into.path(), TimeZone::UTC).knowing(ends_of(boots));
+        follower
+            .take(&format!(
+                r#"{{"__REALTIME_TIMESTAMP":"10000000","_BOOT_ID":"old","MESSAGE_ID":"{SHUTTING_DOWN}","MESSAGE":"System is rebooting."}}"#
+            ))
+            .expect("taken");
+        assert_eq!(
+            follower.day.boots["old"].shutdown(),
+            Some(30_000_000),
+            "from logind's line to the boot's last entry"
         );
     }
 }

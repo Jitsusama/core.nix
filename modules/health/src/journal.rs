@@ -8,6 +8,26 @@ use serde_json::{Map, Value};
 /// restart always leaves, at a priority the warning reader doesn't see.
 pub const RESTART_SCHEDULED: &str = "5eb03494b6584870a536b337290809b3";
 
+/// systemd's message once the machine has started, saying how long each
+/// stage took.
+pub const STARTUP_FINISHED: &str = "b07a249cd024414a82dd00cd181378ff";
+
+/// logind's message as the machine starts to power down or reboot.
+pub const SHUTTING_DOWN: &str = "98268866d1d54a499c4e98921d93bc40";
+
+/// systemd's message for a unit whose start finished.
+pub const UNIT_STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
+
+/// What the launcher says once its rows are made after the shell starts,
+/// the moment it's ready to use.
+pub const LAUNCHER_READY: &str = "launcher: home kept as the shell started";
+
+/// The unit Plymouth runs once a disk asks for its password.
+const PASSWORD_ASKED: &str = "systemd-ask-password-plymouth.service";
+
+/// The units that open an encrypted disk.
+const DISK_OPENER: &str = "systemd-cryptsetup@";
+
 /// A journal entry, as the day takes it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Entry {
@@ -30,6 +50,38 @@ pub struct Entry {
     pub restart: bool,
     /// Whether the kernel said it.
     pub kernel: bool,
+    /// The boot it was said in.
+    pub boot: String,
+    /// When, in microseconds since the kernel started.
+    pub since_boot: i64,
+    /// The moment in a boot or a shutdown it marks, when it's one.
+    pub mark: Option<Mark>,
+}
+
+/// A moment in starting or stopping the machine, each said once a boot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mark {
+    /// The machine has started; how long each stage took, in microseconds.
+    Started {
+        /// The firmware, before the boot loader.
+        firmware: i64,
+        /// The boot loader.
+        loader: i64,
+        /// The kernel, before the initrd.
+        kernel: i64,
+        /// The initrd, opening the disk among it.
+        initrd: i64,
+        /// systemd starting the machine's services.
+        userspace: i64,
+    },
+    /// A disk asked for its password.
+    Asked,
+    /// A disk opened.
+    Opened,
+    /// The launcher is ready.
+    Ready,
+    /// The machine started to power down or reboot.
+    Stopping,
 }
 
 /// Whose a program is, from where systemd ran it.
@@ -61,6 +113,24 @@ pub fn parse(line: &str) -> Option<Entry> {
     };
     let crashed = text("COREDUMP_COMM");
     let whose = crashed.as_ref().map(|_| whose(&fields));
+    let micros = |name: &str| text(name).and_then(|value| value.parse().ok());
+    let mark = match text("MESSAGE_ID").as_deref() {
+        Some(STARTUP_FINISHED) => micros("KERNEL_USEC").map(|kernel| Mark::Started {
+            firmware: stage(&message, "(firmware)").unwrap_or_default(),
+            loader: stage(&message, "(loader)").unwrap_or_default(),
+            kernel,
+            initrd: micros("INITRD_USEC").unwrap_or_default(),
+            userspace: micros("USERSPACE_USEC").unwrap_or_default(),
+        }),
+        Some(SHUTTING_DOWN) => Some(Mark::Stopping),
+        Some(UNIT_STARTED) => match text("UNIT") {
+            Some(unit) if unit == PASSWORD_ASKED => Some(Mark::Asked),
+            Some(unit) if unit.starts_with(DISK_OPENER) => Some(Mark::Opened),
+            _ => None,
+        },
+        _ if message.contains(LAUNCHER_READY) => Some(Mark::Ready),
+        _ => None,
+    };
     Some(Entry {
         at,
         priority,
@@ -71,7 +141,32 @@ pub fn parse(line: &str) -> Option<Entry> {
         whose,
         restart: text("MESSAGE_ID").as_deref() == Some(RESTART_SCHEDULED),
         kernel: text("_TRANSPORT").as_deref() == Some("kernel"),
+        boot: text("_BOOT_ID").unwrap_or_default(),
+        since_boot: micros("__MONOTONIC_TIMESTAMP").unwrap_or_default(),
+        mark,
     })
+}
+
+/// How long a stage took, in microseconds, from systemd's "9.709s
+/// (firmware) + 549ms (loader)": the duration said just before its name.
+fn stage(message: &str, name: &str) -> Option<i64> {
+    let before = &message[..message.find(name)?];
+    let said = before.split_whitespace().last()?;
+    let (number, per_unit) = if let Some(number) = said.strip_suffix("ms") {
+        (number, 1_000)
+    } else if let Some(number) = said.strip_suffix("us") {
+        (number, 1)
+    } else {
+        (said.strip_suffix('s')?, 1_000_000)
+    };
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    let mut micros = whole.parse::<i64>().ok()? * per_unit;
+    let mut place = per_unit / 10;
+    for digit in fraction.chars() {
+        micros += i64::from(digit.to_digit(10)?) * place;
+        place /= 10;
+    }
+    Some(micros)
 }
 
 /// A field's words: journald writes a message that isn't UTF-8 as its
@@ -184,6 +279,83 @@ mod tests {
             entry.message
         );
         assert!(entry.kernel, "the kernel's transport is the kernel's");
+    }
+
+    #[test]
+    fn a_boot_says_how_long_each_stage_took() {
+        let line = r#"{"__REALTIME_TIMESTAMP":"1","PRIORITY":"6","SYSLOG_IDENTIFIER":"systemd",
+            "_BOOT_ID":"382e94","__MONOTONIC_TIMESTAMP":"55725000",
+            "MESSAGE_ID":"b07a249cd024414a82dd00cd181378ff","KERNEL_USEC":"432199",
+            "INITRD_USEC":"24362468","USERSPACE_USEC":"20671351",
+            "MESSAGE":"Startup finished in 9.709s (firmware) + 549ms (loader) + 432ms (kernel) + 24.362s (initrd) + 20.671s (userspace) = 55.725s."}"#
+            .replace('\n', "");
+        let entry = parse(&line).expect("a boot's line is an entry");
+        assert_eq!(
+            entry.mark,
+            Some(Mark::Started {
+                firmware: 9_709_000,
+                loader: 549_000,
+                kernel: 432_199,
+                initrd: 24_362_468,
+                userspace: 20_671_351,
+            }),
+            "each stage is read"
+        );
+        assert_eq!(
+            (entry.boot.as_str(), entry.since_boot),
+            ("382e94", 55_725_000),
+            "its boot and when in it"
+        );
+        let user = line.replace(r#""KERNEL_USEC":"432199","#, "");
+        assert_eq!(
+            parse(&user).expect("an entry").mark,
+            None,
+            "an account's manager starting isn't the machine's boot"
+        );
+    }
+
+    #[test]
+    fn the_password_the_launcher_and_a_shutdown_are_marked() {
+        let unit = |name: &str| {
+            format!(
+                r#"{{"__REALTIME_TIMESTAMP":"1","MESSAGE_ID":"39f53479d3a045ac8e11786248231fbf","UNIT":"{name}","MESSAGE":"Finished."}}"#
+            )
+        };
+        let mark = |line: &str| parse(line).expect("an entry").mark;
+        assert_eq!(
+            mark(&unit("systemd-ask-password-plymouth.service")),
+            Some(Mark::Asked),
+            "Plymouth asking is the password asked"
+        );
+        assert_eq!(
+            mark(&unit("systemd-cryptsetup@system.service")),
+            Some(Mark::Opened),
+            "any disk opening"
+        );
+        assert_eq!(
+            mark(&unit("nix-daemon.service")),
+            None,
+            "other units aren't marks"
+        );
+        let said = |message: &str, id: &str| {
+            format!(r#"{{"__REALTIME_TIMESTAMP":"1","MESSAGE_ID":"{id}","MESSAGE":"{message}"}}"#)
+        };
+        assert_eq!(
+            mark(&said(
+                "launcher: home kept as the shell started, 7989 rows made in 35 ms",
+                ""
+            )),
+            Some(Mark::Ready),
+            "the launcher's rows made is it ready"
+        );
+        assert_eq!(
+            mark(&said(
+                "System is rebooting.",
+                "98268866d1d54a499c4e98921d93bc40"
+            )),
+            Some(Mark::Stopping),
+            "logind's rebooting is the shutdown asked"
+        );
     }
 
     #[test]

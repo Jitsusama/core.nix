@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use crate::day::{Badness, Day, Kind, Thing};
+use crate::day::{Badness, Boot, Day, Kind, Thing};
 
 /// The kinds, in the order they're shown when as bad as each other.
 const KINDS: [Kind; 4] = [
@@ -44,6 +44,21 @@ pub fn day(day: &Day) -> String {
             counted(&worst.badness(), 0)
         );
     }
+    for boot in boots_of(day) {
+        if let Some(took) = boot.shutdown() {
+            let at = clock(boot.stopping.unwrap_or_default());
+            let _ = writeln!(out, "shutdown  {}, asked at {at}", seconds(took));
+        }
+        if let Some(took) = boot.to_ready() {
+            let _ = writeln!(
+                out,
+                "boot      {} to a ready launcher, at {}; your password's {} aside",
+                seconds(took),
+                clock(boot.started),
+                seconds(boot.password())
+            );
+        }
+    }
     out
 }
 
@@ -51,6 +66,9 @@ pub fn day(day: &Day) -> String {
 /// name holds the words, each with what it kept saying.
 #[must_use]
 pub fn asked(day: &Day, words: &str) -> String {
+    if words == "boot" {
+        return boot_stages(day);
+    }
     if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
         let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));
         for (name, thing) in worst_of(day, kind).into_iter().take(SHOWN) {
@@ -84,6 +102,53 @@ pub fn asked(day: &Day, words: &str) -> String {
         }
     }
     out
+}
+
+/// The day's boots, in the order they happened.
+fn boots_of(day: &Day) -> Vec<&Boot> {
+    let mut boots: Vec<&Boot> = day.boots.values().collect();
+    boots.sort_by_key(|boot| boot.stopping.unwrap_or(boot.started));
+    boots
+}
+
+/// Each boot's stages as systemd timed them, and its shutdown.
+fn boot_stages(day: &Day) -> String {
+    let mut out = format!("boots on {}\n", day.date);
+    let boots = boots_of(day);
+    if boots.is_empty() {
+        out.push_str("the machine neither started nor stopped\n");
+    }
+    for boot in boots {
+        if let Some(took) = boot.shutdown() {
+            let at = clock(boot.stopping.unwrap_or_default());
+            let _ = writeln!(out, "shut down at {at} in {}", seconds(took));
+        }
+        if boot.started > 0 {
+            let password = boot.password();
+            let _ = writeln!(
+                out,
+                "started at {}: firmware {}, loader {}, kernel {}, initrd {} with your \
+                 password's {} aside, services {}",
+                clock(boot.started),
+                seconds(boot.firmware),
+                seconds(boot.loader),
+                seconds(boot.kernel),
+                seconds(boot.initrd - password),
+                seconds(password),
+                seconds(boot.userspace)
+            );
+        }
+        if let Some(took) = boot.to_ready() {
+            let _ = writeln!(out, "  {} to a ready launcher", seconds(took));
+        }
+    }
+    out
+}
+
+/// Microseconds as seconds to a tenth: "27.0 s".
+fn seconds(micros: i64) -> String {
+    let tenths = (micros + 50_000) / 100_000;
+    format!("{}.{} s", tenths / 10, tenths % 10)
 }
 
 /// A kind's things, worst first.
@@ -295,6 +360,47 @@ mod tests {
             asked(&day, "nobody"),
             "nothing called nobody said a warning on 2026-11-12\n",
             "a name nothing has says so"
+        );
+    }
+
+    #[test]
+    fn a_boot_and_a_shutdown_each_have_a_line() {
+        let mut booted = a_day();
+        booted.boots.insert(
+            "b".into(),
+            Boot {
+                started: 1,
+                firmware: 9_700_000,
+                loader: 500_000,
+                kernel: 400_000,
+                initrd: 24_400_000,
+                userspace: 20_700_000,
+                asked: Some(2_900_000),
+                opened: Some(23_900_000),
+                ready: Some(37_700_000),
+                stopping: Some(1),
+                ended: Some(30_000_001),
+            },
+        );
+        let shown = day(&booted);
+        assert!(shown.contains("\nshutdown  30.0 s, asked at "), "{shown}");
+        assert!(
+            shown.contains("\nboot      26.9 s to a ready launcher, at "),
+            "{shown}"
+        );
+        assert!(
+            shown.ends_with("; your password's 21.0 s aside\n"),
+            "{shown}"
+        );
+        let stages = asked(&booted, "boot");
+        assert!(
+            stages.contains("initrd 3.4 s with your password's 21.0 s aside, services 20.7 s"),
+            "{stages}"
+        );
+        assert_eq!(
+            asked(&a_day(), "boot"),
+            "boots on 2026-11-12\nthe machine neither started nor stopped\n",
+            "a day without one says so"
         );
     }
 
