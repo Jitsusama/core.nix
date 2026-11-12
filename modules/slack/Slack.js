@@ -1,7 +1,7 @@
 // What Slack's source in People (SlackSource.qml) decides from what
 // slack-people said, kept apart from the daemon it asks so Qt's own
 // engine can test it (tests/slack.qml): who to ask and when, what stands
-// in Write in Slack's place, and the drawer's facts. `known` is what Slack
+// in Write in Slack's place, and a conversation's drawer. `known` is what Slack
 // said of each address, by address: { email, id, team, name, zone,
 // presence, status, emoji }, with no id for one it knows nobody by.
 .pragma library
@@ -121,14 +121,3 @@ function drawn(said) {
     };
 }
 
-// The drawer's facts of someone Slack found, each only while it says.
-function facts(said) {
-    const status = [said.emoji, said.status].filter(word => word).join(" ");
-    const presence = said.presence
-        ? said.presence[0].toUpperCase() + said.presence.slice(1) : "";
-    return [
-        { label: "Status", value: status },
-        { label: "Presence", value: presence },
-        { label: "Time Zone", value: said.zone, zone: true }
-    ].filter(fact => fact.value);
-}
