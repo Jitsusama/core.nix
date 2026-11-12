@@ -1,0 +1,253 @@
+{
+  "things": [
+    {
+      "id": "sound",
+      "name": "Sound",
+      "term": "Machine/Sound",
+      "noun": "devices",
+      "what": "sound",
+      "glyph": "volume",
+      "ask": "which device?",
+      "empty": "No sound devices.",
+      "answers": ["volume", "playing"],
+      "said": {
+        "volume": "volume {level}",
+        "each-cycle": "{share} of each cycle",
+        "over": "over {share}",
+        "cycle": "{frames} frames \u00b7 {ms} ms",
+        "chosen": "chosen",
+        "the-default": "the default",
+        "sent-to": "{program} plays on {device}",
+        "sent-from": "{program} records from {device}",
+        "not-sent": "{program} didn't move to {device}",
+        "muted": "muted",
+        "none": "none",
+        "on": "on",
+        "yes": "yes",
+        "no": "no",
+        "running": "running",
+        "waiting": "waiting",
+        "silent": "silent",
+        "unheard": "not heard",
+        "unplugged": "nothing plugged in",
+        "music": "music",
+        "calls": "calls",
+        "le-audio": "LE Audio",
+        "paused": "paused",
+        "nothing": "nothing",
+        "playing": "playing",
+        "recording": "recording",
+        "open": "has sound open",
+        "nothing-playing": "nothing playing",
+        "nothing-out": "nothing to play through",
+        "out": "out \u00b7 {level}",
+        "in": "in \u00b7 {level}",
+        "through": "{level}, through {device}",
+        "set": "set {device} to {level}",
+        "now": "now {level}",
+        "mono": "mono",
+        "stereo": "stereo",
+        "channels": "{count} channels",
+        "amplifiers": "{count} \u00d7 {chip}",
+        "digital": "{chip}, digital",
+        "bits": "{count} bit",
+        "level-out": "the loudest of each moment going out, of full scale",
+        "level-in": "listening while this shows, the loudest of each moment, of full scale",
+        "level-switches": "listening would switch the headset from music to calls",
+        "profile-elsewhere": "its codec and connection are in Bluetooth",
+        "profile-switches": "listening through it switches the headset to calls",
+        "to-calls": "using it switches the headset to calls",
+        "recording-none": "no program is listening",
+        "tuning": "the filter sound goes through on its way out",
+        "voice": "the filter programs hear it through",
+        "delay-note": "{frames} frames at {rate}, what it asks to be given at once",
+        "plate-out": "output",
+        "plate-in": "input",
+        "plate-stream": "stream",
+        "stream-on": "on {device}",
+        "stream-from": "from {device}",
+        "joined-here": "on this machine",
+        "joined-built-in": "built in",
+        "joined-usb": "USB",
+        "joined-display": "display",
+        "paused-at": "paused at {level}",
+        "balanced": "balanced",
+        "down": "not answering"
+      }
+    },
+    {
+      "id": "sound:called:speakers",
+      "in": "sound",
+      "name": "Built-In Speakers"
+    },
+    {
+      "id": "sound:called:microphones",
+      "in": "sound",
+      "name": "Built-In Microphones"
+    },
+    {
+      "id": "sound:called:its-microphone",
+      "in": "sound",
+      "name": "{device} Microphone"
+    },
+    {
+      "id": "sound:called:noise-cancelled",
+      "in": "sound",
+      "name": "{device}, Noise Cancelled"
+    },
+    {
+      "id": "sound:port",
+      "in": "sound",
+      "name": "Port"
+    },
+    {
+      "id": "verb:sound-port",
+      "command": "setlocal",
+      "argument": "port={port}",
+      "in": "sound",
+      "name": "Use {port}",
+      "verb": "use"
+    },
+    {
+      "id": "verb:sound-use",
+      "command": "set",
+      "argument": "output={name}",
+      "in": "sound",
+      "name": "Play Sound Through It",
+      "verb": "use",
+      "states": {
+        "input": {
+          "name": "Listen Through It",
+          "argument": "input={name}"
+        }
+      }
+    },
+    {
+      "id": "sound:mute",
+      "in": "sound",
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute"
+        }
+      }
+    },
+    {
+      "id": "sound:volume",
+      "in": "sound",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "sound:gain",
+      "in": "sound",
+      "name": "Gain"
+    },
+    {
+      "id": "verb:sound-louder",
+      "command": "setlocal",
+      "argument": "volume+=5",
+      "in": "sound",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:sound-quieter",
+      "command": "setlocal",
+      "argument": "volume-=5",
+      "in": "sound",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "verb:sound-to",
+      "command": "setlocal",
+      "argument": "volume=",
+      "in": "sound",
+      "name": "Volume to {level}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "name": "Gain to {level}"
+        }
+      }
+    },
+    {
+      "id": "sound:programs",
+      "in": "sound",
+      "name": "Playing"
+    },
+    {
+      "id": "sound:recorders",
+      "in": "sound",
+      "name": "Recording",
+      "term": "Machine/recording"
+    },
+    {
+      "id": "verb:program:mute",
+      "command": "setlocal",
+      "argument": "mute",
+      "in": "program:sound",
+      "name": "Muted",
+      "verb": "mute",
+      "glyph": "volume",
+      "states": {
+        "muted": {
+          "verb": "unmute",
+          "glyph": "silent",
+          "argument": "nomute"
+        }
+      }
+    },
+    {
+      "id": "verb:program:louder",
+      "command": "setlocal",
+      "argument": "volume+=5",
+      "in": "program:sound",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:program:quieter",
+      "command": "setlocal",
+      "argument": "volume-=5",
+      "in": "program:sound",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "sound:plays-on",
+      "in": "sound",
+      "name": "Plays On"
+    },
+    {
+      "id": "sound:records-from",
+      "in": "sound",
+      "name": "Records From"
+    },
+    {
+      "id": "verb:sound-sent",
+      "command": "setlocal",
+      "argument": "output={value}",
+      "in": "program:sound",
+      "name": "{device}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "argument": "input={value}"
+        }
+      }
+    },
+    {
+      "id": "sound:rate",
+      "in": "sound",
+      "name": "Sample Rate"
+    },
+    {
+      "id": "sound:delay",
+      "in": "sound",
+      "name": "Delay"
+    }
+  ]
+}

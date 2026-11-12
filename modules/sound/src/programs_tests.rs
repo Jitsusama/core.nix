@@ -5,35 +5,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::rows::tests::device;
-
-fn words() -> Words {
-    Words::from_vocabulary(
-        &json!({"things": [
-            {"id": "sound", "name": "Sound", "said": {
-                "muted": "muted", "chosen": "chosen", "yes": "yes", "no": "no",
-                "nothing": "nothing", "recording-none": "no program is listening",
-                "paused": "paused", "paused-at": "paused at {level}", "the-default": "the default",
-                "delay-note": "{frames} frames at {rate}, what it asks to be given at once",
-            }},
-            {"id": "sound:programs", "name": "Playing"},
-            {"id": "sound:recorders", "name": "Recording"},
-            {"id": "sound:mute", "name": "Muted", "verb": "mute",
-                "states": {"muted": {"verb": "unmute"}}},
-            {"id": "verb:program:mute", "name": "Muted", "glyph": "volume",
-                "states": {"muted": {"glyph": "silent"}}},
-            {"id": "verb:program:louder", "name": "Louder"},
-            {"id": "verb:program:quieter", "name": "Quieter"},
-            {"id": "sound:plays-on", "name": "Plays On"},
-            {"id": "sound:records-from", "name": "Records From"},
-            {"id": "verb:sound-sent", "name": "{device}"},
-            {"id": "sound:rate", "name": "Sample Rate"},
-            {"id": "sound:delay", "name": "Delay"},
-        ]})
-        .to_string(),
-    )
-    .expect("the words read")
-}
+use crate::rows::tests::{device, words};
 
 /// A program's stream as the daemon's records say one, linked to `ends`.
 fn stream(id: u32, sink: bool, program: &str, ends: &[&str]) -> Value {
