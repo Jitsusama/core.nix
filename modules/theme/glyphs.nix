@@ -1028,6 +1028,143 @@ in
       ".######."
     ];
   };
+  # The margin's cat walking between windows, two strides in profile
+  # facing along the ground as stretching's head does: its legs apart, then
+  # gathered, the tail's tip swaying a cell between them. Its body holds
+  # still across the two, so the walk steps rather than jitters (2RCBOJ,
+  # ee5a4b12).
+  walkingA = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".......#"
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      "#.#.#.#."
+    ];
+  };
+  walkingB = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "......#."
+      "#.#...#."
+      "###...#."
+      "#.#####."
+      "#######."
+      ".######."
+      ".#...#.."
+      ".#...#.."
+    ];
+  };
+  # The sitting cat (nothingHere's) with a forepaw raised beside its head,
+  # batting at its yarn.
+  batting = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "#...#..."
+      "#####.##"
+      "#.#.#.#."
+      "#####.#."
+      ".###.#.."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+  };
+  # Crouched to pounce: ears up and eye forward, paws flat, rump raised
+  # behind, unlike stretching, whose head is down.
+  pouncing = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "....##.."
+      "...####."
+      "#.#.####"
+      "###.###."
+      "#.#####."
+      "#######."
+      ".#####.."
+      "###..##."
+    ];
+  };
+  # The sitting cat moving a little while Joel types, each held a few
+  # hundred ms (2RCBOJ, ffa36f8a), so each changes one thing of
+  # nothingHere's and the cat never shifts: an ear folded, the tail
+  # raised, the eyes shut.
+  earFlick = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "....#..."
+      "#####..."
+      "#.#.#..."
+      "#####..."
+      ".###...."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+  };
+  tailSwish = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "#...#..."
+      "#####..."
+      "#.#.#..."
+      "#####..#"
+      ".###...#"
+      "#####.#."
+      "#####.#."
+      "######.."
+    ];
+  };
+  blinking = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "#...#..."
+      "#####..."
+      "#####..."
+      "#####..."
+      ".###...."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+  };
+  # The margin cat's ball of yarn, a thing of its own rather than the cat:
+  # a ball four cells across on the ground line, its loose strand curling
+  # up, so it rolls on its own cells. The icon font has no yarn, so its
+  # glyph is the round ball with a seam (the tennis ball's).
+  yarn = {
+    glyph = nerd "f0507";
+    console = "o";
+    means = "the margin cat's ball of yarn";
+    pixels = [
+      ".....##."
+      "....#..#"
+      ".....#.."
+      "......#."
+      "..###.#."
+      ".#.#.#.."
+      ".##.##.."
+      "..###..."
+    ];
+  };
   # The padlock, as locked's is, beside anything typed that stays hidden.
   secret = {
     glyph = nerd "f023";
