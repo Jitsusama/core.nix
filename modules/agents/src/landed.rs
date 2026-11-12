@@ -152,18 +152,26 @@ fn worth_reading(one: &Value) -> bool {
 }
 
 /// Whether a landing's line for Joel asks him to try something, so it
-/// waits in For You's To Try: any line but one opening with "Nothing",
-/// as "Nothing to try", "Nothing changes on screen" and "Nothing new to
-/// try" do, 639 of the 1,506 lines on 2026-11-11, each asking nothing of
-/// him (VKCF3Z, 2026-11-11). Read from the words until the harness says
+/// waits in For You's To Try: any line but one with a part opening with
+/// "Nothing", as "Nothing to try", "Nothing changes on screen" and "Core
+/// refuses it now; nothing to try" do (VKCF3Z, 2026-11-11), 648 lines
+/// opening so and 132 more saying it after what landed, of 1,529 on
+/// 2026-11-11. A part saying "but" or "else" still asks, as "nothing
+/// looks different, but Return pastes at once" does, the one line of
+/// them asking him anything. Read from the words until the harness says
 /// it of a landing itself.
 fn tries(line: &str) -> bool {
-    let first: String = line
-        .trim_start()
-        .chars()
-        .take_while(|letter| letter.is_alphabetic())
-        .collect();
-    !line.trim().is_empty() && !first.eq_ignore_ascii_case("nothing")
+    let says_nothing = |part: &str| {
+        let mut words = part
+            .split(|letter: char| !letter.is_alphabetic())
+            .filter(|word| !word.is_empty());
+        words
+            .next()
+            .is_some_and(|first| first.eq_ignore_ascii_case("nothing"))
+            && !words
+                .any(|word| word.eq_ignore_ascii_case("but") || word.eq_ignore_ascii_case("else"))
+    };
+    !line.trim().is_empty() && !line.split(['.', ';', ':', '?', '!']).any(says_nothing)
 }
 
 /// Who landed a landing, as its row and drawer say it.
@@ -440,6 +448,46 @@ mod tests {
                 &json!(true)
             ],
             "newest first: a line opening with nothing asks nothing, nor does no line"
+        );
+    }
+
+    #[test]
+    fn a_line_saying_nothing_to_try_after_what_landed_asks_nothing_either() {
+        let landings = [
+            kept(
+                "s",
+                "o#1",
+                "2026-11-11T01:00:00Z",
+                "Core refuses it now; nothing to try.",
+            ),
+            kept(
+                "s",
+                "o#2",
+                "2026-11-11T02:00:00Z",
+                "The net is faster. Nothing to try.",
+            ),
+            kept(
+                "s",
+                "o#3",
+                "2026-11-11T03:00:00Z",
+                "Paste from Super+V: nothing looks different, but Return pastes at once.",
+            ),
+            kept(
+                "s",
+                "o#4",
+                "2026-11-11T04:00:00Z",
+                "Try it: open Agents. Nothing else changes.",
+            ),
+        ];
+        let (records, _) = landed(landings.iter(), &[], &Reading::default());
+        let tries: Vec<&Value> = records[..4]
+            .iter()
+            .map(|one| &one["landed"]["tries"])
+            .collect();
+        assert_eq!(
+            tries,
+            [&json!(true), &json!(true), &json!(false), &json!(false)],
+            "newest first: a later part saying nothing asks nothing, unless it says but or else"
         );
     }
 
