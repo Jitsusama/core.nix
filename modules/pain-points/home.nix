@@ -1,10 +1,11 @@
 # pain-points names, every ten minutes, the interactions with the
-# launcher and pi that slowed Joel most today (src/main.rs says how), in
-# $XDG_STATE_HOME/pain-points/<local day>.jsonl, so the day's health can
-# say what slowed him down without anyone watching for it. It reads what
-# he typed to pi, so it can reach no network and write nowhere but its
-# own state; what he typed is never written or sent. It's built for
-# Linux alone, so it never reads a work laptop's pi logs.
+# launcher, pi and Chrome that slowed Joel most today (src/main.rs says
+# how), in $XDG_STATE_HOME/pain-points/<local day>.jsonl, so the day's
+# health can say what slowed him down without anyone watching for it. It
+# reads what he typed to pi, and when and how he visited pages in Chrome,
+# so it can reach no network and write nowhere but its own state; what he
+# typed is never written or sent, and no page is ever read. It's built for
+# Linux alone, so it never reads a work laptop's pi logs or Chrome.
 { lib, pkgs, ... }:
 let
   package = pkgs.callPackage ./package.nix { };
@@ -13,7 +14,7 @@ in
   home.packages = [ package ];
 
   systemd.user.services.pain-points = {
-    Unit.Description = "Names the launcher's and pi's interactions that slowed Joel most today";
+    Unit.Description = "Names the launcher's, pi's and Chrome's interactions that slowed Joel most today";
     Service = {
       Type = "oneshot";
       ExecStart = lib.concatStringsSep " " [
@@ -39,7 +40,7 @@ in
   };
 
   systemd.user.timers.pain-points = {
-    Unit.Description = "Names what slowed Joel most in the launcher and pi, every ten minutes";
+    Unit.Description = "Names what slowed Joel most in the launcher, pi and Chrome, every ten minutes";
     Timer.OnCalendar = "*:0/10";
     Install.WantedBy = [ "timers.target" ];
   };

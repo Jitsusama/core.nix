@@ -1,18 +1,20 @@
-//! Names the interactions with the launcher and pi that slowed Joel most
-//! today, so what slows him down is read from his own use rather than
+//! Names the interactions with the launcher, pi and Chrome that slowed Joel
+//! most today, so what slows him down is read from his own use rather than
 //! guessed (Joel, 2026-11-11: "identifying what i'm trying to do, and what
 //! slows me down from getting there, particuularly the launcher").
 //!
 //! `pain-points read` reads the launcher's own record of each opening
 //! (launcher-trials.jsonl, under the shell's state) and its journal's
 //! "opening usable" lines, and what's new in pi's session logs since its
-//! last read, works out what each of today's openings and messages lost
-//! him (src/pain.rs and src/pi.rs say how), and writes the worst, a line
+//! last read, and each Chrome profile's visits by when and how alone,
+//! works out what each of today's openings, messages and visits lost him
+//! (src/pain.rs, src/pi.rs and src/chrome.rs say how), and writes the
+//! worst, a line
 //! each, to `$XDG_STATE_HOME/pain-points/<local day>.jsonl`, rewritten
 //! whole each time so the file always says the day so far. It keeps kinds
 //! and timings alone: what he typed, copied or opened by name never
 //! leaves the launcher's own record, and what he typed to pi is never
-//! written or sent anywhere.
+//! written or sent anywhere, nor is any page Chrome visited.
 
 mod chrome;
 mod pain;
@@ -38,6 +40,7 @@ const DAY_MS: i64 = 86_400_000;
 struct Run {
     trials: Option<PathBuf>,
     sessions: PathBuf,
+    chrome: PathBuf,
     journalctl: PathBuf,
     date: PathBuf,
     state: PathBuf,
@@ -49,7 +52,7 @@ fn main() {
     if args.first().map(String::as_str) != Some("read") {
         eprintln!(
             "usage: pain-points read [--trials FILE] [--sessions DIR] [--journalctl PATH] \
-             [--date PATH] [--at MILLIS]"
+             [--chrome DIR] [--date PATH] [--at MILLIS]"
         );
         std::process::exit(64);
     }
@@ -63,6 +66,7 @@ fn main() {
         trials: given("--trials").map(PathBuf::from).or_else(newest_trials),
         sessions: given("--sessions")
             .map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
+        chrome: given("--chrome").map_or_else(|| home.join(".config/google-chrome"), PathBuf::from),
         journalctl: given("--journalctl").map_or_else(|| "journalctl".into(), PathBuf::from),
         date: given("--date").map_or_else(|| "date".into(), PathBuf::from),
         state: state_home().join("pain-points"),
@@ -102,8 +106,17 @@ fn read(run: &Run) -> Result<String, String> {
         .filter(|t| (start..until).contains(&t.enter))
         .count();
     let named_pi = pi::painful(&turns, start, until);
-    let (from_launcher, from_pi) = (launcher.len(), named_pi.len());
-    let named = pain::ranked(launcher.into_iter().chain(named_pi).collect());
+    let profiles = chrome_profiles(&run.chrome, start);
+    let named_chrome = chrome::painful(&profiles, start, until);
+    let (from_launcher, from_pi, from_chrome) =
+        (launcher.len(), named_pi.len(), named_chrome.len());
+    let named = pain::ranked(
+        launcher
+            .into_iter()
+            .chain(named_pi)
+            .chain(named_chrome)
+            .collect(),
+    );
     let lines: String = named
         .iter()
         .map(|p| serde_json::to_string(p).map(|line| line + "\n"))
@@ -114,15 +127,45 @@ fn read(run: &Run) -> Result<String, String> {
         &named,
         (from_launcher, openings),
         (from_pi, messages),
+        from_chrome,
     ))
 }
 
+/// Each Chrome profile's visits from `since`, in the order of the
+/// profiles' folders, which is how each is numbered. A profile whose
+/// history can't be read whole now is passed over until the next run.
+fn chrome_profiles(chrome: &Path, since: i64) -> Vec<Vec<chrome::Visit>> {
+    let mut folders: Vec<PathBuf> = fs::read_dir(chrome)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("History"))
+        .filter(|history| history.is_file())
+        .collect();
+    folders.sort();
+    folders
+        .iter()
+        .map(|history| chrome::visits(history, since).unwrap_or_default())
+        .collect()
+}
+
 /// The journal's line for the day: how many openings and messages lost
-/// him a second or more, of how many, and the worst.
-fn summary(named: &[Painful], launcher: (usize, usize), pi: (usize, usize)) -> String {
+/// him a second or more, of how many, how many goes in Chrome did, and
+/// the worst.
+fn summary(
+    named: &[Painful],
+    launcher: (usize, usize),
+    pi: (usize, usize),
+    chrome: usize,
+) -> String {
     let counted = format!(
-        "{} of {} openings and {} of {} messages to pi today lost him a second or more",
-        launcher.0, launcher.1, pi.0, pi.1
+        "{} of {} openings, {} of {} messages to pi and {chrome} {} in Chrome today \
+         lost him a second or more",
+        launcher.0,
+        launcher.1,
+        pi.0,
+        pi.1,
+        if chrome == 1 { "go" } else { "goes" }
     );
     match named.first() {
         Some(worst) => format!(
@@ -370,9 +413,25 @@ mod tests {
             }))
             + &typed(at + 60_000, "2026-11-11T16:01:00.000Z");
         fs::write(folder.join("2026-11-11T16-00-00-000Z_0001.jsonl"), log).expect("a log");
+        let profile = root.join("chrome/Default");
+        fs::create_dir_all(&profile).expect("a profile");
+        chrome::tests::history(
+            &profile.join("History"),
+            &[
+                chrome::Visit {
+                    at,
+                    transition: 0x3000_0008,
+                },
+                chrome::Visit {
+                    at: at + 30_000,
+                    transition: 0x3000_0008,
+                },
+            ],
+        );
         let run = Run {
             trials: None,
             sessions: root.join("sessions"),
+            chrome: root.join("chrome"),
             journalctl: root.join("no-journalctl"),
             date: root.join("no-date"),
             state: root.join("state"),
@@ -385,6 +444,10 @@ mod tests {
         assert!(
             said.contains("of 2 messages") && day.contains("\"place\":\"pi\""),
             "both messages were counted and the wait named: {said} / {day}"
+        );
+        assert!(
+            said.contains("1 go in Chrome") && day.contains("\"place\":\"chrome\""),
+            "the reloads were named: {said} / {day}"
         );
         for kept in [&said, &day, &state] {
             assert!(

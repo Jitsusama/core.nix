@@ -78,14 +78,90 @@ pub fn visits(history: &Path, since: i64) -> Result<Vec<Visit>, String> {
 /// are each profile's visits, oldest first; only goes begun in [since,
 /// until) count.
 pub fn painful(profiles: &[Vec<Visit>], since: i64, until: i64) -> Vec<Painful> {
-    let _ = (profiles, since, until, AGAIN_MS, BACK_MS, MOST_MS);
-    let _ = (float(0), tenths(0.0), ChromeSigns::default());
-    let _: Option<Signs> = None;
-    Vec::new()
+    let mut named = Vec::new();
+    for (profile, visits) in profiles.iter().enumerate() {
+        let profile = u32::try_from(profile).unwrap_or(u32::MAX);
+        let mut reloads: Vec<i64> = Vec::new();
+        let mut was: Option<Visit> = None;
+        for &visit in visits {
+            let joins = visit.reload()
+                && reloads
+                    .last()
+                    .is_some_and(|&last| visit.at - last <= AGAIN_MS);
+            if !joins {
+                named.extend(reloaded(&reloads, profile));
+                reloads.clear();
+            }
+            if visit.reload() {
+                reloads.push(visit.at);
+            }
+            // Back within a second is Chrome passing over a redirect, not
+            // Joel; past ten he was reading the page.
+            if let Some(was) = was.filter(|_| visit.back()) {
+                let on = visit.at - was.at;
+                if (1000..=BACK_MS).contains(&on) {
+                    named.push(go(was.at, on, "going back", "back", 1, profile, (0, 1)));
+                }
+            }
+            was = Some(visit);
+        }
+        named.extend(reloaded(&reloads, profile));
+    }
+    // A go's time is kept in whole seconds, so its start is compared to
+    // the day's at that grain.
+    named.retain(|p| (since..until).contains(&(p.at * 1000)) && p.lost_seconds >= 1.0);
+    named
+}
+
+/// A run of reloads as a go, where there were two or more: the time from
+/// the first to the last went on getting the page to do it.
+fn reloaded(at: &[i64], profile: u32) -> Option<Painful> {
+    let (&first, &last) = (at.first()?, at.last()?);
+    let count = u32::try_from(at.len()).unwrap_or(u32::MAX);
+    (count > 1).then(|| {
+        go(
+            first,
+            last - first,
+            "reloading",
+            "reload",
+            at.len(),
+            profile,
+            (count, 0),
+        )
+    })
+}
+
+/// One go in Chrome, as the day file says it.
+fn go(
+    at: i64,
+    took: i64,
+    slowed: &'static str,
+    part: &'static str,
+    openings: usize,
+    profile: u32,
+    (reloads, backs): (u32, u32),
+) -> Painful {
+    Painful {
+        at: at / 1000,
+        place: "chrome",
+        trying: "a page".to_string(),
+        seconds: tenths(float(took)),
+        usual_seconds: 0.0,
+        lost_seconds: tenths(float(took.min(MOST_MS))),
+        rank: 0,
+        slowed,
+        part,
+        openings,
+        signs: Signs::Chrome(ChromeSigns {
+            profile,
+            reloads,
+            backs,
+        }),
+    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// 2026-11-11 16:00 UTC.
@@ -127,7 +203,15 @@ mod tests {
             .filter(|w| !w.is_empty())
             .collect();
         let allowed = [
-            "SELECT", "visit_time", "transition", "FROM", "visits", "WHERE", "1", "ORDER", "BY",
+            "SELECT",
+            "visit_time",
+            "transition",
+            "FROM",
+            "visits",
+            "WHERE",
+            "1",
+            "ORDER",
+            "BY",
         ];
         for word in &words {
             assert!(allowed.contains(word), "the history is asked for {word}");
@@ -136,10 +220,18 @@ mod tests {
 
     #[test]
     fn visits_read_from_a_history_in_memory_say_when_and_how() {
-        let folder = std::env::temp_dir().join(format!("pain-points-chrome-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("pain-points-chrome-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("a scratch folder");
         let at = folder.join("History");
-        history(&at, &[visit(AT - 5000, LINK), visit(AT, LINK), visit(AT + 9000, RELOADED)]);
+        history(
+            &at,
+            &[
+                visit(AT - 5000, LINK),
+                visit(AT, LINK),
+                visit(AT + 9000, RELOADED),
+            ],
+        );
         let read = visits(&at, AT);
         std::fs::remove_dir_all(&folder).expect("the scratch folder goes");
         assert_eq!(
@@ -224,10 +316,11 @@ mod tests {
     #[test]
     fn a_go_loses_two_minutes_at_most_and_counts_on_the_day_it_began() {
         let day: Vec<Visit> = (0..6).map(|n| visit(AT + n * 50_000, RELOADED)).collect();
-        assert_eq!(
-            painful(&[day.clone()], AT - 1, AT + 1)[0].lost_seconds,
-            120.0
+        let profiles = std::slice::from_ref(&day);
+        assert_eq!(painful(profiles, AT - 1, AT + 1)[0].lost_seconds, 120.0);
+        assert!(
+            painful(profiles, AT + 1, AT + 2).is_empty(),
+            "begun before the day"
         );
-        assert!(painful(&[day], AT + 1, AT + 2).is_empty(), "begun before the day");
     }
 }
