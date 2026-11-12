@@ -60,6 +60,9 @@ pub enum Action {
         /// before each delete.
         roots: PathBuf,
         paths: Vec<String>,
+        /// The files running programs hold known only by Nix's hard link
+        /// to them, so a path holding one is left out of the delete.
+        links: std::collections::BTreeSet<crate::held::File>,
     },
     /// The system daemon's garbage on the filesystem mounted at `root`,
     /// asked of it at `socket` in the pass's band.

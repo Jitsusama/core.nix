@@ -268,7 +268,7 @@ fn a_delete_that_fails_otherwise_says_why() {
             &["/nowhere/at/all".to_owned()],
             false
         ),
-        Ok(())
+        Ok(Vec::new())
     );
 }
 
@@ -419,6 +419,7 @@ fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
     // Not a process, so not read.
     link(&proc.join("self/fd/3"), &store.join("eee-mine"));
     let mut roots: Vec<String> = disk_guard::garbage::runtime_roots(&proc, &store)
+        .paths
         .into_iter()
         .collect();
     roots.sort_unstable();
@@ -432,7 +433,8 @@ fn runtime_roots_are_the_store_paths_each_process_has_in_hand() {
             named("ddd-glibc")
         ]
     );
-    assert!(disk_guard::garbage::runtime_roots(&dir.path().join("nowhere"), &store).is_empty());
+    let nowhere = disk_guard::garbage::runtime_roots(&dir.path().join("nowhere"), &store);
+    assert!(nowhere.paths.is_empty() && nowhere.links.is_empty());
 }
 
 #[test]
@@ -461,6 +463,7 @@ fn a_process_holds_the_store_paths_its_command_line_and_environment_name() {
     )
     .unwrap();
     let mut roots: Vec<String> = disk_guard::garbage::runtime_roots(&proc, &store)
+        .paths
         .into_iter()
         .collect();
     roots.sort_unstable();

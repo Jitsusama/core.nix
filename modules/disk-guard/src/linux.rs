@@ -462,6 +462,52 @@ fn waiters_in(text: &str, me: u32, inodes: &[u64]) -> Option<Vec<i32>> {
 /// `PF_KTHREAD` in a process's flags: a kernel thread, which holds no files.
 const PF_KTHREAD: u64 = 0x0020_0000;
 
+/// What each process under `proc` has in hand, as Nix reads its runtime
+/// roots: its program, its folder, its descriptors' files and its maps',
+/// with its command line and environment whole. What can't be read is
+/// left out, and nothing is when `proc` can't be listed.
+pub fn hands(proc: &Path) -> Vec<crate::held::Hand> {
+    let Ok(entries) = fs::read_dir(proc) else {
+        return Vec::new();
+    };
+    let numbered = |name: &std::ffi::OsStr| {
+        let name = name.to_string_lossy();
+        !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_digit())
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| numbered(&entry.file_name()))
+        .map(|entry| hand(&entry.path()))
+        .collect()
+}
+
+/// What the process at `process` has in hand.
+fn hand(process: &Path) -> crate::held::Hand {
+    let mut files: Vec<PathBuf> = ["exe", "cwd"]
+        .iter()
+        .filter_map(|link| fs::read_link(process.join(link)).ok())
+        .collect();
+    if let Ok(fds) = fs::read_dir(process.join("fd")) {
+        files.extend(
+            fds.filter_map(Result::ok)
+                .filter_map(|fd| fs::read_link(fd.path()).ok()),
+        );
+    }
+    // A mapping's file is the line's last field, after five others.
+    if let Ok(maps) = fs::read_to_string(process.join("maps")) {
+        files.extend(
+            maps.lines()
+                .filter_map(|line| line.splitn(6, ' ').nth(5).map(str::trim_start))
+                .map(PathBuf::from),
+        );
+    }
+    let texts = ["cmdline", "environ"]
+        .iter()
+        .filter_map(|text| fs::read(process.join(text)).ok())
+        .collect();
+    crate::held::Hand { files, texts }
+}
+
 /// Every process `/proc` shows, but kernel threads and zombies. A process
 /// that exits mid-scan is left out. One whose cwd, files or maps are hidden,
 /// as another account's are, reads as unreadable rather than as idle.

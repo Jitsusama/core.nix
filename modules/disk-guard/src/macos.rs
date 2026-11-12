@@ -340,6 +340,37 @@ pub fn processes(_proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
         .collect())
 }
 
+/// What each process has in hand, for the store's runtime roots: its
+/// program, its folder, its open and mapped files, and its arguments and
+/// environment whole, as `KERN_PROCARGS2` gives them. What can't be read
+/// is left out, and nothing is when the processes can't be listed.
+pub fn hands(_proc: &Path) -> Vec<crate::held::Hand> {
+    let Ok(pids) = pids() else {
+        return Vec::new();
+    };
+    let argmax: c_int = sysctl_value(c"kern.argmax").unwrap_or(0);
+    // A negative maximum leaves no room, as it says nothing.
+    let mut args = vec![0u8; usize::try_from(argmax).unwrap_or(0)];
+    pids.into_iter()
+        .filter(|&pid| pid > 0)
+        .map(|pid| {
+            let mut files: Vec<PathBuf> = exe(pid).into_iter().collect();
+            if let Ok(paths) =
+                pidinfo::<libc::proc_vnodepathinfo>(pid, libc::PROC_PIDVNODEPATHINFO, 0)
+            {
+                files.extend(path(&paths.pvi_cdir));
+            }
+            files.extend(self::files(pid).unwrap_or_default());
+            files.extend(maps(pid).unwrap_or_default());
+            let texts = procargs(pid, &mut args)
+                .map(<[u8]>::to_vec)
+                .into_iter()
+                .collect();
+            crate::held::Hand { files, texts }
+        })
+        .collect()
+}
+
 /// When process `pid` started, in the microseconds `processes` gives as its
 /// start, or none when it's gone or a zombie, which holds no files. Its BSD
 /// info is anybody's to read.
@@ -488,9 +519,14 @@ fn maps(pid: libc::pid_t) -> io::Result<Vec<PathBuf>> {
     Ok(maps)
 }
 
-/// Its arguments and the environment variables the guard keeps, through
-/// `KERN_PROCARGS2`, which only its own account and root may read.
+/// Its arguments and the environment variables the guard keeps.
 fn arguments(pid: libc::pid_t, room: &mut [u8]) -> Option<crate::procargs::Args> {
+    crate::procargs::parse(procargs(pid, room)?, crate::activity::kept)
+}
+
+/// Its arguments and environment as `KERN_PROCARGS2` lays them out in
+/// `room`, which only its own account and root may read.
+fn procargs(pid: libc::pid_t, room: &mut [u8]) -> Option<&[u8]> {
     let mut name = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
     let mut size = room.len();
     // SAFETY: room has room for size bytes, and the kernel says how many
@@ -508,7 +544,7 @@ fn arguments(pid: libc::pid_t, room: &mut [u8]) -> Option<crate::procargs::Args>
     if read != 0 {
         return None;
     }
-    crate::procargs::parse(room.get(..size)?, crate::activity::kept)
+    room.get(..size)
 }
 
 /// How many bytes it has written to disk.

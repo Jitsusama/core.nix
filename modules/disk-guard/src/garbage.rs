@@ -142,93 +142,16 @@ pub fn temp_roots(dir: &Path) -> HashSet<String> {
         .collect()
 }
 
-/// Every store path under `store` a running process has in hand, read from
-/// `processes` as Nix reads its runtime roots: each open file, each mapped
-/// one, its program and its folder, by the store path it lies in. A test
-/// VM's `virtiofsd` shares the whole store and keeps a descriptor open on
-/// each path its machine has looked at, which can be tens of thousands. A
-/// process gone between listing and reading holds nothing.
-///
-/// A store path its command line or its environment names is held too,
-/// which Nix doesn't count: a program handed a path copies it a file at a
-/// time, and between two files it has none open. On 30 October a stick
-/// writer's payload, built ten minutes before, was collected under it
-/// that way, mid-write.
-pub fn runtime_roots(processes: &Path, store: &Path) -> HashSet<String> {
-    let Ok(entries) = std::fs::read_dir(processes) else {
-        return HashSet::new();
-    };
-    let mut held = HashSet::new();
-    let mut named_by_text = Vec::new();
-    let mut note = |file: &Path| {
-        if let Ok(within) = file.strip_prefix(store)
-            && let Some(std::path::Component::Normal(name)) = within.components().next()
-        {
-            held.insert(store.join(name).to_string_lossy().into_owned());
-        }
-    };
-    for entry in entries.filter_map(Result::ok) {
-        let process = entry.path();
-        let named = entry.file_name();
-        if !named
-            .to_string_lossy()
-            .bytes()
-            .all(|byte| byte.is_ascii_digit())
-        {
-            continue;
-        }
-        for link in ["exe", "cwd"] {
-            if let Ok(file) = std::fs::read_link(process.join(link)) {
-                note(&file);
-            }
-        }
-        if let Ok(fds) = std::fs::read_dir(process.join("fd")) {
-            for fd in fds.filter_map(Result::ok) {
-                if let Ok(file) = std::fs::read_link(fd.path()) {
-                    note(&file);
-                }
-            }
-        }
-        for text in ["cmdline", "environ"] {
-            if let Ok(bytes) = std::fs::read(process.join(text)) {
-                named_by_text.extend(named_in(&bytes, store));
-            }
-        }
-        // A mapping's file is the line's last field, after five others.
-        if let Ok(maps) = std::fs::read_to_string(process.join("maps")) {
-            for line in maps.lines() {
-                if let Some(file) = line.splitn(6, ' ').nth(5).map(str::trim_start) {
-                    note(Path::new(file));
-                }
-            }
-        }
-    }
-    held.extend(named_by_text);
-    held
-}
-
-/// The store paths `text` names, each as `store`, a slash and a name in
-/// the characters Nix allows one, wherever it starts: after an `=`, a `:`
-/// or nothing.
-fn named_in(text: &[u8], store: &Path) -> Vec<String> {
-    let prefix = format!("{}/", store.display());
-    let prefix = prefix.as_bytes();
-    let allowed = |byte: &u8| byte.is_ascii_alphanumeric() || b"+-._?=".contains(byte);
-    let mut named = Vec::new();
-    let mut rest = text;
-    while let Some(at) = rest
-        .windows(prefix.len())
-        .position(|window| window == prefix)
-    {
-        let after = &rest[at + prefix.len()..];
-        let length = after.iter().take_while(|byte| allowed(byte)).count();
-        if length > 0 {
-            let name = String::from_utf8_lossy(&after[..length]);
-            named.push(store.join(name.as_ref()).to_string_lossy().into_owned());
-        }
-        rest = &after[length..];
-    }
-    named
+/// What running processes hold under `store`, read from `processes` as
+/// this platform gives them (`crate::sys::hands`) and worked out by
+/// `crate::held`: each open file, each mapped one, its program and its
+/// folder, by the store path it lies in, and the store paths its command
+/// line and environment name. A test VM's `virtiofsd` shares the whole
+/// store and keeps a descriptor open on each path its machine has looked
+/// at, which can be tens of thousands. A process gone between listing and
+/// reading holds nothing.
+pub fn runtime_roots(processes: &Path, store: &Path) -> crate::held::Held {
+    crate::held::held(crate::sys::hands(processes), store)
 }
 
 /// How long one step of `nix store gc --max` may take, when there is no
@@ -440,6 +363,24 @@ const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
 const REVIVALS: usize = 3;
 /// How a delete that gave up on a batch says so.
 const STALE: &str = "came alive since the listing";
+/// How the system says it won't let Nix change a path: macOS keeps an app
+/// it has run under App Management, so its folder can't be made writable
+/// to empty it, whoever asks.
+const REFUSED: &str = "Operation not permitted";
+
+/// Which of the batch's paths the system refused Nix in what it `said`,
+/// naming a file in it or the path itself.
+fn refused<'a>(said: &str, left: &[&'a String]) -> Option<&'a String> {
+    let line = said.lines().find(|line| line.contains(REFUSED))?;
+    left.iter().copied().find(|path| {
+        line.match_indices(path.as_str()).any(|(at, _)| {
+            matches!(
+                line[at + path.len()..].chars().next(),
+                Some('/' | '"' | '\'')
+            )
+        })
+    })
+}
 
 /// Whether a delete failed because the listing its batch came from is
 /// stale, which only listing the store again mends.
@@ -454,18 +395,27 @@ pub fn stale(why: &str) -> bool {
 /// runs, minutes for a flake's checks, and writes the same ones each time
 /// it runs, so a batch made a minute before meets them. Nix refuses the
 /// whole call when a root reaches any path again, naming one, so it's
-/// dropped and the rest tried again.
-pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<(), String> {
+/// dropped and the rest tried again. A path the system won't let Nix
+/// change stops the call there too, and is dropped the same way; the
+/// paths the system refused are what it answers.
+pub fn delete(
+    nix: &Path,
+    roots: &Path,
+    paths: &[String],
+    idle: bool,
+) -> Result<Vec<String>, String> {
     let mut alive: Vec<String> = Vec::new();
+    let mut forbidden: Vec<String> = Vec::new();
     loop {
         let held = temp_roots(roots);
         let left: Vec<&String> = paths
             .iter()
-            .filter(|path| !alive.contains(path) && !held.contains(path.as_str()))
+            .filter(|path| !alive.contains(path) && !forbidden.contains(path))
+            .filter(|path| !held.contains(path.as_str()))
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
         if left.is_empty() {
-            return Ok(());
+            return Ok(forbidden);
         }
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
@@ -476,7 +426,7 @@ pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<
         argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
         let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
         if ok {
-            return Ok(());
+            return Ok(forbidden);
         }
         let revived = said
             .split("Cannot delete path '")
@@ -487,7 +437,10 @@ pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<
         match revived {
             Some(path) if alive.len() < REVIVALS => alive.push(path),
             Some(_) => return Err(format!("{REVIVALS} paths {STALE}")),
-            None => return Err(failed(&argv, &said)),
+            None => match refused(&said, &left) {
+                Some(path) if forbidden.len() < REVIVALS => forbidden.push(path.clone()),
+                _ => return Err(failed(&argv, &said)),
+            },
         }
     }
 }
