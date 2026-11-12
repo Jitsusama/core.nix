@@ -41,4 +41,32 @@
       timeout 60 ${qs} -p shell.qml
       touch $out
     '';
+
+  # With nothing at the machine daemon's socket, Heat's row stands: held
+  # before its watch begins, then saying its daemon isn't answering, so
+  # Machine's head never names a row a show can't find (tests/heat-away.qml).
+  heat-stands-while-its-daemon-is-away =
+    # Kept in Nix for the same reason as the case above.
+    pkgs.runCommandLocal "heat-stands-while-its-daemon-is-away" { } ''
+      mkdir -p launcher runtime/daemons && chmod -R 700 runtime
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [
+        "Daemon.qml"
+        "Words.qml"
+        "launcher/Heat.qml"
+        "launcher/Provider.qml"
+        "launcher/ReadyRows.qml"
+        "launcher/words.json"
+      ]}
+      cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
+      cp ${singleton "Niri.qml" ''
+        function spawn(command) { }
+      ''} Niri.qml
+      cp ${../../../tests/heat-away.qml} shell.qml
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml
+      touch $out
+    '';
 }
