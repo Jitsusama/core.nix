@@ -15,7 +15,10 @@ raw=(-t f32 -r 48000 -c 1)
 rms() { sox "${raw[@]}" "$1" -n stat 2>&1 | awk -F: '/RMS +amplitude/ { print $2 + 0 }'; }
 # Brings a clip to `level` RMS, in place.
 level() {
-  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$(echo "$2 / $(rms "$1")" | bc -l)"
+  local now gain
+  now=$(rms "$1")
+  gain=$(echo "$2 / $now" | bc -l)
+  sox "${raw[@]}" "$1" "${raw[@]}" "$1.levelled" vol "$gain"
   mv "$1.levelled" "$1"
 }
 score() { "$program" score "$models" <"$1"; }
@@ -39,16 +42,20 @@ for noise in room pink; do
   level "$noise-heard.f32" 0.1
   noisy=$(score "$noise-heard.f32")
   echo "$noise, noisy: $noisy"
+  noisy_overall=$(mark "$noisy" overall)
+  noisy_voice=$(mark "$noisy" voice)
   for cleaner in deepfilternet deepfilternet-gentle rnnoise; do
     level "$noise-$cleaner.f32" 0.1
     cleaned=$(score "$noise-$cleaner.f32")
     echo "$noise, $cleaner: $cleaned"
-    better=$(echo "$(mark "$cleaned" overall) > $(mark "$noisy" overall)" | bc)
+    overall=$(mark "$cleaned" overall)
+    voice_kept=$(mark "$cleaned" voice)
+    better=$(echo "$overall > $noisy_overall" | bc)
     if ((!better)); then
       echo "  $cleaner made the voice in $noise noise sound no better overall"
       failed=1
     fi
-    kept=$(echo "$(mark "$cleaned" voice) >= $(mark "$noisy" voice) - 0.3" | bc)
+    kept=$(echo "$voice_kept >= $noisy_voice - 0.3" | bc)
     if ((!kept)); then
       echo "  $cleaner hurt the voice itself in $noise noise"
       failed=1
