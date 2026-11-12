@@ -182,6 +182,7 @@
           inherit (self.homeModules) people quickshell;
         };
         gtk = ./modules/gtk/home.nix;
+        health = ./modules/health/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
         identity = ./modules/identity/home.nix;
