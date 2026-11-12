@@ -58,12 +58,14 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
         .from(FROM)
         .his()
     };
-    let middle = |part: &'static str, says: &'static str| {
+    // Keys and drawers are Y2YBTS's; a daemon's changes reach the screen at
+    // the pace ZINAWZ's refresh sets, so they're its (Y2YBTS, 2026-11-12).
+    let middle = |part: &'static str, says: &'static str, owner: &'static str| {
         Reading::new(
             says,
             figure(format!("health.launcher.{part}.median-ms")),
             " ms",
-            "Y2YBTS",
+            owner,
         )
         .bar(Bar::AtMost(50.0))
         .detail(late(part, 50.0).map(|late| match ceiling(part) {
@@ -87,6 +89,7 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
         middle(
             "keys",
             "the launcher's middle key {} today, from his key to his screen",
+            "Y2YBTS",
         ),
         Reading::new(
             "the launcher's slowest key in a hundred today {}",
@@ -103,10 +106,12 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
         middle(
             "changes",
             "the launcher's middle change from a daemon {} to his screen today",
+            "ZINAWZ",
         ),
         middle(
             "drawers",
             "the launcher's middle drawer {} from his key today",
+            "Y2YBTS",
         ),
     ]
 }
@@ -170,7 +175,7 @@ mod tests {
         );
         assert_eq!(
             read.iter().map(|r| r.owner).collect::<Vec<_>>(),
-            ["H6EDLC", "H6EDLC", "Y2YBTS", "Y2YBTS", "Y2YBTS", "Y2YBTS"]
+            ["H6EDLC", "H6EDLC", "Y2YBTS", "Y2YBTS", "ZINAWZ", "Y2YBTS"]
         );
         assert_eq!(
             read[0].detail.as_deref(),
