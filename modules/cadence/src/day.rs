@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::machine;
+use crate::{builders, machine};
 
 /// One day's figures, kept as `day/<date>.json` in cadence's folder so the
 /// next days are held against it.
@@ -98,9 +98,13 @@ impl Measure {
 }
 
 /// Every figure the day reads: the delivery cycle's and the code's here,
-/// the machine's own from health in machine.rs.
+/// the machine's own from health in machine.rs, and the builders' in
+/// builders.rs.
 pub fn measures() -> impl Iterator<Item = &'static Measure> {
-    MEASURES.iter().chain(machine::MEASURES)
+    MEASURES
+        .iter()
+        .chain(machine::MEASURES)
+        .chain(builders::MEASURES)
 }
 
 /// The delivery cycle's figures and the code's. The bars are
