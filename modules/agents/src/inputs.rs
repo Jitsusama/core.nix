@@ -293,6 +293,19 @@ impl Inputs {
         closed::closed(listed, &quests, &live, &known)
     }
 
+    /// What the sessions spent today as spend-watch says, or nothing while
+    /// the screen is shared.
+    fn today_spent(&self) -> &str {
+        if self.sharing {
+            return "";
+        }
+        self.spend
+            .as_ref()
+            .and_then(|spend| spend.get("agentsToday"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -324,15 +337,6 @@ impl Inputs {
             .iter()
             .map(|one| one.stands(&joel_can, &jobs))
             .collect();
-        let today_spent = if self.sharing {
-            ""
-        } else {
-            self.spend
-                .as_ref()
-                .and_then(|spend| spend.get("agentsToday"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-        };
         let mut rows = row::rows(&sessions, &known, &self.words);
         let answers = self.answers();
         let answering: HashSet<&str> = answers
@@ -389,7 +393,12 @@ impl Inputs {
         let top = top::rows(&rows, &known_top, &self.words);
         served::made(
             &rows,
-            &summary::summary(&states, answering.len(), today_spent, &self.words.agents),
+            &summary::summary(
+                &states,
+                answering.len(),
+                self.today_spent(),
+                &self.words.agents,
+            ),
         )
         .with_top(top)
         .with_drawers(drawers)
