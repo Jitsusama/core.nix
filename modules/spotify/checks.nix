@@ -164,6 +164,27 @@ onLinux {
         touch $out
       '';
 
+  # spotify-player takes the language's keys its own lack: Ctrl+e and Ctrl+y
+  # a line, Ctrl+o back a page (tests/spotify-player-speaks-vims-keys.sh).
+  spotify-player-speaks-vims-keys =
+    let
+      home = account graphical;
+      files = home.xdg.configFile;
+      keymap = files."spotify-player/keymap.toml".source or (pkgs.writeText "keymap.toml" "");
+    in
+    pkgs.runCommandLocal "spotify-player-speaks-vims-keys"
+      {
+        nativeBuildInputs = [
+          home.programs.spotify-player.package
+          pkgs.yq-go
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/spotify-player-speaks-vims-keys.sh} \
+          ${files."spotify-player/app.toml".source} ${keymap}
+        touch $out
+      '';
+
   # spotify-player's sign-in asks ncspot's app to send Joel back to the one
   # address that app takes. The sign-in prints where it sends him, then
   # waits for Spotify's answer, which never comes here, so it's stopped.
