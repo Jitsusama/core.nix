@@ -262,6 +262,18 @@
     { "id": "sound:profile", "in": "sound", "name": "Profile", "term": "Machine/profile" },
     { "id": "sound:playing", "in": "sound", "name": "Playing At" },
     { "id": "sound:recording", "in": "sound", "name": "Recording At" },
-    { "id": "sound:offers", "in": "sound", "name": "Offers" }
+    { "id": "sound:offers", "in": "sound", "name": "Offers" },
+    { "id": "sound:hardware", "in": "sound", "name": "Hardware", "term": "Machine/hardware" },
+    { "id": "sound:card", "in": "sound", "name": "Card", "term": "Machine/card" },
+    { "id": "sound:amplifiers", "in": "sound", "name": "Amplifiers" },
+    { "id": "sound:codec", "in": "sound", "name": "Chip" },
+    {
+      "id": "sound:microphones",
+      "in": "sound",
+      "name": "Microphones",
+      "term": "Machine/microphone"
+    },
+    { "id": "sound:resolution", "in": "sound", "name": "Resolution" },
+    { "id": "sound:usb-id", "in": "sound", "name": "USB ID" }
   ]
 }

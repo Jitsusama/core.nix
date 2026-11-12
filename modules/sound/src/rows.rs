@@ -173,7 +173,7 @@ impl<'a> Device<'a> {
 
     /// Its own short name, rather than the sound card's long one before
     /// it.
-    fn nicknamed(&self) -> &'a str {
+    pub(crate) fn nicknamed(&self) -> &'a str {
         [self.text("nick"), self.text("description"), self.name]
             .into_iter()
             .find(|name| !name.is_empty())

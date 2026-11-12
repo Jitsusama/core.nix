@@ -6,8 +6,8 @@
 //! into an act's ([`levels`]), how each act is done ([`acts`]), and
 //! Sound's rows, served ready for the launcher ([`rows`]), each device's
 //! parts inside it ([`parts`]), its programs and Channels among them
-//! ([`programs`], [`channels`]), and what desk-facts says of its card
-//! last ([`desk`]),
+//! ([`programs`], [`channels`]), its Hardware ([`hardware`]), and what
+//! desk-facts says of its card last ([`desk`]),
 //! each named by its desktop entry ([`naming`]) and each program's drawer
 //! served beside its row ([`drawer`]), and how each running
 //! node keeps time, as PipeWire's profiler says it ([`timing`]).
@@ -20,6 +20,7 @@ pub mod channels;
 pub mod desk;
 pub mod devices;
 pub mod drawer;
+pub mod hardware;
 pub mod interface;
 pub mod levels;
 pub mod naming;
