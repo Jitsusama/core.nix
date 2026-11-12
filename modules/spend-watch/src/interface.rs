@@ -19,7 +19,7 @@
 use crate::acts::{self, Doer};
 use crate::collection::Collection;
 use crate::ready::{Served, Words, in_place};
-use crate::records::{BUDGETS, budget_records, cut, cut_budgets, kind_of, kinds};
+use crate::records::{BUDGETS, budget_records, cut, cut_budgets, kind_of, kinds, lines};
 use crate::standing::Standing;
 use crate::status::ShellAction;
 use serde_json::{Value, json};
@@ -183,6 +183,9 @@ impl Watch {
 #[derive(Default)]
 struct Held {
     records: BTreeMap<String, Value>,
+    /// The collection's lines by key, as the last pass wrote them, for
+    /// the acts they offer (`records::lines`).
+    lines: BTreeMap<String, Value>,
     /// What the bar's piece offers, as the last pass wrote `status.json`,
     /// by each action's key.
     offered: BTreeMap<String, Value>,
@@ -263,11 +266,10 @@ impl Hub {
         };
         let held = {
             let held = self.lock();
-            held.records
-                .values()
-                .find(|record| record["line"]["key"] == line)
-                .map(|record| record["line"].clone())
-                .or_else(|| held.offered.get(line).cloned())
+            held.lines
+                .get(line)
+                .or_else(|| held.offered.get(line))
+                .cloned()
         };
         let doing = match acts::asked(act, line, held.as_ref()) {
             Ok(doing) => doing,
@@ -303,6 +305,7 @@ impl Hub {
                 .filter(|(key, _)| kind_of(key).is_some_and(|kind| BUDGETS.contains(&kind)))
                 .collect();
             let served = held.served.take(&whole, &self.words);
+            held.lines = lines(&whole);
             held.records = served;
             held.records.extend(cut(whole));
             held.records.extend(budgets);
@@ -372,6 +375,7 @@ impl Hub {
     fn tell(&self, whole: Value, budgets: BTreeMap<String, Value>) {
         let mut held = self.lock();
         let mut now = held.served.take(&whole, &self.words);
+        held.lines = lines(&whole);
         now.extend(cut(whole));
         now.extend(budgets);
         let first = !held.passed;
@@ -642,14 +646,25 @@ mod tests {
             made["quest:QEST-1"]["all"], "$3.00",
             "a quest's family should be its record's fields"
         );
-        assert_eq!(
-            made["row:findings:held"]["order"], 0,
-            "a row should keep its place in its list"
-        );
         assert!(
             made.contains_key("report:summary") && made.contains_key("words:periods"),
             "each report and word list should be a record: {:?}",
             made.keys().collect::<Vec<_>>()
+        );
+    }
+
+    // The launcher draws the collection's lists only as the rows `ready.rs`
+    // serves, so a line held again as a record of its list is one more
+    // record weighed on every pass that nothing watches.
+    #[test]
+    fn a_lists_line_is_told_only_as_its_ready_row() {
+        let listed: Vec<String> = records(&collection())
+            .into_keys()
+            .filter(|key| key.starts_with("row:"))
+            .collect();
+        assert!(
+            listed.is_empty(),
+            "the collection's lines should be told only as ready rows, not as {listed:?}"
         );
     }
 
