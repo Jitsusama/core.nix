@@ -380,6 +380,13 @@ def test_a_call_starting_offers_the_line_for_its_chat(joel: Joel, call: dict[str
     assert call["key"] == "call:e1"
 
 
+def test_a_call_ending_withdraws_its_notice(joel: Joel, call: dict[str, Any]) -> None:
+    """Once the call ended, its notice saying it's being transcribed was withdrawn."""
+    heading = f"{MEETING} Is Being Transcribed"
+    joel.wait_for(f"grep -qxF {shlex.quote(heading)} {TOLD}-withdrawn", ANSWERS_WITHIN)
+    assert call["ended"] is not None, "the call is held as ended"
+
+
 def test_stop_transcribing_stops_at_once_with_the_call_still_on(
     joel: Joel, stopped: dict[str, Any]
 ) -> None:

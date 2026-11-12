@@ -5,10 +5,13 @@
 //!
 //! Each answers a call Joel is on or just had, so none is ever counted
 //! missed (the shell's `x-answers`). Each waits on a thread of its own for
-//! the act Joel chooses, which it's given by its name.
+//! the act Joel chooses, which it's given by its name. One that says what
+//! has passed is withdrawn once it has (`Shown`), as a call's being
+//! transcribed once the call ends.
 
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, PoisonError};
 
 /// The line offered for the call's chat, telling the others, for Joel to
 /// paste; never posted by itself, since that would be posting in his name.
@@ -112,6 +115,8 @@ fn arguments(notice: &Notice) -> Vec<String> {
     let mut args = vec![
         "--app-name=Calls".to_owned(),
         "--hint=string:x-answers:call".to_owned(),
+        // Its number, said as it's shown, so it can be withdrawn.
+        "--print-id".to_owned(),
     ];
     if notice.quiet {
         args.push("--hint=boolean:suppress-sound:true".to_owned());
@@ -131,17 +136,134 @@ fn arguments(notice: &Notice) -> Vec<String> {
     args
 }
 
+/// Where a notice raised stands, for withdrawing it: its number comes
+/// only once the server has it, and one closed by Joel or its server is
+/// gone already.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Showing {
+    #[default]
+    Coming,
+    Up(u32),
+    /// Withdrawn before its number came, so it's closed once it does.
+    Withdrawn,
+    Gone,
+}
+
+/// A notice raised, which can be withdrawn once what it says has passed,
+/// so it never stays saying so: on 2026-11-11 a call's "Is Being
+/// Transcribed" stayed on Joel's desktop after the call ended and its
+/// summary came.
+#[derive(Clone, Debug, Default)]
+pub struct Shown(Arc<Mutex<Showing>>);
+
+impl Shown {
+    fn moved(&self, to: impl FnOnce(Showing) -> (Showing, Option<u32>)) -> Option<u32> {
+        let mut showing = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let (now, closing) = to(*showing);
+        *showing = now;
+        closing
+    }
+
+    /// Its number has come: the number to close at once when it was
+    /// withdrawn meanwhile.
+    fn up(&self, id: u32) -> Option<u32> {
+        self.moved(|was| match was {
+            Showing::Coming => (Showing::Up(id), None),
+            Showing::Withdrawn => (Showing::Gone, Some(id)),
+            other => (other, None),
+        })
+    }
+
+    /// Closed, by Joel or its server: nothing is left to withdraw.
+    fn gone(&self) {
+        self.moved(|_| (Showing::Gone, None));
+    }
+
+    /// The number to close to withdraw it, none while it's yet to come,
+    /// when it's closed once it does, or once it's gone.
+    fn withdrawing(&self) -> Option<u32> {
+        self.moved(|was| match was {
+            Showing::Coming => (Showing::Withdrawn, None),
+            Showing::Up(id) => (Showing::Gone, Some(id)),
+            other => (other, None),
+        })
+    }
+
+    /// Withdraws it, as what it says has passed.
+    pub fn withdraw(&self) {
+        if let Some(id) = self.withdrawing() {
+            close(id);
+        }
+    }
+}
+
+/// busctl's arguments to close notice `id`, as the specification's
+/// `CloseNotification` withdraws one its sender raised.
+fn closing(id: u32) -> Vec<String> {
+    [
+        "--user",
+        "call",
+        "org.freedesktop.Notifications",
+        "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications",
+        "CloseNotification",
+        "u",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .chain([id.to_string()])
+    .collect()
+}
+
+fn close(id: u32) {
+    match Command::new("busctl").args(closing(id)).output() {
+        Ok(done) if done.status.success() => {}
+        Ok(done) => eprintln!(
+            "call-transcripts: notice {id} wasn't withdrawn: {}",
+            String::from_utf8_lossy(&done.stderr).trim()
+        ),
+        Err(why) => eprintln!("call-transcripts: notice {id} wasn't withdrawn: {why}"),
+    }
+}
+
 /// Raises a notice, and gives `then` the act Joel chose, on a thread of
-/// its own; a notice let go without one gives nothing.
-pub fn show(notice: &Notice, then: impl FnOnce(&str) + Send + 'static) {
+/// its own; a notice let go without one gives nothing. notify-send says
+/// the notice's number first, at once, then the act chosen once it's
+/// closed.
+pub fn show(notice: &Notice, then: impl FnOnce(&str) + Send + 'static) -> Shown {
     let args = arguments(notice);
-    std::thread::spawn(
-        move || match Command::new("notify-send").args(&args).output() {
+    let shown = Shown::default();
+    let showing = shown.clone();
+    std::thread::spawn(move || {
+        let raised = Command::new("notify-send")
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+        let mut child = match raised {
+            Ok(child) => child,
+            Err(why) => {
+                eprintln!("call-transcripts: a notice wasn't shown: {why}");
+                return;
+            }
+        };
+        let mut chosen = String::new();
+        if let Some(out) = child.stdout.take() {
+            let mut lines = BufReader::new(out).lines().map_while(Result::ok);
+            if let Some(id) = lines.next().and_then(|line| line.trim().parse().ok())
+                && let Some(closing) = showing.up(id)
+            {
+                close(closing);
+            }
+            chosen = lines
+                .find(|line| !line.trim().is_empty())
+                .unwrap_or_default();
+        }
+        showing.gone();
+        match child.wait_with_output() {
             Ok(done) if done.status.success() => {
-                let chosen = String::from_utf8_lossy(&done.stdout);
-                let chosen = chosen.trim();
-                if !chosen.is_empty() {
-                    then(chosen);
+                if !chosen.trim().is_empty() {
+                    then(chosen.trim());
                 }
             }
             Ok(done) => eprintln!(
@@ -149,8 +271,9 @@ pub fn show(notice: &Notice, then: impl FnOnce(&str) + Send + 'static) {
                 String::from_utf8_lossy(&done.stderr).trim()
             ),
             Err(why) => eprintln!("call-transcripts: a notice wasn't shown: {why}"),
-        },
-    );
+        }
+    });
+    shown
 }
 
 /// Puts the chat's line on the clipboard, for Joel to paste.
@@ -214,6 +337,42 @@ mod tests {
         assert!(notice.quiet);
         let names: Vec<&str> = notice.acts.iter().map(|(name, _)| *name).collect();
         assert_eq!(names, ["stop", "forget", "copy", "default"]);
+    }
+
+    #[test]
+    fn a_notice_shown_is_withdrawn_by_its_number_once() {
+        let shown = Shown::default();
+        assert_eq!(shown.up(7), None, "nothing closes as it's shown");
+        assert_eq!(shown.withdrawing(), Some(7), "withdrawn, it's closed");
+        assert_eq!(shown.withdrawing(), None, "and only once");
+    }
+
+    #[test]
+    fn a_notice_withdrawn_before_its_number_comes_closes_once_it_does() {
+        let shown = Shown::default();
+        assert_eq!(shown.withdrawing(), None, "no number to close yet");
+        assert_eq!(shown.up(7), Some(7), "closed as its number comes");
+    }
+
+    #[test]
+    fn a_notice_joel_closed_isnt_withdrawn() {
+        let shown = Shown::default();
+        shown.up(7);
+        shown.gone();
+        assert_eq!(shown.withdrawing(), None, "nothing is left to close");
+    }
+
+    #[test]
+    fn a_notice_is_raised_saying_its_number_and_withdrawn_by_it() {
+        assert!(
+            arguments(&being_transcribed("")).contains(&"--print-id".to_owned()),
+            "notify-send says the number it's withdrawn by"
+        );
+        assert_eq!(
+            closing(7)[5..],
+            ["CloseNotification", "u", "7"],
+            "closed as its sender withdraws it"
+        );
     }
 
     #[test]

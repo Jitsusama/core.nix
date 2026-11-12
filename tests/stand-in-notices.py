@@ -4,7 +4,9 @@ It takes the notification server's name on the session bus and writes each
 notice it's asked to show to the file named first, its program, summary and
 body a line each. A test chooses a notice's act, as a click would, with the
 stand-in's own Invoke: given a summary and an act, it says that act was
-invoked on the newest notice with that summary, and that it closed.
+invoked on the newest notice with that summary, and that it closed. Each
+notice its sender withdraws has its summary written to the same file's
+name with -withdrawn after it, a line each.
 """
 
 import asyncio
@@ -32,6 +34,9 @@ class Notices(ServiceInterface):
         """Keep each notice in the file told."""
         super().__init__("org.freedesktop.Notifications")
         self.told = told
+        self.withdrawn = told.with_name(f"{told.name}-withdrawn")
+        # Each notice's summary, by its number, for saying which was withdrawn.
+        self.summaries: dict[int, str] = {}
         # Each notice's number, newest last for its summary, so an act
         # chosen on one never answers another's wait.
         self.shown: dict[str, int] = {}
@@ -54,6 +59,7 @@ class Notices(ServiceInterface):
             told.write(f"{app}\n{summary}\n{body}\n")
         self.count += 1
         self.shown[summary] = self.count
+        self.summaries[self.count] = summary
         return self.count
 
     @dbus_method(name="Invoke")
@@ -85,7 +91,9 @@ class Notices(ServiceInterface):
 
     @dbus_method(name="CloseNotification")
     def close(self, notice: DBusUInt32) -> None:
-        """Say the notice closed, since nothing is shown to close."""
+        """Keep that its sender withdrew it, and say it closed, since nothing is shown."""
+        with self.withdrawn.open("a") as withdrawn:
+            withdrawn.write(f"{self.summaries.get(notice, '')}\n")
         self.notification_closed(notice, CLOSED)
 
 
