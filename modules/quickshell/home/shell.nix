@@ -2,4 +2,5 @@
 # every place's list; README.md says which list a file goes in.
 [
   "Launcher.qml"
+  "warm.qml"
 ]

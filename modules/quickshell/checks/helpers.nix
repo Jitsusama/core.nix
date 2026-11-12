@@ -254,6 +254,9 @@ let
         NIRI_ON_DEMAND_WHEN_ASKED = 1;
         NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
         NOTICES_LOG = "logs/notices.log";
+        # The step a switch runs before it restarts the shell, as the
+        # account's activation says it, for a restart to start warm.
+        QUICKSHELL_STARTS_WARM = home.home.activation.quickshellStartsWarm.data;
       }
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_STATE_HOME=$PWD/state

@@ -18,8 +18,11 @@ file would start a second shell and share them by import.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shlex
+import shutil
 import socket
 import subprocess
 import time
@@ -496,6 +499,41 @@ def test_a_first_search_after_a_restart_makes_no_spots_on_its_key(shell: Shell) 
     shell.reported("spots made after frames in ", lambda _: True, since)
     said, _ = shell.said_since(since)
     assert "spots made on a key" not in said, f"a key made the spots: {said}"
+
+
+def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Shell) -> None:
+    """A switch compiles the shell's files before it restarts the shell, which compiles none.
+
+    A switch changing Launcher.qml threw away what Qt had compiled of nearly every file, so the
+    new shell compiled them all before it listened, 1.9 s from the old one's stop (2026-11-12).
+    Here everything compiled is forgotten while the shell runs, as such a switch leaves it, and
+    the account's own activation step runs beside it before the restart.
+    """
+    cache = Path.home() / ".cache" / "quickshell" / "qmlcache"
+    # Qt names each file's compiled form by its address as Quickshell gives it.
+    named = {}
+    for path in shell.folder.rglob("*"):
+        file = str(path.relative_to(shell.folder))
+        address = f"qs:@/qs/{file}".encode()
+        named[hashlib.sha1(address, usedforsecurity=False).hexdigest()] = file
+    shutil.rmtree(cache, ignore_errors=True)
+    step = shlex.split(os.environ["QUICKSHELL_STARTS_WARM"])
+    assert step[:1] == ["run"], f"the activation's step runs nothing: {step}"
+    subprocess.run(  # noqa: S603, the account's own activation step
+        step[1:], check=True, timeout=launcher_on_niri.STARTING.total_seconds()
+    )
+    held = {path.name: path.stat().st_mtime_ns for path in cache.glob("*")}
+    shell.restart()
+    shell.launcher_until(lambda shown: shown.get("kept"))
+    compiled = sorted(
+        named.get(path.stem, path.name)
+        for path in cache.glob("*")
+        if held.get(path.name) != path.stat().st_mtime_ns
+    )
+    assert not compiled, (
+        f"the restarted shell compiled {len(compiled)} files as it started, with {len(held)}"
+        f" compiled before it: {compiled[:20]}"
+    )
 
 
 def answered_since(shell: Shell, restarted: float) -> None:
