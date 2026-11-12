@@ -2365,6 +2365,10 @@
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates
   '';
+  the-asks-place-releases-through-its-daemon = ''
+    the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
+    Return releases it, a yes while locked is refused in the daemon's words, and Refuse It refuses
+  '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back

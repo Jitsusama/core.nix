@@ -13,6 +13,7 @@ let
     ./checks/accessories.nix
     ./checks/agents.nix
     ./checks/askpass.nix
+    ./checks/asks.nix
     ./checks/capture.nix
     ./checks/clipboard.nix
     ./checks/command-line.nix

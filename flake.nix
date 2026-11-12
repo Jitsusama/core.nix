@@ -234,7 +234,7 @@
         ripgrep = ./modules/ripgrep/home.nix;
         sccache = ./modules/sccache/home.nix;
         screen-text = ./modules/screen-text/home.nix;
-        secret-asks = ./modules/secret-asks/home.nix;
+        secret-asks = moduleFrom ./modules/secret-asks/home.nix { inherit (self.homeModules) quickshell; };
         secure-enclave-signing = ./modules/secure-enclave-signing/home.nix;
         session-backup = ./modules/session-backup/home.nix;
         signing = ./modules/signing/home.nix;

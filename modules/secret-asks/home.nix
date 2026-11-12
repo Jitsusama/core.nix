@@ -9,7 +9,9 @@
 # what this doesn't hold yet (daemon.rs) is that only his key says yes.
 #
 # Importing it chooses it; the item is the machine's to name. The shell
-# runs only on Linux.
+# runs only on Linux. It brings the shell, whose launcher it adds Asks to
+# (Asks.qml).
+{ quickshell }:
 {
   config,
   lib,
@@ -22,6 +24,8 @@ let
   settings = config.jitsusama.secret-asks;
 in
 {
+  imports = [ quickshell ];
+
   options.jitsusama.secret-asks = {
     item = lib.mkOption {
       type = lib.types.strMatching "op://[^/]+/[^/]+/[^/]+";
@@ -98,5 +102,12 @@ in
 
     # Puts up an ask, as an agent would, for trying the line by hand.
     home.packages = [ package ];
+
+    # Asks in the launcher, inside Passwords, right after it: each ask the
+    # daemon serves, and For You's thing to do while one waits.
+    jitsusama.quickshell.launcher.providers.asks = {
+      order = 49;
+      source = ./Asks.qml;
+    };
   };
 }

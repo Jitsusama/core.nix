@@ -29,6 +29,23 @@
       "id": "asks:fact:outcome",
       "in": "asks",
       "name": "Outcome"
+    },
+    {
+      "id": "verb:release",
+      "command": "release",
+      "in": "asks",
+      "name": "Release It",
+      "verb": "release",
+      "glyph": "passwords"
+    },
+    {
+      "id": "verb:refuse",
+      "command": "answer",
+      "argument": "no",
+      "in": "asks",
+      "name": "Refuse It",
+      "verb": "refuse",
+      "glyph": "passwords"
     }
   ]
 }
