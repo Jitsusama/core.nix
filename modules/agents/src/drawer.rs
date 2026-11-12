@@ -440,6 +440,25 @@ mod tests {
         assert_eq!(drawn["drawer"]["title"], "A Quest");
     }
 
+    /// Its last landing breaks only between its title, its change and
+    /// when, never inside one (Y2YBTS, 2026-11-12: "i hate gross line
+    /// wraps"), each whole on its line, its value still all of it.
+    #[test]
+    fn its_last_landing_is_said_as_its_title_its_change_and_when() {
+        let presence = json!({"addresses": ["8IDU4E"], "session": "s-1", "landings": [
+            {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}]});
+        let drawn = drawer(Session(&record(&presence)), false, &words(), &known(None, None));
+        let landing = &drawn["drawer"]["facts"][0];
+        assert_eq!(
+            landing["valueItems"],
+            json!([{"said": "Serve rows", "whole": true},
+                {"said": "core.nix#1", "whole": true}]),
+            "its title and its change as items"
+        );
+        assert_eq!(landing["value"], "Serve rows \u{b7} core.nix#1", "copied whole");
+        assert_eq!(landing["at"]["as"], "clock", "when, for the shell to say");
+    }
+
     #[test]
     fn an_orchestrator_says_its_whole_orchestration_and_its_hours_on_its_own() {
         let presence = json!({"addresses": ["O"], "session": "s-o", "owns": ["QEST-O"]});

@@ -148,6 +148,17 @@ QtObject {
             + "Spent Today=$4.20; Last Landing=@1";
         if (values !== valuesWant)
             failures.push(`the drawer's times: "${values}", not "${valuesWant}"`);
+        // A landing given as its title and its change says when as an item
+        // of its own, so its lines break only between them, each whole.
+        const itemed = SessionDrawer.shown({ facts: [{ label: "Last Landing",
+            value: "Serve rows \u00b7 core.nix#1", at: { at: 1544, as: "clock" },
+            valueItems: [{ said: "Serve rows", whole: true },
+                { said: "core.nix#1", whole: true }] }] }, clock).facts[0];
+        const items = (itemed.valueItems ?? []).map(item => `${item.said}${item.whole ? "!" : ""}`)
+            .join(" | ");
+        if (items !== "Serve rows! | core.nix#1! | @1544!"
+            || itemed.value !== "Serve rows \u00b7 core.nix#1 \u00b7 @1544")
+            failures.push(`a landing's items: "${items}", its value "${itemed.value}"`);
         if (drawn.eyebrowNames !== true || drawn.title !== "A Quest")
             failures.push("the drawer's eyebrow isn't said to name things, or its title is lost");
         // Short of room, as the drawer gives it way (Reading.wholeItems), it
