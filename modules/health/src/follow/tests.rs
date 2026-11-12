@@ -1,4 +1,5 @@
 use super::*;
+use crate::journal;
 
 /// A warning line at a moment in microseconds.
 fn warning(at: i64) -> String {

@@ -3,16 +3,128 @@
 //! Mac's day is tallied as a Linux machine's is; and what the follower asks
 //! `log` for.
 
+use std::path::Path;
+
+use jiff::Timestamp;
+use serde_json::Value;
+
 use crate::journal::Entry;
 
+/// Where macOS keeps `log`, named whole since a launchd agent's PATH is
+/// short and zsh has a `log` of its own.
+pub const LOG: &str = "/usr/bin/log";
+
+/// The lines the day is tallied from: errors and faults, as the journal's
+/// reader takes warnings and graver. A Mac's log has no warning level.
+const PREDICATE: &str = "messageType == error OR messageType == fault";
+
+/// How the unified log's levels read as syslog's priorities, so a Mac's
+/// errors and faults are counted as a Linux machine's errors and critical
+/// lines are.
+const LEVELS: [(&str, u8); 5] = [
+    ("Fault", 2),
+    ("Error", 3),
+    ("Default", 5),
+    ("Info", 6),
+    ("Debug", 7),
+];
+
+/// How `log` writes a moment: local time, to the microsecond, with its
+/// offset.
+const WRITTEN: &str = "%Y-%m-%d %H:%M:%S%.f%z";
+
+/// The entry one line of `log --style ndjson` holds, or none when the line
+/// isn't a line logged.
 #[must_use]
-pub fn parse(_line: &str) -> Option<Entry> {
-    None
+pub fn parse(line: &str) -> Option<Entry> {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(line) else {
+        return None;
+    };
+    let text = |name: &str| fields.get(name).and_then(Value::as_str);
+    if text("eventType") != Some("logEvent") {
+        return None;
+    }
+    let at = jiff::fmt::strtime::parse(WRITTEN, text("timestamp")?)
+        .ok()?
+        .to_timestamp()
+        .ok()
+        .map(Timestamp::as_microsecond)?;
+    let level = text("messageType").unwrap_or_default();
+    let priority = LEVELS
+        .iter()
+        .find(|(name, _)| *name == level)
+        .map_or(6, |(_, priority)| *priority);
+    let image = text("processImagePath").unwrap_or_default();
+    let kernel = image == "/kernel";
+    let thing = if kernel {
+        "kernel".to_owned()
+    } else {
+        Path::new(image).file_name().map_or_else(
+            || "unnamed".to_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        )
+    };
+    Some(Entry {
+        at,
+        priority,
+        thing,
+        message: text("eventMessage").unwrap_or_default().to_owned(),
+        ran_in: app_of(image),
+        crashed: None,
+        whose: None,
+        restart: false,
+        kernel,
+        boot: text("bootUUID").unwrap_or_default().to_owned(),
+        // The log gives the kernel's clock in its own ticks, not
+        // microseconds, and no line here marks a boot's stage to need it.
+        since_boot: 0,
+        mark: None,
+        ask: None,
+    })
+}
+
+/// The app a program ran from, when its image lies in a bundle: the
+/// bundle's path, which is to a Mac what a program's scope is to systemd.
+fn app_of(image: &str) -> Option<String> {
+    let end = image.find(".app/")? + ".app".len();
+    Some(image[..end].to_owned())
+}
+
+/// What the follower asks `log` for: the lines from now on, and the day's
+/// lines before `now`, from `midnight`, both as local time `log` reads. A
+/// line said in the moment `log stream` takes to start may be missed, once
+/// a run, rather than counted twice.
+#[must_use]
+pub fn followed(midnight: &str, now: &str) -> Vec<Vec<String>> {
+    let asked = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect();
+    vec![
+        asked(&[
+            "stream",
+            "--style",
+            "ndjson",
+            "--type",
+            "log",
+            "--predicate",
+            PREDICATE,
+        ]),
+        asked(&[
+            "show",
+            "--style",
+            "ndjson",
+            "--start",
+            midnight,
+            "--end",
+            now,
+            "--predicate",
+            PREDICATE,
+        ]),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::day::{Day, Kind};
 
     /// A line a Mac's runningboardd wrote at fault, cut to the fields the
     /// unified log always gives.
@@ -108,6 +220,69 @@ mod tests {
             parse(&activity),
             None,
             "an activity starting isn't a line said"
+        );
+    }
+
+    #[test]
+    fn a_macs_lines_are_filed_as_a_linux_machines_are() {
+        let sandbox = KERNEL.replace(
+            "vm_reclaim: [80186] Failed to free(reusable) err=1",
+            "Sandbox: rapportd(1039) deny(1) mach-lookup com.apple.AirPlayXPCHelper",
+        );
+        let mut day = Day::new("2026-11-12");
+        for line in [FAULT, KERNEL, APP, &sandbox] {
+            day.take(&entry(line));
+        }
+        let kind = |name: &str| day.things.get(name).and_then(|thing| thing.kind);
+        assert_eq!(
+            kind("runningboardd"),
+            Some(Kind::Services),
+            "a system program is a service"
+        );
+        assert_eq!(
+            kind("xcodebuild"),
+            Some(Kind::Programs),
+            "an app's program is a program"
+        );
+        assert_eq!(
+            kind("vm_reclaim"),
+            Some(Kind::Devices),
+            "the kernel's line is a device's"
+        );
+        assert_eq!(
+            kind("Sandbox"),
+            Some(Kind::Security),
+            "the sandbox refusing is security's"
+        );
+        assert_eq!(
+            day.things.get("runningboardd").map(|thing| thing.errors),
+            Some(1),
+            "a fault counts as an error"
+        );
+    }
+
+    #[test]
+    fn the_day_is_read_from_midnight_and_followed_from_now() {
+        let asked = followed("2026-11-12 00:00:00", "2026-11-12 06:10:00");
+        assert_eq!(asked[0][0], "stream", "one follows the log from now");
+        assert_eq!(
+            asked[1][..7],
+            [
+                "show",
+                "--style",
+                "ndjson",
+                "--start",
+                "2026-11-12 00:00:00",
+                "--end",
+                "2026-11-12 06:10:00"
+            ],
+            "the other reads the day so far"
+        );
+        assert!(
+            asked
+                .iter()
+                .all(|words| words.last().map(String::as_str) == Some(PREDICATE)),
+            "both read only errors and faults"
         );
     }
 }

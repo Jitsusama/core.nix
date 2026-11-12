@@ -478,8 +478,9 @@ fn is_device_event(message: &str) -> bool {
 }
 
 /// The thing an entry is about, and its kind: a crashed program by its
-/// name, a kernel line by the driver or device it opens with, and anything
-/// else by what said it.
+/// name, a kernel line by the driver or device it opens with (the audit's
+/// and a Mac's sandbox's are security's), and anything else by what said
+/// it, a program's when it ran in a scope or a Mac's app.
 fn named(entry: &Entry) -> (String, Kind) {
     if let Some(program) = &entry.crashed {
         return (program.clone(), Kind::Programs);
@@ -487,7 +488,7 @@ fn named(entry: &Entry) -> (String, Kind) {
     if entry.kernel {
         let opening = entry.message.split_whitespace().next().unwrap_or("kernel");
         let device = sign::signature(opening.trim_end_matches(':'));
-        let kind = if device == "audit" {
+        let kind = if matches!(device.as_str(), "audit" | "Sandbox") {
             Kind::Security
         } else {
             Kind::Devices
@@ -499,7 +500,7 @@ fn named(entry: &Entry) -> (String, Kind) {
     } else if entry.ran_in.as_deref().is_some_and(|unit| {
         Path::new(unit)
             .extension()
-            .is_some_and(|kind| kind == "scope")
+            .is_some_and(|kind| kind == "scope" || kind == "app")
     }) {
         Kind::Programs
     } else {

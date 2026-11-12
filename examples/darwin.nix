@@ -30,6 +30,9 @@ nix-darwin.lib.darwinSystem {
         home-manager.users.joel = {
           home.stateVersion = "26.05";
 
+          # A module no role brings, so it meets the others here first.
+          imports = [ core.homeModules.health ];
+
           # Setting one of core's options, the way a machine is meant to
           # change what core expects to vary.
           jitsusama.identity.email = "joel@example.com";

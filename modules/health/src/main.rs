@@ -47,6 +47,7 @@ mod memory;
 mod sessions;
 mod show;
 mod sign;
+mod source;
 mod unified;
 
 use std::env;

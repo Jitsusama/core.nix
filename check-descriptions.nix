@@ -902,7 +902,8 @@
     clippy finds nothing in health or its tests
   '';
   health-tallies-the-days-warnings = ''
-    health reads each journal line for the thing that said it and whose a crash was, counts a
+    health reads each journal line for the thing that said it and whose a crash was, reads a Mac's
+    unified log line alike, a fault as critical and an app's program as a program, counts a
     line's repeats as one signature, counts a device dropped, reset or correcting its errors though
     the kernel says it only as information, times a boot to a ready launcher without the password's
     wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's

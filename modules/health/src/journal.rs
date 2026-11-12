@@ -2,10 +2,7 @@
 //! what the day is tallied by: when, how grave, which thing said it, and
 //! what it said; and the journalctl followers that read them.
 
-use std::io::{self, BufRead as _, BufReader};
-use std::process::{Command, Stdio};
-use std::sync::mpsc::Sender;
-use std::thread;
+use std::process::Command;
 
 use serde_json::{Map, Value};
 
@@ -53,7 +50,8 @@ pub struct Entry {
     pub thing: String,
     /// What it said.
     pub message: String,
-    /// The unit that wrote it, a service or a program's scope.
+    /// The unit that wrote it, a service or a program's scope; on a Mac,
+    /// the app it ran from.
     pub ran_in: Option<String>,
     /// The program a core dump was of, when it's one.
     pub crashed: Option<String>,
@@ -251,41 +249,15 @@ pub fn followed() -> Vec<Vec<String>> {
     ]
 }
 
-/// Start one journalctl following from the day's start, its lines sent on,
-/// and a `None` when it ends.
-///
-/// # Errors
-///
-/// When journalctl can't start.
-pub fn spawn(asked: &[String], lines: Sender<Option<String>>) -> io::Result<()> {
-    let mut journalctl = Command::new("journalctl")
+/// One journalctl following from the day's start, as `asked`.
+#[must_use]
+pub fn following(asked: &[String]) -> Command {
+    let mut journalctl = Command::new("journalctl");
+    journalctl
         .args(["--follow", "--output=json", "--no-pager", "--since=today"])
         .arg(format!("--output-fields={FIELDS}"))
-        .args(asked)
-        .stdout(Stdio::piped())
-        .spawn()?;
-    let out = journalctl
-        .stdout
-        .take()
-        .ok_or_else(|| io::Error::other("no output"))?;
-    thread::spawn(move || {
-        let mut out = BufReader::new(out);
-        let mut line = Vec::new();
-        // A line that isn't UTF-8 is read as far as it goes; journalctl
-        // writes such a message as bytes, so it's rare.
-        while out.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
-            if lines
-                .send(Some(String::from_utf8_lossy(&line).into_owned()))
-                .is_err()
-            {
-                break;
-            }
-            line.clear();
-        }
-        let _ = journalctl.wait();
-        let _ = lines.send(None);
-    });
-    Ok(())
+        .args(asked);
+    journalctl
 }
 
 #[cfg(test)]
