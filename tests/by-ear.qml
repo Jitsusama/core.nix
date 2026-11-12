@@ -260,10 +260,23 @@ QtObject {
         same("no record, no offer", ByEar.offer(null), null);
         same("taking", ByEar.taking(), { ask: "act", act: "offered" });
         const tells = { "why-microphone": "{microphone} is new",
-            "why-spot": "{microphone} is new at {spot}" };
+            "why-spot": "{microphone} is new at {spot}",
+            "why-noisier": "{spot} is noisier for {microphone}",
+            "why-quieter": "{spot} is quieter for {microphone}" };
         same("a new spot", ByEar.offerWhy(tells, offered), "Shure MV7 is new at the desk");
         same("a new microphone", ByEar.offerWhy(tells,
             Object.assign({}, offered, { new: "microphone" })), "Shure MV7 is new");
+        // A call far noisier or quieter than the pick was made in, by the
+        // dB the daemon measured, louder above nought.
+        same("a noisier room", ByEar.offerWhy(tells,
+            Object.assign({}, offered, { new: "noise", by: 12 })),
+            "the desk is noisier for Shure MV7");
+        same("a quieter room", ByEar.offerWhy(tells,
+            Object.assign({}, offered, { new: "noise", by: -11 })),
+            "the desk is quieter for Shure MV7");
+        same("a noise offer is whole", ByEar.offer(record({
+            offer: Object.assign({}, offered, { new: "noise", by: 12 }) })),
+            Object.assign({}, offered, { new: "noise", by: 12 }));
 
         // Leaving discards anything but idle, and asks nothing of an idle
         // trial or a daemon not there.
