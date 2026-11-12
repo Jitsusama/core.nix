@@ -5470,8 +5470,14 @@ Scope {
         // to stay on.
         const cleared = letters === "" && typed !== "" && held.length > 0 && selected
             ? steadyId(selected) : "";
+        // The key that starts or ends typing wakes the sources that want rows
+        // only while something's typed, and they make them there and then, so
+        // only that key counts what each made: Joel's first letter spent 13 ms
+        // setting typed where later ones spent 1 (2026-11-11).
+        const talliedBefore = (typed === "") !== (letters === "") ? tallies() : null;
         typed = letters;
         const typedOn = Date.now();
+        const madeTyping = talliedBefore ? madeAfter(talliedBefore) : null;
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
@@ -5518,7 +5524,7 @@ Scope {
             searchParts = { before: searchedAt - searchBegan, lists: foundAt - searchedAt,
                 rows: 0, answers: Date.now() - foundAt, each: {}, within: null,
                 composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
-                    typed: typedOn - countedAt, words: wordedAt - typedOn,
+                    typed: typedOn - countedAt, made: madeTyping, words: wordedAt - typedOn,
                     readying: searchedAt - wordedAt } };
             return;
         }
@@ -5704,7 +5710,7 @@ Scope {
         searchParts = { before: began - searchBegan, lists: listed - began, rows: matched - listed,
             answers: Date.now() - matched, each: listsTook, within: costs,
             composing: composeParts, beforeParts: { counting: countedAt - searchBegan,
-                typed: typedOn - countedAt, words: wordedAt - typedOn,
+                typed: typedOn - countedAt, made: madeTyping, words: wordedAt - typedOn,
                 readying: began - wordedAt } };
     }
 
@@ -8973,10 +8979,14 @@ Scope {
     }
     // The rows each source has made since the launcher last opened or closed.
     function madeBy() {
+        return madeAfter(madeFrom.rows);
+    }
+    // The rows each source has made since `from`, a tallies() taken before.
+    function madeAfter(from) {
         const now = tallies();
         const by = {};
         for (const name of Object.keys(now)) {
-            const rows = now[name] - (madeFrom.rows[name] ?? 0);
+            const rows = now[name] - (from[name] ?? 0);
             if (rows > 0)
                 by[name] = rows;
         }

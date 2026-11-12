@@ -94,6 +94,20 @@ function stepped(inner, at) {
     };
 }
 
+// The rows a key made as it set what's typed, by the source that made
+// them, most first, as its line says them beside its typed part: those that
+// want rows only while something's typed make them on the key that starts
+// it, and Joel's first letter spent 13 ms setting typed where later ones
+// spent 1 (2026-11-11). Nothing where it made none.
+function madeWhileTyping(by) {
+    const each = Object.entries(by ?? {}).filter(([, rows]) => rows > 0)
+        .sort((one, other) => other[1] - one[1] || (one[0] < other[0] ? -1 : 1));
+    const rows = each.reduce((sum, [, made]) => sum + made, 0);
+    return rows > 0
+        ? ` (made ${rows}: ${each.map(([name, made]) => `${name} ${made}`).join(", ")})`
+        : "";
+}
+
 // The trial with one more key of this kind, or as it was for a kind not
 // counted.
 function counted(trial, kind) {
