@@ -17,6 +17,7 @@
 mod pain;
 mod pi;
 mod trial;
+mod words;
 
 use pain::{Painful, Usable, Usual};
 use pi::Log;
