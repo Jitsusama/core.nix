@@ -616,7 +616,8 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
         TRY,
         "too dim",
     ), kept
-    assert kept["sent"], kept
+    # Kept in whole seconds, as the loop keeps its days.
+    assert kept["sent"] and abs(kept["at"] - time.time()) < 60, kept  # noqa: PLR2004
     shell.close_launcher()
     # Read, it's gone from To Try and in For You's History, saying when; Landed keeps both.
     in_for_you(shell)

@@ -106,14 +106,14 @@ fn refused(code: &str, why: &str) -> Value {
 
 /// The answer to Joel's feedback `said` (`{landing, words}`, the landing
 /// by its record's key), sent through the node at `node` and kept in the
-/// file at `kept`, at `at`, an RFC 3339 instant: who it went to and the
-/// message's id, or why it didn't go.
+/// file at `kept`, at `at`, in whole seconds since the epoch: who it went
+/// to and the message's id, or why it didn't go.
 pub fn answer(
     said: &Value,
     landings: &Landings,
     node: Option<&Path>,
     kept: &Path,
-    at: &str,
+    at: u64,
 ) -> Value {
     let words = said["words"].as_str().map_or("", str::trim);
     if words.is_empty() {
@@ -237,7 +237,7 @@ mod tests {
             &held(&landing("QEST-1-KELP", "SKIFF")),
             Some(&socket),
             &kept,
-            "2026-11-12T08:00:00Z",
+            1_794_470_400,
         );
         assert_eq!(answer, json!({"sent": "m-1", "to": "KELP", "unkept": null}));
         let asked: Value = serde_json::from_str(&asked.join().expect("the node")).expect("JSON");
@@ -256,7 +256,7 @@ mod tests {
             lines,
             vec![
                 json!({"before": true}),
-                json!({"at": "2026-11-12T08:00:00Z",
+                json!({"at": 1_794_470_400,
                 "landing": "landed:agents:s 7 at", "ref": "core.nix#7",
                 "url": "https://example.org/7", "quest": "QEST-1-KELP", "address": "SKIFF",
                 "line": "Open Agents and look.", "words": "too dim", "sent": "m-1"})
@@ -274,7 +274,7 @@ mod tests {
         let ask =
             |key: &str, words: &str| json!({"ask": "feedback", "landing": key, "words": words});
         let code = |answer: Value| answer["error"]["code"].clone();
-        let at = "2026-11-12T08:00:00Z";
+        let at = 1_794_470_400;
         assert_eq!(
             [
                 code(answer(

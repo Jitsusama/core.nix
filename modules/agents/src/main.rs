@@ -30,7 +30,6 @@ use std::sync::{Arc, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use agents::acts;
-use agents::clock;
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::landed::Reading;
@@ -200,13 +199,14 @@ fn own(
         }
         // Joel's words on a landing, sent to whoever landed it.
         if said["ask"] == "feedback" {
-            let at = clock::text_of(i64::try_from(now).unwrap_or(0));
+            // Whole seconds, as cadence keeps its days (80ECO2, 2026-11-11).
+            let at = u64::try_from(now / 1000).unwrap_or(0);
             return Some(feedback::answer(
                 said,
                 &landings,
                 node.as_deref(),
                 &kept,
-                &at,
+                at,
             ));
         }
         acts::steer_of(said, now).map(|steer| match &node {
