@@ -42,6 +42,8 @@ NEAR_DB = 10.0
 # Choose by Ear's socket, and the refusals it's started with: none, so it may record.
 TRIAL = f"{RUNTIME}/noise-cancelled.sock"
 REFUSALS = "/etc/noise-cancelled-refusals.json"
+# Where the trial keeps a pick, for the service to clean with from then on.
+PICKED = f"{RUNTIME}/noise-cancelled/cleaner"
 # Where WirePlumber keeps the microphone chosen, as Sound chooses it.
 CHOSEN = (
     '.[] | select(.props["metadata.name"] == "default") | .metadata[]'
@@ -208,7 +210,7 @@ def offered(joel: Joel, values: dict[str, Any]) -> Iterator[dict[str, Any]]:
     """Choose by Ear's record once it has recorded the sentence and cleaned it every way."""
     joel.run(
         f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['model']}"
-        f" deepfilternet {REFUSALS}"
+        f" deepfilternet {REFUSALS} {PICKED}"
     )
     try:
         joel.wait_for(f"test -S {TRIAL}", ANSWERS_WITHIN)
@@ -242,7 +244,11 @@ def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
     assert picked["picked"] == {"clip": "B", "cleaner": picked["revealed"]["B"]}
     assert set(picked["costs"]) == cleaners
     chosen = joel.run(f"pw-dump | jq -r {shlex.quote(CHOSEN)}").strip()
+    kept = joel.run(f"cat {PICKED} 2>/dev/null || true").strip()
     if picked["picked"]["cleaner"] == "raw":
         assert chosen != OFFERED
+        assert kept == "", f"a raw pick kept {kept!r} for the service"
     else:
         assert chosen == OFFERED
+        assert kept == picked["picked"]["cleaner"]
+        assert picked["running"] == kept
