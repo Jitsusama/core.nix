@@ -96,7 +96,8 @@ Provider {
         beside: ["drawer"]
         watching: provider.opened() ? ({}) : ({ every: provider.shutPace })
         ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
-        make: (row, key) => top.thing(row, key)
+        make: (row, key) => top.thing(row, key, provider.topReopens(row))
+        actMade: (key, one, row) => provider.topTalk(key, one, row)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -111,6 +112,52 @@ Provider {
     onWarmingChanged: {
         if (provider.warming)
             laidOut();
+    }
+
+    // Talk to It on a served row, asking for Joel's words as the tree's
+    // Talk does, then sending the daemon's ask with them; null for any
+    // other act, which is served whole.
+    function topTalk(key, one, row) {
+        if (one.key !== "verb:agent:talk" || !one.ask)
+            return null;
+        return thing({
+            key: one.key,
+            verb: Words.verb(one.key),
+            name: Words.name(one.key),
+            glyph: Words.glyph(one.key),
+            hue: "action",
+            ask: Words.of(one.key).ask ?? "",
+            chip: row.name ?? "",
+            state: () => provider.told,
+            given: words => {
+                const text = words.trim();
+                if (text === "")
+                    return;
+                top.asked(key, Object.assign({}, one, {
+                    ask: Object.assign({}, one.ask, { text })
+                }));
+                provider.told = (Words.of("orchestrators").said ?? {}).sent
+                    ?.replace("{name}", row.name ?? "") ?? "";
+            }
+        });
+    }
+
+    // A closed orchestrator the daemon serves under Closed, with no acts
+    // of its own: reopened as the tree's are (closedRow), from the record
+    // it holds, until the daemon reopens through the node (KP0L6A,
+    // 2026-11-11 [155d2b08]).
+    function topReopens(row) {
+        const one = row?.held?.closed;
+        if (row?.kind !== "closed-orchestrator" || !one)
+            return {};
+        const orchestrators = source("orchestrators");
+        const acts = () => provider.closedActs(one, orchestrators);
+        return {
+            verb: Words.verb("verb:orchestrator:reopen"),
+            run: () => provider.reopenNow(one, orchestrators),
+            verbs: acts,
+            targets: acts
+        };
     }
 
     function opened() {

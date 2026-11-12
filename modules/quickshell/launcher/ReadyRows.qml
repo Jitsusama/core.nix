@@ -55,6 +55,10 @@ Scope {
     // What the place makes of a row, given the row the record holds and the
     // record's key; by default the row as served.
     property var make: (row, key) => row
+    // A place's own make of an act it does itself, `(key, act, row)` to
+    // its row, or null for the served act: Agents' Talk asks Joel for words
+    // before its ask is sent with them, which no served act form says.
+    property var actMade: null
     // The place's provider, which makes its rows as every place's are
     // (`thing`) and holds what an act asks drawn until it's done. Not named
     // `provider`, which would hide the place's own id of that name inside
@@ -476,6 +480,8 @@ Scope {
         const acts = actsOf(row);
         const first = acts[0] ?? null;
         const steps = acts.some(one => one.step === "rows");
+        const own = one => typeof actMade === "function" ? actMade(key, one, row) : null;
+        const firstOwn = first ? own(first) : null;
         // Its acts as rows, made once it's first asked for them and kept
         // with the row, so an opening asking the cursor's row for its keys
         // again makes none; a row made again makes its acts again.
@@ -486,7 +492,8 @@ Scope {
             if (acted === null) {
                 repeats[key] = repeats[key] ?? {};
                 const kept = Ready.actKeys(acts, repeats[key]);
-                acted = acts.map((one, at) => actRow(key, one, kept[at]));
+                acted = acts.map((one, at) => (at === 0 ? firstOwn : own(one))
+                    ?? actRow(key, one, kept[at]));
             }
             return acted;
         };
@@ -505,7 +512,7 @@ Scope {
             verb: verbOf(first),
             run: () => act(key, first),
             actsOnly: Beneath.actsOnly(acts, row.actsOnly)
-        }, Ready.leaving(first));
+        }, Ready.leaving(first), firstOwn ? { returns: firstOwn } : {});
         // A row asking Joel to be sure holds its one act alone, as the
         // shell's own sure rows did, so the key language reads that act's
         // command (Catalogue.endsSomething) rather than a row of verbs.
