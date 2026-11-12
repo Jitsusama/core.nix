@@ -307,6 +307,19 @@ pub fn rows(
     placing: &Placing,
     words: &Words,
 ) -> Vec<Value> {
+    within(taken, folders)
+        .into_iter()
+        .take(most)
+        .map(|one| {
+            let (said, answering) = shown(&one.path);
+            row(one, said.as_ref(), answering, placing, words)
+        })
+        .collect()
+}
+
+/// The things taken in `folders`, newest first, as Recent lists them.
+#[must_use]
+pub fn within<'a>(taken: &'a [Taken], folders: &[String]) -> Vec<&'a Taken> {
     let mut within: Vec<&Taken> = taken
         .iter()
         .filter(|one| {
@@ -322,13 +335,6 @@ pub fn rows(
             .then_with(|| one.path.cmp(&other.path))
     });
     within
-        .into_iter()
-        .take(most)
-        .map(|one| {
-            let (said, answering) = shown(&one.path);
-            row(one, said.as_ref(), answering, placing, words)
-        })
-        .collect()
 }
 
 #[cfg(test)]

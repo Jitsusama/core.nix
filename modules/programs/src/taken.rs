@@ -5,17 +5,24 @@
 //! (Daemon.qml's `ahead`) has what file-preview says of it read on the
 //! watch's own thread, never under the lock, and is made again with its
 //! drawer whole; file-preview is asked again of it only once the file
-//! changed (preview.rs).
+//! changed (preview.rs). What's typed inside Recent finds among
+//! everything taken (`search`), not only the nine it lists.
 
 use programs::taken_rows::{self, Placing, Taken};
-use serde_json::Value;
+use ready_rows::fuzzy::{Item, Typed, runs};
+use serde_json::{Map, Value, json};
 
 use super::{Daemon, Run, Shared, keep, lock, read_named, sources_of};
 
+/// The place these rows are of.
+pub const PLACE: &str = "taken";
 /// The list the rows are made from, as modules/quickshell/home.nix names it.
 pub const LIST: &str = "listed:shared:taken";
 /// How many Capture's Recent lists, as every Recent does.
 const MOST: usize = 9;
+/// How many a search finds where the ask names no `most`: more than a
+/// screen holds are never seen, as Capture.qml's `most` says.
+pub const FOUND: usize = 50;
 
 /// The words Capture's rows are said in, from the vocabulary at `path`,
 /// or none, saying why in the journal.
@@ -53,7 +60,7 @@ pub fn watched(daemon: &Daemon) -> bool {
     daemon.watches.iter().any(|watch| match &watch.keys {
         Some(keys) => keys.iter().any(|key| path_of(key).is_some()),
         None => {
-            watch.place.as_deref() == Some("taken") && watch.kinds.iter().any(|kind| kind == "row")
+            watch.place.as_deref() == Some(PLACE) && watch.kinds.iter().any(|kind| kind == "row")
         }
     })
 }
@@ -74,30 +81,47 @@ pub fn ahead(shared: &Shared, keys: &[String]) {
     make(shared, &mut lock(&shared.daemon), &[]);
 }
 
-/// Makes the rows again from the list held and the previews read, and
-/// keeps what changed, telling each watch only the rows that read
-/// differently and those gone. `also` names the folders a watch about to
-/// be held takes them from. With no words handed, none is made.
-pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
-    let Some(words) = &shared.taken_words else {
-        return;
-    };
-    let folders: Vec<String> = daemon
+/// The folders Capture's watches take their rows from, and `also`.
+fn folders(daemon: &Daemon, also: &[String]) -> Vec<String> {
+    daemon
         .watches
         .iter()
-        .filter(|watch| watch.place.as_deref() == Some("taken"))
+        .filter(|watch| watch.place.as_deref() == Some(PLACE))
         .flat_map(|watch| watch.folders.iter().cloned())
         .chain(also.iter().cloned())
-        .collect();
-    let lines = daemon.held.get(LIST).map(|record| record["lines"].clone());
-    let taken: Vec<Taken> = taken_rows::listed(
+        .collect()
+}
+
+/// Everything the list held says was taken.
+fn listed(daemon: &Daemon) -> Vec<Taken> {
+    let lines = daemon.held.get(LIST).map(|record| &record["lines"]);
+    taken_rows::listed(
         lines
-            .as_ref()
             .and_then(Value::as_array)
             .into_iter()
             .flatten()
             .filter_map(Value::as_str),
-    );
+    )
+}
+
+/// The folder most things are taken into, which a row needn't name.
+fn usual(shared: &Shared) -> String {
+    format!("{}/Pictures/Screenshots", shared.home)
+}
+
+/// Makes the rows again from the list held and the previews read, and
+/// keeps what changed, telling each watch only the rows that read
+/// differently and those gone. `also` names the folders a watch about to
+/// be held takes them from. With no words handed, none is made. A thing
+/// a search found past the nine (`search`) is made whole too while it's
+/// ahead, beside them and with no `order`, so the shell's copy of it
+/// takes its drawer whole without it joining Recent's list.
+pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
+    let Some(words) = &shared.taken_words else {
+        return;
+    };
+    let folders = folders(daemon, also);
+    let taken = listed(daemon);
     let ahead: Vec<&str> = daemon
         .watches
         .iter()
@@ -118,11 +142,80 @@ pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
             _ => (None, true),
         }
     };
+    let usual = usual(shared);
     let placing = Placing {
         home: &shared.home,
-        usual: &format!("{}/Pictures/Screenshots", shared.home),
+        usual: &usual,
     };
+    let within = taken_rows::within(&taken, &folders);
     let rows = taken_rows::rows(&taken, &folders, MOST, &shown, &placing, words);
-    let moved = daemon.taken.take(rows, Vec::new());
+    let found = within
+        .iter()
+        .skip(MOST)
+        .filter(|one| ahead.contains(&one.path.as_str()))
+        .map(|one| {
+            let (said, answering) = shown(&one.path);
+            let row = taken_rows::row(one, said.as_ref(), answering, &placing, words);
+            json!({"key": row["key"], "kind": "row", "row": row})
+        })
+        .collect();
+    let moved = daemon.taken.take(rows, found);
     keep(daemon, moved.changed, &moved.gone);
+}
+
+/// What a search of what was taken for `words` is answered with, as
+/// Capture.qml's Taken.named found them before: each thing in Capture's
+/// folders whose name the words find, newest first as Recent lists them,
+/// up to `most`, so a key costs at most that many matches beyond those
+/// passed over by their letters. Each found thing this daemon hasn't
+/// served comes with its row, its drawer as the list says it, with no
+/// `order`, as ready-rows.md's search says.
+pub fn search(shared: &Shared, daemon: &Daemon, id: &Value, words: &str, most: usize) -> Value {
+    let Some(said) = &shared.taken_words else {
+        return json!({
+            "id": id, "words": words,
+            "error": {"code": "unserved", "message": "Capture's rows have no words, so none is found"},
+        });
+    };
+    let typed = Typed::of(words);
+    let taken = listed(daemon);
+    let folders = folders(daemon, &[]);
+    let usual = usual(shared);
+    let placing = Placing {
+        home: &shared.home,
+        usual: &usual,
+    };
+    let mut keys: Vec<String> = Vec::new();
+    let mut marks = Map::new();
+    let mut rows = Map::new();
+    let within = if typed.is_empty() {
+        Vec::new()
+    } else {
+        taken_rows::within(&taken, &folders)
+    };
+    for one in within {
+        if keys.len() >= most {
+            break;
+        }
+        let name = one
+            .path
+            .rsplit_once('/')
+            .map_or(one.path.as_str(), |(_, name)| name);
+        let item = Item::of(name);
+        // Scored first, which passes over a name without the letters typed
+        // before it's matched; only what's found is marked.
+        let Some((_, marked)) = item.score(&typed).and_then(|_| item.marked(&typed)) else {
+            continue;
+        };
+        let key = format!("row:taken:{}", one.path);
+        marks.insert(key.clone(), json!(runs(&marked)));
+        if daemon.taken.get(&key).is_none() {
+            rows.insert(
+                key.clone(),
+                taken_rows::row(one, None, true, &placing, said),
+            );
+        }
+        keys.push(key);
+    }
+    json!({"id": id, "words": words, "keys": keys, "marks": marks, "rows": rows})
 }

@@ -776,9 +776,12 @@ fn answer(
                 "told": {"asks": daemon.told, "tellers": daemon.tellers.len()},
             })
         }
-        Ask::Search { id, place, words } => {
-            search::answer(&lock(&shared.daemon), &id, &place, &words)
-        }
+        Ask::Search {
+            id,
+            place,
+            words,
+            most,
+        } => search::answer(shared, &lock(&shared.daemon), &id, &place, &words, most),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }

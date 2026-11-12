@@ -352,6 +352,17 @@ Provider {
         ahead: provider.takenWanted !== "" ? [provider.takenWanted] : []
         make: (row, key) => provider.servedTaken(row, key)
         drawn: provider.launcher?.open ?? false
+        // The answer to what's typed takes its place where Recent's found
+        // rows are shown, inside it in its order and at the top kept
+        // steady, the selection staying on its row (Launcher.qml's reshow).
+        onSearched: words => {
+            const launcher = provider.launcher;
+            const depth = launcher?.held.length ?? 0;
+            const step = launcher?.held[depth - 1];
+            if (launcher?.open && launcher.typed === words
+                && (depth === 0 || step?.row.from === provider))
+                launcher.reshow(depth, depth > 0);
+        }
     }
     readonly property var takenRows: ready.rows()
     readonly property var taken: takenRows.map(row => row.path)
@@ -396,9 +407,9 @@ Provider {
     readonly property var factWords: FileFacts.wordsOf(id => Words.of(id),
         (at, format) => Qt.formatDate(at, format))
 
-    // Typed into, Recent still finds among these folders as the shell reads
-    // them (Taken.qml): a stopgap until the programs daemon ranks what's
-    // typed itself, by Fri 2026-11-13 12:00, as Programs' search goes.
+    // These folders are read here too (Taken.qml), for when each thing was
+    // taken as a row found by its words says it, and for Recent to find by
+    // name should the daemon not search.
     Component.onCompleted: {
         for (const folder of provider.takenIn)
             Taken.want(folder);
@@ -455,9 +466,8 @@ Provider {
     function found(letters, looking) {
         if (Fuzzy.words(letters).length === 0)
             return [];
-        const byName = Taken.named(letters, provider.takenIn, provider.most);
-        const rows = byName.map(path => provider.takenRow(path, ""));
-        const listed = new Set(byName);
+        const rows = provider.named(letters);
+        const listed = new Set(rows.map(row => row.path));
         const readers = (launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other.takenByText === "function");
         for (const reader of readers)
@@ -482,6 +492,30 @@ Provider {
     // words: more than a screen holds are never seen, and each is a row
     // made on every key.
     readonly property int most: 50
+
+    // The things taken whose names what's typed finds, newest first, as
+    // the programs daemon finds them among everything taken (taken.rs's
+    // search), so a key matches nothing here. While its answer is asked,
+    // the rows that still hold every letter typed stand: the last
+    // answer's when what's typed goes on from it, else Recent's own, so a
+    // key takes rows away and never puts one in a place of its own; the
+    // answer, a moment later, takes its place (ReadyRows' searched). A
+    // daemon that can't search leaves them found here as they were, by
+    // the folders as Taken read them, saying so once.
+    function named(letters) {
+        if (ready.searchless)
+            return Taken.named(letters, provider.takenIn, provider.most)
+                .map(path => provider.takenRow(path, ""));
+        const answer = ready.search(letters, provider.most);
+        if (answer !== null)
+            return ready.foundRows(answer);
+        const words = Fuzzy.words(letters);
+        const need = Fuzzy.letters(words);
+        const last = ready.found.words !== null
+            && words.join(" ").startsWith(Fuzzy.words(ready.found.words).join(" "))
+            ? ready.foundRows(ready.found) : ready.rows();
+        return last.filter(row => (Fuzzy.letters(Fuzzy.words(row.name)) & need) === need);
+    }
 
     // Recent's matches gathered at the top as one row, though Capture's
     // own rows are searched only inside it, since what was taken is
