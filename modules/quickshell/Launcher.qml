@@ -7706,11 +7706,15 @@ Scope {
     function drawerMade(began, making, cameAs) {
         if (!open)
             return;
-        const key = drawerRow?.key ?? "";
+        // A place's own answers, as Network's Address, carry no key and
+        // a command row no source, so they're named by their name and the
+        // place held: each was said as `drawer for ""`, in home.
+        const key = drawerRow?.key || drawerRow?.name || "";
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined);
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
-            place: drawerPlaceOf(drawerRow), came } : null;
+            place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
+            came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {
