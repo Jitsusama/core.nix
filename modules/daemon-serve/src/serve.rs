@@ -170,6 +170,8 @@ pub struct Shared {
     paced: Condvar,
     /// What's told as a watch begins or ends, once the daemon says.
     heed: OnceLock<Heed>,
+    /// The daemon's own asks answered each on a thread of its own.
+    slow: OnceLock<&'static [&'static str]>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -201,6 +203,7 @@ impl Shared {
             }),
             paced: Condvar::new(),
             heed: OnceLock::new(),
+            slow: OnceLock::new(),
         })
     }
 
@@ -208,6 +211,19 @@ impl Shared {
     /// the first a daemon gives is kept.
     pub fn on_watches(&self, heed: Heed) {
         let _ = self.heed.set(heed);
+    }
+
+    /// Answers these of the daemon's own asks each on a thread of its
+    /// own, from then on, so one that waits, as a screen share waits on
+    /// the desktop's portal for Joel to pick, holds up no ask after it on
+    /// its connection; only the first a daemon gives is kept.
+    pub fn slow(&self, asks: &'static [&'static str]) {
+        let _ = self.slow.set(asks);
+    }
+
+    fn is_slow(&self, said: &Value) -> bool {
+        let asked = said["ask"].as_str().unwrap_or("");
+        self.slow.get().is_some_and(|slow| slow.contains(&asked))
     }
 
     /// Whether any watch is of `kind` in `place`, or of every place.
@@ -235,10 +251,14 @@ impl Shared {
     /// too, and holds back the keys that moved until its pace is up. A
     /// connection whose lines aren't being read is hung up on, and its
     /// watches dropped, rather than told less than it asked for.
+    ///
+    /// Each source is given by its word, or as `{"state", "reason"}`
+    /// when it can say why it stands so, as one refused can: health says
+    /// both, and every other line the word alone (`words`).
     pub fn change(&self, records: Vec<Value>, sources: Value) {
         let mut guard = lock(self);
         let held: &mut Held = &mut guard;
-        let standing = (held.sources != sources).then(|| sources.clone());
+        let standing = (words(&held.sources) != words(&sources)).then(|| words(&sources));
         held.sources = sources;
         let mut now = BTreeMap::new();
         for record in records {
@@ -371,7 +391,11 @@ fn handed() -> Option<UnixListener> {
     }
     // SAFETY: systemd hands descriptor 3 to this process alone, named by
     // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
+    let given = unsafe { UnixListener::from_raw_fd(3) };
+    // A copy closed on exec, which the descriptor as handed over isn't,
+    // so no program the daemon runs holds the socket open after it: one
+    // of Tuple's commands starts Tuple's own daemon, which outlives it.
+    given.try_clone().ok()
 }
 
 /// Takes each connection on a thread of its own, for as long as the
@@ -391,7 +415,7 @@ pub fn accept(shared: Arc<Shared>, listener: UnixListener) {
     });
 }
 
-fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
+fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
     let Ok(reading) = stream.try_clone() else {
         return;
     };
@@ -407,13 +431,28 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
             }
         }
     });
+    // How the sources stood as this connection's hello said them, so a
+    // watch it asks for after is told once they've moved since, when no
+    // watch was there to be told.
+    let mut greeted: Option<Value> = None;
     for line in BufReader::new(reading).lines() {
         let Ok(line) = line else { break };
         let asked = shared.domain.ask(&line);
+        if let Ask::Own { id, said } = &asked
+            && shared.is_slow(said)
+        {
+            apart(shared, id, said, &told);
+            continue;
+        }
         // The daemon's own asks are answered before the lock is taken, so
         // one handing its ask to the daemon's loop never waits on a change.
         let own = match &asked {
             Ask::Own { id, said } => Some(owned(shared, id, said)),
+            _ => None,
+        };
+        let hello = matches!(asked, Ask::Hello { .. });
+        let watch = match &asked {
+            Ask::Watch { id, .. } => Some(id.clone()),
             _ => None,
         };
         let mut held = lock(shared);
@@ -421,11 +460,23 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
             Some(own) => Some(own),
             None => answer(shared, &mut held, asked, connection, &told, &hangup),
         };
+        let mut lines: Vec<Value> = answer.into_iter().collect();
+        let standing = words(&held.sources);
+        if hello {
+            greeted = Some(standing);
+        } else if let Some(id) = watch
+            && greeted.as_ref().is_some_and(|was| *was != standing)
+        {
+            lines.push(json!({"id": id, "sources": &standing}));
+            greeted = Some(standing);
+        }
         // Queued while the lock is held, so a change can't be queued before
         // the answer it follows; one that can't be queued is hung up on, as
         // a change would hang up on it. A watch kept on has nothing to say
         // when it held nothing back.
-        let queued = answer.is_none_or(|answer| told.try_send(answer.to_string()).is_ok());
+        let queued = lines
+            .iter()
+            .all(|line| told.try_send(line.to_string()).is_ok());
         drop(held);
         if !queued {
             break;
@@ -433,6 +484,45 @@ fn serve(shared: &Shared, stream: UnixStream, connection: u64) {
     }
     let went = lock(shared).drop_watches(|watch| watch.connection == connection);
     shared.heeded(went);
+}
+
+/// One of the daemon's slow asks, answered on a thread of its own once
+/// it's done, so nothing asked after it waits on it.
+fn apart(shared: &Arc<Shared>, id: &Value, said: &Value, told: &SyncSender<String>) {
+    let (shared, told) = (Arc::clone(shared), told.clone());
+    let (id, said) = (id.clone(), said.clone());
+    std::thread::spawn(move || {
+        // One no longer read is hung up on by the next line it's told.
+        let _ = told.try_send(owned(&shared, &id, &said).to_string());
+    });
+}
+
+/// Each source by its word, as every line but health says it: one given
+/// with its reason, as `{"state", "reason"}`, by its state.
+fn words(sources: &Value) -> Value {
+    let Some(sources) = sources.as_object() else {
+        return sources.clone();
+    };
+    let words = sources.iter().map(|(name, said)| {
+        let word = said.get("state").unwrap_or(said);
+        (name.clone(), word.clone())
+    });
+    Value::Object(words.collect())
+}
+
+/// Each source's state and its reason, as health says them (the
+/// interface's health, RSCH-20261029-0E8050): no reason for one given by
+/// its word.
+fn states(sources: &Value) -> Value {
+    let Some(sources) = sources.as_object() else {
+        return sources.clone();
+    };
+    let states = sources.iter().map(|(name, said)| {
+        let state = said.get("state").unwrap_or(said);
+        let reason = said.get("reason").and_then(Value::as_str).unwrap_or("");
+        (name.clone(), json!({"state": state, "reason": reason}))
+    });
+    Value::Object(states.collect())
 }
 
 /// The answer to one of the daemon's own asks, or a refusal of an ask
@@ -519,7 +609,7 @@ fn answer(
     Some(match asked {
         Ask::Hello { id } => json!({
             "id": id, "version": VERSION, "domain": domain.name, "state": "answering",
-            "since": held.since, "sources": held.sources,
+            "since": held.since, "sources": words(&held.sources),
         }),
         Ask::Get { id, keys } => {
             json!({"id": id, "records": records_of(domain, held, &[], Some(&keys))})
@@ -535,7 +625,7 @@ fn answer(
         }
         Ask::Health { id } => json!({
             "id": id, "version": VERSION, "domain": domain.name, "state": "answering",
-            "since": held.since, "sources": held.sources,
+            "since": held.since, "sources": states(&held.sources),
             "watches": held.watches.len(), "records": held.records.len(),
         }),
         Ask::Own { id, said } => owned(shared, &id, &said),
@@ -583,218 +673,4 @@ fn kept_on(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::path::PathBuf;
-    use std::sync::mpsc::channel;
-
-    use daemon_client::Client;
-
-    use super::*;
-
-    const ROWS: Domain = Domain {
-        name: "agents",
-        kinds: &["row", "summary"],
-    };
-
-    /// A folder of the test's own, gone when it ends.
-    struct Folder(PathBuf);
-
-    impl Drop for Folder {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn served(name: &str, own: Own) -> (Arc<Shared>, Client, Folder) {
-        let folder =
-            std::env::temp_dir().join(format!("daemon-serve-{name}-{}", std::process::id()));
-        let socket = folder.join("daemon.sock");
-        let shared = Shared::new(ROWS, own);
-        accept(
-            Arc::clone(&shared),
-            listen(&socket).expect("the socket is bound"),
-        );
-        (shared, Client::connect(&socket), Folder(folder))
-    }
-
-    fn row(place: &str, id: &str, name: &str) -> Value {
-        json!({"key": format!("row:{place}:{id}"), "kind": "row", "row": {"name": name}})
-    }
-
-    #[test]
-    fn a_watch_is_answered_whole_then_told_only_what_moved() {
-        let (shared, mut client, _folder) = served("moved", Box::new(|_| None));
-        shared.change(
-            vec![row("agents", "O", "kelp"), row("agents", "P", "reef")],
-            json!({}),
-        );
-        let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
-        assert_eq!(
-            answer["records"].as_array().map(Vec::len),
-            Some(2),
-            "both rows, whole"
-        );
-        shared.change(vec![row("agents", "O", "harbour")], json!({}));
-        let told = client.heard();
-        assert_eq!(
-            told["changed"],
-            json!([row("agents", "O", "harbour")]),
-            "the row that moved"
-        );
-        assert_eq!(
-            told["gone"],
-            json!(["row:agents:P"]),
-            "and the key that went"
-        );
-    }
-
-    #[test]
-    fn a_watch_of_a_place_hears_only_its_rows() {
-        let (shared, mut client, _folder) = served("place", Box::new(|_| None));
-        shared.change(
-            vec![row("agents", "O", "kelp"), row("mail", "m", "hi")],
-            json!({}),
-        );
-        let asked = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
-        let answer = client.ask(&asked);
-        assert_eq!(
-            answer["records"],
-            json!([row("agents", "O", "kelp")]),
-            "only Agents' row"
-        );
-        shared.change(vec![row("agents", "O", "reef")], json!({}));
-        let told = client.heard();
-        assert_eq!(
-            told["changed"],
-            json!([row("agents", "O", "reef")]),
-            "only Agents' row"
-        );
-        assert!(
-            told.get("gone").is_none(),
-            "Mail's row going is another place's: {told}"
-        );
-    }
-
-    #[test]
-    fn a_paced_watch_is_told_all_that_moved_in_one_line_once_its_pace_is_up() {
-        let (shared, mut client, _folder) = served("paced", Box::new(|_| None));
-        shared.change(
-            vec![row("agents", "O", "kelp"), row("agents", "P", "reef")],
-            json!({}),
-        );
-        let pace = Duration::from_millis(300);
-        client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "every": 300}));
-        let began = Instant::now();
-        shared.change(
-            vec![row("agents", "O", "harbour"), row("agents", "P", "reef")],
-            json!({}),
-        );
-        shared.change(vec![row("agents", "O", "buoy")], json!({}));
-        let told = client.heard();
-        assert!(
-            began.elapsed() >= pace,
-            "told before its pace was up: {told}"
-        );
-        assert_eq!(
-            told["changed"],
-            json!([row("agents", "O", "buoy")]),
-            "the row as it last read, once"
-        );
-        assert_eq!(
-            told["gone"],
-            json!(["row:agents:P"]),
-            "and the key that went"
-        );
-    }
-
-    #[test]
-    fn a_watch_asked_again_keeps_on_at_its_new_pace_and_tells_what_it_held_back() {
-        let (shared, mut client, _folder) = served("kept", Box::new(|_| None));
-        shared.change(
-            vec![row("agents", "O", "kelp"), row("agents", "P", "reef")],
-            json!({}),
-        );
-        let watch = json!({"id": "all", "ask": "watch", "kind": "row", "place": "agents"});
-        client.ask(&watch);
-        let mut shut = watch.clone();
-        shut["every"] = json!(60_000);
-        client.send(&shut);
-        // Asks are answered in turn, so once this is, the watch is paced.
-        client.ask(&json!({"id": "paced", "ask": "health"}));
-        shared.change(vec![row("agents", "O", "harbour")], json!({}));
-        shared.change(
-            vec![row("agents", "O", "buoy"), row("agents", "Q", "lantern")],
-            json!({}),
-        );
-        client.send(&json!({"id": "health", "ask": "health"}));
-        let next = client.heard();
-        assert_eq!(
-            next["id"], "health",
-            "paced, it was told nothing yet, and asked again nothing whole: {next}"
-        );
-        client.send(&watch);
-        let told = client.heard();
-        assert_eq!(
-            (&told["id"], &told["changed"], &told["gone"]),
-            (
-                &json!("all"),
-                &json!([row("agents", "O", "buoy"), row("agents", "Q", "lantern")]),
-                &json!(["row:agents:P"])
-            ),
-            "at once again, it's told at once all it held back, in one line"
-        );
-    }
-
-    #[test]
-    fn a_daemon_hears_each_watch_begin_and_end() {
-        let (shared, mut client, folder) = served("heeded", Box::new(|_| None));
-        let (telling, told) = channel();
-        shared.on_watches(Box::new(move || {
-            let _ = telling.send(());
-        }));
-        assert!(!shared.watches("row", "agents"), "nothing watches yet");
-        let watch = json!({"id": 1, "ask": "watch", "kind": "row", "place": "agents"});
-        client.ask(&watch);
-        assert!(told.recv().is_ok(), "told as it begins");
-        assert!(shared.watches("row", "agents"), "its place is watched");
-        assert!(!shared.watches("row", "mail"), "another isn't");
-        client.ask(&json!({"id": 1, "ask": "unwatch"}));
-        assert!(told.recv().is_ok(), "told as it's unwatched");
-        assert!(!shared.watches("row", "agents"), "unwatched, it isn't");
-        let mut another = Client::connect(&folder.0.join("daemon.sock"));
-        another.ask(&watch);
-        assert!(told.recv().is_ok(), "told as the other begins");
-        drop(another);
-        assert!(told.recv().is_ok(), "told as its connection ends");
-        assert!(!shared.watches("row", "agents"), "its watch went with it");
-    }
-
-    #[test]
-    fn the_daemons_own_asks_are_its_to_answer() {
-        let (telling, told) = channel();
-        let own: Own = Box::new(move |said| {
-            (said["ask"] == "sharing").then(|| {
-                let _ = telling.send(said["sharing"].clone());
-                json!({"sharing": said["sharing"]})
-            })
-        });
-        let (_shared, mut client, _folder) = served("own", own);
-        let answer = client.ask(&json!({"id": 1, "ask": "sharing", "sharing": true}));
-        assert_eq!(
-            answer,
-            json!({"id": 1, "sharing": true}),
-            "answered by the daemon"
-        );
-        assert_eq!(told.recv().ok(), Some(json!(true)), "which heard it");
-        let refused = client.ask(&json!({"id": 2, "ask": "dance"}));
-        assert_eq!(
-            refused["error"]["code"], "unknown-ask",
-            "one it doesn't know is refused"
-        );
-        let hello = client.ask(&json!({"id": 3, "ask": "hello"}));
-        assert_eq!(
-            (hello["domain"].as_str(), hello["version"].as_u64()),
-            (Some("agents"), Some(1))
-        );
-    }
-}
+mod tests;

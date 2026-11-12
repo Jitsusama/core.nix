@@ -1,12 +1,9 @@
-//! What a client asks, one JSON line of it, in the shell's daemon
-//! interface (RSCH-20261029-0E8050, "Daemons: One Interface"), version
-//! 1, each ask with an `id` echoed in its answers: the interface's own
-//! asks, and the call's acts, each done through Tuple's own command.
+//! The call's acts, as a client asks them in the shell's daemon interface
+//! (RSCH-20261029-0E8050, "Daemons: One Interface"), each done through
+//! Tuple's own command. The interface's own asks, and the socket, are the
+//! serving side every daemon shares (../../daemon-serve).
 
 use serde_json::{Value, json};
-
-/// The interface's version this speaks.
-pub const VERSION: u64 = 1;
 
 /// The one kind of record this daemon keeps.
 pub const KIND: &str = "call";
@@ -14,19 +11,12 @@ pub const KIND: &str = "call";
 /// The key of its one record, the call Joel's in or none.
 pub const KEY: &str = "call:current";
 
+/// The asks that are acts, each answered on a thread of its own, since
+/// each waits on Tuple's command, and a share on Joel picking a screen.
+pub const ACTS: &[&str] = &["join", "leave", "mute", "share", "accept", "open"];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Ask {
-    Hello,
-    Health,
-    /// The record, when its key is among these.
-    Get {
-        keys: Vec<String>,
-    },
-    /// Every record of its kind, which is the one.
-    List,
-    /// The record now and each time it changes.
-    Watch,
-    Unwatch,
+pub enum Act {
     /// Joins the call a link opens.
     Join {
         link: String,
@@ -42,68 +32,29 @@ pub enum Ask {
     Accept,
     /// Opens Joel's room, answering with its link.
     Open,
-    /// A kind this daemon doesn't keep.
-    UnknownKind {
-        kind: String,
-    },
-    /// An ask it doesn't know, or a line that isn't one.
-    Unknown {
-        ask: String,
-    },
 }
 
-/// What a line asks, and the id to answer it by.
-pub fn read(line: &str) -> (Value, Ask) {
-    let Ok(said) = serde_json::from_str::<Value>(line) else {
-        return (Value::Null, Ask::Unknown { ask: String::new() });
-    };
-    let id = said.get("id").cloned().unwrap_or(Value::Null);
+/// The act an ask is, or none for an ask that isn't one.
+pub fn act(said: &Value) -> Option<Act> {
     let asked = said.get("ask").and_then(Value::as_str).unwrap_or("");
-    let kind = said.get("kind").and_then(Value::as_str).unwrap_or(KIND);
-    if matches!(asked, "list" | "watch") && kind != KIND {
-        return (
-            id,
-            Ask::UnknownKind {
-                kind: kind.to_owned(),
-            },
-        );
-    }
-    let ask = match asked {
-        "hello" => Ask::Hello,
-        "health" => Ask::Health,
-        "get" => Ask::Get {
-            keys: said
-                .get("keys")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect(),
-        },
-        "list" => Ask::List,
-        "watch" => Ask::Watch,
-        "unwatch" => Ask::Unwatch,
-        "join" => Ask::Join {
+    Some(match asked {
+        "join" => Act::Join {
             link: link(said.get("link").and_then(Value::as_str).unwrap_or("")).to_owned(),
         },
-        "leave" => Ask::Leave,
-        "mute" => Ask::Mute {
+        "leave" => Act::Leave,
+        "mute" => Act::Mute {
             muted: said.get("muted").and_then(Value::as_bool) != Some(false),
         },
-        "share" => Ask::Share,
-        "accept" => Ask::Accept,
-        "open" => Ask::Open,
-        other => Ask::Unknown {
-            ask: other.to_owned(),
-        },
-    };
-    (id, ask)
+        "share" => Act::Share,
+        "accept" => Act::Accept,
+        "open" => Act::Open,
+        _ => return None,
+    })
 }
 
-/// An error answer, by the interface's codes.
-pub fn error(id: &Value, code: &str, message: &str) -> Value {
-    json!({"id": id, "error": {"code": code, "message": message}})
+/// An act refused, by the interface's code for it, and why.
+pub fn refused(message: &str) -> Value {
+    json!({"error": {"code": "refused", "message": message}})
 }
 
 /// The first call link in some text, as `tuple call join` takes one, or
@@ -134,44 +85,40 @@ pub fn link(text: &str) -> &str {
 mod tests {
     use super::*;
 
-    fn asked(line: &str) -> Ask {
-        read(line).1
+    fn asked(line: &str) -> Option<Act> {
+        act(&serde_json::from_str(line).expect("the ask is JSON"))
     }
 
     #[test]
-    fn each_ask_is_read_with_its_id() {
-        assert_eq!(
-            read(r#"{"id": "a", "ask": "hello", "version": 1}"#),
-            (json!("a"), Ask::Hello)
-        );
-        assert_eq!(
-            asked(r#"{"id": 1, "ask": "get", "keys": ["call:current", 7]}"#),
-            Ask::Get {
-                keys: vec!["call:current".into()]
-            }
-        );
-        assert_eq!(
-            asked(r#"{"id": 1, "ask": "watch", "kind": "call"}"#),
-            Ask::Watch
-        );
-        assert_eq!(asked(r#"{"id": 1, "ask": "list"}"#), Ask::List);
+    fn each_act_is_read() {
         assert_eq!(
             asked(r#"{"id": 1, "ask": "mute", "muted": false}"#),
-            Ask::Mute { muted: false }
+            Some(Act::Mute { muted: false })
         );
         assert_eq!(
             asked(r#"{"id": 1, "ask": "mute"}"#),
-            Ask::Mute { muted: true }
+            Some(Act::Mute { muted: true })
         );
-        for (word, ask) in [
-            ("leave", Ask::Leave),
-            ("share", Ask::Share),
-            ("accept", Ask::Accept),
-            ("open", Ask::Open),
-            ("unwatch", Ask::Unwatch),
-            ("health", Ask::Health),
+        for (word, act) in [
+            ("leave", Act::Leave),
+            ("share", Act::Share),
+            ("accept", Act::Accept),
+            ("open", Act::Open),
         ] {
-            assert_eq!(asked(&format!(r#"{{"id": 1, "ask": "{word}"}}"#)), ask);
+            assert_eq!(
+                asked(&format!(r#"{{"id": 1, "ask": "{word}"}}"#)),
+                Some(act)
+            );
+        }
+    }
+
+    #[test]
+    fn each_act_is_answered_apart() {
+        for word in ACTS {
+            assert!(
+                asked(&format!(r#"{{"id": 1, "ask": "{word}"}}"#)).is_some(),
+                "{word} is an act"
+            );
         }
     }
 
@@ -179,36 +126,22 @@ mod tests {
     fn a_join_takes_only_a_call_link() {
         assert_eq!(
             asked(r#"{"id": 1, "ask": "join", "link": "see https://tuple.app/c/ab_C-9 now"}"#),
-            Ask::Join {
+            Some(Act::Join {
                 link: "https://tuple.app/c/ab_C-9".into()
-            }
+            })
         );
         assert_eq!(
             asked(r#"{"id": 1, "ask": "join", "link": "https://example.com/c/x"}"#),
-            Ask::Join {
+            Some(Act::Join {
                 link: String::new()
-            }
+            })
         );
     }
 
     #[test]
-    fn another_kind_or_ask_is_refused() {
-        assert_eq!(
-            asked(r#"{"id": 1, "ask": "watch", "kind": "person"}"#),
-            Ask::UnknownKind {
-                kind: "person".into()
-            }
-        );
-        assert_eq!(
-            asked(r#"{"id": 1, "ask": "dance"}"#),
-            Ask::Unknown {
-                ask: "dance".into()
-            }
-        );
-        assert_eq!(
-            read("not json"),
-            (Value::Null, Ask::Unknown { ask: String::new() })
-        );
+    fn an_ask_that_is_no_act_is_none() {
+        assert_eq!(asked(r#"{"id": 1, "ask": "dance"}"#), None);
+        assert_eq!(asked(r#"{"id": 1, "ask": "hello"}"#), None);
     }
 
     #[test]

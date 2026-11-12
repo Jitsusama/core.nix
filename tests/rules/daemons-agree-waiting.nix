@@ -72,6 +72,5 @@
     "shown"
     "speaks"
   ];
-  tuple-call = [ "speaks" ];
   windows = [ "speaks" ];
 }
