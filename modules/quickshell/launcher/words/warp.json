@@ -21,11 +21,6 @@
       "name": "Through"
     },
     {
-      "id": "warp:status",
-      "in": "warp",
-      "name": "Status"
-    },
-    {
       "id": "warp:reason",
       "in": "warp",
       "name": "Reason"

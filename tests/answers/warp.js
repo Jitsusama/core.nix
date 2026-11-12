@@ -284,7 +284,10 @@ function run(failures, fromRoot) {
         ["state", "waiting", "through"]);
     // The Work Network's own drawer, on its row in Network: whose link it
     // is, a lead saying how it stands and for how long, the facts that say
-    // why, and warp-cli's own words last (VKCF3Z, 2026-11-12).
+    // why, and warp-cli's own words in its nerdy bits, its status not at
+    // all, since State says it (VKCF3Z, 2026-11-12). No article stands
+    // before the trip's figure, which reads wrong for 8, 11, 18 and the
+    // eighties (VKCF3Z, f8984db0).
     const hour = 3_600_000;
     const stood = (status, reason, since) => ({ key: "warp:state", kind: "warp-state",
         read_at_ms: 10 * hour, since_ms: since, said: { status, reason } });
@@ -296,20 +299,21 @@ function run(failures, fromRoot) {
     machine("the Work Network's drawer says whose, how it stands and why, then warp-cli's words",
         drawerOf(stood("Connected", "NetworkHealthy", 10 * hour)), {
             eyebrow: "via WARP \u00b7 tunnel",
-            body: "Connected to work for 3 h, with a 127 ms round trip.",
+            body: "Connected to work for 3 h; a round trip takes 127 ms.",
             facts: [
                 { id: "state", value: "connected" },
                 { id: "latency", value: "127 ms" },
                 { id: "waiting", value: "75 ms" },
+                { id: "through", value: "WARP" }
+            ],
+            nerd: [
                 { id: "settings:mode", value: "warp+doh" },
                 { id: "settings:organisation", value: "example" },
-                { id: "through", value: "WARP" },
-                { id: "status", value: "Connected", identifies: true },
-                { id: "reason", value: "NetworkHealthy", identifies: true }
+                { id: "reason", value: "NetworkHealthy" }
             ] });
     machine("a state first heard as the daemon started says no time, rather than too short",
         drawerOf(stood("Connected", "NetworkHealthy", null)).body,
-        "Connected to work, with a 127 ms round trip.");
+        "Connected to work; a round trip takes 127 ms.");
     machine("a link with no round trip read says only how long it's stood",
         drawerOf(stood("Connected", "NetworkHealthy", 12 * hour),
             { parts: [figure("state", "connected")] }).body,
@@ -319,7 +323,7 @@ function run(failures, fromRoot) {
         drawerOf(stood("Connecting", "", 13 * hour - 120_000)).body,
         drawerOf(stood("Disconnected", "Manual", 11 * hour)).body
     ], [
-        "Connected to work, degraded for 30 min, with a 127 ms round trip.",
+        "Connected to work, degraded for 30 min; a round trip takes 127 ms.",
         "Connecting to work for 2 min.",
         "Disconnected from work for 2 h."
     ]);
@@ -330,7 +334,7 @@ function run(failures, fromRoot) {
         "Connected to work, slow for 4 min, with 120 ms waiting.");
     machine("degraded says more than slow in the lead too",
         drawerOf(slowFor("NetworkDegraded", 13 * hour - 240_000)).body,
-        "Connected to work, degraded for 3 h, with a 127 ms round trip.");
+        "Connected to work, degraded for 3 h; a round trip takes 127 ms.");
     machine("nothing heard of how it stands leaves the drawer no lead",
         drawerOf(null).body, "");
     // What the shell keeps of WARP's reads while it's shown, two seconds
