@@ -7,7 +7,9 @@
 //! window. The service (service.rs) holds the models between presses,
 //! Whisper's encoder on the NPU, so 11 s of speech is worked out in under
 //! a second, even while a kernel builds. Nothing is written to disk: the
-//! audio is kept in memory until it's typed.
+//! audio is kept in memory until it's typed. What's typed fits the window
+//! it lands in (mode.rs): a terminal gets a command, with no capital and no
+//! full stop, and anything else the sentence as heard.
 //!
 //! Usage:
 //!
@@ -25,6 +27,7 @@
 //! CPU), `DICTATION_CACHE` where OpenVINO keeps what it compiles, and
 //! `DICTATION_WORDS` a file of words Whisper should know, one a line.
 
+mod mode;
 mod service;
 
 use std::path::{Path, PathBuf};
