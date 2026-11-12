@@ -1,0 +1,838 @@
+[
+  {
+    "key": "row:eero:device:02:00:00:00:00:01",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:01",
+        "node": "2001"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:01",
+      "keywords": ["02:00:00:00:00:01", "tablet 1", "10.0.0.29", "tablet"],
+      "kind": "device",
+      "name": "tablet 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 52"
+        },
+        {
+          "said": "48.0 Mb/s down"
+        },
+        {
+          "said": "1.22 Mb/s down · 24.0 kb/s up"
+        },
+        {
+          "said": "10.0.0.29"
+        }
+      ],
+      "order": 9216,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−59 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:01"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:03",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "phone",
+      "held": {
+        "mac": "02:00:00:00:00:03",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:03",
+      "keywords": ["02:00:00:00:00:03", "phone 1", "10.0.0.40", "phone"],
+      "kind": "device",
+      "name": "phone 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 52"
+        },
+        {
+          "said": "48.0 Mb/s down"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.40"
+        }
+      ],
+      "order": 19456,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−69 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:03"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:05",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "phone",
+      "held": {
+        "mac": "02:00:00:00:00:05",
+        "node": "2003"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:05",
+      "keywords": ["02:00:00:00:00:05", "phone 1", "10.0.0.23", "phone"],
+      "kind": "device",
+      "name": "phone 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "313 Mb/s down · 721 Mb/s up"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.23"
+        }
+      ],
+      "order": 4096,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−52 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:05"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:07",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:07",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:07",
+      "keywords": ["02:00:00:00:00:07", "generic 1", "10.0.0.28", "generic"],
+      "kind": "device",
+      "name": "generic 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 52"
+        },
+        {
+          "said": "360 Mb/s down"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.28"
+        }
+      ],
+      "order": 18432,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−68 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:07"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:08",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "computer",
+      "held": {
+        "mac": "02:00:00:00:00:08",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:08",
+      "keywords": ["02:00:00:00:00:08", "unknown computer 1", "10.0.0.20", "unknown computer"],
+      "kind": "device",
+      "name": "unknown computer 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "1.20 Gb/s down · 1.20 Gb/s up"
+        },
+        {
+          "said": "11.5 Mb/s down · 9.86 Mb/s up"
+        },
+        {
+          "said": "10.0.0.20"
+        }
+      ],
+      "order": 15360,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−57 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:08"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0a",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:0a",
+        "node": "2001"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:0a",
+      "keywords": ["02:00:00:00:00:0a", "generic 2", "10.0.0.45", "generic"],
+      "kind": "device",
+      "name": "generic 2",
+      "note": [
+        {
+          "said": "5 GHz · channel 52"
+        },
+        {
+          "said": "1.20 Gb/s down · 1.08 Gb/s up"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.45"
+        }
+      ],
+      "order": 6144,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−37 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:0a"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0b",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:0b",
+        "node": "2003"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:0b",
+      "keywords": ["02:00:00:00:00:0b", "generic 3", "10.0.0.99", "generic"],
+      "kind": "device",
+      "name": "generic 3",
+      "note": [
+        {
+          "said": "2.4 GHz · channel 6"
+        },
+        {
+          "said": "72.2 Mb/s down"
+        },
+        {
+          "said": "98.2 b/s down · 154 b/s up"
+        },
+        {
+          "said": "10.0.0.99"
+        }
+      ],
+      "order": 3072,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−48 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:0b"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0d",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:0d",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:0d",
+      "keywords": ["02:00:00:00:00:0d", "thermostat 1", "10.0.0.30", "thermostat"],
+      "kind": "device",
+      "name": "thermostat 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "390 Mb/s down · 433 Mb/s up"
+        },
+        {
+          "said": "132 b/s down · 106 b/s up"
+        },
+        {
+          "said": "10.0.0.30"
+        }
+      ],
+      "order": 16384,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−65 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:0d"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0e",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "computer",
+      "held": {
+        "mac": "02:00:00:00:00:0e",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:0e",
+      "keywords": ["02:00:00:00:00:0e", "laptop computer 1", "10.0.0.26", "laptop computer"],
+      "kind": "device",
+      "name": "laptop computer 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 52"
+        },
+        {
+          "said": "432 Mb/s down · 961 Mb/s up"
+        },
+        {
+          "said": "130 kb/s down · 14.5 kb/s up"
+        },
+        {
+          "said": "10.0.0.26"
+        }
+      ],
+      "order": 11264,
+      "place": "eero",
+      "side": [
+        {
+          "said": "this machine"
+        },
+        {
+          "said": "−75 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:0e"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:0f",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "gamepad",
+      "held": {
+        "mac": "02:00:00:00:00:0f",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:0f",
+      "keywords": ["02:00:00:00:00:0f", "10.0.0.47", "game console"],
+      "kind": "device",
+      "name": "game console 1",
+      "note": [
+        {
+          "said": "2.4 GHz · channel 6"
+        },
+        {
+          "said": "72.2 Mb/s down · 65.0 Mb/s up"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.47"
+        }
+      ],
+      "order": 17408,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−66 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:0f"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:11",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "computer",
+      "held": {
+        "mac": "02:00:00:00:00:11",
+        "node": "2001"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:11",
+      "keywords": ["02:00:00:00:00:11", "laptop computer 2", "10.0.0.24", "laptop computer"],
+      "kind": "device",
+      "name": "laptop computer 2",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "1.20 Gb/s down · 1.20 Gb/s up"
+        },
+        {
+          "said": "145 kb/s down · 97.6 kb/s up"
+        },
+        {
+          "said": "10.0.0.24"
+        }
+      ],
+      "order": 7168,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−38 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:11"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:13",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:13",
+        "node": "2001"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:13",
+      "keywords": ["02:00:00:00:00:13", "printer 2", "10.0.0.31", "printer"],
+      "kind": "device",
+      "name": "printer 1",
+      "note": [
+        {
+          "said": "2.4 GHz · channel 6"
+        },
+        {
+          "said": "72.2 Mb/s down"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.31"
+        }
+      ],
+      "order": 8192,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−49 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:13"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:15",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:15",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:15",
+      "keywords": ["02:00:00:00:00:15", "generic 4", "10.0.0.25", "generic"],
+      "kind": "device",
+      "name": "generic 4",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "433 Mb/s down · 867 Mb/s up"
+        },
+        {
+          "said": "2.23 kb/s down · 3.31 kb/s up"
+        },
+        {
+          "said": "10.0.0.25"
+        }
+      ],
+      "order": 12288,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−20 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:15"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:16",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "wireless",
+      "held": {
+        "mac": "02:00:00:00:00:16",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:16",
+      "keywords": ["02:00:00:00:00:16", "thermostat 1", "10.0.0.33", "media streamer"],
+      "kind": "device",
+      "name": "media streamer 1",
+      "note": [
+        {
+          "said": "5 GHz · channel 149"
+        },
+        {
+          "said": "325 Mb/s down"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.33"
+        }
+      ],
+      "order": 14336,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−43 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:16"
+    }
+  },
+  {
+    "key": "row:eero:device:02:00:00:00:00:17",
+    "kind": "row",
+    "row": {
+      "depth": 1,
+      "glyph": "speaker",
+      "held": {
+        "mac": "02:00:00:00:00:17",
+        "node": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:device:02:00:00:00:00:17",
+      "keywords": ["02:00:00:00:00:17", "audio 2", "10.0.0.112", "audio"],
+      "kind": "device",
+      "name": "audio 1",
+      "note": [
+        {
+          "said": "2.4 GHz · channel 6"
+        },
+        {
+          "said": "48.0 Mb/s down"
+        },
+        {
+          "said": "idle"
+        },
+        {
+          "said": "10.0.0.112"
+        }
+      ],
+      "order": 13312,
+      "place": "eero",
+      "side": [
+        {
+          "said": "−29 dBm"
+        }
+      ],
+      "thing": "eero:device:02:00:00:00:00:17"
+    }
+  },
+  {
+    "key": "row:eero:internet",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "web",
+      "hue": "machine",
+      "key": "row:eero:internet",
+      "kind": "internet",
+      "name": "Internet",
+      "note": [
+        {
+          "said": "11.9 Mb/s up"
+        },
+        {
+          "as": "on",
+          "at": 1793875935000
+        },
+        {
+          "said": "conferencing and gaming on"
+        },
+        {
+          "said": "1 outage in 30 days"
+        },
+        {
+          "said": "3 nodes online"
+        },
+        {
+          "said": "15 devices on now"
+        }
+      ],
+      "order": 1024,
+      "place": "eero",
+      "side": [
+        {
+          "said": "connected"
+        },
+        {
+          "said": "370 Mb/s down"
+        }
+      ],
+      "thing": "eero:internet"
+    }
+  },
+  {
+    "key": "row:eero:node:2001",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "accessPoint",
+      "held": {
+        "gateway": false,
+        "id": "2001"
+      },
+      "hue": "machine",
+      "key": "row:eero:node:2001",
+      "keywords": ["eero Pro 6", "SERIAL0001"],
+      "kind": "node",
+      "name": "Den",
+      "note": [
+        {
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "said": "eero Pro 6"
+        },
+        {
+          "said": "v7.17.4-5"
+        }
+      ],
+      "order": 5120,
+      "place": "eero",
+      "side": [
+        {
+          "said": "4 devices"
+        }
+      ],
+      "thing": "eero:node:2001"
+    }
+  },
+  {
+    "key": "row:eero:node:2002",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "accessPoint",
+      "held": {
+        "gateway": false,
+        "id": "2002"
+      },
+      "hue": "machine",
+      "key": "row:eero:node:2002",
+      "keywords": ["eero Pro 6", "SERIAL0002"],
+      "kind": "node",
+      "name": "Study",
+      "note": [
+        {
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "said": "eero Pro 6"
+        },
+        {
+          "said": "v7.17.4-5"
+        }
+      ],
+      "order": 10240,
+      "place": "eero",
+      "side": [
+        {
+          "said": "9 devices"
+        }
+      ],
+      "thing": "eero:node:2002"
+    }
+  },
+  {
+    "key": "row:eero:node:2003",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "accessPoint",
+      "held": {
+        "gateway": true,
+        "id": "2003"
+      },
+      "hue": "machine",
+      "key": "row:eero:node:2003",
+      "keywords": ["eero Pro 6", "SERIAL0003"],
+      "kind": "node",
+      "name": "Hall",
+      "note": [
+        {
+          "said": "gateway node"
+        },
+        {
+          "said": "Ethernet"
+        },
+        {
+          "said": "eero Pro 6"
+        },
+        {
+          "said": "v7.17.4-5"
+        }
+      ],
+      "order": 2048,
+      "place": "eero",
+      "side": [
+        {
+          "said": "2 devices"
+        }
+      ],
+      "thing": "eero:node:2003"
+    }
+  },
+  {
+    "key": "row:eero:profile:3001",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "people",
+      "held": {
+        "id": "3001"
+      },
+      "hue": "machine",
+      "key": "row:eero:profile:3001",
+      "kind": "profile",
+      "name": "profile 1",
+      "note": [
+        {
+          "said": "10 devices"
+        },
+        {
+          "said": "none on now"
+        }
+      ],
+      "order": 20480,
+      "place": "eero",
+      "side": [
+        {
+          "said": "active"
+        }
+      ],
+      "thing": "eero:profile:3001"
+    }
+  },
+  {
+    "key": "row:eero:profile:3002",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "people",
+      "held": {
+        "id": "3002"
+      },
+      "hue": "machine",
+      "key": "row:eero:profile:3002",
+      "kind": "profile",
+      "name": "profile 2",
+      "note": [
+        {
+          "said": "3 devices"
+        },
+        {
+          "said": "none on now"
+        }
+      ],
+      "order": 21504,
+      "place": "eero",
+      "side": [
+        {
+          "said": "active"
+        }
+      ],
+      "thing": "eero:profile:3002"
+    }
+  },
+  {
+    "key": "row:eero:profile:3003",
+    "kind": "row",
+    "row": {
+      "depth": 0,
+      "glyph": "people",
+      "held": {
+        "id": "3003"
+      },
+      "hue": "machine",
+      "key": "row:eero:profile:3003",
+      "kind": "profile",
+      "name": "profile 3",
+      "note": [
+        {
+          "said": "1 device"
+        },
+        {
+          "said": "none on now"
+        }
+      ],
+      "order": 22528,
+      "place": "eero",
+      "side": [
+        {
+          "said": "active"
+        }
+      ],
+      "thing": "eero:profile:3003"
+    }
+  }
+]

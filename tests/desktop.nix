@@ -1149,13 +1149,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The eero daemon would ask eero's cloud, which the VM can't reach.
         # Its stand-in serves the model the daemon's parsers are tested
         # against (modules/eero) on its socket, so the Home Network has a
-        # whole three-node network to show.
+        # whole three-node network to show, and the rows the daemon makes of
+        # it (modules/eero/tests/rows.json).
         jitsusama.quickshell.launcher.providers.eero.enable = lib.mkForce true;
         systemd.user.services.eero-stand-in = {
           Service.ExecStart = lib.escapeShellArgs [
             "${standInEero}"
             "%t/eero/socket"
             "${../modules/eero/home-network.json}"
+            "${../modules/eero/tests/rows.json}"
           ];
           Install.WantedBy = [ "default.target" ];
         };

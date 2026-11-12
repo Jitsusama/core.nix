@@ -34,8 +34,8 @@ in
   # (tests/warp-cli-stand-in.sh), and warp holds its link on the socket
   # the account's systemd would, as WARP, and the clipboard's history
   # serves Copies' rows. The home network is the eero daemon's stand-in,
-  # holding the contract's network (tests/desktop/stand-in-eero.py), as
-  # EERO.
+  # holding the contract's network and the rows the daemon serves of it
+  # (tests/desktop/stand-in-eero.py), as EERO.
   the-launcher-answers-whats-typed-on-niri =
     let
       warpCli = pkgs.writeShellScript "warp-cli" ''
@@ -58,6 +58,7 @@ in
           } (builtins.readFile ../../../tests/desktop/stand-in-eero.py)
         }"
         "EERO_NETWORK=${../../eero/home-network.json}"
+        "EERO_ROWS=${../../eero/tests/rows.json}"
         "WARP_CONTRACT=${../../warp/contract}"
         "WARP=${pkgs.writeShellScript "warp-serve" ''
           WARP_CLI=${warpCli} exec ${warp} serve "$@"

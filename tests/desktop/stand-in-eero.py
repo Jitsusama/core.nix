@@ -5,8 +5,11 @@ version 1, as the real one does: hello, a watch of the home network answered wit
 record, kind and key `home-network`, the model whole under `network`, a watch ahead of it
 answered the same, an unwatch, and an ask to read, answered at once. The model is the file
 named as its second argument, the one the daemon's parsers are tested against (modules/eero),
-so the Home Network has a whole three-node network to show. It never changes, so nothing is
-told after a watch's answer.
+so the Home Network has a whole three-node network to show. A watch of rows, one naming the
+row kind or a place, is answered with the records named as its third argument, those the daemon
+serves of that model, each row ordered (modules/eero/tests/rows.json, which a cargo test holds
+to the daemon's), or only those it names. It never changes, so
+nothing is told after a watch's answer.
 """
 
 import json
@@ -17,6 +20,33 @@ from pathlib import Path
 SOCKET = Path(sys.argv[1])
 KIND = "home-network"
 RECORD = {"key": KIND, "kind": KIND, "network": json.loads(Path(sys.argv[2]).read_text())}
+ROW = "row"
+PLACE = "eero"
+# The rows are named as a third argument, which a check that draws no row may leave out.
+ROWS = [record for named in sys.argv[3:4] for record in json.loads(Path(named).read_text())]
+
+
+def asks_rows(said: dict[str, object]) -> bool:
+    """Whether a watch is of rows, as the daemon's served.rs tells: the row kind or a place."""
+    kind = said.get("kind")
+    return kind == ROW or (isinstance(kind, list) and ROW in kind) or "place" in said
+
+
+def watched(said: dict[str, object]) -> dict[str, object]:
+    """Answer a watch with the records it asks for, or say why its rows aren't kept here."""
+    keys = said.get("keys")
+    named = None if not isinstance(keys, list) else set(keys)
+    if not asks_rows(said):
+        shown = named is None or KIND in named
+        return {"id": said.get("id"), "records": [RECORD] if shown else []}
+    kind = said.get("kind")
+    kinds = kind if isinstance(kind, list) else [] if kind is None else [kind]
+    place = said.get("place", PLACE)
+    if any(one != ROW for one in kinds) or place != PLACE:
+        message = f"no kind {kinds} or place {place} here"
+        return {"id": said.get("id"), "error": {"code": "unknown-kind", "message": message}}
+    records = [record for record in ROWS if named is None or record["key"] in named]
+    return {"id": said.get("id"), "records": records}
 
 
 def answer(said: dict[str, object]) -> dict[str, object]:
@@ -25,9 +55,7 @@ def answer(said: dict[str, object]) -> dict[str, object]:
     if asked == "hello":
         return {"id": said.get("id"), "state": "answering", "version": 1}
     if asked == "watch":
-        keys = said.get("keys")
-        shown = keys is None or (isinstance(keys, list) and KIND in keys)
-        return {"id": said.get("id"), "records": [RECORD] if shown else []}
+        return watched(said)
     if asked == "unwatch":
         return {"id": said.get("id"), "unwatched": True}
     if asked == "read":
