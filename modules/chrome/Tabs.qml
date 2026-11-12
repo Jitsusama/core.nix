@@ -7,6 +7,11 @@
 // the Chrome window the page is in front of, found by its title as Chrome
 // titles its windows, else Chrome's newest window; inside are Go To and
 // Copy the Link.
+//
+// Its bookmarks are found the same way (Joel, 2026-11-11: "searchable
+// chrome bookmarks would be nice"), served ready too (modules/programs/
+// src/bookmark_rows.rs), but for a page open now, whose tab is its row.
+// Return opens one in Chrome; inside are Open and Copy the Link.
 import qs
 import Quickshell
 import QtQuick
@@ -36,6 +41,22 @@ Provider {
     // Named, so a test can tell it records as the daemon would.
     readonly property alias served: ready
 
+    // Its bookmarks, watched as its tabs are; a row's own Return opens it.
+    ReadyRows {
+        id: marked
+
+        socket: ready.socket
+        place: "bookmarks"
+        maker: provider
+        drawn: ready.drawn
+        make: (row, key) => marked.thing(row, key, {
+            what: "site",
+            component: "site",
+            hue: row.hue || "program"
+        })
+    }
+    readonly property alias bookmarks: marked
+
     // Its rows, made only while the launcher is open or its rows are
     // wanted (Provider.qml's wanted), as Documents.qml's are.
     readonly property bool rowsWanted: provider.launcher?.open === true || provider.wanted
@@ -43,7 +64,7 @@ Provider {
     things: {
         if (!provider.rowsWanted)
             return provider.madeRows.rows;
-        const rows = ready.rows();
+        const rows = ready.rows().concat(marked.rows());
         provider.madeRows.rows = rows;
         return rows;
     }

@@ -1,7 +1,8 @@
 //! What the daemon hears of its folders through inotify, for as long as
 //! it runs: the folders of entries and of file kinds, the profile links a
 //! data folder is reached through, each source's file and folders, and the
-//! session folder of a profile whose open pages a source reads. A
+//! session folder of a profile whose open pages a source reads, and that
+//! profile's own folder, for its bookmark files. A
 //! part of the daemon's own (main.rs), kept apart from how it answers, so
 //! neither file grows past reading.
 
@@ -12,7 +13,11 @@ use std::sync::Arc;
 use programs::notify::Notify;
 use programs::xdg;
 
-use super::{Run, Shared, entries_changed, lock, read_named, start, tabs, watched};
+use programs::bookmark_rows;
+
+use super::{
+    Run, Shared, bookmarks, entries_changed, lock, read_named, start, tabs, watched,
+};
 
 /// What a watched folder is to this daemon; one can be more than one.
 #[derive(Default)]
@@ -30,6 +35,9 @@ pub struct Heard {
     /// The sources whose open pages are read from the session it's the
     /// folder of, whose every change counts, as Chrome's `Sessions`.
     sessions: Vec<usize>,
+    /// Whether it's the folder of a profile whose bookmark files are
+    /// read, where only a change to one of them counts.
+    bookmarks: bool,
 }
 
 /// Watches every folder of entries and of file kinds, and the folder of
@@ -94,6 +102,11 @@ pub fn heard(shared: &Shared, notify: &Notify) -> HashMap<i32, Heard> {
         if let Some(watch) = notify.watch(&Path::new(&session.profile).join("Sessions")) {
             folders.entry(watch).or_default().sessions.push(at);
         }
+        // Chrome writes a bookmark file whole beside it and moves it over,
+        // so its name is heard in the profile's folder.
+        if let Some(watch) = notify.watch(Path::new(&session.profile)) {
+            folders.entry(watch).or_default().bookmarks = true;
+        }
     }
     folders
 }
@@ -120,10 +133,12 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
         let mut entries = false;
         let mut lists = HashSet::new();
         let mut sessions = HashSet::new();
+        let mut marked = false;
         for (watch, name) in changes {
             let Some(heard) = folders.get(&watch) else {
                 continue;
             };
+            marked |= heard.bookmarks && bookmark_rows::FILES.contains(&name.as_str());
             entries |= heard.entries || heard.links.contains(&name);
             lists.extend(
                 heard
@@ -137,6 +152,12 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
         }
         if entries {
             entries_changed(shared);
+        }
+        if marked {
+            let mut daemon = lock(&shared.daemon);
+            if bookmarks::watched(&daemon) {
+                bookmarks::make(shared, &mut daemon);
+            }
         }
         for at in lists {
             let watching = {
@@ -152,7 +173,7 @@ pub fn notice(shared: &Arc<Shared>, folders: &HashMap<i32, Heard>) {
             let opened = shared.sources[at].opened_key();
             let daemon = lock(&shared.daemon);
             let watching =
-                opened.is_some_and(|key| watched(&daemon, &key)) || tabs::watched(&daemon);
+                opened.is_some_and(|key| watched(&daemon, &key)) || tabs::wanted(&daemon);
             drop(daemon);
             if watching {
                 start(shared, at, Run::Opened);

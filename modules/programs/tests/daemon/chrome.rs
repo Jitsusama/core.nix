@@ -90,6 +90,62 @@ fn chromes_pages_are_rows_of_their_own_told_as_it_writes_its_session() {
     );
 }
 
+/// Writes one of the profile's bookmark files as Chrome does, whole beside
+/// it and moved over, holding these pages in its other bookmarks.
+fn bookmarked(running: &Running, file: &str, pages: &[(&str, &str)]) {
+    let children: Vec<_> = pages
+        .iter()
+        .map(|(name, address)| json!({"type": "url", "name": name, "url": address}))
+        .collect();
+    let text = json!({"roots": {
+        "bookmark_bar": {"type": "folder", "name": "Bookmarks bar", "children": []},
+        "other": {"type": "folder", "name": "Other bookmarks", "children": children},
+    }, "version": 1});
+    let written = running.path(&format!("chrome/{file}.tmp"));
+    std::fs::write(&written, text.to_string()).unwrap();
+    std::fs::rename(written, running.path(&format!("chrome/{file}"))).unwrap();
+}
+
+#[test]
+fn chromes_bookmarks_are_rows_of_their_own_but_for_a_page_open_now() {
+    let running = Running::new("chrome-bookmarks");
+    sessioned(&running, 1, &["https://open.example.org/"]);
+    bookmarked(
+        &running,
+        "Bookmarks",
+        &[
+            ("Docs", "https://a.example.org/docs"),
+            ("Open", "https://open.example.org/"),
+        ],
+    );
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "bookmarks"}));
+    let a = client.changed("row:bookmarks:https://a.example.org/docs");
+    assert_eq!(a["row"]["name"], "Docs", "a bookmark's row isn't named by it: {a}");
+    assert_eq!(
+        a["row"]["acts"][0],
+        json!({"key": "verb:recent:site:open", "open": "https://a.example.org/docs",
+               "in": "chrome"}),
+        "a bookmark's Return doesn't open it in Chrome: {a}"
+    );
+    bookmarked(
+        &running,
+        "AccountBookmarks",
+        &[("Account", "https://b.example.org/")],
+    );
+    let b = client.changed("row:bookmarks:https://b.example.org/");
+    assert_eq!(
+        b["row"]["name"], "Account",
+        "an account's bookmark made since wasn't told: {b}"
+    );
+    sessioned(&running, 2, &[]);
+    let open = client.changed("row:bookmarks:https://open.example.org/");
+    assert_eq!(
+        open["row"]["name"], "Open",
+        "a bookmark whose page was open isn't told once it's shut: {open}"
+    );
+}
+
 #[test]
 fn the_extensions_host_is_asked_first_on_its_socket() {
     let running = Running::new("chrome-host");
