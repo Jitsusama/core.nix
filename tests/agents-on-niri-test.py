@@ -307,13 +307,34 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
 
 
 def opened(shell: Shell) -> None:
-    """Open Agents, once it lists the orchestrator and, after its own rows, its fold."""
+    """Open Agents, once it lists the orchestration as the daemon serves it, one row."""
     shell.as_account(shell.ipc("collection", "agents"))
     shell.launcher_ready()
     shell.launcher_until(
         lambda shown: (
             shown["held"] == ["agents"]
-            and shown["rows"][:2] == ["Orchestrating Quest", "1 listening, 1 paused"]
+            and shown["rows"][:2] == ["Orchestrating Quest", "Closed"]
+            and shown["selected"]["side"] == "1 of 3 working"
+        )
+    )
+
+
+FOLD = "1 listening, 1 paused"
+
+
+def into_orchestration(shell: Shell) -> None:
+    """Open Agents and step into its orchestration: its own acts, Talk first, then its fold.
+
+    Its acts lead what's inside, as a meeting's do, so Ctrl+] and the command line reach
+    them as the tree's orchestrator row did (KP0L6A, 2026-11-12).
+    """
+    opened(shell)
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(
+        lambda shown: (
+            shown["rows"][:1] == ["Talk"]
+            and FOLD in shown["rows"]
+            and "Stop" in shown["rows"][: shown["rows"].index(FOLD)]
         )
     )
 
@@ -486,7 +507,7 @@ def drawn_figures(shown: dict[str, Any]) -> dict[str, str]:
 def test_a_paused_sessions_glyph_is_never_drawn_in_a_live_ones_colour(shell: Shell) -> None:
     """A paused row's glyph is muted, never the listening row's colour (#2052)."""
     # Both only wait under the orchestrator, so they're drawn inside its fold.
-    opened(shell)
+    into_orchestration(shell)
     shell.down_to("1 listening, 1 paused")
     shell.step_in()
     names = ("Listening Quest", "Paused Quest")
@@ -581,9 +602,7 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
 
 def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: Shell) -> None:
     """Return on Stop writes :interrupt rather than stopping; a second steers a stop, unasked."""
-    opened(shell)
-    shell.step_in("ctrl-bracketright")
-    shell.launcher_until(lambda shown: "Stop" in shown["rows"])
+    into_orchestration(shell)
     shell.down_to("Stop")
     inbox = STEER / "BOSSES"
 
@@ -612,9 +631,9 @@ def test_a_sessions_stop_is_an_ending_return_writes_and_a_second_steers(shell: S
 
 def test_a_sessions_close_asks_saying_what_stays_and_y_steers_it_closed(shell: Shell) -> None:
     """Close, last among a session's acts, asks what it leaves, and y steers it a close."""
-    opened(shell)
-    shell.step_in("ctrl-bracketright")
-    shell.launcher_until(lambda shown: shown["rows"][:4] == ["Talk", "Pause", "Stop", "Close"])
+    into_orchestration(shell)
+    rows = shell.showing()["rows"]
+    assert rows[: rows.index(FOLD)][-1:] == ["Close"], rows
     shell.down_to("Close")
     # Return writes the line Close is, and a second runs it, which asks.
     shell.send_key("ret")
@@ -753,11 +772,23 @@ def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
     shell: Shell,
 ) -> None:
     """Those only waiting fold into one row saying each state it holds; Return steps in to them."""
-    opened(shell)
+    into_orchestration(shell)
     shell.down_to("1 listening, 1 paused")
     assert shell.showing()["selected"]["told"][:1] == ["\u21b5 open"], shell.showing()
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Listening Quest", "Paused Quest"])
+
+
+def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> None:
+    """Agents opens on the orchestration rows the agents daemon serves as agents-top.
+
+    The shell draws them as served rather than laying them out (VKCF3Z, 3a742b67).
+    """
+    opened(shell)
+    row = shell.showing()["selected"]
+    # The daemon says how its sessions stand together; the tree said only its own state.
+    assert row["side"] == "1 of 3 working", row
+    assert row["told"][:1] == ["\u21b5 talk"], row
 
 
 def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
@@ -958,17 +989,19 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
 def test_a_closed_orchestrator_stands_dimmed_at_the_trees_end_the_last_live_first(
     shell: Shell,
 ) -> None:
-    """The closed stand after every live row, the one last live first, dimmed, Return reopening."""
+    """The closed are one row after every live one, holding the last live first, dimmed.
+
+    Return on one reopens it (VKCF3Z, 3a742b67: "Closed is one row at the end").
+    """
     # Lamplight's orchestration spent today; Beacon's spent nothing.
     family = {"all": "$14.20", "own": "$3.10", "under": "$11.10"}
     SPEND.write_text(
         json.dumps({"v": 2, "agentsToday": "$214", "families": {"QEST-20261107-LAMPLT": family}})
     )
     opened(shell)
-    shell.launcher_until(lambda shown: "Beacon" in shown["rows"])
-    rows = shell.showing()["rows"]
-    tree = ["Orchestrating Quest", "1 listening, 1 paused", "Lamplight", "Beacon"]
-    assert rows[:4] == tree, rows
+    shell.down_to("Closed")
+    shell.step_in()
+    shell.launcher_until(lambda shown: shown["rows"][:2] == ["Lamplight", "Beacon"])
     shell.down_to("Lamplight")
     shell.launcher_until(lambda shown: shown["selected"]["side"] == "closed \u00b7 $14.20 in all")
     row = shell.showing()["selected"]

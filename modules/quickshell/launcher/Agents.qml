@@ -1572,7 +1572,7 @@ Provider {
         // Its search looks through the tree's rows, so their texts are
         // made ready from those (Provider.qml's looksThrough).
         const tree = provider.wanted || !opened() ? treeRows() : laidOut();
-        const sessions = topServed && opened() && !provider.lookingThrough ? top.rows() : tree;
+        const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
         return sessions.concat([toReopen, landed, recent, start].filter(row => row !== null));
     }
 
