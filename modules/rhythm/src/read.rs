@@ -23,7 +23,7 @@ pub fn wind_down(after_six: u32) -> String {
 }
 
 /// A minute past midnight as the clock says it.
-fn clock(minute: u32) -> String {
+pub fn clock(minute: u32) -> String {
     format!("{:02}:{:02}", minute / 60 % 24, minute % 60)
 }
 

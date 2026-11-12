@@ -12,12 +12,17 @@
 //! (read.rs says its shape) for the backlight and others to follow.
 //!
 //! `rhythm`, typed in a terminal, says it in plain words.
+//!
+//! In daylight it also suggests a few minutes outside after a long stretch
+//! at the machine, at most three a day and one in poor weather, never
+//! during a call or while Quiet holds notices (walk.rs says when).
 
 mod clock;
 mod keep;
 mod nights;
 mod read;
 mod seed;
+mod walk;
 
 use std::process::ExitCode;
 

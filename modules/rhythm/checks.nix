@@ -12,7 +12,9 @@ onLinux {
   # before four hours' sleep, never at dinner, lunch or a stray key; the
   # usual stop is four weeks' middle and a weekday keeps its own habit;
   # too few nights guess midnight and say so; the logs give only the
-  # times Joel typed; and Joel reads it plainly.
+  # times Joel typed; Joel reads it plainly; and a walk is suggested only
+  # in daylight after a long stretch, apart, three a day and one in poor
+  # weather, saying what it's like out.
   rhythm-learns-when-joel-stops = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in rhythm, its tests included.
   rhythm-passes-clippy = passesClippy "rhythm-passes-clippy" (pkgs.callPackage ./package.nix { });

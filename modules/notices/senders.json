@@ -13,6 +13,7 @@
     "camera": { "glyph": "camera", "hue": "machine", "name": "Camera" },
     "calls": { "glyph": "call", "hue": "person", "named": "notices:calls" },
     "calendar": { "glyph": "meeting", "hue": "person", "name": "Calendar" },
+    "daylight": { "glyph": "sunny", "hue": "machine", "name": "Daylight" },
     "timers": { "glyph": "timer", "hue": "machine", "named": "timers" },
     "battery": { "glyph": "low", "hue": "machine", "named": "power" },
     "tokens": { "glyph": "tokens", "hue": "program", "named": "spend" },

@@ -6,17 +6,22 @@
 //! after a key or a touch, is looked at each minute. The first run seeds
 //! the file from what the logs hold (seed.rs). The profile is written to
 //! `$XDG_STATE_HOME/rhythm/profile.json` whenever it changes, whole, by a
-//! rename, so a reader never sees half of it.
+//! rename, so a reader never sees half of it. Each look also asks whether
+//! a walk is due (walk.rs), and suggests it with a notice from Daylight;
+//! the day's suggestions are kept in `$XDG_STATE_HOME/rhythm/walks`, so a
+//! restart doesn't make a fourth.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 use crate::clock::{days_from_civil, local};
 use crate::nights::{Profile, evening_of, nights, weekday_of};
 use crate::read::{Sun, profile_json, said};
 use crate::seed;
+use crate::walk::{self, Look, Weather};
 
 /// How long the minutes seen are kept, in days: a season's worth, which
 /// the weekday and four-week readings need well under.
@@ -26,7 +31,9 @@ const KEEP_DAYS: i64 = 120;
 pub struct Paths {
     pub seen: PathBuf,
     pub profile: PathBuf,
+    pub walks: PathBuf,
     pub mark: PathBuf,
+    pub quiet: PathBuf,
     pub whereabouts: PathBuf,
     pub zsh: PathBuf,
     pub pi: PathBuf,
@@ -44,7 +51,9 @@ impl Paths {
         Some(Paths {
             seen: state.join("seen"),
             profile: state.join("profile.json"),
+            walks: state.join("walks"),
             mark: runtime.join("someone-at-the-machine"),
+            quiet: runtime.join("quiet"),
             whereabouts: runtime.join("whereabouts/here.json"),
             zsh: std::env::var_os("HISTFILE")
                 .map_or_else(|| home.join(".zsh_history"), PathBuf::from),
@@ -156,6 +165,102 @@ fn sun_today(paths: &Paths, now: i64) -> Option<Sun> {
     })
 }
 
+/// How long the weather asked for is trusted, in seconds.
+const WEATHER_KEPT: i64 = 30 * 60;
+
+/// The walks suggested today, and the weather last asked for.
+struct Walker {
+    walks: Vec<i64>,
+    weather: Option<(i64, Option<Weather>)>,
+}
+
+impl Walker {
+    fn new(paths: &Paths) -> Walker {
+        Walker {
+            walks: read_seen(&paths.walks).unwrap_or_default(),
+            weather: None,
+        }
+    }
+
+    /// Suggests a walk when one is due and nothing stands in its way.
+    fn look(&mut self, paths: &Paths, seen: &[i64], now: i64, sun: Option<Sun>) {
+        let (Some(today), Some(sun)) = (local(now), sun) else {
+            return;
+        };
+        let midnight = minute(now) - i64::from(today.minute) * 60;
+        self.walks.retain(|walk| *walk >= midnight);
+        let look = Look {
+            now,
+            minute: today.minute,
+            at_keys: paths.mark.exists(),
+            seen,
+            walks: &self.walks,
+            sun: Some(&sun),
+        };
+        let quiet = fs::read_to_string(&paths.quiet).ok();
+        if !walk::due(&look) || walk::quiet(quiet.as_deref(), now * 1000) || call_on() {
+            return;
+        }
+        let weather = self.weather(paths, now);
+        if !walk::room(self.walks.len(), weather.as_ref()) {
+            return;
+        }
+        let (question, out) = walk::said(weather.as_ref(), sun.set);
+        match Command::new("notify-send")
+            .args(["--app-name=daylight", &question, &out])
+            .status()
+        {
+            Ok(status) if status.success() => {
+                eprintln!("<6>suggested a walk: {question} {out}");
+                self.walks.push(now);
+                let lines: Vec<String> = self.walks.iter().map(ToString::to_string).collect();
+                if let Err(error) = write_whole(&paths.walks, &(lines.join("\n") + "\n")) {
+                    eprintln!("<4>rhythm can't keep today's walks: {error}");
+                }
+            }
+            Ok(status) => eprintln!("<4>notify-send couldn't suggest a walk: {status}"),
+            Err(error) => eprintln!("<4>can't run notify-send to suggest a walk: {error}"),
+        }
+    }
+
+    /// The weather where the laptop is, asked of Open-Meteo at most each
+    /// half hour, and only once a walk is due; none where it can't be had.
+    fn weather(&mut self, paths: &Paths, now: i64) -> Option<Weather> {
+        if let Some((at, weather)) = &self.weather
+            && now - at < WEATHER_KEPT
+        {
+            return weather.clone();
+        }
+        let weather = fs::read_to_string(&paths.whereabouts)
+            .ok()
+            .as_deref()
+            .and_then(place)
+            .and_then(|(latitude, longitude)| {
+                Command::new("curl")
+                    .args([
+                        "-fsS",
+                        "--max-time",
+                        "10",
+                        &walk::asked(latitude, longitude),
+                    ])
+                    .output()
+                    .ok()
+            })
+            .filter(|answer| answer.status.success())
+            .and_then(|answer| Weather::read(&String::from_utf8_lossy(&answer.stdout)));
+        self.weather = Some((now, weather.clone()));
+        weather
+    }
+}
+
+/// Whether a call is on, as a-call-is-on says by exiting 0; a call it
+/// can't tell of holds nothing back.
+fn call_on() -> bool {
+    Command::new("a-call-is-on")
+        .status()
+        .is_ok_and(|status| status.code() == Some(0))
+}
+
 /// The profile, the evening's weekday it's for, and the sun, as of now.
 fn reading(paths: &Paths, seen: &[i64], now: i64) -> (Profile, u32, Option<Sun>) {
     let evening = local(now).map_or(now.div_euclid(86_400), evening_of);
@@ -188,6 +293,7 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
     let lines: Vec<String> = seen.iter().map(ToString::to_string).collect();
     write_whole(&paths.seen, &(lines.join("\n") + "\n"))?;
     let mut written = fs::read_to_string(&paths.profile).unwrap_or_default();
+    let mut walker = Walker::new(paths);
     loop {
         let now = now();
         if paths.mark.exists() && seen.last() != Some(&minute(now)) {
@@ -204,6 +310,7 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
             write_whole(&paths.profile, &json)?;
             written = json;
         }
+        walker.look(paths, &seen, now, sun);
         // The mark lasts two minutes after a key, so a look each minute
         // sees every minute Joel is there, and costs nothing between.
         std::thread::sleep(Duration::from_mins(1));
