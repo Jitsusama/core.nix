@@ -262,6 +262,17 @@ impl Day {
         }
     }
 
+    /// Count a fault health saw itself, which no journal said: a line at
+    /// error, from `name`, of `kind`, saying `message` at `at`.
+    pub fn fault(&mut self, name: &str, kind: Kind, message: &str, at: i64) {
+        self.to = self.to.max(at);
+        let thing = self.things.entry(name.to_owned()).or_default();
+        thing.kind = thing.kind.or(Some(kind));
+        thing.lines += 1;
+        thing.errors += 1;
+        thing.said(message, 3, at);
+    }
+
     /// Say when a boot that stopped in the day ended, from the journal's
     /// list of boots; a boot the day didn't see stop is left out.
     pub fn ended(&mut self, boot: &str, at: i64) {
@@ -278,20 +289,25 @@ impl Day {
 impl Thing {
     /// Count what the entry said under its signature.
     fn say(&mut self, entry: &Entry) {
-        let mut signed = sign::signature(&entry.message);
+        self.said(&entry.message, entry.priority, entry.at);
+    }
+
+    /// Count `message`, said at `priority` at `at`, under its signature.
+    fn said(&mut self, message: &str, priority: u8, at: i64) {
+        let mut signed = sign::signature(message);
         if !self.signatures.contains_key(&signed) && self.signatures.len() >= MOST_SIGNATURES {
             THE_REST.clone_into(&mut signed);
         }
-        let first = entry.message.lines().next().unwrap_or_default();
+        let first = message.lines().next().unwrap_or_default();
         let signature = self.signatures.entry(signed).or_insert_with(|| Signature {
-            priority: entry.priority,
-            first: entry.at,
+            priority,
+            first: at,
             example: first.chars().take(400).collect(),
             ..Signature::default()
         });
         signature.count += 1;
-        signature.priority = signature.priority.min(entry.priority);
-        signature.last = signature.last.max(entry.at);
+        signature.priority = signature.priority.min(priority);
+        signature.last = signature.last.max(at);
     }
 
     /// How bad it is, for putting the worst first.

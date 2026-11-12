@@ -2,7 +2,8 @@
 # health, a program of core's own (src/main.rs), follows every journal the
 # account may read from the day's start, for warnings and graver, for the
 # restarts systemd schedules and for the devices' events the kernel says
-# only as information, times each boot and shutdown, and keeps the day's tally by kind, thing
+# only as information, times each boot and shutdown, counts a lid that
+# reads shut over a laptop in use, and keeps the day's tally by kind, thing
 # and signature in ~/.local/state/health/<date>.json. `health` shows it a
 # line a kind, the worst first; `health <thing>` shows what it kept saying.
 { lib, pkgs, ... }:

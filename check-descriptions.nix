@@ -883,8 +883,9 @@
     health reads each journal line for the thing that said it and whose a crash was, counts a
     line's repeats as one signature, counts a device dropped, reset or correcting its errors though
     the kernel says it only as information, times a boot to a ready launcher without the password's
-    wait and a shutdown to its boot's last entry, keeps a day by kind and writes it whole once
-    changed, and shows it a line a kind, the gravest first
+    wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's
+    screen is on and its keys typed, keeps a day by kind and writes it every half minute however
+    busy the journals, and shows it a line a kind, the gravest first
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a

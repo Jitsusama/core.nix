@@ -10,6 +10,9 @@
 //! thousand times is one signature counted a thousand times. It times each
 //! boot from the power button to a ready launcher, Joel's password's wait
 //! left out, and each shutdown from the ask to the journal's last line.
+//! Each half minute it looks at the lid, and counts as a device's fault a
+//! lid that reads shut while the laptop's own screen is on and its own keys
+//! are typed on, since every program believes the lid and none says so.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
 //! `health` reads that file: one line a kind, the worst first, naming its
@@ -22,6 +25,7 @@
 mod day;
 mod follow;
 mod journal;
+mod lid;
 mod show;
 mod sign;
 
