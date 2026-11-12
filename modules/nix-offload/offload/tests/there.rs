@@ -34,6 +34,20 @@ while [ "$#" -gt 2 ]; do
   if [ "$1" = -E ]; then log=$2; fi
   shift
 done
+# What changed-checks keeps of its runs there, the far-runs file: its
+# length, then what follows a length, unless far-runs-unreadable says
+# it can't be read. Asked around a run, so it's kept apart from it.
+case "$2" in
+  *changed-checks/runs.jsonl*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    [ -f "$here/far-runs-unreadable" ] && exit 1
+    case "$2" in
+      *"wc -c"*) wc -c 2>/dev/null < "$here/far-runs" || echo 0 ;;
+      *) [ -e "$here/far-runs" ] || exit 0
+        from=${2##*tail -c +}; tail -c "+${from%% *}" "$here/far-runs" ;;
+    esac
+    exit 0 ;;
+esac
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
@@ -77,6 +91,11 @@ case "$2" in
       sleep "$(cat "$here/holds-$1")"
       rm -f "$here/building-$1/$$"
     fi ;;
+esac
+# A run of changed-checks keeps a line of its own, while far-runs-grow says.
+case "$2" in
+  *changed-checks*) [ -f "$here/far-runs-grow" ] \
+    && printf '{"at":%s}\n' "$$" >> "$here/far-runs" ;;
 esac
 exit "$(cat "$here/status")"
 "#;
@@ -2933,6 +2952,60 @@ fn an_evaluator_evaluates_one_run_at_a_time() {
         ran.iter()
             .any(|run| String::from_utf8_lossy(&run.stderr).contains("waits its turn")),
         "the one waiting says so: {ran:?}"
+    );
+}
+
+#[test]
+fn what_changed_checks_keeps_of_a_run_there_comes_home_once_and_never_fails_it() {
+    // A builder goes when its lend ends, taking changed-checks' own record
+    // of where each run's time went, which on 12 November could be read
+    // only by hand from one still lent.
+    let changed = Changed::new();
+    let far = changed.bin.join("far-runs");
+    fs::write(&far, "{\"at\":1}\n").unwrap();
+    fs::write(changed.bin.join("far-runs-grow"), "").unwrap();
+    let home = changed.folder.path().join("nix-offload/changed-runs.jsonl");
+    let far_lines = || -> Vec<String> {
+        fs::read_to_string(&far)
+            .unwrap()
+            .lines()
+            .map(|line| format!("{line}\n"))
+            .collect()
+    };
+
+    let (ran, _) = changed.run(&["--build", "--no-vm", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let lines = far_lines();
+    assert_eq!(lines.len(), 2, "the run kept a line there: {lines:?}");
+    assert_eq!(
+        fs::read_to_string(&home).unwrap_or_default(),
+        lines[1],
+        "only the run's own line comes home, never one from before it"
+    );
+
+    // The builder kept for the next run sends only that run's line.
+    let (ran, _) = changed.run(&["--build", "--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let lines = far_lines();
+    assert_eq!(
+        fs::read_to_string(&home).unwrap_or_default(),
+        lines[1..].concat(),
+        "each run's line is home once"
+    );
+
+    // A copy that fails is said, and the run passes as it would have.
+    fs::write(changed.bin.join("far-runs-unreadable"), "").unwrap();
+    let (ran, _) = changed.run(&["--system", "x86_64-linux"]);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("couldn't bring changed-checks' runs home from nix-offload"),
+        "{said}"
+    );
+    assert_eq!(
+        fs::read_to_string(&home).unwrap_or_default(),
+        lines[1..].concat(),
+        "nothing more came home"
     );
 }
 

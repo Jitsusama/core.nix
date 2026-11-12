@@ -547,5 +547,7 @@ pub fn building(folder: &Path, system: &str, checks: &[String]) -> Command {
     command
 }
 
+pub mod runs;
+
 #[cfg(test)]
 mod tests;
