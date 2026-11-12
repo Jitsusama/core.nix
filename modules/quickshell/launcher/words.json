@@ -6675,6 +6675,21 @@
       "ask": "which shortcut?"
     },
     {
+      "id": "shortcuts:keys",
+      "in": "shortcuts",
+      "name": "Keys"
+    },
+    {
+      "id": "shortcuts:also",
+      "in": "shortcuts",
+      "name": "Also"
+    },
+    {
+      "id": "shortcuts:where",
+      "in": "shortcuts",
+      "name": "Works"
+    },
+    {
       "id": "actions",
       "name": "Desktop",
       "term": "Desktop/desktop",

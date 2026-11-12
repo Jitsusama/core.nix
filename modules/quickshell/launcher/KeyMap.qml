@@ -103,10 +103,14 @@ Provider {
             glyph: glyph === "" ? bind.glyph : glyph,
             hue: layer.name === "desktop" ? "action" : "program",
             chord: bind.chord,
-            note: [bind.when ? `${places[layer.name]}, ${bind.when}` : places[layer.name]]
+            note: [workedIn(layer, bind)]
                 .concat((bind.also ?? []).length > 0
                     ? [`also ${bind.also.map(chord => spelled(chord)).join(", ")}`] : [])
                 .join("; "),
+            // A little more than its line (docs/design.md, Every row says a
+            // little more beside it): its keys in words, every chord doing
+            // it and where it works, made as it's shown.
+            drawer: () => provider.drawerOf(layer, bind),
             // Acts on the screen, so it waits for the launcher to be gone.
             later: true,
             run: () => {
@@ -114,6 +118,27 @@ Provider {
                     Niri.spawn(bind.run);
             }
         });
+    }
+
+    // Where a chord works, and when: a layer with no place of its own above
+    // is in its program, by the name its row has ("in Processes").
+    function workedIn(layer, bind) {
+        const place = places[layer.name] ?? `in ${Words.name(`shortcuts:${layer.name}`)}`;
+        return bind.when ? `${place}, ${bind.when}` : place;
+    }
+
+    // A chord's drawer: its keys in words, any other chord doing the same,
+    // where it works and when. The command a desktop one runs is raw, as a
+    // path is, so it isn't a fact (VKCF3Z, b8b34908).
+    function drawerOf(layer, bind) {
+        const fact = (id, value) => ({ label: Words.name(`shortcuts:${id}`), value: value });
+        return {
+            eyebrow: Words.name(`shortcuts:${layer.name}`),
+            title: bind.does,
+            facts: [fact("keys", spelled(bind.chord)),
+                fact("also", (bind.also ?? []).map(chord => spelled(chord)).join(", ")),
+                fact("where", workedIn(layer, bind))].filter(one => one.value !== "")
+        };
     }
 
     // A level as the launcher steps through a collection (its row's

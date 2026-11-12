@@ -177,6 +177,18 @@ ShellRoot {
             boardRows().map(row => `${row.name} ${row.side}`).join(", "));
         expect("only the laptop's keyboard listed", listed() === "The Laptop's Keyboard",
             listed());
+        // With no lights here, it has nothing to set, so it holds only
+        // readings its drawer says: it never opens a step of them, and
+        // Return copies its name (Joel, 2026-11-11).
+        const told = keyboards.told();
+        const bare = told.rows[0];
+        expect("a keyboard with nothing to set opens no step", bare.verb === "copy"
+            && typeof bare.verbs !== "function" && typeof bare.drawer === "function",
+            `${bare.verb} ${typeof bare.verbs} ${typeof bare.drawer}`);
+        expect("Keyboards' drawer names each keyboard, how it's joined, and Caps Lock",
+            told.drawer.facts.map(fact => `${fact.label}: ${fact.value}`).join("; ")
+                === "The Laptop's Keyboard: built in; Caps Lock: off",
+            told.drawer.facts.map(fact => `${fact.label}: ${fact.value}`).join("; "));
         plug(true, pluggedBack);
     }
 
