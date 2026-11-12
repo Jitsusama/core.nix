@@ -115,14 +115,22 @@ mod tests {
     #[test]
     fn a_messages_first_line_signs_it() {
         let trace = "Process 1 (chrome) of user 1000 dumped core.\n\n#0  0x64d8 n/a";
-        assert_eq!(signature(trace), "Process # (chrome) of user # dumped core.", "first line");
+        assert_eq!(
+            signature(trace),
+            "Process # (chrome) of user # dumped core.",
+            "first line"
+        );
     }
 
     #[test]
     fn a_long_message_is_cut() {
         let long = "word ".repeat(100);
         let signed = signature(&long);
-        assert_eq!(signed.chars().count(), LONGEST + 1, "kept to its length and a mark");
+        assert_eq!(
+            signed.chars().count(),
+            LONGEST + 1,
+            "kept to its length and a mark"
+        );
         assert!(signed.ends_with('…'), "the cut says so: {signed}");
     }
 
@@ -136,6 +144,9 @@ mod tests {
         ] {
             assert!(is_trace(message), "{message} is a trace");
         }
-        assert!(!is_trace("light 3 answered in 812 ms"), "a warning isn't a trace");
+        assert!(
+            !is_trace("light 3 answered in 812 ms"),
+            "a warning isn't a trace"
+        );
     }
 }

@@ -11,7 +11,12 @@ use jiff::tz::TimeZone;
 use crate::day::{Day, Kind, Thing};
 
 /// The kinds, in the order they're shown when as bad as each other.
-const KINDS: [Kind; 4] = [Kind::Programs, Kind::Services, Kind::Devices, Kind::Security];
+const KINDS: [Kind; 4] = [
+    Kind::Programs,
+    Kind::Services,
+    Kind::Devices,
+    Kind::Security,
+];
 
 /// How many of a kind's things, or a thing's signatures, are shown.
 const SHOWN: usize = 10;
@@ -53,8 +58,11 @@ pub fn asked(day: &Day, words: &str) -> String {
         }
         return out;
     }
-    let mut things: Vec<(&String, &Thing)> =
-        day.things.iter().filter(|(name, _)| name.contains(words)).collect();
+    let mut things: Vec<(&String, &Thing)> = day
+        .things
+        .iter()
+        .filter(|(name, _)| name.contains(words))
+        .collect();
     if things.is_empty() {
         return format!("nothing called {words} said a warning on {}\n", day.date);
     }
@@ -80,8 +88,11 @@ pub fn asked(day: &Day, words: &str) -> String {
 
 /// A kind's things, worst first.
 fn worst_of(day: &Day, kind: Kind) -> Vec<(&String, &Thing)> {
-    let mut things: Vec<(&String, &Thing)> =
-        day.things.iter().filter(|(_, thing)| thing.kind == Some(kind)).collect();
+    let mut things: Vec<(&String, &Thing)> = day
+        .things
+        .iter()
+        .filter(|(_, thing)| thing.kind == Some(kind))
+        .collect();
     things.sort_by_key(|(_, thing)| std::cmp::Reverse(thing.badness()));
     things
 }
@@ -107,7 +118,11 @@ fn counted(bad: &(u64, u64, u64, u64, u64, u64), things: usize) -> String {
     let (his, crashes, traces, errors, restarts, lines) = *bad;
     let mut parts = Vec::new();
     if crashes > 0 {
-        let yours = if his > 0 { format!(" ({his} yours)") } else { String::new() };
+        let yours = if his > 0 {
+            format!(" ({his} yours)")
+        } else {
+            String::new()
+        };
         parts.push(format!("{}{yours}", plural(crashes, "crash", "crashes")));
     }
     if traces > 0 {
@@ -126,7 +141,11 @@ fn counted(bad: &(u64, u64, u64, u64, u64, u64), things: usize) -> String {
     if warnings > 0 {
         parts.push(plural(warnings, "warning", "warnings"));
     }
-    let from = if things > 1 { format!(" from {things}") } else { String::new() };
+    let from = if things > 1 {
+        format!(" from {things}")
+    } else {
+        String::new()
+    };
     format!("{}{from}", parts.join(", "))
 }
 
@@ -140,7 +159,7 @@ fn grouped(count: u64) -> String {
     let digits = count.to_string();
     let mut out = String::new();
     for (place, digit) in digits.chars().enumerate() {
-        if place > 0 && (digits.len() - place) % 3 == 0 {
+        if place > 0 && (digits.len() - place).is_multiple_of(3) {
             out.push(',');
         }
         out.push(digit);
@@ -151,14 +170,22 @@ fn grouped(count: u64) -> String {
 /// How far into the day it was read, ", to 22:41", or nothing for a day
 /// with no entry.
 fn until(to: i64) -> String {
-    if to == 0 { String::new() } else { format!(", to {}", clock(to)) }
+    if to == 0 {
+        String::new()
+    } else {
+        format!(", to {}", clock(to))
+    }
 }
 
 /// A time of day on the machine's clock, from microseconds since the epoch.
 fn clock(at: i64) -> String {
     Timestamp::from_microsecond(at).map_or_else(
         |_| "--:--".to_owned(),
-        |at| at.to_zoned(TimeZone::system()).strftime("%H:%M").to_string(),
+        |at| {
+            at.to_zoned(TimeZone::system())
+                .strftime("%H:%M")
+                .to_string()
+        },
     )
 }
 
@@ -180,10 +207,14 @@ mod tests {
 
     fn a_day() -> Day {
         let mut day = Day::new("2026-11-12");
-        day.things.insert("pebble-lights".into(), thing(Kind::Services, 3306, 0, 0, 0));
-        day.things.insert("people".into(), thing(Kind::Services, 118, 4, 0, 0));
-        day.things.insert("chrome".into(), thing(Kind::Programs, 28, 28, 28, 1));
-        day.things.insert("iwlwifi".into(), thing(Kind::Devices, 12, 12, 0, 0));
+        day.things
+            .insert("pebble-lights".into(), thing(Kind::Services, 3306, 0, 0, 0));
+        day.things
+            .insert("people".into(), thing(Kind::Services, 118, 4, 0, 0));
+        day.things
+            .insert("chrome".into(), thing(Kind::Programs, 28, 28, 28, 1));
+        day.things
+            .insert("iwlwifi".into(), thing(Kind::Devices, 12, 12, 0, 0));
         day
     }
 
@@ -197,8 +228,7 @@ mod tests {
             "a crash is worse than any number of warnings"
         );
         assert_eq!(
-            lines[2],
-            "devices   12 errors; worst: iwlwifi, 12 errors",
+            lines[2], "devices   12 errors; worst: iwlwifi, 12 errors",
             "errors come before warnings"
         );
         assert_eq!(
@@ -211,7 +241,10 @@ mod tests {
 
     #[test]
     fn an_empty_day_says_so() {
-        assert_eq!(day(&Day::new("2026-11-12")), "health, 2026-11-12\nnothing said a warning\n");
+        assert_eq!(
+            day(&Day::new("2026-11-12")),
+            "health, 2026-11-12\nnothing said a warning\n"
+        );
     }
 
     #[test]
@@ -219,7 +252,9 @@ mod tests {
         let shown = asked(&a_day(), "services");
         assert!(shown.starts_with("services on 2026-11-12\n"), "{shown}");
         let people = shown.find("people").expect("people is listed");
-        let lights = shown.find("pebble-lights").expect("pebble-lights is listed");
+        let lights = shown
+            .find("pebble-lights")
+            .expect("pebble-lights is listed");
         assert!(people < lights, "the gravest first: {shown}");
     }
 
@@ -237,9 +272,15 @@ mod tests {
             },
         );
         let shown = asked(&day, "peop");
-        assert!(shown.starts_with("people: 4 errors, 114 warnings\n"), "{shown}");
+        assert!(
+            shown.starts_with("people: 4 errors, 114 warnings\n"),
+            "{shown}"
+        );
         assert!(shown.contains("     4  "), "its count: {shown}");
-        assert!(shown.contains("lookup 12 failed"), "an example as said: {shown}");
+        assert!(
+            shown.contains("lookup 12 failed"),
+            "an example as said: {shown}"
+        );
         assert_eq!(
             asked(&day, "nobody"),
             "nothing called nobody said a warning on 2026-11-12\n",

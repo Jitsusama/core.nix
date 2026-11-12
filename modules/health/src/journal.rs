@@ -55,9 +55,8 @@ pub fn parse(line: &str) -> Option<Entry> {
     let identifier = text("SYSLOG_IDENTIFIER").or_else(|| text("_COMM"));
     let unit = text("USER_UNIT").or_else(|| text("UNIT"));
     let thing = match (identifier.as_deref(), unit) {
-        (Some("systemd"), Some(unit)) => unit,
+        (Some("systemd") | None, Some(unit)) => unit,
         (Some(identifier), _) => identifier.to_owned(),
-        (None, Some(unit)) => unit,
         (None, None) => "unnamed".to_owned(),
     };
     let crashed = text("COREDUMP_COMM");
@@ -95,7 +94,10 @@ fn said(value: &Value) -> Option<String> {
 /// Whose a crashed program was, from the slice it ran in: his programs and
 /// his session are his, everything else (jobs, the background) is agents'.
 fn whose(fields: &Map<String, Value>) -> Whose {
-    let cgroup = fields.get("COREDUMP_CGROUP").and_then(said).unwrap_or_default();
+    let cgroup = fields
+        .get("COREDUMP_CGROUP")
+        .and_then(said)
+        .unwrap_or_default();
     if cgroup.contains("/app.slice") || cgroup.contains("/session.slice") {
         Whose::His
     } else {
@@ -114,11 +116,21 @@ mod tests {
             "MESSAGE":"light 3 answered in 812 ms"}"#
             .replace('\n', "");
         let entry = parse(&line).expect("a journal line is an entry");
-        assert_eq!(entry.thing, "pebble-lights", "the identifier names the thing");
+        assert_eq!(
+            entry.thing, "pebble-lights",
+            "the identifier names the thing"
+        );
         assert_eq!(entry.priority, 4, "the priority is read");
         assert_eq!(entry.at, 1_794_450_621_321_755, "the time is read");
-        assert_eq!(entry.ran_in.as_deref(), Some("pebble-lights.service"), "its unit");
-        assert!(!entry.restart && !entry.kernel, "it's neither a restart nor the kernel's");
+        assert_eq!(
+            entry.ran_in.as_deref(),
+            Some("pebble-lights.service"),
+            "its unit"
+        );
+        assert!(
+            !entry.restart && !entry.kernel,
+            "it's neither a restart nor the kernel's"
+        );
     }
 
     #[test]
@@ -128,7 +140,10 @@ mod tests {
             "MESSAGE":"merge-net.service: Scheduled restart job, restart counter is at 1."}"#
             .replace('\n', "");
         let entry = parse(&line).expect("a journal line is an entry");
-        assert_eq!(entry.thing, "merge-net.service", "the unit spoken of is the thing");
+        assert_eq!(
+            entry.thing, "merge-net.service",
+            "the unit spoken of is the thing"
+        );
         assert!(entry.restart, "systemd's restart message is a restart");
     }
 
@@ -144,9 +159,17 @@ mod tests {
             .replace("/app.slice/", "/jobs.slice/jobs-timed.slice/");
         let his = parse(&his).expect("a crash is an entry");
         let agents = parse(&agents).expect("a crash is an entry");
-        assert_eq!(his.crashed.as_deref(), Some("1password"), "the program is named");
+        assert_eq!(
+            his.crashed.as_deref(),
+            Some("1password"),
+            "the program is named"
+        );
         assert_eq!(his.whose, Some(Whose::His), "a program in his slice is his");
-        assert_eq!(agents.whose, Some(Whose::Agents), "a job's program is agents'");
+        assert_eq!(
+            agents.whose,
+            Some(Whose::Agents),
+            "a job's program is agents'"
+        );
     }
 
     #[test]
@@ -155,13 +178,21 @@ mod tests {
             "SYSLOG_IDENTIFIER":"kernel","MESSAGE":[110,118,109,101,255]}"#
             .replace('\n', "");
         let entry = parse(&line).expect("a kernel line is an entry");
-        assert!(entry.message.starts_with("nvme"), "the bytes are read: {}", entry.message);
+        assert!(
+            entry.message.starts_with("nvme"),
+            "the bytes are read: {}",
+            entry.message
+        );
         assert!(entry.kernel, "the kernel's transport is the kernel's");
     }
 
     #[test]
     fn a_line_that_isnt_an_entry_is_none() {
         assert_eq!(parse("-- No entries --"), None, "words aren't an entry");
-        assert_eq!(parse(r#"{"MESSAGE":"no time"}"#), None, "an entry needs its time");
+        assert_eq!(
+            parse(r#"{"MESSAGE":"no time"}"#),
+            None,
+            "an entry needs its time"
+        );
     }
 }

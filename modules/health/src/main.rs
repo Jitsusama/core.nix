@@ -65,9 +65,7 @@ fn main() -> ExitCode {
         Err(said) => return refused(&said),
     };
     let Ok(file) = fs::read(follow::file_of(&into, &date)) else {
-        eprintln!(
-            "health: nothing kept for {date}; is it running? systemctl --user status health"
-        );
+        eprintln!("health: nothing kept for {date}; is it running? systemctl --user status health");
         return ExitCode::FAILURE;
     };
     let day: Day = match serde_json::from_slice(&file) {

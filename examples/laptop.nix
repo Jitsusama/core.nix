@@ -51,6 +51,7 @@ nixpkgs.lib.nixosSystem {
           core.homeModules.cadence
           core.homeModules.chrome
           core.homeModules.code-health
+          core.homeModules.health
           core.homeModules.local-sites
           core.homeModules.merge-net
           core.homeModules.network-revive

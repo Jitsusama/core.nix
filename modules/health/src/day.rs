@@ -3,6 +3,7 @@
 //! and for `cadence day` to judge.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -150,15 +151,12 @@ impl Thing {
             THE_REST.clone_into(&mut signed);
         }
         let first = entry.message.lines().next().unwrap_or_default();
-        let signature = self
-            .signatures
-            .entry(signed)
-            .or_insert_with(|| Signature {
-                priority: entry.priority,
-                first: entry.at,
-                example: first.chars().take(400).collect(),
-                ..Signature::default()
-            });
+        let signature = self.signatures.entry(signed).or_insert_with(|| Signature {
+            priority: entry.priority,
+            first: entry.at,
+            example: first.chars().take(400).collect(),
+            ..Signature::default()
+        });
         signature.count += 1;
         signature.priority = signature.priority.min(entry.priority);
         signature.last = signature.last.max(entry.at);
@@ -189,12 +187,20 @@ fn named(entry: &Entry) -> (String, Kind) {
     if entry.kernel {
         let opening = entry.message.split_whitespace().next().unwrap_or("kernel");
         let device = sign::signature(opening.trim_end_matches(':'));
-        let kind = if device == "audit" { Kind::Security } else { Kind::Devices };
+        let kind = if device == "audit" {
+            Kind::Security
+        } else {
+            Kind::Devices
+        };
         return (device, kind);
     }
     let kind = if SECURITY.contains(&entry.thing.as_str()) {
         Kind::Security
-    } else if entry.ran_in.as_deref().is_some_and(|unit| unit.ends_with(".scope")) {
+    } else if entry.ran_in.as_deref().is_some_and(|unit| {
+        Path::new(unit)
+            .extension()
+            .is_some_and(|kind| kind == "scope")
+    }) {
         Kind::Programs
     } else {
         Kind::Services
@@ -229,12 +235,27 @@ mod tests {
             ..entry("pebble-lights", 3, "light 4 answered in 90 ms")
         });
         let thing = &day.things["pebble-lights"];
-        assert_eq!(thing.kind, Some(Kind::Services), "a service's lines are a service's");
-        assert_eq!((thing.lines, thing.errors), (2, 1), "both lines, one an error");
+        assert_eq!(
+            thing.kind,
+            Some(Kind::Services),
+            "a service's lines are a service's"
+        );
+        assert_eq!(
+            (thing.lines, thing.errors),
+            (2, 1),
+            "both lines, one an error"
+        );
         let said = &thing.signatures["light # answered in # ms"];
         assert_eq!(said.count, 2, "one signature for both");
-        assert_eq!((said.priority, said.first, said.last), (3, 1, 9), "gravest, first, last");
-        assert_eq!(said.example, "light 3 answered in 812 ms", "the first said, as it was");
+        assert_eq!(
+            (said.priority, said.first, said.last),
+            (3, 1, 9),
+            "gravest, first, last"
+        );
+        assert_eq!(
+            said.example, "light 3 answered in 812 ms",
+            "the first said, as it was"
+        );
         assert_eq!(day.to, 9, "the day runs to its last entry");
     }
 
@@ -244,27 +265,47 @@ mod tests {
         let crash = |whose| Entry {
             crashed: Some("chrome".to_owned()),
             whose: Some(whose),
-            ..entry("systemd-coredump", 2, "Process 1 (chrome) of user 1000 dumped core.")
+            ..entry(
+                "systemd-coredump",
+                2,
+                "Process 1 (chrome) of user 1000 dumped core.",
+            )
         };
         day.take(&crash(Whose::Agents));
         day.take(&crash(Whose::His));
         let chrome = &day.things["chrome"];
         assert_eq!(chrome.kind, Some(Kind::Programs), "a crash is a program's");
-        assert_eq!((chrome.crashes, chrome.his_crashes), (2, 1), "two crashes, one his");
+        assert_eq!(
+            (chrome.crashes, chrome.his_crashes),
+            (2, 1),
+            "two crashes, one his"
+        );
         assert_eq!(chrome.traces, 0, "a crash isn't counted again as a trace");
     }
 
     #[test]
     fn a_trace_and_a_restart_are_counted() {
         let mut day = Day::new("2026-11-12");
-        day.take(&entry("quickshell", 4, "qrc:/Now.qml:3: TypeError: x is null"));
+        day.take(&entry(
+            "quickshell",
+            4,
+            "qrc:/Now.qml:3: TypeError: x is null",
+        ));
         day.take(&Entry {
             restart: true,
-            ..entry("quickshell.service", 6, "quickshell.service: Scheduled restart job")
+            ..entry(
+                "quickshell.service",
+                6,
+                "quickshell.service: Scheduled restart job",
+            )
         });
         assert_eq!(day.things["quickshell"].traces, 1, "the trace is counted");
         let service = &day.things["quickshell.service"];
-        assert_eq!((service.restarts, service.lines), (1, 0), "a restart isn't a warning");
+        assert_eq!(
+            (service.restarts, service.lines),
+            (1, 0),
+            "a restart isn't a warning"
+        );
     }
 
     #[test]
@@ -277,21 +318,45 @@ mod tests {
         day.take(&kernel("iwlwifi 0000:00:14.3: Microcode SW error detected"));
         day.take(&kernel("nvme0n1: I/O error"));
         day.take(&kernel("audit: type=1400 apparmor=\"DENIED\""));
-        assert_eq!(day.things["iwlwifi"].kind, Some(Kind::Devices), "a driver is a device");
-        assert_eq!(day.things["nvme#n#"].kind, Some(Kind::Devices), "a disk is a device");
-        assert_eq!(day.things["audit"].kind, Some(Kind::Security), "the audit log is security");
+        assert_eq!(
+            day.things["iwlwifi"].kind,
+            Some(Kind::Devices),
+            "a driver is a device"
+        );
+        assert_eq!(
+            day.things["nvme#n#"].kind,
+            Some(Kind::Devices),
+            "a disk is a device"
+        );
+        assert_eq!(
+            day.things["audit"].kind,
+            Some(Kind::Security),
+            "the audit log is security"
+        );
     }
 
     #[test]
     fn security_and_programs_are_told_apart_from_services() {
         let mut day = Day::new("2026-11-12");
-        day.take(&entry("sudo", 4, "pam_unix(sudo:auth): conversation failed"));
+        day.take(&entry(
+            "sudo",
+            4,
+            "pam_unix(sudo:auth): conversation failed",
+        ));
         day.take(&Entry {
             ran_in: Some("app-niri-kitty-1.scope".to_owned()),
             ..entry("kitty", 4, "[0.1] Failed to set locale")
         });
-        assert_eq!(day.things["sudo"].kind, Some(Kind::Security), "sudo is security");
-        assert_eq!(day.things["kitty"].kind, Some(Kind::Programs), "a scope's is a program's");
+        assert_eq!(
+            day.things["sudo"].kind,
+            Some(Kind::Security),
+            "sudo is security"
+        );
+        assert_eq!(
+            day.things["kitty"].kind,
+            Some(Kind::Programs),
+            "a scope's is a program's"
+        );
     }
 
     #[test]
@@ -302,7 +367,14 @@ mod tests {
             day.take(&entry("chatty", 4, &word));
         }
         let chatty = &day.things["chatty"];
-        assert_eq!(chatty.signatures.len(), MOST_SIGNATURES + 1, "its most, and the rest");
-        assert_eq!(chatty.signatures[THE_REST].count, 1, "the one past its most");
+        assert_eq!(
+            chatty.signatures.len(),
+            MOST_SIGNATURES + 1,
+            "its most, and the rest"
+        );
+        assert_eq!(
+            chatty.signatures[THE_REST].count, 1,
+            "the one past its most"
+        );
     }
 }

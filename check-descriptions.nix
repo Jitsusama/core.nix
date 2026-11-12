@@ -876,6 +876,14 @@
     tools printed, writes sticks that sfdisk, fsck.fat and their own key read back whole, signs EFI
     programs byte for byte as sbsign does, and finds every program it runs
   '';
+  health-passes-clippy = ''
+    clippy finds nothing in health or its tests
+  '';
+  health-tallies-the-days-warnings = ''
+    health reads each journal line for the thing that said it and whose a crash was, counts a
+    line's repeats as one signature, keeps a day by kind and writes it whole once changed, and
+    shows it a line a kind, the gravest first
+  '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
     firmware start for a resume through the disk prompt and a wake for none, counts a disk as

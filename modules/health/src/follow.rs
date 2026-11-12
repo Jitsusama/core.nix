@@ -147,14 +147,20 @@ fn spawn(asked: &[&str], lines: Sender<Option<String>>) -> io::Result<()> {
         .args(asked)
         .stdout(Stdio::piped())
         .spawn()?;
-    let out = journalctl.stdout.take().ok_or_else(|| io::Error::other("no output"))?;
+    let out = journalctl
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("no output"))?;
     thread::spawn(move || {
         let mut out = BufReader::new(out);
         let mut line = Vec::new();
         // A line that isn't UTF-8 is read as far as it goes; journalctl
         // writes such a message as bytes, so it's rare.
         while out.read_until(b'\n', &mut line).is_ok_and(|read| read > 0) {
-            if lines.send(Some(String::from_utf8_lossy(&line).into_owned())).is_err() {
+            if lines
+                .send(Some(String::from_utf8_lossy(&line).into_owned()))
+                .is_err()
+            {
                 break;
             }
             line.clear();
@@ -190,10 +196,17 @@ mod tests {
         let into = tempfile::tempdir().expect("a folder");
         let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
         follower.write().expect("nothing to write");
-        assert!(!file_of(into.path(), "2026-11-12").exists(), "an untouched day isn't written");
+        assert!(
+            !file_of(into.path(), "2026-11-12").exists(),
+            "an untouched day isn't written"
+        );
         follower.take(&warning(NOON)).expect("a line");
         follower.write().expect("the day is written");
-        assert_eq!(read(into.path(), "2026-11-12").things["people"].lines, 1, "its line counted");
+        assert_eq!(
+            read(into.path(), "2026-11-12").things["people"].lines,
+            1,
+            "its line counted"
+        );
         assert!(
             fs::read_dir(into.path()).expect("the folder").count() == 1,
             "nothing but the day is left behind"
@@ -206,8 +219,14 @@ mod tests {
         let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
         follower.take(&warning(NOON)).expect("a line");
         follower.take(&warning(NOON + 1)).expect("a line");
-        follower.take(&warning(NOON + DAY)).expect("the next day's line");
-        assert_eq!(read(into.path(), "2026-11-12").things["people"].lines, 2, "the old day whole");
+        follower
+            .take(&warning(NOON + DAY))
+            .expect("the next day's line");
+        assert_eq!(
+            read(into.path(), "2026-11-12").things["people"].lines,
+            2,
+            "the old day whole"
+        );
         follower.take(&warning(NOON)).expect("a late line");
         follower.write().expect("the new day is written");
         assert_eq!(
@@ -215,7 +234,11 @@ mod tests {
             1,
             "the new day starts empty, and a late line of a day done is left out"
         );
-        assert_eq!(read(into.path(), "2026-11-12").things["people"].lines, 2, "the old day stays");
+        assert_eq!(
+            read(into.path(), "2026-11-12").things["people"].lines,
+            2,
+            "the old day stays"
+        );
     }
 
     #[test]
@@ -224,12 +247,19 @@ mod tests {
         let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC);
         follower.take("-- No entries --").expect("words");
         follower.write().expect("nothing to write");
-        assert!(!file_of(into.path(), "2026-11-12").exists(), "nothing was taken");
+        assert!(
+            !file_of(into.path(), "2026-11-12").exists(),
+            "nothing was taken"
+        );
     }
 
     #[test]
     fn a_moment_is_dated_in_its_zone() {
-        assert_eq!(date_of(NOON, &TimeZone::UTC), "2026-11-12", "noon is that day");
+        assert_eq!(
+            date_of(NOON, &TimeZone::UTC),
+            "2026-11-12",
+            "noon is that day"
+        );
         let west = TimeZone::fixed(jiff::tz::offset(-5));
         assert_eq!(
             date_of(NOON - 8 * 3_600_000_000, &west),
