@@ -272,6 +272,28 @@ in
     };
   };
 
+  # How each local day's connection did under load, from the recorder's
+  # files, for whoever holds the network to a bar (src/day.rs). It runs as
+  # each account, since the day file is the account's, and reads the
+  # system journal for when the shaper ran.
+  config.systemd.user.services.shaper-day = {
+    description = "Write how today's connection did under load";
+    path = [ pkgs.systemd ];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${shaper}/bin/shaper day";
+      Slice = "background.slice";
+    };
+  };
+  config.systemd.user.timers.shaper-day = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "hourly";
+      Persistent = true;
+      RandomizedDelaySec = 300;
+    };
+  };
+
   # `shaper status` reads what it holds each link to, and what each tin
   # carried; `shaper proof` measures whether the shaper beats the router.
   config.environment.systemPackages = [ shaperCommand ];
