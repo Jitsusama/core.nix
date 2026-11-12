@@ -113,10 +113,13 @@ Provider {
 
     // Move the Meeting as the daemon serves it, stepping in to its later
     // times, with a time typed there read by Calendar.js and made as
-    // Calendar.qml's moving() makes one, till the daemon answers it.
+    // Calendar.qml's moving() makes one, till the daemon answers it. It's
+    // made here as every row under a meeting is, so it's the meeting
+    // component's (Launcher.qml's components).
     function moving(from, row, key) {
         const meeting = provider.meetingOf(from.served(row.parent)?.held?.id ?? "");
         return from.thing(row, key, {
+            component: "meeting",
             typed: letters => {
                 const time = meeting ? Calendar.typed(letters, meeting) : null;
                 return time === null ? [] : [Calendar.movingTo(meeting, provider,
