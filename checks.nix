@@ -100,6 +100,14 @@ let
   graphical = bareNixos [ self.nixosModules.graphical ];
   macWorkstation = bareDarwin [ self.darwinModules.workstation ];
 
+  # The example laptop, whose roles and own list between them import every
+  # module Linux has (examples/laptop.nix), for the checks that must meet
+  # all of them rather than one role's.
+  exampleLaptop = import ./examples/laptop.nix {
+    core = self;
+    inherit nixpkgs;
+  };
+
   # What clippy holds Rust to, and its settings, as a repository built on core
   # gets them too; modules/clippy/clippy.nix says why each lint is there.
   clippy = pkgs.callPackage ./modules/clippy/clippy.nix { };
@@ -417,6 +425,7 @@ let
       workstation
       graphical
       macWorkstation
+      exampleLaptop
       clippy
       clippyLints
       clippyConfig

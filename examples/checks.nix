@@ -3,6 +3,7 @@
 # every other folder's.
 {
   evaluates,
+  exampleLaptop,
   nix-darwin,
   nixpkgs,
   self,
@@ -15,12 +16,8 @@
       inherit nixpkgs;
     }
   );
-  example-laptop = evaluates "example-laptop" (
-    import ./laptop.nix {
-      core = self;
-      inherit nixpkgs;
-    }
-  );
+  # Evaluated once in checks.nix, since the rules' daemons-agree reads it too.
+  example-laptop = evaluates "example-laptop" exampleLaptop;
   example-apple-laptop = evaluates "example-apple-laptop" (
     import ./apple-laptop.nix {
       core = self;
