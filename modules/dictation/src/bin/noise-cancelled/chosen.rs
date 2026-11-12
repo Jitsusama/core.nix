@@ -22,8 +22,8 @@ impl Chosen {
         Self { file, configured }
     }
 
-    /// The cleaner to clean with now.
-    pub fn cleaner(&self) -> Cleaner {
+    /// The cleaner to clean with now, one for every microphone.
+    pub fn cleaner(&self, _microphone: Option<&str>) -> Cleaner {
         self.file
             .as_deref()
             .and_then(|file| std::fs::read_to_string(file).ok())
@@ -39,7 +39,7 @@ impl Chosen {
 
     /// Keeps `cleaner` as the pick, written whole beside the file and moved
     /// over it, so the service never reads half of one.
-    pub fn choose(&self, cleaner: Cleaner) -> Result<(), String> {
+    pub fn choose(&self, _microphone: &str, cleaner: Cleaner) -> Result<(), String> {
         let Some(file) = &self.file else {
             return Ok(());
         };
@@ -57,54 +57,5 @@ fn saying(path: &Path, why: &std::io::Error) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn folder(name: &str) -> PathBuf {
-        let folder = std::env::temp_dir().join(format!("chosen-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&folder);
-        folder
-    }
-
-    #[test]
-    fn nothing_picked_cleans_as_nix_says() {
-        let chosen = Chosen::new(Some(folder("none").join("cleaner")), Cleaner::DeepFilterNet);
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNet);
-    }
-
-    #[test]
-    fn a_pick_is_kept_and_cleans_from_then_on() {
-        let file = folder("kept").join("noise-cancelled").join("cleaner");
-        let chosen = Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet);
-        chosen.choose(Cleaner::RNNoise).expect("the pick is kept");
-        assert_eq!(chosen.cleaner(), Cleaner::RNNoise);
-        assert_eq!(
-            std::fs::read_to_string(&file).expect("the file is there"),
-            "rnnoise\n"
-        );
-        let other = Chosen::new(Some(file), Cleaner::DeepFilterNetGentle);
-        assert_eq!(
-            other.cleaner(),
-            Cleaner::RNNoise,
-            "another process reads the pick"
-        );
-    }
-
-    #[test]
-    fn a_file_naming_no_cleaner_cleans_as_nix_says() {
-        let folder = folder("garbled");
-        std::fs::create_dir_all(&folder).expect("the folder is made");
-        std::fs::write(folder.join("cleaner"), "loud\n").expect("the file is written");
-        let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNetGentle);
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNetGentle);
-    }
-
-    #[test]
-    fn nowhere_to_keep_it_keeps_nothing() {
-        let chosen = Chosen::new(None, Cleaner::DeepFilterNet);
-        chosen
-            .choose(Cleaner::RNNoise)
-            .expect("nothing to write is no failure");
-        assert_eq!(chosen.cleaner(), Cleaner::DeepFilterNet);
-    }
-}
+#[path = "chosen_tests.rs"]
+mod tests;
