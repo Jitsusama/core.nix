@@ -154,7 +154,7 @@ pub struct Memory {
 pub fn watched<'a>(
     seen: &'a [Seen],
     orchestrators: &[String],
-    steward: &str,
+    orchestrator: &str,
     skip: &[String],
 ) -> Vec<&'a Seen> {
     let named: Vec<&str> = seen
@@ -163,7 +163,7 @@ pub fn watched<'a>(
         .collect();
     let is_orchestrator = |s: &Seen| {
         orchestrators.contains(&s.address)
-            || s.address == steward
+            || s.address == orchestrator
             || (s.orchestrated_by.is_none()
                 && (s.orchestrates || named.contains(&s.address.as_str())))
     };
@@ -171,7 +171,7 @@ pub fn watched<'a>(
         .iter()
         .filter(|s| is_orchestrator(s))
         .map(|s| s.address.as_str())
-        .chain(std::iter::once(steward))
+        .chain(std::iter::once(orchestrator))
         .collect();
     let mut by_address: BTreeMap<&str, &Seen> = BTreeMap::new();
     for s in seen {
@@ -434,7 +434,7 @@ pub fn marked(listing: &serde_json::Value, session: &str) -> Vec<(String, Option
 /// each line is for, in the order they were started: one message each,
 /// however many sessions it started. A harness rollover at 03:22 on
 /// 11 November ended about 40 sessions together, and telling of each
-/// alone sent the steward 40 messages and the watcher 40 more.
+/// alone sent the orchestrator 40 messages and the watcher 40 more.
 #[must_use]
 pub fn gathered(told: &[(String, String)]) -> Vec<(String, String)> {
     let mut each: Vec<(String, Vec<&str>)> = Vec::new();
@@ -466,9 +466,9 @@ mod tests {
     #[test]
     fn a_look_that_starts_several_sessions_tells_each_peer_once() {
         let told: Vec<(String, String)> = [
-            ("steward", "A died; started again."),
+            ("top", "A died; started again."),
             ("watcher", "A died; started again."),
-            ("steward", "B died; started again."),
+            ("top", "B died; started again."),
             ("orchestrator", "B died; started again."),
             ("watcher", "B died; started again."),
         ]
@@ -478,7 +478,7 @@ mod tests {
         assert_eq!(
             gathered(&told),
             [
-                ("steward".to_owned(), both.to_owned()),
+                ("top".to_owned(), both.to_owned()),
                 ("watcher".to_owned(), both.to_owned()),
                 (
                     "orchestrator".to_owned(),
@@ -570,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn orchestrators_and_the_stewards_sessions_are_watched_once_each() {
+    fn orchestrators_and_the_orchestrators_sessions_are_watched_once_each() {
         let all = vec![
             seen("STEW", None, true, "1"),
             seen("ORCH", None, true, "1"),

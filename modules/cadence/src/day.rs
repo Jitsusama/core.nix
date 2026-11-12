@@ -25,6 +25,11 @@ pub struct Day {
 /// A figure the loop reads each day, where more is always worse.
 pub struct Measure {
     pub key: &'static str,
+    /// Which of the loop's axes it reads: resources, time to done,
+    /// quality, polish and the others the loop's research names.
+    pub axis: &'static str,
+    /// Where it's read from, so anyone can read it again.
+    pub evidence: &'static str,
     /// What it is, as the note says it: "{says} went from 3 to 5".
     pub says: &'static str,
     /// What it's counted in, after the number: "%", " min", "".
@@ -35,10 +40,17 @@ pub struct Measure {
     pub floor: f64,
 }
 
+const LAUNCHER: &str = "journalctl --user -u quickshell over the day, its launcher: lines";
+const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
+const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
+const UPDATES: &str = "journalctl -u update-to-main.service over the day";
+
 /// Every figure the day reads. The bars are docs/delivery.md's targets.
 pub const MEASURES: &[Measure] = &[
     Measure {
         key: "oom.machine",
+        axis: "resources",
+        evidence: KILLS,
         says: "machine-wide out-of-memory kills",
         unit: "",
         bar: Some(0.0),
@@ -46,6 +58,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "oom.cgroup",
+        axis: "resources",
+        evidence: KILLS,
         says: "kills inside a slice's own memory limit",
         unit: "",
         bar: None,
@@ -53,6 +67,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "pressure.cpu.jobs",
+        axis: "resources",
+        evidence: STALLS,
         says: "the agents' jobs' CPU pressure",
         unit: "%",
         bar: Some(15.0),
@@ -60,6 +76,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "pressure.cpu.app",
+        axis: "polish",
+        evidence: STALLS,
         says: "CPU pressure on Joel's apps",
         unit: "%",
         bar: None,
@@ -67,6 +85,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "pressure.cpu.session",
+        axis: "polish",
+        evidence: STALLS,
         says: "CPU pressure on Joel's session",
         unit: "%",
         bar: None,
@@ -74,6 +94,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "pressure.memory.app",
+        axis: "polish",
+        evidence: STALLS,
         says: "memory stalls of Joel's apps",
         unit: "%",
         bar: Some(1.0),
@@ -81,6 +103,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "pressure.memory.session",
+        axis: "polish",
+        evidence: STALLS,
         says: "memory stalls of Joel's session",
         unit: "%",
         bar: Some(1.0),
@@ -88,6 +112,8 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "switch.minutes.median",
+        axis: "time to done",
+        evidence: UPDATES,
         says: "a switch's median length",
         unit: " min",
         bar: None,
@@ -95,17 +121,71 @@ pub const MEASURES: &[Measure] = &[
     },
     Measure {
         key: "switch.minutes.longest",
+        axis: "time to done",
+        evidence: UPDATES,
         says: "the longest switch",
         unit: " min",
         bar: Some(60.0),
         floor: 10.0,
     },
+    // The launcher's, against docs/design.md's 50 ms from a key or a
+    // chord to its frame.
     Measure {
-        key: "switch.pieces.here",
-        says: "pieces a switch built on the laptop",
-        unit: "",
+        key: "launcher.opening.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's median opening, chord to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 10.0,
+    },
+    Measure {
+        key: "launcher.opening.usable",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's median opening, chord to answering keys",
+        unit: " ms",
         bar: None,
-        floor: 20.0,
+        floor: 30.0,
+    },
+    Measure {
+        key: "launcher.keys.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "a key's median time in the launcher, key to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 5.0,
+    },
+    Measure {
+        key: "launcher.keys.late",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "the launcher's keys past 50 ms",
+        unit: "%",
+        bar: None,
+        floor: 5.0,
+    },
+    Measure {
+        key: "launcher.changes.presented",
+        axis: "polish",
+        evidence: LAUNCHER,
+        says: "a daemon's change's median time in the launcher, line to frame",
+        unit: " ms",
+        bar: Some(50.0),
+        floor: 5.0,
+    },
+    // Only the pieces that aren't light: update-to-main leaves the light
+    // ones, a written file or a folder of links, to the laptop by design,
+    // and builds the rest here only when the builders can't.
+    Measure {
+        key: "switch.pieces.heavy",
+        axis: "resources",
+        evidence: UPDATES,
+        says: "pieces that aren't light a switch built on the laptop",
+        unit: "",
+        bar: Some(0.0),
+        floor: 1.0,
     },
 ];
 
@@ -113,6 +193,8 @@ pub const MEASURES: &[Measure] = &[
 /// new: one not seen in the days before.
 pub struct Kind {
     pub key: &'static str,
+    pub axis: &'static str,
+    pub evidence: &'static str,
     /// "{says} {name}, N times".
     pub says: &'static str,
 }
@@ -120,13 +202,34 @@ pub struct Kind {
 pub const KINDS: &[Kind] = &[
     Kind {
         key: "crashes",
+        axis: "quality",
+        evidence: "coredumpctl list over the day, by program",
         says: "a crash of",
     },
     Kind {
         key: "failed",
+        axis: "quality",
+        evidence: "journalctl MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c over the day, by unit",
         says: "a failure of",
     },
 ];
+
+/// The axis a finding's key reads and where it's read from: its
+/// measure's, or for `crashes:biome` its kind's.
+#[must_use]
+pub fn about(key: &str) -> Option<(&'static str, &'static str)> {
+    let kind = key.split_once(':').map_or(key, |(kind, _)| kind);
+    MEASURES
+        .iter()
+        .find(|m| m.key == key)
+        .map(|m| (m.axis, m.evidence))
+        .or_else(|| {
+            KINDS
+                .iter()
+                .find(|k| k.key == kind)
+                .map(|k| (k.axis, k.evidence))
+        })
+}
 
 /// Each program that dumped core, by the name of its file, from
 /// `coredumpctl --json=short list`.
@@ -254,6 +357,9 @@ pub struct Switches {
     pub under_way: Option<f64>,
     /// The pieces the day's updates built on the laptop.
     pub here: u32,
+    /// Of them, those that aren't light: the ones meant for the builders
+    /// that an update built here once the builders didn't.
+    pub heavy: u32,
 }
 
 #[must_use]
@@ -264,6 +370,9 @@ pub fn switches(journal: &str, to: f64) -> Switches {
     }
     let mut lengths = Vec::new();
     let mut here = 0;
+    let mut heavy = 0;
+    // The pieces the update building now sent to the builders.
+    let mut away = 0;
     let mut asked: Option<f64> = None;
     // Whether the update asked for got as far as building, so an ask the
     // journal says no more of isn't taken for one under way.
@@ -278,8 +387,20 @@ pub fn switches(journal: &str, to: f64) -> Switches {
         if rest.contains("asks for an update") {
             asked.get_or_insert(at);
         } else if let Some(needs) = rest.split_once("the system needs ") {
-            here += pieces_here(needs.1).unwrap_or(0);
+            let (light, sent) = pieces_here(needs.1).unwrap_or_default();
+            here += light;
+            away = sent;
             building = asked.is_some();
+        } else if let Some((_, again)) = rest.split_once("so they go where the first were sent: ") {
+            // The second listing, just before the build here, sends again
+            // what went missing since the first.
+            away = sent_again(again).unwrap_or(away);
+        } else if rest.contains(", so they build here") {
+            // update-to-main's fallback: what the builders didn't build
+            // builds here, light or not.
+            here += away;
+            heavy += away;
+            away = 0;
         } else if let Some(brace) = rest.find('{')
             && let Ok(said) = serde_json::from_str::<Said>(&rest[brace..])
         {
@@ -303,17 +424,27 @@ pub fn switches(journal: &str, to: f64) -> Switches {
         lengths,
         under_way,
         here,
+        heavy,
     }
 }
 
 /// From "N pieces built: K kept apart, R on the builders, the rest here",
-/// N less K and R.
-fn pieces_here(said: &str) -> Option<u32> {
+/// N less K and R, built here, and K and R, sent away.
+fn pieces_here(said: &str) -> Option<(u32, u32)> {
     let number = |text: &str| text.trim().split(' ').next()?.parse::<u32>().ok();
     let (all, rest) = said.split_once(" pieces built: ")?;
     let (kept, rest) = rest.split_once(" kept apart, ")?;
     let (away, _) = rest.split_once(" on the builders")?;
-    Some(number(all)?.saturating_sub(number(kept)? + number(away)?))
+    let sent = number(kept)? + number(away)?;
+    Some((number(all)?.saturating_sub(sent), sent))
+}
+
+/// From "K kept apart, R on the builders", K and R.
+fn sent_again(said: &str) -> Option<u32> {
+    let number = |text: &str| text.trim().parse::<u32>().ok();
+    let (kept, rest) = said.split_once(" kept apart, ")?;
+    let (away, _) = rest.split_once(" on the builders")?;
+    Some(number(kept)? + number(away)?)
 }
 
 /// The middle of `values`, or nothing when there are none.
@@ -445,6 +576,38 @@ mod tests {
         assert_eq!(
             read.under_way, None,
             "a day of finished switches had one under way"
+        );
+        assert_eq!(
+            read.heavy, 0,
+            "pieces built on the builders were heavy here"
+        );
+    }
+
+    #[test]
+    fn what_the_builders_didnt_build_and_the_laptop_did_is_heavy() {
+        let journal = "\
+100.0 laptop u[1]: uid 1000 asks for an update
+110.0 laptop u[1]: the system needs 15 pieces built: 2 kept apart, 3 on the builders, the rest here
+120.0 laptop u[1]: building the system on the machine's builders failed, so they build here, after:
+700.0 laptop u[1]: {\"step\":\"done\",\"commit\":\"c\"}
+";
+        let read = switches(journal, 2000.0);
+        assert_eq!(
+            (read.here, read.heavy),
+            (15, 5),
+            "the pieces the builders didn't build weren't counted heavy here"
+        );
+        let again = "\
+100.0 laptop u[1]: uid 1000 asks for an update
+110.0 laptop u[1]: the system needs 15 pieces built: 0 kept apart, 3 on the builders, the rest here
+130.0 laptop u[1]: before the build here, 1 pieces that aren't light are still to build, so they \
+go where the first were sent: 0 kept apart, 1 on the builders
+140.0 laptop u[1]: building the system on the machine's builders failed, so they build here, after:
+";
+        assert_eq!(
+            switches(again, 2000.0).heavy,
+            1,
+            "what the second listing sent and the laptop built wasn't the heavy count"
         );
     }
 

@@ -1,6 +1,6 @@
 //! Starting a died session again: what reviving reads (presences, quest
 //! READMEs, processes, niri's windows) and what it does (a new terminal
-//! on the session's own log, its window put back, a line to the steward).
+//! on the session's own log, its window put back, a line to the orchestrator).
 //! The decisions are revive.rs's.
 
 use std::fs;
@@ -19,7 +19,7 @@ use crate::revive::{self, Gate, Held, Holder, Memory, Seen, Verdict};
 /// What reviving is told: whom to watch and tell, and how a session is
 /// started, as the words a login shell runs, before `--session <id>`.
 pub struct Reviving {
-    pub steward: String,
+    pub orchestrator: String,
     pub watcher: Option<String>,
     pub orchestrators: Vec<String>,
     pub skip: Vec<String>,
@@ -59,7 +59,7 @@ pub fn revive(
     for s in revive::watched(
         &seen,
         &reviving.orchestrators,
-        &reviving.steward,
+        &reviving.orchestrator,
         &reviving.skip,
     ) {
         if s.running
@@ -113,7 +113,7 @@ pub fn revive(
                 );
                 if report {
                     memory.defects.insert(s.session.clone(), now / 3600);
-                    send(&reviving.steward, "finding", line.clone())?;
+                    send(&reviving.orchestrator, "finding", line.clone())?;
                 }
                 line
             }
@@ -132,14 +132,18 @@ pub fn revive(
     Ok(said)
 }
 
-/// Whom `line`, of `s` started again, is for: the steward, the session's
+/// Whom `line`, of `s` started again, is for: the orchestrator, the session's
 /// own orchestrator, and the watcher, each once, and never the session.
 fn tell(reviving: &Reviving, s: &Seen, line: &str) -> Vec<(String, String)> {
     let watcher = reviving.watcher.as_ref().filter(|&w| w != &s.address);
     let mut told: Vec<(String, String)> = Vec::new();
-    for to in [Some(&reviving.steward), s.orchestrated_by.as_ref(), watcher]
-        .into_iter()
-        .flatten()
+    for to in [
+        Some(&reviving.orchestrator),
+        s.orchestrated_by.as_ref(),
+        watcher,
+    ]
+    .into_iter()
+    .flatten()
     {
         if !told.iter().any(|(peer, _)| peer == to) {
             told.push((to.clone(), line.to_owned()));

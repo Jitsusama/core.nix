@@ -39,17 +39,17 @@ moment it is missed, not at the next card.
 The watch runs outside every session, so it outlives the one keeping the
 cycle fast: [cadence][5] writes the hour's card to
 `~/.local/state/cadence/card.txt` every five minutes, asks that session
-once about each missed target, and asks the steward above it when the
+once about each missed target, and asks the orchestrator above it when the
 session doesn't answer within twenty minutes or is gone for ten. When no
-card has gone for 65 minutes, cadence sends the steward its own rather
+card has gone for 65 minutes, cadence sends the orchestrator its own rather
 than ask, since asking waits on the session's turn.
-`jitsusama.cadence.watcher` and `jitsusama.cadence.steward` name them by
+`jitsusama.cadence.watcher` and `jitsusama.cadence.orchestrator` name them by
 their mesh addresses; with neither, it writes the card alone.
 
 It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every
 orchestrator and every orchestrator's session whose pi died, on its own
-log, puts its window back and tells the steward. An orchestrator is one
+log, puts its window back and tells the orchestrator. An orchestrator is one
 named, or one with none above it that hears its own `#orchestration/`
 group or that another session names, gone or running. A session whose pi
 ended on purpose, by quitting or by a signal such as `mesh_end`'s,

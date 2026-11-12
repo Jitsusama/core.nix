@@ -1,9 +1,9 @@
 # The delivery cycle watched from outside every session: cadence, a program
 # of core's own (src/main.rs), run every five minutes by a timer, writes the
 # last hour's card to ~/.local/state/cadence/card.txt and, given the mesh
-# addresses of the session keeping the cycle fast and of the steward above
+# addresses of the session keeping the cycle fast and of the orchestrator above
 # it, asks that session when a target in docs/delivery.md slips or its card
-# is overdue, and asks the steward when the session doesn't answer or is
+# is overdue, and asks the orchestrator when the session doesn't answer or is
 # gone. A session can die, park or lose its model; a timer keeps going.
 #
 # It reads core's merges from a bare clone of its own in the same folder,
@@ -14,14 +14,17 @@
 # Given `revive.restart`, each tick first starts again every orchestrator
 # and every orchestrator's session whose pi died, in a terminal on the
 # account's own PATH, so a crash overnight costs minutes, not the night.
-# Given a steward, it also asks each orchestrator about any session of its
+# Given an orchestrator, it also asks each orchestrator about any session of its
 # that has sat idle two hours, once for each idle spell, so a session that
 # finished its piece doesn't wait the night for its next.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
 # failed units, out-of-memory kills, pressure, switches) against the seven
-# before it, keeps it in day/ beside them, and sends the steward a note of
+# before it, keeps it in day/ beside them, and sends the orchestrator a note of
 # what got worse and better, so a regression is named the day it appears.
+# Each finding stays in findings.jsonl until its figure is back two days,
+# goes once to the owner `owners` names for it, and to the orchestrator
+# once more if it's still open past its date.
 {
   config,
   lib,
@@ -31,20 +34,20 @@
 let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
-  asking = lib.optionals (cfg.watcher != null && cfg.steward != null) [
+  asking = lib.optionals (cfg.watcher != null && cfg.orchestrator != null) [
     "--watcher"
     cfg.watcher
-    "--steward"
-    cfg.steward
+    "--orchestrator"
+    cfg.orchestrator
   ];
-  reviving = cfg.revive.restart != null && cfg.steward != null;
+  reviving = cfg.revive.restart != null && cfg.orchestrator != null;
   revive = lib.optionals reviving (
     [
       "--restart"
       cfg.revive.restart
     ]
     ++ lib.concatMap (a: [
-      "--orchestrator"
+      "--revive"
       a
     ]) cfg.revive.orchestrators
     ++ lib.concatMap (a: [
@@ -54,16 +57,40 @@ let
   );
 in
 {
+  # A machine still setting the orchestrator by its old name, a word the
+  # glossary replaces, keeps working, told to rename it.
+  imports = [
+    (lib.mkRenamedOptionModule
+      [ "jitsusama" "cadence" "steward" ]
+      [ "jitsusama" "cadence" "orchestrator" ]
+    )
+  ];
+
   options.jitsusama.cadence = {
     watcher = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "The mesh address of the session keeping the delivery cycle fast, asked when a target slips.";
     };
-    steward = lib.mkOption {
+    orchestrator = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "The mesh address asked when the watcher doesn't answer or is gone.";
+    };
+    owners = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = {
+        crashes = "ADDRESS";
+        "switch." = "ADDRESS";
+      };
+      description = ''
+        The mesh address each finding of `cadence day` goes to, by the
+        prefix of its key, the longest matching: `crashes:biome`,
+        `failed:quickshell.service`, `pressure.cpu.jobs`, `oom.machine`,
+        `switch.minutes.longest`. A finding no prefix matches goes to the
+        watcher.
+      '';
     };
     revive = {
       restart = lib.mkOption {
@@ -72,7 +99,7 @@ in
         example = "pi --model provider/model";
         description = ''
           The words a login shell runs to start a died session, before
-          `--session <id>`; null revives nothing. It needs `steward`, who
+          `--session <id>`; null revives nothing. It needs `orchestrator`, who
           is told of each start.
         '';
       };
@@ -126,10 +153,22 @@ in
             (lib.getExe package)
             "day"
           ]
-          ++ lib.optionals (cfg.steward != null) [
-            "--steward"
-            cfg.steward
-          ]
+          ++ lib.optionals (cfg.orchestrator != null) (
+            [
+              "--orchestrator"
+              cfg.orchestrator
+            ]
+            ++ lib.optionals (cfg.watcher != null) [
+              "--watcher"
+              cfg.watcher
+            ]
+            ++ lib.concatLists (
+              lib.mapAttrsToList (prefix: address: [
+                "--owner"
+                "${prefix}=${address}"
+              ]) cfg.owners
+            )
+          )
         );
         # journalctl and coredumpctl, as the account has them.
         Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];

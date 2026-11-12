@@ -1,8 +1,11 @@
 //! `cadence day`: reads the day just ended from the machine's records,
 //! keeps it as `day/<date>.json` beside the days before, holds it against
-//! them, writes the note to `day/<date>.txt`, and sends it to the steward.
+//! them, writes the note to `day/<date>.txt`, and sends it to the orchestrator.
+//! Each finding goes into the ledger (findings.rs), and each owner is
+//! told of its new ones.
 //! A program does it, not a session, so the loop costs no model turns.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -11,19 +14,51 @@ use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
 use crate::day::{self, Day};
+use crate::findings::{self, Entry};
 use crate::judge;
 use crate::mesh::Mesh;
+use crate::speed;
 use crate::{DAY, command, message, write_whole};
 
-/// Reads, keeps and judges the day that ends at `now`, and sends its note
-/// to `steward` when one is given.
-pub fn run(folder: &Path, state_home: &Path, steward: Option<&str>, now: i64) -> io::Result<()> {
+/// Whom the day is told to: the orchestrator its note, each owner its
+/// findings by the prefix of their keys, and the watcher what no owner has.
+/// None of them given, as when Joel types it, the note is only printed.
+#[derive(Default)]
+pub struct Told {
+    pub orchestrator: Option<String>,
+    pub watcher: Option<String>,
+    pub owners: BTreeMap<String, String>,
+}
+
+/// Reads, keeps and judges the day that ends at `now`, brings the ledger
+/// up to it, and tells each of `told` its part.
+pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Result<()> {
     let days = folder.join("day");
     fs::create_dir_all(&days)?;
     let today = read(state_home, now - DAY, now);
     let before = kept(&days, now);
     let judged = judge::judge(&today, &before);
-    let note = judge::note(&today, &judged, before.len());
+    let kept_at = folder.join("findings.jsonl");
+    let mut ledger = ledger(&kept_at);
+    findings::update(&mut ledger, &today, &judged.worse, &told.owners);
+    // A typed run tells nobody, so it marks nobody told or late.
+    let sending = told.orchestrator.is_some();
+    let late = if sending {
+        findings::late(&mut ledger, now)
+    } else {
+        Vec::new()
+    };
+    let asks = if sending {
+        findings::tell(&mut ledger, &today.date, told.watcher.as_deref())
+    } else {
+        Vec::new()
+    };
+    let lines: Vec<String> = ledger
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<_, _>>()?;
+    write_whole(&kept_at, &(lines.join("\n") + "\n"))?;
+    let note = judge::note(&today, &judged, before.len(), &late);
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
     record["better"] = serde_json::to_value(&judged.better)?;
@@ -33,13 +68,28 @@ pub fn run(folder: &Path, state_home: &Path, steward: Option<&str>, now: i64) ->
     )?;
     write_whole(&days.join(format!("{}.txt", today.date)), &note)?;
     print!("{note}");
-    if let Some(steward) = steward {
+    if let Some(orchestrator) = &told.orchestrator {
         let mesh = Mesh {
             root: state_home.join("pi/agentic-harness.pi"),
         };
-        mesh.send(&message(steward, "fyi", note))?;
+        // Findings, so an owner reads them with its next turn rather than
+        // being woken for them, which costs a cold start each.
+        for (to, text) in asks {
+            mesh.send(&message(&to, "finding", text))?;
+        }
+        mesh.send(&message(orchestrator, "fyi", note))?;
     }
     Ok(())
+}
+
+/// The ledger as kept, a line each; a line that isn't an entry is left
+/// out rather than failing the day.
+fn ledger(path: &Path) -> Vec<Entry> {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
 }
 
 /// The days kept before the one ending at `now`: the newest `BEFORE` that
@@ -61,6 +111,25 @@ fn kept(days: &Path, now: i64) -> Vec<Day> {
 
 /// The day from `from` to `to`, read from each source; a source that
 /// can't be read leaves its figures out rather than failing the day.
+/// The launcher's figures, from the lines the shell's unit writes.
+fn launcher(since: &str, until: &str) -> BTreeMap<String, f64> {
+    let shell = command(
+        "journalctl",
+        &[
+            "--user",
+            "-u",
+            "quickshell.service",
+            "-o",
+            "cat",
+            "--no-pager",
+            since,
+            until,
+            "--grep=launcher: ",
+        ],
+    );
+    speed::launcher(&shell.unwrap_or_default())
+}
+
 fn read(state_home: &Path, from: i64, to: i64) -> Day {
     let since = format!("--since=@{from}");
     let until = format!("--until=@{to}");
@@ -129,6 +198,8 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         }
     }
 
+    day.figures.extend(launcher(&since, &until));
+
     let updates = command(
         "journalctl",
         &[
@@ -155,6 +226,8 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
     }
     day.figures
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
+    day.figures
+        .insert("switch.pieces.heavy".to_owned(), f64::from(read.heavy));
     day
 }
 

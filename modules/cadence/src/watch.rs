@@ -1,6 +1,6 @@
 //! What the cycle's records say now, which targets that misses, and whom
 //! to ask about it: the session keeping the cycle fast first, and the
-//! steward above it when that session doesn't answer or isn't there.
+//! orchestrator above it when that session doesn't answer or isn't there.
 
 use std::collections::BTreeMap;
 
@@ -31,9 +31,9 @@ pub const HELD_UNREVERTED_MIN: i64 = 10;
 /// waits on that session's turn, and on 7 November three cards in a row
 /// went late that way.
 pub const CARD_EVERY: i64 = 65 * 60;
-/// How long the watcher has to answer before the steward is asked.
+/// How long the watcher has to answer before the orchestrator is asked.
 pub const ANSWER_WITHIN: i64 = 20 * 60;
-/// How long the watcher may be gone before the steward is asked.
+/// How long the watcher may be gone before the orchestrator is asked.
 pub const DOWN_FOR: i64 = 10 * 60;
 /// How long a key is remembered, so a target missed all day is said once.
 const REMEMBER: i64 = 2 * 86_400;
@@ -66,9 +66,9 @@ pub struct Snapshot {
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
     pub watcher_alive: bool,
-    /// The watcher's session, for the steward to restart it by.
+    /// The watcher's session, for the orchestrator to restart it by.
     pub watcher_session: Option<String>,
-    /// When the watcher last sent the steward a card.
+    /// When the watcher last sent the orchestrator a card.
     pub last_card: Option<i64>,
     /// The ids the watcher's messages answer.
     pub answered: Vec<String>,
@@ -283,7 +283,7 @@ pub struct State {
     pub escalated: BTreeMap<String, i64>,
     #[serde(default)]
     pub down_since: Option<i64>,
-    /// When cadence last sent the steward the card itself.
+    /// When cadence last sent the orchestrator the card itself.
     #[serde(default)]
     pub carded: Option<i64>,
 }
@@ -292,20 +292,20 @@ pub struct State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum To {
     Watcher,
-    Steward,
+    Orchestrator,
 }
 
 impl To {
     /// How the mesh is to carry it. Only the watcher's answers are waited
-    /// on, read from what it sent; the steward is told as a finding, which
+    /// on, read from what it sent; the orchestrator is told as a finding, which
     /// wants no answer, since one sent back to cadence's address reaches no
-    /// session, and on 9 November a question to the steward sat unanswered
+    /// session, and on 9 November a question to the orchestrator sat unanswered
     /// on the mesh.
     #[must_use]
     pub fn intent(self) -> &'static str {
         match self {
             To::Watcher => "question",
-            To::Steward => "finding",
+            To::Orchestrator => "finding",
         }
     }
 }
@@ -328,7 +328,7 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
         if let std::collections::btree_map::Entry::Vacant(slot) = state.escalated.entry(key) {
             slot.insert(s.now);
             out.push(Question {
-                to: To::Steward,
+                to: To::Orchestrator,
                 key: None,
                 text,
             });
@@ -405,7 +405,7 @@ pub fn tick(s: &Snapshot, state: &mut State) -> Vec<Question> {
     out
 }
 
-/// Whether the card is overdue, so cadence sends the steward its own: no
+/// Whether the card is overdue, so cadence sends the orchestrator its own: no
 /// card from the watcher or from cadence within [`CARD_EVERY`].
 #[must_use]
 pub fn card_due(s: &Snapshot, state: &State) -> bool {
@@ -705,13 +705,13 @@ mod tests {
     }
 
     #[test]
-    fn only_the_watcher_is_asked_and_the_steward_is_told() {
+    fn only_the_watcher_is_asked_and_the_orchestrator_is_told() {
         assert_eq!(To::Watcher.intent(), "question");
-        assert_eq!(To::Steward.intent(), "finding");
+        assert_eq!(To::Orchestrator.intent(), "finding");
     }
 
     #[test]
-    fn a_question_unanswered_past_twenty_minutes_goes_to_the_steward_once() {
+    fn a_question_unanswered_past_twenty_minutes_goes_to_the_orchestrator_once() {
         let mut state = State::default();
         state.asked_as(
             "alarm:cpu:1",
@@ -722,7 +722,7 @@ mod tests {
         let s = calm(100_000);
         let asked = tick(&s, &mut state);
         assert_eq!(asked.len(), 1);
-        assert_eq!(asked[0].to, To::Steward);
+        assert_eq!(asked[0].to, To::Orchestrator);
         assert!(asked[0].text.contains("Cadence alarm: hot."));
         assert_eq!(tick(&s, &mut state), [] as [crate::watch::Question; 0]);
     }
@@ -743,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    fn a_watcher_gone_ten_minutes_is_told_to_the_steward_with_its_session() {
+    fn a_watcher_gone_ten_minutes_is_told_to_the_orchestrator_with_its_session() {
         let mut state = State::default();
         let mut s = calm(100_000);
         s.watcher_alive = false;
@@ -753,7 +753,7 @@ mod tests {
         s.last_card = Some(s.now);
         let asked = tick(&s, &mut state);
         assert_eq!(asked.len(), 1);
-        assert_eq!(asked[0].to, To::Steward);
+        assert_eq!(asked[0].to, To::Orchestrator);
         assert!(asked[0].text.contains("01a1ae37"));
     }
 }
