@@ -1770,6 +1770,10 @@
     pi's own folder and its session logs' folder are the account's alone on every machine with pi, so a
     token a tool printed into a log isn't readable by another account
   '';
+  pi-leaves-out-the-built-in-codemode = ''
+    pi's settings on Linux and on a Mac turn off the built-in codemode extension the harness's own
+    codemode replaces, so pi starts without warning of it
+  '';
   pi-loads-its-packages = ''
     pi's package list is the harness and neovim.pi on every machine, a package a machine adds comes
     after them rather than in their place, and pi is given each git package as its current link
