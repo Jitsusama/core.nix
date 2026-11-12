@@ -170,14 +170,18 @@ fn resolution_offers_each_size_once_and_niri_picks_its_rate() {
 }
 
 #[test]
-fn a_setting_with_one_choice_only_says_how_its_set() {
+fn a_setting_with_one_choice_only_says_how_its_set_and_copies_it() {
     let mut output = monitor();
     output["modes"] =
         json!([{"width": 2880, "height": 1920, "refresh_rate": 120_000, "is_preferred": true}]);
     let rows = rows("eDP-1", &output, &words());
     let refresh = found(&rows, "row:displays:setting:eDP-1:refresh");
     assert_eq!(refresh["side"], json!([{"said": "120 Hz"}]));
-    assert_eq!(refresh["acts"], json!([]), "one rate is stepped into");
+    assert_eq!(
+        refresh["acts"],
+        json!([{"key": "verb:copy", "copy": "120 Hz"}]),
+        "one rate is stepped into, or does nothing on Return"
+    );
     assert_eq!(refresh["glyph"], "");
     assert!(
         inside(&rows, "row:displays:setting:eDP-1:refresh").is_empty(),

@@ -149,10 +149,13 @@ fn setting(name: &str, screen: &str, each: Setting, drawer: &Value, words: &Word
     let named = words.told.part(id);
     let at = key(&format!("setting:{name}:{id}"));
     let offers = choices.len() > 1;
+    // One with nothing to choose only shows its value, so Return copies
+    // it (Joel, 2026-10-26: a row that only shows a value copies it); its
+    // drawer makes it a thing, which does nothing on Return without an act.
     let (glyph, acts) = if offers {
         (id, json!([{"key": "verb:more", "step": "rows"}]))
     } else {
-        ("", json!([]))
+        ("", json!([{"key": "verb:copy", "copy": side}]))
     };
     let mut rows = vec![json!({
         "key": at,
