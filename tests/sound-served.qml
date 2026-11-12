@@ -14,8 +14,9 @@
 // served, lead its parts in Sound's order, Muted's act named Unmute once
 // it's muted, the Volume its drawer's, and each Return asking the daemon,
 // and its Channels, served, each channel inside at its level, and its
-// Profile, and what its card says last, its drawer's Graph Format said
-// only where the card says another;
+// Profile, and its Hardware, its drawer marking its USB ID, and what its
+// card says last, its drawer's Graph Format said only where the card
+// says another;
 // and where each program's stream is sent is the daemon's targets record,
 // a send asking it once a stream; and the programs playing through a
 // device are served inside it, the drawer's Playing saying the daemon's
@@ -424,7 +425,8 @@ ShellRoot {
             when("the parts served", () => partOf("volume")?.targets().length === 1
                 && partOf("channels")?.targets().length === 2
                 && partOf("profile")?.side === "music"
-                && sound.factsOf(deskSpeakers).length === 2, levelled);
+                && sound.factsOf(deskSpeakers).length === 2
+                && partOf("hardware")?.targets().length === 2, levelled);
         });
     }
 
@@ -484,8 +486,9 @@ ShellRoot {
 
     // The speakers' Channels, as channels.rs serves them inside their
     // row, and each channel inside that, then a Profile, as parts.rs
-    // serves a Bluetooth device's, then what desk-facts says of their
-    // card, as desk.rs serves it last.
+    // serves a Bluetooth device's, then their Hardware, as hardware.rs
+    // serves it, then what desk-facts says of their card, as desk.rs
+    // serves it last.
     function figuresServed() {
         const channels = `row:sound:${deskSpeakers.name}:channels`;
         const channel = (at, name, said, level) => part(`channels:${at}`, {
@@ -504,8 +507,24 @@ ShellRoot {
             thing: `sound:${deskSpeakers.name}:profile`, kind: "figure", order: 1503,
             name: "Profile", glyph: "", hue: "machine", side: [{ said: "music" }],
             note: "its codec and connection are in Bluetooth", acts: []
-        }), fact("playing", "Playing At", "48 kHz \u00b7 32 bit", 1504),
-        fact("offers", "Offers", "44.1, 48 kHz", 1505)];
+        })].concat(hardwareServed(), [fact("playing", "Playing At", "48 kHz \u00b7 32 bit", 1510),
+            fact("offers", "Offers", "44.1, 48 kHz", 1511)]);
+    }
+
+    function hardwareServed() {
+        const hardware = `row:sound:${deskSpeakers.name}:hardware`;
+        const figure = (id, name, said, order) => part(`hardware:${id}`, {
+            parent: hardware, depth: 2, thing: `sound:${deskSpeakers.name}:hardware:${id}`,
+            kind: "figure", order: order, name: name, glyph: "", hue: "machine",
+            side: [{ said: said }], acts: [{ key: "verb:copy", copy: said }],
+            held: { node: deskSpeakers.name, figure: id }
+        });
+        return [part("hardware", {
+            thing: `sound:${deskSpeakers.name}:hardware`, kind: "figures", order: 1504,
+            name: "Hardware", hue: "machine", side: [{ said: "0d8c:0014" }],
+            acts: [{ key: "verb:copy", copy: "0d8c:0014" }, { key: "verb:more", step: "rows" }]
+        }), figure("usb-id", "USB ID", "0d8c:0014", 1505),
+        figure("card", "Card", "Desk Speakers", 1506)];
     }
 
     function fact(id, name, said, order) {
@@ -544,6 +563,25 @@ ShellRoot {
         expect("one the card already says isn't said again",
             same === "Playing At=48 kHz \u00b7 32 bit", same);
         deskSpeakers.audio = audio;
+    }
+
+    // Its Hardware is served, saying its first figure and holding each a
+    // step in; its drawer says each figure, a USB card's ids marked as
+    // what identifies it, last here, where the stand-in has no Graph ID.
+    function hardwareSaid() {
+        const hardware = partOf("hardware");
+        expect("its Hardware is served, saying its first figure, each inside",
+            hardware?.side === "0d8c:0014" && hardware.targets()
+                .map(one => `${one.name} ${one.side}`).join(", ")
+                === "USB ID 0d8c:0014, Card Desk Speakers",
+            `${hardware?.side}: ${hardware?.targets().map(one => one.name).join(", ")}`);
+        const facts = sound.drawerOf(deskSpeakers).facts;
+        const said = facts.map(one => `${one.label}=${one.value}`).join("; ");
+        const usb = facts[facts.length - 1];
+        expect("its drawer says its card, and its USB ID as what identifies it",
+            facts.some(one => one.label === "Card" && one.value === "Desk Speakers")
+                && usb?.label === "USB ID" && usb.value === "0d8c:0014"
+                && usb.identifies === true, said);
     }
 
     function louderChoice() {
@@ -589,6 +627,7 @@ ShellRoot {
                 && profile.note === "its codec and connection are in Bluetooth",
             `${profile?.side}, ${profile?.note}`);
         factsServed();
+        hardwareSaid();
         volume.targets()[0].run();
         when("the volume asked", () => root.acted.length === 2, louder);
     }

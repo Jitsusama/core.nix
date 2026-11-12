@@ -21,12 +21,6 @@ function run(failures) {
     machine("a device it doesn't", Sounds.aims(soundTuning, { "node.name": "headphones" }),
         false);
     machine("a filter aiming at nothing", Sounds.aims(Sounds.target(""), {}), false);
-    machine("the laptop's chips", Sounds.components("HDA:80862822,80860101,00100000  "
-        + "cfg-amp:4 iec61937-pcm:7,6,5 hs:cs42l45 mic:cs42l45-dmic spk:cs35l56"),
-        { amplifiers: 4, speaker: "CS35L56", headset: "CS42L45", microphone: "CS42L45",
-            digital: true, usb: "" });
-    machine("a USB card's ids", Sounds.components("USB041e:329a").usb, "041e:329a");
-    machine("a card that names nothing", Sounds.components(undefined).speaker, "");
     machine("a stream's rate", Sounds.rate("1/44100"), "44.1 kHz");
     machine("a rate in whole kilohertz", Sounds.kilohertz(48000), "48 kHz");
     machine("no rate said", Sounds.rate(undefined), "");
