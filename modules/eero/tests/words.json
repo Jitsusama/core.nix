@@ -123,7 +123,28 @@
         "dbm": "{n} dBm",
         "channel": "channel {n}",
         "idle": "idle",
-        "made": "{maker} device"
+        "made": "{maker} device",
+        "onNode": "on {name}",
+        "wifi": "Wi-Fi",
+        "db": "{n} dB",
+        "bars": "{n} of 5 bars",
+        "percent": "{n}%",
+        "mhz": "{n} MHz",
+        "mcs": "MCS {n}",
+        "stream": "1 stream",
+        "streams": "{count} streams",
+        "guard": "{n} ns guard",
+        "quiet": "quiet for {n} ms",
+        "packetsDown": "{n} down",
+        "packetsUp": "{n} up",
+        "inAll": "{n} in all",
+        "perMillion": "{n} per million",
+        "guest": "guest",
+        "reserved": "reserved",
+        "private": "private",
+        "paused": "paused",
+        "blocked": "blocked",
+        "to": "{from} to {to}"
       }
     },
     {
@@ -209,6 +230,169 @@
       "id": "eero:node:joins-and-leaves",
       "in": "eero:node",
       "name": "Joined and Left in the Last Day"
+    },
+    {
+      "id": "eero:device:events",
+      "in": "eero:device",
+      "name": "What Happened"
+    },
+    {
+      "id": "eero:device:kind",
+      "in": "eero:device",
+      "name": "Kind"
+    },
+    {
+      "id": "eero:device:node",
+      "in": "eero:device",
+      "name": "Node",
+      "term": "Network/node"
+    },
+    {
+      "id": "eero:device:signal",
+      "in": "eero:device",
+      "name": "Signal",
+      "term": "Network/signal"
+    },
+    {
+      "id": "eero:device:score",
+      "in": "eero:device",
+      "name": "Score"
+    },
+    {
+      "id": "eero:device:band",
+      "in": "eero:device",
+      "name": "Band",
+      "term": "Network/band"
+    },
+    {
+      "id": "eero:device:bssid",
+      "in": "eero:device",
+      "name": "Radio's Hardware Address"
+    },
+    {
+      "id": "eero:device:port",
+      "in": "eero:device",
+      "name": "Port"
+    },
+    {
+      "id": "eero:device:rx",
+      "in": "eero:device",
+      "name": "Rate Down"
+    },
+    {
+      "id": "eero:device:tx",
+      "in": "eero:device",
+      "name": "Rate Up"
+    },
+    {
+      "id": "eero:device:speed",
+      "in": "eero:device",
+      "name": "Speed",
+      "term": "Network/speed"
+    },
+    {
+      "id": "eero:device:retries",
+      "in": "eero:device",
+      "name": "Retries"
+    },
+    {
+      "id": "eero:device:packets",
+      "in": "eero:device",
+      "name": "Packets"
+    },
+    {
+      "id": "eero:device:resent",
+      "in": "eero:device",
+      "name": "Sent Again"
+    },
+    {
+      "id": "eero:device:failed",
+      "in": "eero:device",
+      "name": "Never Sent"
+    },
+    {
+      "id": "eero:device:dropped",
+      "in": "eero:device",
+      "name": "Dropped"
+    },
+    {
+      "id": "eero:device:where",
+      "in": "eero:device",
+      "name": "On the Network"
+    },
+    {
+      "id": "eero:device:network",
+      "in": "eero:device",
+      "name": "Network"
+    },
+    {
+      "id": "eero:device:address",
+      "in": "eero:device",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "eero:device:reserved",
+      "in": "eero:device",
+      "name": "Reserved Address",
+      "term": "Network/reserved address"
+    },
+    {
+      "id": "eero:device:addresses",
+      "in": "eero:device",
+      "name": "Other Addresses"
+    },
+    {
+      "id": "eero:device:mac",
+      "in": "eero:device",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "eero:device:hostname",
+      "in": "eero:device",
+      "name": "Hostname"
+    },
+    {
+      "id": "eero:device:nickname",
+      "in": "eero:device",
+      "name": "Nickname"
+    },
+    {
+      "id": "eero:device:first-seen",
+      "in": "eero:device",
+      "name": "First Seen"
+    },
+    {
+      "id": "eero:device:on-since",
+      "in": "eero:device",
+      "name": "On Since"
+    },
+    {
+      "id": "eero:device:last-active",
+      "in": "eero:device",
+      "name": "Last Active"
+    },
+    {
+      "id": "eero:device:profile",
+      "in": "eero:device",
+      "name": "Profile",
+      "term": "Network/profile"
+    },
+    {
+      "id": "eero:device:held",
+      "in": "eero:device",
+      "name": "Held Off"
+    },
+    {
+      "id": "eero:device:snr",
+      "in": "eero:device",
+      "name": "Above the Noise"
+    },
+    {
+      "id": "eero:device:roams",
+      "in": "eero:device",
+      "name": "Moved in the Last Day"
     },
     {
       "id": "eero:node:model",

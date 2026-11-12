@@ -415,27 +415,6 @@ function profileRow(model, profile) {
     };
 }
 
-// Each device's readings since the shell started, by hardware address,
-// with a new record's added: { signal, speed }, the signal in dBm and the
-// speed both ways together in Mb/s, each the newest last and at most
-// `most` long. A device gone from the record is let go, and one that
-// comes back starts afresh.
-function remembered(history, model, most) {
-    const kept = {};
-    for (const device of model?.devices ?? []) {
-        const was = history?.[device.mac] ?? { signal: [], speed: [] };
-        const now = device.speed ?? {};
-        const moving = (now.down_mbps ?? 0) + (now.up_mbps ?? 0);
-        kept[device.mac] = {
-            signal: device.signal_dbm === null || device.signal_dbm === undefined
-                ? was.signal
-                : was.signal.concat([device.signal_dbm]).slice(-most),
-            speed: was.speed.concat([moving]).slice(-most),
-        };
-    }
-    return kept;
-}
-
 // How many nodes and devices the place holds, as its row says at home.
 function holding(model) {
     const nodes = (model?.nodes ?? []).length;

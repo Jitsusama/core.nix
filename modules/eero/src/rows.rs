@@ -142,7 +142,35 @@ const SAID: &[(&str, &[&str])] = &[
     ),
     (
         "eero:device",
-        &["thisMachine", "ethernet", "dbm", "channel", "idle", "made"],
+        &[
+            "thisMachine",
+            "ethernet",
+            "dbm",
+            "channel",
+            "idle",
+            "made",
+            "onNode",
+            "wifi",
+            "db",
+            "bars",
+            "percent",
+            "mhz",
+            "mcs",
+            "stream",
+            "streams",
+            "guard",
+            "quiet",
+            "packetsDown",
+            "packetsUp",
+            "inAll",
+            "perMillion",
+            "guest",
+            "reserved",
+            "private",
+            "paused",
+            "blocked",
+            "to",
+        ],
     ),
     (
         "eero:profile",
@@ -220,6 +248,7 @@ impl Words {
             .into_iter()
             .chain(drawers::NAMES)
             .chain(drawers::NODE_NAMES)
+            .chain(drawers::DEVICE_NAMES)
         {
             words.names.insert(id, word(id, &["name"])?);
         }
@@ -297,7 +326,7 @@ impl Words {
 
     /// Rates each way, as one item: "1.20 Gb/s down · 1.08 Gb/s up", or
     /// the one way eero gives.
-    fn each_way(&self, down: Option<f64>, up: Option<f64>, numbers: &Numbers) -> String {
+    pub(crate) fn each_way(&self, down: Option<f64>, up: Option<f64>, numbers: &Numbers) -> String {
         let way = |mbps: Option<f64>, word| {
             mbps.map(|mbps| {
                 fill(
@@ -682,6 +711,7 @@ fn device_row(device: &Device, profiles: &[Profile], words: &Words, numbers: &Nu
         "key": key(&format!("device:{}", device.mac)),
         "thing": format!("eero:device:{}", device.mac), "place": PLACE, "kind": "device",
         "name": called::device(device, words.say("eero:device", "made")), "glyph": glyph, "hue": "machine", "depth": 1,
+        "drawer": drawers::device_key(&device.mac),
         "side": items([
             item(if device.this_machine { words.say("eero:device", "thisMachine") } else { "" }),
             item(signal),

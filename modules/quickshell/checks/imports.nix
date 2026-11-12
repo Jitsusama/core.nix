@@ -158,7 +158,6 @@
     "launcher/HomeNetwork.js"
     "launcher/HomeNetworkAddresses.js"
     "launcher/HomeNetworkHistory.js"
-    "launcher/Interfaces.js"
     "launcher/Machine.js"
   ];
   "launcher/HomeNetworkHistory.js" = [

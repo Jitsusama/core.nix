@@ -1,6 +1,2080 @@
 [
   {
     "drawer": {
+      "eyebrow": "on Den · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.4666666666666667, 0.5, 0.45, 0.48333333333333334, 0.5333333333333333,
+              0.5166666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−59 dBm"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 52 · 5,260 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9, 0.75, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "48.0 Mb/s"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333326, 1.0, 0.16666666666666663, 0.6666667111874136, 0.500000044520747,
+              0.5555555703958045
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "1.22 Mb/s down · 24.0 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "tablet · Apple · iPad"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:02"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 0 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "6 down · 6 up · 12 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "30 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.29"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::1"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:01 · private"
+        },
+        {
+          "as": "moment",
+          "at": 1770667686000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091355000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        },
+        {
+          "heading": "Moved in the Last Day"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794091483000
+          },
+          "said": "Study to Den · 2.4 GHz to 5 GHz"
+        },
+        {
+          "heading": "What Happened"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794091355000
+          },
+          "said": "tablet 1​ connected to Den eero Pro 6 on 5.2 GHz channel 52.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794091355000
+          },
+          "said": "tablet 1​ disconnected from Study eero Pro 6.",
+          "words": true
+        }
+      ],
+      "title": "tablet 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:01",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3, 0.3333333333333333, 0.2833333333333333, 0.31666666666666665, 0.36666666666666664,
+              0.35
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−69 dBm"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 52 · 5,260 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9, 0.75, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "48.0 Mb/s"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "phone · Apple · iPhone"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:04"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 0 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "4 down · 5 up · 9 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "15 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.40"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::2"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:03 · private"
+        },
+        {
+          "as": "moment",
+          "at": 1787165654000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794090701000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        },
+        {
+          "heading": "What Happened"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794090701000
+          },
+          "said": "phone 1​ connected to Den eero Pro 6 on 5.8 GHz channel 149.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794090701000
+          },
+          "said": "phone 1​ disconnected from Study eero Pro 6.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794088931000
+          },
+          "said": "phone 1​ connected to Hall eero Pro 6 on 5.8 GHz channel 149.",
+          "words": true
+        }
+      ],
+      "title": "phone 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:03",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Hall · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.5833333333333334, 0.6166666666666667, 0.5666666666666667, 0.6, 0.65,
+              0.6333333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−52 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "55 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9001276324186345, 0.7501595405232929, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "313 Mb/s · MCS 6 · 1 stream · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "721 Mb/s · MCS 7 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "phone · Apple · iPhone"
+        },
+        {
+          "name": "Node",
+          "said": "Hall · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:06"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 10,280 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "63,489 down · 424,093 up · 487,582 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "60 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "1,870 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.23"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::3"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:05 · private"
+        },
+        {
+          "as": "moment",
+          "at": 1787148484000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794082071000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        },
+        {
+          "heading": "What Happened"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794090701000
+          },
+          "said": "phone 1​ connected to Den eero Pro 6 on 5.8 GHz channel 149.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794090701000
+          },
+          "said": "phone 1​ disconnected from Study eero Pro 6.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794088931000
+          },
+          "said": "phone 1​ connected to Hall eero Pro 6 on 5.8 GHz channel 149.",
+          "words": true
+        }
+      ],
+      "title": "phone 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:05",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.31666666666666665, 0.35, 0.3, 0.3333333333333333, 0.38333333333333336,
+              0.36666666666666664
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−68 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "40 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 52 · 5,260 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9000832639467111, 0.7499306133777407, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "360 Mb/s · MCS 7 · 1 stream · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "generic"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:04"
+        },
+        {
+          "name": "Retries",
+          "said": "1% · quiet for 80,250 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "12,665 down · 11,780 up · 24,445 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "75 · 10,548 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "2,127 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.28"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::4"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:07 · private"
+        },
+        {
+          "as": "moment",
+          "at": 1787101645000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794075730000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "generic 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:07",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.5, 0.5333333333333333, 0.48333333333333334, 0.5166666666666667, 0.5666666666666667,
+              0.55
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−57 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "51 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.8999916729119826, 0.7500208177200433, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3333333324646019, 1.0, 0.1666666675353982, 0.6666666675353983, 0.5,
+              0.5555555558451327
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "11.5 Mb/s down · 9.86 Mb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "unknown computer · Intel Corporate"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:09"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 0 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "31,747,180 down · 52,879,944 up · 84,627,124 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "3,315 · 32 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "2,967 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.20"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::5"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:08"
+        },
+        {
+          "as": "moment",
+          "at": 1791328172000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794065491000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "unknown computer 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:08",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Den · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8333333333333334, 0.8666666666666667, 0.8166666666666667, 0.85, 0.9,
+              0.8833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−37 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "71 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 52 · 5,260 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.8999916729119826, 0.7500208177200433, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "1.08 Gb/s · MCS 10 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "generic"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:02"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 540 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "52,846 down · 94,913 up · 147,759 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "735 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "5,494 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.45"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::6"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:0a · private"
+        },
+        {
+          "as": "moment",
+          "at": 1792688081000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794055386000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "generic 2"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:0a",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Hall · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.65, 0.6833333333333333, 0.6333333333333333, 0.6666666666666666, 0.7166666666666667,
+              0.7
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−48 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "59 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "2.4 GHz · channel 6 · 2,437 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9002770083102493, 0.7506925207756233, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "72.2 Mb/s · MCS 7 · 1 stream · 20 MHz · 400 ns guard · Wi-Fi 4"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3331863285556781, 1.0, 0.16670341786108048, 0.6663726571113562, 0.4998897464167585,
+              0.555457552370452
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "98.2 b/s down · 154 b/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "generic · Espressif Inc."
+        },
+        {
+          "name": "Node",
+          "said": "Hall · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:0c"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 700 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "24,117 down · 13,005 up · 37,122 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "0 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "4,950 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.99"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:0b"
+        },
+        {
+          "as": "moment",
+          "at": 1786569089000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794037780000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "generic 3"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:0b",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.36666666666666664, 0.4, 0.35, 0.38333333333333336, 0.43333333333333335,
+              0.4166666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−65 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "43 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9, 0.75, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "390 Mb/s · MCS 9 · 1 stream · 80 MHz · 800 ns guard · Wi-Fi 5"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "433 Mb/s · MCS 9 · 1 stream · 80 MHz · 400 ns guard · Wi-Fi 5"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16666666666666669, 0.666899441340782, 0.5002327746741154,
+              0.555633147113594
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "132 b/s down · 106 b/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "thermostat · ecobee · ecobee inc"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:09"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 3,400 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "42,405 down · 12,372 up · 54,777 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "60 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.30"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::9"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:0d"
+        },
+        {
+          "as": "moment",
+          "at": 1787162462000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036736000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "thermostat 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:0d",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.18333333333333332, 0.21666666666666667, 0.26666666666666666, 0.25],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−75 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "33 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 52 · 5,260 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.749942169789498, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "432 Mb/s · MCS 4 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "961 Mb/s · MCS 9 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.25, 1.0, 0.7499999999999999, 0.8333333333333333],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "130 kb/s down · 14.5 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "laptop computer · Apple · MacBook Air"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:04"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 90 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "171,741 down · 217,496 up · 389,237 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "75 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.26"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::a"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:0e · private"
+        },
+        {
+          "as": "moment",
+          "at": 1793844465000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036736000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        },
+        {
+          "heading": "What Happened"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1793844493000
+          },
+          "said": "laptop computer 1​ joined the home network. Never seen before, on Study over Wi-Fi at 5 GHz.",
+          "words": true
+        }
+      ],
+      "title": "laptop computer 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:0e",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.35, 0.38333333333333336, 0.3333333333333333, 0.36666666666666664,
+              0.4166666666666667, 0.4
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−66 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "41 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "2.4 GHz · channel 6 · 2,437 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9002770083102493, 0.7506925207756233, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "72.2 Mb/s · MCS 7 · 1 stream · 20 MHz · 400 ns guard · Wi-Fi 4"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "65.0 Mb/s · MCS 7 · 1 stream · 20 MHz · 800 ns guard · Wi-Fi 4"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "game console · Nintendo · Switch · Nintendo Co.,Ltd"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:10"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 11,530 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "5,557 down · 6,378 up · 11,935 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "60 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "6,557 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.47"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:0f"
+        },
+        {
+          "name": "Nickname",
+          "said": "game console 1"
+        },
+        {
+          "as": "moment",
+          "at": 1618670288000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036610000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "game console 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:0f",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Den · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8166666666666667, 0.85, 0.8, 0.8333333333333334, 0.8833333333333333,
+              0.8666666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−38 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "70 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.8999916729119826, 0.7500208177200433, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "1.20 Gb/s · MCS 11 · 2 streams · 80 MHz · 800 ns guard · Wi-Fi 6"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16666666666666666, 0.6666668952756133, 0.5,
+              0.5555556317585377
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "145 kb/s down · 97.6 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "laptop computer · Apple · Mac"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:12"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 40 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "2,505,633 down · 3,567,012 up · 6,072,645 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "45 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.24"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::c"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:11 · private"
+        },
+        {
+          "as": "moment",
+          "at": 1787142248000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036418000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "laptop computer 2"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:11",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Den · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.6333333333333333, 0.6666666666666666, 0.6166666666666667, 0.65, 0.7,
+              0.6833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−49 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "56 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "2.4 GHz · channel 6 · 2,437 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9002770083102493, 0.7506925207756233, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "72.2 Mb/s · MCS 7 · 1 stream · 20 MHz · 400 ns guard · Wi-Fi 4"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "printer · HP · Hewlett Packard"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:14"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 37,710 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "2,853 down · 2,343 up · 5,196 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "90 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.31"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:13"
+        },
+        {
+          "name": "Hostname",
+          "said": "printer 2"
+        },
+        {
+          "name": "Nickname",
+          "said": "printer 1"
+        },
+        {
+          "as": "moment",
+          "at": 1605305916000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036418000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "printer 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:13",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−20 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "88 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9000692360950843, 0.7500576967459035, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "433 Mb/s · MCS 9 · 1 stream · 80 MHz · 400 ns guard · Wi-Fi 5"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Up",
+          "said": "867 Mb/s · MCS 9 · 2 streams · 80 MHz · 400 ns guard · Wi-Fi 5"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16667168025348694, 0.6666666666666666,
+              0.49999498641317974, 0.5555555555555556
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "2.23 kb/s down · 3.31 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "generic · Samsung · Samsung Electronics Co.,Ltd"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:09"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 84,840 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "30,835 down · 19,791 up · 50,626 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "15 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "1 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.25"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::e"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:15"
+        },
+        {
+          "as": "moment",
+          "at": 1785116625000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036203000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "generic 4"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:15",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.7333333333333333, 0.7666666666666667, 0.7166666666666667, 0.75, 0.8,
+              0.7833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−43 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "65 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "5 GHz · channel 149 · 5,745 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9, 0.7501538461538462, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "325 Mb/s · MCS 7 · 1 stream · 80 MHz · 400 ns guard · Wi-Fi 5"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "media streamer · Apple · Apple, Inc."
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:09"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 13,120 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "28,350 down · 28,207 up · 56,557 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "105 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.33"
+        },
+        {
+          "name": "Other Addresses",
+          "said": "fe80::f"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:16"
+        },
+        {
+          "name": "Hostname",
+          "said": "thermostat 1"
+        },
+        {
+          "name": "Nickname",
+          "said": "media streamer 1"
+        },
+        {
+          "as": "moment",
+          "at": 1605311810000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036070000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "media streamer 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:16",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on Study · Wi-Fi",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.9666666666666667, 1.0, 0.95, 0.9833333333333333, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−29 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "78 dB"
+        },
+        {
+          "name": "Score",
+          "said": "5 of 5 bars"
+        },
+        {
+          "name": "Band",
+          "said": "2.4 GHz · channel 6 · 2,437 MHz"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.9, 0.75, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Rate Down",
+          "said": "48.0 Mb/s"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "audio · Sony · Sony Corporation"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "name": "Radio's Hardware Address",
+          "said": "02:00:00:00:00:10"
+        },
+        {
+          "name": "Retries",
+          "said": "0% · quiet for 5,580 ms"
+        },
+        {
+          "name": "Packets",
+          "said": "8,590 down · 3,187 up · 11,777 in all"
+        },
+        {
+          "name": "Sent Again",
+          "said": "15 · 0 per million"
+        },
+        {
+          "name": "Never Sent",
+          "said": "0 per million"
+        },
+        {
+          "name": "Dropped",
+          "said": "0 · 0 per million"
+        },
+        {
+          "heading": "On the Network"
+        },
+        {
+          "name": "Network",
+          "said": "home · WPA2 · main"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.112"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:17"
+        },
+        {
+          "name": "Hostname",
+          "said": "audio 2"
+        },
+        {
+          "name": "Nickname",
+          "said": "audio 1"
+        },
+        {
+          "as": "moment",
+          "at": 1605304903000,
+          "name": "First Seen",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794036070000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "title": "audio 1"
+    },
+    "key": "drawer:eero:device:02:00:00:00:00:17",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
       "eyebrow": "on home · node",
       "eyebrowNames": true,
       "facts": [
@@ -960,6 +3034,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:01",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:01",
@@ -999,6 +3074,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:03",
       "glyph": "phone",
       "held": {
         "mac": "02:00:00:00:00:03",
@@ -1038,6 +3114,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:05",
       "glyph": "phone",
       "held": {
         "mac": "02:00:00:00:00:05",
@@ -1077,6 +3154,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:07",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:07",
@@ -1116,6 +3194,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:08",
       "glyph": "computer",
       "held": {
         "mac": "02:00:00:00:00:08",
@@ -1155,6 +3234,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:0a",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:0a",
@@ -1194,6 +3274,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:0b",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:0b",
@@ -1233,6 +3314,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:0d",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:0d",
@@ -1272,6 +3354,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:0e",
       "glyph": "computer",
       "held": {
         "mac": "02:00:00:00:00:0e",
@@ -1314,6 +3397,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:0f",
       "glyph": "gamepad",
       "held": {
         "mac": "02:00:00:00:00:0f",
@@ -1353,6 +3437,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:11",
       "glyph": "computer",
       "held": {
         "mac": "02:00:00:00:00:11",
@@ -1392,6 +3477,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:13",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:13",
@@ -1431,6 +3517,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:15",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:15",
@@ -1470,6 +3557,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:16",
       "glyph": "wireless",
       "held": {
         "mac": "02:00:00:00:00:16",
@@ -1509,6 +3597,7 @@
     "kind": "row",
     "row": {
       "depth": 1,
+      "drawer": "drawer:eero:device:02:00:00:00:00:17",
       "glyph": "speaker",
       "held": {
         "mac": "02:00:00:00:00:17",

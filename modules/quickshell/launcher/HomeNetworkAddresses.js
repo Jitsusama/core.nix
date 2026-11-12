@@ -1,9 +1,8 @@
 // How the home network has and hands out addresses, as the internet's
 // drawer says it under Addressing: the public address, the lease, the
 // gateway and the resolvers, then each subnet and the range DHCP hands
-// out, and what's let in from outside; the address kept for a device, in
-// its own drawer; and each band's security, which the drawer's settings
-// say. A list that's empty says none, since none is the figure. Plain
+// out, and what's let in from outside; and each band's security, which
+// the drawer's settings say. A list that's empty says none, since none is the figure. Plain
 // reading of the record, held in Qt's own engine (tests/home-network.qml).
 .pragma library
 .import "HomeNetworkHistory.js" as History
@@ -91,19 +90,6 @@ function eerosWords(list) {
         return "";
     }
     return list.length === 0 ? "none" : list.map((one) => JSON.stringify(one)).join(DOT);
-}
-
-// A device's address, said reserved where it's the one kept for it, and
-// the kept one as a fact of its own only where they differ, so no figure
-// is said twice (VKCF3Z, 2026-11-08).
-function deviceAddress(model, one) {
-    const same = (each) => String(each.mac).toLowerCase() === String(one.mac).toLowerCase();
-    const its = (model?.internet?.addresses?.reservations ?? []).find(same)?.address ?? "";
-    return [
-        fact("address", joined([one.address, its !== "" && its === one.address
-            ? "reserved" : ""])),
-        fact("reserved", its === one.address ? "" : its),
-    ];
 }
 
 // The bands' security as its acronym: one word where every band agrees,

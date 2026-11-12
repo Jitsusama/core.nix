@@ -1,5 +1,5 @@
-// What the Home Network place's drawers say: every figure the eero
-// contract places in the internet's and a device's drawer
+// What the Home Network place's internet drawer says: every figure the
+// eero contract places there
 // (modules/eero/contract/README.md, Where Each Figure Shows), as a
 // fact keyed by its part's id, which HomeNetwork.qml names through the
 // launcher's vocabulary, so a name is said once, in words.json. A fact is
@@ -9,29 +9,24 @@
 // the daemon keeps of the last hour and day is drawn by
 // HomeNetworkHistory.js, which holds the pieces a fact is made of too,
 // and how the network has and hands out addresses by
-// HomeNetworkAddresses.js. A profile's drawer and a node's are the eero
-// daemon's (modules/eero's drawers.rs), served ready, as these will be in
-// turn.
+// HomeNetworkAddresses.js. A profile's, a node's and a device's drawers
+// are the eero daemon's (modules/eero's drawers.rs), served ready, as
+// this will be in turn.
 // Plain reading of the record, held in Qt's own engine
 // (tests/home-network.qml).
 .pragma library
 .import "HomeNetwork.js" as Home
 .import "HomeNetworkAddresses.js" as Addresses
 .import "HomeNetworkHistory.js" as History
-.import "Interfaces.js" as Interfaces
 .import "Machine.js" as Machine
 
 // A graph holds twenty readings, the newest last.
 const GRAPHED = 20;
-const PERCENT = 100;
-const NANO = "ns";
-const DOT = " \u00b7 ";
 // The pieces a fact is made of, as the history's facts are made of them.
 const known = History.known;
 const joined = History.joined;
 const fact = History.fact;
 const kept = History.kept;
-const stroke = History.stroke;
 const onOff = History.onOff;
 // A state eero words as disabled or enabled, said off or on, as every
 // setting's state is.
@@ -176,108 +171,4 @@ function optimized(on) {
         return "";
     }
     return on ? "optimized" : "not optimized";
-}
-
-// A link speed in Mb/s as the machine says one: "1 Gb/s", "100 Mb/s".
-function linkSpeed(value, settings) {
-    return known(value) ? Home.rate(value, settings) : "";
-}
-
-// A rate and how the radio makes it: "1.20 Gb/s · MCS 11 · 2 streams ·
-// 80 MHz · 800 ns guard · Wi-Fi 6".
-function rateOf(rate, settings) {
-    if (!rate) {
-        return "";
-    }
-    return joined([Home.rate(rate.mbps, settings),
-        known(rate.mcs) ? `MCS ${rate.mcs}` : "",
-        known(rate.streams) ? Home.counted(rate.streams, "stream") : "",
-        known(rate.width_mhz) ? `${rate.width_mhz} MHz` : "",
-        known(rate.guard_ns) ? `${rate.guard_ns} ${NANO} guard` : "",
-        rate.generation]);
-}
-
-// A device's drawer: how well it hears and is heard, its band, each way's
-// rate and how it's made and its speed now, first, as a narrow drawer has
-// room for those before its more; then what it is and which node it's on,
-// what had to be sent again, its network and addresses, when it was seen,
-// its profile, where it moved over the last day, and what eero said and the
-// daemon told of it. What moves sparks its last hour, as the daemon keeps
-// it.
-// `asked` gives the launcher's number settings, the device's readings
-// since the shell started and what its row is called, as the eero daemon
-// serves it, { settings, readings, called }, each optional; the readings
-// spark its signal and speed only where the record keeps no history.
-function device(model, one, now, asked) {
-    const settings = asked?.settings;
-    const title = asked?.called || Home.nameOf(one);
-    const on = (model?.nodes ?? []).find((each) => each.id === one.node) ?? null;
-    const seen = asked?.readings ?? { signal: [], speed: [] };
-    const sparks = History.deviceSparks(one);
-    const packets = one.packets ?? {};
-    const group = (model?.profiles ?? []).find((each) => each.id === one.profile) ?? null;
-    return {
-        // Where it is, short enough for a narrow drawer's one line: what it
-        // is starts its facts.
-        eyebrow: joined([on ? `on ${Home.nodeName(on)}` : "", one.ethernet ? "Ethernet" : "Wi-Fi"]),
-        names: on !== null,
-        title,
-        facts: kept([
-            fact("signal", Home.signalOf(one), { figure: History.signalSpark(one, seen.signal)
-                ?? (known(one.signal_dbm) ? stroke(Interfaces.level(one.signal_dbm)) : null) }),
-            fact("snr", known(one.snr_db) ? `${one.snr_db} dB` : null, { figure: sparks.snr }),
-            // eero's score says one thing: its bars, or where it gives
-            // none, its share, from nothing to all, as a percentage as
-            // every other share here is (VKCF3Z, 2026-11-08).
-            fact("score", known(one.bars) ? `${one.bars} of 5 bars` : known(one.score)
-                ? `${Home.number(one.score * PERCENT, 0, settings)}%` : null),
-            fact("band", one.ethernet ? null : joined([Home.bandOf(one), known(one.frequency_mhz)
-                ? `${Home.number(one.frequency_mhz, 0, settings)} MHz` : ""])),
-            fact("port", one.port ? joined([one.port.name, linkSpeed(one.port.mbps, settings)])
-                : null),
-            fact("rx", rateOf(one.rx, settings), { figure: sparks.rx }),
-            fact("tx", rateOf(one.tx, settings), { figure: sparks.tx }),
-            fact("speed", Home.speedOf(one, settings), { figure: sparks.speed
-                ?? spark(seen.speed) }),
-            fact("kind", joined([Home.worded(one.kind), one.make, one.model, one.manufacturer])),
-            fact("node", on ? joined([Home.nodeName(on), on.model]) : null),
-            fact("bssid", one.bssid),
-            fact("retries", joined([known(one.retry_pct) ? `${Home.number(one.retry_pct, 1,
-                settings)}%` : "", known(one.idle_ms) ? `quiet for ${Home.number(one.idle_ms, 0,
-                settings)} ms` : ""])),
-            fact("packets", joined([count(packets.rx_packets, "down", settings),
-                count(packets.tx_packets, "up", settings),
-                count(packets.total_packets, "in all", settings)])),
-            fact("resent", joined([count(packets.tx_retries, "", settings),
-                count(packets.tx_retransmit_ppm, "per million", settings)])),
-            fact("failed", count(packets.tx_fail_ppm, "per million", settings)),
-            fact("dropped", joined([count(packets.rx_drops, "", settings),
-                count(packets.rx_drop_ppm, "per million", settings)])),
-            { heading: "where" },
-            fact("network", joined([one.ssid, String(one.auth ?? "").toUpperCase(), one.subnet,
-                one.guest ? "guest" : ""])),
-        ].concat(Addresses.deviceAddress(model, one), [
-            fact("addresses", (one.addresses ?? []).filter((each) => each !== one.address)
-                .join(DOT)),
-            fact("mac", joined([one.mac, one.private ? "private" : ""])),
-            fact("hostname", one.hostname !== title ? one.hostname : null),
-            fact("nickname", one.nickname),
-            fact("first-seen", History.when(one.first_seen, now)),
-            fact("on-since", History.when(one.first_active, now)),
-            fact("last-active", History.when(one.last_active, now)),
-            fact("profile", group ? joined([group.name, group.paused ? "paused" : ""])
-                : null),
-            fact("held", joined([one.paused ? "paused" : "", one.blocked ? "blocked" : ""])),
-        ])).concat(History.roams(model, one, now), happened(model, History.timeline(model)
-            .filter((event) => about(event, one)), now)),
-    };
-}
-
-// A count grouped, with what it counts after.
-function count(value, what, settings) {
-    if (!known(value)) {
-        return "";
-    }
-    const figure = Home.number(value, 0, settings);
-    return what === "" ? figure : `${figure} ${what}`;
 }

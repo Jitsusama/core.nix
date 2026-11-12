@@ -17,7 +17,6 @@ pragma Singleton
 // would have.
 import Quickshell
 import QtQuick
-import "launcher/HomeNetwork.js" as Home
 
 Singleton {
     id: root
@@ -25,13 +24,6 @@ Singleton {
     // The record as eero last answered, or null.
     property var model: null
     readonly property bool present: model !== null
-    // Each device's signal and speed as each record said them, since the
-    // shell started, for the drawers' sparks (HomeNetwork.js's
-    // remembered): twenty readings at most, Graph's whole width.
-    property var history: ({})
-    readonly property int remembers: 20
-    onModelChanged: history = model === null ? history : Home.remembered(history, model,
-        remembers)
     // Whether the Home Network is open, so the daemon is held to read
     // often; the place sets it.
     property bool watching: false

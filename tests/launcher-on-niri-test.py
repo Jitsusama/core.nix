@@ -2938,6 +2938,32 @@ def test_a_nodes_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
     assert left["label"], str(left)
 
 
+def test_a_devices_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
+    """A device's drawer says where it is, how it moved and what happened to it.
+
+    The eero daemon makes a device's drawer (its drawers/device.rs) and serves it beside the
+    device's row, its moves and events named by a moment the shell words as it draws them.
+    """
+    tablet = terminal_shown_until(
+        shell,
+        lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("facts")),
+        "network",
+        "home network",
+        "tablet 1",
+    )
+    drawer = tablet["row"]["drawer"]
+    assert drawer["title"] == "tablet 1", str(drawer)
+    assert drawer["eyebrow"] == "on Den \u00b7 Wi-Fi", str(drawer)
+    facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
+    assert str(facts["Signal"]).endswith(" dBm"), str(facts)
+    values = [fact.get("value") for fact in drawer["facts"]]
+    assert "Study to Den \u00b7 2.4 GHz to 5 GHz" in values, str(drawer)
+    last = drawer["facts"][-1]
+    assert last["value"] == "tablet\u00a01\u200b disconnected from Study eero Pro 6.", str(last)
+    assert isinstance(last["label"], str), str(last)
+    assert last["label"], str(last)
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)
