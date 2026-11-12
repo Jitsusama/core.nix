@@ -1535,7 +1535,10 @@
     evaluates on the first evaluator that answers and takes the repository's owner, and
     builds what it names as `there` does, exiting 69 rather than handing it back when no builder
     takes it, else tells changed-checks to run here, and after a run gives the other lent
-    builder the checks and reads its base kept, whole and never over its own; and `relay`
+    builder the checks and reads its base kept, whole and never over its own; a change whose
+    base no lent builder keeps is checked replayed onto the newest main one does, saying so,
+    never when it holds a merge, a commit doesn't apply or main moved a file beside it or one
+    every check reads, and runs again on its own base should the replay fail; and `relay`
     dials a far side again
     while it closes before saying its first line, passes that line and everything after
     both ways, and hangs up once, without dialling again, on one that says nothing in time,
