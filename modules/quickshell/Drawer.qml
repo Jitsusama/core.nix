@@ -1859,15 +1859,18 @@ Floating {
                         marked: "# "
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset
-                        // A word too wide for a line, as a server's name or
-                        // a path, may break after a dot or a slash rather
-                        // than mid-word; the rest break at their spaces. A
-                        // binding doesn't see what a call reads, so it reads
-                        // the face, to choose again as the face loads.
+                        // Two lines at most, balanced, never a word alone
+                        // below where it could share, and past two ending
+                        // at a whole word (Identifier.titleLines); a word
+                        // too wide for a line, as a server's name or a
+                        // path, breaks after a dot or a slash rather than
+                        // mid-word. A binding doesn't see what a call
+                        // reads, so it reads the face, to choose again as
+                        // the face loads.
                         plain: {
                             void titleFace.font;
-                            return Identifier.titleBreaks(drawer.title, width,
-                                words => titleFace.advanceWidth(words));
+                            return Identifier.titleLines(drawer.title, width,
+                                words => titleFace.advanceWidth(words), "\u2026").join("\n");
                         }
                         leading: drawer.titleLeading
                         // A right-to-left title starts under its eyebrow

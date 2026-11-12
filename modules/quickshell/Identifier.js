@@ -127,6 +127,55 @@ function titleBreaks(title, room, width) {
         : word.replace(TITLE_BREAKS, "$1\u200b")).join("");
 }
 
+// A drawer's title as the lines it's drawn on: one where it fits, else two
+// as near the same width as its words allow, never one word alone on the
+// second where three or more could share them unless only that fits, and
+// past two the second ends at a whole word in `ellipsis` (VKCF3Z's wrap rule 4, 2026-11-11:
+// Joel "i hate gross line wraps"). A title with a word too wide for a line
+// alone keeps titleBreaks' breaks inside that word instead, since no
+// whole-word split can hold it.
+function titleLines(title, room, width, ellipsis) {
+    const words = title.split(SPACES).filter(word => !ONLY_SPACES.test(word));
+    if (words.length === 0 || fitting(words.join(" "), room, width)) {
+        return words.length === 0 ? [] : [words.join(" ")];
+    }
+    if (words.some(word => !fitting(word, room, width))) {
+        return [titleBreaks(title, room, width)];
+    }
+    const shared = balanced(words, room, width, words.length > 2 ? 2 : 1)
+        ?? balanced(words, room, width, 1);
+    return shared ?? cutToTwo(words, room, width, ellipsis);
+}
+
+// The two lines of `words` nearest the same width that both fit `room`,
+// the second holding at least `least` of them, or null where none fit.
+function balanced(words, room, width, least) {
+    let best = null;
+    for (let at = 1; at <= words.length - least; at += 1) {
+        const lines = [words.slice(0, at).join(" "), words.slice(at).join(" ")];
+        const wider = Math.max(width(lines[0]), width(lines[1]));
+        if (wider <= room && (best === null || wider < best.wider)) {
+            best = { lines, wider };
+        }
+    }
+    return best === null ? null : best.lines;
+}
+
+// Words too many for two lines: the first as full as it fits, the second
+// the words after it that fit with `ellipsis`, so it ends at a whole word.
+function cutToTwo(words, room, width, ellipsis) {
+    let at = 1;
+    while (at < words.length && fitting(words.slice(0, at + 1).join(" "), room, width)) {
+        at += 1;
+    }
+    let end = at + 1;
+    while (end < words.length
+        && fitting(`${words.slice(at, end + 1).join(" ")}${ellipsis}`, room, width)) {
+        end += 1;
+    }
+    return [words.slice(0, at).join(" "), `${words.slice(at, end).join(" ")}${ellipsis}`];
+}
+
 // Whether a line laid opens with a mark, which only the identifier's
 // own first may.
 function opensOnMark(line) {
