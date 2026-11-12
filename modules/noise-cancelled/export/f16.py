@@ -98,7 +98,7 @@ def gain_the_frame(model: ov.Model) -> None:
     )
 
 
-def band_energies_in_two(model: ov.Model) -> list[tuple[ov.Output, ov.Output | None]]:
+def band_energies_in_two(model: ov.Model) -> list[tuple[ov.Output, ov.Output]]:
     """Take the band energies' logarithm on two paths f16 holds.
 
     Says what each new logarithm is asked for, with where it's taken.
@@ -154,10 +154,14 @@ def unit_norm_with_the_gain(model: ov.Model) -> None:
     )
 
 
-def rewritten(export: str) -> tuple[ov.Model, list[tuple[ov.Output, ov.Output | None]]]:
+def rewritten(export: str) -> tuple[ov.Model, list[tuple[ov.Output, ov.Output]]]:
     """Rewrite the export to hold in f16, saying what its logarithms take."""
     model = ov.Core().read_model(export)
-    return model, [(only(model, "Log").input_value(0), None)]
+    gain_the_frame(model)
+    logs = band_energies_in_two(model)
+    unit_norm_with_the_gain(model)
+    model.validate_nodes_and_infer_types()
+    return model, logs
 
 
 def cleaned(model: ov.Model, frames: np.ndarray) -> list[dict[str, np.ndarray]]:
@@ -201,30 +205,23 @@ def agrees(export: str, model: ov.Model, frames: np.ndarray) -> None:
         sys.exit(f"the rewrite strays {worst:.1e} from the export, past {AGREED:.0e}")
 
 
-def held(
-    model: ov.Model, logs: list[tuple[ov.Output, ov.Output | None]], frames: np.ndarray
-) -> None:
+def held(model: ov.Model, logs: list[tuple[ov.Output, ov.Output]], frames: np.ndarray) -> None:
     """Refuse a graph asking a logarithm for what f16 doesn't hold.
 
-    `logs` pairs what each logarithm is asked for with where it's taken,
-    or None for everywhere.
+    `logs` pairs what each logarithm is asked for with where it's taken.
     """
     names = []
     for at, (asked, where) in enumerate(logs):
         asked.get_tensor().add_names({f"asked-{at}"})
-        if where is not None:
-            where.get_tensor().add_names({f"where-{at}"})
-        names.append((f"asked-{at}", None if where is None else f"where-{at}"))
-    model.add_outputs([o for pair in logs for o in pair if o is not None])
+        where.get_tensor().add_names({f"where-{at}"})
+        names.append((f"asked-{at}", f"where-{at}"))
+    model.add_outputs([o for pair in logs for o in pair])
     peak = float(np.abs(frames).max())
     for how, made in (("quiet", 1e-3), ("loud", 1 / peak)):
         values = []
         for said in cleaned(model, frames * np.float32(made)):
             for asked_name, where_name in names:
-                asked = said[asked_name]
-                if where_name is not None:
-                    asked = asked[said[where_name].astype(bool)]
-                values.append(asked.ravel())
+                values.append(said[asked_name][said[where_name].astype(bool)])
         everything = np.concatenate(values)
         least, most = float(everything.min()), float(everything.max())
         print(f"{how}: a logarithm is asked for {least:.1e} to {most:.1e}")
