@@ -4375,6 +4375,18 @@ Scope {
             commandSay(fill(words.none), true);
             return;
         }
+        // A line that would end the session from the row it stands on, as
+        // :reboot on Reboot, arms that row in place, as its Return does,
+        // rather than asking y/n (VKCF3Z, 2026-11-12 [b6b6b98d]): the next
+        // Return does it and any other key lets it go. A ! still does it.
+        // The act is the line's own copy of the row, so it's the row the
+        // cursor is on, and the act, that are read.
+        const alone = found.length === 1 ? found[0] : null;
+        if (!bang && alone !== null && alone.thing === selected && arms(alone.act)
+            && arms(alone.thing)) {
+            pressArming(alone.thing, 1);
+            return;
+        }
         const sure = () => commandActs(acts.map(act => act.confirm
             ? Object.assign({}, act, { confirm: false }) : act));
         if (asked.ask !== "") {
