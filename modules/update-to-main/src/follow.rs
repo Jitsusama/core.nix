@@ -22,6 +22,7 @@ use crate::config::{Config, Hosted};
 use crate::follows::Followed;
 use crate::hosted;
 use crate::line::Line;
+use crate::tell::Telling;
 use crate::update::NEEDS_HOLD;
 use std::fs;
 use std::path::Path;
@@ -37,7 +38,7 @@ const BUSY_AGAIN: Duration = Duration::from_secs(60);
 
 /// How long heads whose update failed wait before they're asked for
 /// again, in case what failed was the builders and not the commit.
-const FAILED_AGAIN: Duration = Duration::from_mins(30);
+pub const FAILED_AGAIN: Duration = Duration::from_mins(30);
 
 /// The least time between a switch, whoever asked for it, and the next
 /// the follower asks for while someone is at the machine. A home switch
@@ -74,8 +75,8 @@ pub fn someone_here() -> bool {
 /// failure. On 8 November a lent builder's tunnel dropped and its service
 /// restarted in the middle of a switch Joel waited on, and nothing asked
 /// again for 30 minutes, though a builder stood again within one.
-const DROPPED_AGAIN: Duration = Duration::from_mins(2);
-const DROPPED_TRIES: u32 = 5;
+pub const DROPPED_AGAIN: Duration = Duration::from_mins(2);
+pub const DROPPED_TRIES: u32 = 5;
 
 /// What a build that lost its builders, rather than one that failed on its
 /// own, says: no builder could be reached, or the one it was on went away.
@@ -145,6 +146,8 @@ pub struct Follower {
     /// someone is, or before it has looked, since it can't know how long
     /// they've been gone.
     nobody_since: Option<Instant>,
+    /// What the person is told of the machine not updating.
+    telling: Telling,
 }
 
 impl Follower {
@@ -211,6 +214,12 @@ impl Follower {
             return now.duration_since(*when) >= *wait;
         }
         self.last.as_ref() != Some(heads) || since >= every || (self.busy && since >= BUSY_AGAIN)
+    }
+
+    /// Why the machine can't update, once each time it stops being able
+    /// to (`crate::tell`).
+    pub fn to_tell(&mut self) -> Option<String> {
+        self.telling.take()
     }
 
     /// Keeps how an ask made at `heads` ended, with the machine's last

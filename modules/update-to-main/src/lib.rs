@@ -28,6 +28,8 @@
 //! - `progress`: the work a quiet build's pieces are doing, here and on
 //!   its builders.
 //! - `session`: an account's command run in its login session, on a Mac.
+//! - `tell`: what the follower tells a person when the machine can't
+//!   update.
 //! - `ask`: the asking end, for the node and for a person.
 
 pub mod ask;
@@ -46,4 +48,5 @@ pub mod run;
 pub mod serve;
 pub mod session;
 pub mod system;
+pub mod tell;
 pub mod update;
