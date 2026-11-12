@@ -3,8 +3,10 @@
 modules/quickshell/checks/margin.nix runs this through pytest in tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run, as the graphical account has it with the cat's
 module (modules/margin-cat). Where over a column it sits, beside the margin's marks or nowhere,
-is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml); here, only that niri's real
-layout reaches it, that its layer is one taking no keys, that it goes in fullscreen, where the
+is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's beats; here,
+only that niri's real layout reaches it, that it rests two seconds before walking over a step
+every frame with none dropped, and never for a tap along the columns, each walk's steps kept as
+the check's result, that its layer is one taking no keys, that it goes in fullscreen, where the
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, and that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result.
@@ -12,6 +14,7 @@ check's result.
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import struct
@@ -41,6 +44,15 @@ IDLE, DOZES, POSED = 30.0, 60, 2
 # How long the cat's stretch holds as the lock lets go: about half a second, and no less than
 # a glance, nor so long that it's in the way of the keys pressed next.
 STRETCHES = (0.3, 1.0)
+# How long the keys rest on a column before the cat walks there (modules/margin-cat/MarginCat.qml),
+# the beats of its walk in order (MarginCat.js), and the longest the shell may take to sync and
+# render one of its frames, a quarter of a frame at 60, so its own work never costs one.
+RESTS = 2.0
+BEATS = ["turns", "thinks", "crouches", "goes", "settles", "lands"]
+DRAWS = 4.0
+WALKED = "walked cat "
+# The fewest steps a second its walk may take, the nested screen drawing at 60.
+SMOOTH = 50
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 POLL = 0.05
@@ -154,15 +166,88 @@ def layered(shell: Shell, wanted: int) -> list[Json]:
     return shown
 
 
-def test_the_cat_follows_the_keys_from_column_to_column(shell: Shell) -> None:
-    """Two columns open; the cat sits over the one the keys are in, and moves as they do."""
+def steps(shell: Shell, since: int) -> list[Json]:
+    """Give each step of a walk the cat said since the mark, in the order it took them."""
+    said, _ = shell.said_since(since)
+    reports = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    return [at for at in reports if at is not None and at.get("walk")]
+
+
+def walking(said: str) -> bool:
+    """Say whether a report is a step of a walk."""
+    at = placed(said)
+    return at is not None and bool(at.get("walk"))
+
+
+def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -> None:
+    """Two seconds after the keys move to another column, it walks there, a step each frame.
+
+    It steps at the screen's rate, and its own work never costs a frame: each takes the shell
+    a quarter of one to draw, and niri shows every one (Joel, 2026-11-12: "we need proper
+    smooth animations with character to them"). How far apart niri shows them is the nested
+    screen's, drawn in software under a second compositor, so it's kept, not judged; Joel's
+    journal says it of his own screen. Its beats come in their order, and it goes in both its
+    strides, never stepping back. Its steps and how niri showed
+    them are kept as the check's result, for a strip of the walk.
+    """
     since = shell.mark()
-    first = shell.opened("first column")
-    second = shell.opened("second column")
+    first = shell.opened("a column to walk to")
+    second = shell.opened("a column to walk from")
     sits_over(shell, second, since)
     since = shell.mark()
+    moved = time.monotonic()
     shell.as_account("niri msg action focus-column-left")
+    heard(shell, walking, since)
+    rested = time.monotonic() - moved
     sits_over(shell, first, since)
+    walked = steps(shell, since)
+    said, _ = shell.said_since(since)
+    told = [
+        json.loads(line[len(WALKED) :].split(" ", 1)[1]) for line in said if line.startswith(WALKED)
+    ]
+    kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
+    kept.mkdir(exist_ok=True)
+    (kept / "walk.json").write_text(json.dumps({"steps": walked, "presented": told}))
+    assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
+    beats = [step["walk"]["beat"] for step in walked]
+    assert [beat for at, beat in enumerate(beats) if at == 0 or beat != beats[at - 1]] == BEATS, (
+        f"the cat's beats came as {beats}"
+    )
+    times = [step["walk"]["t"] for step in walked]
+    gaps = sorted(after - before for before, after in itertools.pairwise(times))
+    frame = gaps[len(gaps) // 2]
+    assert frame <= 1000 / SMOOTH, f"the cat walked a step every {frame} ms: {times}"
+    assert len(told) == 1, f"the cat said how its walk was shown {len(told)} times: {told}"
+    (shown,) = told
+    assert shown["frames"] > 0, f"niri showed none of the walk's frames: {shown}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+    assert shown["drawn"] <= DRAWS, f"a frame took the shell {shown['drawn']} ms: {shown}"
+    # Each stride stepped by its ground is MarginCat.js's, proven frame by frame in Qt's engine
+    # (margin-cat.qml); here a frame can come late enough to skip a stride, so this asks only
+    # that both reach the screen as it goes, the way it faces.
+    going = [step for step in walked if step["walk"]["beat"] == "goes"]
+    poses = {step["walk"]["pose"] for step in going}
+    assert poses == {"walkingA", "walkingB"}, f"the cat went in the poses {poses}"
+    ahead = [
+        (after["x"] - before["x"]) * after["walk"]["facing"]
+        for before, after in itertools.pairwise(going)
+    ]
+    assert min(ahead) >= 0, f"the cat stepped back as it went: {[s['x'] for s in going]}"
+
+
+def test_tapping_along_the_columns_never_sets_it_walking(shell: Shell) -> None:
+    """Tapping h then l, back within the rest, leaves the cat sitting where it was."""
+    since = shell.mark()
+    shell.opened("a column tapped past")
+    sat = shell.opened("a column the cat stays on")
+    sits_over(shell, sat, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-left")
+    time.sleep(RESTS / 4)
+    shell.as_account("niri msg action focus-column-right")
+    time.sleep(RESTS + 1)
+    walked = steps(shell, since)
+    assert not walked, f"tapping set the cat walking: {walked[:3]}"
 
 
 def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
