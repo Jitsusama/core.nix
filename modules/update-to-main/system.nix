@@ -256,7 +256,18 @@ in
                 How many seconds at most a switch the follower asked for
                 waits on it, after which it holds the switch no longer,
                 though what else the follower waits on still does. With
-                none, it waits the whole hour.
+                none, it waits the whole hour. A switch a person asked for
+                waits on it as long, when every ask waits on it.
+              '';
+            };
+            everyAskWaits = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether a switch a person asked for waits on it too, as one
+                the follower asked for does, when the follower waits on it,
+                such as the launcher being typed into: a person's ask is no
+                reason to restart what someone is typing into.
               '';
             };
           };
@@ -600,6 +611,7 @@ in
               inherit (busy) command why;
               follower_waits = busy.followerWaits;
               follower_waits_at_most = busy.followerWaitsAtMost;
+              every_ask_waits = busy.everyAskWaits;
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

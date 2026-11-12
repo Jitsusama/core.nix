@@ -2781,6 +2781,7 @@ fn refuse_during_calls(world: &mut World) {
         why: "a call is on".to_owned(),
         follower_waits: false,
         follower_waits_at_most: None,
+        every_ask_waits: false,
     }];
 }
 
@@ -2853,7 +2854,21 @@ fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Opti
         why: why.to_owned(),
         follower_waits: true,
         follower_waits_at_most: at_most,
+        every_ask_waits: false,
     }
+}
+
+/// Says the launcher is in use the first `times` it's asked, and not
+/// after, for every ask, counting each ask in the world's `launcher` file.
+fn the_launcher_in_use(world: &World, times: usize, at_most: Option<u64>) -> Busy {
+    Busy {
+        every_ask_waits: true,
+        ..waits_on(world, "the launcher is in use", "launcher", times, at_most)
+    }
+}
+
+fn launcher_asked(world: &World) -> usize {
+    world.read("launcher").trim().parse().unwrap_or(0)
 }
 
 /// Says someone is at the machine the first `times` it's asked, and nobody
@@ -2932,6 +2947,55 @@ fn a_persons_ask_waits_for_nobody_and_ends_the_followers_wait() {
     };
     assert_eq!(world.asked_by(&following).1, done(&head));
     assert_eq!(asked(&world), 2);
+}
+
+#[test]
+fn a_persons_ask_waits_while_the_launcher_is_in_use_and_switches_once_it_isnt() {
+    let mut world = World::new();
+    world.config.refuse_while = vec![
+        waits_on(&world, "someone is at the machine", "asked", 1000, None),
+        the_launcher_in_use(&world, 2, None),
+    ];
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "a launcher in use refused a person's ask rather than holding its switch"
+    );
+    assert_eq!(
+        launcher_asked(&world),
+        3,
+        "a person's ask switched while the launcher was in use"
+    );
+    assert_eq!(
+        asked(&world),
+        0,
+        "a person's ask waited on what only the follower waits on"
+    );
+    assert_eq!(world.builds(), 1, "it didn't build once, ahead of the wait");
+}
+
+#[test]
+fn a_persons_ask_waits_on_the_launcher_only_as_long_as_it_may() {
+    let mut world = World::new();
+    world.config.refuse_while = vec![the_launcher_in_use(&world, 1000, Some(1))];
+    let head = world.signed("one");
+    world.system(&head);
+    let began = Instant::now();
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "a launcher in use past its second refused the switch"
+    );
+    assert!(
+        began.elapsed() >= Duration::from_secs(1),
+        "it switched before the launcher's second was up"
+    );
+    assert!(
+        launcher_asked(&world) < 1000,
+        "it waited past the launcher's second until the launcher was free"
+    );
 }
 
 #[test]

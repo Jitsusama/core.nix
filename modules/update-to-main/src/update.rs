@@ -432,22 +432,32 @@ fn busy(config: &Config) -> Option<String> {
 /// desktop's shell under Joel's hands; and that evening no switch came for
 /// two hours while he worked, with 26 merges waiting, so someone at the
 /// keys holds it for 45 minutes and an open launcher the whole hour. A
-/// person asking meanwhile, or a stop, ends the wait at once.
+/// person asking meanwhile, or a stop, ends the wait at once, but for what
+/// every ask waits on: on 12 November a switch Joel's orchestrator asked for
+/// restarted the shell while he typed into it, and the line was lost.
 fn quiet(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
     let began = Instant::now();
     let mut said = None;
-    while following() && !run::stopping() {
+    while !run::stopping() {
         let waited = began.elapsed();
-        let why = config
+        let follower = following();
+        let Some(why) = config
             .refuse_while
             .iter()
             .filter(|busy| {
                 busy.follower_waits
+                    && (follower || busy.every_ask_waits)
                     && busy
                         .follower_waits_at_most
                         .is_none_or(|most| waited < Duration::from_secs(most))
             })
-            .find_map(is_busy)?;
+            .find_map(is_busy)
+        else {
+            if said.is_some() {
+                eprintln!("the switch waited {} s, and goes", waited.as_secs());
+            }
+            return None;
+        };
         if waited >= WAITS_AT_MOST {
             return Some(format!(
                 "{why} for an hour, so what was built waits in the store for the next ask"

@@ -98,7 +98,8 @@ in
         && lib.any (
           refusal:
           refusal.followerWaits
-          && refusal.why == "the launcher is open"
+          && refusal.why == "the launcher is open, or closed under 30 s ago"
+          && refusal.everyAskWaits
           && refusal.followerWaitsAtMost == null
         ) nixos.jitsusama.update-to-main.refuseWhile
       );
