@@ -10,9 +10,7 @@
 // search is answered with the keys of the notices whose words hold every
 // word asked, in the order they're held: how the daemon ranks them is its
 // own tests' (modules/notices' search.rs), and each it answers is counted
-// in `searches`. Those of `unserved`, notices no place serves, as a page
-// served leaves the rest, are found too, each with its row in the answer.
-// A check copies it beside the test with Watch.js.
+// in `searches`. A check copies it beside the test with Watch.js.
 pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
@@ -31,13 +29,11 @@ Scope {
     property var said: ({})
     // The words of each search answered, in order.
     property var searches: []
-    // The notices a search finds that no place serves.
-    property var unserved: []
 
     // The keys of the notices' rows a search of `words` finds.
     function found(words) {
         const asked = String(words).split(" ").filter(word => word !== "");
-        return notices.concat(unserved).filter(notice => {
+        return notices.filter(notice => {
             const text = `${notice.summary}\n${notice.body ?? ""}`.toLowerCase();
             return asked.every(word => text.includes(word));
         }).map(notice => `row:notices:${notice.id}`);
@@ -134,15 +130,8 @@ Scope {
                         served.told += 1;
                     } else if (ask.ask === "search") {
                         const keys = served.found(ask.words ?? "");
-                        const rows = {};
-                        for (const notice of served.unserved) {
-                            const one = served.row(notice, "notices",
-                                notice.read ? "" : "unread");
-                            if (keys.includes(one.key))
-                                rows[one.key] = one.row;
-                        }
-                        answer = { id: ask.id, keys: keys, rows: rows,
-                            grade: keys.length > 0 ? 0 : 3, words: ask.words };
+                        answer = { id: ask.id, keys: keys, grade: keys.length > 0 ? 0 : 3,
+                            words: ask.words };
                         served.searches = served.searches.concat([ask.words]);
                     } else if (ask.ask === "unwatch") {
                         // As Desktop's watch ends with the launcher shut.

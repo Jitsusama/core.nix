@@ -294,8 +294,6 @@ ShellRoot {
         root.told = told;
         theLauncher.open = true;
         Notices.history = told;
-        noticesDaemon.unserved = [Object.assign(noticeOf(31, true),
-            { summary: "Parcel delivered", body: "at the door" })];
         noticesDaemon.notices = told;
         waiting = "the notices served";
         heardNotices();
@@ -314,8 +312,6 @@ ShellRoot {
             noticeFound();
         else if (waiting === "notice 1 searched")
             noticeOneFound();
-        else if (waiting === "parcel searched")
-            parcelFound();
     }
     property var listed: []
     function firstNotices() {
@@ -421,22 +417,6 @@ ShellRoot {
             expect("a search answered before the notices changed lists none of them meanwhile",
                 pastNotices.search("notice").rows.length === 0,
                 JSON.stringify(pastNotices.search("notice").rows.map(row => row.key)));
-            pastNotices.search("parcel");
-        }))
-            waiting = "parcel searched";
-    }
-    // A notice the place never served, as a page served leaves the rest,
-    // is listed from the row its answer brings.
-    function parcelFound() {
-        waiting = "";
-        if (tried(() => {
-            const found = pastNotices.search("parcel").rows;
-            expect("a search lists a notice the place never served, from its answer's row",
-                JSON.stringify(found.map(row => [row.notice, row.name]))
-                    === JSON.stringify([[31, "Parcel delivered"]]),
-                JSON.stringify(found.map(row => [row.notice, row.name])));
-            expect("and listed again, it isn't made again",
-                pastNotices.search("parcel").rows[0] === found[0], "made again");
         }))
             Qt.exit(0);
     }

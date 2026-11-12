@@ -396,11 +396,6 @@ impl Rows {
         places
     }
 
-    /// Each notice's row in the mixed place, as last made, by notice.
-    pub fn mixed(&self) -> impl Iterator<Item = &Value> {
-        self.made.values().filter_map(|made| made.rows[0].as_ref())
-    }
-
     /// What a notice's card reads beside the notice: who sent it, signed
     /// as its row is, and what it said, plain and styled, and its links.
     pub fn card(&self, id: u32) -> Option<&Value> {
