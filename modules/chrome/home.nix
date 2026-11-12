@@ -209,6 +209,14 @@ let
           when = "in a field, or where Vimium is off";
         }
       )
+      # Chrome selects the words Ctrl+f found as Escape closes its bar, and
+      # Return on a selected link follows it, so a link is followed by its
+      # words with no hints.
+      {
+        chord = "Escape Return";
+        does = "Follow the link found";
+        when = "after Ctrl+f finds its words";
+      }
       {
         chord = "Ctrl+Plus";
         does = "The page larger";
