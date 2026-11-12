@@ -242,6 +242,10 @@ function leaving(record) {
     return record !== null && record.stage !== "idle" ? { ask: "act", act: "discard" } : null;
 }
 
+function naming(words) {
+    return null;
+}
+
 // What Return on a row asks the daemon, as the protocol's act is sent:
 // { ask: "act", act, clip }, or null for a figure, which asks nothing.
 function asked(row) {
