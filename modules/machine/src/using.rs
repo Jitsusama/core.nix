@@ -175,16 +175,93 @@ pub fn records(now: &Counters, before: Option<&Counters>, page_b: u64) -> Vec<Va
     records
 }
 
+/// The longest a read of every process may be behind a window's own and
+/// still share the processor over it: lag-watch writes one every ten
+/// seconds, so a read older than a few was no window's.
+const WITHIN_MS: u64 = 30_000;
+
+/// How many processors the kernel counts, from the lines of `/proc/stat`
+/// that are each one's.
+pub fn cores(root: &Root) -> usize {
+    root.read("/proc/stat")
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| {
+            line.strip_prefix("cpu")
+                .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+        })
+        .count()
+}
+
+/// The program most behind a wait on `worst`: the processor's, by its
+/// share since `before`, with how many processors there are to share; or
+/// memory's, by what it holds. None for any other wait, or for the
+/// processor with no read recent enough before.
+pub fn leading(
+    worst: &str,
+    now: &Counters,
+    before: Option<&Counters>,
+    page_b: u64,
+    cores: usize,
+) -> Option<Value> {
+    let first =
+        |records: Vec<Value>, of: &str| records.into_iter().find(|record| record["of"] == of);
+    match worst {
+        "cpu" => {
+            let before = before.filter(|b| now.at_ms.saturating_sub(b.at_ms) <= WITHIN_MS)?;
+            let top = first(records(now, Some(before), page_b), "cpu")?;
+            Some(
+                json!({ "of": "cpu", "name": top["name"], "share_ratio": top["share_ratio"],
+                "cores": cores }),
+            )
+        }
+        "memory" => {
+            let top = first(records(now, None, page_b), "memory")?;
+            Some(json!({ "of": "memory", "name": top["name"], "resident_b": top["resident_b"] }))
+        }
+        _ => None,
+    }
+}
+
 /// The program most behind what lag-watch last said waited, read once a
 /// window (VKCF3Z, 2026-11-12, from Joel's "why is it slow": Lag names
-/// the cause and the top program and its share).
+/// the cause and the top program and its share). Every process is read
+/// only while the processor or memory held the desktop up.
 #[derive(Default)]
-pub struct Behind {}
+pub struct Behind {
+    /// The window last read, by when it ended.
+    ended: Option<u64>,
+    top: Option<Value>,
+    before: Option<Counters>,
+}
 
 impl Behind {
     /// Says on lag-watch's record, while something waited on the
-    /// processor or on memory, the program most behind it.
-    pub fn told(&mut self, _root: &Root, _record: &mut Value, _at_ms: u64, _page_b: u64) {}
+    /// processor or on memory, the program most behind it, as `top`.
+    pub fn told(&mut self, root: &Root, record: &mut Value, at_ms: u64, page_b: u64) {
+        if record["name"] != "lag-watch" {
+            return;
+        }
+        let said = &record["said"];
+        let troubled = said["trouble"]
+            .as_array()
+            .is_some_and(|trouble| !trouble.is_empty());
+        let worst = said["worst"].as_str().unwrap_or_default().to_owned();
+        if !troubled || !matches!(worst.as_str(), "cpu" | "memory") {
+            *self = Behind::default();
+            return;
+        }
+        let ended = said["ended"].as_f64().map(f64::to_bits);
+        if ended != self.ended {
+            let now = counters(root, at_ms);
+            self.top = leading(&worst, &now, self.before.as_ref(), page_b, cores(root));
+            self.before = Some(now);
+            self.ended = ended;
+        }
+        if let Some(top) = &self.top {
+            record["said"]["top"] = top.clone();
+        }
+    }
 }
 
 #[cfg(test)]

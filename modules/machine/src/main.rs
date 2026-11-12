@@ -277,6 +277,8 @@ struct Reader {
     /// was last heard at.
     watchers: Vec<status::Watcher>,
     statuses: status::Kept,
+    /// The program behind lag-watch's last wait.
+    behind: using::Behind,
 }
 
 impl Reader {
@@ -327,12 +329,17 @@ impl Reader {
             records.extend(counts::boards(&self.root));
         }
         if wants("status") {
-            records.extend(self.statuses.records(
+            let mut told = self.statuses.records(
                 &self.root,
                 &self.watchers,
                 Instant::now(),
                 status::since_epoch(),
-            ));
+            );
+            for record in &mut told {
+                self.behind
+                    .told(&self.root, record, clock_ms(), self.page_b);
+            }
+            records.extend(told);
         }
         records
     }
@@ -713,6 +720,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             layer: keyboards::layer_file(),
             watchers: status::of_session(),
             statuses: status::Kept::asking(units::standing),
+            behind: using::Behind::default(),
         }),
         woken: Condvar::new(),
     }

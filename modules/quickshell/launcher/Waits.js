@@ -55,6 +55,10 @@ function headline(window, words, settings) {
     const trouble = Array.isArray(window?.trouble) ? window.trouble : [];
     if (trouble.length === 0)
         return filled(words, "calm");
-    return trouble.length === 1 ? trouble[0]
-        : filled(words, "several", { count: trouble.length });
+    const cause = filled(words, `cause:${window.worst ?? ""}`);
+    if (cause === "")
+        return trouble.length === 1 ? trouble[0]
+            : filled(words, "several", { count: trouble.length });
+    const program = behind(window.top, words, settings);
+    return program === "" ? cause : `${cause} \u00b7 ${program}`;
 }
