@@ -829,7 +829,7 @@ def test_a_later_time_the_daemon_serves_moves_the_meeting_once_joel_is_sure(
     # The daemon's ask comes with its fields in its own order, so it's
     # matched by what it says, not where.
     machine.wait_until_succeeds(
-        f"grep -F '{{\"move\":' {asked} | grep -qF '\"id\":\"standup\"'",
+        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
         timeout=dt.timedelta(seconds=30),
     )
     desktop.as_account("qs ipc call launcher toggle")
