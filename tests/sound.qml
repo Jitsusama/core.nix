@@ -55,10 +55,29 @@ ShellRoot {
         property bool open: false
         property bool wanting: true
         readonly property var held: []
+        // Where a row's Return last asked it to go.
+        property var went: null
 
         function wants(source) {
             return wanting;
         }
+
+        function goTo(to) {
+            went = to;
+        }
+    }
+
+    Node {
+        id: deskMicrophone
+        name: "usb-desk-microphone"
+        description: "Desk microphone"
+        isSink: false
+    }
+
+    Node {
+        id: deskTwin
+        name: "noise-cancelled.usb-desk-microphone"
+        isSink: false
     }
 
     Launcher.Sound {
@@ -143,6 +162,27 @@ ShellRoot {
         gotten();
         partsKept();
         downDrawn();
+        byEarFound();
+    }
+
+    // Choose by Ear is found from the top by its name, once for each
+    // microphone noise cancelling cleans, as For You's offer words it, and
+    // its Return goes to that microphone's Choose by Ear, ready to record
+    // (VKCF3Z's (d), 2026-11-12). A speaker has none, nor a cleaned twin.
+    function byEarFound() {
+        const found = shutSound.byEarFoundOf([deskSpeakers, deskMicrophone, deskTwin]);
+        expect("one Choose by Ear for each microphone it cleans",
+            JSON.stringify(found.map(row => row.name)) === '["Choose by Ear for Desk microphone"]',
+            JSON.stringify(found.map(row => row.name)));
+        shutLauncher.went = null;
+        found[0].run();
+        const device = "sound:usb-desk-microphone";
+        expect("its Return goes to that microphone's Choose by Ear",
+            JSON.stringify(shutLauncher.went) === JSON.stringify({
+                trail: ["category:computer", "collection:sound", device, `${device}:by-ear`],
+                spot: "sound:by-ear:now"
+            }), JSON.stringify(shutLauncher.went));
+        expect("and it stays open there", found[0].stays === true, found[0].stays);
     }
 
     // With the daemon not answering, its one row's drawer says a little

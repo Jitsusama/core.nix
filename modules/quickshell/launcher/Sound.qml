@@ -1310,6 +1310,10 @@ Provider {
         return ready.served(record) ? ready.rowAt(record) : undefined;
     }
 
+    function byEarFoundOf(nodes) {
+        return [];
+    }
+
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
