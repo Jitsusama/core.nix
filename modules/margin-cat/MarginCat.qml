@@ -211,6 +211,9 @@ Scope {
             }
             onPlaceChanged: say()
             onColumnChanged: say()
+            // A new scale can leave its logical place and size as they were
+            // while its cells take more device pixels, so it says so too.
+            onRatioChanged: say()
             Component.onCompleted: {
                 settle();
                 say();
