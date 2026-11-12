@@ -293,6 +293,10 @@ ShellRoot {
             && told.note === why && told.rows.length === 0 && told.thing !== true,
             JSON.stringify(told));
         expect("and is there for a show to find", told?.gone !== true, JSON.stringify(told));
+        // A place holds an answer only with its parts, or whole
+        // (Launcher.qml's resolved), so it says it has some, as Heat's
+        // and Ethernet's held rows do, and Machine keeps it in its place.
+        expect("held in Machine as it will be", told?.parted === true, JSON.stringify(told));
         expect("nothing to set", light.answer("desk light 60") === null
             && light.answer("warmer") === null, JSON.stringify(light.answer("desk light 60")));
         expect("and no options", Object.keys(light.setOptions ?? {}).length === 0,
