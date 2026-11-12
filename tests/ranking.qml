@@ -318,6 +318,19 @@ QtObject {
         expect("likeliest", Rank.likeliest({ "b": 3, "a": 3, "c": 9, "gone": 50 },
             { a: "Alpha", b: "Beta", c: "Gamma" }), ["c", "a", "b"]);
 
+        // The rows found are made in their order, each kind timed apart:
+        // a clock that moves 1 ms a read and 3 more for each password made.
+        let now = 0;
+        const twoKinds = [row("p1", "Pass", { what: "password" }),
+            row("a1", "Ada", { what: "person" }), row("p2", "Pin", { what: "password" })];
+        const byKind = Rank.madeByKind(twoKinds, one => one.what, one => {
+            now += one.what === "password" ? 3 : 0;
+            return Object.assign({ copied: true }, one);
+        }, () => now++);
+        expect("made in the order found", byKind.made.map(one => one.copied && one.key),
+            ["p1", "a1", "p2"]);
+        expect("each kind's time", byKind.took, { password: 7, person: 1 });
+
         // A key named as Object's own is a key like any other, so a thing
         // named so is one row, said as what it threw where it throws so a
         // failure doesn't end the run.

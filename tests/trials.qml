@@ -115,6 +115,13 @@ QtObject {
             Trials.madeWhileTyping({ agents: 40, people: 176, quests: 0, notes: 40 })
                 === " (made 256: people 176, agents 40, notes 40)",
             Trials.madeWhileTyping({ agents: 40, people: 176, quests: 0, notes: 40 }));
+        expect("a key's making says whose rows it spent on, most first",
+            Trials.madeOfKinds({ person: 2, password: 8, answer: 0, document: 2 })
+            === " (password 8, document 2, person 2)",
+            Trials.madeOfKinds({ person: 2, password: 8, answer: 0, document: 2 }));
+        expect("a making no kind spent a millisecond on says none",
+            Trials.madeOfKinds({ person: 0 }) === "" && Trials.madeOfKinds(undefined) === "",
+            Trials.madeOfKinds({ person: 0 }));
         expect("a key that made no rows says none", Trials.madeWhileTyping({ agents: 0 }) === ""
             && Trials.madeWhileTyping(undefined) === "", Trials.madeWhileTyping({ agents: 0 }));
         const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
