@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
-use serde::Deserialize;
 use serde_json::Value;
 
+use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
 use super::{counted, landings, launcher, measure, network, plans};
 use crate::day::Day;
@@ -56,15 +56,6 @@ pub struct Sources {
     /// Now, in seconds, and the moment the reading's day began.
     pub now: i64,
     pub midnight: i64,
-}
-
-/// A mesh message, as far as the axes read one.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct Note {
-    pub id: String,
-    pub intent: String,
-    #[serde(default)]
-    pub re: Option<String>,
 }
 
 /// The ten axes, read from `s`.
@@ -469,41 +460,6 @@ fn notices(record: &str, since: i64) -> (usize, usize) {
     (left("expired"), left("dismissed"))
 }
 
-/// The mesh's messages stamped since `since`, in seconds, from the day
-/// folders the harness keeps them in.
-fn messages(root: &Path, since: i64) -> Vec<Note> {
-    let folder = root.join("mesh-workflow/messages");
-    let since_ms = since * 1000;
-    // The mesh kept a folder a day until 12 November, then wrote each
-    // message straight into the folder, named by when it was sent; a
-    // message written both ways counts once. Either way a file is chosen
-    // by the time in its name before it's opened, since a day holds
-    // thousands and reading them all took seconds on a busy machine.
-    let by_day = [since, since + DAY]
-        .iter()
-        .filter_map(|at| Timestamp::from_second(*at).ok())
-        .map(|at| folder.join(at.strftime("%Y-%m-%d").to_string()))
-        .collect::<BTreeSet<PathBuf>>()
-        .into_iter()
-        .flat_map(|day| fs::read_dir(day).into_iter().flatten().flatten());
-    let flat = fs::read_dir(&folder).into_iter().flatten().flatten();
-    by_day
-        .chain(flat)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_str()
-                .and_then(mesh::stamped_at)
-                .is_some_and(|ms| ms >= since_ms)
-        })
-        .filter_map(|entry| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok())
-        .filter(|m| mesh::stamped_at(&m.id).is_some_and(|ms| ms >= since_ms))
-        .map(|m| (m.id.clone(), m))
-        .collect::<BTreeMap<String, Note>>()
-        .into_values()
-        .collect()
-}
-
 /// How many presences say busy or listening for a pi that isn't running
 /// this boot.
 fn ghosts(mesh: &Mesh) -> usize {
@@ -532,6 +488,15 @@ fn newest_day(folder: &Path) -> Option<Day> {
         .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
         .filter_map(|e| serde_json::from_slice::<Day>(&fs::read(e.path()).ok()?).ok())
         .max_by_key(|d| d.to)
+}
+
+/// Where cadence keeps what it can make again: `$XDG_CACHE_HOME`, else
+/// `~/.cache`.
+fn cache_home() -> PathBuf {
+    std::env::var_os("XDG_CACHE_HOME").map_or_else(
+        || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
+        PathBuf::from,
+    )
 }
 
 /// Reads every source from the machine, each cheaply: files, and four
@@ -580,7 +545,11 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         card: text(folder.join("card.txt")),
         day: newest_day(folder),
         failed,
-        messages: messages(&mesh.root, now - DAY),
+        messages: messages::read(
+            &mesh.root,
+            now - DAY,
+            Some(&cache_home().join("cadence/mesh-notes.json")),
+        ),
         ghosts: Some(ghosts(&mesh)),
         quests: text(runtime.join("jobs/quests.json")),
         waiting: fs::read_dir(state_home.join("mission/waiting"))
@@ -615,37 +584,6 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn messages_are_read_flat_and_by_day_each_once() {
-        // 00:00 UTC on Thu 12 November 2026.
-        let since = 1_794_441_600_000_i64;
-        let root = tempfile::tempdir().expect("a scratch folder");
-        let folder = root.path().join("mesh-workflow/messages");
-        fs::create_dir_all(folder.join("2026-11-12")).expect("the day's folder");
-        let note = |at: i64, tag: &str| {
-            let id = format!("{at}-AAAAAA-1-{tag}");
-            (id.clone(), format!(r#"{{"id":"{id}","intent":"fyi"}}"#))
-        };
-        let (by_day, body) = note(since + 10_000, "a");
-        fs::write(folder.join(format!("2026-11-12/{by_day}.json")), &body).expect("written");
-        fs::write(folder.join(format!("{by_day}.json")), &body).expect("written");
-        let (flat, body) = note(since + 20_000, "b");
-        fs::write(folder.join(format!("{flat}.json")), body).expect("written");
-        let (old, body) = note(since - 100_000, "c");
-        fs::write(folder.join(format!("{old}.json")), body).expect("written");
-        // A file named for an hour before is never opened, by day or flat:
-        // what it holds isn't read, so the day's thousands cost nothing.
-        let (_, recent) = note(since + 30_000, "d");
-        fs::write(folder.join(format!("2026-11-12/{old}.json")), recent).expect("written");
-
-        let mut ids: Vec<String> = messages(root.path(), since / 1000)
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
-        ids.sort();
-        assert_eq!(ids, vec![by_day, flat]);
-    }
 
     const CARD: &str = "Card at 19:20 (the hour since 18:20)
 Core: 18 merged (0 tests or docs only).
