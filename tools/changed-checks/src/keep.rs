@@ -8,7 +8,14 @@
 //! within two minutes is seldom anyone's base, so a head is kept once it
 //! has stood that long: replaying that day's 101 heads, waiting two
 //! minutes kept 74 and spared 29 of those 42 evaluations, where keeping
-//! every head spared 38 for 101. A head is kept only where nix-offload
+//! every head spared 38 for 101. By 12 November merges came faster, and
+//! a keep took 3 to 8 minutes, so the wait cost more than it saved: of 23
+//! runs that paid for their base from 09:00 to noon, most came 50 to 335 s
+//! after it landed, before a keep begun two minutes on could finish, and 4
+//! were on heads that moved on within the two minutes. A head is now kept
+//! by the second look that finds it, 30 s on, which still passes over a
+//! burst's middle heads, since a keep holds the loop and the next look
+//! after it reads only the newest. A head is kept only where nix-offload
 //! sends it, never on this machine, whose own runs are sent too, and only
 //! to a builder already lent, never one asked for: a store file left
 //! naming a builder whose tunnel had gone asked for one at 00:11 on 6
@@ -26,7 +33,7 @@ use std::time::{Duration, Instant};
 pub const LOOK_EVERY: Duration = Duration::from_secs(30);
 
 /// How long a head stands before it's kept.
-pub const STOOD: Duration = Duration::from_mins(2);
+pub const STOOD: Duration = LOOK_EVERY;
 
 /// How long a head that couldn't be kept waits before it's sent again:
 /// longer than a lent builder's 15 idle minutes, so a keep that fails
@@ -147,6 +154,19 @@ mod tests {
         assert_eq!(keeper.due("a", ONE, start), None);
         assert_eq!(keeper.due("a", ONE, start + STOOD / 2), None);
         assert_eq!(keeper.due("a", ONE, start + STOOD), Some("a".to_owned()));
+    }
+
+    #[test]
+    fn a_head_is_kept_by_the_second_look_at_it() {
+        let mut keeper = Keeper::default();
+        let start = Instant::now();
+        keeper.due("a", ONE, start);
+        assert_eq!(
+            keeper.due("a", ONE, start + LOOK_EVERY),
+            Some("a".to_owned()),
+            "a head still there a look later waited longer, though most runs that paid for \
+             their base came within five minutes of it landing"
+        );
     }
 
     #[test]
