@@ -16,6 +16,10 @@ import "Expect.js" as Expect
 ShellRoot {
     id: root
 
+    // When the look came: an hour before the case runs, since a fixed date
+    // grows three days old and goes quiet (Looks.js's QUIET_AFTER).
+    readonly property string lookedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
     // The launcher as Now reads it, shut, with no other source.
     QtObject {
         id: theLauncher
@@ -48,7 +52,7 @@ ShellRoot {
     function clear() {
         if (tried(() => {
             now.lookTexts = { "a.json": JSON.stringify({ v: 1, id: "a", kind: "page",
-                at: "2026-11-09T12:00:00Z", target: "https://example.com", title: "Read A",
+                at: root.lookedAt, target: "https://example.com", title: "Read A",
                 why: "Because.", state: "waiting", session: "" }) };
             Expect.expect("the look waits on Joel", waitingFiles() === "[\"a.json\"]", waitingFiles());
             const row = now.waiting.verbs().find(each => each.key
