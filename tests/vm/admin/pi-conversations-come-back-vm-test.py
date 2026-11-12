@@ -112,6 +112,20 @@ class Host:
             timeout,
         )
 
+    def until_started_again(self, killed: str) -> None:
+        """Wait until a process other than the killed one runs the host and says it holds both."""
+        # The unit keeps the killed process's status line until another replaces it, so the
+        # new process's own ready line is what says it holds both.
+        self.until(
+            f"pid=$(systemctl --user show -p MainPID --value {UNIT});"
+            f' test "$pid" -ne 0 && test "$pid" -ne {killed}',
+        )
+        started = self.show("MainPID")
+        self.machine.wait_until_succeeds(
+            f"journalctl --no-pager _PID={started} | grep -qF {shlex.quote(SERVING_BOTH)}",
+            timeout=int(COMING_BACK.total_seconds()),
+        )
+
     def record(self, name: str) -> bytes:
         """Give a conversation's record, its session file, as it is now."""
         return base64.b64decode(self.run(f"base64 -w0 {shlex.quote(self.files[name])}"))
@@ -205,8 +219,7 @@ def test_a_killed_host_comes_back_holding_both_unchanged(held: Host) -> None:
     host = held
     killed = host.show("MainPID")
     host.run(f"kill -9 {killed}")
-    host.until(f'test "$(systemctl --user show -p MainPID --value {UNIT})" != {killed}')
-    host.until_serving_both()
+    host.until_started_again(killed)
     said = host.said()
     assert "status=9/KILL" in said, said
     assert set(host.states()) == set(host.ids.values()), host.states()

@@ -24,13 +24,16 @@ let
   # needs nothing beyond pi's own packages but zod, and its park workflow and
   # scripted model nothing at all, so it runs on pi's node_modules, linked in,
   # rather than on a build of its whole tree, whose native modules a host
-  # never loads.
+  # never loads. It is a whole clone, as an installed version is: a host
+  # holds a second conversation only once git says every live pi's harness
+  # holds the commit that tells hosted conversations apart.
   commit = "c365e2c19e515074dad1317c8356008cddaaf7b6";
-  source = pkgs.fetchFromGitHub {
-    owner = "Jitsusama";
-    repo = "agentic-harness.pi";
+  source = pkgs.fetchgit {
+    url = "https://github.com/Jitsusama/agentic-harness.pi";
     rev = commit;
-    hash = "sha256-opAUDZPkNqbXAYhkuXduvzwmDRwAhh0fpIl9Vp1MGPI=";
+    deepClone = true;
+    leaveDotGit = true;
+    hash = lib.fakeHash;
   };
   harness = pkgs.runCommand "agentic-harness-${lib.substring 0 12 commit}" { } ''
     cp -r ${source} $out
@@ -77,7 +80,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       ask
       viewer
     ];
-    environment.systemPackages = [ pkgs.util-linux ];
+    environment.systemPackages = [
+      pkgs.util-linux
+      # The host asks git whether each live pi's harness is new enough.
+      pkgs.git
+    ];
     home-manager.users.alice = {
       imports = [
         self.homeModules.pi-packages
