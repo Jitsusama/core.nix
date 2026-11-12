@@ -95,6 +95,7 @@ pub fn read(held: Held, now: u64, words: &Words) -> Ready {
             let mut inside = std::mem::take(&mut cpu.inside);
             inside.extend(crate::telemetry_rows::rows(&say, heard));
             cpu.inside = ordered(words, "machine:cpu", inside);
+            cpu.drawer = Some(say.holding("cpu", &cpu.name, &cpu.inside));
         }
         cpu
     }));
