@@ -1,17 +1,13 @@
 // What the launcher's Sound makes of what a device and a stream say of
 // themselves, in plain JavaScript so a check can run it in Qt's own engine,
-// as the shell does: which device a filter puts itself in front of, the
-// chips a sound card names, how much a stream asks for at once and at what
-// rate, a channel's name as it's said, a level in decibels, whether a
-// device's jack has anything plugged in and whether that's still current,
+// as the shell does: how much a stream asks for at once and at what rate,
+// a channel's name as it's said, a level in decibels, whether a device's
+// jack has anything plugged in and whether that's still current,
 // the ports its card offers it and how they're read, one at a time, and
 // what a Bluetooth device's sound is for. Sound.qml reads the nodes and
 // draws the rows.
 .pragma library
 
-// One "key = value" of what a smart filter aims at, as the sound server
-// writes it, or as JSON with a colon.
-const AIMED = /"?([A-Za-z0-9_.-]+)"?\s*[=:]\s*"([^"]*)"/g;
 // A stream's "frames/rate", as it asks for its latency or says its rate.
 const FRACTION = /^\s*(\d+)\s*\/\s*(\d+)\s*$/;
 const PERCENT = 100;
@@ -54,25 +50,6 @@ const BUILT_IN = [
 // A Bluetooth headset's microphone, which the sound server names as it
 // does the headset itself.
 const HEADSET_INPUT = /^bluez_input\./;
-
-// What a smart filter's target says a device must have, by property:
-// { "node.name": "alsa_output…" }, or nothing when it says nothing.
-function target(text) {
-    const wanted = {};
-    const aimed = new RegExp(AIMED.source, "g");
-    const said = String(text ?? "");
-    for (let found = aimed.exec(said); found !== null; found = aimed.exec(said)) {
-        wanted[found[1]] = found[2];
-    }
-    return wanted;
-}
-
-// Whether a device's properties are all a filter's target asks for; a
-// target asking nothing aims at nothing.
-function aims(wanted, properties) {
-    const keys = Object.keys(wanted);
-    return keys.length > 0 && keys.every((key) => String(properties[key] ?? "") === wanted[key]);
-}
 
 // A rate in Hz as it's said: 44100 is "44.1 kHz", 48000 "48 kHz".
 function kilohertz(hertz) {

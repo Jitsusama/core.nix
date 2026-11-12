@@ -13,8 +13,9 @@
 // daemon to move it, as its option does; and its Use, Muted and Volume,
 // served, lead its parts in Sound's order, Muted's act named Unmute once
 // it's muted, the Volume its drawer's, and each Return asking the daemon,
-// and its Channels, served, each channel inside at its level, and its
-// Profile, and its Hardware, its drawer marking its USB ID, and what its
+// and its Tuning, served, each filter inside at its level, its drawer and
+// its spots saying each, and its Channels, served, each channel inside at
+// its level, and its Profile, and its Hardware, its drawer marking its USB ID, and what its
 // card says last, its drawer's Graph Format said only where the card
 // says another;
 // and where each program's stream is sent is the daemon's targets record,
@@ -426,7 +427,8 @@ ShellRoot {
                 && partOf("channels")?.targets().length === 2
                 && partOf("profile")?.side === "music"
                 && sound.factsOf(deskSpeakers).length === 2
-                && partOf("hardware")?.targets().length === 2, levelled);
+                && partOf("hardware")?.targets().length === 2
+                && partOf("tuning")?.targets().length === 2, levelled);
         });
     }
 
@@ -507,8 +509,29 @@ ShellRoot {
             thing: `sound:${deskSpeakers.name}:profile`, kind: "figure", order: 1503,
             name: "Profile", glyph: "", hue: "machine", side: [{ said: "music" }],
             note: "its codec and connection are in Bluetooth", acts: []
-        })].concat(hardwareServed(), [fact("playing", "Playing At", "48 kHz \u00b7 32 bit", 1510),
-            fact("offers", "Offers", "44.1, 48 kHz", 1511)]);
+        })].concat(tuningServed(), hardwareServed(),
+            [fact("playing", "Playing At", "48 kHz \u00b7 32 bit", 1510),
+                fact("offers", "Offers", "44.1, 48 kHz", 1511)]);
+    }
+
+    // The speakers' Tuning, as filters.rs serves it: a filter aimed at
+    // them passing sound now, and inside, the filter by name and its level.
+    function tuningServed() {
+        const tuning = `row:sound:${deskSpeakers.name}:tuning`;
+        const figure = (last, name, said, order) => part(`tuning:${last}`, {
+            parent: tuning, depth: 2, thing: `sound:${deskSpeakers.name}:tuning:${last}`,
+            kind: "figure", order: order, name: name, glyph: "", hue: "machine",
+            side: [{ said: said }], acts: [{ key: "verb:copy", copy: said }]
+        });
+        return [part("tuning", {
+            thing: `sound:${deskSpeakers.name}:tuning`, kind: "figures", order: 1450,
+            name: "Tuning", hue: "machine", side: [{ said: "running" }],
+            note: "the filter sound goes through on its way out",
+            acts: [{ key: "verb:copy", copy: "running" }, { key: "verb:more", step: "rows" }],
+            held: { node: deskSpeakers.name, filters: ["clarity"],
+                levels: ["Speech Clarity 50%"] }
+        }), figure("clarity", "Filter", "Speech Clarity", 1451),
+        figure("clarity:level", "Volume", "50%", 1452)];
     }
 
     function hardwareServed() {
@@ -584,6 +607,25 @@ ShellRoot {
                 && usb.identifies === true, said);
     }
 
+    // Its Tuning is served, saying sound passes through it now, each
+    // filter and its level inside; its drawer says each filter at its
+    // level, and its spots know the filter by name.
+    function tuningSaid() {
+        const tuning = partOf("tuning");
+        expect("its Tuning is served, saying it's running, each filter inside",
+            tuning?.side === "running" && tuning.targets()
+                .map(one => `${one.name} ${one.side}`).join(", ")
+                === "Filter Speech Clarity, Volume 50%",
+            `${tuning?.side}: ${tuning?.targets().map(one => one.name).join(", ")}`);
+        const drawn = sound.drawerOf(deskSpeakers).facts
+            .find(one => one.label === "Tuning");
+        expect("its drawer says it's running, and each filter at its level",
+            String(drawn?.value ?? "").startsWith("running")
+                && String(drawn.value).endsWith("Speech Clarity 50%"), JSON.stringify(drawn));
+        expect("its spots know the filter by name", sound.spotsStamp.includes('["clarity"]'),
+            sound.spotsStamp);
+    }
+
     function louderChoice() {
         return part("volume:louder", {
             parent: `row:sound:${deskSpeakers.name}:volume`, depth: 2,
@@ -628,6 +670,7 @@ ShellRoot {
             `${profile?.side}, ${profile?.note}`);
         factsServed();
         hardwareSaid();
+        tuningSaid();
         volume.targets()[0].run();
         when("the volume asked", () => root.acted.length === 2, louder);
     }
