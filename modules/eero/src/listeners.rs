@@ -10,6 +10,11 @@
 //! looking, so while one holds, the daemon reads at its fast pace; an ask
 //! `read` asks for the network to be read now.
 //!
+//! It also serves the Home Network's rows ready to draw, as every daemon
+//! serves its place's (served.rs): a get, list or watch of kind `row` or
+//! place `eero`, in the launcher's words, is answered with the rows, and
+//! a watch is told after each read only the rows that changed.
+//!
 //! Each connection has a thread that reads what it says, and one more
 //! accepts them: plain threads, since a handful of listeners and a line
 //! every half minute need no async runtime.
@@ -25,6 +30,9 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+
+use crate::model::HomeNetwork;
+use crate::served::{self, Said, Vocabularies};
 
 /// What a listener did, which wakes the daemon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,8 +61,27 @@ pub struct Listeners {
 #[derive(Default)]
 struct Hub {
     record: Option<Value>,
+    /// The network as last read, which rows are made from.
+    network: Option<HomeNetwork>,
+    vocabularies: Vocabularies,
     listeners: Vec<Listener>,
     next_id: u64,
+}
+
+/// A watch of the rows: its id, the vocabulary they're said in, and the
+/// keys it wants, or every row.
+struct RowWatch {
+    id: Value,
+    said: Said,
+    keys: Option<Vec<String>>,
+}
+
+impl RowWatch {
+    fn wants(&self, key: &str) -> bool {
+        self.keys
+            .as_ref()
+            .is_none_or(|keys| keys.iter().any(|wanted| wanted == key))
+    }
 }
 
 struct Listener {
@@ -64,6 +91,12 @@ struct Listener {
     watching: bool,
     /// Whether it watches the record ahead, which is looking at it.
     looking: bool,
+    /// Its watches of the rows.
+    rows: Vec<RowWatch>,
+    /// The words and number settings it last asked for rows in, which
+    /// an ask naming none takes.
+    words: Option<String>,
+    numbers: Option<String>,
 }
 
 impl Listeners {
@@ -71,13 +104,26 @@ impl Listeners {
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
     /// read.
     pub fn listen(path: &Path, wake: Sender<Call>) -> io::Result<Listeners> {
+        Listeners::listen_within(path, wake, Vocabularies::default())
+    }
+
+    /// Listens as `listen` does, reading vocabularies as `vocabularies`
+    /// allows: from the Nix store, but in tests.
+    fn listen_within(
+        path: &Path,
+        wake: Sender<Call>,
+        vocabularies: Vocabularies,
+    ) -> io::Result<Listeners> {
         match fs::remove_file(path) {
             Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
             _ => {}
         }
         let socket = UnixListener::bind(path)?;
         let listeners = Listeners {
-            hub: Arc::new(Mutex::new(Hub::default())),
+            hub: Arc::new(Mutex::new(Hub {
+                vocabularies,
+                ..Hub::default()
+            })),
         };
         let accepting = listeners.clone();
         thread::spawn(move || {
@@ -102,14 +148,56 @@ impl Listeners {
     }
 
     /// Tells everyone watching the model, and keeps it for whoever watches
-    /// next. A listener that can't take it is dropped.
+    /// next; makes the rows again from it, telling each watch of them the
+    /// rows that changed. A listener that can't take it is dropped.
     pub fn send(&self, network: &Value) {
         let record = json!({"key": KIND, "kind": KIND, "network": network});
         let told = json!({"id": "all", "changed": [record]}).to_string();
         let mut hub = self.hub();
-        hub.record = Some(record);
-        hub.listeners.retain_mut(|listener| {
-            let written = !listener.watching || write_line(&mut listener.stream, &told).is_ok();
+        let Hub {
+            record: kept,
+            network: model,
+            vocabularies,
+            listeners,
+            ..
+        } = &mut *hub;
+        *kept = Some(record);
+        // What the daemon sends is the model it read, so it reads back; a
+        // network that didn't would make no rows rather than wrong ones.
+        *model = serde_json::from_value(network.clone()).ok();
+        vocabularies.keep(|said| {
+            listeners
+                .iter()
+                .any(|listener| listener.rows.iter().any(|watch| &watch.said == said))
+        });
+        let before = model
+            .as_ref()
+            .map(|model| vocabularies.make(model))
+            .unwrap_or_default();
+        listeners.retain_mut(|listener| {
+            let mut lines = Vec::new();
+            if listener.watching {
+                lines.push(told.clone());
+            }
+            for watch in &listener.rows {
+                let (Some(was), Some(now)) =
+                    (before.get(&watch.said), vocabularies.made(&watch.said))
+                else {
+                    continue;
+                };
+                let (changed, gone) = served::between(was, now, |key| watch.wants(key));
+                if changed.is_empty() && gone.is_empty() {
+                    continue;
+                }
+                let mut said = json!({"id": watch.id, "changed": changed});
+                if !gone.is_empty() {
+                    said["gone"] = json!(gone);
+                }
+                lines.push(said.to_string());
+            }
+            let written = lines
+                .iter()
+                .all(|line| write_line(&mut listener.stream, line).is_ok());
             if !written {
                 let _ = listener.stream.shutdown(Shutdown::Both);
             }
@@ -134,6 +222,9 @@ impl Listeners {
                 stream,
                 watching: false,
                 looking: false,
+                rows: Vec::new(),
+                words: None,
+                numbers: None,
             });
             id
         };
@@ -163,12 +254,21 @@ impl Listeners {
         let asked: Value = serde_json::from_str(line).ok()?;
         let said = asked.get("id").cloned().unwrap_or(Value::Null);
         let mut hub = self.hub();
-        let records: Vec<Value> = hub.record.iter().cloned().collect();
-        let listener = hub
-            .listeners
-            .iter_mut()
-            .find(|listener| listener.id == id)?;
-        let (answer, call) = match asked["ask"].as_str() {
+        let Hub {
+            record,
+            network,
+            vocabularies,
+            listeners,
+            ..
+        } = &mut *hub;
+        let records: Vec<Value> = record.iter().cloned().collect();
+        let listener = listeners.iter_mut().find(|listener| listener.id == id)?;
+        let ask = asked["ask"].as_str();
+        let (answer, call) = match ask {
+            Some("get" | "list" | "watch") if served::asks_rows(&asked) => (
+                rows_asked(listener, vocabularies, network.as_ref(), &asked, &said),
+                None,
+            ),
             Some("hello") => (
                 json!({"id": said, "state": "answering", "version": 1}),
                 None,
@@ -188,6 +288,10 @@ impl Listeners {
             Some("watch") => {
                 listener.watching = true;
                 (json!({"id": said, "records": records}), None)
+            }
+            Some("unwatch") if listener.rows.iter().any(|watch| watch.id == said) => {
+                listener.rows.retain(|watch| watch.id != said);
+                (json!({"id": said, "unwatched": true}), None)
             }
             Some("unwatch") => {
                 let looked = listener.looking.then_some(Call::Looked);
@@ -218,6 +322,61 @@ impl Listeners {
     }
 }
 
+/// Answers a get, list or watch of the rows: the rows in the words and
+/// number settings it names, or those it last named, among the keys it
+/// names, if any. A watch is kept, by its id, to be told what changes.
+fn rows_asked(
+    listener: &mut Listener,
+    vocabularies: &mut Vocabularies,
+    network: Option<&HomeNetwork>,
+    asked: &Value,
+    id: &Value,
+) -> Value {
+    if let Some(refused) = served::unkept(asked) {
+        return served::error(id, "unknown-kind", &refused);
+    }
+    let named = |field: &str| {
+        asked[field]
+            .as_str()
+            .filter(|path| !path.is_empty())
+            .map(str::to_owned)
+    };
+    let Some(words) = named("words").or_else(|| listener.words.clone()) else {
+        return served::error(id, "no-words", "say the launcher's words.json as words");
+    };
+    let numbers = named("numbers").or_else(|| listener.numbers.clone());
+    let said = match vocabularies.rows_in(&words, numbers.as_deref(), network) {
+        Ok(said) => said,
+        Err(why) => return served::error(id, "no-words", &why),
+    };
+    listener.words = Some(words);
+    listener.numbers = numbers;
+    let keys: Option<Vec<String>> = asked["keys"].as_array().map(|keys| {
+        keys.iter()
+            .filter_map(Value::as_str)
+            .map(str::to_owned)
+            .collect()
+    });
+    let watch = RowWatch {
+        id: id.clone(),
+        said,
+        keys,
+    };
+    let records: Vec<&Value> = vocabularies
+        .made(&watch.said)
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| watch.wants(key))
+        .map(|(_, row)| row)
+        .collect();
+    let answer = json!({"id": id, "records": records});
+    if asked["ask"] == "watch" {
+        listener.rows.retain(|kept| kept.id != *id);
+        listener.rows.push(watch);
+    }
+    answer
+}
+
 fn write_line(stream: &mut UnixStream, line: &str) -> io::Result<()> {
     stream.write_all(line.as_bytes())?;
     stream.write_all(b"\n")?;
@@ -229,14 +388,52 @@ mod tests {
     use super::*;
     use std::sync::mpsc;
 
-    /// A socket in a folder of the test's own, and what wakes the daemon.
-    fn listening(name: &str) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
+    /// A folder of the test's own.
+    fn folder(name: &str) -> std::path::PathBuf {
         let folder = std::env::temp_dir().join(format!("eero-{name}-{}", std::process::id()));
         fs::create_dir_all(&folder).expect("the test's folder is made");
-        let path = folder.join("socket");
+        folder
+    }
+
+    /// A socket in a folder of the test's own, and what wakes the daemon.
+    fn listening(name: &str) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
+        let path = folder(name).join("socket");
         let (wake, woken) = mpsc::channel();
         let listeners = Listeners::listen(&path, wake).expect("the socket listens");
         (listeners, woken, path)
+    }
+
+    /// A socket that serves rows in vocabularies read from a store of the
+    /// test's own, holding the launcher's words for the Home Network; the
+    /// path of those words, as a listener names them; and a connection.
+    fn serving(name: &str) -> (Listeners, String, UnixStream, BufReader<UnixStream>) {
+        let folder = folder(name);
+        let store = folder.join("store");
+        fs::create_dir_all(&store).expect("the test's store is made");
+        let words = store.join("words.json");
+        fs::write(&words, include_str!("../tests/words.json")).expect("the words are kept");
+        let store = store.canonicalize().expect("the store is found");
+        let path = folder.join("socket");
+        let (wake, _woken) = mpsc::channel();
+        let listeners = Listeners::listen_within(&path, wake, Vocabularies::within(store))
+            .expect("the socket listens");
+        let (stream, reader) = connected(&path);
+        (listeners, words.display().to_string(), stream, reader)
+    }
+
+    /// The home network the rows' cases read, as the daemon sends it.
+    fn home() -> Value {
+        serde_json::from_str::<Value>(include_str!("../home-network.json"))
+            .expect("the home network's fixture is JSON")
+    }
+
+    fn keys(records: &Value) -> Vec<&str> {
+        records
+            .as_array()
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter_map(|record| record["key"].as_str())
+            .collect()
     }
 
     /// A connection, as the shell holds one, and what it reads.
@@ -344,5 +541,127 @@ mod tests {
         drop((stream, reader));
         assert_eq!(woken.recv(), Ok(Call::Left), "leaving wakes the daemon");
         assert!(!listeners.listening(), "nobody looks once it's gone");
+    }
+
+    #[test]
+    fn a_row_watch_is_answered_ready_and_told_only_the_rows_that_changed() {
+        let (listeners, words, mut stream, mut reader) = serving("rows");
+        listeners.send(&home());
+
+        ask(
+            &mut stream,
+            &json!({"id": "rows", "ask": "watch", "kind": "row", "place": "eero",
+                "words": words}),
+        );
+        let answered = read(&mut reader);
+        let all = keys(&answered["records"]);
+        assert!(
+            all.contains(&"row:eero:internet") && all.contains(&"row:eero:node:2003"),
+            "the watch is answered with the place's rows, the internet's and each node's: {all:?}"
+        );
+        assert_eq!(
+            answered["records"][0]["kind"], "row",
+            "each is a row's record"
+        );
+        let mut hall_off = home();
+        hall_off["nodes"][0]["state"] = json!("OFFLINE");
+        listeners.send(&hall_off);
+
+        let told = read(&mut reader);
+        let changed = keys(&told["changed"]);
+        assert_eq!(told["id"], "rows", "the change is told to the row watch");
+        assert!(
+            changed.contains(&"row:eero:node:2003") && changed.len() < all.len(),
+            "only the rows that read differently are told: {changed:?}"
+        );
+    }
+
+    #[test]
+    fn a_watch_of_some_rows_is_answered_with_those_alone() {
+        let (listeners, words, mut stream, mut reader) = serving("some");
+        listeners.send(&home());
+
+        ask(
+            &mut stream,
+            &json!({"id": "one", "ask": "get", "kind": "row", "words": words,
+                "keys": ["row:eero:internet"]}),
+        );
+
+        assert_eq!(
+            keys(&read(&mut reader)["records"]),
+            vec!["row:eero:internet"],
+            "the rows asked for by key are answered alone"
+        );
+    }
+
+    #[test]
+    fn rows_are_refused_in_words_from_outside_the_store_or_of_another_kind() {
+        let (_listeners, words, mut stream, mut reader) = serving("refused");
+        let outside = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/words.json");
+
+        ask(
+            &mut stream,
+            &json!({"id": 1, "ask": "list", "kind": "row", "words": outside}),
+        );
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "no-words",
+            "words from outside the store are refused"
+        );
+        ask(&mut stream, &json!({"id": 2, "ask": "list", "kind": "row"}));
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "no-words",
+            "rows asked for in no words are refused"
+        );
+        ask(
+            &mut stream,
+            &json!({"id": 3, "ask": "list", "kind": ["row", "song"], "words": words}),
+        );
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "unknown-kind",
+            "a kind this socket doesn't keep is refused"
+        );
+        ask(
+            &mut stream,
+            &json!({"id": 4, "ask": "list", "place": "wifi", "words": words}),
+        );
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "unknown-kind",
+            "another place is refused"
+        );
+    }
+
+    #[test]
+    fn an_unwatched_row_watch_is_told_nothing_more() {
+        let (listeners, words, mut stream, mut reader) = serving("unwatched");
+        listeners.send(&home());
+        ask(
+            &mut stream,
+            &json!({"id": "rows", "ask": "watch", "kind": "row", "words": words}),
+        );
+        read(&mut reader);
+
+        ask(&mut stream, &json!({"id": "rows", "ask": "unwatch"}));
+        assert_eq!(
+            read(&mut reader)["unwatched"],
+            true,
+            "the unwatch is answered"
+        );
+        let mut hall_off = home();
+        hall_off["nodes"][0]["state"] = json!("OFFLINE");
+        listeners.send(&hall_off);
+        ask(
+            &mut stream,
+            &json!({"id": "after", "ask": "hello", "version": 1}),
+        );
+
+        assert_eq!(
+            read(&mut reader)["id"],
+            "after",
+            "the next line is the hello's answer, no change told before it"
+        );
     }
 }

@@ -56,7 +56,9 @@ const RADIOS: [&str; 5] = ["2.4GHz", "5.2GHz", "5.8GHz", "5GHz", "6GHz"];
 const SAID: &[(&str, &[&str])] = &[
     (
         "eero",
-        &["bps", "kbps", "mbps", "gbps", "down", "up", "device", "devices"],
+        &[
+            "bps", "kbps", "mbps", "gbps", "down", "up", "device", "devices",
+        ],
     ),
     (
         "eero:internet",
@@ -148,7 +150,13 @@ impl Words {
 
     /// A count with its noun, the thing's `one` word for one and its
     /// `many` with `{count}` for any other: "1 device", "9 devices".
-    fn counted(&self, count: usize, id: &'static str, one: &'static str, many: &'static str) -> String {
+    fn counted(
+        &self,
+        count: usize,
+        id: &'static str,
+        one: &'static str,
+        many: &'static str,
+    ) -> String {
         if count == 1 {
             self.say(id, one).to_owned()
         } else {
@@ -179,7 +187,12 @@ impl Words {
     /// the one way eero gives.
     fn each_way(&self, down: Option<f64>, up: Option<f64>, numbers: &Numbers) -> String {
         let way = |mbps: Option<f64>, word| {
-            mbps.map(|mbps| fill(self.say("eero", word), &[("rate", &self.rate(mbps, numbers))]))
+            mbps.map(|mbps| {
+                fill(
+                    self.say("eero", word),
+                    &[("rate", &self.rate(mbps, numbers))],
+                )
+            })
         };
         [way(down, "down"), way(up, "up")]
             .into_iter()
@@ -362,7 +375,10 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
         0 => words.say("eero:internet", "noOutages").to_owned(),
         count => words.counted(count, "eero:internet", "outage", "outages"),
     };
-    let outages = fill(words.say("eero:internet", "inDays"), &[("outages", &outages)]);
+    let outages = fill(
+        words.say("eero:internet", "inDays"),
+        &[("outages", &outages)],
+    );
     let on_now = match model.devices.len() {
         0 => String::new(),
         count => fill(
@@ -395,9 +411,12 @@ fn nodes_said(model: &HomeNetwork, words: &Words) -> String {
         return String::new();
     };
     let each = |count: Option<u32>, word| {
-        count
-            .filter(|count| *count > 0)
-            .map(|count| fill(words.say("eero:internet", word), &[("count", &count.to_string())]))
+        count.filter(|count| *count > 0).map(|count| {
+            fill(
+                words.say("eero:internet", word),
+                &[("count", &count.to_string())],
+            )
+        })
     };
     let online = usize::try_from(online).unwrap_or(usize::MAX);
     std::iter::once(words.counted(online, "eero:internet", "node", "nodes"))
@@ -415,16 +434,13 @@ fn backhaul_said(node: &Node, words: &Words) -> String {
         return words.say("eero:node", "ethernet").to_owned();
     }
     let radio = way.radio.as_deref().map(|radio| {
-        RADIOS
-            .iter()
-            .find(|named| **named == radio)
-            .map_or_else(
-                || {
-                    let ghz = radio.trim_end_matches("GHz").trim_end_matches("ghz").trim();
-                    fill(words.say("eero:node", "ghz"), &[("n", ghz)])
-                },
-                |named| words.say("eero:node", named).to_owned(),
-            )
+        RADIOS.iter().find(|named| **named == radio).map_or_else(
+            || {
+                let ghz = radio.trim_end_matches("GHz").trim_end_matches("ghz").trim();
+                fill(words.say("eero:node", "ghz"), &[("n", ghz)])
+            },
+            |named| words.say("eero:node", named).to_owned(),
+        )
     });
     let upstream = way.upstream.as_deref();
     let said = match (upstream, &radio) {
@@ -527,10 +543,10 @@ fn device_row(device: &Device, profiles: &[Profile], words: &Words, numbers: &Nu
         .and_then(|profile| profile.name.clone())
         .unwrap_or_default();
     let kind = device.kind.as_deref().unwrap_or("");
-    let glyph = MARKS
-        .iter()
-        .find(|(named, _)| *named == kind)
-        .map_or(if device.ethernet { "wired" } else { "wireless" }, |(_, mark)| mark);
+    let glyph = MARKS.iter().find(|(named, _)| *named == kind).map_or(
+        if device.ethernet { "wired" } else { "wireless" },
+        |(_, mark)| mark,
+    );
     let keywords: Vec<String> = [
         Some(device.mac.clone()),
         device.hostname.clone(),

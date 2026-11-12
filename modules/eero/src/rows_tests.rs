@@ -58,7 +58,13 @@ fn the_internet_comes_first_then_each_node_with_its_devices_then_the_profiles() 
     );
     assert_eq!(
         &names[at("Den")..at("Study")],
-        ["Den", "generic 2", "laptop computer 2", "printer 1", "tablet 1"],
+        [
+            "Den",
+            "generic 2",
+            "laptop computer 2",
+            "printer 1",
+            "tablet 1"
+        ],
         "then the nodes hanging from it, by location"
     );
     assert_eq!(
@@ -81,15 +87,22 @@ fn each_row_is_keyed_in_the_place_and_by_the_thing_it_is() {
     let hall = named(&rows, "Hall");
     assert_eq!(hall["key"], "row:eero:node:2003");
     assert_eq!(hall["thing"], "eero:node:2003");
-    assert_eq!(hall["glyph"], "accessPoint", "the gateway node wears eero:gateway's glyph");
-    assert_eq!(hall["keywords"][0], "eero Pro 6", "a node is found by its model");
+    assert_eq!(
+        hall["glyph"], "accessPoint",
+        "the gateway node wears eero:gateway's glyph"
+    );
+    assert_eq!(
+        hall["keywords"][0], "eero Pro 6",
+        "a node is found by its model"
+    );
     assert_eq!(rows[0]["key"], "row:eero:internet");
     assert_eq!(rows[0]["glyph"], "web");
     let phone = named(&rows, "phone 1");
     assert_eq!(phone["glyph"], "phone", "a device wears its kind's mark");
     assert_eq!(phone["depth"], 1);
     assert!(
-        rows.iter().all(|row| row["place"] == PLACE && row.get("order").is_none()),
+        rows.iter()
+            .all(|row| row["place"] == PLACE && row.get("order").is_none()),
         "every row is the place's, its order Kept's to give"
     );
 }
@@ -180,7 +193,10 @@ fn a_device_says_its_signal_band_rates_speed_and_address() {
                 .to_owned()
         )
     );
-    assert_eq!(generic["glyph"], "wireless", "a device of no kind it knows wears Wi-Fi's");
+    assert_eq!(
+        generic["glyph"], "wireless",
+        "a device of no kind it knows wears Wi-Fi's"
+    );
     assert_eq!(
         joined(&named(&rows, "unknown computer 1")["note"]),
         "5 GHz \u{b7} channel 149 \u{b7} 1.20 Gb/s down \u{b7} 1.20 Gb/s up \u{b7} 11.5 Mb/s \
@@ -244,7 +260,10 @@ fn a_profile_says_how_it_stands_and_how_many_of_its_devices_are_on() {
     let mut model = model();
     assert_eq!(
         side_and_note(named(&made(&model), "profile 1")),
-        ("active".to_owned(), "10 devices \u{b7} none on now".to_owned())
+        (
+            "active".to_owned(),
+            "10 devices \u{b7} none on now".to_owned()
+        )
     );
     let on = model.devices[0].mac.clone();
     model.profiles[1].paused = Some(true);
@@ -264,7 +283,14 @@ fn a_rate_is_said_in_whichever_unit_reads_it_in_three_digits() {
         .into();
     assert_eq!(
         said,
-        ["1.20 Gb/s", "370 Mb/s", "48.0 Mb/s", "1.00 Gb/s", "24.0 kb/s", "98.2 b/s"]
+        [
+            "1.20 Gb/s",
+            "370 Mb/s",
+            "48.0 Mb/s",
+            "1.00 Gb/s",
+            "24.0 kb/s",
+            "98.2 b/s"
+        ]
     );
 }
 
