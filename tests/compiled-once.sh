@@ -5,15 +5,20 @@
 # disk cache, the second compiles none of them again, and the third, after
 # Thing.qml has changed, compiles that file alone. Quickshell serves the
 # shell's folder on its own qs: scheme, which stock Qt never caches, so
-# without the patch the first start leaves nothing.
-# usage: compiled-once.sh <qs> <shell folder, writable>
+# without the patch the first start leaves nothing. The first start runs
+# under strace, and none of the units it writes may wait on an fsync or an
+# fdatasync (qtdeclarative-caches-without-syncing.patch): a restart onto
+# changed files writes hundreds, and syncing each made it slower than
+# compiling them.
+# usage: compiled-once.sh <qs> <shell folder, writable> <strace>
 set -euo pipefail
 
 qs=$1
 shell=$2
+strace=$3
 
 start() {
-  if ! timeout 60 "$qs" -p "$shell"; then
+  if ! timeout 60 "${@:2}" "$qs" -p "$shell"; then
     echo "the shell's $1 start failed" >&2
     exit 1
   fi
@@ -25,7 +30,14 @@ kept() {
   find "$HOME/.cache" \( -name '*.qmlc' -o -name '*.jsc' \) -printf '%i %f\n' | sort
 }
 
-start first
+synced=$TMPDIR/synced
+start first "$strace" -f -qq -y -e trace=fsync,fdatasync -o "$synced"
+# QSaveFile writes through an unnamed O_TMPFILE where it can, so a sync
+# names the cache's folder, not the unit.
+if grep qmlcache "$synced" >&2; then
+  echo "the first start waited on the disk for each compiled unit it wrote, as above" >&2
+  exit 1
+fi
 first=$(kept)
 files=$(wc -l <<< "$first")
 if [ "$files" -lt 3 ] || [ -z "$first" ]; then
