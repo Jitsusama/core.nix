@@ -707,6 +707,7 @@ mod tests {
             seconds: 600.0,
             waited: Some(w),
             status: 0,
+            ..Run::default()
         };
         s.runs = vec![run(400.0), run(400.0), run(400.0), run(400.0)];
         s.cpu_avg300 = Some(45.0);

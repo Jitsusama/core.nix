@@ -288,7 +288,7 @@ impl Follower {
 }
 
 /// One run nix-offload sent to a builder.
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 pub struct Run {
     pub at: i64,
     #[serde(default)]
@@ -299,6 +299,13 @@ pub struct Run {
     pub waited: Option<f64>,
     #[serde(default)]
     pub status: i64,
+    /// What it built from: `github:<owner>/<repo>/<commit>` for a pinned
+    /// commit, `.` for a checkout as it stood.
+    #[serde(default)]
+    pub flake: String,
+    /// The checks it built, as `checks.x86_64-linux.<name>`.
+    #[serde(default)]
+    pub attributes: Vec<String>,
 }
 
 impl Run {

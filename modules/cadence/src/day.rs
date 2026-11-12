@@ -20,7 +20,8 @@ pub struct Day {
     /// Each measure's figure, by its key in `measures()`.
     pub figures: BTreeMap<String, f64>,
     /// Each kind of thing that went wrong, by its key in `KINDS`, and how
-    /// many times each one did: a program's crashes, a unit's failures.
+    /// many times each one did: a program's crashes, a unit's failures, a
+    /// check's flakes.
     pub named: BTreeMap<String, BTreeMap<String, u32>>,
 }
 
@@ -347,6 +348,12 @@ pub const KINDS: &[Kind] = &[
         axis: "quality",
         evidence: "journalctl MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c over the day, by unit",
         says: "a failure of",
+    },
+    Kind {
+        key: "flaky",
+        axis: "quality",
+        evidence: "nix-offload's there.jsonl, a check failed and passed at one commit",
+        says: "a flake in",
     },
 ];
 

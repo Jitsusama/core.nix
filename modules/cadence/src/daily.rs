@@ -20,7 +20,6 @@ use crate::health;
 use crate::judge;
 use crate::machine;
 use crate::mesh::Mesh;
-use crate::records;
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
 
@@ -214,9 +213,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         day.figures
             .insert("switch.minutes.longest".to_owned(), longest);
     }
-    let runs = fs::read_to_string(state_home.join("nix-offload/there.jsonl"));
-    let runs = records::parse_runs(&runs.unwrap_or_default(), from);
-    day.figures.extend(builders::figures(&runs, from, to));
+    builders::read(&mut day, state_home);
 
     day.figures
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
