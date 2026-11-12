@@ -91,14 +91,15 @@ Singleton {
         const made = opens ? root.opening(call, provider, held) : root.entering(provider, held);
         // Its details, as they stand when they're shown, so who it was
         // with is named once People knows them, however long ago the row
-        // was made.
-        Object.defineProperty(made, "drawer", {
-            enumerable: true,
-            get: () => Said.details(call, {
-                title: name,
-                who: root.personName(call, provider)
-            }, root.said, Date.now())
-        });
+        // was made. A function the drawer calls rather than a getter,
+        // which every copy of the row reads: the launcher copies each row
+        // a search finds, so each search worked out the details of every
+        // call it found, and Joel's first letter at home spent 16 ms
+        // making 97 rows (2026-11-11).
+        made.drawer = () => Said.details(call, {
+            title: name,
+            who: root.personName(call, provider)
+        }, root.said, Date.now());
         return made;
     }
 
