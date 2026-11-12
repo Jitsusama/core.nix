@@ -37,6 +37,7 @@
 mod chosen;
 mod defaults;
 mod denoise;
+mod lane;
 mod loudness;
 mod pipe;
 mod refusals;
@@ -147,7 +148,9 @@ fn score(models: &Path) -> Result<(), String> {
 /// frame filled out with silence.
 fn clean(models: &Path, with: Cleaner) -> Result<(), String> {
     let samples = heard()?;
-    let mut denoiser = Model::load(models, with)?.denoiser()?;
+    // Kept while its denoiser cleans, whose requests run on what it compiled.
+    let model = Model::load(models, with)?;
+    let mut denoiser = model.denoiser()?;
     let mut cleaned = Vec::with_capacity(samples.len() * 4);
     for chunk in samples.chunks(FRAME) {
         let mut frame = [0.0; FRAME];

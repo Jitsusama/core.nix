@@ -6,11 +6,17 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::Path;
 use std::ptr;
 
+#[path = "openvino_started.rs"]
+mod started;
+pub use started::Started;
+
 /// Where a job stands among the NPU's others, as OpenVINO's
 /// `MODEL_PRIORITY`. At the default, a short job can wait behind a long
 /// one: with Whisper busy, a camera's frames waited up to 36 ms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
+    /// What's heard as it happens, such as a call's voice.
+    Live,
     /// What Joel waits on, such as dictation's take.
     Waited,
     /// What nobody waits on, such as a call's transcript.
@@ -18,9 +24,10 @@ pub enum Priority {
 }
 
 impl Priority {
-    /// The priority's name to OpenVINO. Live work on a call would say HIGH.
+    /// The priority's name to OpenVINO.
     pub fn name(self) -> &'static CStr {
         match self {
+            Self::Live => c"HIGH",
             Self::Waited => c"MEDIUM",
             Self::Background => c"LOW",
         }
@@ -526,6 +533,14 @@ impl Request {
     ///
     /// When an input is refused or the run fails.
     pub fn infer(&mut self, inputs: &[Input<'_>]) -> Result<()> {
+        self.given(inputs)?;
+        // SAFETY: every input is set and their values outlive the run.
+        let ran = unsafe { ov_infer_request_infer(self.0) };
+        check(ran, "running the model")
+    }
+
+    /// Sets `inputs` for the next run, which reads their values in place.
+    fn given(&mut self, inputs: &[Input<'_>]) -> Result<()> {
         for input in inputs {
             let (name, dims, kind, data, len) = match input {
                 Input::F32(name, dims, values) => (
@@ -556,11 +571,7 @@ impl Request {
             }
             self.set(name, dims, kind, data)?;
         }
-        // SAFETY: every input is set and their values outlive the run.
-        check(
-            unsafe { ov_infer_request_infer(self.0) },
-            "running the model",
-        )
+        Ok(())
     }
 
     fn set(&mut self, name: &str, dims: &[i64], kind: i32, data: *const c_void) -> Result<()> {
