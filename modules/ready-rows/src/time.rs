@@ -85,7 +85,9 @@ mod tests {
         .map(|form| at(1_762_790_400_000, form)["as"].clone());
         assert_eq!(
             forms,
-            ["came", "opened", "moment", "dated", "ago", "day", "on", "lasted"]
+            [
+                "came", "opened", "moment", "dated", "ago", "day", "on", "lasted"
+            ]
         );
         assert_eq!(
             said(5, Form::Moment, "since {time}"),
