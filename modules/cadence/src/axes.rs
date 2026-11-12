@@ -15,6 +15,7 @@
 //! guesses from docs/delivery.md and the research behind this view
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
+mod landings;
 mod readings;
 
 use std::fmt::Write;
