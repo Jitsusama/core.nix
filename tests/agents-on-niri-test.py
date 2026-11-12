@@ -107,6 +107,8 @@ STOPPED = "An Agent's Stop Waits for a Second Return"
 CLOSING = "A Session Closes From the Launcher"
 TRY = "press d on a session"
 ORCHESTRATING = "Orchestrating Quest"
+# Longer than the two seconds a session's drawer must stay on its row to read its answer.
+PAST_A_STAY = 2.5
 # What a session works on, as pi says it: its quest's title, then its summary, which runs to
 # about 290 letters on every real session.
 WORKS_ON = (
@@ -801,7 +803,7 @@ def test_an_answered_talk_is_counted_at_home_until_joel_reads_it_in_its_drawer(
         shell.send_chars("x")
         shell.launcher_until(lambda shown: not answering(shown))
         passing = time.monotonic() - showed
-        time.sleep(2.5)
+        time.sleep(PAST_A_STAY)
         assert '"stage":"read"' not in talk.read_text(), (
             f"a drawer passed over in {passing:.1f} s was read"
         )

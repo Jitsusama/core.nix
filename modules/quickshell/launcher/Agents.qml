@@ -554,10 +554,13 @@ Provider {
         void rowsKind?.revision;
         const made = rowsKind?.held?.[key]?.drawer ?? null;
         // The stay is counted from when the drawer shows what it holds,
-        // which the daemon serves a moment after it's asked for.
+        // which the daemon serves a moment after it's asked for. The cursor
+        // may have left the row by the time this runs, as keys come in a
+        // burst, and a stay begun then would run on to the row's return.
         if (made !== null && staying.address !== address)
             Qt.callLater(() => {
-                if (provider.drawerWanted !== key || staying.address === address)
+                if (provider.drawerWanted !== key || staying.address === address
+                    || String(provider.launcher?.selected?.key ?? "") !== `agent:${address}`)
                     return;
                 staying.address = address;
                 staying.restart();
