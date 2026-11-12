@@ -12,8 +12,8 @@
 # light it was heard in, what the curve asks there and whether it follows
 # the light now are told in $XDG_RUNTIME_DIR/backlight-now for Screens'
 # Brightness, emptied as the daemon stops.
-# From jitsusama.backlight.evening.start to its end, by the local clock,
-# the built-in screen eases to half the brightness the light asks for, as
+# Once jitsusama.backlight.evening.start is set, from it to its end, by the
+# local clock, the built-in screen eases to half the brightness the light asks for, as
 # the light research found dimming does most for the body clock
 # (src/evening.rs); a pick then is learned as the day would want it.
 # A monitor on a DisplayPort or MST bus that answers DDC/CI follows the
@@ -76,9 +76,10 @@ in
 
   options.jitsusama.backlight.evening.start = lib.mkOption {
     type = lib.types.nullOr clock;
-    # Three hours before a midnight bed, the evening the light research
-    # (RSCH-20261108-HGB8JZ) keeps dim, until Joel picks his own bedtime.
-    default = "21:30";
+    # Off until the evening eases from wherever the screen is, even at a
+    # restart, and holds what Joel sets: on 12 Nov a restart at 00:00 took
+    # his screen from 85% to 43% at once, and his setting it back was lost.
+    default = null;
     description = ''
       When the built-in screen starts to dim for the evening, by the local
       clock, as "21:30": it eases to half the brightness the light asks for
