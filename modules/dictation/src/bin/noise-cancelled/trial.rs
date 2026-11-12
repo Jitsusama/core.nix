@@ -35,7 +35,7 @@ use crate::defaults::{default_microphone_is, default_output, dumped};
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
 use crate::refusals::Refusal;
-use crate::score::{self, Marks};
+use crate::score::{self, Marks, spent};
 use crate::spot::Spot;
 
 /// The record's key and kind.
@@ -726,15 +726,6 @@ fn clean_every_way(models: &Path, samples: &[f32]) -> Result<Vec<(Way, Vec<f32>,
     let mut heard: Vec<&mut Vec<f32>> = clips.iter_mut().map(|(_, samples, _)| samples).collect();
     loudness::matched(&mut heard);
     Ok(clips)
-}
-
-/// The processor time this thread has spent, from the kernel's
-/// scheduler statistics, which count it to the nanosecond.
-pub fn spent() -> Duration {
-    std::fs::read_to_string("/proc/thread-self/schedstat")
-        .ok()
-        .and_then(|stat| stat.split_whitespace().next()?.parse().ok())
-        .map_or(Duration::ZERO, Duration::from_nanos)
 }
 
 /// Watches a clip play, and says so once it's done.
