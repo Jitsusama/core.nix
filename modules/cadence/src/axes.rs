@@ -18,6 +18,7 @@
 mod counted;
 mod landings;
 mod measure;
+mod network;
 mod open;
 mod plans;
 mod readings;
@@ -205,12 +206,38 @@ impl Reading {
         } else {
             self.says.to_owned()
         };
-        let said = says.replacen("{}", &shown(now, self.unit), 1);
+        let said = says.replacen("{}", &self.finely(now), 1);
         match self.bar {
             Some(Bar::AtMost(bar)) => format!("{said}, at most {}", shown(bar, self.unit)),
             Some(Bar::AtLeast(bar)) => format!("{said}, at least {}", shown(bar, self.unit)),
             None => said,
         }
+    }
+}
+
+impl Reading {
+    /// The figure as `shown` says it, unless that rounds it onto its bar
+    /// though it isn't there: then with as many decimals as tell them
+    /// apart, up to three, so a figure marked out never reads as the bar.
+    fn finely(&self, now: f64) -> String {
+        let plain = shown(now, self.unit);
+        let Some(Bar::AtMost(bar) | Bar::AtLeast(bar)) = self.bar else {
+            return plain;
+        };
+        if plain != shown(bar, self.unit) || (now - bar).abs() < f64::EPSILON {
+            return plain;
+        }
+        let unit = self.unit;
+        (1..=3)
+            .map(|places| format!("{now:.places$}"))
+            .find(|fine| {
+                fine.parse::<f64>()
+                    .is_ok_and(|f| (f - bar).abs() >= f64::EPSILON)
+            })
+            .map_or(plain, |fine| match unit {
+                "$" => format!("${fine}"),
+                _ => format!("{fine}{unit}"),
+            })
     }
 }
 
@@ -572,6 +599,31 @@ mod tests {
         );
         let share = Reading::new("{} of notices cleared", Some(1.0), "%", "2RCBOJ");
         assert_eq!(share.words(), "1% of notices cleared");
+    }
+
+    #[test]
+    fn a_figure_just_past_its_bar_is_said_finely_enough_to_show_it() {
+        let said = |now: f64, bar| {
+            Reading::new("merge to on {}", Some(now), " min", "80ECO2")
+                .bar(bar)
+                .words()
+        };
+        assert_eq!(
+            said(18.1, Bar::AtMost(18.0)),
+            "merge to on 18.1 min, at most 18 min"
+        );
+        assert_eq!(
+            said(17.96, Bar::AtLeast(18.0)),
+            "merge to on 17.96 min, at least 18 min"
+        );
+        assert_eq!(
+            said(18.0, Bar::AtMost(18.0)),
+            "merge to on 18 min, at most 18 min"
+        );
+        assert_eq!(
+            said(26.6, Bar::AtMost(18.0)),
+            "merge to on 27 min, at most 18 min"
+        );
     }
 
     #[test]
