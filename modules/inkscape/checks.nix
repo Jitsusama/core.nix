@@ -64,6 +64,7 @@ onLinux {
         "ReadyRows.qml"
         "ReadyRows.js"
         "Moved.js"
+        "Beneath.js"
         "Found.js"
         "Interfaces.js"
         "HeldWindows.js"

@@ -43,20 +43,35 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The start's own placing is let through first. The cases read the
-    // wall clock's minute, so one begun in a minute's last seconds would see
-    // it turn and rightly place the time again: begun then, they wait for
-    // the next minute's start instead, the 100 ms let through after it, and
-    // take the time as placed in that minute (intoAPlace).
+    // The start's own placing is let through first: the cases begin only
+    // once it has placed the time (timedMinute), however late a loaded
+    // builder runs it. The cases read the wall clock's minute, so one begun
+    // in a minute's last seconds would see it turn and rightly place the
+    // time again: begun then, as the clock reads when they begin rather
+    // than when this was made, they wait for the next minute's start
+    // instead, and take the time as placed in that minute (intoAPlace). A
+    // timer made with this file once fired after the minute it was meant
+    // for had turned, on a loaded builder (gate af3, 2026-11-12).
     Timer {
+        id: begin
+
         running: true
-        interval: Date.now() % 60000 > 55000 ? 60100 - Date.now() % 60000 : 100
+        interval: 100
         onTriggered: root.intoAPlace()
     }
 
     function intoAPlace() {
+        const into = Date.now() % 60000;
+        if (now.timedMinute < 0 || into > 50000) {
+            begin.interval = now.timedMinute < 0 ? 100 : 60100 - into;
+            begin.start();
+            return;
+        }
         try {
+            // As retime leaves it: placed this minute, and not stale from a
+            // turn heard while the case waited.
             now.timedMinute = now.minuteNow();
+            now.timeStale = false;
             theLauncher.placed = 0;
             theLauncher.open = true;
             Expect.same("opened into a place, it places no time", theLauncher.placed, 0);

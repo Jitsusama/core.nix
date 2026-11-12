@@ -35,6 +35,7 @@ import "SessionRow.js" as SessionRow
 
 Provider {
     id: provider
+    answerKind: "ask"
 
     // Starting a question with one of these, three words or more, asks
     // it, as ending in "?" does.

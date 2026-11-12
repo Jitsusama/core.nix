@@ -1,7 +1,7 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-words-each-ready-row-it-is-served` check copies
-// launcher/ReadyRows.js and launcher/Found.js, the When.js ReadyRows.js
+// launcher/ReadyRows.js, launcher/Found.js and launcher/Beneath.js, the When.js ReadyRows.js
 // reads from beside the launcher's folder, launcher/Ago.js,
 // launcher/Interfaces.js and tests/lib/Expect.js
 // beside this file and runs `qml -platform offscreen ready-rows.qml` over
@@ -10,6 +10,7 @@ import QtQuick
 import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
 import "launcher/Moved.js" as Moved
+import "launcher/Beneath.js" as Beneath
 import "Expect.js" as Expect
 
 QtObject {
@@ -41,6 +42,7 @@ QtObject {
             insides();
             acting();
             moving();
+            beneath();
             keywording();
             searching();
             Qt.exit(0);
@@ -445,6 +447,24 @@ QtObject {
         Expect.same("and isn't offered", Ready.actsOf({ acts: [both, paste] }).map(act => act.key),
             ["verb:copy:paste"]);
         Expect.same("a well-formed act says nothing", Ready.misformed(paste), "");
+    }
+
+    // Whether a row holds nothing beneath its Return but what the keys do,
+    // so it opens no list of one verb (Joel, 2026-11-11 22:00).
+    function beneath() {
+        const copy = { key: "verb:copy", copy: "512 MB" };
+        const details = { key: "verb:details", step: "drawer" };
+        Expect.same("a row that only copies holds nothing beneath", Beneath.actsOnly([copy]),
+            true);
+        Expect.same("nor does one that also reads its details", Beneath.actsOnly([copy,
+            details]), true);
+        Expect.same("nor one whose Return does its own act and y copies", Beneath.actsOnly([
+            { key: "verb:go", go: "window:3" }, copy]), true);
+        Expect.same("one stepping into rows holds them", Beneath.actsOnly([copy,
+            { key: "verb:more", step: "rows" }]), false);
+        Expect.same("one with a second act of its own keeps it reached", Beneath.actsOnly([
+            copy, { key: "verb:open", open: "https://example.org" }]), false);
+        Expect.same("one with no acts holds what it holds", Beneath.actsOnly([]), false);
     }
 
     // Whether a row told again moved only, as a daemon making room between

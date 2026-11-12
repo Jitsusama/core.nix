@@ -63,7 +63,7 @@ COPIED_BEFORE_PRESENTED = timedelta(milliseconds=250)
 # drawingApart), each part rounded to a millisecond apart, so the three may miss the whole by two.
 DRAWING_SPLIT = re.compile(
     r"(?P<drawing>\d+) drawing it \((?P<syncing>\d+) syncing, (?P<rendering>\d+) rendering,"
-    r" (?P<heard>\d+) before the shell heard it\)"
+    r" (?P<heard>\d+) before the shell heard it swapped\)"
 )
 ROUNDED = 2
 
@@ -271,6 +271,96 @@ def test_arming_goes_as_the_launcher_shuts(shell: Shell) -> None:
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["armedRow"] == "")
     shell.close_launcher()
+
+
+MOON_PHASES = (
+    "new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous"
+    "|last quarter|waning crescent"
+)
+
+
+def test_the_dates_drawer_says_its_week_and_its_moon_copies_on_return(shell: Shell) -> None:
+    """The date's drawer says its week and season in a sentence, and the moon copies on Return.
+
+    The date and its parts had no drawer, and the moon, the season and the zone each opened a
+    list of figures to copy one by one (Joel, 2026-11-11: "side drawers for just about every
+    item", and "if they have nothing under them, we shouldn't open a submenu for them").
+    """
+    shell.answer("date")
+    shell.launcher_until(
+        lambda shown: (
+            bool(shown["drawer"]["shown"])
+            and str(shown["drawer"]["body"]).startswith("Week ")
+            and {"ISO Date", "Season", "Moon", "Quarter"} <= set(shown["drawer"]["facts"])
+        )
+    )
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Moon" in shown["rows"])
+    shell.down_to("Moon")
+    shell.launcher_until(lambda shown: shown["drawer"]["facts"][:1] == ["Lit"])
+    shell.send_key("ret")
+    shell.launcher_closed()
+    assert re.fullmatch(MOON_PHASES, shell.copied()), shell.copied()
+
+
+def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
+    """A drawer's nerdy bits open and fold on za, and they stay as left from row to row.
+
+    A drawer ends with the raw figures behind its facts, folded until za (VKCF3Z's drawer spec,
+    part 7), and a fold he opened stays open into the next drawer, as a Vim fold he chose.
+    """
+    shell.answer("date")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["nerd"] == ["ISO Week Date", "Julian Day"]
+            and shown["drawer"]["folded"] is True
+        )
+    )
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    shell.close_launcher()
+    shell.answer("time")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
+            and shown["drawer"]["folded"] is False
+        )
+    )
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.close_launcher()
+
+
+def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None:
+    """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
+
+    An answer's key is empty, so every Return on Ask, a sum or Memory was kept as a miss, and
+    what the trials said of them was wrong (1JQPPC, 2026-11-11).
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def kept() -> list[Json]:
+        lines = [
+            line
+            for path in state.glob("quickshell/by-shell/*/launcher-trials.jsonl")
+            for line in path.read_text().splitlines()
+            if line.strip()
+        ]
+        return [cast("Json", json.loads(line)) for line in lines]
+
+    before = len(kept())
+    copied(shell, "6*7", "42")
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    # The shell adds the opening's line through a pipe once it closes, so it's read again until
+    # it's there, a poll's length apart.
+    while len(kept()) <= before:
+        assert time.monotonic() < deadline, "the opening was never kept"
+        time.sleep(launcher_on_niri.POLL)
+    last = kept()[-1]
+    assert last.get("picked") == "answer:sum", last
+    assert last.get("missed") is False, last
 
 
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
@@ -1581,6 +1671,8 @@ DRAWER_SAID = re.compile(
     r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: a median (\d+) ms '
     r"before it followed, (\d+) until its frame began and (\d+) from its frame's start"
 )
+# Where a drawer's time from its frame's start went, where the render thread timed its swap.
+DRAWER_SWAPPED = re.compile(r"from its frame's start \((\d+) to its swap and (\d+) after it\)")
 DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
 
 
@@ -1607,6 +1699,12 @@ def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -
     took, following, framing, showing = (int(part) for part in drawn.groups()[1:])
     assert abs(following + framing + showing - took) <= ROUNDED, (
         f"{took} ms from the key, said as {following}, {framing} and {showing}"
+    )
+    swapped = DRAWER_SWAPPED.search(said)
+    assert swapped, f"the drawer's frame never said its time to its swap and after: {lines}"
+    to_swap, after_swap = (int(part) for part in swapped.groups())
+    assert abs(to_swap + after_swap - showing) <= ROUNDED, (
+        f"{showing} ms from its frame's start, said as {to_swap} to its swap and {after_swap}"
     )
     stepped_out(shell)
     shell.close_launcher()
@@ -3397,6 +3495,35 @@ def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
         served.close()
         for window in (wren, heron, finch, here):
             shell.close(window)
+
+
+@pytest.mark.usefixtures("machine")
+def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell) -> None:
+    """Return on a served row whose one act is a copy copies it, never opening a list of it.
+
+    Power's Charge is served with a copy alone, so stepping in showed one row named by its act's
+    key (Joel, 2026-11-11: "if they have nothing under them, we shouldn't open a submenu for
+    them"). It copies what the row says, whichever charge that is: inside Machine's Power,
+    Power's rows aren't watched, so a figure told then isn't heard (RCTRF8's, 2026-11-12).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("power", selecting="Power")
+    shell.step_in()
+    shell.launcher_until(
+        lambda shown: shown["path"][-1:] == ["Power"] and "Battery" in shown["rows"]
+    )
+    shell.down_to("Battery")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Charge" in shown["rows"])
+    shell.down_to("Charge")
+    charge = shell.showing()["selected"]
+    assert charge["verb"] == "copy", charge
+    assert re.fullmatch(r"\d+%", charge["side"]), charge
+    with shell.told("parted copied"):
+        shell.send_key("ret")
+    shell.launcher_closed()
+    assert shell.copied() == charge["side"], shell.copied()
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

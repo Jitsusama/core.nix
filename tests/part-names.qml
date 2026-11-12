@@ -392,11 +392,12 @@ ShellRoot {
     }
 
     // The time here and the date as Now shows them: each wearing its own
-    // place's glyph, as every row of Now does; the zone's next change said
-    // as the launcher says a day with its time ("14 Mar 2027 03:00"), the
-    // middle dot being kept for a time and how far off it is; the zone's
-    // plate with an eyebrow, as every plate has; and a day's number copied
-    // as a figure to paste, with nothing grouping it.
+    // place's glyph, as every row of Now does; the zone a figure copying
+    // its name, never a step of copies alone (Joel, 2026-11-11), its
+    // drawer's next change said as the launcher says a day with its time
+    // ("14 Mar 2027 03:00"), then what it turns to after a middle dot; the
+    // zone's plate with an eyebrow, as every plate has; and a day's number
+    // copied as a figure to paste, with nothing grouping it.
     function asNowShows() {
         const time = clocks.answer("time");
         const date = today.answer("date");
@@ -405,10 +406,14 @@ ShellRoot {
                 && !!Theme.glyph.date && date.glyph === Theme.glyph.date,
             `${time.glyph}, ${date.glyph}`);
         const zone = time.rows.find(row => row.name === Words.name("time:zone"));
-        const next = zone.verbs().find(row => row.name === Words.name("time:zone:next"));
-        expect("the zone's next change is a day and its time",
-            /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}$/.test(next.side), next.side);
+        expect("the zone copies its name on Return",
+            typeof zone.verbs !== "function" && zone.verb === "copy"
+                && zone.copies() === zone.side, `${zone.verb} ${zone.side}`);
         const plate = typeof zone.drawer === "function" ? zone.drawer() : zone.drawer;
+        const next = plate.facts.find(fact => fact.label === Words.name("time:zone:next"));
+        expect("the zone's next change is a day and its time, then what it turns to",
+            /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}( \u00b7 .+)?$/.test(next?.value),
+            JSON.stringify(next));
         expect("the zone's plate has an eyebrow", (plate.eyebrow ?? "") !== "",
             JSON.stringify(plate));
         const numbers = ["today:unix-day", "today:julian", "today:mjd"].map(id => Words.name(id));
