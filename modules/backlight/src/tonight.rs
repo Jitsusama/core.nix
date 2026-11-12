@@ -13,7 +13,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use crate::evening::Evening;
+use crate::evening::{Evening, clock, minute};
 
 /// The longest evening a profile's start may make, in minutes: a stop
 /// rhythm saw at dawn mustn't dim the whole day.
@@ -42,18 +42,45 @@ impl Tonight {
     /// The evening to dim by now, and a line for the journal when what it
     /// follows has changed since the last look.
     pub fn look(&mut self) -> (Evening, Option<String>) {
-        let _ = &self.profile;
-        self.followed = Some(None);
-        (self.set, None)
+        let read = fs::read_to_string(&self.profile)
+            .ok()
+            .and_then(|text| wind_down(&text))
+            .filter(|(start, _)| self.set.starting(*start).length() <= LONGEST);
+        let evening = read.map_or(self.set, |(start, _)| self.set.starting(start));
+        let said = (self.followed != Some(read)).then(|| match read {
+            Some((start, true)) => format!(
+                "the evening dims from {}, two and a half hours before Joel usually stops",
+                clock(start)
+            ),
+            Some((start, false)) => format!(
+                "the evening dims from {}, rhythm's guess until it learns when Joel stops",
+                clock(start)
+            ),
+            None => format!("the evening dims from {}, as set", clock(self.set.start())),
+        });
+        self.followed = Some(read);
+        (evening, said)
     }
+}
+
+/// The text of `key`'s value in a profile rhythm wrote, which says each as
+/// `"key": "value"`.
+fn field<'a>(profile: &'a str, key: &str) -> Option<&'a str> {
+    let after = &profile[profile.find(&format!("\"{key}\""))? + key.len() + 2..];
+    let value = after
+        .trim_start()
+        .strip_prefix(':')?
+        .trim_start()
+        .strip_prefix('"')?;
+    Some(&value[..value.find('"')?])
 }
 
 /// The wind-down's start in a profile rhythm wrote, in minutes past
 /// midnight, and whether it's learned rather than a guess.
 #[must_use]
 pub fn wind_down(profile: &str) -> Option<(f64, bool)> {
-    let _ = profile;
-    None
+    let start = minute(field(profile, "windDown")?)?;
+    Some((start, field(profile, "basis") == Some("learned")))
 }
 
 #[cfg(test)]

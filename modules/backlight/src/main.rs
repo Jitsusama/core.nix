@@ -58,14 +58,18 @@
 //! In the evening, by the local clock, the screen eases to 70% of what the
 //! curve asks for, and back in the morning (evening.rs), looked at each
 //! minute, never jumping, and never dimming past what Joel set in that light
-//! in an evening, which is kept in `$XDG_STATE_HOME/backlight/evening`.
+//! in an evening, which is kept in `$XDG_STATE_HOME/backlight/evening`. It
+//! starts when rhythm's profile, `$XDG_STATE_HOME/rhythm/profile.json`, says
+//! Joel's wind-down begins tonight, and as set while there's none
+//! (tonight.rs).
 //!
 //! Usage: backlight <standard curve> [night white] [evening]. The standard
 //! curve is where learning starts, a point to a line: the lux, a space and
 //! the share of the brightest. What it learns is kept in
 //! `$XDG_STATE_HOME/backlight/learned`. The night white is the night light's
 //! warmth in kelvin, 4000 unless it's given. The evening is when the screen
-//! dims, as "21:30-05:00", or "off", which it is unless it's given.
+//! dims, as "21:30-05:00", or "off", which it is unless it's given; rhythm
+//! moves its start.
 //!
 //! Usage: backlight --keeps-the-open-level <saver>, as root. It keeps the
 //! panel's saved level current while the lid is open (keep.rs), running the
@@ -117,6 +121,7 @@ use monitor::Monitors;
 use night::Plan;
 use panel::{Lid, Panel};
 use screen::Screen;
+use tonight::Tonight;
 use warmth::{WHITE, Warmth};
 
 #[tokio::main(flavor = "current_thread")]
@@ -356,13 +361,17 @@ fn night_white() -> Result<u16, String> {
         .ok_or_else(|| format!("{said} is no night white between 1000 and {WHITE} K"))
 }
 
-/// The evening the command line gives, after the night white, or none.
-fn evening() -> Result<Option<Evening>, String> {
+/// The evening the command line gives, after the night white, or none,
+/// moved by rhythm's profile beside `kept`, the backlight's own state.
+fn evening(kept: &Path) -> Result<Option<Tonight>, String> {
     match env::args().nth(3) {
         None => Ok(None),
         Some(said) if said == "off" => Ok(None),
         Some(said) => Evening::read(&said)
-            .map(Some)
+            .map(|set| {
+                let profile = kept.with_file_name("rhythm").join("profile.json");
+                Some(Tonight::new(set, profile))
+            })
             .ok_or_else(|| format!("{said} is no evening, as 21:30-05:00")),
     }
 }
@@ -444,7 +453,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
-        evening: evening()?,
+        evening: evening(&kept)?,
         evening_due: Some(Instant::now()),
         panel: Panel::find(Path::new("/sys/class/drm")),
         lid: Lid::default(),
@@ -544,7 +553,7 @@ struct Backlight<'a> {
     relay_down: Option<Instant>,
     /// When the screen dims in the evening, if it does, and when the clock
     /// is next looked at for it.
-    evening: Option<Evening>,
+    evening: Option<Tonight>,
     evening_due: Option<Instant>,
     /// The laptop's own panel, when there is one, and the lid as logind
     /// says it is and as the panel shows it (panel.rs).

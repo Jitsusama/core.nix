@@ -54,6 +54,22 @@ impl Evening {
         })
     }
 
+    /// When it starts, in minutes past midnight.
+    pub fn start(&self) -> f64 {
+        self.start
+    }
+
+    /// How long it lasts, in minutes.
+    pub fn length(&self) -> f64 {
+        (self.end - self.start).rem_euclid(DAY)
+    }
+
+    /// The same evening started at `start` instead, ending as it did.
+    #[must_use]
+    pub fn starting(self, start: f64) -> Self {
+        Evening { start, ..self }
+    }
+
     /// What the evening leaves of the brightness at `minute` past midnight:
     /// all of it by day, easing to `SHARE` over the half hour from its start,
     /// and back over the half hour from its end.
@@ -72,11 +88,17 @@ impl Evening {
 }
 
 /// "21:30" as minutes past midnight.
-fn minute(said: &str) -> Option<f64> {
+pub fn minute(said: &str) -> Option<f64> {
     let (hour, minute) = said.split_once(':')?;
     let hour: u8 = hour.parse().ok().filter(|hour| *hour < 24)?;
     let minute: u8 = minute.parse().ok().filter(|minute| *minute < 60)?;
     Some(f64::from(hour) * 60.0 + f64::from(minute))
+}
+
+/// Minutes past midnight as the clock says them, "21:30".
+pub fn clock(minute: f64) -> String {
+    let minute = minute.round().rem_euclid(DAY);
+    format!("{:02.0}:{:02.0}", (minute / 60.0).floor(), minute % 60.0)
 }
 
 /// The brightness the screen goes to when the curve asks for `level` and
@@ -166,6 +188,14 @@ mod tests {
         assert!((at(5.0, 0.0) - SHARE).abs() < 1e-9, "at its end");
         let half_way = 1.0 - (1.0 - SHARE) / 2.0;
         assert!((at(5.0, 15.0) - half_way).abs() < 1e-9, "a quarter hour on");
+    }
+
+    #[test]
+    fn a_minute_is_said_as_the_clock_says_it() {
+        for said in ["21:30", "05:00", "00:00", "23:59"] {
+            let read = minute(said).expect("a well-formed minute");
+            assert_eq!(clock(read), said, "{read} said again");
+        }
     }
 
     #[test]

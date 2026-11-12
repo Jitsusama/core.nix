@@ -110,7 +110,7 @@ impl Follow {
     /// What the clock last said the evening leaves, though the share may
     /// still wait for light to ease from.
     pub fn clock(&self) -> f64 {
-        self.share
+        self.clock
     }
 
     /// The brightness the screen goes to in this light: what the curve

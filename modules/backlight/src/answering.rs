@@ -465,17 +465,22 @@ impl Backlight<'_> {
         .min()
     }
 
-    /// What the evening leaves of the brightness by the local clock now,
-    /// given to the light's following, with the clock looked at again in a
-    /// minute. Said as the evening begins and as the morning ends, rather
-    /// than at each minute's step.
+    /// What tonight's evening leaves of the brightness by the local clock
+    /// now, given to the light's following, with the clock and rhythm's
+    /// profile looked at again in a minute. Said as the clock's evening
+    /// begins and as its morning ends, and when what it follows moves,
+    /// rather than at each minute's step.
     fn look_at_evening(&mut self, now: Instant) {
-        let Some(evening) = self.evening else {
+        let Some(tonight) = self.evening.as_mut() else {
             self.evening_due = None;
             return;
         };
+        let (evening, follows) = tonight.look();
+        if let Some(follows) = follows {
+            eprintln!("<6>{follows}");
+        }
         let share = local_minute(wall()).map_or(1.0, |minute| evening.share(minute));
-        let was = self.follow.share();
+        let was = self.follow.clock();
         if (share < 1.0) != (was < 1.0) {
             if share < 1.0 {
                 eprintln!("<6>the evening eases the screen dimmer");
