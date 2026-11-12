@@ -247,7 +247,7 @@ impl Say<'_> {
     /// A row's drawer saying what Linux keeps behind it, by its own names
     /// and as it says them, then the file it's read from (#2204's bar:
     /// the kernel's own, never smoothed over).
-    pub(crate) fn from_linux(
+    pub(crate) fn as_linux_keeps(
         &self,
         made: Made,
         thing: &str,
@@ -287,7 +287,7 @@ impl Say<'_> {
                 Some(((*field).to_owned(), said))
             })
             .collect();
-        self.from_linux(made, "memory", "/proc/meminfo", kept)
+        self.as_linux_keeps(made, "memory", "/proc/meminfo", kept)
     }
 
     /// A rate's drawer from the counts since startup in `/proc/vmstat` it's
@@ -300,7 +300,7 @@ impl Say<'_> {
                 Some(((*field).to_owned(), self.words.number(count, 0)))
             })
             .collect();
-        self.from_linux(made, "memory", "/proc/vmstat", kept)
+        self.as_linux_keeps(made, "memory", "/proc/vmstat", kept)
     }
 
     /// Held up waiting for something, the share of the last ten seconds,
@@ -350,7 +350,7 @@ impl Say<'_> {
             let graph = bar(share / 100.0, share >= PRESSED_PCT);
             let made = self.figure(&format!("{id}-{name}"), said, Some(graph), String::new());
             let avg = window.trim_end_matches("_pct");
-            self.from_linux(made, thing, &file, kept(avg))
+            self.as_linux_keeps(made, thing, &file, kept(avg))
         };
         let inside = vec![
             each("avg10_pct", "10"),
@@ -658,7 +658,7 @@ impl Say<'_> {
                 };
                 // Each process's resident pages, the 24th field, summed.
                 let kept = vec![("rss".to_owned(), self.kb(resident))];
-                self.from_linux(made, "memory", "/proc/<pid>/stat", kept)
+                self.as_linux_keeps(made, "memory", "/proc/<pid>/stat", kept)
             })
             .collect();
         let first = &holders[0];
@@ -735,7 +735,7 @@ impl Say<'_> {
                 ]
                 .map(|(name, said)| (name.to_owned(), said))
                 .into();
-                self.from_linux(made, "memory", "/sys/firmware/dmi/entries/17-*", kept)
+                self.as_linux_keeps(made, "memory", "/sys/firmware/dmi/entries/17-*", kept)
             })
             .collect();
         let made = self.figure("memory:type", typed(first), None, items(&[held, by(first)]));
@@ -791,7 +791,7 @@ impl Say<'_> {
                 .iter()
                 .filter_map(|(name, said)| Some(((*name).to_owned(), said.clone()?)))
                 .collect();
-            self.from_linux(made, "uptime", from, kept)
+            self.as_linux_keeps(made, "uptime", from, kept)
         };
         let seconds = |field: &str| boot[field].as_f64().map(|s| format!("{s:.2}"));
         let mut inside = Vec::new();
@@ -847,7 +847,7 @@ impl Say<'_> {
                 Some(build) => {
                     let release =
                         self.figure("uptime:release", kernel.to_owned(), None, String::new());
-                    let built = self.figure("uptime:build", build.clone(), None, String::new());
+                    let version = self.figure("uptime:build", build.clone(), None, String::new());
                     let parts = vec![
                         linux(
                             release,
@@ -855,7 +855,7 @@ impl Say<'_> {
                             &[("osrelease", Some(kernel.to_owned()))],
                         ),
                         linux(
-                            built,
+                            version,
                             "/proc/sys/kernel/version",
                             &[("version", Some(build))],
                         ),
