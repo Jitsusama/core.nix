@@ -1357,8 +1357,15 @@
       "term": "Machine/log out",
       "verb": "log out",
       "glyph": "logout",
-      "sure": "Log Out Now",
-      "asked": "Log Out of the Desktop"
+      "asked": "Log Out of the Desktop",
+      "said": {
+        "eyebrow": "on this machine \u00b7 log out",
+        "arms": "logs out"
+      },
+      "tells": {
+        "lead": "Ends this session, closing {windows}.",
+        "alone": "Ends this session."
+      }
     },
     {
       "id": "session:Reboot",
@@ -1368,8 +1375,15 @@
       "term": "Machine/reboot",
       "verb": "reboot",
       "glyph": "reboot",
-      "sure": "Reboot Now",
-      "asked": "Reboot the Machine"
+      "asked": "Reboot the Machine",
+      "said": {
+        "eyebrow": "on this machine \u00b7 reboot",
+        "arms": "reboots"
+      },
+      "tells": {
+        "lead": "Reboots the machine, closing {windows}.",
+        "alone": "Reboots the machine."
+      }
     },
     {
       "id": "session:Power Off",
@@ -1379,8 +1393,15 @@
       "term": "Machine/power off",
       "verb": "off",
       "glyph": "poweroff",
-      "sure": "Power Off Now",
-      "asked": "Power Off the Machine"
+      "asked": "Power Off the Machine",
+      "said": {
+        "eyebrow": "on this machine \u00b7 power off",
+        "arms": "powers off"
+      },
+      "tells": {
+        "lead": "Turns the machine off, closing {windows}.",
+        "alone": "Turns the machine off."
+      }
     },
     {
       "id": "wifi:sign-in",

@@ -60,6 +60,7 @@ import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Glide.js" as Glide
 import "Confirm.js" as Confirm
+import "Arming.js" as Arming
 import "Changes.js" as Changes
 import "Hearing.js" as Hearing
 import "QueryKeys.js" as QueryKeys
@@ -2554,7 +2555,7 @@ Scope {
         linedAt = Date.now();
     }
 
-    // What the last Return did ("ran", "landed", "entered", "gave", "lined", or ""
+    // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", or ""
     // for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
@@ -2584,6 +2585,42 @@ Scope {
     // nothing, as a confirm's second Return waits the same while.
     function landedJustNow() {
         return landedKey !== "" && Date.now() - landedAt < Options.keyTiming.wait;
+    }
+
+    // The row that ends the session a first press armed (Arming.js), by
+    // its steady id, and the keys the line had taken then, so it stands
+    // armed only until the next key.
+    property var armed: Arming.rest()
+
+    // Whether a row arms before it's done: Log Out, Reboot and Power Off,
+    // each saying what a second press does (`arms`, "logs out").
+    function arms(choice) {
+        return !!choice && typeof choice.arms === "string" && choice.arms !== "";
+    }
+
+    // Whether a row stands armed, until the next key.
+    function armedOn(choice) {
+        return arms(choice) && Arming.holds(armed, steadyId(choice), prompt.keysTaken);
+    }
+
+    // What an armed row and the foot say a second press does: "again logs
+    // out".
+    function armedSaid(choice) {
+        return String((Words.field.hints ?? {}).again ?? "").replace("{arms}", choice.arms);
+    }
+
+    // A press on a row that arms, a Return (`counted` 1, since the line
+    // counts it) or a click (0): the first arms it, the next with no key
+    // between does it, past its confirm, since arming was the asking, and
+    // one doubled with the first does nothing. Says "armed", "ran" or "",
+    // as `returned` reads.
+    function pressArming(choice, counted) {
+        const did = Arming.pressed(armed, steadyId(choice), { keysTaken: prompt.keysTaken,
+            counted, now: Date.now(), wait: Options.keyTiming.wait });
+        armed = did.armed;
+        if (did.act === "ends")
+            run(Object.assign({}, choice, { confirm: false }), false);
+        return did.act === "ends" ? "ran" : did.act;
     }
 
     // The keys the foot names while the drawer holds them, where the row's
@@ -2631,6 +2668,18 @@ Scope {
             const hints = Words.field.hints ?? {};
             return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent],
                 [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]];
+        }
+        // A row that arms says its act until a first Return arms it, then
+        // what a second does, in the accent, as a landing does (VKCF3Z,
+        // 2026-11-12), normal's foot keeping its shape.
+        if (arms(choice)) {
+            const hints = Words.field.hints ?? {};
+            const first = choice === selected && armedOn(choice)
+                ? ["\u21b5", armedSaid(choice), Theme.accent, Theme.accent]
+                : ["\u21b5", verbOf(choice)];
+            return prompt.modal && prompt.mode === "normal"
+                ? [first, [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]]
+                : [first];
         }
         // A row that ends something names the line Return writes at the
         // right end, where Return always is, and before it the key that
@@ -7578,6 +7627,8 @@ Scope {
             // The row Return landed on from the find, until the next key,
             // and whether a Return now would come too soon after it.
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
+            // What the cursor row a first Return armed says a second does.
+            armed: root.armedOn(root.selected) ? root.armedSaid(root.selected) : "",
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.
@@ -10177,11 +10228,20 @@ Scope {
                             const pressed = KeyTimes.pressed();
                             root.searchNow();
                             trials.pressed("returns");
+                            // One that ends the session arms first, and a
+                            // second Return does it (pressArming).
+                            const arming = !root.asking && !root.landedJustNow()
+                                && root.arms(root.selected);
                             const act = root.asking ? "gave" : root.landedJustNow() ? ""
+                                : arming ? root.pressArming(root.selected, 1)
                                 : root.stepsThing(root.selected) ? "entered"
                                 : root.endsSomething(root.selected) ? "lined"
                                 : root.lands(root.selected) ? "landed" : "ran";
-                            if (act === "gave")
+                            // Arming did its own press, armed or done, and
+                            // any landing before it is over.
+                            if (arming)
+                                root.landedKey = "";
+                            else if (act === "gave")
                                 root.give();
                             else if (act === "entered")
                                 root.enter(root.selected);
@@ -11247,7 +11307,11 @@ Scope {
                                     names: entry.modelData.names === true
                                     countWords: !!entry.modelData.countWords
                                     kind: root.rowsAtHome ? root.kindOf(entry.modelData) : ""
-                                    landed: selected && root.landedOn(entry.modelData)
+                                    // An armed row reads armed, saying what a
+                                    // second Return does (VKCF3Z, 2026-11-12).
+                                    landed: selected && root.armedOn(entry.modelData)
+                                        ? `\u21b5 ${root.armedSaid(entry.modelData)}`
+                                        : selected && root.landedOn(entry.modelData)
                                         ? `\u21b5 ${root.verbOf(entry.modelData)}` : ""
                                     // What the cursor row has to say of how
                                     // it stands, on the row, where the head
@@ -11263,7 +11327,9 @@ Scope {
                                     // A miss is said as quietly as nothing found.
                                     quiet: !!entry.modelData.gone
                                         || !!entry.modelData.answered && !!entry.modelData.missed
-                                    onClicked: root.run(entry.modelData, false)
+                                    onClicked: root.arms(entry.modelData)
+                                        ? root.pressArming(entry.modelData, 0)
+                                        : root.run(entry.modelData, false)
                                 }
                             }
                         }

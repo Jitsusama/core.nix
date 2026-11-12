@@ -12,6 +12,7 @@
   "Finding.js"
   "Glide.js"
   "Confirm.js"
+  "Arming.js"
   "StatusLine.js"
   "Drawer.qml"
   "MarkSize.js"
