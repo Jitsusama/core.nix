@@ -177,8 +177,9 @@ def walk_the_fields_keys(desktop: Desktop, charge: str) -> None:
     desktop.launcher_until(lambda shown: (shown["mode"], shown["caret"]) == ("normal", 3))
     # Letters type nothing there, and one with no meaning says so in the foot until the next
     # key; q says how to close and closes nothing; the find and the battery stay.
-    machine.send_chars("z")
-    desktop.launcher_until(lambda shown: shown["saying"] == ["z not here"])
+    # t, since z begins za's fold and so waits for its second letter (the vi spec).
+    machine.send_chars("t")
+    desktop.launcher_until(lambda shown: shown["saying"] == ["t not here"])
     desktop.shoot("launcher-not-here")
     machine.send_chars("q")
     desktop.launcher_until(lambda shown: shown["saying"] == ["q does nothing", ":q closes"])

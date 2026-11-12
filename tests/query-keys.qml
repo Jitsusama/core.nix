@@ -1875,6 +1875,10 @@ QtObject {
         // spec, Normal); a count or a sequence begun means something.
         holds("p means nothing in normal, and says so",
             typed(["Escape", "p"]).idle, ["p"]);
+        // The looks and finds-by-name VM tests press t for a key meaning
+        // nothing, since z begins za's fold and waits for its second letter.
+        holds("t means nothing in normal, and says so, where z waits for za",
+            [typed(["Escape", "t"]).idle, typed(["Escape", "z"]).idle], [["t"], []]);
         holds("a key that ends what was begun means nothing, and says so",
             typed(["Escape", "]", "x"]).idle, ["x"]);
         holds("a count, a sequence begun and a move each mean something",
