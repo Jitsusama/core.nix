@@ -131,5 +131,12 @@
     "owner_pr": 3757,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "test": "vm-a-hidden-queue-is-taken-back"
+  },
+  {
+    "at": 1794515309,
+    "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
+    "owner_pr": 3758,
+    "reason": "failed, then passed, at 1e94ca1cd67d",
+    "test": "vm-desktop-launcher-holds-meetings"
   }
 ]
