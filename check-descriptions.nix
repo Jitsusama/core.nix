@@ -253,6 +253,11 @@
     other's; one whose words alone change is said again in place, by its id, and not once Joel has
     put it away; and one that goes takes back whichever of its notices is up
   '';
+  an-ending-row-arms-before-it-ends = ''
+    a first Return or click arms a row that ends the session and a second with no key between ends
+    it, however long after; any other key lets it go, and a press doubled with the first does
+    nothing
+  '';
   an-ipc-reply-arrives-whole = ''
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
     function that isn't there ends qs with a failure

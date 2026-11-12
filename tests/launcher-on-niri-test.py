@@ -252,18 +252,19 @@ def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> 
     copied(shell, "12*7", "84")
 
 
-def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell) -> None:
-    """The date is copied, the power acts ask first, and a bind's words find its action."""
+def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
+    """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's
     # asked, so either will do.
     before = now("+%A %-d %B %Y")
     assert yanked(shell, "date") in [before, now("+%A %-d %B %Y")]
-    # The power actions answer to their names, and only those; closed by
-    # :q, never Return, since Return would do them.
-    for typed, action, verb in [
-        ("power off", "Power Off", "Power Off"),
-        ("reboot", "Reboot", "Reboot"),
-        ("log out", "Log Out", "Log Out"),
+    # The power actions answer to their names, and only those; a first
+    # Return arms each in place, its row and foot saying what a second
+    # does (VKCF3Z, 2026-11-12), and it's closed armed, never done.
+    for typed, action, arms in [
+        ("power off", "Power Off", "powers off"),
+        ("reboot", "Reboot", "reboots"),
+        ("log out", "Log Out", "logs out"),
     ]:
         shell.answer(typed)
         # Each wait ends before the loop moves on, so it reads this pass's action.
@@ -273,34 +274,41 @@ def test_the_date_is_copied_and_the_power_acts_ask_before_they_act(shell: Shell)
                 and shown["kind"] == "session"
             )
         )
-        # Return asks rather than doing it: it holds the action, its
-        # one verb saying what a second Return would do and what it
-        # closes.
+        said = f"again {arms}"
         shell.send_key("ret")
         shell.launcher_until(
             lambda shown: (
-                shown["held"] == [action]  # noqa: B023
-                and re.fullmatch(
-                    f"{verb} Now(, Closing (the Window|\\d+ Windows))?",  # noqa: B023
-                    (shown["selected"] or {}).get("name", ""),
-                )
-                is not None
+                shown["returned"].get("act") == "armed"
+                and shown["held"] == []
+                and shown["armed"] == said  # noqa: B023
+                and f"\u21b5 {said}" in (shown["selected"] or {}).get("told", [])  # noqa: B023
             )
         )
         shell.close_launcher()
-    # Asked to be sure, the foot says Log Out's command whole, since it
-    # ends the session and Return only writes it on the : line, banged:
-    # the step was the asking, so the line runs past it.
-    shell.answer("log out")
-    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Log Out")
+    # Any other key lets it go, so a Return after it arms again rather
+    # than doing it; a second Return with no key between does it,
+    # Reboot's systemctl finding no machine to restart here.
+    shell.answer("reboot")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Reboot")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["armed"] == "again reboots")
+    shell.send_key("left")
+    shell.launcher_until(lambda shown: shown["armed"] == "")
+    # Past the key language's wait, so this Return isn't the last one doubled.
+    time.sleep(PAUSE)
     shell.send_key("ret")
     shell.launcher_until(
-        lambda shown: "\u21b5 :logout!" in (shown["selected"] or {}).get("told", [])
+        lambda shown: shown["returned"].get("act") == "armed" and shown["armed"] != ""
     )
-    # Written and left, the line goes with the launcher, so the next opening
-    # is on the find, not on a line still held.
+    time.sleep(PAUSE)
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "logout!")
+    shell.launcher_until(lambda shown: shown["returned"].get("act") == "ran" and not shown["open"])
+    # A line written and left goes with the launcher, so the next opening
+    # is on the find, not on a line still held.
+    shell.answer("log out")
+    shell.normal()
+    shell.send_chars(":logout")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "logout")
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_until(lambda shown: not shown["open"])
     shell.as_account(shell.ipc("toggle"))
