@@ -5,6 +5,7 @@
 # folder, the quest and the model it was given, and a terminate signal
 # heard is noted there too, with when, in milliseconds since the epoch.
 set -euo pipefail
+: "${DECIDED:?the check names the file each decision is noted in}"
 
 id="" model=""
 while [ $# -gt 0 ]; do
