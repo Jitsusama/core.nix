@@ -18,6 +18,12 @@ tests read them as warp-cli's answers (`src/contract.rs`) and hold what
 | `refused.json`         | `registration devices` | an error, as warp-cli says any, exiting 1     |
 | `listen-status.jsonl`  | `--listen status`     | a line each change of state, held open         |
 
+`shaper-status.json` is no answer of warp-cli's: it's the network
+shaper's /run/shaper/status.json (modules/shaper), as the shaper wrote it
+on 2026-11-12 with one link more that heard nothing, its networks' MACs
+made up. `src/waiting.rs` reads what waits on the way through the VPN from
+it.
+
 `daemon-down.json` was seen with the service's socket hidden from
 warp-cli in a namespace of its own; the link was never taken down to see
 it. A status reason is a word (`NetworkHealthy`) or, as `NetworkDegraded`

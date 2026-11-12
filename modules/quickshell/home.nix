@@ -2415,7 +2415,12 @@ in
       };
       Service = {
         ExecStart = "${launcher.providers.warp.warp} serve %t/daemons/warp.sock";
-        Environment = lib.optional (
+        # The network's shaper says what waits on the way through the VPN
+        # while it runs (modules/shaper), so the Work Network says it too.
+        Environment = [
+          "WARP_SHAPER=/run/shaper/status.json"
+        ]
+        ++ lib.optional (
           launcher.providers.warp.warpCli != ""
         ) "WARP_CLI=${launcher.providers.warp.warpCli}";
         Restart = "on-failure";

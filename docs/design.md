@@ -1813,7 +1813,9 @@ works the same way everywhere.
   tunnel's every host and network a step further, then where names are
   looked up, sign-in pages and what the organisation allows, an override
   among them, the tunnel's Round Trip and Loss
-  as WARP estimates them, its Protocol, Data Centre, Endpoint and Last
+  as WARP estimates them, what's Waiting on the way through it as the
+  network shaper hears it ("75 ms", none under 5 ms, unknown while the
+  shaper isn't running), its Protocol, Data Centre, Endpoint and Last
   Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), Round
   Trip, Loss and Traffic sparked while shown, each with a drawer whose
   eyebrow says once whose figures they are ("via WARP · tunnel"), its TLS a

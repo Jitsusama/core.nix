@@ -12,7 +12,9 @@
 //! Nothing is asked of warp-cli while the launcher shows something else. A watch is answered
 //! with what's held only while it's that fresh, and otherwise with
 //! nothing until the read it sets off, so an hour-old link is never shown
-//! as now. A get reads afresh where what's held is older. `act` switches
+//! as now. Where the shaper's status is named, each read carries what waits
+//! on the way through the VPN as `said.waiting` (waiting.rs), read with it.
+//! A get reads afresh where what's held is older. `act` switches
 //! WARP, `connect` or `disconnect`, as `warp connect` does, and answers
 //! with what that printed.
 //!
@@ -33,7 +35,7 @@ use std::net::Shutdown;
 use std::os::fd::FromRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -137,6 +139,8 @@ struct Shared<A> {
     /// Held while warp-cli is asked, so two reads never run at once.
     reading: Mutex<()>,
     cli: A,
+    /// The shaper's status.json, where this machine has one to read.
+    shaper: Option<PathBuf>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -164,7 +168,11 @@ fn printed(words: &[&str], cli: &impl Ask) -> Value {
 }
 
 /// Serves the link on this socket for as long as the program runs.
-pub fn serve(socket: &Path, cli: impl Ask + Send + 'static) -> std::io::Result<()> {
+pub fn serve(
+    socket: &Path,
+    cli: impl Ask + Send + 'static,
+    shaper: Option<PathBuf>,
+) -> std::io::Result<()> {
     let listener = listen(socket)?;
     let shared = Arc::new(Shared {
         held: Mutex::new(Held {
@@ -178,6 +186,7 @@ pub fn serve(socket: &Path, cli: impl Ask + Send + 'static) -> std::io::Result<(
         woken: Condvar::new(),
         reading: Mutex::new(()),
         cli,
+        shaper,
     });
     {
         let shared = Arc::clone(&shared);
@@ -414,11 +423,18 @@ fn changed(line: &str, last: &mut Option<(String, String)>) -> bool {
 /// Reads the link afresh, holds it, and tells every watch of it.
 fn read<A: Ask>(shared: &Shared<A>) {
     let reading = lock(&shared.reading);
+    let mut said = printed(&[], &shared.cli);
+    // Only a link read has a way through it to wait on.
+    if let (Some(status), Some(record)) = (&shared.shaper, said.as_object_mut())
+        && record.contains_key("status")
+    {
+        record.insert("waiting".to_owned(), crate::waiting::heard(status));
+    }
     let link = json!({
         "key": KEY,
         "kind": KIND,
         "read_at_ms": now_ms(),
-        "said": printed(&[], &shared.cli),
+        "said": said,
     });
     let mut held = lock(&shared.held);
     drop(reading);

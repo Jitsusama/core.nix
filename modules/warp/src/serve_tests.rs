@@ -109,6 +109,16 @@ fn serving_counted(
     up: Arc<AtomicBool>,
     asked: Arc<AtomicUsize>,
 ) -> std::path::PathBuf {
+    serving_shaped(name, listened, up, asked, None)
+}
+
+fn serving_shaped(
+    name: &str,
+    listened: Option<std::io::PipeReader>,
+    up: Arc<AtomicBool>,
+    asked: Arc<AtomicUsize>,
+    shaper: Option<PathBuf>,
+) -> std::path::PathBuf {
     let socket = std::env::temp_dir().join(format!("warp-{name}-{}.sock", std::process::id()));
     let cli = Switching {
         cli: Contract::whole(),
@@ -117,8 +127,19 @@ fn serving_counted(
         asked,
     };
     let at = socket.clone();
-    std::thread::spawn(move || serve(&at, cli));
+    std::thread::spawn(move || serve(&at, cli, shaper));
     socket
+}
+
+/// Served where the shaper's status is the file named.
+fn serving_with_shaper(name: &str, shaper: PathBuf) -> std::path::PathBuf {
+    serving_shaped(
+        name,
+        None,
+        Arc::new(AtomicBool::new(true)),
+        Arc::new(AtomicUsize::new(0)),
+        Some(shaper),
+    )
 }
 
 #[test]
@@ -343,4 +364,33 @@ fn a_get_reads_afresh_what_isnt_held_fresh() {
     let got = client.heard();
     assert_eq!(got["id"], 1);
     assert_eq!(got["records"][0]["said"]["status"]["state"], "Connected");
+    assert_eq!(
+        got["records"][0]["said"].get("waiting"),
+        None,
+        "with no shaper named, nothing's said of waiting"
+    );
+}
+
+#[test]
+fn the_link_says_what_waits_through_it_as_the_shaper_heard() {
+    let shaper = Path::new(env!("CARGO_MANIFEST_DIR")).join("contract/shaper-status.json");
+    let mut client = Client::new(&serving_with_shaper("shaped", shaper));
+    client.say(&json!({"id": 1, "ask": "get", "keys": ["warp:link"]}));
+    let said = &client.heard()["records"][0]["said"];
+    assert_eq!(said["status"]["state"], "Connected");
+    assert_eq!(
+        said["waiting"],
+        json!({"running": true, "through_ms": 103.121_740_000_000_02, "at_rest_ms": 27.667_19})
+    );
+}
+
+#[test]
+fn a_shaper_named_but_not_running_is_said_so() {
+    let shaper = std::env::temp_dir().join(format!("warp-no-shaper-{}.json", std::process::id()));
+    let mut client = Client::new(&serving_with_shaper("unshaped", shaper));
+    client.say(&json!({"id": 1, "ask": "get", "keys": ["warp:link"]}));
+    assert_eq!(
+        client.heard()["records"][0]["said"]["waiting"],
+        json!({"running": false})
+    );
 }

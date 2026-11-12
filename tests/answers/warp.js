@@ -4,6 +4,7 @@
 .import "../Warp.js" as Warp
 .import "../WarpSeen.js" as WarpSeen
 .import "../WarpSwitch.js" as WarpSwitch
+.import "../WarpWaiting.js" as WarpWaiting
 
 function run(failures, fromRoot) {
     let asked = 0;
@@ -242,6 +243,32 @@ function run(failures, fromRoot) {
     machine("warp-cli saying what isn't read leaves it waiting",
         standing({ error: "NothingWritten" }), null);
     machine("nothing heard of WARP leaves it waiting", Warp.standing(null, warpSaid), null);
+    // What waits on the way through it, as the shaper heard it
+    // (modules/warp/src/waiting.rs): past the way at rest, the least of
+    // five minutes, after the Round Trip it explains.
+    const waiting = shaped => WarpWaiting.part(shaped, {}, warpSaid);
+    machine("what waits on the way is past the way at rest, noted both",
+        waiting({ running: true, through_ms: 103.12174, at_rest_ms: 27.66719 }),
+        figure("waiting", "75 ms", "103 ms through it \u00b7 28 ms at rest", "75"));
+    machine("a wait within the way's own jitter is none",
+        waiting({ running: true, through_ms: 31.2, at_rest_ms: 27.7 })?.side, "none");
+    machine("the shaper off leaves it unknown, never none",
+        waiting({ running: false }),
+        figure("waiting", "unknown", "the shaper isn't running", ""));
+    machine("a question through it unanswered leaves it unknown",
+        waiting({ running: true, through_ms: null, at_rest_ms: 27.5 }),
+        figure("waiting", "unknown", "its last question went unanswered", ""));
+    machine("no shaper read says nothing of waiting", waiting(undefined), null);
+    const shapedParts = WarpWaiting.among(linked.parts,
+        { running: true, through_ms: 103, at_rest_ms: 28 }, {}, warpSaid)
+        .map(each => each.id);
+    machine("Waiting follows the Round Trip",
+        shapedParts.slice(shapedParts.indexOf("latency"), shapedParts.indexOf("latency") + 2),
+        ["latency", "waiting"]);
+    machine("with no tunnel timed, Waiting comes before Through",
+        WarpWaiting.among([figure("state", "connected"), figure("through", "WARP")],
+            { running: false }, {}, warpSaid).map(each => each.id),
+        ["state", "waiting", "through"]);
     // What the shell keeps of WARP's reads while it's shown, two seconds
     // apart, sparks the tunnel's Round Trip, Loss and Traffic, each with
     // a drawer saying once whose figures they are (VKCF3Z, 2026-11-08).
