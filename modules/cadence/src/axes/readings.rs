@@ -151,8 +151,7 @@ fn resources(s: &Sources) -> Axis {
             )
             .bar(Bar::AtMost(0.0))
             .from("cadence's day, the kernel's journal"),
-            Reading::new("turns making one tool call {}", None, "%", "QCXZEB")
-                .bar(Bar::AtMost(60.0)),
+            counted::one_call(s.measures.last().map(String::as_str)),
         ],
     )
 }
