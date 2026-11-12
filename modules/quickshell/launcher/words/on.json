@@ -634,7 +634,7 @@
     },
     {
       "id": "verb:on:waiting:answer",
-      "command": "choose",
+      "command": "answer",
       "in": "on",
       "name": "Answer",
       "verb": "answer",

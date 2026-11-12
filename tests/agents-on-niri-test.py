@@ -1128,9 +1128,7 @@ def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: She
 def answers(inbox: Path) -> list[Path]:
     """Give the steers in an inbox that answer a look."""
     return [
-        one
-        for one in inbox.glob("*.json")
-        if json.loads(one.read_text()).get("act") == "answer"
+        one for one in inbox.glob("*.json") if json.loads(one.read_text()).get("act") == "answer"
     ]
 
 
