@@ -238,7 +238,11 @@ or launchd, and [`home.nix`][2] the account's.
   pass drops what it reclaimed from it at once. The command refuses a
   kept folder. `src/clears.rs` holds the asks.
 - **Notices.** The account's guard shows one desktop notice, and only once
-  a disk is nearly full: a filling disk is the launcher's to show. A notice the
+  a disk is nearly full: a filling disk is the launcher's to show. The
+  exception is the guard itself failing: a pass on a filling disk whose
+  tries failed and freed nothing, or where one timed out, is told once,
+  with the failure's error line, and written to the system journal as an
+  error, since a guard that can't clear is otherwise silent. A notice the
   desktop didn't take, as when the notification server is still starting,
   is told again each step until it is. What stands to be told now, once
   a disk is filling, is the status file's `notice` too, for whoever looks after
