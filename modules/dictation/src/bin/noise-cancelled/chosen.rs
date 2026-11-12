@@ -31,6 +31,12 @@ impl Chosen {
             .unwrap_or(self.configured)
     }
 
+    /// A file called `name` beside the pick's, for what's kept with it, or
+    /// none when no pick is kept.
+    pub fn beside(&self, name: &str) -> Option<PathBuf> {
+        Some(self.file.as_ref()?.with_file_name(name))
+    }
+
     /// Keeps `cleaner` as the pick, written whole beside the file and moved
     /// over it, so the service never reads half of one.
     pub fn choose(&self, cleaner: Cleaner) -> Result<(), String> {

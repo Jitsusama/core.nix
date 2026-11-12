@@ -359,7 +359,12 @@ fn marks_that_land_after_the_pick_are_kept_then_and_once() {
     trial.lock().scored(generation, marked(0.5));
     trial.lock().scored(generation, marked(0.5));
     let lines = kept(&folder.join("scored"));
-    assert_eq!(lines.len(), 1, "the late marks were kept {} times", lines.len());
+    assert_eq!(
+        lines.len(),
+        1,
+        "the late marks were kept {} times",
+        lines.len()
+    );
     assert_eq!(lines[0]["picked"], "rnnoise");
     assert_eq!(trial.lock().record()["marks"]["raw"]["voice"], 3.0);
     let _ = std::fs::remove_dir_all(&folder);

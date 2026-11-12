@@ -8,8 +8,15 @@
 //! What he said is held only here, in memory: never on disk, and the
 //! service may reach no network. It's dropped on a pick, a discard, five
 //! minutes without an act, or the daemon's exit.
+//!
+//! Each clip is scored too (score.rs), and its marks revealed with the
+//! rest. A pick keeps a line of numbers and names beside the pick's file,
+//! in `scored`: when, which microphone and output, which way was picked,
+//! and every way's marks and cost, so the scorer can be checked against
+//! his ear before it's trusted to choose. The sound itself is never kept.
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -26,7 +33,7 @@ use serde_json::{Value, json};
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
-use crate::score::Marks;
+use crate::score::{Marks, Scorer};
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -179,6 +186,8 @@ pub struct Trial {
     costs: BTreeMap<&'static str, f64>,
     /// Each way's marks by the scorer, once it's heard them.
     marks: BTreeMap<&'static str, Marks>,
+    /// Whether this recording's pick and marks are kept yet.
+    kept: bool,
     picked: Option<(usize, Way)>,
     playing: Option<(usize, Child)>,
     /// Counts each recording and discard, so a thread whose recording has
@@ -214,6 +223,7 @@ impl Trial {
                 ways: Vec::new(),
                 costs: BTreeMap::new(),
                 marks: BTreeMap::new(),
+                kept: false,
                 picked: None,
                 playing: None,
                 generation: 0,
@@ -257,6 +267,7 @@ impl Trial {
             "picked": picked,
             "revealed": revealed,
             "costs": self.picked.map(|_| &self.costs),
+            "marks": self.picked.and_then(|_| self.marked()),
             "running": self.running.cleaner().name(),
         })
     }
@@ -286,7 +297,55 @@ impl Trial {
         self.clips.clear();
         self.ways.clear();
         self.costs.clear();
+        self.marks.clear();
+        self.kept = false;
         self.picked = None;
+    }
+
+    /// Every way's marks, once there are any.
+    fn marked(&self) -> Option<Value> {
+        if self.marks.is_empty() {
+            return None;
+        }
+        let each: serde_json::Map<String, Value> = self
+            .marks
+            .iter()
+            .map(|(way, marks)| ((*way).to_owned(), marks.said()))
+            .collect();
+        Some(Value::Object(each))
+    }
+
+    /// Keeps the pick and every way's marks beside the pick's file, once
+    /// both are in, and only once a recording.
+    fn keep(&mut self) {
+        let Some((_, way)) = self.picked else { return };
+        if self.kept || self.marks.is_empty() {
+            return;
+        }
+        let Some(file) = self.running.beside("scored") else {
+            return;
+        };
+        self.kept = true;
+        let line = json!({
+            "at": now(),
+            "microphone": self.microphone.as_ref().map(|microphone| &microphone.description),
+            "output": self.output,
+            "picked": way.name(),
+            "marks": self.marked(),
+            "costs": &self.costs,
+        });
+        // Its folder made here too, since a raw pick writes no pick file.
+        let appended = file
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| OpenOptions::new().create(true).append(true).open(&file))
+            .and_then(|mut kept| writeln!(kept, "{line}"));
+        if let Err(why) = appended {
+            eprintln!(
+                "noise-cancelled: keeping the marks in {}: {why}",
+                file.display()
+            );
+        }
     }
 
     /// Refuses to record, with why.
@@ -427,12 +486,19 @@ impl Trial {
         self.clips.clear();
         self.picked = Some((letter, way));
         self.stage = Stage::Picked;
+        self.keep();
         Ok(())
     }
 
     /// Takes the scorer's marks for the recording `generation` counted.
+    /// Marks for a recording since let go are dropped.
     pub fn scored(&mut self, generation: u64, marks: BTreeMap<&'static str, Marks>) {
-        let _ = (generation, marks);
+        if generation != self.generation || marks.is_empty() {
+            return;
+        }
+        self.marks = marks;
+        self.keep();
+        self.changed();
     }
 
     /// Lets go of clips nobody has acted on for a while.
@@ -649,6 +715,50 @@ fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, mode
         }
     }
     trial.changed();
+    // Scored once the clips are offered, so he can listen while it works,
+    // with the lock let go; the marks wait for his pick to be shown.
+    let heard: Vec<(Way, Arc<Vec<f32>>)> = trial
+        .clips
+        .iter()
+        .map(|clip| (clip.way, Arc::clone(&clip.samples)))
+        .collect();
+    drop(trial);
+    if heard.is_empty() {
+        return;
+    }
+    let marks = score_every_way(models, &heard);
+    if let Some(trial) = me.upgrade() {
+        trial.lock().scored(generation, marks);
+    }
+}
+
+/// Every clip's marks, by the way it was cleaned. A clip the scorer can't
+/// hear is left out, and none at all when it can't load, since the trial
+/// goes on without them.
+fn score_every_way(models: &Path, heard: &[(Way, Arc<Vec<f32>>)]) -> BTreeMap<&'static str, Marks> {
+    let scorer = match Scorer::load(models) {
+        Ok(scorer) => scorer,
+        Err(why) => {
+            eprintln!("noise-cancelled: loading the scorer: {why}");
+            return BTreeMap::new();
+        }
+    };
+    let started = spent();
+    let marks = heard
+        .iter()
+        .filter_map(|(way, samples)| match scorer.marks(samples) {
+            Ok(marks) => Some((way.name(), marks)),
+            Err(why) => {
+                eprintln!("noise-cancelled: scoring {}: {why}", way.name());
+                None
+            }
+        })
+        .collect();
+    eprintln!(
+        "noise-cancelled: scored the clips in {} ms of a core",
+        spent().saturating_sub(started).as_millis()
+    );
+    marks
 }
 
 /// The recording, every way, with each way's share of one core while it
