@@ -7287,7 +7287,8 @@ Scope {
     // beyond its line, its own or one made of the picture and the whole
     // words it has. It's out only while the selected row is a thing and the
     // drawer says something the row doesn't, the same at home, in a search
-    // and in every place; an act, a switch or a choice has none, and a
+    // and in every place; a switch, a choice and a bare act have none, an
+    // act with an outcome has its own (`thing: true` and a `drawer`), and a
     // place's names what it holds (drawable) (VKCF3Z, 2026-10-29, after
     // Joel's "shows when it's not needed, and only shows in certain
     // places"; dae7fb67). Between two rows that both have one it stays, and what it
@@ -7296,7 +7297,7 @@ Scope {
     // flickers it. `told`, where given, is told as `unread` of a drawer
     // read as it's first asked for, a turn later, that isn't in yet (the
     // row's `drawerUnread`, as a keyboard's), so a terminal asks again.
-    function drawerOf(row, told) {
+    function drawerOf(row, told, bare) {
         if (!drawable(row))
             return null;
         const own = typeof row.drawer === "function" ? row.drawer()
@@ -7305,8 +7306,33 @@ Scope {
             told.unread = true;
         const drawer = own ? own : { title: row.name, body: row.reads ?? "",
             picture: row.picture ?? "", across: row.across ?? 0, down: row.down ?? 0 };
-        // One that would only repeat its row is never shown (Showing.adds).
-        return Showing.adds(drawer, row) ? drawer : null;
+        // One that would only repeat its row is never shown (Showing.adds);
+        // one shown lists its row's acts and their keys (Showing.acted),
+        // but not `bare`, as drawerWanted asks it (drawerActed).
+        if (!Showing.adds(drawer, row))
+            return null;
+        if (bare)
+            return Object.assign({}, drawer, { actsToCome: true });
+        return actsListed(row) ? Showing.acted(drawer, row) : drawer;
+    }
+
+    // The drawer wanted with its row's acts, filled as it's shown rather
+    // than in drawerWanted: a row's acts are made by asking its verbs, and
+    // making them inside that binding read and wrote what it hangs on, a
+    // binding loop. Only a row's own drawer is filled, never a command's
+    // or a listing's plate.
+    function drawerActed(wanted) {
+        return wanted?.actsToCome === true && actsListed(drawerRow)
+            ? Showing.acted(wanted, drawerRow) : wanted;
+    }
+
+    // Whether a row's verbs are its acts: a place's, and a row whose
+    // Return steps into what it holds, are the rows inside it, which its
+    // drawer names as what it holds, and asking them made a place's every
+    // row as the drawer came (For You's, opening-on-niri's made rows).
+    function actsListed(row) {
+        return !!row && !row.opens && !row.category && !Array.isArray(row.heldNames)
+            && verbOf(row) !== "more";
     }
 
     // Whether a row has a drawer: a thing, a plated row such as Now at
@@ -7350,9 +7376,34 @@ Scope {
 
     // What the selected row has for the drawer, or null: typed to nothing,
     // nothing is selected, and it has none.
-    readonly property var drawerWanted: !open ? null : listing ? listedPlate
-        : commandPlate(commandLoader.item?.chosenLine ?? null)
-            ?? (drawerRow ? drawerOf(drawerRow) : null)
+    readonly property var drawerWanted: {
+        // Asked again each minute it's out, so what it works out from the
+        // clock ("2 min ago", a Last) says the time it's read at rather
+        // than when it came (Joel, 2026-11-11 20:28: "we also need to make
+        // sure that its content is live updated").
+        void drawerMinute.turned;
+        return !open ? null : listing ? listedPlate
+            : commandPlate(commandLoader.item?.chosenLine ?? null)
+                ?? (drawerRow ? drawerOf(drawerRow, undefined, true) : null);
+    }
+    // A minute turning while a drawer is out, and only then: shut or with
+    // no drawer it wakes nothing (plan item 12's shut bars).
+    Timer {
+        id: drawerMinute
+        property int turned: 0
+        running: root.open && root.drawerOut
+        repeat: true
+        // To the minute's turn, as the clock's rows turn with it.
+        interval: 60000
+        onRunningChanged: {
+            if (running)
+                interval = 60000 - Date.now() % 60000;
+        }
+        onTriggered: {
+            turned += 1;
+            interval = 60000 - Date.now() % 60000;
+        }
+    }
     // The row the drawer is made for: the selection, in the frame after the
     // key's own, so a key's frame draws its highlight and never waits on a
     // drawer being made, and a held arrow's once it's let go, so a walk
@@ -7477,8 +7528,9 @@ Scope {
             drawerOut = false;
         } else if (drawerOut && drawerWanted !== null) {
             drawerResting.stop();
-            if (!root.sameMoment(drawerShows, drawerWanted))
-                drawerShows = drawerWanted;
+            const acted = drawerActed(drawerWanted);
+            if (!root.sameMoment(drawerShows, acted))
+                drawerShows = acted;
         } else if (drawerWanted !== null && drawerKeyAt > 0) {
             // One a key brought comes with the row it followed, unrested:
             // only its going rests, so walking past rows with none to
@@ -7502,7 +7554,7 @@ Scope {
         drawerOut = drawerWanted !== null;
         if (!drawerOut)
             return;
-        drawerShows = drawerWanted;
+        drawerShows = drawerActed(drawerWanted);
         // Timed with what working out its row's drawer took as it was
         // followed, but not the rest between, which is the drawer's pace.
         drawerMade(began - drawerAsked, Math.round(KeyTimes.now() - began) + drawerAsked);
@@ -7898,6 +7950,14 @@ Scope {
                 eyebrowNames: !!root.drawerShows?.eyebrowNames,
                 // What of it is drawn in the room it has.
                 eyebrowDrawn: drawerCard.eyebrowSaid,
+                // Its acts as drawn, each its key and name, and its nerdy
+                // bits' names, with whether they're folded.
+                acts: drawerCard.acts.map(act => `${act.key ?? ""} ${act.name}`.trim()),
+                nerd: drawerCard.nerd.map(bit => String(bit.label ?? "")),
+                folded: drawerCard.folded,
+                // How many times the drawer was asked again as a minute
+                // turned while it was out.
+                minutes: drawerMinute.turned,
                 // Where its lines' baselines are and the card's they're
                 // set on, down from the top the two share, to a hundredth.
                 lines: {
@@ -10433,6 +10493,9 @@ Scope {
                                 return;
                             case "commandAgain":
                                 root.commandAgain();
+                                return;
+                            case "fold":
+                                drawerCard.fold();
                                 return;
                             case "numbers":
                                 root.numbersRelative = !root.numbersRelative;

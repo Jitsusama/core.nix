@@ -72,6 +72,9 @@ const table = [
     // macros, and says so until the next key (the vi-paradigm spec, Normal).
     { act: "close", mode: "normal", keys: [["Z", "Z"], ["Space", "w"]] },
     { act: "quitSaid", mode: "normal", keys: ["q"] },
+    // za opens or folds the drawer's nerdy bits from the rows too, as from
+    // inside it (the drawer spec's part 7).
+    { act: "fold", mode: "normal", keys: [["z", "a"]] },
     // Ctrl+O and Ctrl+I go back and forward through the places stepped into,
     // as Vim's jump list; Space Tab goes to the place used last, as his goes
     // to the file used last. Tab is apart from Ctrl+I, as Neovim under

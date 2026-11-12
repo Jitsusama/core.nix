@@ -187,6 +187,23 @@ QtObject {
             "nothingHere"]);
         expect("and with nothing typed and nothing stepped into, the greeting",
             Showing.nothingMark("", null), "greeting");
+        // A drawer's acts are its row's verbs, Return's first by ↵ and the
+        // rest by their own keys where they have one (the drawer spec's
+        // part 6); a drawer giving its own keeps them, and a row of none
+        // gives none.
+        const verbs = [{ key: "verb:copy", name: "Copy It", actKey: "y" },
+            { key: "verb:hour", name: "For an Hour", actKey: "a" },
+            { key: "verb:peek", name: "Peek" }, { key: "verb:blank", name: "" }];
+        expect("a drawer's acts are its row's verbs, Return's first",
+            Showing.acted({ title: "Charge" }, { verbs: () => verbs }).acts, [
+                { name: "Copy It", key: "\u21b5" }, { name: "For an Hour", key: "a" },
+                { name: "Peek", key: "" }]);
+        const own = { title: "Shot", acts: [{ name: "Take It", key: "\u21b5" }] };
+        expect("a drawer's own acts stay, and a row of no verbs gives none", [
+            Showing.acted(own, { verbs: () => verbs }),
+            Showing.acted({ title: "Drafts" }, { name: "Drafts" }).acts,
+            Showing.acted(null, { verbs: () => verbs })
+        ], [own, undefined, null]);
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

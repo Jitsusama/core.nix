@@ -947,14 +947,14 @@ QtObject {
             holds(`the drawer's search: ${act} repeats while held`, Keys.repeats(act), true);
         holds("the drawer's search: seek is once a press", Keys.repeats("seek"), false);
         // za opens or folds the drawer's nerdy bits, as Vim's za a fold, once
-        // a press; z alone waits for it, and on the rows it's no fold.
+        // a press, in the drawer and on the rows alike.
         holds("the drawer: za opens or folds its nerdy bits", typed(into.concat(["z", "a"])).acts,
             ["normal", "drawer", "fold"]);
         holds("the drawer: za twice folds them back",
             typed(into.concat(["z", "a", "z", "a"])).acts, ["normal", "drawer", "fold", "fold"]);
         holds("the drawer: a fold is once a press", Keys.repeats("fold"), false);
-        holds("the drawer: za on the rows is no fold",
-            typed(["Escape", "z", "a"]).acts.includes("fold"), false);
+        holds("the rows: za opens or folds the drawer's nerdy bits too",
+            typed(["Escape", "z", "a"]).acts, ["normal", "fold"]);
         holds("the drawer's search: / on the rows is no page's search",
             typed(["Escape", "/", "x", "Return"]).acts.includes("seek"), false);
 

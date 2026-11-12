@@ -23,6 +23,7 @@ const normal = [
     { name: "up", acts: ["out"] },
     // Tab into what a row holds, as a program's page.
     { name: "into", acts: ["into"] },
+    { name: "fold", acts: ["fold"] },
     // Ctrl+] to the row's own place, where a row found elsewhere lives or
     // into what Return opens, as a mail's sender (VKCF3Z), and Ctrl+T back.
     { name: "follow", acts: ["follow", "tagBack"] },

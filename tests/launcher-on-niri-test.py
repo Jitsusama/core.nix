@@ -303,6 +303,36 @@ def test_the_dates_drawer_says_its_week_and_its_moon_copies_on_return(shell: She
     assert re.fullmatch(MOON_PHASES, shell.copied()), shell.copied()
 
 
+def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
+    """A drawer's nerdy bits open and fold on za, and they stay as left from row to row.
+
+    A drawer ends with the raw figures behind its facts, folded until za (VKCF3Z's drawer spec,
+    part 7), and a fold he opened stays open into the next drawer, as a Vim fold he chose.
+    """
+    shell.answer("date")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["nerd"] == ["ISO Week Date", "Julian Day"]
+            and shown["drawer"]["folded"] is True
+        )
+    )
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    shell.close_launcher()
+    shell.answer("time")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
+            and shown["drawer"]["folded"] is False
+        )
+    )
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.close_launcher()
+
+
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's
