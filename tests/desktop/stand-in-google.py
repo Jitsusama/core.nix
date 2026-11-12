@@ -755,7 +755,8 @@ def keep(account: Account, shell: socket.socket) -> None:
 def calendar_records(meetings: object, held: object) -> list[dict[str, object]]:
     """Give Calendar's ready records as the program makes them, at this moment."""
     asked = json.dumps({"meetings": meetings, "held": held, "now": int(time.time() * 1000)})
-    made = subprocess.run(
+    # The program and its words are the VM's own, from Nix (tests/desktop.nix).
+    made = subprocess.run(  # noqa: S603
         [sys.argv[2], sys.argv[3]], input=asked, capture_output=True, text=True, check=True
     )
     return cast("list[dict[str, object]]", json.loads(made.stdout))
