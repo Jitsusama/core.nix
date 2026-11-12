@@ -27,15 +27,15 @@ pub fn launcher(journal: &str) -> BTreeMap<String, f64> {
             usable.extend(first_number(rest));
         } else if said.contains(" keys presented a median ") {
             keys.add(said);
-        } else if !said.contains(" presented a median ") {
-            continue;
-        } else if said.contains(" change in ") || said.contains(" changes in ") {
-            // "N changes in agents presented ...", or "1 change in ...".
-            changes.add(said);
-        } else if said.contains(" drawer in ") || said.contains(" drawers in ") {
-            // "N drawers in programs presented ...": a row's details
-            // following the key that landed on it.
-            drawers.add(said);
+        } else if said.contains(" presented a median ") {
+            if said.contains(" change in ") || said.contains(" changes in ") {
+                // "N changes in agents presented ...", or "1 change in ...".
+                changes.add(said);
+            } else if said.contains(" drawer in ") || said.contains(" drawers in ") {
+                // "N drawers in programs presented ...": a row's details
+                // following the key that landed on it.
+                drawers.add(said);
+            }
         }
     }
     let mut figures = BTreeMap::new();
