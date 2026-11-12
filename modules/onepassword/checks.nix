@@ -42,7 +42,7 @@ onLinux {
   # 1Password opened from its entry (in-its-unit.sh) hands its window to
   # the unit's app once while the unit stays up, and once more when the
   # unit restarted under it, as when the app died making the window.
-  onepassword-opens-its-window-after-a-restart =
+  onepassword-opens-its-window-when-its-unit-starts-again =
     let
       # systemctl saying the unit's invocation as a file holds it, and
       # 1Password counting its runs and, when told to, dying as its unit
@@ -59,7 +59,9 @@ onLinux {
         fi
       '';
     in
-    pkgs.runCommandLocal "onepassword-opens-its-window-after-a-restart"
+    # Kept in Nix because each line runs the script Nix gives it with the
+    # stand-ins Nix makes above, or reads what they wrote.
+    pkgs.runCommandLocal "onepassword-opens-its-window-when-its-unit-starts-again"
       { nativeBuildInputs = [ systemctl ]; }
       ''
         fail() { echo "$1"; exit 1; }

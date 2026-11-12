@@ -21,7 +21,8 @@ handed=0
 # A start waits out a restart already under way, so the app asked again is
 # the unit's new one, ready for it.
 systemctl --user start onepassword.service || true
-if [ "$(invocation)" != "$before" ]; then
+now=$(invocation)
+if [ "$now" != "$before" ]; then
   exec "$app" "$@"
 fi
 exit "$handed"
