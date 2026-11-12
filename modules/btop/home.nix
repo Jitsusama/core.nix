@@ -13,16 +13,17 @@
 # memory box, keeping the processor and the processes, and they come back
 # when the window grows (gives-way.patch).
 #
-# Escape backs out a step, as it does everywhere else: out of a process's
-# details, off the process chosen, and then does nothing, never ending
-# btop, which q does; m alone opens the menu Escape used to
-# (escape-backs-out.patch). Left and Right choose what
-# the processes are sorted by, that way along their columns.
-#
 # btop speaks Vim's keys beside its own (modules/keys/language.toml): j and k
-# choose the process below and above, g and G the first and the last, and h
-# and l the sort column, as the arrows do. That moves killing to K and its
-# own list of keys to H, as btop's vim keys have them; ? still shows it.
+# choose the process below and above, gg and G the first and the last, Ctrl+d
+# and Ctrl+u move half the list, - goes out of a process's details, and h
+# and l choose the sort column, as the arrows do. That moves killing to K and
+# its own list of keys to H, as btop's vim keys have them; ? still shows it.
+# ZZ quits, as it closes in Vim, and q alone does nothing, as nothing
+# records; Escape only leaves the filter, never quitting or opening
+# anything (Joel, 2026-11-05: "fuck escape quitting"), and m alone opens
+# the menu Escape used to. gg and ZZ wait for their second key as long as
+# the language says (speaks-vims-keys.patch). Left and Right choose what
+# the processes are sorted by, that way along their columns.
 #
 # While it runs, btop names the terminal's window btop, keeping the title
 # it had on the terminal's stack and putting it back as it quits
@@ -40,7 +41,7 @@ let
 
   grouped = group: map (key: key // { inherit group; });
 
-  # btop's keys, as escape-backs-out.patch leaves them, from its own list
+  # btop's keys, as speaks-vims-keys.patch leaves them, from its own list
   # (src/btop_menu.cpp's help_text).
   keys =
     grouped "processes" [
@@ -53,7 +54,7 @@ let
         does = "The process below";
       }
       {
-        chord = "g";
+        chord = "g g";
         does = "The first process";
       }
       {
@@ -61,12 +62,25 @@ let
         does = "The last process";
       }
       {
+        chord = "Ctrl+d";
+        does = "Down half the list";
+      }
+      {
+        chord = "Ctrl+u";
+        does = "Up half the list";
+      }
+      {
         chord = "Return";
         does = "The chosen process's details";
       }
       {
+        chord = "Minus";
+        does = "Out of the process's details";
+      }
+      {
         chord = "Escape";
-        does = "Back out a step";
+        does = "Leave the filter";
+        when = "in the filter";
       }
       {
         chord = "f";
@@ -81,8 +95,9 @@ let
         does = "Open or close the chosen branch";
       }
     ]
-    # The sort's keys, beside the groups, as the processes' has no room
-    # left for them under the launcher's thirteen rows.
+    # The sort's keys and the signals', beside the groups, as the
+    # processes' has no room left for them under the launcher's thirteen
+    # rows.
     ++ [
       {
         chord = "h";
@@ -97,7 +112,7 @@ let
         does = "Reverse the sort";
       }
     ]
-    ++ grouped "processes" [
+    ++ [
       {
         chord = "t";
         does = "End the chosen process";
@@ -159,7 +174,7 @@ let
         does = "btop's own list of keys";
       }
       {
-        chord = "q";
+        chord = "Shift+z Shift+z";
         does = "Quit btop";
       }
     ];
@@ -232,9 +247,14 @@ in
     package = pkgs.btop.overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [
         ./gives-way.patch
-        ./escape-backs-out.patch
+        ./speaks-vims-keys.patch
         ./names-its-window.patch
       ];
+      # How long gg and ZZ wait for their second key.
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace src/btop_input.cpp \
+          --replace-fail @wait@ ${toString config.jitsusama.keyLanguage.timing.wait}
+      '';
     });
     themes.theme = lib.concatLines (
       lib.mapAttrsToList (slot: color: ''theme[${slot}]="${color}"'') slots

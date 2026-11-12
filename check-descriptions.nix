@@ -308,18 +308,20 @@
   booted-generation-stays-installed = ''
     a switch never removes the generation the machine booted
   '';
-  btop-backs-out-on-escape = ''
-    btop's Escape backs out a step, off a process chosen, and never ends btop, which q does, rather
-    than opening its menu
-  '';
   btop-draws-in-the-theme = ''
     btop draws in the theme's colours, not its own
   '';
   btop-moves-on-vim-keys = ''
-    btop chooses processes on Vim's j, k and G, rather than leaving them to nothing
+    btop chooses processes on Vim's j, k, gg, G, Ctrl+d and Ctrl+u, a g alone waiting, and goes
+    out of a process's details on -, with Escape letting go of nothing, rather than leaving them to
+    nothing or another act
   '';
   btop-names-its-window = ''
     btop names its terminal's window btop while it runs, and gives the title back as it quits
+  '';
+  btop-quits-on-zz-alone = ''
+    btop ends on ZZ and on neither Escape nor q, with a process chosen or not, rather than quitting
+    on q or opening its menu on Escape
   '';
   btrfs-reclaims-its-chunks = ''
     tmpfiles turns Btrfs's reclaim on for data and metadata

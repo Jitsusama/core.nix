@@ -39,7 +39,7 @@ onLinux {
 
   # btop names its window as it starts, keeping the terminal's own title on
   # the terminal's stack, and gives that title back as it quits, so the
-  # launcher lists btop's keys only while it runs. tmux gives it q, as a
+  # launcher lists btop's keys only while it runs. tmux gives it ZZ, as a
   # terminal sends it, and script, inside, keeps what btop writes.
   btop-names-its-window =
     let
@@ -69,7 +69,9 @@ onLinux {
           exit 1
         fi
         sleep 2
-        tmux send-keys q
+        tmux send-keys Z
+        sleep 0.1
+        tmux send-keys Z
         for _ in $(seq 600); do
           [ -e ended ] && break
           sleep 0.1
@@ -103,16 +105,16 @@ onLinux {
         touch $out
       '';
 
-  # Escape backs out of btop a step at a time and never ends it (Joel,
-  # 2026-11-05: "fuck escape quitting"): alone it does nothing, and with a
-  # process chosen by Down one lets it go, a second doing nothing, where
-  # btop's own Escape opens its menu; q ends it. The keys go through tmux,
-  # as a terminal sends them.
-  btop-backs-out-on-escape =
+  # btop ends on ZZ alone, as Vim closes on it: never on Escape (Joel,
+  # 2026-11-05: "fuck escape quitting"), alone or with a process chosen by
+  # Down, where btop's own Escape opens its menu, and never on q, which
+  # does nothing, as nothing records. The keys go through tmux, as a
+  # terminal sends them.
+  btop-quits-on-zz-alone =
     let
       home = account workstation;
     in
-    pkgs.runCommandLocal "btop-backs-out-on-escape"
+    pkgs.runCommandLocal "btop-quits-on-zz-alone"
       {
         nativeBuildInputs = [
           home.programs.btop.package
@@ -121,18 +123,27 @@ onLinux {
       }
       ''
         export HOME=$PWD LANG=C.UTF-8 TMUX_TMPDIR=$PWD
-        # btop in a terminal of its own, given these keys a second apart;
+        # btop in a terminal of its own, given these keys the seconds
+        # apart given first, a pair's well inside the key language's wait;
         # then whether it has ended, waiting up to ten seconds for a btop
         # expected to end so a busy machine can't fail it.
         after() {
           expected=$1
-          shift
+          apart=$2
+          shift 2
           rm -f ended
           tmux new-session -d -x 120 -y 40 "btop; touch $PWD/ended; sleep 60"
-          sleep 2
+          # Until btop has drawn its processes, it reads nothing, and keys
+          # sent before then come in one read, which a pair can't be.
+          for _ in $(seq 100); do
+            tmux capture-pane -p > pane
+            grep -q proc pane && break
+            sleep 0.1
+          done
+          sleep 1
           for key in "$@"; do
             tmux send-keys "$key"
-            sleep 1
+            sleep "$apart"
           done
           for _ in $(seq 100); do
             [ -e ended ] || [ "$expected" = running ] || { sleep 0.1; continue; }
@@ -145,10 +156,11 @@ onLinux {
             exit 1
           fi
         }
-        after running Escape
-        after running Down Escape
-        after running Down Escape Escape
-        after ended q
+        after running 1 Escape
+        after running 1 Down Escape
+        after running 1 q
+        after running 1 Down q
+        after ended 0.1 Z Z
         touch $out
       '';
 }
