@@ -1773,6 +1773,32 @@ def stepped_into_programs(shell: Shell) -> int:
     return int(laid_out(shell)["factsHeld"])
 
 
+def test_a_closed_program_holding_only_new_windows_holds_nothing_to_go_into(
+    shell: Shell,
+) -> None:
+    """Tab on a closed program holding only its New Windows says not here, and Return starts it.
+
+    Foot Server in Programs, closed, went into a list of New Window and New Window Below, a
+    submenu of acts alone (Y2YBTS's sweep, 2026-11-12 [39f55fff]: a row holding only acts is
+    never stepped into). Foot's server opens no window, so its start is seen as the launcher
+    closing; the server is stopped after.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    stepped_into_programs(shell)
+    shell.down_to("Foot Server")
+    held = len(shell.showing()["held"])
+    shell.send_key("tab")
+    shell.launcher_until(lambda shown: "not here" in str(shown["saying"]))
+    shown = shell.showing()
+    assert len(shown["held"]) == held, f"Tab went into Foot Server: {shown['path']}"
+    try:
+        shell.send_key("ret")
+        shell.launcher_closed()
+    finally:
+        shell.as_account("pkill -f 'foot --server' || true")
+
+
 def drawer_moved(was: str, shown: Json) -> bool:
     """Say whether the drawer is out on the selected row, titled otherwise than it was."""
     return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was

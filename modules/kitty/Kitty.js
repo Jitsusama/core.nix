@@ -435,7 +435,7 @@ function drawerOf(pane, words, now) {
     };
 }
 
-// The drawer of kitty's one row for the agents' panes, which the
+// The drawer of kitty's one row for the agents' windows, whose panes the
 // programs daemon leaves out of Tabs (agents.rs): how many there are, and
 // that Agents is where each is, by the launcher's words for it: what it
 // says, and the sentence it tells.
