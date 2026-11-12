@@ -67,7 +67,7 @@ pub struct Note {
     pub re: Option<String>,
 }
 
-/// The nine axes, read from `s`.
+/// The ten axes, read from `s`.
 #[must_use]
 pub fn read(s: &Sources) -> Vec<Axis> {
     let (over, keys) = launcher(&s.launcher);
@@ -88,18 +88,40 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         scale(s),
         axis(
             "polish",
+            // Nothing counts how what he sees meets the design's bar yet,
+            // so polish says so rather than borrow another axis's figure.
             vec![
                 Reading::new(
-                    "{} launcher keys over 50 ms today",
-                    Some(count(over)),
+                    "{} surfaces that failed the design's checks this week",
+                    None,
                     "",
-                    "Y2YBTS",
+                    "1JQPPC",
                 )
                 .bar(Bar::AtMost(0.0))
-                .detail(Some(format!("of {keys} keys")))
-                .from("the shell's journal")
+                .detail(Some(
+                    "nothing counts this yet; Friday's blind-spot review takes it".into(),
+                ))
                 .his(),
             ],
+        ),
+        axis(
+            "responsiveness",
+            [
+                vec![
+                    Reading::new(
+                        "{} launcher keys over 50 ms today",
+                        Some(count(over)),
+                        "",
+                        "Y2YBTS",
+                    )
+                    .bar(Bar::AtMost(0.0))
+                    .detail(Some(format!("of {keys} keys")))
+                    .from("the shell's journal")
+                    .his(),
+                ],
+                counted::responds(&s.counted),
+            ]
+            .concat(),
         ),
         stress(s),
     ]

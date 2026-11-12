@@ -123,6 +123,47 @@ pub fn pained(s: &Sources) -> Reading {
     .his()
 }
 
+/// How fast the machine answers Joel, from health's day file: the slowest
+/// boot to a ready launcher with his password left out, the slowest
+/// shutdown, and the minutes the day's worst moments cost him, each timed
+/// from his key to what he waited for, so each is his side. The bars are
+/// the ones docs/design.md holds the machine to; no minute lost is the
+/// bar for the last, since he asked for end to end perfection.
+#[must_use]
+pub fn responds(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file";
+    vec![
+        Reading::new(
+            "the slowest boot {} to a ready launcher, the password left out",
+            figure("health.boot.seconds"),
+            " s",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(30.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "the slowest shutdown {}",
+            figure("health.shutdown.seconds"),
+            " s",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(10.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "time lost in the day's worst moments {}",
+            figure("health.feel.lost-minutes"),
+            " min",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from("health's day file, from its feel of his tasks")
+        .his(),
+    ]
+}
+
 /// The share of the last day's turns that made exactly one tool call, from
 /// the newest measure's "Turns Doing One Thing" table, whose first row is
 /// the last day: `| ending | turns | one | none | several |`.
@@ -294,6 +335,32 @@ mod tests {
                 "asks for an item and command already asked for today: no reading yet",
                 "of asks a minted token would have spared: no reading yet",
             ]
+        );
+    }
+
+    #[test]
+    fn responsiveness_comes_from_healths_figures() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.boot.seconds".to_owned(), 27.0),
+                ("health.shutdown.seconds".to_owned(), 12.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = responds(&s);
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "the slowest boot 27 s to a ready launcher, the password left out, at most 30 s",
+                "the slowest shutdown 12 s, at most 10 s",
+                "time lost in the day's worst moments: no reading yet",
+            ]
+        );
+        assert_eq!(
+            read.iter().map(Reading::out).collect::<Vec<_>>(),
+            [false, true, false],
+            "only the shutdown is past its bar"
         );
     }
 
