@@ -1,6 +1,6 @@
 """An agent's row in the launcher does, on Return, the act its state makes harmless, on niri.
 
-modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh. The sessions
+modules/quickshell/checks/agents.nix runs this through pytest in tests/nested-niri.sh. The sessions
 are the realm's own mycelium node's, which reads the presence records laid here as pi lays
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's

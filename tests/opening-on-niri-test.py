@@ -1,6 +1,6 @@
 """An opening draws home from what the launcher kept, then fills it in where it stands, on niri.
 
-modules/quickshell/checks.nix runs this through pytest inside tests/nested-niri.sh, with the
+modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run. Through a storm of windows changing, every core
 busy, an opening waited 25 to 48 ms on the shell waking for it before it could draw (2026-11-10),
 so a closed launcher keeps home, and an opening draws that at once and wakes the rest after its
