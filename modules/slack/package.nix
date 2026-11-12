@@ -1,7 +1,9 @@
 # slack-people and slack-unreads, built from this directory, their tests run
 # as they build. Their rows take the form every daemon's do (../ready-rows),
-# so the source is cut from the modules folder holding both, and built from
-# this one.
+# served by the side every daemon shares (../daemon-serve), its tests asking
+# through the client every daemon's tests share (../daemon-client), so the
+# source is cut from the modules folder holding them, and built from this
+# one.
 {
   lib,
   rustPlatform,
@@ -22,6 +24,10 @@ rustPlatform.buildRustPackage rec {
       ./tests/words.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
+      ../daemon-client/Cargo.toml
+      ../daemon-client/src
     ];
   };
   sourceRoot = "${src.name}/slack";

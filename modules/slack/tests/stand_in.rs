@@ -42,7 +42,11 @@ impl StandIn {
                 let Ok(mut stream) = stream else { continue };
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
                 let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
+                // A connection shut before it asks anything, as one the
+                // program opened as a test killed it, asked nothing.
+                if reader.read_line(&mut line).unwrap_or(0) == 0 {
+                    continue;
+                }
                 let mut headers = Vec::new();
                 let mut length = 0;
                 loop {
@@ -1116,7 +1120,7 @@ fn what_is_unread_is_listed_and_watched_each_change_said_as_it_changes() {
     }
     let health = shell.answer(&serde_json::json!({"id": 5, "ask": "health"}));
     assert_eq!(
-        (&health["watching"], &health["sources"]["slack"]["state"]),
+        (&health["watches"], &health["sources"]["slack"]["state"]),
         (&serde_json::json!(0), &serde_json::json!("answering"))
     );
     program.kill().unwrap();
@@ -1309,18 +1313,20 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     });
     shell.answer(&watch);
     // Joel reads Ada's messages in Slack: both are said done, read in
-    // Slack, with her conversation's mark, and nothing goes.
+    // Slack, with her conversation's mark, and nothing goes. A change
+    // names what moved by key, as every daemon's does; the shell puts
+    // messages newest first itself (SlackUnreads.js).
     ADA_READ.store(true, std::sync::atomic::Ordering::SeqCst);
     let changed = shell.heard(|said| said["id"] == "read" && said.get("changed").is_some());
     assert_eq!(
         (keys(&changed["changed"]), &changed["gone"]),
         (
             vec![
-                "slack-message:D1:1730100002.000100",
                 "slack-message:D1:1730100001.000100",
+                "slack-message:D1:1730100002.000100",
                 "slack-read:D1"
             ],
-            &serde_json::json!([])
+            &serde_json::Value::Null
         )
     );
     let done = &changed["changed"][0]["slack-message"]["done"];
