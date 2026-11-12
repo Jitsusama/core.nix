@@ -181,10 +181,6 @@ Provider {
         const nothing = { facts: [] };
         if (kind === "internet")
             return Drawers.internet(model, now(), settings);
-        if (kind === "node") {
-            const node = (model?.nodes ?? []).find(one => one.id === held.id);
-            return node ? Drawers.node(model, node, now(), settings) : nothing;
-        }
         if (kind === "device") {
             const device = (model?.devices ?? []).find(one => one.mac === held.mac);
             return device ? deviceDrawer(device, called) : nothing;

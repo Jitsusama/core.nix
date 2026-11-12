@@ -186,7 +186,9 @@ function factOf(fact, now, said) {
     if (fact.heading !== undefined) {
         return { heading: fact.heading };
     }
-    const drawn = { label: fact.name ?? "", value: itemSaid(fact, now, said) };
+    // A fact named by a time, as who joined a node is by when, has it worded.
+    const label = timed(fact.name) ? timeSaid(fact.name, now, said) : fact.name ?? "";
+    const drawn = { label, value: itemSaid(fact, now, said) };
     for (const field of ["qualifier", "identifies", "hue", "figure", "words"]) {
         if (fact[field] !== undefined) {
             drawn[field] = fact[field];

@@ -160,7 +160,6 @@
     "launcher/HomeNetworkHistory.js"
     "launcher/Interfaces.js"
     "launcher/Machine.js"
-    "launcher/Order.js"
   ];
   "launcher/HomeNetworkHistory.js" = [
     "When.js"

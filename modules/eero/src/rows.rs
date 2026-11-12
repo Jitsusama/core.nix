@@ -101,8 +101,43 @@ const SAID: &[(&str, &[&str])] = &[
     (
         "eero:node",
         &[
-            "gateway", "ethernet", "wifi", "from", "over", "fromOver", "bars", "2.4GHz", "5.2GHz",
-            "5.8GHz", "5GHz", "6GHz", "ghz",
+            "gateway",
+            "ethernet",
+            "wifi",
+            "from",
+            "over",
+            "fromOver",
+            "bars",
+            "2.4GHz",
+            "5.2GHz",
+            "5.8GHz",
+            "5GHz",
+            "6GHz",
+            "ghz",
+            "onNetwork",
+            "node",
+            "allWifi",
+            "allEthernet",
+            "onWifi",
+            "onEthernet",
+            "mhz",
+            "updateAvailable",
+            "upToDate",
+            "on",
+            "off",
+            "percent",
+            "internet",
+            "backhaul",
+            "in",
+            "out",
+            "notLinked",
+            "upTo",
+            "of",
+            "late",
+            "never",
+            "ago",
+            "joined",
+            "left",
         ],
     ),
     (
@@ -181,7 +216,11 @@ impl Words {
             internet: word("eero:internet", &["name"])?,
             ..Words::default()
         };
-        for id in place::NAMES.into_iter().chain(drawers::NAMES) {
+        for id in place::NAMES
+            .into_iter()
+            .chain(drawers::NAMES)
+            .chain(drawers::NODE_NAMES)
+        {
             words.names.insert(id, word(id, &["name"])?);
         }
         for one in place::TELLS {
@@ -510,7 +549,7 @@ pub(crate) fn nodes_said(model: &HomeNetwork, words: &Words) -> String {
 
 /// How a node reaches the one before it, with its bars over Wi-Fi:
 /// "Ethernet", or "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars".
-fn backhaul_said(node: &Node, words: &Words) -> String {
+pub(crate) fn backhaul_said(node: &Node, words: &Words) -> String {
     let way = &node.backhaul;
     if way.kind == BackhaulKind::Ethernet {
         return words.say("eero:node", "ethernet").to_owned();
@@ -565,7 +604,7 @@ fn node_row(node: &Node, words: &Words) -> Value {
     json!({
         "key": key(&format!("node:{}", node.id)), "thing": format!("eero:node:{}", node.id),
         "place": PLACE, "kind": "node", "name": node_name(node), "glyph": glyph,
-        "hue": "machine", "depth": 0,
+        "hue": "machine", "depth": 0, "drawer": drawers::node_key(&node.id),
         "side": items(devices.map(item)),
         "note": items([
             item(if state == "online" { String::new() } else { state }),

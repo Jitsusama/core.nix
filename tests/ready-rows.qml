@@ -186,6 +186,12 @@ QtObject {
             body: "Rows served ready.",
             eyebrow: "quest"
         });
+        // A node's who joined and left: each fact named by when, worded
+        // as its value's time is.
+        Expect.same("a fact named by a time has it worded", Ready.drawerOf({
+            title: "Den",
+            facts: [{ name: { at: now - 12 * 60_000, as: "ago" }, said: "phone 1 left" }]
+        }, now, said).facts, [{ label: "12 min", value: "phone 1 left" }]);
         // A budget's: its eyebrow names it as written, a fact says words,
         // and one carries its meter.
         const meter = { shape: "stroke", values: [0.4], warn: false };
