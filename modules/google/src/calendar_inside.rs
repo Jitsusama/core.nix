@@ -187,64 +187,118 @@ fn later(
         let Some(start) = shifted(meeting.start, *by, within.zone) else {
             continue;
         };
-        let end = start + lasts;
-        let Ok(iso) = Timestamp::from_millisecond(start) else {
-            continue;
+        let to = Moved {
+            start,
+            end: start + lasts,
+            name: Some(name),
         };
-        let key = format!("{parent}:{iso}");
-        let dated = dated_between(meeting, start, end, within.zone, words);
-        let side: Vec<Value> = clash(meeting, start, end, within.others)
-            .map(|other| {
-                let title = if other.title.is_empty() {
-                    words.untitled.as_str()
-                } else {
-                    other.title.as_str()
-                };
-                json!({"said": fill(&words.move_clashes, &[("title", title)])})
-            })
-            .into_iter()
-            .collect();
-        let (_, glyph) = words.act("verb:calendar:move");
-        rows.push(json!({
-            "key": &key,
-            "thing": format!("{}:move:{iso}", within.thing),
-            "place": within.place,
-            "kind": "time",
-            "parent": parent,
-            "depth": 2,
-            "name": name,
-            "glyph": glyph,
-            "hue": "action",
-            "side": side,
-            "note": &dated,
-            "acts": [more()],
-        }));
-        let to = fill(
-            &words.move_to,
-            &[("sure", &words.move_sure), ("when", &dated)],
-        );
-        rows.push(json!({
-            "key": format!("{key}:sure"),
-            "thing": format!("{}:move:{iso}:sure", within.thing),
-            "place": within.place,
-            "kind": "act",
-            "parent": &key,
-            "depth": 3,
-            "name": fill(
-                words.fact("telling", "sure"),
-                &[("sure", &to), ("telling", telling)],
-            ),
-            "glyph": glyph,
-            "hue": "alert",
-            "sure": true,
-            "side": [],
-            "acts": [asks(
-                "verb:calendar:move",
-                &json!({"move": {"id": meeting.id, "start": start, "end": end}}),
-            )],
-        }));
+        rows.extend(moved(within, parent, meeting, telling, &to, words));
     }
     rows
+}
+
+/// A time typed inside Move, from `start` to `end`, as the daemon answers
+/// a search within it (ready-rows.md's `within`): named by its day and
+/// times, and made as a later time is, keyed by when it starts, so the
+/// same time typed on is the same row.
+pub(crate) fn typed(
+    within: &Within,
+    parent: &str,
+    meeting: &Meeting,
+    telling: &str,
+    (start, end): (i64, i64),
+    words: &Words,
+) -> Vec<Value> {
+    let to = Moved {
+        start,
+        end,
+        name: None,
+    };
+    moved(within, parent, meeting, telling, &to, words)
+}
+
+/// A time Move takes the meeting to, and its name, or none to be named by
+/// its day and times.
+struct Moved<'a> {
+    start: i64,
+    end: i64,
+    name: Option<&'a str>,
+}
+
+/// The row of a time Move offers, inside `parent`, its day and times
+/// below unless that's its name, at its side the first of Joel's other
+/// meetings it would overlap, and the one row inside it asking Joel to be
+/// sure, which names who Google tells and whose Return moves it; none for
+/// a time no clock says.
+fn moved(
+    within: &Within,
+    parent: &str,
+    meeting: &Meeting,
+    telling: &str,
+    to: &Moved,
+    words: &Words,
+) -> Vec<Value> {
+    let (start, end) = (to.start, to.end);
+    let Ok(iso) = Timestamp::from_millisecond(start) else {
+        return Vec::new();
+    };
+    let key = format!("{parent}:{iso}");
+    let dated = dated_between(meeting, start, end, within.zone, words);
+    let (name, note) = match to.name {
+        Some(name) => (name, dated.as_str()),
+        None => (dated.as_str(), ""),
+    };
+    let side: Vec<Value> = clash(meeting, start, end, within.others)
+        .map(|other| {
+            let title = if other.title.is_empty() {
+                words.untitled.as_str()
+            } else {
+                other.title.as_str()
+            };
+            json!({"said": fill(&words.move_clashes, &[("title", title)])})
+        })
+        .into_iter()
+        .collect();
+    let (_, glyph) = words.act("verb:calendar:move");
+    let time = json!({
+        "key": &key,
+        "thing": format!("{}:move:{iso}", within.thing),
+        "place": within.place,
+        "kind": "time",
+        "parent": parent,
+        "depth": 2,
+        "name": name,
+        "glyph": glyph,
+        "hue": "action",
+        "side": side,
+        "note": note,
+        "acts": [more()],
+    });
+    let to = fill(
+        &words.move_to,
+        &[("sure", &words.move_sure), ("when", &dated)],
+    );
+    let sure = json!({
+        "key": format!("{key}:sure"),
+        "thing": format!("{}:move:{iso}:sure", within.thing),
+        "place": within.place,
+        "kind": "act",
+        "parent": &key,
+        "depth": 3,
+        "name": fill(
+            words.fact("telling", "sure"),
+            &[("sure", &to), ("telling", telling)],
+        ),
+        "glyph": glyph,
+        "hue": "alert",
+        "sure": true,
+        "side": [],
+        "acts": [asks(
+            "verb:calendar:move",
+            &json!({"move": {"id": meeting.id, "start": start, "end": end}}),
+        )],
+    });
+    vec![time, sure]
 }
 
 /// A meeting's start moved by minutes, or by days at the same time on

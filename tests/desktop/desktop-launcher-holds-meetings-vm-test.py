@@ -778,10 +778,16 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     desktop.down_to("Move the Meeting")
     desktop.step_in("ret")
     desktop.launcher_until(lambda shown: "Fifteen Minutes Later" in shown["rows"])
-    # A time typed there is offered first, named by its day and times.
+    # A time typed there is offered first, named by its day and times, the
+    # one google reads and makes as it makes the later times.
     day = machine.succeed("date -d tomorrow '+%A %-d %B'").strip()
     when = f"{day} \u00b7 10:00 to 10:30"
     desktop.type_in("tomorrow 10:00", selecting=when)
+    desktop.launcher_until(
+        lambda shown: str((shown["selected"] or {}).get("is")).startswith(
+            "calendar:meeting:standup:move:"
+        )
+    )
     # Return asks first, naming who Google tells, and moves nothing yet.
     desktop.step_in("ret")
     desktop.launcher_until(
@@ -792,9 +798,10 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     )
     machine.fail(f"test -s {asked}")
     machine.send_key("ret")
-    moved = '{"move":{"id":"standup","start":'
+    # Matched by its fields, since google's ask names them in its own order.
     machine.wait_until_succeeds(
-        f"grep -qF {shlex.quote(moved)} {asked}", timeout=dt.timedelta(seconds=30)
+        f'grep -F \'{{"move":\' {asked} | grep -qF \'"id":"standup"\'',
+        timeout=dt.timedelta(seconds=30),
     )
     # The launcher stays, as it does once a meeting is cancelled.
     assert desktop.showing()["open"]
