@@ -24,6 +24,11 @@ QtObject {
             // Too late for a frame of glide, it jumps.
             Expect.same("a key 17 ms late", Glide.lasting(17, sixty), 0);
             Expect.same("a key past the bar", Glide.lasting(80, sixty), 0);
+            // A key held to repeat jumps in its own frame, however early,
+            // and a single press still glides.
+            Expect.same("a held key", Glide.lasting(0, sixty, true), 0);
+            Expect.same("a held key on 120 Hz", Glide.lasting(0, twice, true), 0);
+            Expect.same("a key pressed once", Glide.lasting(0, twice, false), 30);
             // However late, a glide lands within 50 ms of its key.
             for (let since = 0; since <= 60; since += 1) {
                 const lasts = Glide.lasting(since, sixty);

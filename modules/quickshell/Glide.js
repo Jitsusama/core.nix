@@ -19,8 +19,15 @@ const lands = 50;
 // frame can wait a whole frame more, so a key already late shortens the
 // glide to fit, and one too late for a frame of glide jumps: no glide beats
 // a late one. A move no key pressed, or a press of unknown time, glides
-// whole.
-function lasting(since, frame) {
+// whole. A key `held` to repeat jumps, as Vim's cursor does under a held j:
+// each repeat came before the glide of the one before it ended, so the
+// highlight never stood on a row until Joel let go, and 150 held keys
+// landed a median 152 ms from the key though their first frames came at
+// 28 (his journal, 2026-11-11 21:58; VKCF3Z's b9cb1bed).
+function lasting(since, frame, held) {
+    if (held === true) {
+        return 0;
+    }
     const late = Math.max(since, 0);
     const left = lands - late - frame;
     const run = Math.min(glide, left);

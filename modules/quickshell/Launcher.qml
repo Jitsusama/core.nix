@@ -10702,12 +10702,12 @@ Scope {
                             // How long a glide set going now runs, from
                             // when the key moving it was pressed and the
                             // panel's frame (Glide.js): none for a key too
-                            // late for a frame of glide.
+                            // late for a frame of glide, nor for one held.
                             function lasting() {
                                 const pressed = KeyTimes.pressed();
                                 const rate = card.Screen.refreshRate;
                                 return Glide.lasting(pressed > 0 ? KeyTimes.now() - pressed : 0,
-                                    1000 / (rate > 0 ? rate : 60));
+                                    1000 / (rate > 0 ? rate : 60), prompt.keyHeld);
                             }
 
                             function pick(glide) {

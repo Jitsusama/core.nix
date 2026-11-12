@@ -1019,7 +1019,8 @@ look at one movement closely. The launcher's selection, and the list's
 scroll with it, lands within 50 ms of the key, a short glide on the curve,
 since a highlight still moving once Joel has read its row is lag
 (2026-11-10): 30 ms, shorter after a key already late, and none after one
-too late for a frame of it. Nothing
+too late for a frame of it. A held key moves the highlight without a glide,
+so each repeat stands on its row in its own frame (2026-11-11). Nothing
 moves in a way that delays input or focus, every animation holds the panel's
 refresh rate, the first frame of every surface is complete, and nothing jumps
 when its content changes size. Anything that stutters is a bug.
