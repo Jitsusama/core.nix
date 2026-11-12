@@ -104,7 +104,10 @@ reached, the daemon takes its own look at the internet
 ([`src/probe.rs`][probe]), since eero's cloud is across the internet it
 reports on: a TCP connect to the gateway node's DNS port and to 1.1.1.1
 and 8.8.8.8 on 443, and a DNS query of its own through the gateway
-node, at most 2 seconds each and all at once. Connects, not pings: a
+node, all at once, each tried three times in a row within its 2
+seconds and timed by the middle try, so one packet late on the way
+isn't read as a slow line; a try not answered ends its tries, so an
+outage still costs one timeout. Connects, not pings: a
 raw socket needs root, and a ping socket only the groups
 `net.ipv4.ping_group_range` names. What this machine sees is the home
 network's internet only from home, so the gateway is timed, and an
