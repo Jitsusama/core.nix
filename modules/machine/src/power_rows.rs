@@ -362,6 +362,182 @@ impl Say<'_> {
         figure(id.to_owned(), self.name(id, &[]), side, None, String::new())
     }
 
+    /// A row's drawer, where it has none, saying what the supply's folder
+    /// keeps behind it by the kernel's names, those it says, then the
+    /// folder (Joel, 2026-11-11: every row's drawer says a little more).
+    fn kernel(&self, mut row: Made, supply: &Value, kept: &[(&str, String)]) -> Made {
+        if row.drawer.is_some() {
+            return row;
+        }
+        let mut facts: Vec<Value> = kept
+            .iter()
+            .filter(|(_, said)| !said.is_empty())
+            .map(|(name, said)| json!({ "name": name, "said": said }))
+            .collect();
+        facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
+            "said": format!("/sys/class/power_supply/{}", text(&supply["name"])),
+            "identifies": true }));
+        row.drawer = Some(json!({
+            "eyebrow": self.words.said("machine:read-from", "power", &[]),
+            "eyebrowNames": true, "title": row.name, "facts": facts }));
+        row
+    }
+
+    /// A figure the record keeps in whole units, in the millionths the
+    /// kernel writes it in, or none.
+    fn micro(&self, value: &Value, unit: &str) -> String {
+        value.as_f64().map_or_else(String::new, |v| {
+            format!("{} {unit}", self.words.number((v * 1e6).round(), 0))
+        })
+    }
+
+    /// A value as the kernel wrote it: a count whole, a word as it is.
+    fn plain(&self, value: &Value) -> String {
+        match value {
+            Value::Number(n) => n
+                .as_f64()
+                .map_or_else(String::new, |n| self.words.number(n, 0)),
+            Value::String(said) => said.clone(),
+            _ => String::new(),
+        }
+    }
+
+    /// The energy it holds, now, full and designed, as the kernel counts
+    /// it, in watt hours or, where it counts charge, amp hours.
+    fn held(&self, battery: &Value) -> Vec<(&'static str, String)> {
+        if battery["energy_full_wh"].is_number() {
+            vec![
+                ("energy_now", self.micro(&battery["energy_wh"], "\u{b5}Wh")),
+                (
+                    "energy_full",
+                    self.micro(&battery["energy_full_wh"], "\u{b5}Wh"),
+                ),
+                (
+                    "energy_full_design",
+                    self.micro(&battery["energy_design_wh"], "\u{b5}Wh"),
+                ),
+            ]
+        } else {
+            vec![
+                ("charge_now", self.micro(&battery["charge_ah"], "\u{b5}Ah")),
+                (
+                    "charge_full",
+                    self.micro(&battery["charge_full_ah"], "\u{b5}Ah"),
+                ),
+                (
+                    "charge_full_design",
+                    self.micro(&battery["charge_design_ah"], "\u{b5}Ah"),
+                ),
+            ]
+        }
+    }
+
+    /// What it's drawing or charging at, as the kernel says it: its power
+    /// where it counts energy, its current where it counts charge.
+    fn drawn(&self, battery: &Value) -> (&'static str, String) {
+        if battery["energy_full_wh"].is_number() {
+            ("power_now", self.micro(&battery["watts"], "\u{b5}W"))
+        } else {
+            ("current_now", self.micro(&battery["amps"], "\u{b5}A"))
+        }
+    }
+
+    /// Each part of what it's made of a row, its drawer what the kernel
+    /// keeps behind it.
+    fn explained(&self, row: Made, battery: &Value) -> Made {
+        let b = battery;
+        let kept: Vec<(&str, String)> = match row.id.as_str() {
+            "charge" => {
+                let mut kept = vec![
+                    ("capacity", self.plain(&b["capacity_pct"])),
+                    ("capacity_level", self.plain(&b["capacity_level"])),
+                    ("status", self.plain(&b["status"])),
+                ];
+                kept.extend(self.held(b));
+                kept.push(self.drawn(b));
+                kept
+            }
+            "rate" => vec![
+                self.drawn(b),
+                ("voltage_now", self.micro(&b["volts"], "\u{b5}V")),
+                ("status", self.plain(&b["status"])),
+            ],
+            "voltage" => vec![
+                ("voltage_now", self.micro(&b["volts"], "\u{b5}V")),
+                (
+                    "voltage_min_design",
+                    self.micro(&b["min_design_volts"], "\u{b5}V"),
+                ),
+            ],
+            "health" => {
+                let mut kept = vec![("health", self.plain(&b["health"]))];
+                kept.extend(self.held(b).into_iter().skip(1));
+                kept.push(("cycle_count", self.plain(&b["cycles"])));
+                kept
+            }
+            "cycles" => vec![("cycle_count", self.plain(&b["cycles"]))],
+            "type" => {
+                let chosen = text(&b["charge_type"]);
+                let line: Vec<String> = b["charge_types"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|one| match text(one) {
+                        one if one == chosen => format!("[{one}]"),
+                        one => one.to_owned(),
+                    })
+                    .collect();
+                if line.is_empty() {
+                    vec![("charge_type", chosen.to_owned())]
+                } else {
+                    vec![("charge_types", line.join(" "))]
+                }
+            }
+            "limit" => vec![
+                (
+                    "charge_control_start_threshold",
+                    self.plain(&b["limit_start_pct"]),
+                ),
+                (
+                    "charge_control_end_threshold",
+                    self.plain(&b["limit_stop_pct"]),
+                ),
+            ],
+            // The kernel counts it in tenths of a degree.
+            "temperature" => vec![(
+                "temp",
+                b["temperature_c"]
+                    .as_f64()
+                    .map_or_else(String::new, |c| self.words.number((c * 10.0).round(), 0)),
+            )],
+            "model" => vec![
+                ("manufacturer", self.plain(&b["manufacturer"])),
+                ("model_name", self.plain(&b["model"])),
+                ("technology", self.plain(&b["technology"])),
+            ],
+            "made" => {
+                let made = text(&b["made"]);
+                let mut parts = made.split('-');
+                vec![
+                    (
+                        "manufacture_year",
+                        parts.next().unwrap_or_default().to_owned(),
+                    ),
+                    (
+                        "manufacture_month",
+                        parts.next().unwrap_or_default().to_owned(),
+                    ),
+                    (
+                        "manufacture_day",
+                        parts.next().unwrap_or_default().to_owned(),
+                    ),
+                ]
+            }
+            _ => return row,
+        };
+        self.kernel(row, b, &kept)
+    }
+
     /// The charge and what the battery is doing, a dot between: "36% ·
     /// 3 h 10 min to empty". A charge the battery doesn't say is left out.
     fn doing(&self, battery: &Value) -> String {
@@ -412,6 +588,24 @@ impl Say<'_> {
         let mut charger = self.leaf("charger", side);
         charger.kind = "charger";
         if ports.is_empty() {
+            // Whether each supply but the battery has power, as the
+            // kernel says it, so its drawer says what it looked at.
+            let online: Vec<Value> = supplies
+                .iter()
+                .filter(|supply| supply["type"] != "Battery")
+                .map(|supply| {
+                    let on = supply["online"]
+                        .as_bool()
+                        .map_or("", |on| if on { "1" } else { "0" });
+                    json!({ "name": format!("{}/online", text(&supply["name"])), "said": on })
+                })
+                .filter(|fact| fact["said"] != "")
+                .chain([json!({ "name": self.words.name("machine:read-from", &[]),
+                    "said": "/sys/class/power_supply", "identifies": true })])
+                .collect();
+            charger.drawer = Some(json!({
+                "eyebrow": self.words.said("machine:read-from", "power", &[]),
+                "eyebrowNames": true, "title": charger.name, "facts": online }));
             return charger;
         }
         "charging".clone_into(&mut charger.glyph);
@@ -424,6 +618,15 @@ impl Say<'_> {
             .iter()
             .map(|(n, record, port)| self.port_row(*n, record, port))
             .collect();
+        // Each port and what it gives, a step in.
+        let facts: Vec<Value> = charger
+            .inside
+            .iter()
+            .map(|port| json!({ "name": port.name, "said": port.side[0]["said"] }))
+            .collect();
+        charger.drawer = Some(json!({
+            "eyebrow": self.words.said("machine:read-from", "power", &[]),
+            "eyebrowNames": true, "title": charger.name, "facts": facts }));
         charger
     }
 
@@ -633,6 +836,10 @@ impl Say<'_> {
         if !made.is_empty() {
             rows.push(self.leaf("made", made));
         }
+        let rows = rows
+            .into_iter()
+            .map(|row| self.explained(row, battery))
+            .collect();
         (rows, barred)
     }
 

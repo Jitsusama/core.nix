@@ -163,6 +163,7 @@
         "cpu": "on this machine \u00b7 processor",
         "disk": "on this machine \u00b7 disk",
         "uptime": "on this machine \u00b7 uptime",
+        "power": "on this machine \u00b7 power",
         "more": "and {n} more, a step in"
       }
     },
