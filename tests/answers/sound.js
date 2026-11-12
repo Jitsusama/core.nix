@@ -1,22 +1,12 @@
 // The cases of sound for the launcher's answers, which ../answers.qml runs
 // with every other place's; its opening comment says how.
 .import "common.js" as Common
-.import "../Numbers.js" as Numbers
 .import "../Sounds.js" as Sounds
 
 function run(failures) {
     let asked = 0;
     const machine = Common.checker(failures, () => asked++);
     // What Sound makes of what a device and a stream say of themselves.
-    machine("a stream's rate", Sounds.rate("1/44100"), "44.1 kHz");
-    machine("a rate in whole kilohertz", Sounds.kilohertz(48000), "48 kHz");
-    machine("no rate said", Sounds.rate(undefined), "");
-    const soundAsked = Sounds.fraction("8192/44100");
-    machine("what a stream asks for at once", [soundAsked.frames, soundAsked.hertz,
-        soundAsked.ms.toFixed(1)], [8192, 44100, "185.8"]);
-    machine("nothing asked", Sounds.fraction(""), null);
-    machine("a channel's name", Sounds.channel("FrontLeft"), "Front left");
-    machine("a lone channel", Sounds.channel("Mono"), "Mono");
     machine("each program's streams together", Sounds.grouped(["a1", "b1", "a2"],
         stream => stream.charAt(0)), [{ name: "a", streams: ["a1", "a2"] },
         { name: "b", streams: ["b1"] }]);
@@ -60,35 +50,5 @@ function run(failures) {
     machine("calls, not hfp", [Sounds.carries("headset-head-unit"),
         Sounds.carries("hfp-hf")], ["calls", "calls"]);
     machine("no profile, nothing carried", Sounds.carries(undefined), "");
-
-    // The format the graph moves a node's audio in, as the patched
-    // PwNodeAudio says it: its rate to three significant digits and its
-    // sample's bits, a float said so; none while it's suspended. It's
-    // the card's own said again where the card's running stream opens
-    // with the same rate and bits, a float graph over an integer card
-    // not.
-    machine("the graph's format, said", [
-        Sounds.graphFormat({ rate: 48000, channels: 2, sample: "F32LE" }),
-        Sounds.graphFormat({ rate: 44100, channels: 2, sample: "S16LE" }),
-        Sounds.graphFormat({ rate: 176400, channels: 2, sample: "S24_32LE" }),
-        Sounds.graphFormat({ rate: 48000, channels: 2, sample: "ALAW" }),
-        Sounds.graphFormat({})], [
-        "48 kHz \u00b7 32 bit float", "44.1 kHz \u00b7 16 bit",
-        "176 kHz \u00b7 24 bit", "48 kHz \u00b7 ALAW", ""]);
-    // How a node keeps time, as the sound daemon serves it (timing.rs):
-    // its cycle and load are measures, said by the one rule.
-    const running = { id: 79, quantum: 1024, rate: 48000, ms: 21.333, busy: 0.0312,
-        unfinished: false, errors: 2, drives: true };
-    const threeDigits = value => Numbers.significant(value);
-    machine("a running node's cycle and load", [threeDigits(Sounds.cycleMs(running)),
-        threeDigits(Sounds.load(running.busy))], ["21.3", "3.12"]);
-    machine("the card says it already, or not", [
-        Sounds.sameFormat("48 kHz \u00b7 32 bit",
-            "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),
-        Sounds.sameFormat("48 kHz \u00b7 32 bit float",
-            "48 kHz \u00b7 32 bit \u00b7 period 21.3 ms (1024)"),
-        Sounds.sameFormat("48 kHz \u00b7 16 bit", "48 kHz \u00b7 16 bit"),
-        Sounds.sameFormat("48 kHz \u00b7 16 bit", "44.1 kHz \u00b7 16 bit \u00b7 period 1024"),
-        Sounds.sameFormat("48 kHz \u00b7 16 bit", "")], [true, false, true, false, false]);
     return asked;
 }

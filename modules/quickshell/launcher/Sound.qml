@@ -62,9 +62,7 @@ import "../Fuzzy.js" as Fuzzy
 import "Ago.js" as Ago
 import "ByEar.js" as ByEar
 import "ForYou.js" as ForYou
-import "Numbers.js" as Numbers
 import "Order.js" as Order
-import "Plate.js" as Plate
 import "Sounds.js" as Sounds
 import "Targets.js" as Targets
 
@@ -314,8 +312,9 @@ Provider {
     // A device's row as the daemon serves it. Return steps in, as every
     // device's does, with its likeliest act first inside: using it, or for
     // the one chosen, whether it's Muted (docs/design.md, a switch is one
-    // row). Its parts and drawer are made here from its node as they're
-    // asked for, until the daemon serves them too.
+    // row). Its parts are made here from its node as they're asked for,
+    // until the daemon serves them too; its drawer is the one served beside
+    // it (device_drawer.rs), which its row names.
     function servedRow(row, key) {
         const inside = () => {
             const node = provider.nodeOf(row);
@@ -324,11 +323,7 @@ Provider {
         const made = ready.thing(row, key, {
             thing: true,
             verbs: inside,
-            targets: inside,
-            drawer: () => {
-                const node = provider.nodeOf(row);
-                return node ? provider.drawerOf(node) : null;
-            }
+            targets: inside
         });
         // Read as :setl asks, so a port read since it was drawn is one.
         Object.defineProperty(made, "options", {
@@ -427,149 +422,6 @@ Provider {
 
     function factRows(node) {
         return factKeys(node).map(key => ready.rowAt(key));
-    }
-
-    // The facts a device's or a stream's drawer knows, each by its word and
-    // only where it has a value, marked as identifiers where they are:
-    // pairs of the word's id under sound: and its value.
-    function known(ids, identifies) {
-        return ids.filter(([, value]) => value !== "").map(([id, value]) => ({
-            label: Words.name(`sound:${id}`), value: value, identifies: identifies
-        }));
-    }
-
-    // A device's drawer (Plate.js): where it is and which way it goes over
-    // its name, then its parts as facts, what moves most first (VKCF3Z,
-    // 2026-11-07): its State as pipewire says it, its Volume in decibels,
-    // its share being its row's, the programs Playing through it and how
-    // loud, its Channels balanced or each at its own level, its Tuning,
-    // Port and Profile; then what describes it, its Hardware's figures
-    // each a fact and what the kernel says of its card, and the Format the
-    // graph moves its audio in where the card's doesn't say it; then the
-    // priority that picks the one in use; and last what it's known by,
-    // marked as identifiers (`identifies`): the ALSA device it opens, as
-    // aplay -D takes it, a USB card's ids, and its Graph ID, as wpctl
-    // takes it, ending the drawer (VKCF3Z, 2026-11-08). Whether it's Muted is its row's
-    // to say, so it isn't said again. Its Level is left out, since reading
-    // it opens a stream on a microphone and wakes a sleeping card, which
-    // only the step in does; so is a Bluetooth device's codec, which is
-    // Bluetooth's to say (Accessories.qml). Each figure is read as it's
-    // drawn, so the drawer follows them live, as the rows do.
-    function drawerOf(node) {
-        if (!node.audio)
-            return null;
-        const hardware = ready.rows(`row:sound:${node.name}:hardware`);
-        const usb = `sound:${node.name}:hardware:usb-id`;
-        const channels = Array.from(node.audio.channels ?? []);
-        const volumes = Array.from(node.audio.volumes ?? []);
-        const programs = node.isSink ? "programs" : "recorders";
-        const parts = [volumePart(node), servedPart(node, programs), servedPart(node, "channels"),
-            filterPart(node), portPart(node), servedPart(node, "profile")]
-            .concat(hardware.filter(row => row.key !== usb), factRows(node));
-        const facts = Plate.facts(parts, row => {
-            switch (row.key) {
-            case `sound:${node.name}:volume`:
-            case `sound:${node.name}:gain`:
-                return { value: row.note };
-            case `sound:${node.name}:programs`:
-            case `sound:${node.name}:recorders`:
-                return { value: ready.served(`row:sound:${node.name}:${programs}`)?.held
-                    ?.playing || row.side };
-            case `sound:${node.name}:channels`:
-                return { value: Plate.runs([row.side].concat(Sounds.channelLevels(
-                    channels.map(channel => Sounds.channel(PwAudioChannel.toString(channel))),
-                    channels.map((channel, at) => provider.percent(volumes[at] ?? 0)),
-                    said("balanced")))) };
-            case `sound:${node.name}:tuning`:
-            case `sound:${node.name}:voice`:
-                return { value: Plate.runs([row.side].concat(filtersHeld(node).levels)) };
-            default:
-                return null;
-            }
-        });
-        const properties = node.properties;
-        // What pipewire says the node is doing moves most, so it leads, in
-        // pipewire's own words, running, idle or suspended (VKCF3Z,
-        // 2026-11-08); the row's side never says it.
-        const state = String(node.state ?? "");
-        const doing = state === "" ? [] : [{ label: Words.name("sound:state"), value: state }];
-        // The format the graph moves its audio in is said once: as Format
-        // where the card's running stream doesn't say one, not at all where
-        // it says the same, and as Graph Format beside a card's that differs.
-        const graph = Sounds.graphFormat(node.audio.format);
-        const card = factsOf(node)
-            .find(fact => ["playing", "recording"].includes(fact.name.toLowerCase()))?.value;
-        const format = graph === "" || (card && Sounds.sameFormat(graph, card)) ? []
-            : [{ label: Words.name(card ? "sound:graph-format" : "sound:format"), value: graph }];
-        // How it keeps time moves each second, so it goes ahead of Format
-        // (VKCF3Z, 2026-11-08).
-        const keeping = keepingOf(node);
-        const identified = fact => Object.assign({}, fact, { identifies: true });
-        return {
-            // Where it is and what it is, in our own words, so in Label's
-            // capitals (VKCF3Z, 2026-11-09): one the machine makes, joined
-            // by nothing, is on this machine.
-            eyebrow: Plate.runs([joinedBy(node) || said("joined-here"),
-                said(node.isSink ? "plate-out" : "plate-in")]),
-            title: named(node),
-            facts: doing.concat(facts, keeping, format,
-                known([["priority", String(properties["priority.session"] ?? "")]], false),
-                known([["alsa-device", String(properties["api.alsa.path"] ?? "")]], true),
-                Plate.facts(hardware.filter(row => row.key === usb)).map(identified),
-                known([["graph-id", String(node.id ?? "")]], true))
-        };
-    }
-
-    // How a node keeps time, as the sound daemon last served it (VKCF3Z,
-    // 2026-11-08): its Dropouts, warned past none, as a glitch it recovers
-    // from rather than a failure; its Load, the share of each cycle it was busy; and
-    // its Cycle, the frames it moves each time and how long that takes.
-    // Only a running node has them. One that ran past its cycle has taken
-    // more than all of it, so its Load says so in its own form, its stroke
-    // full, both warned. A measure, a load or a cycle's milliseconds,
-    // keeps three significant digits with their zeros, as every measure
-    // does; a count, dropouts or frames, is whole.
-    function keepingOf(node) {
-        const timed = timings[node.id] ?? null;
-        if (timed === null)
-            return [];
-        const measure = value => Numbers.significant(value, settings.group, settings.point);
-        const count = value => Numbers.format(value, 0, settings.group, settings.point);
-        const load = timed.unfinished ? [{
-            label: Words.name("sound:load"),
-            value: said("each-cycle", {
-                share: said("over", { share: `${measure(Sounds.load(1))}%` })
-            }),
-            warns: true,
-            figure: { shape: "stroke", values: [1], warn: true }
-        }] : timed.busy === null ? [] : [{
-            label: Words.name("sound:load"),
-            value: said("each-cycle", { share: `${measure(Sounds.load(timed.busy))}%` }),
-            figure: { shape: "stroke", values: [Math.min(timed.busy, 1)], warn: false }
-        }];
-        return [{
-            label: Words.name("sound:dropouts"),
-            value: timed.errors === 0 ? said("none") : count(timed.errors),
-            warns: timed.errors > 0
-        }].concat(load, [{
-            label: Words.name("sound:cycle"),
-            value: said("cycle", { frames: count(timed.quantum),
-                ms: measure(Sounds.cycleMs(timed)) })
-        }]);
-    }
-
-    // How a device is joined to the machine, in the vocabulary's words:
-    // through a display, over Bluetooth, by USB or built in, or "" where
-    // the sound server doesn't say. Bluetooth is a name, so it's said as
-    // the vocabulary names it.
-    function joinedBy(node) {
-        const properties = node.properties;
-        const bus = String(properties["device.bus"] ?? "");
-        const how = display(node) ? "display"
-            : Sounds.address(node.name, properties) !== "" || bus === "bluetooth" ? "bluetooth"
-            : bus === "usb" ? "usb" : bus === "pci" ? "built-in" : "";
-        return how === "" ? "" : how === "bluetooth" ? Words.name("bluetooth")
-            : said(`joined-${how}`);
     }
 
     // A device's right arrow, kept while the launcher is shut, as its
@@ -908,13 +760,9 @@ Provider {
         return device === undefined ? "" : device.name;
     }
 
-    // How each running node keeps time, by its id, as the sound daemon
-    // serves it from PipeWire's profiler each second (modules/sound's
-    // timing.rs), none while it isn't watched. The drawer reads
-    // `timings`, so it moves with each second without the launcher
-    // refreshing.
-    property var timings: ({})
-
+    // How each running node keeps time, watched while one's drawer is out,
+    // as PipeWire's profiler times it only while something watches (modules/
+    // sound's timing.rs); the daemon says it in the drawers it serves.
     Daemon {
         id: timing
 
@@ -925,19 +773,6 @@ Provider {
         // a watch's answer is all there is, and none stands in a gap.
         answersWhole: true
         keptThroughGap: false
-        onHeard: provider.timings = provider.timingsOf(timing.held)
-        onLiveChanged: {
-            if (!live)
-                provider.timings = ({});
-        }
-    }
-
-    function timingsOf(held) {
-        const timed = {};
-        for (const record of Object.values(held))
-            if (record?.kind === "timing")
-                timed[record.id] = record;
-        return timed;
     }
 
     // Which device each stream is sent to, by its id, as WirePlumber keeps
