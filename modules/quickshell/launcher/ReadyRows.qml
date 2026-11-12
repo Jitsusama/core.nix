@@ -191,8 +191,7 @@ Scope {
         heard(said, dropped);
     }
 
-    // The row the record of `key` holds, as served, or as answered for
-    // what's typed inside a step, or null.
+    // The row the record of `key` holds, as served or typed for, or null.
     function served(key) {
         return Ready.rowOf(held[key] ?? typedHeld[key]);
     }
@@ -348,22 +347,22 @@ Scope {
     }
 
     // What the daemon made of words typed inside a step (ready-rows.md's
-    // within): the keys of its rows, or that it refused, and their records,
-    // which `served` and `rows` read beside the watch's. A key steady for
-    // the same time keeps its row, so none moves under the cursor.
+    // within), its records read by `served` and `rows` beside the watch's,
+    // a key steady for one time keeping its row under the cursor.
     property var typing: ({ within: "", words: null, keys: [], refused: false })
     readonly property var typedHeld: ({})
     property string typedAsking: ""
+    property double typedAt: 0
 
-    // The rows made of `words` typed inside the row of `within`, or null
-    // where it didn't or can't answer. Till it answers (`searched`), its
-    // last answer there stays, so a key typed on never blanks the list.
+    // The rows made of `words` typed inside `within`'s row, or null where it
+    // can't answer; its last answer there stays till the next (`searched`).
     function typedIn(within, words) {
         const asked = `${within}\n${words}`;
         if (typedAsking !== asked && !(typing.within === within && typing.words === words)) {
             if (!link)
                 return null;
             typedAsking = asked;
+            typedAt = Date.now();
             link.find({ ask: "search", place: ready.place, words: words, within: within },
                 answer => ready.typedAnswered(within, words, answer));
         }
@@ -373,12 +372,13 @@ Scope {
             : typing.keys.map(key => rowAt(key)).filter(row => row !== null);
     }
 
-    // An answer taken, unless typed over since; none, or a refusal, said
-    // once, and asked again as Joel types on or asks again.
+    // An answer taken, and how long it took, unless typed over since.
     function typedAnswered(within, words, answer) {
         if (typedAsking !== `${within}\n${words}`)
             return;
         typedAsking = "";
+        console.info(`launcher: ${place} answered "${words}" typed in ${within} `
+            + `${Date.now() - typedAt} ms after its key`);
         const refused = answer === null || !!answer.error;
         if (refused && !typing.refused)
             console.warn(`launcher: ${place}'s daemon didn't answer "${words}" typed in `
@@ -390,8 +390,7 @@ Scope {
             delete typedHeld[key];
         }
         Object.assign(typedHeld, records);
-        typing = { within: within, words: words, keys: refused ? [] : answer.keys ?? [],
-            refused: refused };
+        typing = { within, words, keys: refused ? [] : answer.keys ?? [], refused };
         searched(words);
     }
 
