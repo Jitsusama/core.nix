@@ -1396,7 +1396,7 @@
       "asked": "Power Off the Machine",
       "said": {
         "eyebrow": "on this machine \u00b7 power off",
-        "arms": "turns off"
+        "arms": "powers off"
       },
       "tells": {
         "lead": "Turns the machine off, closing {windows}.",

@@ -262,7 +262,7 @@ def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell)
     # Return arms each in place, its row and foot saying what a second
     # does (VKCF3Z, 2026-11-12), and it's closed armed, never done.
     for typed, action, arms in [
-        ("power off", "Power Off", "turns off"),
+        ("power off", "Power Off", "powers off"),
         ("reboot", "Reboot", "reboots"),
         ("log out", "Log Out", "logs out"),
     ]:
