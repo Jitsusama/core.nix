@@ -27,9 +27,11 @@ while true; do
   fi
   if mv "$dir/hog" "$dir/hogged" 2>/dev/null; then
     # tail holds a line until its newline, and /dev/zero never sends one.
+    # Its kill fails the pipeline, which would end the subshell unsaid.
     (
-      head -c 1G /dev/zero | tail -n 1 >/dev/null
-      echo "$?" >"$dir/hog.status"
+      status=0
+      head -c 1G /dev/zero | tail -n 1 >/dev/null || status=$?
+      echo "${status}" >"$dir/hog.status"
     ) &
   fi
   systemd-notify WATCHDOG=1
