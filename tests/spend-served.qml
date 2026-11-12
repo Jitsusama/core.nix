@@ -410,8 +410,14 @@ ShellRoot {
                 .startsWith(SpendWatch.budgets[drewOn]?.label ?? "-"),
             SpendDrawer.sessionBudget(SpendWatch.budgets, SpendWatch.budgetOf, "s1"));
 
-        // While sharing, no row and no answer holds an amount.
+        // While sharing, no row and no answer holds an amount. The quiet
+        // place is a place of its own, served apart, so its rows may come
+        // after the ones the collection was waited for by.
         Quiet.sharing = true;
+        until("the quiet rows served", () => spend.everything().length > 0, quietServed);
+    }
+
+    function quietServed() {
         const quiet = spend.everything();
         expect("quiet rows", quiet.length > 0
             && quiet.every(row => !`${row.name} ${row.side}`.includes("$")),
