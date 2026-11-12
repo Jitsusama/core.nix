@@ -3503,6 +3503,34 @@ def test_desktops_windows_row_has_a_drawer_holding_none_or_some(shell: Shell) ->
         shell.close(lark)
 
 
+def test_a_drawer_out_says_a_window_opened_while_it_rests(shell: Shell) -> None:
+    """Windows' drawer, out under Desktop, names a window opened while Joel rests on it.
+
+    A drawer's content is kept live (Joel, 2026-11-11 20:28), the shell's own as a daemon's,
+    so a window opening moves the drawer shown, not only the next one asked for.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("desktop", selecting="Desktop")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Windows" in shown["rows"])
+    shell.down_to("Windows")
+    shell.launcher_until(
+        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["body"] == "No other windows."
+    )
+    # Two, since the window in front is no other window: the first is named once the second is.
+    kite = shell.opened("Kite Notes")
+    lark = shell.opened("Lark Notes")
+    try:
+        shell.launcher_until(
+            lambda shown: shown["drawer"]["shown"] and "Kite Notes" in shown["drawer"]["body"]
+        )
+    finally:
+        shell.close_launcher()
+        shell.close(kite)
+        shell.close(lark)
+
+
 def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
     """Each of Capture's acts has a drawer saying what it does and where that lands.
 
@@ -3594,6 +3622,44 @@ def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell) -> None:
         shell.send_key("ret")
     shell.launcher_closed()
     assert shell.copied() == charge["side"], shell.copied()
+
+
+def test_a_drawer_out_says_what_its_daemon_tells_as_it_comes(
+    shell: Shell, machine: StandIn
+) -> None:
+    """A drawer out says a figure its daemon tells while it's shown, with no key pressed.
+
+    A drawer's content is kept live (Joel, 2026-11-11 20:28: "we also need to make sure that
+    its content is live updated"), so Charge's drawer moves from 80% to 77% where it stands.
+    """
+
+    def drawered(pct: int) -> list[Json]:
+        records = battery(pct)
+        row = cast("Json", records[1]["row"])
+        row["drawer"] = {"title": "Charge", "facts": [{"name": "Now", "said": f"{pct}%"}]}
+        return records
+
+    def drawn(shown: Json) -> str:
+        drawer = cast("Json", shown["drawer"])
+        words = [drawer["title"], drawer["body"], *cast("list[str]", drawer["values"])]
+        return " ".join(str(word) for word in words)
+
+    machine.told(drawered(80), [])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("power", selecting="Power")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Battery" in shown["rows"])
+    shell.down_to("Battery")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Charge" in shown["rows"])
+    shell.down_to("Charge")
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and "80%" in drawn(shown))
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    assert machine.watching("place:power", deadline), "the shell never watched Power's rows"
+    machine.told(drawered(77), [])
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and "77%" in drawn(shown))
+    shell.close_launcher()
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

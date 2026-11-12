@@ -201,6 +201,9 @@
         local-sites = ./modules/local-sites/home.nix;
         lsd = ./modules/lsd/home.nix;
         machine = ./modules/machine/home.nix;
+        margin-cat = moduleFrom ./modules/margin-cat/home.nix {
+          inherit (self.homeModules) niri quickshell;
+        };
         meaning = ./modules/meaning/home.nix;
         merge-net = ./modules/merge-net/home.nix;
         mpv = ./modules/mpv/home.nix;

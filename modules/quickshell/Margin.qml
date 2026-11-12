@@ -134,6 +134,13 @@ Scope {
 
     onLitChanged: settle()
 
+    // How many it draws, for what else lives in the gap (MarginMarks.qml).
+    Binding {
+        target: MarginMarks
+        property: "drawn"
+        value: root.on.length
+    }
+
     Timer {
         id: due
         onTriggered: root.settle()

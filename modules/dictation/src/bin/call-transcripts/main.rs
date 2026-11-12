@@ -134,12 +134,6 @@ impl Settings {
         }
     }
 
-    /// Whether Parakeet is compiled for this build, so loading it costs
-    /// seconds rather than a minute.
-    pub fn compiled(&self) -> bool {
-        Parakeet::compiled(&self.model, &self.device, self.cache.as_deref())
-    }
-
     /// Parakeet, at the NPU's background priority.
     pub fn load(&self) -> Result<Parakeet, String> {
         Parakeet::load(

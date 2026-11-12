@@ -621,6 +621,10 @@ let
     package: lib.isDerivation package && (package.meta.mainProgram or "") == "warp-cli"
   ) null (osConfig.environment.systemPackages or [ ]);
   keepsCopies = launcher.providers.clipboard.enable or false;
+  # Emoji's rows are served by the clipboard's history, which pastes them,
+  # from the list in the tone the collection names.
+  listsEmoji = launcher.providers.emoji.enable or false;
+  emojiListed = emojiList (launcher.providers.emoji.tone or "none");
 
   # The daemon that says where the laptop is, for the weather's here, and
   # the zone the clock keeps. It asks GeoClue only while the weather may
@@ -1819,11 +1823,6 @@ in
                     // {
                       file = providerFile provider;
                     }
-                    # Emoji are listed in the tone chosen, so the list is
-                    # built from the provider's own settings.
-                    // lib.optionalAttrs (provider.source == "emoji") {
-                      list = "${emojiList (provider.tone or "none")}";
-                    }
                     # The zones, and which tzdata they came from, which
                     # Time's Zone says, and which chrony keeps the clock,
                     # which its Clock says, where chrony does.
@@ -2237,7 +2236,8 @@ in
     # it holds to every act on a copy (Copied.qml). While the clipboard
     # collection is on it keeps the copies for the launcher too: text in
     # memory, and pictures in the runtime directory, which is memory too.
-    # Off, it keeps none.
+    # Off, it keeps none. While Emoji is on it serves Emoji's rows, which
+    # it pastes.
     systemd.user.services.clipboard-history = {
       Unit = {
         Description = "The clipboard, heard for the shell and kept in memory for the launcher";
@@ -2262,6 +2262,7 @@ in
             else
               [ "--keep 0" ]
           )
+          ++ lib.optional listsEmoji "--emoji ${emojiListed}"
         );
         Restart = "on-failure";
         RestartSec = 1;

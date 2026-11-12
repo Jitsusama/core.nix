@@ -344,6 +344,36 @@ function moment(at, now, say) {
     return day === "" ? say.time(read) : filled(say.moment, { day, time: say.time(read) });
 }
 
+// A change's address, its repository and number, and any address's site
+// and path.
+const CHANGE = /^[a-z]+:\/\/[^/]+\/[^/]+\/([^/]+)\/pull\/(\d+)/u;
+const ADDRESS = /^[a-z]+:\/\/([^/?#]+)([^?#]*)/u;
+
+// What a look points at, short enough for one line of its drawer, as Joel
+// knows it: a change as "world#2396409 review", a page as its site and
+// last step, a file as its name. Its whole address goes in the drawer's
+// nerdy bits (Y2YBTS, 2026-11-12: "i hate gross line wraps").
+function pointsAt(kind, target, said) {
+    const at = String(target ?? "");
+    const change = CHANGE.exec(at);
+    const named = change === null ? shortly(at) : `${change[1]}#${change[2]}`;
+    const template = { pr: said.review, diff: said.diff }[kind] ?? "{at}";
+    return named === "" ? "" : filled(template, { at: named });
+}
+
+function shortly(at) {
+    const address = ADDRESS.exec(at);
+    if (address === null) {
+        return lastStep(at);
+    }
+    const step = lastStep(address[2]);
+    return step === "" ? address[1] : `${address[1]}/${step}`;
+}
+
+function lastStep(path) {
+    return path.split("/").filter(step => step !== "").pop() ?? "";
+}
+
 // A drawer's session, and how its quest stands where it isn't active,
 // as Agents says it (SessionDrawer.js): "pi \u00b7 core \u00b7 paused". Its
 // quest is the eyebrow's, so no fact names it again (VKCF3Z, 2026-11-08);

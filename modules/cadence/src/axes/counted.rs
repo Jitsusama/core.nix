@@ -2,11 +2,12 @@
 //! rather than counted again: code-health's regressions, which cadence
 //! day judges into its findings ledger under keys starting `code.`; the
 //! lines where Joel sounded pained, which health counts in its day file;
-//! the turns making one tool call, which the daily measure counts; and
 //! the security musts past due and holes open, which ISXEG8 files in the
 //! ledger; the asks for a secret, which health counts from secret-asks's
-//! journal; and boot, shutdown, disk and memory, from health's day file.
-//! Each stays unread until its program has written a day.
+//! journal; boot, shutdown, disk and memory, from health's day file; the
+//! launcher's keys, from the shell; and his apps' stalls, from cadence
+//! day's own figures. The daily measure's readings keep a file of their
+//! own, measure.rs. Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -356,43 +357,30 @@ pub fn responds(s: &Sources) -> Vec<Reading> {
     ]
 }
 
-/// The share of the last day's turns that made exactly one tool call, from
-/// the newest measure's "Turns Doing One Thing" table, whose first row is
-/// the last day: `| ending | turns | one | none | several |`.
+/// How long his apps waited, from the stall cadence day keeps for
+/// app.slice: its CPU wait and its memory stalls, each a share of the
+/// day. They are his side's, since the kernel counts them on his apps
+/// themselves rather than on a builder or a model of him. 80ECO2, who
+/// keeps them, holds both to 1% (2026-11-12).
 #[must_use]
-pub fn one_call(measure: Option<&str>) -> Reading {
-    let latest = measure.and_then(|text| {
-        let (_, section) = text.split_once("## Turns Doing One Thing")?;
-        let section = section.split("\n## ").next().unwrap_or_default();
-        section
-            .lines()
-            .filter(|line| line.starts_with("| 20"))
-            .find_map(|row| {
-                let cells: Vec<f64> = row
-                    .split('|')
-                    .map(str::trim)
-                    .skip(2)
-                    .filter_map(|cell| cell.replace(',', "").parse().ok())
-                    .collect();
-                match cells.as_slice() {
-                    [turns, one, ..] if *turns > 0.0 => Some((*one, *turns)),
-                    _ => None,
-                }
-            })
-    });
-    Reading::new(
-        "turns making one tool call {}",
-        latest.map(|(one, turns)| one / turns * 100.0),
-        "%",
-        "QCXZEB",
-    )
-    .bar(Bar::AtMost(60.0))
-    .detail(
-        latest.map(|(one, turns)| {
-            format!("{} of {} in the last day", shown(one, ""), shown(turns, ""))
-        }),
-    )
-    .from("the measure's turns doing one thing")
+pub fn stalls(day: Option<&BTreeMap<String, f64>>) -> Vec<Reading> {
+    let figure = |key: &str| day.and_then(|d| d.get(key).copied());
+    let stall = |says: &'static str, key: &str| {
+        Reading::new(says, figure(key), "%", "80ECO2")
+            .bar(Bar::AtMost(1.0))
+            .from("cadence's day, from app.slice's pressure")
+            .his()
+    };
+    vec![
+        stall(
+            "his apps waiting for the CPU {} of the day",
+            "pressure.cpu.app",
+        ),
+        stall(
+            "his apps stalled for memory {} of the day",
+            "pressure.memory.app",
+        ),
+    ]
 }
 
 fn count(n: usize) -> f64 {
@@ -498,22 +486,6 @@ mod tests {
             health: None,
         };
         assert_eq!(regressions(&no_ledger).figure(), None);
-    }
-
-    #[test]
-    fn one_call_turns_are_the_last_days_share() {
-        let measure = "# Measure\n\n## Turns Doing One Thing\n\n79 of 100 turns made one.\n\n\
-            | Day ending | Turns | One call | None | Two or more |\n|---|---|---|---|---|\n\
-            | 2026-11-12 | 1000 | 800 | 50 | 150 |\n| 2026-11-11 | 900 | 600 | 0 | 300 |\n\n\
-            | Tool | One-call turns | Right after its own |\n|---|---|---|\n| bash | 400 | 200 |\n\n\
-            ## Next\n";
-        let reading = one_call(Some(measure));
-        assert_eq!(
-            reading.words(),
-            "turns making one tool call 80%, at most 60%"
-        );
-        assert_eq!(one_call(Some("# Measure\n")).figure(), None);
-        assert_eq!(one_call(None).figure(), None);
     }
 
     #[test]
@@ -669,5 +641,32 @@ not a trial
             "1 line where Joel sounded pained today, at most 0"
         );
         assert_eq!(pained(&Sources::default()).figure(), None);
+    }
+
+    #[test]
+    fn his_apps_stalls_come_from_cadences_day() {
+        let day = BTreeMap::from([
+            ("pressure.cpu.app".to_owned(), 1.4),
+            ("pressure.memory.app".to_owned(), 0.07),
+            ("pressure.cpu.jobs".to_owned(), 13.0),
+        ]);
+        let read = stalls(Some(&day));
+        let words: Vec<String> = read.iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "his apps waiting for the CPU 1.4% of the day, at most 1%",
+                "his apps stalled for memory 0.1% of the day, at most 1%",
+            ]
+        );
+        assert_eq!(
+            read.iter().map(Reading::out).collect::<Vec<_>>(),
+            [true, false],
+            "only the CPU wait is past its bar"
+        );
+        assert!(
+            stalls(None).iter().all(|r| r.figure().is_none()),
+            "no day kept yet leaves both unread"
+        );
     }
 }

@@ -13,6 +13,13 @@
 //! checking the new head's whole tree is there. When the API fails, main is
 //! fetched as before.
 //!
+//! A fetch into a large repository's checkout takes minutes and gigabytes,
+//! so the account may say when main may be fetched at all. Outside those
+//! times, a head neither its checkout holds nor the API could read is left
+//! for a later ask: the machine takes a commit of main the checkout
+//! already holds, when the host says main holds it, or stays where it is,
+//! with only its followed inputs moved on.
+//!
 //! In a repository whose main moves far more often than the flake's folder,
 //! the account may also name the commit that last changed the folder. When
 //! that commit's folder is the very tree last built, nothing is fetched or
@@ -50,27 +57,39 @@ pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<Stri
     let token = token(hosted, &account)?;
     let head = ask(config, &token)?;
     borrow(config, hosted, &account)?;
-    if !git::has(&main, &head)
-        && let Some(api) = &hosted.api
-    {
-        match read::read(config, hosted, api, &token, &head, last) {
-            // The folder as it was last built is that build's, unbuilt.
-            Ok(found) => match last {
-                Some(last) if folder(config, hosted, last).as_ref() == Some(&found.folder) => {
-                    return Ok(last.to_owned());
-                }
-                _ => return Ok(head),
-            },
-            Err(failure) => eprintln!("{}", fetched_instead(&failure)),
-        }
-    }
-    if let Some(last) = last
-        && !git::has(&main, &head)
-        && unmoved(config, hosted, &account, last)
-    {
-        return Ok(last.to_owned());
-    }
     if !git::has(&main, &head) {
+        // Asked only once main must come from the checkout, so a day the
+        // API answers runs nothing of the account's.
+        let mut fetchable = None;
+        if let Some(api) = &hosted.api {
+            match read::read(config, hosted, api, &token, &head, last) {
+                // The folder as it was last built is that build's, unbuilt.
+                Ok(found) => match last {
+                    Some(last) if folder(config, hosted, last).as_ref() == Some(&found.folder) => {
+                        return Ok(last.to_owned());
+                    }
+                    _ => return Ok(head),
+                },
+                Err(failure) => {
+                    let may = may_fetch(hosted, &account);
+                    let then = if may {
+                        "so main is fetched instead"
+                    } else {
+                        "and main mayn't be fetched now"
+                    };
+                    eprintln!("{}", fell_back(&failure, then));
+                    fetchable = Some(may);
+                }
+            }
+        }
+        if let Some(last) = last
+            && unmoved(config, hosted, &account, last)
+        {
+            return Ok(last.to_owned());
+        }
+        if !fetchable.unwrap_or_else(|| may_fetch(hosted, &account)) {
+            return unfetched(config, hosted, &account, &head, last);
+        }
         fetch(config, hosted, &account)?;
         if !git::has(&main, &head) {
             return Err(Failure::new(format!(
@@ -83,16 +102,84 @@ pub fn head(config: &Config, hosted: &Hosted, last: Option<&str>) -> Result<Stri
     Ok(head)
 }
 
-/// Says why main is fetched rather than read from the host, with what the
-/// read said, such as which answer curl failed on and its HTTP status, on
-/// one line. On 11 and 12 November a read ended with curl's exit 22 and
-/// nothing more, and the ten-minute fetch that followed said no cause.
-fn fetched_instead(failure: &Failure) -> String {
+/// Says why main isn't read from the host, with what the read said, such
+/// as which answer curl failed on and its HTTP status, on one line, then
+/// what follows: `then`, a fetch or none. On 11 and 12 November a read
+/// ended with curl's exit 22 and nothing more, and the ten-minute fetch
+/// that followed said no cause.
+fn fell_back(failure: &Failure, then: &str) -> String {
     let mut why = failure.why.clone();
     if !failure.lines.is_empty() {
         why = format!("{why}: {}", failure.lines.join("; "));
     }
-    format!("update-to-main: {why}, so main is fetched instead")
+    format!("update-to-main: {why}, {then}")
+}
+
+/// Whether main may be fetched into the checkout now, by the account's
+/// command: always, when it names none.
+fn may_fetch(hosted: &Hosted, account: &Account) -> bool {
+    hosted.may_fetch.as_ref().is_none_or(|command| {
+        said(
+            hosted,
+            account,
+            command,
+            "asking whether main may be fetched now",
+        )
+        .is_ok()
+    })
+}
+
+/// What the machine takes while main at `head` can't be read and mayn't be
+/// fetched: the commit the account says its checkout holds, when root's
+/// copy can read it, it descends from `last`, the host says main at `head`
+/// holds it and its folder has moved; otherwise `last`, so only the
+/// followed inputs move. A machine that has never switched has nothing to
+/// stay on, so its ask fails.
+fn unfetched(
+    config: &Config,
+    hosted: &Hosted,
+    account: &Account,
+    head: &str,
+    last: Option<&str>,
+) -> Result<String, Failure> {
+    let Some(last) = last else {
+        return Err(Failure::new(format!(
+            "main at {} isn't in {}, and mayn't be fetched now",
+            git::short(head),
+            hosted.checkout.display()
+        )));
+    };
+    let main = Repo::main(config);
+    let taken = hosted
+        .fetched
+        .as_ref()
+        .and_then(|command| {
+            said(
+                hosted,
+                account,
+                command,
+                "asking what main the checkout holds",
+            )
+            .ok()
+        })
+        .filter(|commit| is_commit(commit) && commit != last && git::has(&main, commit))
+        .filter(|commit| git::descends(&main, last, commit).unwrap_or(false))
+        .filter(|commit| holds(config, hosted, commit, head).unwrap_or(false))
+        .filter(|commit| folder(config, hosted, commit) != folder(config, hosted, last));
+    if let Some(commit) = taken {
+        eprintln!(
+            "update-to-main: so it takes main at {}, which {} holds",
+            git::short(&commit),
+            hosted.checkout.display()
+        );
+        Ok(commit)
+    } else {
+        eprintln!(
+            "update-to-main: so main stays at {} until a later ask",
+            git::short(last)
+        );
+        Ok(last.to_owned())
+    }
 }
 
 /// Unpacks the flake's folder at `commit`, fetches its private inputs as
@@ -470,16 +557,26 @@ mod tests {
             ],
         };
         assert_eq!(
-            fetched_instead(&failure),
+            fell_back(&failure, "so main is fetched instead"),
             "update-to-main: reading main's folder from the host failed (exit status: 22): \
              https://host/api/git/trees/abc answered 404; \
              curl: (22) The requested URL returned error: 404, so main is fetched instead",
             "the fallback should say what curl said, on one line"
         );
         assert_eq!(
-            fetched_instead(&Failure::new("the host gave no answer")),
+            fell_back(
+                &Failure::new("the host gave no answer"),
+                "so main is fetched instead"
+            ),
             "update-to-main: the host gave no answer, so main is fetched instead",
             "a failure with nothing said should read as before"
+        );
+        assert_eq!(
+            fell_back(&failure, "and main mayn't be fetched now"),
+            "update-to-main: reading main's folder from the host failed (exit status: 22): \
+             https://host/api/git/trees/abc answered 404; \
+             curl: (22) The requested URL returned error: 404, and main mayn't be fetched now",
+            "a read that isn't followed by a fetch should say what curl said too"
         );
     }
 

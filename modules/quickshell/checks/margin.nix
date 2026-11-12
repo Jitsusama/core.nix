@@ -6,6 +6,7 @@
   bareNixos,
   copied,
   holds,
+  launcherOnNiri,
   lib,
   noFonts,
   pkgs,
@@ -217,4 +218,22 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml facts.qml
       touch $out
     '';
+
+  # The margin's cat (modules/margin-cat), which the graphical account's
+  # shell carries, sits over the column the keys are in on a real niri and
+  # follows them, on a layer taking no keys, and goes in fullscreen
+  # (tests/margin-cat-on-niri-test.py). Where over a column it sits is held
+  # in Qt's engine, beside its module. Its shell draws through Qt's GPU
+  # path, on Mesa's software GL as niri here does, rather than Qt's software
+  # renderer: the laptop's shell draws on its GPU, and the software renderer
+  # widens a cell of 1.333 logical pixels to three screen pixels at 1.5,
+  # which a GPU, filling the pixels whose middles it covers, never does.
+  the-margin-cat-follows-the-keys-on-niri = launcherOnNiri {
+    name = "the-margin-cat-follows-the-keys-on-niri";
+    tests = ../../../tests/margin-cat-on-niri-test.py;
+    given = [
+      "QT_QUICK_BACKEND=rhi"
+      "QSG_RHI_BACKEND=opengl"
+    ];
+  };
 }

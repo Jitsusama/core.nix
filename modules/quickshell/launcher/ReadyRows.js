@@ -379,16 +379,16 @@ function wordsOf(act) {
     return actForm(act) === "ask" && !closes(act) ? act.key : "";
 }
 
-// A row's mark as drawn: words.json's glyph role it names (`roles`, the theme's
-// glyphs), or a program's own mark no role names, served as `{ code }` in hex
-// and made its character once, as the row is made (3093d93d); "" for any other.
+// A row's mark as drawn: words.json's glyph role it names (`roles`, the theme's glyphs),
+// or a mark served as `{ code }`, code points in hex a space apart so a joined emoji keeps
+// each, made its characters once as the row is made (3093d93d, 477466fe); "" for any other.
 const HEX = 16;
 function glyphOf(glyph, roles) {
     if (typeof glyph === "string") {
         return roles[glyph] ?? "";
     }
-    const code = Number.parseInt(String(glyph?.code ?? ""), HEX);
-    return Number.isInteger(code) && code > 0 ? String.fromCodePoint(code) : "";
+    const points = String(glyph?.code ?? "").split(" ").map(one => Number.parseInt(one, HEX));
+    return points.every(one => one > 0) ? String.fromCodePoint(...points) : "";
 }
 
 // Where an act going to a program takes Joel (ready-rows.md's `go`, its

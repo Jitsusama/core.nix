@@ -580,16 +580,17 @@ Provider {
             Object.assign(fact("clears", knownSaid(each)), { words: true }),
             fact("machine", owner.machine),
             fact("where", owner.where),
-            fact("session", ForYou.sessionSaid(session?.title ?? "",
-                WaitingOnYou.owners[each.quest]?.status)),
             identifier("address", owner.address, false),
             identifier("check", owner.check, true),
             Object.assign(fact("item", WaitingOnYou.identity(each)), { identifies: true })
         ].filter(one => one.value !== "");
         return {
-            // Its quest by its title (VKCF3Z, 2026-11-08); its owner's
-            // address is a fact of its own.
-            eyebrow: waitingSaid("from", { from: quest || session?.title || "", kind: say.todo }),
+            // Its quest by its title (VKCF3Z, 2026-11-08), and how it
+            // stands where it isn't active, in place of a Session fact
+            // saying it again (Y2YBTS, 2026-11-12); its owner's address is
+            // a fact of its own.
+            eyebrow: waitingSaid("from", { from: ForYou.sessionSaid(quest || session?.title || "",
+                WaitingOnYou.owners[each.quest]?.status), kind: say.todo }),
             eyebrowNames: true,
             title: each.title,
             facts: facts,
@@ -1080,23 +1081,26 @@ Provider {
         const session = lookSession(one);
         const quest = one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
         const from = quest?.title || one.quest || session?.title || one.session || "";
-        const identified = (id, value) => Object.assign(fact(id, value), { identifies: true });
+        const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
         const facts = [
             fact("weight", waits ? ForYou.weightSaid(lookThing(one), now, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("clears", !waits ? "" : one.kind === "pr" ? say.clearsPr
                 : one.offers.length > 0 ? say.clearsAnswer : say.clearsLook),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
-            fact("session", ForYou.sessionSaid(session?.title ?? one.session ?? "",
-                quest?.status)),
-            identified("look", one.id),
-            identified("target", ["pr", "page", "diff"].includes(one.kind) ? one.target : "")
+            // What it points at, short; its whole address with its id in
+            // the nerdy bits, where y copies it (Y2YBTS, 2026-11-12).
+            fact("target", ForYou.pointsAt(one.kind, target, say))
         ].filter(each => each.value !== "");
         return {
-            eyebrow: waitingSaid("from", { from: from, kind: say.look }),
+            // Who it's from, and how their quest stands where it isn't
+            // active, in place of a Session fact saying it again.
+            eyebrow: waitingSaid("from", { from: ForYou.sessionSaid(from, quest?.status),
+                kind: say.look }),
             eyebrowNames: true,
             title: one.title,
             facts: facts,
+            nerd: [fact("target", target), fact("look", one.id)],
             body: one.words
         };
     }

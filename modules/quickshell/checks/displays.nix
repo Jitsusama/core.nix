@@ -60,8 +60,9 @@
 
   # The launcher tells how the desk light is lit and sets it, and the
   # brightness bar hears its changes but not a camera lighting it; with no
-  # light, its row stays and says why (tests/desk-light.qml), over a stand-in litra that keeps a light's
-  # state and says each change on its watch, as the real one does.
+  # light, its row stays and says why (tests/desk-light.qml), over a
+  # stand-in litra that keeps a light's state and says each change on its
+  # watch, as the real one does.
   the-launcher-finds-the-desk-light =
     let
       niri = pkgs.writeText "Niri.qml" ''

@@ -7,7 +7,7 @@
 // it through litra; its answer holds its Brightness and Warmth, each a
 // setting whose choices step it or set a level; the bar is told of a change
 // of brightness or warmth, never of a camera lighting it or putting it out;
-// and with no light its row stays, dimmed, saying it isn't plugged in, or
+// and with no light its row stays, for a show to find, saying it isn't plugged in, or
 // that litra isn't answering once its watch has ended, with nothing to set.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
@@ -128,7 +128,8 @@ ShellRoot {
 
     function first() {
         const told = light.answer("desk light");
-        expect("how it's lit", told !== null && told.headline === "the desk light is 40% \u00b7 4,000 K",
+        // Its side says only what its name doesn't (VKCF3Z, 2026-11-12).
+        expect("how it's lit", told !== null && told.headline === "40% \u00b7 4,000 K",
             told?.headline);
         expect("its parts", told.rows.map(row => `${row.name} ${row.side}`).join(", ")
             === "Brightness 40%, Warmth 4,000 K, Turn It Off ",
@@ -235,7 +236,7 @@ ShellRoot {
     function out() {
         expect("a camera tells the bar nothing", root.brightened === 2 && root.warmed === 2,
             `${root.brightened} ${root.warmed}`);
-        expect("off", light.answer("desk light").headline === "the desk light is off",
+        expect("off", light.answer("desk light").headline === "off",
             light.answer("desk light").headline);
         theLauncher.held = ({});
         light.answer("desk light on").run();
@@ -281,14 +282,21 @@ ShellRoot {
         root.step("unplugged", () => DeskLight.light === null, root.none);
     }
 
-    // With no light its row stays where Machine's head names it, dimmed,
-    // saying why, with nothing inside it to set (Y2YBTS, 2026-11-12: a
-    // place whose source is away keeps its row).
+    // With no light its row stays where Machine's head names it, saying
+    // why, with nothing inside it to set (Y2YBTS, 2026-11-12: a place whose
+    // source is away keeps its row). It's never gone, since a show skips a
+    // gone row, and a terminal's show must find the row Machine names, as
+    // Heat's held row is found (tests/heat-away.qml).
     function away(why) {
         const told = light.answer("desk light");
-        expect(`no light, its row stays: ${why}`, told !== null && told.gone === true
-            && told.headline === "" && told.note === why && told.rows.length === 0
-            && told.thing !== true, JSON.stringify(told));
+        expect(`no light, its row stays: ${why}`, told !== null && told.headline === ""
+            && told.note === why && told.rows.length === 0 && told.thing !== true,
+            JSON.stringify(told));
+        expect("and is there for a show to find", told?.gone !== true, JSON.stringify(told));
+        // A place holds an answer only with its parts, or whole
+        // (Launcher.qml's resolved), so it says it has some, as Heat's
+        // and Ethernet's held rows do, and Machine keeps it in its place.
+        expect("held in Machine as it will be", told?.parted === true, JSON.stringify(told));
         expect("nothing to set", light.answer("desk light 60") === null
             && light.answer("warmer") === null, JSON.stringify(light.answer("desk light 60")));
         expect("and no options", Object.keys(light.setOptions ?? {}).length === 0,

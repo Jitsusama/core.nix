@@ -1003,6 +1003,19 @@ and it shows in a screenshot or a share: niri can only black out a layer
 it's asked to keep from a capture, which would put a black patch at the
 top of every one.
 
+**The margin's cat** (`modules/margin-cat`, a machine's by importing it)
+is the one thing in the gap that says nothing. It is the empty places'
+cat, the theme's own `pixels`, sitting a cell above the top edge of the
+column Joel is in, over the middle of what's seen of it, in the desktop's
+voice; the cell of air keeps its feet off the border, whose accent is too
+near the voice in both looks to tell them apart. Its
+cells are whole device pixels, about two thirds of the gap tall all told,
+so it's as sharp at 1.5 as at 2. It keeps beside the marks rather than on
+them, since they say what's true. It takes no keys and no pointer, and
+it's gone wherever the gap can't hold it (fullscreen, the overview) and
+while a call shares the screen; a screenshot shows it, as it shows the
+marks. At rest it draws no frame.
+
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.
 

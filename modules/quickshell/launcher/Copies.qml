@@ -13,15 +13,16 @@
 // presses that window's paste keys for it, nothing of it waiting on the
 // shell: the act is asked as the history serves it, shutting the launcher
 // (ReadyRows.qml's shut), and a paste refused is told as the launcher next
-// opens. Super+E's emoji paste through Pasting.qml, this the helper it
-// asks. With no window there, Return only copies, as the right arrow's
-// Copy always does. Forget the Clipboard, the clipboard's last row while
-// there's something to forget and found by its words from anywhere, asks
-// the history to forget every copy, and what the clipboard holds with
-// them. Once the history has been silent a second, its row says "not
-// answering" where it counts the copies, and its head says so while it's
-// entered, as People's does; a paste that never landed is said there the
-// same way (Pasting.qml's pressing). Each copy's row keeps its own note.
+// opens. Super+E's emoji paste the same way, served by the same history
+// (Emoji.qml), and Pasting.qml asks it as its helper. With no window
+// there, Return only copies, as the right arrow's Copy always does.
+// Forget the Clipboard, the clipboard's last row while there's something
+// to forget and found by its words from anywhere, asks the history to
+// forget every copy, and what the clipboard holds with them. Once the
+// history has been silent a second, its row says "not answering" where it
+// counts the copies, and its head says so while it's entered, as People's
+// does; a paste that never landed is said there the same way (Pasting.qml's
+// pressing). Each copy's row keeps its own note.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -133,51 +134,15 @@ Provider {
         const readied = ready.thing(served, key, Object.assign(fields, kept));
         if (readied === null)
             return null;
-        const row = withoutWindow(readied, served, key);
+        // What y joins with other rows' copies is the text, for a copy
+        // that's one, and nothing for a picture, which y copies alone. Its
+        // verb a getter, made afresh with it (Provider.qml's gotten), so no
+        // field is lost.
+        const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
+        const row = Pasting.served(provider.gotten(readied, { verb: () => Pasting.verb() }),
+            "verb:copy:paste", copying, readied.text ?? "", one => ready.act(key, one));
         makings[key] = { served, row };
         return row;
-    }
-
-    // A row as it reads with no window to paste into, where the history
-    // only copies it: Return says copy, and only Copy is among its verbs.
-    // What y takes are plain fields, rather than rows made searchable, since
-    // y over hundreds asks every row (Launcher.qml's actionsOf), and what y
-    // joins with other rows' copies is the text, for a copy that's one, and
-    // nothing for a picture, which y copies alone. Its verb a getter, made
-    // afresh with it (Provider.qml's gotten), so no field is lost.
-    function withoutWindow(readied, served, key) {
-        const copying = (served.acts ?? []).find(one => one.key === "verb:copy:copy");
-        const verbs = readied.verbs;
-        const row = provider.gotten(readied, { verb: () => Pasting.verb() });
-        row.run = pastes(readied.run);
-        row.verbs = () => {
-            const all = verbs();
-            if (Pasting.under() === null)
-                return all.filter(one => one.key !== "verb:copy:paste");
-            for (const one of all)
-                if (one.key === "verb:copy:paste")
-                    one.run = pastes(one.run);
-            return all;
-        };
-        row.targets = row.verbs;
-        row.operands = () => copying === undefined ? [] : [{
-            key: copying.key,
-            verb: Words.verb(copying.key),
-            copies: row.text ?? "",
-            run: () => ready.act(key, copying)
-        }];
-        return row;
-    }
-
-    // A paste's run, saying for the checks that wait on one which program
-    // it goes to.
-    function pastes(run) {
-        return () => {
-            const under = Pasting.under();
-            if (under !== null)
-                Report.say(`pastes into ${under.app_id ?? ""}`);
-            run();
-        };
     }
 
     // Each copy heard, said for the checks that wait on it: a picture by

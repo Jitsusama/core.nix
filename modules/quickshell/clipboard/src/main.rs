@@ -20,6 +20,11 @@
 //! `--keep 0` nothing is kept and that is all it serves, for a shell whose
 //! launcher keeps no copies.
 //!
+//! With `--emoji`, naming the launcher's list of them (launcher/emoji.nix),
+//! it serves Emoji's rows too, `row:emoji:<N>` in the list's order
+//! (src/emoji.rs), since it's what pastes them, so the shell reads no
+//! list of its own.
+//!
 //! Text is kept in memory, and pictures in files of their own in the
 //! directory `--pictures` names, only this account's to read, which should
 //! be the runtime directory, since that's memory too and goes when the
@@ -61,11 +66,12 @@
 //!
 //! Usage: clipboard-history --socket PATH --vocabulary WORDS [--keep N]
 //!        [--largest BYTES] [--pictures DIR] [--largest-picture BYTES]
-//!        [--room BYTES]
+//!        [--room BYTES] [--emoji LIST]
 //!
 //! WORDS is the launcher's words.json. Its numbers are grouped and pointed
 //! as the launcher's counts are, with the comma and the full stop.
 
+mod emoji;
 mod rows;
 
 use std::collections::{HashMap, VecDeque};
@@ -787,6 +793,8 @@ struct Served {
     shared: Arc<Shared>,
     kept: Kept,
     words: Words,
+    // Emoji's rows, made once, since the list doesn't change.
+    emoji: Vec<Value>,
     changes: Option<u64>,
 }
 
@@ -801,8 +809,8 @@ impl Served {
         let (rows, beside) = history.records(&self.words);
         let moved = self.kept.take(rows, beside);
         if !moved.changed.is_empty() || !moved.gone.is_empty() {
-            self.shared
-                .change(self.kept.all().cloned().collect(), json!({}));
+            let records = self.kept.all().chain(&self.emoji).cloned().collect();
+            self.shared.change(records, json!({}));
         }
     }
 }
@@ -947,6 +955,26 @@ impl State {
             }
         };
         let _ = reply.send(answer);
+    }
+
+    /// Does what was asked of the clipboard's thread: what the shell
+    /// wanted, or a paste's keys pressed once the launcher let go of them.
+    fn asked(&mut self, asked: Asked, handle: &QueueHandle<Self>) {
+        match asked {
+            Asked::Wanted(wanted, reply) => self.wanted(wanted, reply, handle),
+            Asked::Press(keys, letting_go, let_go, reply) => {
+                let answer = if self.press(keys) {
+                    eprintln!("{}", pasted(letting_go, let_go.elapsed()));
+                    json!({ "pasted": true })
+                } else {
+                    self.unpasted()
+                };
+                let _ = reply.send(answer);
+            }
+            Asked::Unpasted(reply) => {
+                let _ = reply.send(self.unpasted());
+            }
+        }
     }
 
     /// The answer to a paste that never landed.
@@ -1243,6 +1271,7 @@ struct Settings {
     pictures: Option<PathBuf>,
     largest_picture: usize,
     room: usize,
+    emoji: Option<PathBuf>,
 }
 
 fn settings() -> Result<Settings, String> {
@@ -1252,6 +1281,7 @@ fn settings() -> Result<Settings, String> {
     let mut pictures = None;
     let mut largest_picture = 64 << 20;
     let mut room = 256 << 20;
+    let mut emoji = None;
     let mut arguments = env::args().skip(1);
     while let Some(argument) = arguments.next() {
         let mut value = || {
@@ -1272,6 +1302,7 @@ fn settings() -> Result<Settings, String> {
             "--pictures" => pictures = Some(PathBuf::from(value()?)),
             "--largest-picture" => largest_picture = bytes(value()?, "--largest-picture")?,
             "--room" => room = bytes(value()?, "--room")?,
+            "--emoji" => emoji = Some(PathBuf::from(value()?)),
             other => return Err(format!("{other} isn't something this understands")),
         }
     }
@@ -1288,7 +1319,20 @@ fn settings() -> Result<Settings, String> {
         pictures,
         largest_picture,
         room,
+        emoji,
     })
+}
+
+/// Emoji's rows, from the list `--emoji` names, or none without one.
+fn emoji_rows(list: Option<&Path>) -> Result<Vec<Value>, String> {
+    list.map_or_else(
+        || Ok(Vec::new()),
+        |list| {
+            fs::read_to_string(list)
+                .map(|text| emoji::records(&text))
+                .map_err(|e| format!("can't read {}: {e}", list.display()))
+        },
+    )
 }
 
 fn lost(error: impl std::fmt::Display) -> String {
@@ -1298,6 +1342,7 @@ fn lost(error: impl std::fmt::Display) -> String {
 fn run() -> Result<(), String> {
     let settings = settings()?;
     let words = worded(&settings.vocabulary)?;
+    let emoji = emoji_rows(settings.emoji.as_deref())?;
     if let Some(dir) = &settings.pictures {
         prepared(dir).map_err(|e| format!("can't keep pictures in {}: {e}", dir.display()))?;
     }
@@ -1328,6 +1373,7 @@ fn run() -> Result<(), String> {
         shared: Arc::clone(&shared),
         kept: Kept::default(),
         words,
+        emoji,
         changes: None,
     };
     let history = History::new(settings.keep, settings.pictures.clone(), settings.room);
@@ -1363,22 +1409,8 @@ fn run() -> Result<(), String> {
                 state.hold(&handle);
             }
         }
-        for wanted in wanted.try_iter() {
-            match wanted {
-                Asked::Wanted(wanted, reply) => state.wanted(wanted, reply, &handle),
-                Asked::Press(keys, letting_go, let_go, reply) => {
-                    let answer = if state.press(keys) {
-                        eprintln!("{}", pasted(letting_go, let_go.elapsed()));
-                        json!({ "pasted": true })
-                    } else {
-                        state.unpasted()
-                    };
-                    let _ = reply.send(answer);
-                }
-                Asked::Unpasted(reply) => {
-                    let _ = reply.send(state.unpasted());
-                }
-            }
+        for asked in wanted.try_iter() {
+            state.asked(asked, &handle);
         }
         queue.flush().map_err(lost)?;
         state.served.send(&state.history);
@@ -1945,6 +1977,7 @@ mod tests {
             shared: Shared::new(DOMAIN, Box::new(|_| None)),
             kept: Kept::default(),
             words: words(),
+            emoji: Vec::new(),
             changes: None,
         }
     }

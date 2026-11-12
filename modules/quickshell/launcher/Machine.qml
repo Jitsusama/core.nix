@@ -596,10 +596,14 @@ Provider {
             return [];
         const chip = Words.glyph(kinds.disks);
         // Disks are amounts: the worst band first, as the disk piece
-        // judges it, so the first is the headline's, and within a band
+        // judges it, so the first is the headline's; within a band the
+        // system disk, as the piece leads with it (#3768), so a small
+        // build disk with room never reads as a nearly full machine; then
         // the least room, then A to Z.
+        const system = one => one.path === "/" ? 0 : 1;
         const watched = Order.sorted(guard.disks, Order.amounts({
-            worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1 : a.free - b.free,
+            worse: (a, b) => guard.worse(a, b) ? -1 : guard.worse(b, a) ? 1
+                : system(a) - system(b) || a.free - b.free,
             name: one => one.path
         }));
         const each = one => disked(guard, one, {
@@ -607,11 +611,13 @@ Provider {
             graph: bar(1 - one.free / one.total, one.band !== "healthy")
         });
         const worst = watched[0];
+        const least = watched.every(one => worst.free <= one.free);
         const space = {
             name: named("disk:space"),
             graph: bar(1 - worst.free / worst.total, worst.band !== "healthy"),
-            note: watched.length > 1 ? `on ${worst.path}, the least of ${watched.length}`
-                : `on ${worst.path}`
+            note: watched.length === 1 ? `on ${worst.path}`
+                : least ? `on ${worst.path}, the least of ${watched.length}`
+                : `on ${worst.path}, one of ${watched.length}`
         };
         const rows = [watched.length > 1
             ? holderRow(Object.assign(space, {
