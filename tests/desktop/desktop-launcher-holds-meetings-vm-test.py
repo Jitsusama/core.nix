@@ -784,8 +784,8 @@ def test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_s
     when = f"{day} \u00b7 10:00 to 10:30"
     desktop.type_in("tomorrow 10:00", selecting=when)
     desktop.launcher_until(
-        lambda shown: (
-            str((shown["selected"] or {}).get("is")).startswith("calendar:meeting:standup:move:")
+        lambda shown: str((shown["selected"] or {}).get("is")).startswith(
+            "calendar:meeting:standup:move:"
         )
     )
     # Return asks first, naming who Google tells, and moves nothing yet.

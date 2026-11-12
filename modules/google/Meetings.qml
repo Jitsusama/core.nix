@@ -51,12 +51,15 @@ Provider {
         maker: provider
         drawn: provider.launcher?.open ?? false
         make: (row, key) => provider.made(ready, row, key)
-        // The daemon's answer to a time typed in Move shown, the selection
-        // staying on its row (Launcher.qml's reshow).
+        // The daemon's answer to a time typed in Move shown, while that Move
+        // is the step shown, the selection staying on its row (Launcher.qml's
+        // reshow).
         onSearched: words => {
             const launcher = provider.launcher;
             const step = launcher?.held[launcher.held.length - 1];
-            if (launcher?.open && launcher.typed === words && step?.row.from === provider)
+            const moving = ready.served(ready.typing.within)?.thing;
+            if (launcher?.open && launcher.typed === words && !!moving
+                && step?.row.key === moving)
                 launcher.reshow(launcher.held.length, true);
         }
     }
