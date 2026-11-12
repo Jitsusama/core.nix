@@ -271,9 +271,11 @@ mod tests {
     /// A machine of sixteen cores whose processor has run `all` ticks,
     /// cargo `cargo` of them, and whose firefox holds `pages` pages.
     fn machine(folder: &std::path::Path, all: u64, cargo: u64, pages: u64) -> Root {
-        let cores: String = (0..16)
-            .map(|n| format!("cpu{n} 1 0 0 0 0 0 0 0 0 0\n"))
-            .collect();
+        let cores = (0..16).fold(String::new(), |mut lines, n| {
+            use std::fmt::Write as _;
+            let _ = writeln!(lines, "cpu{n} 1 0 0 0 0 0 0 0 0 0");
+            lines
+        });
         let files = [
             (
                 "proc/stat".to_owned(),
