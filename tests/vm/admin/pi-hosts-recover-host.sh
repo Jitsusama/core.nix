@@ -30,6 +30,7 @@ while true; do
     # Its kill fails the pipeline, which would end the subshell unsaid.
     (
       status=0
+      # shellcheck disable=SC2312 # pipefail hands the pipeline tail's kill.
       head -c 1G /dev/zero | tail -n 1 >/dev/null || status=$?
       echo "${status}" >"$dir/hog.status"
     ) &
