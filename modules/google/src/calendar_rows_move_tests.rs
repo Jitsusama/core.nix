@@ -13,11 +13,11 @@ fn within<'a>(rows: &'a [Value], parent: &str) -> Vec<&'a Value> {
     rows.iter().filter(|row| row["parent"] == parent).collect()
 }
 
-/// Planned, 15:00 to 15:30, among one at 15:40 it clashes with, one at
-/// 16:00 Joel turned down and one all day tomorrow, neither of which it
-/// clashes with.
+/// Planned, 15:00 to 15:30, among one at 15:40 it clashes with, and one
+/// Joel turned down at 15:00 tomorrow and one all day tomorrow, neither of
+/// which it clashes with.
 fn among() -> Vec<Value> {
-    let mut declined = one("e3", MONDAY + 2 * HOUR);
+    let mut declined = one("e3", MONDAY + 25 * HOUR);
     declined.answer = Some(Answer::No);
     let mut all_day = one("e4", MONDAY + 10 * HOUR);
     all_day.end = MONDAY + 34 * HOUR;

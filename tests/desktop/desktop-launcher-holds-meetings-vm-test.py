@@ -851,8 +851,14 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
     assert rows.index("Guests") + 1 == rows.index("Attachments"), rows
     desktop.down_to("Guests")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Ada Lovelace", "Grace Hopper"])
-    assert desktop.showing()["things"][1]["is"] == "person:grace@example.com"
+    # A served guest is listed by name at once, and People's own row once
+    # People lends it (ReadyRows' lentRevision), which may come a frame on.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["rows"] == ["Ada Lovelace", "Grace Hopper"]
+            and shown["things"][1]["is"] == "person:grace@example.com"
+        )
+    )
     desktop.down_to("Grace Hopper")
     machine.send_key("ret")
     # Her page leads with her mail Joel hasn't read, then the ways to reach her.
