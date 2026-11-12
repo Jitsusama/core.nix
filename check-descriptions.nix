@@ -1816,7 +1816,8 @@
     the thread that lost it a frame, reads niri's focused window and frame, and finds the window's
     scope and pi as the jobs-sorter finds them, a bare class in the shared kitty finding none,
     and reads what a sample ran beside: the CPU's waiting, the load, and the pi and package
-    versions a pi runs, keeping nothing else of its environment
+    versions a pi runs, keeping nothing else of its environment, and models the keys again by the
+    install each window's pi loaded, so installs compare under one load
   '';
   pi-keys-passes-clippy = ''
     clippy finds nothing in pi-keys or its tests

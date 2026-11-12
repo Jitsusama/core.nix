@@ -8,6 +8,7 @@
 //! compares them fairly.
 
 use crate::model::{self, Path};
+use std::collections::BTreeMap;
 
 /// A stretch Joel spent at a pi window, in the monotonic clock's
 /// milliseconds, and the pi process the window ran.
@@ -30,14 +31,31 @@ pub struct Install {
 /// The keys of each install, modelled over its own stretches, with
 /// `installs` naming what each pi process loaded.
 pub fn split(
-    _path: &Path,
-    _held: &[Held],
-    _installs: impl Fn(u32) -> Vec<String>,
-    _frame: f64,
-    _keys: usize,
-    _seed: u64,
+    path: &Path,
+    held: &[Held],
+    installs: impl Fn(u32) -> Vec<String>,
+    frame: f64,
+    keys: usize,
+    seed: u64,
 ) -> Vec<Install> {
-    Vec::new()
+    let mut by: BTreeMap<Vec<String>, Vec<(f64, f64)>> = BTreeMap::new();
+    for stretch in held {
+        by.entry(installs(stretch.pi))
+            .or_default()
+            .push((stretch.from, stretch.to));
+    }
+    by.into_iter()
+        .filter_map(|(packages, stretches)| {
+            let modelled = model::keys(path, &stretches, frame, keys, &mut model::Draw::new(seed));
+            let summary = model::summary(&modelled)?;
+            let seconds = stretches.iter().map(|(a, b)| b - a).sum::<f64>() / 1000.0;
+            Some(Install {
+                packages,
+                seconds,
+                summary,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
