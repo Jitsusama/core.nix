@@ -169,20 +169,59 @@ Provider {
     // what it takes lands and the last one there (Captured.js's act), as
     // every act but a bare verb inside a thing has (VKCF3Z, 37e49991; Joel,
     // 2026-11-11 22:00: every row has a drawer). A thing, so it's drawn.
-    function acting(fields, folder) {
-        return member(Object.assign(fields, {
+    // `made` is what a terminal types to do the same, and the format of
+    // what it takes, which its drawer folds with the folder's path.
+    function acting(fields, folder, made) {
+        const row = member(Object.assign(fields, {
             thing: true,
-            drawer: () => provider.actDrawer(fields, folder)
+            drawer: () => provider.actDrawer(fields, folder, made),
+            verbs: () => provider.actVerbs(row, folder)
         }));
+        return row;
     }
 
-    function actDrawer(fields, folder) {
+    // An act's own, then what follows from it, Open the Folder where it
+    // lands (the Act kind's acts, VKCF3Z's 37e49991), so its drawer lists
+    // both and a step into it holds them. Its own is made here rather than
+    // left to the launcher's, which would take a picture with the launcher
+    // still in it, since it isn't `later`. The folder is made first, as a
+    // camera's is only once it has taken something.
+    function actVerbs(row, folder) {
+        const key = "verb:capture:folder";
+        return [thing({
+            key: `${row.key}:own`,
+            name: provider.ownAct(row.verb),
+            verb: row.verb,
+            glyph: row.glyph,
+            hue: "action",
+            later: row.later,
+            run: () => row.run()
+        }), thing({
+            key: `${key}:${folder}`,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            run: () => Niri.spawn(["sh", "-c", 'mkdir -p "$1" && exec xdg-open "$1"', "folder",
+                folder])
+        })];
+    }
+
+    // An act's own by its verb, as Take, so its drawer and its step say it
+    // alike.
+    function ownAct(verb) {
+        return verb.charAt(0).toUpperCase() + verb.slice(1);
+    }
+
+    function actDrawer(fields, folder, made) {
         // Where it lands is its folder by name, and the clipboard beside it
         // where it's copied (Captured.js's landsIn).
         const words = Words.of(fields.key);
         const lands = Captured.landsIn(folder, (words.said ?? {}).also ?? "");
         return Captured.act({ title: fields.name, does: (words.tells ?? {}).does ?? "",
-            lands: lands }, provider.launcher?.chordText(fields.chord ?? []) ?? "",
+            lands: lands, command: made.command, path: folder, format: made.format,
+            acts: [provider.ownAct(fields.verb), Words.name("verb:capture:folder")] },
+        provider.launcher?.chordText(fields.chord ?? []) ?? "",
         Captured.newest(Taken.files, folder), {
             now: Date.now(),
             named: id => Words.name(`capture:${id}`),
@@ -194,6 +233,12 @@ Provider {
     // Where each act's picture or recording lands (modules/niri's
     // screenshot-path, Recorder.qml, modules/camera).
     readonly property string shots: `${home}/Pictures/Screenshots`
+    // What each writes, by the name its format goes by: niri's and the
+    // region's pictures are PNG (config.kdl's screenshot-path, Recorder's
+    // screenshot), the camera's photos JPEG and every recording MP4
+    // (Recorder.qml, modules/camera).
+    readonly property string shot: "PNG"
+    readonly property string recorded: "MP4"
 
     readonly property var stop: acting({
         key: "capture:stop",
@@ -207,7 +252,7 @@ Provider {
         hue: "action",
         chord: chord("qs ipc call recording screen"),
         run: () => Recorder.stop()
-    }, Recorder.folder)
+    }, Recorder.folder, { command: "qs ipc call recording stop", format: provider.recorded })
 
     function shootScreen() {
         Niri.act({ ScreenshotScreen: { write_to_disk: true, show_pointer: false } });
@@ -234,7 +279,7 @@ Provider {
         chord: opening ?? chord("niri msg action screenshot-screen"),
         later: true,
         run: () => provider.shootScreen()
-    }, shots)
+    }, shots, { command: "niri msg action screenshot-screen", format: provider.shot })
 
     // Print or Super+P, pressed while the launcher shows, never changes
     // what's on the screen first (VKCF3Z, Joel's yes of 2026-11-03). Here
@@ -265,7 +310,7 @@ Provider {
             chord: chord("niri msg action screenshot-window"),
             later: true,
             run: () => provider.shoot(here)
-        }, shots)
+        }, shots, { command: "niri msg action screenshot-window", format: provider.shot })
     ], [
         acting({
             key: "capture:region",
@@ -276,7 +321,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => Recorder.screenshot(provider.back)
-        }, shots)
+        }, shots, { command: "qs ipc call screenshot region", format: provider.shot })
     ], Recorder.recording ? [] : [
         acting({
             key: "capture:record-screen",
@@ -288,7 +333,7 @@ Provider {
             chord: chord("qs ipc call recording screen"),
             later: true,
             run: () => Recorder.screen()
-        }, Recorder.folder)
+        }, Recorder.folder, { command: "qs ipc call recording screen", format: provider.recorded })
     ], Recorder.recording || here === null ? [] : [
         acting({
             key: "capture:record-window",
@@ -302,7 +347,7 @@ Provider {
             // The window its title names, as niri describes it, since the
             // recorder reads its size.
             run: () => Recorder.window(Niri.windows[provider.here.id] ?? null)
-        }, Recorder.folder)
+        }, Recorder.folder, { command: "qs ipc call recording window", format: provider.recorded })
     ], Recorder.recording ? [] : [
         acting({
             key: "capture:record-region",
@@ -313,7 +358,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => Recorder.region(provider.back)
-        }, Recorder.folder)
+        }, Recorder.folder, { command: "qs ipc call recording region", format: provider.recorded })
     ], !provider.settings.camera ? [] : [
         acting({
             key: "capture:camera-picture",
@@ -324,7 +369,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => Niri.spawn(["camera", "picture"])
-        }, `${home}/Pictures/Camera`),
+        }, `${home}/Pictures/Camera`, { command: "camera picture", format: "JPEG" }),
         acting({
             key: "capture:camera-video",
             verb: "open",
@@ -334,7 +379,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => Niri.spawn(["camera", "video"])
-        }, `${home}/Videos/Camera`)
+        }, `${home}/Videos/Camera`, { command: "camera video", format: provider.recorded })
     ])
 
     // Every other window, found only by typing its title or program, since

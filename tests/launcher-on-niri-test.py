@@ -3535,7 +3535,8 @@ def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
     """Each of Capture's acts has a drawer saying what it does and where that lands.
 
     Every row has a drawer giving a little more than its line (Joel, 2026-11-11 22:00), an act's
-    saying what it does, its key, where it lands and the last one there (VKCF3Z, 37e49991).
+    saying what it does, its key, where it lands and the last one there (VKCF3Z, 37e49991), then
+    the act and what follows from it, Open the Folder, and folded, its command, path and format.
     """
     path = shlex.quote("\u203adesktop\u203acapture")
     asked = f"qs -p {shell.folder} ipc call -- launcher drawers {path}"
@@ -3550,6 +3551,20 @@ def test_captures_acts_each_say_what_they_do_in_a_drawer(shell: Shell) -> None:
     assert facts.get("Lands In") == "Screenshots, and on the clipboard", facts
     region = drawers.get("Record a Region", {})
     assert str(region.get("body", "")).startswith("Records the part of the screen"), region
+    # A terminal's show says no acts or nerdy bits, so they're read as drawn.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("capture", selecting="Capture")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "The Whole Screen" in shown["rows"])
+    shell.down_to("The Whole Screen")
+    shell.launcher_until(
+        lambda shown: (
+            shown["drawer"]["acts"] == ["\u21b5 Take", "Open the Folder"]
+            and shown["drawer"]["nerd"] == ["Command", "Path", "Format"]
+        )
+    )
+    shell.close_launcher()
 
 
 def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
