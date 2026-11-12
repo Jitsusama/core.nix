@@ -146,10 +146,7 @@
     "launcher/Numbers.js"
     "launcher/Order.js"
   ];
-  "launcher/HomeNetworkAddresses.js" = [
-    "launcher/HomeNetwork.js"
-    "launcher/HomeNetworkHistory.js"
-  ];
+  "launcher/HomeNetworkAddresses.js" = [ "launcher/HomeNetworkHistory.js" ];
   "launcher/HomeNetworkDrawers.js" = [
     "launcher/HomeNetwork.js"
     "launcher/HomeNetworkAddresses.js"

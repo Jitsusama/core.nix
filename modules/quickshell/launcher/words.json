@@ -4164,12 +4164,6 @@
       "name": "IPv6 Pinholes"
     },
     {
-      "id": "eero:internet:reserved",
-      "in": "eero:internet",
-      "name": "Reserved Addresses",
-      "term": "Network/reserved address"
-    },
-    {
       "id": "eero:internet:speed-test",
       "in": "eero:internet",
       "name": "Speed Test",
@@ -4291,12 +4285,6 @@
       "term": "Network/node"
     },
     {
-      "id": "eero:internet:devices",
-      "in": "eero:internet",
-      "name": "Devices",
-      "term": "Network/device"
-    },
-    {
       "id": "eero:internet:firmware",
       "in": "eero:internet",
       "name": "Firmware",
@@ -4350,14 +4338,14 @@
       "name": "Outages in the Last 30 Days"
     },
     {
-      "id": "eero:internet:joins-and-leaves",
-      "in": "eero:internet",
-      "name": "Joined and Left in the Last Day"
+      "id": "eero:node:devices-off",
+      "in": "eero:node",
+      "name": "Not on Now"
     },
     {
-      "id": "eero:internet:devices-off",
-      "in": "eero:internet",
-      "name": "Not on Now"
+      "id": "eero:node:joins-and-leaves",
+      "in": "eero:node",
+      "name": "Joined and Left in the Last Day"
     },
     {
       "id": "eero:node:model",

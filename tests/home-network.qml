@@ -238,7 +238,6 @@ QtObject {
             ["to-internet", "11.9 ms"],
             ["lookup", "14.1 ms"],
             ["nodes", "3 nodes online"],
-            ["devices", "24 known \u00b7 15 on Wi-Fi"],
             ["firmware", "v7.17.4-5 \u00b7 up to date"],
             ["updates", "at 02:00 \u00b7 last 07:19"],
             ["traffic", "167 GB down \u00b7 72.7 GB up"],
@@ -250,11 +249,26 @@ QtObject {
         // under a heading of its own.
         const internetFacts = Drawers.internet(model, now).facts;
         expect("the internet's drawer leads with what its row says", internetFacts.slice(0, 6)
-            .map(fact => fact.id), ["speed-test", "nodes", "devices", "outages", "isp",
-            "mesh"]);
+            .map(fact => fact.id), ["speed-test", "nodes", "outages", "isp", "mesh",
+            "firmware"]);
         expect("the internet's groups", internetFacts.filter(fact => fact.heading !== undefined)
             .map(fact => fact.heading), ["probe", "outage-list", "speed-tests", "addressing",
-            "reserved", "settings", "devices-off", "joins-and-leaves", "events"]);
+            "settings", "events"]);
+
+        // The internet's drawer holds only the internet: no device, on now
+        // or not, is named in it, by its name or its hardware address, and
+        // no list of devices is under it, since each device's drawer says
+        // its own and each node's who came and went (Joel, 2026-11-11).
+        const plain = text => String(text ?? "").replace(/\u00a0/g, " ").replace(/\u200b/g, "")
+            .toLowerCase();
+        const internetSays = internetFacts.map(fact => plain(`${fact.label ?? ""} `
+            + `${fact.value ?? ""}`)).join("\n");
+        expect("no device under the internet", model.devices.concat(model.devices_off)
+            .filter(one => [Home.nameOf(one), one.mac].some(said => internetSays
+                .includes(plain(said)))).map(one => Home.nameOf(one)), []);
+        expect("no list of devices under the internet", internetFacts.filter(fact => ["devices",
+            "reserved", "devices-off", "joins-and-leaves"].includes(fact.id ?? fact.heading))
+            .map(fact => fact.id ?? fact.heading), []);
         expect("eero's outages counted where no history is kept", value(byId(Drawers
             .internet(unkept, now)), "outages"), "none recorded");
 
@@ -290,12 +304,13 @@ QtObject {
             [1, null, 1]);
 
         // Each outage of 30 days, newest first: when, how long, who saw it.
-        const listed = heading => {
-            const facts = Drawers.internet(model, now).facts;
+        // What's under a heading runs to the next, or to the drawer's end.
+        const under = (facts, heading) => {
             const from = facts.findIndex(fact => fact.heading === heading) + 1;
             const to = facts.findIndex((fact, at) => at >= from && fact.heading !== undefined);
-            return facts.slice(from, to);
+            return facts.slice(from, to < 0 ? facts.length : to);
         };
+        const listed = heading => under(Drawers.internet(model, now).facts, heading);
         expect("an outage this machine saw", listed("outage-list"), [
             { label: "Tuesday 03:12", value: "1 min \u00b7 seen by this machine" }
         ]);
@@ -313,11 +328,7 @@ QtObject {
             { label: "time not given", value: "seen by eero" }
         ]);
 
-        // The addresses kept for a device, each by the device's name where
-        // eero lists it, else by the label it was given; none says so.
-        expect("an address kept for a device eero doesn't list", listed("reserved"), [
-            { label: "network equipment 1", value: "10.0.0.208" }
-        ]);
+        // The address kept for a device is in its own drawer.
         const addresses = model.internet.addresses;
         const keeping = (reservations, subnets) => Object.assign({}, model, {
             internet: Object.assign({}, model.internet, {
@@ -328,12 +339,6 @@ QtObject {
         const printer = device("printer 1");
         const reserving = keeping(addresses.reservations.concat([{ mac: printer.mac.toUpperCase(),
             description: "office printer", address: "10.0.0.30" }]));
-        expect("a device's own name, and the label it was given", Drawers.internet(reserving, now)
-            .facts.filter(fact => fact.label === "printer 1"), [
-            { label: "printer 1", value: "10.0.0.30 \u00b7 office printer" }
-        ]);
-        expect("none kept says none", value(byId(Drawers.internet(keeping([]), now)),
-            "reserved"), "none");
         const odd = keeping([], [Object.assign({}, addresses.subnets[1], { kind: "iot",
             name: "things", mask: "255.0.255.0", on: true, internet: false, open: true })]);
         expect("a subnet of a kind eero hasn't named, by its name, its mask whole",
@@ -357,24 +362,30 @@ QtObject {
             internet: Object.assign({}, model.internet, { name_clash: true })
         }), now)), "name-clash"), "another network has its name");
 
-        // The devices that joined or left over the last day, newest first.
-        expect("who joined and left", listed("joins-and-leaves"), [
-            { label: "22:49", value: "phone\u00a01\u200b left Den \u00b7 5 GHz" },
-            { label: "22:39", value: "laptop\u00a0computer\u00a01\u200b joined Study \u00b7 5 GHz" }
+        // The devices that joined or left a node over the last day, newest
+        // first, in that node's drawer.
+        const onNode = (id, heading, given) => under(Drawers.node(given ?? model, node(id), now)
+            .facts, heading);
+        expect("who left a node", onNode("2001", "joins-and-leaves"), [
+            { label: "22:49", value: "phone\u00a01\u200b left \u00b7 5 GHz" }
+        ]);
+        expect("who joined a node", onNode("2002", "joins-and-leaves"), [
+            { label: "22:39", value: "laptop\u00a0computer\u00a01\u200b joined \u00b7 5 GHz" }
         ]);
         // The devices eero knows that aren't on now, the last on first,
-        // each where and how it was last on.
-        const off = listed("devices-off");
-        expect("each device not on now", [off.length, off[0], off[2]], [9,
-            { label: "game console 2", value: "Study \u00b7 5 GHz \u00b7 21:38" },
-            { label: "generic 5", value: "Hall \u00b7 Ethernet \u00b7 13:15" }]);
-        expect("one eero names nothing, by its hardware address", off[3].label,
-            "02:00:00:00:00:1b");
-        expect("none off, no heading", Drawers.internet(Object.assign({}, model,
-            { devices_off: [] }), now).facts.some(fact => fact.heading === "devices-off"), false);
-        expect("none joined or left, no heading", Drawers.internet(Object.assign({}, model,
-            { joins_and_leaves: [] }), now).facts.some(fact =>
-            fact.heading === "joins-and-leaves"), false);
+        // each in the drawer of the node it was last on, how and when.
+        const off = ["2001", "2002", "2003"].map(id => onNode(id, "devices-off"));
+        expect("each device not on now, under its node", [off.map(list => list.length),
+            off[1][0], off[2][0]], [[5, 3, 1],
+            { label: "game console 2", value: "5 GHz \u00b7 21:38" },
+            { label: "generic 5", value: "Ethernet \u00b7 13:15" }]);
+        expect("one eero names nothing, by its hardware address", off[0].some(fact =>
+            fact.label === "02:00:00:00:00:1b"), true);
+        expect("none off, no heading", Drawers.node(Object.assign({}, model,
+            { devices_off: [] }), node("2001"), now).facts.some(fact =>
+            fact.heading === "devices-off"), false);
+        expect("none joined or left, no heading", Drawers.node(model, node("2003"), now).facts
+            .some(fact => fact.heading === "joins-and-leaves"), false);
         expect("the speed tests sparked", internet.down.figure.shape, "spark");
         expect("a spark's newest last, scaled to the most", internet.up.figure.values.slice(-1)[0]
             <= 1 && internet.up.figure.values.length, 15);
@@ -411,11 +422,6 @@ QtObject {
             "model", "serial"]);
         expect("a node offline says so first", Drawers.node(model, Object.assign({}, node("2003"),
             { state: "OFFLINE" }), now).facts[0], { id: "state", value: "offline" });
-        const under = (facts, heading) => {
-            const from = facts.findIndex(fact => fact.heading === heading) + 1;
-            const to = facts.findIndex((fact, at) => at >= from && fact.heading !== undefined);
-            return facts.slice(from, to < 0 ? facts.length : to);
-        };
         const hallFacts = Drawers.node(model, node("2003"), now).facts;
         expect("each radio by band", under(hallFacts, "radios").map(fact => [fact.label,
             fact.value]), [
@@ -458,8 +464,7 @@ QtObject {
         expect("no bars over Ethernet", hall.backhaul.figure, null);
         expect("a port not linked", value(study, "port 1"), "not linked \u00b7 up to 1.00 Gb/s");
         const onHall = Drawers.node(model, node("2003"), now).facts;
-        expect("the devices on a node, strongest first", onHall.slice(onHall.findIndex(fact =>
-            fact.heading === "on-it") + 1), [
+        expect("the devices on a node, strongest first", under(onHall, "on-it"), [
             { label: "generic 3", value: "\u221248 dBm \u00b7 2.4 GHz \u00b7 channel 6" },
             { label: "phone 1", value: "\u221252 dBm \u00b7 5 GHz \u00b7 channel 149" }
         ]);
@@ -557,36 +562,30 @@ QtObject {
         }), Object.assign({}, device("phone 1"), { profile: "3001" }), now));
         expect("a device's profile", value(inProfile, "profile"), "profile 1 \u00b7 paused");
 
-        // What happened, newest first, in the internet's drawer, with each
-        // notice the daemon told set among eero's events, and each
-        // device's own in its.
+        // What happened to the internet, newest first, in its drawer, with
+        // each notice the daemon told set among eero's events; what
+        // happened to a device is in the device's own.
         const events = Drawers.internet(model, now).facts;
         const timeline = events.slice(events.findIndex(fact => fact.heading === "events") + 1);
-        // Each is prose, set in Words, and eero's figures are set as ours.
-        expect("what happened, newest first", timeline.slice(0, 2), [
-            { label: "22:42",
-                value: "tablet\u00a01\u200b connected to Den eero Pro 6 "
-                    + "on 5.2\u00a0GHz channel 52.", words: true },
-            { label: "22:42", value: "tablet\u00a01\u200b disconnected from Study eero Pro 6.",
-                words: true }
-        ]);
         // A name in what eero said keeps its words on one line, a name
         // inside a longer one kept as part of it.
-        const named = Drawers.internet(Object.assign({}, model, { told: [], events: [{
+        const named = Drawers.device(Object.assign({}, model, { told: [], events: [{
             at: "2026-11-07T22:50:00Z", text: "laptop computer 1 joined, then phone 1." }] }),
-            now).facts;
+            device("laptop computer 1"), now).facts;
         expect("each name in an event kept whole",
             named[named.findIndex(fact => fact.heading === "events") + 1].value,
             "laptop\u00a0computer\u00a01\u200b joined, then phone\u00a01.");
-        expect("every event and every notice", timeline.length, 10);
-        expect("a notice by when it was told, then what it said", timeline.slice(5, 7), [
+        // laptop computer 1 joining is told in its own drawer.
+        expect("every notice but a device's, and no device's event", timeline.length, 4);
+        // Each is prose, set in Words, and eero's figures are set as ours.
+        expect("a notice by when it was told, then what it said", timeline.slice(0, 2), [
             { label: "07:24",
                 value: "The nodes updated to v7.17.4-5. They were on v7.17.3-9.", words: true },
             { label: "yesterday 16:21",
                 value: "A firmware update is waiting. "
                     + "eero updates the nodes to v7.17.4-5 at 02:00.", words: true }
         ]);
-        expect("the oldest last", timeline[9], { label: "Tuesday 03:12",
+        expect("the oldest last", timeline[3], { label: "Tuesday 03:12",
             value: "The internet is out. Nothing past the home network answers this machine.",
             words: true });
         const quiet = Drawers.internet(Object.assign({}, model, { events: [], told: [{
@@ -601,6 +600,9 @@ QtObject {
             "tablet\u00a01\u200b connected to Den eero Pro 6 on 5.2\u00a0GHz channel 52.",
             "tablet\u00a01\u200b disconnected from Study eero Pro 6."
         ]);
+        expect("a notice told of a device, in its drawer", under(Drawers.device(model,
+            device("laptop computer 1"), now).facts, "events").some(fact => String(fact.value)
+            .includes("joined the home network")), true);
         expect("none of another's", Drawers.device(model, device("generic 2"), now).facts
             .some(fact => fact.heading === "events"), false);
 

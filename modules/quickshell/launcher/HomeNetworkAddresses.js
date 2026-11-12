@@ -1,12 +1,11 @@
 // How the home network has and hands out addresses, as the internet's
 // drawer says it under Addressing: the public address, the lease, the
 // gateway and the resolvers, then each subnet and the range DHCP hands
-// out, each address kept for a device, and what's let in from outside;
-// and each band's security, which the drawer's settings say. A list
-// that's empty says none, since none is the figure. Plain reading of the
-// record, held in Qt's own engine (tests/home-network.qml).
+// out, and what's let in from outside; the address kept for a device, in
+// its own drawer; and each band's security, which the drawer's settings
+// say. A list that's empty says none, since none is the figure. Plain
+// reading of the record, held in Qt's own engine (tests/home-network.qml).
 .pragma library
-.import "HomeNetwork.js" as Home
 .import "HomeNetworkHistory.js" as History
 
 const DOT = " \u00b7 ";
@@ -45,7 +44,7 @@ function addressing(model) {
     ].concat((addresses.subnets ?? []).map(subnet), [
         fact("forwards", eerosWords(addresses.forwards)),
         fact("pinholes", eerosWords(addresses.pinholes)),
-    ])).concat(reserved(model));
+    ]));
 }
 
 // An address with its mask as a prefix, "10.0.0.0/22", as every address and
@@ -92,34 +91,6 @@ function eerosWords(list) {
         return "";
     }
     return list.length === 0 ? "none" : list.map((one) => JSON.stringify(one)).join(DOT);
-}
-
-// The addresses kept for a device, each by the device's own name where
-// eero lists it, on now or not, else the label the reservation was given,
-// and that label too when it says more; none where eero keeps none.
-function reserved(model) {
-    const list = model?.internet?.addresses?.reservations;
-    if (!Array.isArray(list)) {
-        return [];
-    }
-    if (list.length === 0) {
-        return [fact("reserved", "none")];
-    }
-    return [{ heading: "reserved" }].concat(list.map((one) => {
-        const device = listed(model, one.mac);
-        const name = device ? Home.nameOf(device) : one.description || one.mac;
-        return {
-            label: name,
-            value: joined([one.address,
-                device && one.description && one.description !== name ? one.description : ""]),
-        };
-    }));
-}
-
-// The device eero lists with a hardware address, on now or not.
-function listed(model, mac) {
-    const same = (each) => String(each.mac).toLowerCase() === String(mac).toLowerCase();
-    return (model?.devices ?? []).find(same) ?? (model?.devices_off ?? []).find(same) ?? null;
 }
 
 // A device's address, said reserved where it's the one kept for it, and

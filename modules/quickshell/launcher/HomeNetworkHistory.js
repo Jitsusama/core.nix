@@ -305,22 +305,23 @@ function outages(net, now) {
     })));
 }
 
-// The devices that joined or left over the last day, newest first, each
-// by when, with the name it had then, since one that left is no longer
-// among the devices, and the node and band it joined or left: "phone 1
-// left Den \u00b7 5 GHz".
-function joinsAndLeaves(model, now) {
-    const list = (model?.joins_and_leaves ?? []).slice()
+// The devices that joined or left a node over the last day, newest first,
+// each by when, with the name it had then, since one that left is no
+// longer among the devices, and the band it joined or left on: "phone 1
+// left \u00b7 5 GHz". Each is in its node's drawer, as the devices on it
+// are, never the internet's, which holds only the internet (Joel,
+// 2026-11-11).
+function joinsAndLeaves(model, now, node) {
+    const list = (model?.joins_and_leaves ?? []).filter((one) => one.node === node.id)
         .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     if (list.length === 0) {
         return [];
     }
     return [{ heading: "joins-and-leaves" }].concat(list.map((one) => {
-        const where = known(one.node) ? ` ${nodeNamed(model, one.node)}` : "";
         const did = one.kind === "joined" ? "joined" : "left";
         return {
             label: when(one.at, now),
-            value: joined([breakable(`${whole(one.name ?? one.mac)} ${did}${where}`), one.band]),
+            value: joined([breakable(`${whole(one.name ?? one.mac)} ${did}`), one.band]),
         };
     }));
 }
@@ -346,19 +347,18 @@ function breakable(text) {
     return text.replace(NUMBER_ENDS, "$1\u200b ");
 }
 
-// The devices eero knows that aren't on now, the last on first, each by
-// name, with the node and band it was last on and when: "Study \u00b7
-// 5 GHz \u00b7 21:38". eero counts them in its devices, so the drawer
-// names each rather than leave the count bare.
-function devicesOff(model, now) {
-    const off = model?.devices_off ?? [];
+// The devices eero knows that aren't on now and were last on a node, the
+// last on first, each by name, with the band it was last on and when:
+// "5 GHz \u00b7 21:38". Each is in its node's drawer beside the devices
+// on it now.
+function devicesOff(model, now, node) {
+    const off = (model?.devices_off ?? []).filter((one) => one.node === node.id);
     if (off.length === 0) {
         return [];
     }
     return [{ heading: "devices-off" }].concat(off.map((one) => ({
         label: Home.nameOf(one),
-        value: joined([known(one.node) ? nodeNamed(model, one.node) : "",
-            one.ethernet ? "Ethernet" : one.band, when(one.last_active, now)]),
+        value: joined([one.ethernet ? "Ethernet" : one.band, when(one.last_active, now)]),
     })));
 }
 
