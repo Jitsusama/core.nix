@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{builders, health, machine};
+use crate::{builders, gate, health, machine};
 
 /// One day's figures, kept as `day/<date>.json` in cadence's folder so the
 /// next days are held against it.
@@ -98,13 +98,14 @@ impl Measure {
 }
 
 /// Every figure the day reads: the delivery cycle's here, the machine's
-/// own from health in machine.rs, the builders' in builders.rs, and each
-/// repository's from code-health in health.rs.
+/// own from health in machine.rs, the builders' in builders.rs, the merge
+/// gate's in gate.rs, and each repository's from code-health in health.rs.
 pub fn measures() -> impl Iterator<Item = &'static Measure> {
     MEASURES
         .iter()
         .chain(machine::MEASURES)
         .chain(builders::MEASURES)
+        .chain(gate::MEASURES)
         .chain(health::MEASURES)
 }
 
@@ -289,6 +290,12 @@ pub const KINDS: &[Kind] = &[
         axis: "quality",
         evidence: "nix-offload's there.jsonl, a check failed and passed at one commit",
         says: "a flake in",
+    },
+    Kind {
+        key: "code.queued-on",
+        axis: "time to done",
+        evidence: "merge-net's answers.jsonl, the files each hold and run again turned on",
+        says: "changes held back or run again on",
     },
 ];
 

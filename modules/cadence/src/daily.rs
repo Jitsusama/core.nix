@@ -16,6 +16,7 @@ use jiff::tz::TimeZone;
 use crate::builders;
 use crate::day::{self, Day};
 use crate::findings;
+use crate::gate;
 use crate::health;
 use crate::judge;
 use crate::machine;
@@ -214,6 +215,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
             .insert("switch.minutes.longest".to_owned(), longest);
     }
     builders::read(&mut day, state_home);
+    gate::read(&mut day, state_home);
 
     day.figures
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
