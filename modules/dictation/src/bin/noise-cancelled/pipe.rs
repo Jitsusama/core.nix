@@ -71,6 +71,16 @@ impl Microphone {
     }
 }
 
+/// The rank a microphone's twin takes among the sources, from the
+/// microphone's own `priority.session`: one above it once Joel has kept a
+/// cleaned pick, so that when the microphone chosen goes, WirePlumber falls
+/// back to a twin rather than to a microphone it cleans; and none before,
+/// so nothing changes until he picks.
+fn rank(priority: Option<&str>, chosen: &Chosen) -> Option<i64> {
+    let _ = (priority, chosen);
+    None
+}
+
 /// Serves until PipeWire goes away.
 pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String> {
     pw::init();
@@ -440,3 +450,7 @@ fn mono() -> Result<Vec<u8>, String> {
     .map(|(cursor, _)| cursor.into_inner())
     .map_err(|why| format!("its format wouldn't serialize: {why:?}"))
 }
+
+#[cfg(test)]
+#[path = "pipe_tests.rs"]
+mod tests;
