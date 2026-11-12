@@ -4050,7 +4050,7 @@
   vm-pebble-speakers-are-tuned = ''
     a Pebble X Plus hears its tuning, again once it's plugged back in, and headphones don't
   '';
-  vm-pi-hosts-recover = ''
+  vm-a-wedged-pi-restarts = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
     killed by the watchdog and started again once its loop stops pinging, and one that crashes
     at every start is started three times, then left failed with start-limit-hit

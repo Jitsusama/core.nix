@@ -48,5 +48,5 @@ onLinux {
   vm-root-builds-only-where-it-trusts = import ./offload-lines.nix { inherit self pkgs; };
   # Whether a pi host's unit restarts a wedged host, and leaves one that
   # keeps crashing down, shows only with the account's own systemd running it.
-  vm-pi-hosts-recover = import ./pi-hosts-recover.nix { inherit self pkgs; };
+  vm-a-wedged-pi-restarts = import ./pi-hosts-recover.nix { inherit self pkgs; };
 }

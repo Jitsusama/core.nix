@@ -31,7 +31,7 @@ let
   };
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
-  name = "pi-hosts-recover";
+  name = "a-wedged-pi-restarts";
 
   nodes.machine = {
     imports = [ self.nixosModules.home-manager ];
