@@ -58,11 +58,8 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       StartLimitIntervalSec = 0;
     };
     Service = {
-      # Started by its name, so ps -ef reads notices rather than a store
-      # path (docs/daemons.md, Shown); it reads only what follows the name.
       ExecStart = lib.escapeShellArgs [
-        "@${lib.getExe package}"
-        "notices"
+        (lib.getExe package)
         "--socket"
         "%t/daemons/notices.sock"
         "--state"

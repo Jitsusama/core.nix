@@ -3,11 +3,10 @@
 # session bus, as the account's unit does on the desktop, for a check that
 # runs the shell without systemd (tests/nested-niri.sh). The daemon is
 # given in NOTICES_DAEMON as the unit's ExecStart, whose %t and %S, the
-# runtime and state folders systemd would put in, are the check's own, and
-# whose @<program> <name> start is read as systemd reads it: the program
-# run by that name (docs/daemons.md, Shown). A notice sent before the
-# daemon holds the bus's name would go nowhere, so the command starts once
-# it does, and the daemon ends when the command does.
+# runtime and state folders systemd would put in, are the check's own. A
+# notice sent before the daemon holds the bus's name would go nowhere, so
+# the command starts once it does, and the daemon ends when the command
+# does.
 # usage: NOTICES_DAEMON='<the unit's ExecStart>' notices-beside.sh <command>...
 set -euo pipefail
 
@@ -15,11 +14,7 @@ set -euo pipefail
 given=${NOTICES_DAEMON//%t/$XDG_RUNTIME_DIR}
 read -ra daemon <<< "${given//%S/$XDG_STATE_HOME}"
 mkdir -p "$XDG_RUNTIME_DIR/daemons" "$XDG_STATE_HOME"
-if [[ ${daemon[0]} == @* ]]; then
-  (exec -a "${daemon[1]}" "${daemon[0]#@}" "${daemon[@]:2}") > "${NOTICES_LOG:-/dev/null}" 2>&1 &
-else
-  "${daemon[@]}" > "${NOTICES_LOG:-/dev/null}" 2>&1 &
-fi
+"${daemon[@]}" > "${NOTICES_LOG:-/dev/null}" 2>&1 &
 served=$!
 trap 'kill "$served" 2> /dev/null || true' EXIT
 
