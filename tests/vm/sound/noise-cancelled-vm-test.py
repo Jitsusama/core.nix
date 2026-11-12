@@ -7,6 +7,7 @@ program is started once for the module, and each test records from what it offer
 
 from __future__ import annotations
 
+import json
 import shlex
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
@@ -38,6 +39,14 @@ CLIPS = "/etc/noise-cancelled-clips"
 # is set well short of that.
 QUIETER_DB = 10.0
 NEAR_DB = 10.0
+# Choose by Ear's socket, and the refusals it's started with: none, so it may record.
+TRIAL = f"{RUNTIME}/noise-cancelled.sock"
+REFUSALS = "/etc/noise-cancelled-refusals.json"
+# Where WirePlumber keeps the microphone chosen, as Sound chooses it.
+CHOSEN = (
+    '.[] | select(.props["metadata.name"] == "default") | .metadata[]'
+    ' | select(.key == "default.configured.audio.source") | .value.name'
+)
 
 
 class Joel:
@@ -89,10 +98,28 @@ class Joel:
         self.run("systemctl --user stop record-raw record-cleaned")
         return self.loudness("raw.wav"), self.loudness("cleaned.wav")
 
+    def ask(self, said: dict[str, Any]) -> dict[str, Any]:
+        """Ask Choose by Ear one thing over its socket, giving its answer."""
+        line = shlex.quote(json.dumps(said))
+        answer: dict[str, Any] = json.loads(self.run(f"printf '%s\\n' {line} | nc -N -U {TRIAL}"))
+        return answer
+
+    def wait_until_stage(self, stage: str, timeout: timedelta) -> None:
+        """Wait until Choose by Ear's record says it's at this stage."""
+        get = shlex.quote(json.dumps({"id": 1, "ask": "get"}))
+        wanted = shlex.quote(f'"stage":"{stage}"')
+        self.wait_for(f"printf '%s\\n' {get} | nc -N -U {TRIAL} | grep -qF {wanted}", timeout)
+
+    def trial(self) -> dict[str, Any]:
+        """Give Choose by Ear's one record."""
+        record: dict[str, Any] = self.ask({"id": 1, "ask": "get", "kind": "trial"})["records"][0]
+        return record
+
     def explain(self) -> None:
         """Print what PipeWire and the program said, for a test that failed."""
         print(self.run("pw-link -l || true"))
         print(self.said())
+        print(self.run("journalctl --user -u trial --no-pager -o cat || true"))
 
 
 @pytest.fixture(scope="module")
@@ -174,3 +201,48 @@ def test_the_microphone_rests_once_nothing_records(joel: Joel, noise: tuple[floa
     joel.wait_until_said(f"resting {DESCRIPTION}", ANSWERS_WITHIN)
     joel.wait_for(f'test "$(pw-dump | jq -r {shlex.quote(RUNNING)})" != running', ANSWERS_WITHIN)
     assert f"cleaning {DESCRIPTION}" in joel.said()
+
+
+@pytest.fixture(scope="module")
+def offered(joel: Joel, values: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    """Choose by Ear's record once it has recorded the sentence and cleaned it every way."""
+    joel.run(
+        f"systemd-run --user --unit=trial noise-cancelled trial {TRIAL} {values['model']}"
+        f" deepfilternet {REFUSALS}"
+    )
+    try:
+        joel.wait_for(f"test -S {TRIAL}", ANSWERS_WITHIN)
+        assert joel.ask({"id": 2, "ask": "act", "act": "record"}) == {"id": 2, "taken": True}
+        joel.run(f"pw-play --target mic-in {CLIPS}/spoken.wav")
+        joel.wait_until_stage("ready", LOADS_WITHIN)
+        yield joel.trial()
+    except Exception:
+        joel.explain()
+        raise
+
+
+def test_choose_by_ear_offers_the_microphone_four_ways_blind(offered: dict[str, Any]) -> None:
+    """The default microphone recorded, its four clips are offered by letter alone."""
+    assert offered["microphone"] == DESCRIPTION
+    assert offered["clips"] == ["A", "B", "C", "D"]
+    assert offered["revealed"] is None
+
+
+def test_a_pick_reveals_each_clip_and_chooses_its_microphone(
+    joel: Joel, offered: dict[str, Any]
+) -> None:
+    """A clip played and another picked, each is named, and a cleaned pick is the default."""
+    assert offered["stage"] == "ready"
+    assert joel.ask({"id": 4, "ask": "act", "act": "play", "clip": "A"}) == {"id": 4, "taken": True}
+    assert joel.ask({"id": 5, "ask": "act", "act": "pick", "clip": "B"}) == {"id": 5, "taken": True}
+    picked = joel.trial()
+    cleaners = {"raw", "deepfilternet", "deepfilternet-gentle", "rnnoise"}
+    assert picked["stage"] == "picked"
+    assert set(picked["revealed"].values()) == cleaners
+    assert picked["picked"] == {"clip": "B", "cleaner": picked["revealed"]["B"]}
+    assert set(picked["costs"]) == cleaners
+    chosen = joel.run(f"pw-dump | jq -r {shlex.quote(CHOSEN)}").strip()
+    if picked["picked"]["cleaner"] == "raw":
+        assert chosen != OFFERED
+    else:
+        assert chosen == OFFERED
