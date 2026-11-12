@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use crate::curve::Curve;
+use crate::evening::{dimmed, undimmed};
 use crate::steer::{Ramp, Steer};
 
 /// How often a move steps while it's under way.
@@ -25,6 +26,9 @@ pub struct Follow {
     lux: Option<f64>,
     /// Whether the lid is shut, so the light heard is the lid's.
     shut: bool,
+    /// What the evening leaves of the brightness the curve asks for, all
+    /// of it by day (evening.rs).
+    share: f64,
 }
 
 impl Follow {
@@ -39,6 +43,7 @@ impl Follow {
             ramp: None,
             lux: None,
             shut: false,
+            share: 1.0,
         }
     }
 
@@ -50,6 +55,17 @@ impl Follow {
     /// The light last heard, once there's been any.
     pub fn lux(&self) -> Option<f64> {
         self.lux
+    }
+
+    /// What the evening leaves of the brightness, all of it by day.
+    pub fn share(&self) -> f64 {
+        self.share
+    }
+
+    /// The brightness the screen goes to in this light: what the curve
+    /// asks for, dimmed in the evening.
+    pub fn asks(&self, lux: f64) -> f64 {
+        dimmed(self.curve.level_at(lux), self.share)
     }
 
     /// Whether the screen follows the light now: some heard, and the lid
@@ -75,10 +91,10 @@ impl Follow {
         self.lux = Some(lux);
         let learned = !self.knows_joel;
         if learned {
-            self.learn(lux, shown);
+            self.learn(lux, undimmed(shown, self.share));
         }
         let shown = self.ramp.map_or(shown, |ramp| ramp.to());
-        self.steer.heard(self.curve.level_at(lux), shown, now);
+        self.steer.heard(self.asks(lux), shown, now);
         learned
     }
 
@@ -98,12 +114,13 @@ impl Follow {
     }
 
     /// Joel picked `level`: any move stops, and unless the lid is shut the
-    /// curve learns it for the light there is, which it gives.
+    /// curve learns it for the light there is, which it gives. In the
+    /// evening it learns what he'd want there by day.
     #[must_use]
     pub fn chose(&mut self, level: f64) -> Option<f64> {
         self.halt();
         let lux = self.lux.filter(|_| !self.shut)?;
-        self.learn(lux, level);
+        self.learn(lux, undimmed(level, self.share));
         Some(lux)
     }
 
@@ -148,6 +165,22 @@ impl Follow {
             self.ramp = None;
         }
         Some(ramp.at(now))
+    }
+
+    /// The evening leaves `share` of the brightness the curve asks for, with
+    /// the screen at `shown` (evening.rs).
+    /// The light heard is asked about again, as a move it waits on like any
+    /// other, so the evening comes in the same small steps the light's do.
+    pub fn dims(&mut self, share: f64, shown: f64, now: Instant) {
+        if (share - self.share).abs() < f64::EPSILON {
+            return;
+        }
+        self.share = share;
+        let Some(lux) = self.lux.filter(|_| !self.shut) else {
+            return;
+        };
+        let shown = self.ramp.map_or(shown, |ramp| ramp.to());
+        self.steer.heard(self.asks(lux), shown, now);
     }
 
     fn learn(&mut self, lux: f64, level: f64) {
@@ -497,6 +530,59 @@ mod tests {
         let _ = follow.heard(10.0, 0.75, start + DIMMING);
         while follow.step(start + LATER).is_some() {}
         assert_eq!(follow.start(0.2, start + LATER + BRIGHTENING), None);
+    }
+
+    #[test]
+    fn the_evening_dims_the_light_already_followed() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        follow.dims(0.5, 0.8, start);
+        let at = moved(&mut follow, 0.8, start + LATER);
+        assert!(
+            at.is_some_and(|level| (level - 0.4).abs() < 1e-9),
+            "the evening took 0.8 to {at:?}"
+        );
+    }
+
+    #[test]
+    fn light_heard_in_the_evening_asks_for_it_dimmed() {
+        let start = Instant::now();
+        let mut follow = following(10.0, 0.2, start);
+        follow.dims(0.5, 0.2, start);
+        let _ = moved(&mut follow, 0.2, start + LATER);
+        let _ = follow.heard(1000.0, 0.1, start + LATER);
+        let at = moved(&mut follow, 0.1, start + LATER + LATER);
+        assert!(
+            at.is_some_and(|level| (level - 0.4).abs() < 1e-9),
+            "brighter light in the evening went to {at:?}"
+        );
+    }
+
+    #[test]
+    fn a_pick_in_the_evening_is_learned_as_the_day_would_want_it() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        follow.dims(0.5, 0.8, start);
+        assert_eq!(follow.chose(0.3), Some(1000.0));
+        let learned = follow.curve().level_at(1000.0);
+        assert!(
+            (learned - 0.6).abs() < 1e-9,
+            "0.3 picked in the evening was learned as {learned}"
+        );
+    }
+
+    #[test]
+    fn morning_gives_the_brightness_back() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        follow.dims(0.5, 0.8, start);
+        let _ = moved(&mut follow, 0.8, start + LATER);
+        follow.dims(1.0, 0.4, start + LATER);
+        let at = moved(&mut follow, 0.4, start + LATER + LATER);
+        assert!(
+            at.is_some_and(|level| (level - 0.8).abs() < 1e-9),
+            "the morning took 0.4 to {at:?}"
+        );
     }
 
     /// The keyboard following the room, unlit at the start in daylight and
