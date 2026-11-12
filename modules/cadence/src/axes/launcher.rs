@@ -46,7 +46,9 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
             says,
             figure(format!("health.launcher.opening.{part}.p99-ms")),
             " ms",
-            "Y2YBTS",
+            // The opening is H6EDLC's; the keys once it's open are Y2YBTS's
+            // (Y2YBTS, 2026-11-12).
+            "H6EDLC",
         )
         .bar(Bar::AtMost(bar))
         .detail(median.map(|median| {
@@ -165,6 +167,10 @@ mod tests {
         assert!(
             read.iter().all(|r| r.his),
             "all timed from his key to his screen"
+        );
+        assert_eq!(
+            read.iter().map(|r| r.owner).collect::<Vec<_>>(),
+            ["H6EDLC", "H6EDLC", "Y2YBTS", "Y2YBTS", "Y2YBTS", "Y2YBTS"]
         );
         assert_eq!(
             read[0].detail.as_deref(),
