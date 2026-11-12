@@ -479,6 +479,17 @@
       "glyph": "notifications"
     },
     {
+      "id": "program:open-tabs",
+      "in": "applications",
+      "name": "Open Tabs",
+      "verb": "more",
+      "glyph": "web",
+      "said": {
+        "one": "1 page",
+        "many": "{count} pages"
+      }
+    },
+    {
       "id": "program:recent",
       "in": "applications",
       "name": "Recent",

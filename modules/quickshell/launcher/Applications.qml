@@ -1084,6 +1084,28 @@ Provider {
             : provider.openFiles(entry, source);
     }
 
+    // What a browser has open, as one row of its own, Open Tabs, holding
+    // its pages, so they read apart from its windows, acts and settings
+    // (Joel, 2026-11-11: "it also needs to be more obvious what part of
+    // the program menu is tabs versus other stuff"). Typing in its step
+    // still finds a page, as Recent's are found. What another program has
+    // open, as mpv's files, stays as it was, among its acts.
+    function openGroup(entry) {
+        const open = provider.openRows(entry);
+        if (open.length === 0 || provider.sourceOf(entry)?.kind !== "site")
+            return open;
+        const words = Words.of("program:open-tabs").said ?? {};
+        return [said("program:open-tabs", "", {
+            hue: "program",
+            side: ((open.length === 1 ? words.one : words.many) ?? "")
+                .replace("{count}", String(open.length)),
+            ask: "which?",
+            nested: true,
+            verbs: () => open,
+            targets: () => open
+        })];
+    }
+
     // The keys of what it has open now, read from what its source said
     // without making a row, and of what other providers list as open in
     // it (givenOpen), so its Recent never lists one again.
@@ -1538,7 +1560,7 @@ Provider {
         const doing = given.filter(row => row.leads !== true && !copying(row));
         const copies = given.filter(copying);
         if (stepsIn(entry)) {
-            return leading.concat(doing, openRows(entry), recent(entry), notices(same), keysOf(entry),
+            return leading.concat(doing, openGroup(entry), recent(entry), notices(same), keysOf(entry),
                 copies);
         }
         const windows = running[entry.id] ?? [];
@@ -1553,7 +1575,7 @@ Provider {
         const streams = streamsOf(same);
         const recorders = recordersOf(same);
         return acts.slice(0, 1).concat(leading, acts.slice(1), menu(entry, taken), doing,
-            openRows(entry), windowsOf(entry, heldWindows(entry)), recent(entry),
+            openGroup(entry), windowsOf(entry, heldWindows(entry)), recent(entry),
             notices(same), keysOf(entry),
             latest ? [quit(entry, windows)] : [],
             player ? [media(player)] : [],
