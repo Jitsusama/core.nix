@@ -23,6 +23,7 @@ QtObject {
             soon: "in {minutes} min",
             at: "at {time}",
             opened: "opened {when}",
+            on: "on {day}",
             date: (date, format) => Qt.formatDate(date, format),
             zone: zone => `${zone}'s time`
         })
@@ -116,6 +117,15 @@ QtObject {
             "22 Oct");
         Expect.same("a day another year",
             say({ at: new Date(2025, 0, 5).getTime(), as: "day" }), "5 Jan 2025");
+        // A day alone in a note, as the Home Network's last speed test is
+        // said, the whole phrase the shell's, so today never reads "on today".
+        Expect.same("on a day today", say({ at: at(11, 9, 5), as: "on" }), "today");
+        Expect.same("on a day yesterday", say({ at: at(10, 9, 5), as: "on" }), "yesterday");
+        Expect.same("on a day this week", say({ at: at(5, 10, 52), as: "on" }), "on Thursday");
+        Expect.same("on a day this year", say({ at: new Date(2026, 9, 28).getTime(), as: "on" }),
+            "on 28 Oct");
+        Expect.same("on a day another year",
+            say({ at: new Date(2025, 10, 13).getTime(), as: "on" }), "on 13 Nov 2025");
         Expect.same("a time somewhere else", say({ zone: "Europe/Oslo", as: "zone" }),
             "Europe/Oslo's time");
         Expect.same("a form it doesn't know says nothing", say({ at: now, as: "someday" }), "");
@@ -143,6 +153,9 @@ QtObject {
         Expect.same("a note that's a time is worded",
             Ready.noteSaid({ at: morning, as: "moment", said: "since {time}" }, now, said),
             "since 09:05");
+        Expect.same("a note of items is said as a side is", Ready.noteSaid([{ said: "11.9 Mb/s up" },
+            { at: now - 86_400_000, as: "on" }, { said: "" }, { said: "1 outage" }], now, said),
+            "11.9 Mb/s up \u00b7 yesterday \u00b7 1 outage");
     }
 
     function drawers() {
@@ -484,5 +497,7 @@ QtObject {
             }), "minute");
         Expect.same("a note's time counts", Ready.ticks({ note: { at: now, as: "moment" } }),
             "day");
+        Expect.same("a note's items count, a day alone turning with the day",
+            Ready.ticks({ note: [{ said: "1 outage" }, { at: now, as: "on" }] }), "day");
     }
 }

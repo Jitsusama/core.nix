@@ -23,6 +23,10 @@ pub enum Form {
     /// "22 Oct", the year when not this one, "5 Jan 2025", by the
     /// shell's own calendar, as the day an ended quest was last touched.
     Day,
+    /// A day alone in a note, the whole phrase the shell's: "today",
+    /// "yesterday", "on Thursday" within six days, then "on 28 Oct", as
+    /// the Home Network says when its last speed test ran.
+    On,
     /// How long it's lasted since, the largest two of days, hours and
     /// minutes, "3 d 2 h", as the machine's uptime or how long a Wi-Fi
     /// card's been connected.
@@ -39,6 +43,7 @@ impl Form {
             Form::Dated => "dated",
             Form::Ago => "ago",
             Form::Day => "day",
+            Form::On => "on",
             Form::Lasted => "lasted",
         }
     }
@@ -74,12 +79,15 @@ mod tests {
             Form::Dated,
             Form::Ago,
             Form::Day,
+            Form::On,
             Form::Lasted,
         ]
         .map(|form| at(1_762_790_400_000, form)["as"].clone());
         assert_eq!(
             forms,
-            ["came", "opened", "moment", "dated", "ago", "day", "lasted"]
+            [
+                "came", "opened", "moment", "dated", "ago", "day", "on", "lasted"
+            ]
         );
         assert_eq!(
             said(5, Form::Moment, "since {time}"),
