@@ -328,8 +328,19 @@ class Shell:
         raise AssertionError(failed)
 
     def launcher_ready(self) -> None:
-        """Wait until the launcher is open and holds the keys."""
-        self.launcher_until(lambda shown: shown["open"] and shown["keys"])
+        """Wait until the launcher is open and holds the keys.
+
+        Once in a loaded run it stood open without them for the whole wait (2026-11-11), so a
+        failure says what niri holds of each layer: whether the launcher's ask for the keys
+        reached niri, or another surface asked after it.
+        """
+        try:
+            self.launcher_until(lambda shown: shown["open"] and shown["keys"])
+        except AssertionError as failed:
+            _, layers = self.execute("niri msg layers")
+            _, window = self.execute("niri msg focused-window")
+            message = f"{failed}\nniri's layers:\n{layers}\nniri's focused window:\n{window}"
+            raise AssertionError(message) from failed
 
     def launcher_closed(self) -> None:
         """Wait until the launcher has closed."""
