@@ -235,7 +235,7 @@ def test_super_tab_finds_a_pi_window_by_its_work_and_puts_one_waiting_next(
         lambda shown: (
             shown["selected"]["is"] == f"window:{pi['id']}"
             and any(
-                thing["is"] == f"window:{pi['id']}" and "waiting on you" in thing["reads"]
+                thing["is"] == f"window:{pi['id']}" and "needs you" in thing["reads"]
                 for thing in shown["things"]
             )
         )

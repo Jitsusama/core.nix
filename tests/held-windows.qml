@@ -59,7 +59,7 @@ QtObject {
         Expect.same("when windows were used places them, answering those not held",
             HeldWindows.used(held, [{ key: "window:3", order: 500 },
                 { key: "window:4", order: 400 }, { key: "window:7", order: 600 }]),
-            { unknown: ["window:7"], turned: [] });
+            { unknown: ["window:7"], turned: [], reworded: [] });
         Expect.same("the one used last goes first", held.order,
             ["window:3", "window:4", "window:2"]);
         Expect.same("and its window reads the time", held.windows["window:3"].focus_timestamp,
@@ -72,12 +72,26 @@ QtObject {
         Expect.same("the focus moving turns the window it went to and the one it left",
             HeldWindows.used(held, [{ key: "window:3", order: 800, focused: true },
                 { key: "window:2", order: 400, focused: false }]),
-            { unknown: [], turned: ["window:3", "window:2"] });
+            { unknown: [], turned: ["window:3", "window:2"], reworded: [] });
         Expect.same("which their windows read", [held.windows["window:3"].is_focused,
             held.windows["window:2"].is_focused], [true, false]);
         Expect.same("so a whole answer after the focus moved differs in none",
             HeldWindows.take(held, [record(3, 800, { title: "renamed", focused: true }),
                 record(2, 400), record(4, 400)], []), []);
+        // A workspace switched to, or a window retitled, turns what its
+        // row says, so those rows are answered to be made again, and the
+        // opening's whole answer after finds them the same.
+        Expect.same("a switched workspace and a retitle reword their windows alone",
+            HeldWindows.used(held, [{ key: "window:3", order: 800, elsewhere: true },
+                { key: "window:2", order: 400, title: "later", named: "later" },
+                { key: "window:4", order: 900 }]),
+            { unknown: [], turned: [], reworded: ["window:3", "window:2"] });
+        Expect.same("what a row says is what the shut launcher hears beside the order",
+            HeldWindows.worded(), ["elsewhere", "named", "title"]);
+        Expect.same("so a whole answer after the switch differs in none",
+            HeldWindows.take(held, [record(3, 800, { title: "renamed", focused: true,
+                elsewhere: true }), record(2, 400, { title: "later", named: "later" }),
+                record(4, 900)], []), []);
 
         const window = HeldWindows.asWindow(record(5, 1000500,
             { workspace: 2, column: 3, down: 2, floating: true }));

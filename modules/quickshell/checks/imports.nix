@@ -84,6 +84,7 @@
     "launcher/Nearby.js"
     "launcher/Order.js"
   ];
+  "launcher/AgentsFold.qml" = [ "launcher/AgentWindows.js" ];
   "launcher/Applications.qml" = [
     "FileFacts.js"
     "Fuzzy.js"
@@ -294,7 +295,6 @@
   ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"
-    "launcher/AgentWindows.js"
     "launcher/HeldWindows.js"
     "launcher/KeyLayers.js"
     "launcher/Order.js"
