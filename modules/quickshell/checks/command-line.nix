@@ -89,7 +89,7 @@
         "ListedKeys.js"
         "ModeMarks.js"
       ]}
-      cp ${../launcher/words.json} words.json
+      cp ${(import ../launcher/words.nix).file} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}

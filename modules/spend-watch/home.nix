@@ -64,7 +64,7 @@ let
     state = cfg.paths.state;
     # The launcher's own words, so the rows the daemon serves ready say
     # what the launcher would (src/ready.rs).
-    vocabulary = "${../quickshell/launcher/words.json}";
+    vocabulary = "${(import ../quickshell/launcher/words.nix).file}";
     feeds = lib.mapAttrsToList (
       name: feed:
       {

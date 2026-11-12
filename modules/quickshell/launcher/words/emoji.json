@@ -1,0 +1,20 @@
+{
+  "things": [
+    {
+      "id": "verb:emoji:paste",
+      "command": "put",
+      "in": "emoji",
+      "name": "Paste",
+      "verb": "paste",
+      "glyph": "paste"
+    },
+    {
+      "id": "verb:emoji:copy",
+      "command": "yank",
+      "in": "emoji",
+      "name": "Copy",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

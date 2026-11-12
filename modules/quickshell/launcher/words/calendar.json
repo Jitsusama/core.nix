@@ -1,0 +1,225 @@
+{
+  "things": [
+    {
+      "id": "calendar:when",
+      "in": "calendar:meeting",
+      "name": "When"
+    },
+    {
+      "id": "calendar:repeats",
+      "in": "calendar:meeting",
+      "name": "Repeats"
+    },
+    {
+      "id": "calendar:earlier",
+      "in": "calendar:meeting",
+      "name": "Earlier"
+    },
+    {
+      "id": "calendar:where",
+      "in": "calendar:meeting",
+      "name": "Where"
+    },
+    {
+      "id": "calendar:call",
+      "in": "calendar:meeting",
+      "name": "Call"
+    },
+    {
+      "id": "calendar:dial",
+      "in": "calendar:meeting",
+      "name": "Dial In"
+    },
+    {
+      "id": "calendar:answer",
+      "in": "calendar:meeting",
+      "name": "Your Answer"
+    },
+    {
+      "id": "calendar:holder",
+      "in": "calendar:meeting",
+      "name": "Holds It"
+    },
+    {
+      "id": "calendar:answers",
+      "in": "calendar:meeting",
+      "name": "Answers"
+    },
+    {
+      "id": "calendar:asked",
+      "in": "calendar:meeting",
+      "name": "Asked"
+    },
+    {
+      "id": "calendar:attached",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "states": {
+        "several": {
+          "name": "Attachments"
+        }
+      }
+    },
+    {
+      "id": "calendar:telling",
+      "in": "calendar:meeting",
+      "name": "Telling Nobody Else",
+      "states": {
+        "one": {
+          "name": "Telling {one}"
+        },
+        "two": {
+          "name": "Telling {one} and {other}"
+        },
+        "three": {
+          "name": "Telling {one}, {other} and 1 Other"
+        },
+        "more": {
+          "name": "Telling {one}, {other} and {count} Others"
+        },
+        "guest": {
+          "name": "Telling 1 Guest"
+        },
+        "guests": {
+          "name": "Telling {count} Guests"
+        }
+      },
+      "said": {
+        "sure": "{sure}, {telling}"
+      }
+    },
+    {
+      "id": "verb:calendar:join",
+      "command": "meet",
+      "in": "calendar:meeting",
+      "name": "Join the Meeting",
+      "verb": "join",
+      "glyph": "joinCall"
+    },
+    {
+      "id": "verb:calendar:write",
+      "command": "compose",
+      "in": "calendar:meeting",
+      "name": "Write to the Guests",
+      "verb": "write",
+      "glyph": "writeMail"
+    },
+    {
+      "id": "verb:calendar:link",
+      "command": "yank",
+      "in": "calendar:meeting",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:calendar:address",
+      "command": "yank",
+      "argument": "address",
+      "in": "calendar:meeting",
+      "name": "Copy the Address",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:calendar:open",
+      "command": "open",
+      "in": "calendar:meeting",
+      "name": "Open in Calendar",
+      "verb": "open",
+      "glyph": "calendar"
+    },
+    {
+      "id": "verb:calendar:see",
+      "command": "edit",
+      "in": "calendar:meeting",
+      "name": "Show in Calendar",
+      "verb": "show",
+      "glyph": "meetingDetails"
+    },
+    {
+      "id": "verb:calendar:transcript",
+      "command": "open",
+      "argument": "transcript",
+      "in": "calendar:meeting",
+      "name": "Open the Transcript",
+      "verb": "open",
+      "glyph": "lines"
+    },
+    {
+      "id": "verb:calendar:guests",
+      "command": "edit",
+      "argument": "Guests",
+      "in": "calendar:meeting",
+      "name": "Guests",
+      "verb": "more",
+      "glyph": "people"
+    },
+    {
+      "id": "verb:calendar:attachments",
+      "command": "edit",
+      "argument": "Attachments",
+      "in": "calendar:meeting",
+      "name": "Attachments",
+      "verb": "more",
+      "glyph": "attachment"
+    },
+    {
+      "id": "calendar:attachment",
+      "in": "calendar:meeting",
+      "name": "Attachment",
+      "verb": "open",
+      "glyph": "attachment"
+    },
+    {
+      "id": "verb:calendar:cancel",
+      "command": "cancel",
+      "in": "calendar:meeting",
+      "name": "Cancel the Meeting",
+      "verb": "cancel",
+      "glyph": "cancelMeeting",
+      "sure": "Cancel It Now"
+    },
+    {
+      "id": "verb:calendar:move",
+      "command": "move",
+      "in": "calendar:meeting",
+      "name": "Move the Meeting",
+      "verb": "move",
+      "glyph": "moveMeeting",
+      "sure": "Move It"
+    },
+    {
+      "id": "verb:calendar:yes",
+      "command": "answer",
+      "argument": "yes",
+      "in": "calendar:meeting",
+      "name": "Going",
+      "term": "Programs/going",
+      "words": ["yes"],
+      "verb": "answer",
+      "glyph": "going"
+    },
+    {
+      "id": "verb:calendar:maybe",
+      "command": "answer",
+      "argument": "maybe",
+      "in": "calendar:meeting",
+      "name": "Maybe",
+      "term": "Programs/maybe",
+      "verb": "answer",
+      "glyph": "maybeGoing"
+    },
+    {
+      "id": "verb:calendar:no",
+      "command": "answer",
+      "argument": "no",
+      "in": "calendar:meeting",
+      "name": "Not Going",
+      "term": "Programs/not going",
+      "words": ["no"],
+      "verb": "answer",
+      "glyph": "notGoing"
+    }
+  ]
+}

@@ -1,0 +1,385 @@
+{
+  "things": [
+    {
+      "id": "verb:gimp:edit",
+      "command": "open",
+      "argument": "gimp",
+      "in": "path:file",
+      "name": "Edit in GIMP",
+      "verb": "edit"
+    },
+    {
+      "id": "chrome:download:from",
+      "in": "path:file",
+      "name": "From"
+    },
+    {
+      "id": "verb:reader:on",
+      "command": "edit",
+      "in": "path:file",
+      "name": "Read On",
+      "verb": "read",
+      "glyph": "book",
+      "said": {
+        "share": "{share}%",
+        "end": "read to the end",
+        "whole": "all of it",
+        "kept": "kept",
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "markdown": "markdown",
+        "file1": "1 file",
+        "files": "{count} files",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "verb:reader:mark",
+      "command": "edit",
+      "argument": "'{letter}",
+      "in": "path:file",
+      "name": "Read From Mark",
+      "verb": "read",
+      "glyph": "book"
+    },
+    {
+      "id": "verb:mpv:on",
+      "command": "resume",
+      "in": "path:file",
+      "name": "Resume",
+      "term": "Programs/resume",
+      "verb": "resume",
+      "glyph": "resume",
+      "said": {
+        "stopped": "{at} of {length} \u00b7 {when}",
+        "whole": "{length} \u00b7 {when}",
+        "from": "from {at}",
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "video": "video",
+        "audio": "audio",
+        "video1": "1 video",
+        "videos": "{count} videos",
+        "audio1": "1 audio file",
+        "audios": "{count} audio files",
+        "speed": "{figure}\u00d7",
+        "volume": "{figure}%",
+        "seconds": "{figure} s",
+        "off": "off",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "verb:mpv:start",
+      "command": "resume",
+      "bang": true,
+      "in": "path:file",
+      "name": "Play From the Start",
+      "verb": "play",
+      "glyph": "playing"
+    },
+    {
+      "id": "verb:path:file:copy",
+      "command": "yank",
+      "in": "path:file",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:path:folder:copy",
+      "command": "yank",
+      "in": "path:folder",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:path:file:open",
+      "command": "open",
+      "in": "path:file",
+      "name": "Open",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:path:file:go",
+      "command": "buffer",
+      "in": "path:file",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:path:file:close",
+      "command": "close",
+      "in": "path:file",
+      "name": "Close It",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    },
+    {
+      "id": "verb:path:folder:window",
+      "command": "new",
+      "argument": ".",
+      "in": "path:folder",
+      "name": "New Window Here",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "drive:drive",
+      "in": "path:folder",
+      "name": "Google Drive",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:mine",
+      "in": "path:folder",
+      "name": "My Drive",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:shared",
+      "in": "path:folder",
+      "name": "Shared with Me",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "drive:drives",
+      "in": "path:folder",
+      "name": "Shared Drives",
+      "glyph": "folder",
+      "verb": "open"
+    },
+    {
+      "id": "verb:file-chooser:folder",
+      "command": "cd",
+      "in": "path:folder",
+      "name": "Open This Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:here",
+      "command": "write",
+      "in": "path:folder",
+      "name": "Save Here",
+      "verb": "save",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:file-chooser:replace",
+      "command": "write",
+      "bang": true,
+      "in": "path:file",
+      "name": "Replace It",
+      "verb": "replace",
+      "glyph": "path"
+    },
+    {
+      "id": "file-chooser:filter",
+      "in": "path:folder",
+      "name": "Filter",
+      "verb": "show",
+      "glyph": "filter"
+    },
+    {
+      "id": "file-chooser:choice",
+      "in": "path:folder",
+      "name": "Choice",
+      "verb": "choose",
+      "glyph": "option"
+    },
+    {
+      "id": "file-chooser:marked",
+      "in": "path:file",
+      "name": "Gathered",
+      "term": "Keyboards/gathered",
+      "verb": "gather",
+      "glyph": "marked"
+    },
+    {
+      "id": "verb:file-chooser:marked",
+      "act": "do",
+      "in": "path:folder",
+      "name": "Open the Gathered",
+      "verb": "open",
+      "glyph": "marked",
+      "said": {
+        "marked": "{count} gathered"
+      }
+    },
+    {
+      "id": "file-chooser:question",
+      "in": "path:folder",
+      "name": "Question",
+      "term": "Desktop/question",
+      "said": {
+        "file": "{verb} which file?",
+        "files": "{verb} which files?",
+        "folder": "{verb} which folder?",
+        "save": "save it where?",
+        "named": "save {name} where?",
+        "them": "save them where?"
+      }
+    },
+    {
+      "id": "file-chooser:order",
+      "in": "path:folder",
+      "name": "Order",
+      "verb": "choose",
+      "glyph": "order",
+      "said": {
+        "name": "A to Z",
+        "changed": "newest first",
+        "size": "largest first"
+      }
+    },
+    {
+      "id": "command:file-chooser:sort",
+      "in": "path:folder",
+      "name": "Sort the Files"
+    },
+    {
+      "id": "command:file-chooser:set",
+      "in": "path:folder",
+      "name": "Set an Option",
+      "said": {
+        "hidden": "list hidden files",
+        "nohidden": "leave them out"
+      }
+    },
+    {
+      "id": "command:file-chooser:mkdir",
+      "in": "path:folder",
+      "name": "Make a Folder"
+    },
+    {
+      "id": "command:file-chooser:edit",
+      "in": "path:folder",
+      "name": "Go to a Path",
+      "said": {
+        "folder": "folder"
+      }
+    },
+    {
+      "id": "command:file-chooser:cd",
+      "in": "path:folder",
+      "name": "Go to a Folder"
+    },
+    {
+      "id": "command:file-chooser:write",
+      "in": "path:folder",
+      "name": "Save It"
+    },
+    {
+      "id": "command:file-chooser:xit",
+      "in": "path:folder",
+      "name": "Save It and Go"
+    },
+    {
+      "id": "command:file-chooser:quit",
+      "in": "path:folder",
+      "name": "Answer Nothing"
+    },
+    {
+      "id": "command:file-chooser:argadd",
+      "in": "path:folder",
+      "name": "Gather It"
+    },
+    {
+      "id": "command:file-chooser:args",
+      "in": "path:folder",
+      "name": "Show What's Gathered"
+    },
+    {
+      "id": "file-chooser:size",
+      "in": "path:file",
+      "name": "Size"
+    },
+    {
+      "id": "file-chooser:changed",
+      "in": "path:file",
+      "name": "Changed",
+      "said": {
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "file-chooser:where",
+      "in": "path:file",
+      "name": "Where",
+      "said": {
+        "in": "in {folder}"
+      }
+    },
+    {
+      "id": "file-chooser:length",
+      "in": "path:file",
+      "name": "Length"
+    },
+    {
+      "id": "file-chooser:dimensions",
+      "in": "path:file",
+      "name": "Dimensions"
+    },
+    {
+      "id": "file-chooser:pages",
+      "in": "path:file",
+      "name": "Pages"
+    },
+    {
+      "id": "file-chooser:lines",
+      "in": "path:file",
+      "name": "Lines"
+    },
+    {
+      "id": "file-chooser:items",
+      "in": "path:folder",
+      "name": "Items",
+      "said": {
+        "none": "empty",
+        "one": "{count} item",
+        "many": "{count} items"
+      }
+    },
+    {
+      "id": "file-chooser:folder",
+      "in": "path:folder",
+      "name": "Folder"
+    },
+    {
+      "id": "file-chooser:text",
+      "in": "path:file",
+      "name": "Text",
+      "said": {
+        "one": "{count} line",
+        "many": "{count} lines",
+        "more": "over {count} lines",
+        "over": "over {count}"
+      }
+    },
+    {
+      "id": "file-chooser:file",
+      "in": "path:file",
+      "name": "File",
+      "said": {
+        "one": "{count} page",
+        "many": "{count} pages"
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "things": [
+    {
+      "id": "verb:on:waiting:desktop:read",
+      "command": "delete",
+      "in": "for-you:source:desktop",
+      "name": "Mark Them Read",
+      "verb": "mark",
+      "glyph": "read"
+    },
+    {
+      "id": "notices",
+      "in": "for-you:source:desktop",
+      "once": ["Notifications"],
+      "name": "Notices",
+      "term": "Desktop/notice",
+      "noun": "notices",
+      "glyph": "notifications",
+      "ask": "which notice?",
+      "said": {
+        "no-link": "no link here",
+        "one-link": "only 1 link here",
+        "links": "only {count} links here",
+        "from": "from {who}",
+        "failed": "{kind} failed",
+        "bounced": "mail bounced",
+        "unread": "unread",
+        "read": "read",
+        "notice": "notice"
+      }
+    }
+  ]
+}

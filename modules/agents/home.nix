@@ -43,7 +43,7 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           "@${lib.getExe package}"
           "agents"
           "--vocabulary"
-          "${../quickshell/launcher/words.json}"
+          "${(import ../quickshell/launcher/words.nix).file}"
         ]
         ++ lib.optionals (realm != null) [
           "--node"

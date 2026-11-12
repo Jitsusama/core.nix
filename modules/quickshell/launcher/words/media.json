@@ -1,0 +1,180 @@
+{
+  "things": [
+    {
+      "id": "verb:media:pause",
+      "command": "pause",
+      "in": "media",
+      "name": "Pause",
+      "term": "Programs/pause",
+      "verb": "pause",
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Play",
+          "verb": "play",
+          "glyph": "resume"
+        }
+      }
+    },
+    {
+      "id": "verb:media:next",
+      "command": "skip",
+      "in": "media",
+      "name": "Next",
+      "verb": "next",
+      "glyph": "next"
+    },
+    {
+      "id": "verb:media:previous",
+      "command": "skip",
+      "bang": true,
+      "in": "media",
+      "name": "Previous",
+      "verb": "previous",
+      "glyph": "previous"
+    },
+    {
+      "id": "media:position",
+      "in": "media",
+      "name": "Position",
+      "glyph": "position"
+    },
+    {
+      "id": "verb:media:back",
+      "command": "setlocal",
+      "argument": "position-=10",
+      "in": "media:position",
+      "name": "Back 10 Seconds",
+      "verb": "back"
+    },
+    {
+      "id": "verb:media:ahead",
+      "command": "setlocal",
+      "argument": "position+=10",
+      "in": "media:position",
+      "name": "Ahead 10 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:further",
+      "command": "setlocal",
+      "argument": "position+=30",
+      "in": "media:position",
+      "name": "Ahead 30 Seconds",
+      "verb": "ahead"
+    },
+    {
+      "id": "verb:media:start",
+      "command": "setlocal",
+      "argument": "position=0",
+      "in": "media:position",
+      "name": "From the Start",
+      "verb": "rewind"
+    },
+    {
+      "id": "media:volume",
+      "in": "media",
+      "name": "Volume",
+      "term": "Machine/volume",
+      "glyph": "volume"
+    },
+    {
+      "id": "verb:media:louder",
+      "command": "setlocal",
+      "argument": "playervolume+=10",
+      "in": "media:volume",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:media:quieter",
+      "command": "setlocal",
+      "argument": "playervolume-=10",
+      "in": "media:volume",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "media:volume:level",
+      "in": "media:volume",
+      "name": "Volume to {n}%",
+      "verb": "set"
+    },
+    {
+      "id": "media:shuffle",
+      "command": "setlocal",
+      "argument": "noshuffle",
+      "in": "media",
+      "name": "Shuffle",
+      "verb": "turn off",
+      "glyph": "shuffle",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "shuffle"
+        }
+      }
+    },
+    {
+      "id": "media:loop",
+      "in": "media",
+      "name": "Loop",
+      "glyph": "loop"
+    },
+    {
+      "id": "media:loop:off",
+      "command": "setlocal",
+      "argument": "loop=off",
+      "in": "media:loop",
+      "name": "Off",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:track",
+      "command": "setlocal",
+      "argument": "loop=track",
+      "in": "media:loop",
+      "name": "Track",
+      "term": "Programs/track",
+      "verb": "set"
+    },
+    {
+      "id": "media:loop:playlist",
+      "command": "setlocal",
+      "argument": "loop=playlist",
+      "in": "media:loop",
+      "name": "Playlist",
+      "verb": "set"
+    },
+    {
+      "id": "media:speed",
+      "in": "media",
+      "name": "Speed",
+      "term": "Programs/speed",
+      "glyph": "playSpeed"
+    },
+    {
+      "id": "media:speed:choice",
+      "in": "media:speed",
+      "name": "Speed to {speed}",
+      "verb": "set"
+    },
+    {
+      "id": "verb:media:window",
+      "command": "buffer",
+      "in": "media",
+      "name": "Go To Its Window",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:media:link",
+      "command": "yank",
+      "in": "media",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

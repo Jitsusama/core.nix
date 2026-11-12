@@ -1,0 +1,652 @@
+{
+  "home": [
+    "on",
+    "agents",
+    "applications",
+    "people",
+    "passwords",
+    "desktop",
+    "computer",
+    "network",
+    "keyboard"
+  ],
+  "categories": [
+    {
+      "id": "desktop",
+      "name": "Desktop",
+      "term": "Desktop",
+      "glyph": "desktop",
+      "holds": [
+        "windows:this",
+        "windows",
+        "displays",
+        "clipboard",
+        "timers",
+        "capture",
+        "session:recording",
+        "emoji",
+        "session:quiet"
+      ],
+      "commands": [
+        "command:brightness",
+        "command:desk",
+        "command:time",
+        "command:timer",
+        "command:weather",
+        "command:epoch",
+        "command:sum",
+        "command:units",
+        "command:money",
+        "command:char",
+        "command:utf8",
+        "command:colour"
+      ]
+    },
+    {
+      "id": "computer",
+      "name": "Machine",
+      "term": "Machine",
+      "glyph": "computer",
+      "holds": [
+        "energy",
+        "bluetooth",
+        "sound",
+        "media",
+        "cameras",
+        "light",
+        "machine:cpu",
+        "machine:memory",
+        "heat",
+        "machine:disk",
+        "waits",
+        "firmware",
+        "machines"
+      ],
+      "commands": [
+        "command:volume"
+      ]
+    },
+    {
+      "id": "energy",
+      "name": "Power",
+      "glyph": "power",
+      "stands": "power",
+      "holds": [
+        "power",
+        "machine:cpu:kept-from-resting",
+        "session:profile",
+        "session:awake",
+        "session:Suspend",
+        "session:Lock",
+        "session:Log Out",
+        "session:Reboot",
+        "session:Power Off"
+      ],
+      "while": {
+        "machine:cpu:kept-from-resting": "on battery"
+      },
+      "said": {
+        "on battery": "on the charger"
+      }
+    },
+    {
+      "id": "network",
+      "name": "Network",
+      "term": "Network",
+      "glyph": "network",
+      "holds": [
+        "wifi",
+        "wifi:sign-in",
+        "ethernet",
+        "eero",
+        "warp",
+        "networks",
+        "traffic"
+      ],
+      "commands": [
+        "command:ip",
+        "command:within",
+        "command:split",
+        "command:mac"
+      ]
+    }
+  ],
+  "commands": [
+    {
+      "id": "command:ip",
+      "provider": "networks",
+      "start": "ip ",
+      "form": "⟨address or network⟩",
+      "says": "An address's range and who holds it"
+    },
+    {
+      "id": "command:mac",
+      "provider": "vendors",
+      "start": "mac ",
+      "form": "⟨hardware address⟩",
+      "says": "Who made it"
+    },
+    {
+      "id": "command:sum",
+      "provider": "calculator",
+      "start": "",
+      "form": "⟨sum⟩",
+      "says": "Worked out as it's typed"
+    },
+    {
+      "id": "command:within",
+      "provider": "networks",
+      "start": "is ",
+      "form": "⟨address⟩ in ⟨network⟩",
+      "says": "Whether a network holds an address"
+    },
+    {
+      "id": "command:split",
+      "provider": "networks",
+      "start": "",
+      "form": "⟨network⟩ in /⟨prefix⟩s",
+      "says": "A network split into smaller ones"
+    },
+    {
+      "id": "command:char",
+      "provider": "characters",
+      "start": "char ",
+      "form": "⟨number or character⟩",
+      "says": "A character and its codes"
+    },
+    {
+      "id": "command:utf8",
+      "provider": "characters",
+      "start": "utf8 ",
+      "form": "⟨text⟩",
+      "says": "Text as UTF-8's bytes"
+    },
+    {
+      "id": "command:units",
+      "provider": "units",
+      "start": "",
+      "form": "⟨amount⟩ ⟨unit⟩ in ⟨unit⟩",
+      "says": "A measure in another unit"
+    },
+    {
+      "id": "command:money",
+      "provider": "currency",
+      "start": "",
+      "form": "⟨amount⟩ ⟨currency⟩ in ⟨currency⟩",
+      "says": "Money at today's rate"
+    },
+    {
+      "id": "command:time",
+      "provider": "time",
+      "start": "time in ",
+      "form": "⟨place⟩",
+      "says": "The time somewhere"
+    },
+    {
+      "id": "command:timer",
+      "provider": "timers",
+      "start": "timer ",
+      "form": "⟨span⟩ ⟨name⟩",
+      "says": "Starts a timer that rings as a notice",
+      "verb": "start"
+    },
+    {
+      "id": "command:weather",
+      "provider": "weather",
+      "start": "weather in ",
+      "form": "⟨place⟩",
+      "says": "The weather somewhere"
+    },
+    {
+      "id": "command:colour",
+      "provider": "colours",
+      "start": "colour ",
+      "form": "⟨colour⟩",
+      "says": "A colour in its other forms"
+    },
+    {
+      "id": "command:volume",
+      "provider": "sound",
+      "start": "volume ",
+      "form": "⟨percent⟩",
+      "says": "Sets how loud",
+      "verb": "set"
+    },
+    {
+      "id": "command:brightness",
+      "provider": "displays",
+      "start": "brightness ",
+      "form": "⟨percent⟩",
+      "says": "Sets the screen's brightness",
+      "verb": "set"
+    },
+    {
+      "id": "command:desk",
+      "provider": "light",
+      "start": "desk light ",
+      "form": "⟨percent, warmth, on or off⟩",
+      "says": "Sets the desk light",
+      "verb": "set"
+    },
+    {
+      "id": "command:epoch",
+      "provider": "time",
+      "start": "epoch",
+      "form": "",
+      "says": "Seconds since 1970, and the clock's other figures"
+    }
+  ],
+  "field": {
+    "found": "{count} found",
+    "byMeaning": "found by its meaning",
+    "matched": "{at} of {all}",
+    "waiting": "{count} new",
+    "home": "Home",
+    "drawer": {
+      "back": "back",
+      "keys": "keys",
+      "place": "place"
+    },
+    "times": {
+      "now": "just now",
+      "minutes": "{minutes} min ago",
+      "yesterday": "yesterday",
+      "tomorrow": "tomorrow",
+      "today": "today",
+      "happening": "now",
+      "soon": "in {minutes} min",
+      "at": "at {time}",
+      "opened": "opened {when}",
+      "on": "on {day}"
+    },
+    "hints": {
+      "up": "up",
+      "open": "open",
+      "in": "in",
+      "commands": "commands",
+      "copy": "copy",
+      "keys": "keys",
+      "notHere": "not here",
+      "quit": "does nothing",
+      "quits": "closes",
+      "complete": "complete",
+      "nextTime": "next time",
+      "enough": "is enough",
+      "E21": "E21: Cannot make changes",
+      "wrappedBottom": "search hit BOTTOM, continuing at TOP",
+      "wrappedTop": "search hit TOP, continuing at BOTTOM",
+      "E35": "E35: No previous regular expression",
+      "E486": "E486: Pattern not found: {typed}",
+      "noLetter": "no row {way} begins with {letter}",
+      "below": "below",
+      "above": "above",
+      "noAgain": "no f or F to go again",
+      "E73": "E73: Tag stack empty"
+    },
+    "listed": {
+      "eyebrow": "Keys",
+      "title": "The Launcher's Keys",
+      "drawerTitle": "The Drawer's Keys",
+      "modes": {
+        "normal": "Normal: moving and acting",
+        "find": "The find: the / line",
+        "command": "Commands: the : line",
+        "visual": "Visual: choosing several",
+        "insert": "Insert: writing words",
+        "page": "Drawer",
+        "pageVisual": "Choosing"
+      },
+      "lines": {
+        "nextRow": "The next row",
+        "previousRow": "The row before",
+        "complete": "Take the completion",
+        "caret": "Move the caret",
+        "caretEnds": "The start and end",
+        "letter": "Delete a letter",
+        "word": "Delete a word",
+        "start": "Delete to the start",
+        "rows": "Down and up",
+        "ends": "First and last",
+        "view": "Top, middle or bottom",
+        "half": "Half a screen",
+        "screen": "A screen",
+        "count": "So many times",
+        "row": "To that row",
+        "option": "Set an option",
+        "optionHere": "Set its own option",
+        "global": "On every match",
+        "menu": "Through the menu",
+        "take": "Take the choice",
+        "away": "Put the menu away",
+        "commandAgain": "The last line again",
+        "history": "The lines before",
+        "openIn": "Open, or go in",
+        "up": "Up a level",
+        "into": "Into what it holds",
+        "follow": "Follow and back",
+        "run": "Do it",
+        "jumps": "Back and forward",
+        "lastPlace": "The place used last",
+        "beside": "The place beside",
+        "own": "Open in its program",
+        "find": "Find down or up",
+        "matches": "Its next row and back",
+        "letters": "To a row by its letter",
+        "insert": "Type",
+        "change": "Clear it and type",
+        "ending": "End it",
+        "copyRow": "Copy it",
+        "undo": "Undo a change",
+        "redo": "Redo a change",
+        "again": "The change again",
+        "chooseRows": "Choose rows",
+        "paragraph": "A run of rows",
+        "endChosen": "End them",
+        "copyChosen": "Copy them",
+        "openChosen": "Open them",
+        "commandChosen": "Commands on them",
+        "intoDrawer": "Into the drawer",
+        "lines": "Down and up",
+        "along": "Along a line",
+        "scroll": "Scroll a line",
+        "seek": "Search it",
+        "seekOn": "The next match",
+        "select": "Choose words",
+        "reselect": "The last choice",
+        "otherEnd": "Its other end",
+        "copy": "Copy as markdown",
+        "back": "Back to the rows",
+        "numbers": "Relative numbers on or off",
+        "keys": "These keys",
+        "close": "Close"
+      }
+    },
+    "operators": {
+      "ask": "{ends} {name}? (y/n)",
+      "askLeaves": "{ends} {name}? {leaves} (y/n)",
+      "asks": "{what}? (y/n)",
+      "part": "{ends} {count} {kind}",
+      "and": "and",
+      "thing": "thing",
+      "many": {
+        "copy": "copies",
+        "emoji": "emoji",
+        "person": "people"
+      },
+      "ends": "end",
+      "nothing": "nothing to end",
+      "noCopy": "nothing to copy",
+      "pending": "{typed} \u00b7 {what}",
+      "hit": "{verb} {name}",
+      "hits": "{verb} {count}",
+      "copies": "copy",
+      "done": "{count} done \u00b7 u brings them back",
+      "doneOne": "1 done \u00b7 u brings it back",
+      "undone": "{count} brought back",
+      "redone": "{count} done again",
+      "oldest": "Already at oldest change",
+      "newest": "Already at newest change",
+      "read": "read"
+    },
+    "becoming": {
+      "refused": "{object} not {did}",
+      "late": "{object} not {did} yet",
+      "noAnswer": "no answer",
+      "couldNot": "couldn't",
+      "missing": "{program} is gone",
+      "objects": {
+        "deskLight": "Desk Light",
+        "recording": "Recording"
+      },
+      "did": {
+        "connect": "connected",
+        "disconnect": "disconnected",
+        "distrust": "untrusted",
+        "forget": "forgotten",
+        "off": "turned off",
+        "on": "turned on",
+        "open": "opened",
+        "paste": "pasted",
+        "pause": "paused",
+        "reopen": "reopened",
+        "resume": "resumed",
+        "set": "set",
+        "start": "started",
+        "stop": "stopped",
+        "trust": "trusted",
+        "wake": "woken"
+      }
+    },
+    "visual": {
+      "counted": "{count} chosen",
+      "opens": "open {count}",
+      "opened": "{open} of {count} open"
+    },
+    "command": {
+      "quit": "Close the Launcher",
+      "help": "List the Keys",
+      "set": "Set an Option",
+      "setlocal": "Set an Option of This",
+      "history": "List Earlier Lines",
+      "filter": "Show Only a Kind or Source",
+      "row": "Go to a Row",
+      "on": "on {things}",
+      "onSome": "on {some} of {all}",
+      "none": "none of {all} can {command}",
+      "some": "{some} of {all} can {command}; {command} them? (y/n)",
+      "asksPassword": "{network} asks its password: find it to join",
+      "unread": "{option} can't be read here",
+      "run": "run",
+      "choose": "choose"
+    },
+    "asked": {
+      "replace": "Replace {name}? (y/n)"
+    },
+    "footKeys": {
+      "normal": "normal",
+      "keys": "keys"
+    }
+  },
+  "meant": [
+    {
+      "word": "attachment",
+      "things": [
+        "calendar:attachment",
+        "calendar:attached"
+      ],
+      "why": "A meeting's file is an Attachment, and its drawer's fact naming it says so too; the fact is never a row."
+    },
+    {
+      "word": "attachments",
+      "things": [
+        "verb:calendar:attachments",
+        "calendar:attached",
+        "verb:mail:attachments",
+        "mail:fact:attached"
+      ],
+      "why": "Attachments steps in to a meeting's or a mail's files, and its drawer's fact naming several says so too; the fact is never a row."
+    },
+    {
+      "word": "{manager}",
+      "things": [
+        "verb:passwords:settle",
+        "verb:passwords:unlock"
+      ],
+      "why": "A manager kept out by its setting can't be locked as well, so only one of the two leads Passwords for it at a time, each by the manager's name."
+    },
+    {
+      "word": "devices",
+      "things": [
+        "sound",
+        "bluetooth"
+      ],
+      "why": "Both list devices: sound's outputs and inputs, and what's paired."
+    },
+    {
+      "word": "tabs",
+      "things": [
+        "shortcuts:terminal:tabs",
+        "shortcuts:neovim:files:tabs",
+        "shortcuts:chrome:tabs"
+      ],
+      "why": "The terminal, Neovim and the browser all have tabs, and each group says what holds it beside it."
+    },
+    {
+      "word": "tab numbers",
+      "things": [
+        "shortcuts:terminal:numbers",
+        "shortcuts:neovim:files:numbers",
+        "shortcuts:chrome:numbers"
+      ],
+      "why": "The terminal, Neovim and the browser all go to a tab by its number, and each group says what holds it beside it."
+    },
+    {
+      "word": "tools",
+      "things": [
+        "shortcuts:gimp:tools",
+        "shortcuts:inkscape:tools"
+      ],
+      "why": "GIMP and Inkscape both choose a tool by a letter, and each group says which program's it is beside it."
+    },
+    {
+      "word": "selecting",
+      "things": [
+        "shortcuts:gimp:selection",
+        "shortcuts:reader:selecting"
+      ],
+      "why": "GIMP and the reader both select, and each group says which program's it is beside it."
+    },
+    {
+      "word": "scrolling",
+      "things": [
+        "shortcuts:chrome:scrolling",
+        "shortcuts:reader:scrolling",
+        "shortcuts:zathura:scrolling",
+        "shortcuts:spotify:scrolling"
+      ],
+      "why": "The reader, the PDF viewer, Spotify and the browser all scroll a page, and each group says which program's it is beside it."
+    },
+    {
+      "word": "finding words",
+      "things": [
+        "shortcuts:zathura:finding",
+        "shortcuts:chrome:finding"
+      ],
+      "why": "The PDF viewer and the browser both find words on a page, and each group says which program's it is beside it."
+    },
+    {
+      "word": "command line",
+      "things": [
+        "shortcuts:neovim:editor:commands",
+        "shortcuts:reader:commands"
+      ],
+      "why": "Neovim and the reader both take keys on their command line, and each group says which program's it is beside it."
+    },
+    {
+      "word": "focus",
+      "things": [
+        "shortcuts:desktop:windows:focus",
+        "shortcuts:desktop:columns:focus",
+        "shortcuts:desktop:workspaces:focus",
+        "shortcuts:desktop:screens:focus"
+      ],
+      "why": "Focus goes to a window, a column, a workspace or a screen alike, and each group says what holds it beside it."
+    },
+    {
+      "word": "move",
+      "things": [
+        "shortcuts:desktop:windows:place",
+        "shortcuts:desktop:columns:place"
+      ],
+      "why": "A window and a column each move where they sit, and each group says what holds it beside it."
+    },
+    {
+      "word": "the column",
+      "things": [
+        "shortcuts:desktop:workspaces:column",
+        "shortcuts:desktop:screens:column"
+      ],
+      "why": "A column moves to another workspace or another screen, and each group says what holds it beside it."
+    },
+    {
+      "word": "the window",
+      "things": [
+        "shortcuts:desktop:workspaces:window",
+        "shortcuts:desktop:screens:window"
+      ],
+      "why": "A window moves to another workspace or another screen, and each group says what holds it beside it."
+    },
+    {
+      "word": "text",
+      "things": [
+        "shortcuts:terminal:text",
+        "shortcuts:neovim:search:text"
+      ],
+      "why": "The terminal sizes its text and Neovim searches it, and each group says what holds it beside it."
+    },
+    {
+      "word": "scrollback",
+      "things": [
+        "shortcuts:terminal:scrollback",
+        "shortcuts:pi:scrollback"
+      ],
+      "why": "The terminal and pi each scroll back through what they showed, and each group says what holds it beside it."
+    },
+    {
+      "word": "lap",
+      "things": [
+        "lap",
+        "verb:stopwatch:lap"
+      ],
+      "why": "Inside the stopwatch, Lap marks one and each lap it marked is named by its number, so lap finds the act and the laps together."
+    },
+    {
+      "word": "still to finish",
+      "things": [
+        "mpv:to-finish",
+        "reader:to-finish"
+      ],
+      "why": "The video player's drawer and the reader's each say what was left part way, and each is said only in its own program's drawer."
+    }
+  ],
+  "terminal": {
+    "usage": [
+      "launcher show [--drawers] [--json] [step ...] [-- step ...]",
+      "launcher do [--yes] step ... [-- words]",
+      "",
+      "Shows a place or a row the launcher holds, its drawer and what is inside it,",
+      "as the launcher would: launcher show machine disk. Each step is a row's name,",
+      "in any case, a hyphen for a space, or the start of only one. With none, it",
+      "shows home. --drawers shows every row's drawer after the rows. --json prints",
+      "what the launcher says as JSON, with every row's drawer given --drawers.",
+      "After --, every word is a step, so one starting with a hyphen can be named.",
+      "",
+      "launcher do does what a row does on Return, and any act a place offers among",
+      "its rows, as : offers it: launcher do programs kitty. One that ends something",
+      "asks first, as the launcher does, and with no terminal to answer on it's done",
+      "only with --yes. Words an act asks for follow --. A place opens in the",
+      "launcher.",
+      "",
+      "launcher completion zsh writes zsh's completion, which offers each place's",
+      "rows as you type."
+    ],
+    "offers": {
+      "show": "any place, row or drawer the launcher holds",
+      "do": "what a row does, or an act a place offers"
+    },
+    "missing": "nothing called {step}",
+    "missingIn": "nothing called {step} in {place}",
+    "meant": "did you mean {names}?",
+    "or": "or",
+    "apart": "\u00b7",
+    "silent": "the shell isn't answering",
+    "failed": "{name} not done \u00b7 the shell failed \u00b7 journalctl --user -u quickshell says why",
+    "unknown": "launcher doesn't take {what}",
+    "waiting": "\u2026",
+    "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
+    "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
+    "takesWords": "{name} not done \u00b7 give its words after --",
+    "nothingToDo": "launcher do needs a row to do",
+    "blankStep": "a blank step names no row"
+  }
+}

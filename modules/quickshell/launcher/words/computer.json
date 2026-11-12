@@ -1,0 +1,22 @@
+{
+  "things": [
+    {
+      "id": "machine:uptime",
+      "in": "computer",
+      "name": "Uptime",
+      "answers": [
+        "uptime"
+      ],
+      "said": {
+        "head": "up {time}",
+        "yesterday": "yesterday"
+      },
+      "parts": [
+        "machine:uptime:idle",
+        "machine:uptime:asleep",
+        "machine:uptime:started",
+        "machine:uptime:kernel"
+      ]
+    }
+  ]
+}

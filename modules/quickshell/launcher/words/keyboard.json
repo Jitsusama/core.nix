@@ -1,0 +1,76 @@
+{
+  "things": [
+    {
+      "id": "keyboard:show",
+      "in": "keyboard",
+      "name": "Show the Keyboard's Layout",
+      "verb": "show"
+    },
+    {
+      "id": "keyboard:flash",
+      "command": "flash",
+      "in": "keyboard",
+      "name": "Flash the Keyboard",
+      "verb": "flash"
+    },
+    {
+      "id": "keyboard:release",
+      "command": "set",
+      "argument": "lock=",
+      "in": "keyboard",
+      "name": "Let {layer} Go",
+      "verb": "release"
+    },
+    {
+      "id": "keyboard:lock",
+      "command": "set",
+      "argument": "lock={layer}",
+      "in": "keyboard",
+      "name": "Lock {layer} On",
+      "verb": "lock"
+    },
+    {
+      "id": "keyboard:key",
+      "in": "keyboard",
+      "verb": "show"
+    },
+    {
+      "id": "keyboard:lights",
+      "in": "keyboard",
+      "name": "Light",
+      "term": "Keyboards/light"
+    },
+    {
+      "id": "keyboard:lights-off",
+      "command": "set",
+      "argument": "nokbdlight",
+      "in": "keyboard:lights",
+      "name": "Turn Off the Keyboard's Light",
+      "verb": "turn off"
+    },
+    {
+      "id": "keyboard:lights-on",
+      "command": "set",
+      "argument": "kbdlight",
+      "in": "keyboard:lights",
+      "name": "Turn on the Keyboard's Light",
+      "verb": "turn on"
+    },
+    {
+      "id": "keyboard:brighter",
+      "command": "set",
+      "argument": "kbdlevel+=1",
+      "in": "keyboard:lights",
+      "name": "Brighten the Keyboard's Light",
+      "verb": "brighten"
+    },
+    {
+      "id": "keyboard:dimmer",
+      "command": "set",
+      "argument": "kbdlevel-=1",
+      "in": "keyboard:lights",
+      "name": "Dim the Keyboard's Light",
+      "verb": "dim"
+    }
+  ]
+}

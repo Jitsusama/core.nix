@@ -1,0 +1,131 @@
+{
+  "things": [
+    {
+      "id": "windows:agents",
+      "name": "Agents",
+      "in": "windows",
+      "term": "Agents/agent",
+      "verb": "go to",
+      "glyph": "agent",
+      "said": {
+        "more": "{title} \u00b7 {more} more",
+        "needsCount": "1 needs you",
+        "needCount": "{count} need you"
+      }
+    },
+    {
+      "id": "verb:switch",
+      "command": "buffer",
+      "in": "windows",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:bring",
+      "command": "bring",
+      "in": "windows",
+      "name": "Bring Here",
+      "verb": "bring",
+      "glyph": "workspace"
+    },
+    {
+      "id": "verb:move",
+      "command": "move",
+      "in": "windows",
+      "name": "Move to a Workspace",
+      "verb": "choose",
+      "glyph": "workspace"
+    },
+    {
+      "id": "verb:screen",
+      "command": "move",
+      "argument": "screen",
+      "in": "windows",
+      "name": "Move to a Screen",
+      "verb": "choose",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:size",
+      "command": "resize",
+      "in": "windows",
+      "name": "Size",
+      "verb": "choose",
+      "glyph": "columns"
+    },
+    {
+      "id": "verb:size:third",
+      "command": "resize",
+      "argument": "third",
+      "in": "windows",
+      "name": "A Third of the Screen",
+      "verb": "size"
+    },
+    {
+      "id": "verb:size:half",
+      "command": "resize",
+      "argument": "half",
+      "in": "windows",
+      "name": "Half the Screen",
+      "verb": "size"
+    },
+    {
+      "id": "verb:size:two-thirds",
+      "command": "resize",
+      "argument": "twothirds",
+      "in": "windows",
+      "name": "Two Thirds of the Screen",
+      "verb": "size"
+    },
+    {
+      "id": "verb:below",
+      "command": "split",
+      "in": "windows",
+      "name": "New Window Below",
+      "verb": "start",
+      "glyph": "below"
+    },
+    {
+      "id": "verb:float",
+      "command": "float",
+      "in": "windows",
+      "name": "Float",
+      "verb": "float",
+      "glyph": "floating",
+      "states": {
+        "floating": {
+          "name": "Tile",
+          "verb": "tile"
+        }
+      }
+    },
+    {
+      "id": "verb:full-width",
+      "command": "resize",
+      "argument": "full",
+      "in": "windows",
+      "name": "Full Width",
+      "verb": "widen",
+      "glyph": "columns"
+    },
+    {
+      "id": "verb:title",
+      "command": "yank",
+      "in": "windows",
+      "name": "Copy the Title",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:close",
+      "command": "close",
+      "in": "windows",
+      "name": "Close",
+      "verb": "close",
+      "glyph": "close",
+      "act": "ending",
+      "ends": "close"
+    }
+  ]
+}

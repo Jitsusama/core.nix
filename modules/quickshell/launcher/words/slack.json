@@ -1,0 +1,49 @@
+{
+  "things": [
+    {
+      "id": "verb:slack:open",
+      "command": "open",
+      "in": "slack:conversation",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:slack:link",
+      "command": "yank",
+      "in": "slack:conversation",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:slack:search:again",
+      "command": "retry",
+      "in": "slack:message",
+      "name": "Try Again",
+      "verb": "retry",
+      "glyph": "chat"
+    },
+    {
+      "id": "slack:message:sent",
+      "in": "slack:message",
+      "name": "Sent"
+    },
+    {
+      "id": "verb:slack:message:open",
+      "command": "open",
+      "in": "slack:message",
+      "name": "Open in Slack",
+      "verb": "open",
+      "glyph": "chat"
+    },
+    {
+      "id": "verb:slack:message:link",
+      "command": "yank",
+      "in": "slack:message",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

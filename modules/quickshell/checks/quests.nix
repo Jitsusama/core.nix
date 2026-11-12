@@ -71,7 +71,7 @@
       ${shellFolderLint}
       # The daemon follows the node the shell stands in, trying again
       # until it listens.
-      ${quests} --vocabulary ${../launcher/words.json} \
+      ${quests} --vocabulary ${(import ../launcher/words.nix).file} \
         --node $XDG_RUNTIME_DIR/mycelium/harbour.sock \
         --socket $XDG_RUNTIME_DIR/daemons/quests.sock &
       timeout 60 ${qs} -p shell.qml

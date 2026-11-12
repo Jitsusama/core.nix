@@ -1,0 +1,1651 @@
+{
+  "things": [
+    {
+      "id": "agents",
+      "name": "Agents",
+      "term": "Agents/agent",
+      "noun": "agents",
+      "what": "agent",
+      "glyph": "agent",
+      "parts": [
+        "quests",
+        "jobs",
+        "runs",
+        "spend",
+        "agents:budgets"
+      ],
+      "ask": "which session?",
+      "empty": "No sessions running.",
+      "none": "none running",
+      "said": {
+        "today": "{spent} today",
+        "needs": "needs you",
+        "needCount": "{count} need you",
+        "needsCount": "1 needs you",
+        "answerCount": "1 answer",
+        "answersCount": "{count} answers",
+        "answered": "answered",
+        "workingCount": "{count} working",
+        "inLineCount": "{count} in line",
+        "working": "working",
+        "inLine": "{place} in line",
+        "listening": "listening",
+        "paused": "paused",
+        "parked": "parked",
+        "closed": "closed",
+        "closedAt": "closed {time}",
+        "closedOn": "closed {day} {time}",
+        "allOf": "{spent} in all",
+        "closedCount": "{count} closed",
+        "aboutAllOf": "about {spent} in all",
+        "workingOf": "{count} of {all} working",
+        "since": "since {at}",
+        "under": "under {address}",
+        "stays": "its {kept} stays.",
+        "stay": "its {kept} stay.",
+        "tree": "worktree",
+        "folder": "folder",
+        "and": "and",
+        "toDo": "{count} to-do",
+        "toDos": "{count} to-dos",
+        "full": "{share}% full",
+        "contextOf": "{used} of {limit}",
+        "turnTook": "{took} \u00b7 {out} out",
+        "firstToken": "{took} first token",
+        "tokensOf": "{sent} in \u00b7 {out} out",
+        "cacheRead": "{share}% read"
+      }
+    },
+    {
+      "id": "asks",
+      "name": "Asks",
+      "glyph": "passwords",
+      "answers": ["asks", "ask"],
+      "said": {
+        "from": "{session} · {quest}",
+        "at": "{path} at {commit}",
+        "notGit": "{path}, not a git folder",
+        "uncommitted": "{count} not committed",
+        "unknown": "couldn't tell",
+        "given": "{name}, for {minutes} min",
+        "releasing": "reading 1Password",
+        "ran": "ran, exit {exit}",
+        "stopped": "stopped at the time limit",
+        "failed": "couldn't: {why}",
+        "refused": "refused",
+        "ended": "ended unanswered",
+        "gone": "that ask is gone",
+        "answered": "that ask is already answered",
+        "locked": "not while the screen is locked",
+        "changed": "it changed since it was shown; read it again",
+        "none": "none waiting",
+        "one": "1 waiting",
+        "waiting": "{count} waiting"
+      }
+    },
+    {
+      "id": "quests",
+      "once": ["Tasks"],
+      "name": "Quests",
+      "term": "Agents/quest",
+      "noun": "quests",
+      "what": "quest",
+      "glyph": "agent",
+      "ask": "which quest?",
+      "empty": "No quests.",
+      "said": {
+        "empty": "empty",
+        "open": "{open} open",
+        "driving": "{open} open, {driving} driving"
+      }
+    },
+    {
+      "id": "runs",
+      "once": ["Helpers"],
+      "name": "Runs",
+      "term": "Agents/run",
+      "noun": "runs",
+      "what": "run",
+      "glyph": "subagent",
+      "ask": "which run?",
+      "empty": "No runs today."
+    },
+    {
+      "id": "spend",
+      "name": "AI Spend",
+      "term": "Agents/AI spend",
+      "noun": "spend",
+      "glyph": "agent",
+      "ask": "which?",
+      "empty": "Nothing spent yet.",
+      "said": {
+        "down": "not answering",
+        "lastFigures": "not answering · its last figures",
+        "lastRun": "still reading · its last figures",
+        "refused:not-answering": "still reading",
+        "refused:no-line": "no longer there",
+        "refused:bad-act": "nothing to do"
+      }
+    },
+    {
+      "id": "jobs",
+      "name": "Queue",
+      "term": "Machine/queue",
+      "noun": "jobs",
+      "what": "job",
+      "glyph": "timed",
+      "ask": "which job?",
+      "empty": "Nothing queued.",
+      "said": {
+        "running": "{count} running",
+        "waiting": "{count} waiting",
+        "none": "nothing queued",
+        "silent": "not answering",
+        "ranOf": "{ran} of {last} min",
+        "over": "{over} min over",
+        "ranFor": "for {ran} min",
+        "memory": "waits for memory",
+        "vms": "waits for a VM",
+        "behind": "behind a VM test",
+        "inLine": "{place} in line",
+        "holds": "holds {gib} GiB",
+        "needs": "needs {gib} GiB",
+        "more": "and {more} more",
+        "first": "put first",
+        "quick": "quick",
+        "capped": "capped",
+        "vm-test": "VM test",
+        "vm-check": "VM check",
+        "build": "build",
+        "benchmark": "benchmark",
+        "spare": "{gib} GiB to spare",
+        "heldUp": "the processors {percent}% held up",
+        "wasted": "{minutes} min waited with room today"
+      }
+    },
+    {
+      "id": "machine:memory",
+      "once": ["RAM"],
+      "name": "Memory",
+      "term": "Machine/memory",
+      "provider": "machine",
+      "question": "memory",
+      "glyph": "memory",
+      "answers": [
+        "memory",
+        "swap"
+      ],
+      "said": {
+        "head": "{used} used, {share}",
+        "moving": "{in} in \u00b7 {out} out",
+        "still": "none"
+      },
+      "parts": [
+        "machine:memory:used",
+        "machine:memory:pressure",
+        "machine:memory:faults",
+        "machine:memory:swapping",
+        "machine:memory:paging",
+        "machine:memory:using",
+        "machine:memory:swap",
+        "machine:memory:cached",
+        "machine:memory:held",
+        "machine:memory:committed",
+        "machine:memory:out-of-memory",
+        "machine:memory:counts",
+        "machine:memory:type"
+      ]
+    },
+    {
+      "id": "machine:cpu",
+      "once": ["CPU"],
+      "name": "Processor",
+      "term": "Machine/processor",
+      "provider": "machine",
+      "question": "processor",
+      "glyph": "processor",
+      "answers": [
+        "processor",
+        "cores",
+        "load"
+      ],
+      "said": {
+        "down": "not answering",
+        "head": "{busy} busy",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now"
+      },
+      "parts": [
+        "machine:cpu:spent",
+        "machine:cpu:pressure",
+        "machine:cpu:switches",
+        "machine:cpu:interrupts",
+        "machine:cpu:started",
+        "machine:cpu:cores",
+        "machine:cpu:maxed",
+        "machine:cpu:clock",
+        "machine:cpu:held-back",
+        "machine:cpu:kept-from-resting",
+        "machine:cpu:temperature",
+        "machine:cpu:using",
+        "machine:cpu:load",
+        "machine:cpu:running",
+        "machine:cpu:npu-load",
+        "machine:cpu:kinds",
+        "machine:cpu:model"
+      ]
+    },
+    {
+      "id": "machine:disk",
+      "once": ["Drive", "SSD", "Storage"],
+      "name": "Disk",
+      "term": "Disk/disk",
+      "provider": "machine",
+      "question": "disk",
+      "glyph": "disk",
+      "answers": [
+        "disk",
+        "space"
+      ],
+      "said": {
+        "head": "{free} free on {mount}",
+        "unwatched": "nothing watched",
+        "since-boot": "since the machine started",
+        "since-asked": "since you last asked",
+        "since-now": "just now",
+        "filling": "filling",
+        "nearly-full": "nearly full",
+        "critically-full": "critically full"
+      },
+      "parts": [
+        "machine:disk:space",
+        "machine:disk:filling",
+        "machine:disk:speed",
+        "machine:disk:pressure",
+        "machine:disk:busy",
+        "machine:disk:latency",
+        "machine:disk:queue",
+        "machine:disk:temperature",
+        "machine:disk:health",
+        "machine:disk:file-systems",
+        "machine:disk:model"
+      ]
+    },
+    {
+      "id": "power",
+      "name": "Battery",
+      "answers": [
+        "battery",
+        "charge",
+        "charger",
+        "energy"
+      ],
+      "parts": [
+        "power:rate",
+        "power:voltage",
+        "power:health",
+        "power:cycles",
+        "power:type",
+        "power:limit",
+        "power:temperature",
+        "power:made"
+      ],
+      "said": {
+        "full": "{time} to full",
+        "charging": "charging",
+        "empty": "{time} to empty",
+        "battery": "on battery",
+        "whole": "full",
+        "holding": "on power, holding"
+      }
+    },
+    {
+      "id": "traffic",
+      "name": "Speed",
+      "term": "Network/speed",
+      "question": "speed",
+      "glyph": "traffic",
+      "answers": [
+        "speed"
+      ]
+    },
+    {
+      "id": "warp",
+      "name": "Work Network",
+      "term": "Network/work network",
+      "question": "warp",
+      "glyph": "tunnel",
+      "answers": [
+        "warp",
+        "vpn",
+        "work",
+        "tunnel"
+      ],
+      "said": {
+        "notAnswering": "not answering",
+        "notRunning": "its service isn't running",
+        "shutOut": "its service won't let you in",
+        "tooSlow": "its service is too slow to answer",
+        "unreached": "its service can't be reached",
+        "unreadable": "unreadable",
+        "printedNothing": "warp printed nothing it could read",
+        "measure": "WARP's measure",
+        "in": "{figure} in",
+        "out": "{figure} out",
+        "metal": "metal {metal}",
+        "rtt": "round trip",
+        "percent": "{figure}%",
+        "ms": "{figure} ms",
+        "minutes": "{figure} min",
+        "on": "on",
+        "off": "off",
+        "noIpv4": "no IPv4",
+        "noIpv6": "no IPv6",
+        "postQuantum": "post-quantum",
+        "alwaysOn": "always on",
+        "split": "split tunnel",
+        "host": "{count} host",
+        "hosts": "{count} hosts",
+        "network": "{count} network",
+        "networks": "{count} networks",
+        "address": "{count} address",
+        "addresses": "{count} addresses",
+        "domain": "{count} domain",
+        "domains": "{count} domains",
+        "firewallOpens": "opens its firewall for {minutes}",
+        "left": "{minutes} left",
+        "prefix": "/{size}",
+        "emergency": "every device disconnected",
+        "eyebrow": "via WARP \u00b7 tunnel",
+        "range": "{low} to {high}",
+        "steady": "{figure} \u00b7 steady",
+        "reads": "{count} over {span}",
+        "seconds": "{figure} s",
+        "holds": "{organisation} holds the switch",
+        "theOrganisation": "the organisation",
+        "comesBack": "comes back by itself in {minutes}",
+        "comesBackNow": "comes back by itself at once",
+        "couldntSwitch": "warp couldn't switch it",
+        "answered": "{success} of {total} answered",
+        "proxyOff": "proxy off",
+        "by": "set by {who}",
+        "by:default": "the default",
+        "by:local_policy": "set by local policy",
+        "by:network_policy": "set by network policy",
+        "by:override": "set by an override",
+        "mode:warp": "the tunnel with DNS proxied over UDP",
+        "mode:doh": "DNS over HTTPS alone",
+        "mode:warp+doh": "the tunnel with DNS over HTTPS",
+        "mode:dot": "DNS over TLS alone",
+        "mode:warp+dot": "the tunnel with DNS over TLS",
+        "mode:proxy": "the tunnel as a SOCKS5 proxy",
+        "mode:tunnel_only": "the tunnel alone",
+        "through": "WARP"
+      }
+    },
+    {
+      "id": "heat",
+      "name": "Heat",
+      "glyph": "heat",
+      "answers": [
+        "heat"
+      ],
+      "said": {
+        "hottest": "{degrees} at the {part}",
+        "stopped": "fans stopped",
+        "turning": "a fan turning",
+        "turnings": "{count} fans turning"
+      }
+    },
+    {
+      "id": "waits",
+      "name": "Lag",
+      "term": "Machine/lag",
+      "answers": [
+        "lag"
+      ],
+      "said": {
+        "calm": "nothing's slowing the desktop",
+        "first": "measuring its first ten seconds",
+        "several": "{count} things are slowing it",
+        "answers": "in {typical}, at worst {worst}",
+        "answersNote": "how long the desktop takes to answer a program, as a rule and at its slowest",
+        "workNote": "how hard builds and jobs are running; Return shows the queue",
+        "fresh": "the last ten seconds",
+        "stale": "ten seconds that ended {ago}"
+      }
+    },
+    {
+      "id": "firmware",
+      "name": "Firmware",
+      "term": "Machine/firmware",
+      "glyph": "firmware",
+      "answers": ["firmware", "update", "updates"],
+      "said": {
+        "current": "up to date",
+        "one": "1 update ready",
+        "many": "{count} updates ready",
+        "ready": "{version} ready \u00b7 from {was}",
+        "restart": "{version} at the restart \u00b7 from {was}"
+      }
+    },
+    {
+      "id": "machines",
+      "name": "Machines",
+      "term": "Machine/machine",
+      "noun": "machines",
+      "what": "machine",
+      "glyph": "computer",
+      "ask": "which machine?",
+      "empty": "No machine is linked.",
+      "answers": ["machines"],
+      "said": {
+        "here": "this machine",
+        "yesterday": "yesterday",
+        "ready": "ready",
+        "busy": "busy",
+        "unreachable": "out of reach",
+        "since": "since {time}",
+        "asOf": "as of {time}",
+        "short": "short of {what}",
+        "and": "{first} and {last}",
+        "memory": "memory",
+        "cpu": "processors",
+        "battery": "on battery {charge}%",
+        "charging:battery": "{charge}% \u00b7 on battery",
+        "charging:charger": "{charge}% \u00b7 on the charger",
+        "build": "{count} build",
+        "builds": "{count} builds",
+        "vmTest": "{count} VM test",
+        "vmTests": "{count} VM tests",
+        "sameCore": "{commit}, as this machine's",
+        "reaches": "reached",
+        "unreaches": "not reached",
+        "freeOf": "{free} free of {total}",
+        "sized": "{total} in all",
+        "cores": "{count} cores",
+        "on": "on {realm} \u00b7 machine",
+        "gpu": "graphics",
+        "npu": "NPU",
+        "count": "{count} reached",
+        "gone": "{count} out of reach",
+        "updating": "updating",
+        "updated:done": "{name} updated to {commit}",
+        "updated:done:bare": "{name} updated",
+        "updated:unchanged": "{name} was on main already",
+        "updated:failed": "{name} didn't update",
+        "updated:refused": "{name} refused the update",
+        "notUpdated": "couldn't update {name}: {why}",
+        "unanswered": "its node didn't answer"
+      },
+      "parts": [
+        "machines:pressure:cpu",
+        "machines:pressure:memory",
+        "machines:pressure:io",
+        "machines:memory",
+        "machines:charge",
+        "machines:takes",
+        "machines:disk",
+        "machines:commit",
+        "machines:core",
+        "machines:step",
+        "machines:reboot",
+        "machines:measured",
+        "machines:processor",
+        "machines:accelerators",
+        "machines:system",
+        "machines:model",
+        "machines:kind:macos",
+        "machines:kind:linux",
+        "machines:kind:machine"
+      ]
+    },
+    {
+      "id": "light",
+      "name": "Desk Light",
+      "term": "Machine/desk light",
+      "answers": [
+        "desk light",
+        "warmth"
+      ],
+      "said": {
+        "usb": "on USB",
+        "plate": "desk light",
+        "of": "of {least} to {most}",
+        "chosen": "chosen",
+        "off": "off",
+        "outOnceLit": "out, {percent}% once lit",
+        "is": "the desk light is {lit}",
+        "cameraLights": "a camera lights it",
+        "turnOn": "turn the desk light on",
+        "turnOff": "turn the desk light off",
+        "setTo": "set the desk light to {to}",
+        "make": "make the desk light {way} \u00b7 {warmth}",
+        "now": "now {lit}"
+      }
+    },
+    {
+      "id": "keyboards",
+      "name": "Keyboards",
+      "term": "Keyboards/keyboard",
+      "answers": [
+        "keyboards",
+        "caps lock"
+      ],
+      "said": {
+        "usb": "on USB \u00b7 keyboard",
+        "bluetooth": "on Bluetooth \u00b7 keyboard",
+        "builtIn": "built in \u00b7 keyboard",
+        "caps": "caps",
+        "num": "num",
+        "scroll": "scroll",
+        "none": "none",
+        "locked": "locked",
+        "since": "since {day}",
+        "began": "since counting began"
+      }
+    },
+    {
+      "id": "eero",
+      "name": "Home Network",
+      "term": "Network/home network",
+      "noun": "nodes",
+      "words": ["eero"],
+      "what": "node",
+      "glyph": "accessPoint",
+      "ask": "which node or device?",
+      "empty": "No word from eero yet.",
+      "said": {
+        "bps": "{n} b/s",
+        "kbps": "{n} kb/s",
+        "mbps": "{n} Mb/s",
+        "gbps": "{n} Gb/s",
+        "down": "{rate} down",
+        "up": "{rate} up",
+        "device": "1 device",
+        "devices": "{count} devices"
+      }
+    },
+    {
+      "id": "networks",
+      "name": "Address",
+      "term": "Network/address",
+      "answers": [
+        "address"
+      ]
+    },
+    {
+      "id": "ethernet",
+      "name": "Ethernet",
+      "term": "Network/Ethernet",
+      "provider": "networks",
+      "question": "ethernet",
+      "glyph": "wired",
+      "answers": [
+        "ethernet"
+      ]
+    },
+    {
+      "id": "sound",
+      "name": "Sound",
+      "term": "Machine/Sound",
+      "noun": "devices",
+      "what": "sound",
+      "glyph": "volume",
+      "ask": "which device?",
+      "empty": "No sound devices.",
+      "answers": [
+        "volume",
+        "playing"
+      ],
+      "said": {
+        "volume": "volume {level}",
+        "each-cycle": "{share} of each cycle",
+        "over": "over {share}",
+        "cycle": "{frames} frames \u00b7 {ms} ms",
+        "chosen": "chosen",
+        "the-default": "the default",
+        "sent-to": "{program} plays on {device}",
+        "sent-from": "{program} records from {device}",
+        "not-sent": "{program} didn't move to {device}",
+        "muted": "muted",
+        "none": "none",
+        "on": "on",
+        "yes": "yes",
+        "no": "no",
+        "running": "running",
+        "waiting": "waiting",
+        "silent": "silent",
+        "unheard": "not heard",
+        "unplugged": "nothing plugged in",
+        "music": "music",
+        "calls": "calls",
+        "le-audio": "LE Audio",
+        "paused": "paused",
+        "nothing": "nothing",
+        "playing": "playing",
+        "recording": "recording",
+        "open": "has sound open",
+        "nothing-playing": "nothing playing",
+        "nothing-out": "nothing to play through",
+        "out": "out · {level}",
+        "in": "in · {level}",
+        "through": "{level}, through {device}",
+        "set": "set {device} to {level}",
+        "now": "now {level}",
+        "mono": "mono",
+        "stereo": "stereo",
+        "channels": "{count} channels",
+        "amplifiers": "{count} × {chip}",
+        "digital": "{chip}, digital",
+        "bits": "{count} bit",
+        "level-out": "the loudest of each moment going out, of full scale",
+        "level-in": "listening while this shows, the loudest of each moment, of full scale",
+        "level-switches": "listening would switch the headset from music to calls",
+        "profile-elsewhere": "its codec and connection are in Bluetooth",
+        "profile-switches": "listening through it switches the headset to calls",
+        "to-calls": "using it switches the headset to calls",
+        "recording-none": "no program is listening",
+        "tuning": "the filter sound goes through on its way out",
+        "voice": "the filter programs hear it through",
+        "delay-note": "{frames} frames at {rate}, what it asks to be given at once",
+        "plate-out": "output",
+        "plate-in": "input",
+        "plate-stream": "stream",
+        "stream-on": "on {device}",
+        "stream-from": "from {device}",
+        "joined-here": "on this machine",
+        "joined-built-in": "built in",
+        "joined-usb": "USB",
+        "joined-display": "display",
+        "paused-at": "paused at {level}",
+        "balanced": "balanced",
+        "down": "not answering",
+        "cleaner-raw": "no noise cancelling",
+        "cleaner-deepfilternet": "DeepFilterNet, full",
+        "cleaner-deepfilternet-gentle": "DeepFilterNet, gentle",
+        "cleaner-rnnoise": "RNNoise",
+        "noise": "the cleaner calls hear the microphones through",
+        "by-ear": "a few seconds recorded, cleaned each way, heard blind and one picked",
+        "by-ear-starting": "starting",
+        "by-ear-recording": "recording",
+        "by-ear-cleaning": "cleaning",
+        "by-ear-ready": "ready to hear",
+        "by-ear-picked": "picked {clip}",
+        "by-ear-seconds": "{seconds} s",
+        "by-ear-left": "{seconds} s left",
+        "by-ear-speak": "speak as you would on a call, with the room as it is",
+        "by-ear-each": "with each cleaner, then shuffled as clips A to D",
+        "by-ear-playing": "playing",
+        "by-ear-on": "on {output}",
+        "by-ear-playing-on": "playing on {output}",
+        "by-ear-blind": "its cleaner is said once one is picked",
+        "by-ear-chosen": "{clip} \u00b7 {cleaner}",
+        "by-ear-from-now": "calls hear {microphone} through it from now",
+        "by-ear-unchanged": "nothing changes: calls hear {microphone} as before",
+        "by-ear-the-microphone": "the microphone",
+        "by-ear-cost": "{share} of a core while cleaning",
+        "by-ear-scored": "sounds {mark} of 5 \u00b7 {cost}",
+        "by-ear-down": "its socket starts it on the next ask"
+      }
+    },
+    {
+      "id": "keyboard",
+      "name": "Keyboard",
+      "term": "Keyboards/keyboard",
+      "noun": "keys",
+      "said": {
+        "one": "{count} key",
+        "many": "{count} keys"
+      },
+      "tells": {
+        "holding": "Every key on the keyboards plugged in, by its names, and its layout."
+      },
+      "lead": "parts",
+      "glyph": "keyboard",
+      "parts": [
+        "keyboards",
+        "shortcuts"
+      ],
+      "ask": "which key?"
+    },
+    {
+      "id": "shortcuts",
+      "once": ["Bindings"],
+      "name": "Shortcuts",
+      "term": "Keyboards/shortcut",
+      "noun": "shortcuts",
+      "glyph": "shortcuts",
+      "ask": "which shortcut?"
+    },
+    {
+      "id": "actions",
+      "name": "Desktop",
+      "term": "Desktop/desktop",
+      "by": "shortcuts"
+    },
+    {
+      "id": "on",
+      "once": ["What's on"],
+      "name": "Now",
+      "term": "Desktop/Now",
+      "noun": "now",
+      "what": "on",
+      "glyph": "now",
+      "ask": "which?",
+      "empty": "Nothing's on or waiting."
+    },
+    {
+      "id": "clipboard",
+      "name": "Clipboard",
+      "term": "Desktop/clipboard",
+      "noun": "copies",
+      "said": {
+        "one": "{count} copy",
+        "many": "{count} copies",
+        "silent": "not answering",
+        "unpasted": "didn't paste",
+        "unkept": "no longer kept",
+        "line": "{count} line",
+        "lines": "{count} lines",
+        "image": "image",
+        "imageSized": "image {across} \u00d7 {down}"
+      },
+      "glyph": "clipboard",
+      "ask": "which copy?"
+    },
+    {
+      "id": "timers",
+      "name": "Timers",
+      "term": "Desktop/timer",
+      "noun": "timers",
+      "glyph": "timer",
+      "ask": "which timer?",
+      "empty": "No timers running.",
+      "said": { "several": "{count} running" }
+    },
+    {
+      "id": "wifi",
+      "once": ["Wireless", "WLAN"],
+      "name": "Wi-Fi",
+      "term": "Network/Wi-Fi",
+      "noun": "networks",
+      "glyph": "wireless",
+      "ask": "which network?"
+    },
+    {
+      "id": "bluetooth",
+      "name": "Bluetooth",
+      "term": "Machine/Bluetooth",
+      "noun": "devices",
+      "glyph": "bluetooth",
+      "ask": "which device?",
+      "empty": "Bluetooth is off.",
+      "said": {
+        "pairing": "pairing with {device}",
+        "connecting": "connecting {device}",
+        "notPaired": "{device} not paired",
+        "notConnected": "{device} not connected",
+        "because": "{failed} \u00b7 {why}",
+        "passkey": "it wants a passkey",
+        "refused": "it said no",
+        "stopped": "it gave up",
+        "unreached": "it stopped answering",
+        "busy": "it's already pairing or connecting",
+        "unready": "the adapter isn't ready",
+        "nothing": "it offers nothing this machine uses",
+        "heard": "{dbm} dBm",
+        "nameless": "{count} more without a name",
+        "strong": "strong",
+        "fair": "fair",
+        "weak": "weak",
+        "heardCount": "{count} heard",
+        "looks": "looks while open"
+      }
+    },
+    {
+      "id": "displays",
+      "once": ["Displays", "Monitors"],
+      "name": "Screens",
+      "term": "Desktop/screen",
+      "noun": "screens",
+      "glyph": "display",
+      "ask": "which screen?",
+      "empty": "No screens.",
+      "said": {
+        "built-in": "built in",
+        "screen": "screen",
+        "chosen": "chosen",
+        "set": "set",
+        "steps": "{now} of {most} steps",
+        "stepping-linear": "linear",
+        "stepping-non-linear": "non-linear",
+        "driven-firmware": "the firmware",
+        "driven-platform": "a platform driver",
+        "driven-raw": "the graphics chip",
+        "perCount": "{n} lx",
+        "the-room": "the room",
+        "on-its-way": "on its way to {share}",
+        "no-light": "no light heard",
+        "at": "{share} at {lux}",
+        "dark": "dark",
+        "hubOn": "hub on",
+        "isOn": "{name} is on",
+        "isDark": "{name} is dark",
+        "isUnplugged": "{name} is unplugged",
+        "isPluggedIn": "{name} is plugged in",
+        "the-last-lit": "the last lit screen",
+        "not-offered": "{value} not set \u00b7 {screen} offers {offers}",
+        "offers-range": "{first} to {last}",
+        "none-given": "no {setting} given \u00b7 {screen} offers {offers}",
+        "not-set": "{thing} not set \u00b7 {why}",
+        "not-on": "{thing} not turned on \u00b7 {why}",
+        "not-off": "{thing} not turned off \u00b7 {why}",
+        "not-unplugged": "{thing} not unplugged \u00b7 {why}",
+        "off": "off",
+        "focused": "focused",
+        "scaleAt": "scale {scale}",
+        "setTo": "set the screen to {share}%",
+        "now": "now {share}%",
+        "unread": "not read yet"
+      }
+    },
+    {
+      "id": "capture",
+      "name": "Capture",
+      "term": "Desktop/capture",
+      "noun": "captures",
+      "glyph": "capture",
+      "ask": "of what?"
+    },
+    {
+      "id": "media",
+      "name": "Media",
+      "term": "Programs/Media",
+      "noun": "players",
+      "what": "player",
+      "glyph": "playing",
+      "ask": "which player?",
+      "empty": "Nothing is playing.",
+      "answers": [
+        "music",
+        "players"
+      ],
+      "said": {
+        "percent": "{n}%",
+        "on": "on",
+        "off": "off",
+        "chosen": "chosen",
+        "speeds": "{speed} · {least} to {most}",
+        "workspace": "workspace {n}",
+        "through": "{at} of {length}",
+        "paused": "paused \u00b7 {at}",
+        "refused": "{name} not {done} \u00b7 {why}",
+        "nothing": "nothing is playing",
+        "done:volume": "made louder or quieter",
+        "done:shuffle": "shuffled",
+        "done:order": "put back in order",
+        "done:loop": "set to loop",
+        "done:unloop": "stopped looping",
+        "done:seek": "moved through its track",
+        "done:place": "moved to {at}",
+        "done:speed": "sped up or slowed down",
+        "why:volume": "it keeps its own volume",
+        "why:shuffle": "it can't shuffle",
+        "why:order": "it can't shuffle",
+        "why:loop": "it can't loop",
+        "why:unloop": "it can't loop",
+        "why:seek": "it can't seek",
+        "why:place": "that isn't a time in a track",
+        "why:speed": "it plays at one speed"
+      }
+    },
+    {
+      "id": "cameras",
+      "name": "Cameras",
+      "glyph": "camera",
+      "said": "the {name}",
+      "answers": [
+        "camera"
+      ]
+    },
+    {
+      "id": "emoji",
+      "name": "Emoji",
+      "noun": "emoji",
+      "glyph": "emoji",
+      "ask": "which emoji?"
+    },
+    {
+      "id": "people",
+      "name": "People",
+      "noun": "people",
+      "glyph": "people",
+      "parts": ["transcripts"],
+      "ask": "who?",
+      "empty": "Nobody you've met or written lately.",
+      "none": "nobody lately",
+      "said": {
+        "silent": "not answering",
+        "available": "available",
+        "active": "active",
+        "huddle": "in a huddle",
+        "call": "in a call",
+        "away": "away",
+        "offline": "offline"
+      }
+    },
+    {
+      "id": "slack:conversation",
+      "of": "program:slack",
+      "name": "Conversation",
+      "glyph": "chat",
+      "verb": "open",
+      "said": {
+        "count": "{count} to read",
+        "dm": "a direct message",
+        "mention": "mentions you",
+        "thread": "replies in threads",
+        "unread": "a channel",
+        "channel": "a channel"
+      }
+    },
+    {
+      "id": "slack:unread",
+      "of": "program:slack",
+      "name": "Unread",
+      "term": "Programs/unread",
+      "verb": "more",
+      "glyph": "unread"
+    },
+    {
+      "id": "passwords",
+      "name": "Passwords",
+      "term": "Security/passwords",
+      "noun": "passwords",
+      "glyph": "passwords",
+      "ask": "which entry?",
+      "empty": "No favourites, and nothing changed lately.",
+      "said": {
+        "copying": "copying {title}'s {detail}\u2026",
+        "copied": "copied {title}'s {detail} \u00b7 clears in {seconds} s",
+        "coded": "copied {title}'s {detail} \u00b7 {left} s left of {period}",
+        "lapsed": "copied {title}'s {detail} \u00b7 lapsed",
+        "cleared": "{title}'s {detail} is cleared from the clipboard",
+        "unfinished": "{title}'s {detail} not copied \u00b7 {why}",
+        "away": "the passwords daemon isn't answering",
+        "offNote": "use {manager}'s browser extension",
+        "offSide": "off",
+        "password": "password",
+        "code": "one-time code",
+        "hidden": "hidden",
+        "terrible": "terrible",
+        "weak": "weak",
+        "fair": "fair",
+        "good": "good",
+        "veryGood": "very good",
+        "excellent": "excellent",
+        "fantastic": "fantastic",
+        "set": "set up",
+        "none": "none",
+        "unsecured": "unsecured website",
+        "reused": "reused password",
+        "reusedIn": "reused in {count} other entries",
+        "breached": "breached password",
+        "breaches": "seen in {count} breaches",
+        "checking": "checking every password\u2026",
+        "locked": "locked",
+        "refused": "can't read",
+        "within": "in {vault} \u00b7 {kind}",
+        "inVault": "{count} in 1 vault",
+        "inVaults": "{count} in {vaults} vaults"
+      },
+      "parts": [
+        "asks"
+      ]
+    },
+    {
+      "id": "verb:slack:search",
+      "command": "search",
+      "of": "program:slack",
+      "name": "Search Slack for {words}",
+      "verb": "search",
+      "glyph": "chat"
+    },
+    {
+      "id": "slack:message",
+      "of": "program:slack",
+      "name": "Slack Message",
+      "term": "Programs/Slack message",
+      "glyph": "chat",
+      "verb": "open",
+      "said": {
+        "searching": "searching Slack",
+        "you": "you",
+        "where": "in {place} \u00b7 message",
+        "direct": "direct message",
+        "readInSlack": "read in Slack",
+        "goneFromSlack": "gone from Slack"
+      },
+      "tells": {
+        "none": "Nothing in Slack says {words}.",
+        "busy": "Slack is busy; try again in a minute.",
+        "down": "Slack isn't answering.",
+        "failed": "Slack couldn't be reached."
+      }
+    },
+    {
+      "id": "spotify:context",
+      "of": "program:spotify",
+      "name": "Playlist, Album, Artist or Podcast",
+      "glyph": "playing",
+      "verb": "play",
+      "said": {
+        "playlist": "playlist",
+        "album": "album",
+        "artist": "artist",
+        "show": "podcast",
+        "collection": "liked songs",
+        "playing": "playing",
+        "paused": "paused",
+        "song": "1 song",
+        "songs": "{count} songs",
+        "episode": "1 episode",
+        "episodes": "{count} episodes",
+        "none": "none",
+        "signedOut": "signed out",
+        "unreachable": "can't reach Spotify",
+        "failed": "couldn't read Spotify"
+      }
+    },
+    {
+      "id": "spotify:liked",
+      "of": "program:spotify",
+      "name": "Liked Songs",
+      "glyph": "favourite",
+      "verb": "play"
+    },
+    {
+      "id": "spotify:playlists",
+      "of": "program:spotify",
+      "name": "Playlists",
+      "verb": "more",
+      "glyph": "playlist"
+    },
+    {
+      "id": "spotify:albums",
+      "of": "program:spotify",
+      "name": "Albums",
+      "verb": "more",
+      "glyph": "album"
+    },
+    {
+      "id": "spotify:artists",
+      "of": "program:spotify",
+      "name": "Artists",
+      "verb": "more",
+      "glyph": "artist"
+    },
+    {
+      "id": "spotify:shows",
+      "of": "program:spotify",
+      "term": "Programs/podcast",
+      "name": "Podcasts",
+      "verb": "more",
+      "glyph": "show"
+    },
+    {
+      "id": "gimp:screenshot",
+      "by": "gimp",
+      "name": "Edit the Newest Screenshot",
+      "verb": "edit"
+    },
+    {
+      "id": "swayimg:screenshots",
+      "by": "swayimg",
+      "name": "Look Through the Screenshots",
+      "verb": "look",
+      "said": {
+        "one": "{count} picture",
+        "many": "{count} pictures"
+      }
+    },
+    {
+      "id": "applications",
+      "once": ["Apps"],
+      "name": "Programs",
+      "term": "Programs/program",
+      "noun": "programs",
+      "glyph": "program",
+      "said": {
+        "on": "on {places}",
+        "workspaces": "on {count} workspaces",
+        "program": "program",
+        "more": "{count} more",
+        "terminal": "a terminal"
+      },
+      "tells": {
+        "holding": "Every program on this machine, and what each has open."
+      }
+    },
+    {
+      "id": "windows",
+      "name": "Windows",
+      "term": "Desktop/window",
+      "noun": "windows",
+      "glyph": "windows",
+      "ask": "which window?",
+      "empty": "No other windows.",
+      "said": {
+        "silent": "not answering",
+        "silentFrom": "windows not answering",
+        "empty": "empty",
+        "counted": "{program} \u00d7{count}",
+        "here": "here",
+        "needs": "needs you",
+        "nextTime": "next time {chord}"
+      },
+      "states": {
+        "silent": {
+          "empty": "Not answering."
+        }
+      }
+    },
+    {
+      "id": "windows:this",
+      "name": "This Window",
+      "term": "Desktop/This window",
+      "verb": "open",
+      "glyph": "windows"
+    },
+    {
+      "id": "session:awake",
+      "command": "set",
+      "argument": "keepawake",
+      "once": ["Caffeinate"],
+      "name": "Keep Awake",
+      "term": "Machine/Keep awake",
+      "verb": "turn on",
+      "glyph": "awake",
+      "states": {
+        "on": {
+          "name": "Let It Sleep",
+          "verb": "turn off",
+          "argument": "nokeepawake"
+        }
+      },
+      "said": {
+        "eyebrow": "on this machine \u00b7 switch",
+        "silent": "not answering",
+        "after": "{does} {lasted} after the screens go off",
+        "held": "{who}: {why}",
+        "locks": "never \u00b7 it only locks",
+        "locksCharging": "never on the charger \u00b7 it only locks",
+        "lidShut": "on battery too",
+        "lidSleeps": "the lid still sleeps it",
+        "never": "never",
+        "suspend": "suspends",
+        "hibernate": "hibernates",
+        "hybrid-sleep": "suspends and hibernates",
+        "suspend-then-hibernate": "suspends, then hibernates",
+        "poweroff": "powers off",
+        "halt": "halts",
+        "reboot": "reboots",
+        "kexec": "reboots without its firmware",
+        "sleep": "sleeps"
+      }
+    },
+    {
+      "id": "session:quiet",
+      "command": "set",
+      "argument": "dnd=60",
+      "once": ["DND", "Quiet"],
+      "name": "Do Not Disturb",
+      "term": "Desktop/Do not disturb",
+      "verb": "start",
+      "glyph": "quiet",
+      "states": {
+        "on": {
+          "name": "Let Notices Show",
+          "verb": "stop",
+          "argument": "nodnd"
+        }
+      }
+    },
+    {
+      "id": "session:recording",
+      "command": "set",
+      "argument": "norecording",
+      "name": "Stop Recording",
+      "verb": "stop",
+      "glyph": "recording"
+    },
+    {
+      "id": "session:profile",
+      "name": "Power Profile",
+      "term": "Machine/power profile",
+      "glyph": "balanced",
+      "said": {
+        "set": "power profile set to {profile}",
+        "silent": "power profile not set \u00b7 not answering",
+        "held": "{app} holds {profile}",
+        "kept": "{profile} kept"
+      }
+    },
+    {
+      "id": "session:power:Power Saver",
+      "command": "set",
+      "argument": "power=saver",
+      "of": "session:profile",
+      "name": "Power Saver",
+      "part": "Power Saver",
+      "verb": "use",
+      "glyph": "saver"
+    },
+    {
+      "id": "session:power:Balanced Power",
+      "command": "set",
+      "argument": "power=balanced",
+      "of": "session:profile",
+      "name": "Balanced Power",
+      "part": "Balanced",
+      "verb": "use",
+      "glyph": "balanced"
+    },
+    {
+      "id": "session:power:Performance",
+      "command": "set",
+      "argument": "power=performance",
+      "of": "session:profile",
+      "name": "Full Performance",
+      "part": "Full Performance",
+      "verb": "use",
+      "glyph": "performance"
+    },
+    {
+      "id": "session:Lock",
+      "command": "lockscreen",
+      "name": "Lock",
+      "verb": "lock",
+      "glyph": "locked",
+      "said": {
+        "eyebrow": "on this machine \u00b7 lock",
+        "window": "1 window",
+        "windows": "{count} windows",
+        "more": "{count} more"
+      },
+      "tells": {
+        "lead": "Locks the screen; {windows} keep running behind it.",
+        "one": "Locks the screen; {windows} keeps running behind it.",
+        "alone": "Locks the screen."
+      }
+    },
+    {
+      "id": "session:Suspend",
+      "command": "suspend",
+      "once": ["Suspend"],
+      "name": "Sleep",
+      "term": "Machine/sleep",
+      "verb": "sleep",
+      "glyph": "suspend",
+      "said": {
+        "eyebrow": "on this machine \u00b7 sleep",
+        "silent": "not answering",
+        "failed": "failed while {step}",
+        "at": "{count} while {step}",
+        "time": "1 time",
+        "times": "{count} times",
+        "freeze": "freezing",
+        "prepare": "preparing",
+        "suspend": "suspending",
+        "suspend_late": "suspending late",
+        "suspend_noirq": "suspending without interrupts",
+        "resume_noirq": "resuming without interrupts",
+        "resume_early": "resuming early",
+        "resume": "resuming"
+      }
+    },
+    {
+      "id": "session:Log Out",
+      "command": "logout",
+      "once": ["Sign out"],
+      "name": "Log Out",
+      "term": "Machine/log out",
+      "verb": "log out",
+      "glyph": "logout",
+      "sure": "Log Out Now",
+      "asked": "Log Out of the Desktop"
+    },
+    {
+      "id": "session:Reboot",
+      "command": "reboot",
+      "once": ["Restart"],
+      "name": "Reboot",
+      "term": "Machine/reboot",
+      "verb": "reboot",
+      "glyph": "reboot",
+      "sure": "Reboot Now",
+      "asked": "Reboot the Machine"
+    },
+    {
+      "id": "session:Power Off",
+      "command": "poweroff",
+      "once": ["Shut down"],
+      "name": "Power Off",
+      "term": "Machine/power off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "sure": "Power Off Now",
+      "asked": "Power Off the Machine"
+    },
+    {
+      "id": "wifi:sign-in",
+      "name": "Sign in to {network}",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
+      "id": "byhand:slack",
+      "of": "program:slack",
+      "part": "Theme",
+      "name": "Slack Theme",
+      "verb": "copy"
+    },
+    {
+      "id": "calendar:meeting",
+      "command": "meet",
+      "of": "program:google-calendar",
+      "name": "Meeting",
+      "term": "Programs/meeting",
+      "glyph": "meeting",
+      "verb": "join",
+      "states": {
+        "untitled": {
+          "name": "A Meeting Without a Title"
+        }
+      },
+      "said": {
+        "earlier": "{count} in the past 30 days",
+        "eyebrow": "on Calendar \u00b7 meeting",
+        "going": "going",
+        "maybe": "maybe",
+        "notGoing": "not going",
+        "unanswered": "not answered",
+        "allDay": "all day",
+        "span": "{start} to {end}",
+        "dated": "{weekday} {day} {month}",
+        "pin": "PIN {pin}",
+        "guest": "{name} \u00b7 {answer}",
+        "tally": "{count} {answer}",
+        "callSide": "its call",
+        "pageSide": "its page",
+        "weekday": "every weekday",
+        "every": "every {unit}",
+        "everyMany": "every {count} {units}",
+        "day": "day",
+        "days": "days",
+        "week": "week",
+        "weeks": "weeks",
+        "month": "month",
+        "months": "months",
+        "year": "year",
+        "years": "years",
+        "on": "{every} on {days}",
+        "nth": "the {which} {day}",
+        "monthDay": "the {nth}",
+        "nthDay": "the {which} day",
+        "times": "{every}, {count} times",
+        "until": "{every}, until {day} {month} {year}",
+        "first": "first",
+        "second": "second",
+        "third": "third",
+        "fourth": "fourth",
+        "fifth": "fifth",
+        "last": "last",
+        "nthLast": "{which} last",
+        "st": "{n}st",
+        "nd": "{n}nd",
+        "rd": "{n}rd",
+        "th": "{n}th",
+        "and": "{some} and {last}",
+        "yourAnswer": "your answer",
+        "aboutSide": "what it's about"
+      },
+      "weekdays": [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday"
+      ],
+      "months": [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December"
+      ]
+    },
+    {
+      "id": "mail:message",
+      "of": "program:google-mail",
+      "name": "Mail",
+      "term": "Programs/mail",
+      "glyph": "mail",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "Mail Without a Subject"
+        }
+      },
+      "said": {
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
+        "to": "to {who}",
+        "toTwo": "{one} and {other}",
+        "toMore": "{who} and {count} more",
+        "toPeople": "{count} people",
+        "readInGmail": "read in Gmail",
+        "archivedInGmail": "archived in Gmail",
+        "unimportant": "no longer important",
+        "gone": "gone from Gmail",
+        "readHere": "read here",
+        "archivedHere": "archived here",
+        "sender": "{name} <{address}>",
+        "invited": "invited",
+        "updated": "updated",
+        "accepted": "accepted",
+        "tentative": "maybe",
+        "declined": "declined",
+        "cancelled": "cancelled"
+      }
+    },
+    {
+      "id": "docs:document",
+      "of": "program:google-docs",
+      "name": "Document",
+      "glyph": "googleDocument",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Document Without a Title"
+        }
+      }
+    },
+    {
+      "id": "sheets:spreadsheet",
+      "of": "program:google-sheets",
+      "name": "Spreadsheet",
+      "glyph": "googleSpreadsheet",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Spreadsheet Without a Title"
+        }
+      }
+    },
+    {
+      "id": "slides:presentation",
+      "of": "program:google-slides",
+      "name": "Presentation",
+      "glyph": "googlePresentation",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A Presentation Without a Title"
+        }
+      }
+    },
+    {
+      "id": "drive:file",
+      "of": "program:google-drive",
+      "name": "File",
+      "glyph": "path",
+      "verb": "open",
+      "states": {
+        "untitled": {
+          "name": "A File Without a Name"
+        },
+        "folder": {
+          "name": "Folder",
+          "glyph": "folder"
+        },
+        "drive": {
+          "name": "Shared Drive",
+          "glyph": "folder"
+        },
+        "form": {
+          "name": "Form"
+        },
+        "drawing": {
+          "name": "Drawing"
+        },
+        "map": {
+          "name": "Map"
+        },
+        "site": {
+          "name": "Site"
+        },
+        "script": {
+          "name": "Script"
+        },
+        "vid": {
+          "name": "Video"
+        }
+      },
+      "said": {
+        "in": "in {place}",
+        "onDrive": "{drive} (shared drive)",
+        "opened": "opened {when}",
+        "measured": "{across} \u00d7 {down}",
+        "lasts": "{minutes}:{seconds}",
+        "lastsHours": "{hours}:{minutes}:{seconds}",
+        "bytes": "{count} B",
+        "kilobytes": "{count} kB",
+        "megabytes": "{count} MB",
+        "gigabytes": "{count} GB"
+      }
+    },
+    {
+      "id": "drive:place:starred",
+      "of": "program:google-drive",
+      "name": "Starred",
+      "verb": "more",
+      "glyph": "favourite",
+      "said": {
+        "more": "over {count}"
+      }
+    },
+    {
+      "id": "drive:place:shared",
+      "of": "program:google-drive",
+      "name": "Shared with Me",
+      "verb": "more",
+      "glyph": "folder",
+      "said": {
+        "more": "over {count}"
+      }
+    },
+    {
+      "id": "drive:place:drives",
+      "of": "program:google-drive",
+      "name": "Shared Drives",
+      "verb": "more",
+      "glyph": "folder",
+      "said": {
+        "more": "over {count}"
+      }
+    },
+    {
+      "id": "tuple:ringing",
+      "name": "Go To the Call From {who}",
+      "verb": "go to",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:show",
+      "name": "Go To the Call",
+      "verb": "go to",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:mute",
+      "command": "set",
+      "argument": "nomic",
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute",
+          "argument": "mic"
+        }
+      },
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:share",
+      "command": "share",
+      "name": "Share the Screen in the Call",
+      "verb": "share",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:leave",
+      "command": "leave",
+      "name": "Leave the Call",
+      "verb": "leave",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:open",
+      "name": "Open My Room",
+      "verb": "open",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:join",
+      "command": "meet",
+      "name": "Join the Call in the Clipboard",
+      "verb": "join",
+      "by": "tuple"
+    },
+    {
+      "id": "tuple:link",
+      "name": "Copy My Room's Link",
+      "verb": "copy",
+      "by": "tuple"
+    }
+  ]
+}

@@ -1,0 +1,401 @@
+{
+  "things": [
+    {
+      "id": "sound:level",
+      "in": "sound",
+      "name": "Level",
+      "term": "Machine/level"
+    },
+    {
+      "id": "sound:volume",
+      "in": "sound",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "sound:gain",
+      "in": "sound",
+      "name": "Gain"
+    },
+    {
+      "id": "sound:mute",
+      "in": "sound",
+      "name": "Muted",
+      "verb": "mute",
+      "states": {
+        "muted": {
+          "verb": "unmute"
+        }
+      }
+    },
+    {
+      "id": "sound:programs",
+      "in": "sound",
+      "name": "Playing"
+    },
+    {
+      "id": "sound:recorders",
+      "in": "sound",
+      "name": "Recording",
+      "term": "Machine/recording"
+    },
+    {
+      "id": "sound:tuning",
+      "in": "sound",
+      "name": "Tuning"
+    },
+    {
+      "id": "sound:voice",
+      "in": "sound",
+      "name": "Voice Processing"
+    },
+    {
+      "id": "sound:filter",
+      "in": "sound",
+      "name": "Filter"
+    },
+    {
+      "id": "sound:port",
+      "in": "sound",
+      "name": "Port"
+    },
+    {
+      "id": "sound:channels",
+      "in": "sound",
+      "name": "Channels",
+      "term": "Machine/channel"
+    },
+    {
+      "id": "sound:hardware",
+      "in": "sound",
+      "name": "Hardware",
+      "term": "Machine/hardware"
+    },
+    {
+      "id": "sound:card",
+      "in": "sound",
+      "name": "Card",
+      "term": "Machine/card"
+    },
+    {
+      "id": "sound:amplifiers",
+      "in": "sound",
+      "name": "Amplifiers"
+    },
+    {
+      "id": "sound:codec",
+      "in": "sound",
+      "name": "Chip"
+    },
+    {
+      "id": "sound:microphones",
+      "in": "sound",
+      "name": "Microphones",
+      "term": "Machine/microphone"
+    },
+    {
+      "id": "sound:called:speakers",
+      "in": "sound",
+      "name": "Built-In Speakers"
+    },
+    {
+      "id": "sound:called:microphones",
+      "in": "sound",
+      "name": "Built-In Microphones"
+    },
+    {
+      "id": "sound:called:jack",
+      "in": "sound",
+      "name": "Headphone Jack"
+    },
+    {
+      "id": "sound:called:jack-microphone",
+      "in": "sound",
+      "name": "Headset Jack Microphone"
+    },
+    {
+      "id": "sound:called:its-microphone",
+      "in": "sound",
+      "name": "{device} Microphone"
+    },
+    {
+      "id": "sound:called:noise-cancelled",
+      "in": "sound",
+      "name": "{device}, Noise Cancelled"
+    },
+    {
+      "id": "sound:down",
+      "in": "sound",
+      "name": "The Sound Daemon"
+    },
+    {
+      "id": "sound:resolution",
+      "in": "sound",
+      "name": "Resolution"
+    },
+    {
+      "id": "sound:usb-id",
+      "in": "sound",
+      "name": "USB ID"
+    },
+    {
+      "id": "sound:profile",
+      "in": "sound",
+      "name": "Profile",
+      "term": "Machine/profile"
+    },
+    {
+      "id": "sound:noise",
+      "in": "sound",
+      "name": "Noise Cancelling"
+    },
+    {
+      "id": "sound:by-ear",
+      "in": "sound",
+      "name": "Choose by Ear",
+      "verb": "choose",
+      "glyph": "dictating"
+    },
+    {
+      "id": "sound:by-ear:record",
+      "in": "sound:by-ear",
+      "name": "Record",
+      "verb": "record",
+      "glyph": "recording",
+      "states": {
+        "again": {
+          "name": "Record Again",
+          "verb": "record again"
+        }
+      }
+    },
+    {
+      "id": "sound:by-ear:recording",
+      "in": "sound:by-ear",
+      "name": "Recording"
+    },
+    {
+      "id": "sound:by-ear:cleaning",
+      "in": "sound:by-ear",
+      "name": "Cleaning"
+    },
+    {
+      "id": "sound:by-ear:clip",
+      "in": "sound:by-ear",
+      "name": "Clip {clip}",
+      "verb": "play",
+      "glyph": "playing",
+      "states": {
+        "playing": {
+          "verb": "play again",
+          "glyph": "retry"
+        }
+      }
+    },
+    {
+      "id": "sound:by-ear:pick",
+      "in": "sound:by-ear:clip",
+      "name": "Pick",
+      "verb": "pick",
+      "glyph": "done"
+    },
+    {
+      "id": "sound:by-ear:picked",
+      "in": "sound:by-ear",
+      "name": "Picked"
+    },
+    {
+      "id": "sound:by-ear:refused",
+      "in": "sound:by-ear",
+      "name": "Not Now"
+    },
+    {
+      "id": "sound:by-ear:down",
+      "in": "sound:by-ear",
+      "name": "The Noise Cancelling Daemon"
+    },
+    {
+      "id": "sound:rate",
+      "in": "sound",
+      "name": "Sample Rate"
+    },
+    {
+      "id": "sound:delay",
+      "in": "sound",
+      "name": "Delay"
+    },
+    {
+      "id": "sound:lighting",
+      "in": "sound",
+      "name": "Lighting"
+    },
+    {
+      "id": "sound:playing",
+      "in": "sound",
+      "name": "Playing At"
+    },
+    {
+      "id": "sound:recording",
+      "in": "sound",
+      "name": "Recording At"
+    },
+    {
+      "id": "sound:measured-rate",
+      "in": "sound",
+      "name": "Measured Rate"
+    },
+    {
+      "id": "sound:offers",
+      "in": "sound",
+      "name": "Offers"
+    },
+    {
+      "id": "sound:clock",
+      "in": "sound",
+      "name": "Clock"
+    },
+    {
+      "id": "sound:usb",
+      "in": "sound",
+      "name": "Connection",
+      "term": "Machine/connection"
+    },
+    {
+      "id": "sound:firmware",
+      "in": "sound",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "sound:graph-id",
+      "in": "sound",
+      "name": "Graph ID"
+    },
+    {
+      "id": "sound:stream",
+      "in": "sound",
+      "name": "Stream",
+      "term": "Machine/stream"
+    },
+    {
+      "id": "sound:role",
+      "in": "sound",
+      "name": "Role",
+      "term": "Machine/role"
+    },
+    {
+      "id": "sound:plays-on",
+      "in": "sound",
+      "name": "Plays On"
+    },
+    {
+      "id": "sound:records-from",
+      "in": "sound",
+      "name": "Records From"
+    },
+    {
+      "id": "sound:process",
+      "in": "sound",
+      "name": "Process ID",
+      "term": "Machine/process ID"
+    },
+    {
+      "id": "sound:client",
+      "in": "sound",
+      "name": "Client ID",
+      "term": "Machine/client ID"
+    },
+    {
+      "id": "sound:alsa-device",
+      "in": "sound",
+      "name": "ALSA Device"
+    },
+    {
+      "id": "sound:priority",
+      "in": "sound",
+      "name": "Priority"
+    },
+    {
+      "id": "sound:state",
+      "in": "sound",
+      "name": "State"
+    },
+    {
+      "id": "sound:dropouts",
+      "in": "sound",
+      "name": "Dropouts"
+    },
+    {
+      "id": "sound:load",
+      "in": "sound",
+      "name": "Load"
+    },
+    {
+      "id": "sound:cycle",
+      "in": "sound",
+      "name": "Cycle"
+    },
+    {
+      "id": "sound:format",
+      "in": "sound",
+      "name": "Format",
+      "term": "Machine/format"
+    },
+    {
+      "id": "sound:graph-format",
+      "in": "sound",
+      "name": "Graph Format"
+    },
+    {
+      "id": "verb:sound-louder",
+      "command": "setlocal",
+      "argument": "volume+=5",
+      "in": "sound",
+      "name": "Louder",
+      "verb": "louder"
+    },
+    {
+      "id": "verb:sound-quieter",
+      "command": "setlocal",
+      "argument": "volume-=5",
+      "in": "sound",
+      "name": "Quieter",
+      "verb": "quieter"
+    },
+    {
+      "id": "verb:sound-to",
+      "command": "setlocal",
+      "argument": "volume=",
+      "in": "sound",
+      "name": "Volume to {level}",
+      "verb": "set",
+      "states": {
+        "input": {
+          "name": "Gain to {level}"
+        }
+      }
+    },
+    {
+      "id": "verb:sound-use",
+      "command": "set",
+      "argument": "output={name}",
+      "in": "sound",
+      "name": "Play Sound Through It",
+      "verb": "use",
+      "states": {
+        "input": {
+          "name": "Listen Through It",
+          "argument": "input={name}"
+        }
+      }
+    },
+    {
+      "id": "verb:sound-port",
+      "command": "setlocal",
+      "argument": "port={port}",
+      "in": "sound",
+      "name": "Use {port}",
+      "verb": "use"
+    }
+  ]
+}

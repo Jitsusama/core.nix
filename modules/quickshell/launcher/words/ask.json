@@ -1,0 +1,27 @@
+{
+  "things": [
+    {
+      "id": "ask",
+      "in": "ask",
+      "name": "Ask",
+      "verb": "ask",
+      "glyph": "ask"
+    },
+    {
+      "id": "verb:ask:onward",
+      "command": "new",
+      "in": "ask",
+      "name": "Ask in a Session",
+      "verb": "open",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:ask:talk",
+      "command": "talk",
+      "in": "ask",
+      "name": "Talk to {name}",
+      "verb": "talk",
+      "glyph": "reply"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "things": [
+    {
+      "id": "verb:slides:open",
+      "command": "open",
+      "in": "slides:presentation",
+      "name": "Open in Slides",
+      "verb": "open",
+      "glyph": "googlePresentation"
+    },
+    {
+      "id": "verb:slides:link",
+      "command": "yank",
+      "in": "slides:presentation",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

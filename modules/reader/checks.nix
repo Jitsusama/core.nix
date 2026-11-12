@@ -113,7 +113,6 @@ onLinux {
         "Recent.js"
         "Captured.js"
         "Ago.js"
-        "words.json"
       ];
       # A reader's window, its process showing now.md. Kept in Nix because
       # it's a stand-in's few properties, as each program's check in the
@@ -166,6 +165,7 @@ onLinux {
       ${lib.concatMapStrings (file: ''
         cp ${launcher + "/${file}"} launcher/${file}
       '') launched}
+      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${./Reader.js} launcher/Reader.js
       cp ${../../tests/reader-program.qml} shell.qml

@@ -25,12 +25,18 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
-      ../quickshell/launcher/words.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];
   };
   sourceRoot = "${src.name}/secret-asks";
+  # The launcher's words, joined from each place's file, put where its
+  # tests read words.json (../quickshell/launcher/words.nix).
+  postUnpack = ''
+    chmod -R u+w ${src.name}
+    mkdir -p ${src.name}/quickshell/launcher
+    cp ${(import ../quickshell/launcher/words.nix).file} ${src.name}/quickshell/launcher/words.json
+  '';
   cargoLock.lockFile = ./Cargo.lock;
   nativeCheckInputs = [ git ];
   meta = {

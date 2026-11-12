@@ -1,0 +1,38 @@
+{
+  "things": [
+    {
+      "id": "traffic:in",
+      "in": "traffic",
+      "name": "In",
+      "term": "Network/in"
+    },
+    {
+      "id": "traffic:out",
+      "in": "traffic",
+      "name": "Out",
+      "term": "Network/out"
+    },
+    {
+      "id": "traffic:line",
+      "in": "traffic",
+      "name": "Connection",
+      "term": "Network/connection"
+    },
+    {
+      "id": "traffic:trip",
+      "in": "traffic",
+      "name": "Round Trip"
+    },
+    {
+      "id": "traffic:dropped",
+      "in": "traffic",
+      "name": "Dropped"
+    },
+    {
+      "id": "traffic:connections",
+      "in": "traffic",
+      "name": "Connections",
+      "term": "Network/connection"
+    }
+  ]
+}

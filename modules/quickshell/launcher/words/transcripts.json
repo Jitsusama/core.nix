@@ -1,0 +1,33 @@
+{
+  "things": [
+    {
+      "id": "transcript",
+      "in": "transcripts",
+      "name": "Transcript",
+      "term": "Programs/transcript",
+      "verb": "open",
+      "glyph": "lines",
+      "states": {
+        "untitled": {
+          "name": "Call With {who}"
+        },
+        "unknown": {
+          "name": "Call at {time}"
+        }
+      },
+      "said": {
+        "meeting": "meeting",
+        "person": "call",
+        "call": "call",
+        "writing": "being written down",
+        "on": "not written down",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow",
+        "under": "under a minute",
+        "minutes": "{minutes} min",
+        "hours": "{hours} h",
+        "hoursMinutes": "{hours} h {minutes} min"
+      }
+    }
+  ]
+}

@@ -62,7 +62,7 @@ in
             "--asks"
             "%t/secret-asks"
             "--vocabulary"
-            "${../quickshell/launcher/words.json}"
+            "${(import ../quickshell/launcher/words.nix).file}"
             "--item"
             settings.item
             "--op"

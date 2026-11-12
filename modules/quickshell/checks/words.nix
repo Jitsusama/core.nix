@@ -5,6 +5,7 @@
   account,
   copied,
   graphical,
+  holds,
   lib,
   noFonts,
   pkgs,
@@ -14,20 +15,48 @@
   ...
 }:
 {
+  # Each place's words are a file of their own, holding no other place's, a
+  # thing's place being the first part of its `in` and the launcher's own
+  # those with none, so two changes to different places' words share no file
+  # and one never makes the other's gate run again: one words.json held them
+  # all, and cost five gate runs in a night (WCJQSG, 2026-11-12).
+  each-places-words-are-a-file-of-their-own =
+    let
+      words = import ../launcher/words.nix;
+      placeOf = thing: lib.head (lib.splitString ":" (thing."in" or ""));
+      own = name: if name == "launcher" then "" else name;
+      strays = lib.concatLists (
+        lib.mapAttrsToList (
+          name: file:
+          map (thing: "${thing.id} in ${name}") (
+            lib.filter (thing: placeOf thing != own name) (lib.importJSON file).things or [ ]
+          )
+        ) words.places
+        ++ map (thing: "${thing.id} in the frame") ((lib.importJSON words.frame).things or [ ])
+      );
+    in
+    holds "each-places-words-are-a-file-of-their-own" (
+      "${toString (lib.length strays)} things' words sit in another place's file: "
+      + lib.concatStringsSep ", " (lib.take 8 strays)
+    ) (strays == [ ]);
+
   # The launcher's vocabulary, as the account writes it, says each word of
   # one thing, but where it's listed as meant to find several, names only
   # what it knows and glyphs the theme has, and gives everything a place
   # (tests/launcher-words.py), printing each word to settle; and its own
-  # file gives no key twice in one entry, which the account's copy hides.
+  # files, each place's, give no key twice in one entry, which the account's
+  # copy hides.
   the-launcher-means-one-thing-a-word =
     let
+      written = import ../launcher/words.nix;
+      sources = [ written.frame ] ++ lib.attrValues written.places;
       home = account graphical;
       marks = pkgs.writeText "marks.json" (builtins.toJSON (lib.attrNames home.jitsusama.theme.marks));
       words = pkgs.writeText "words.json" home.xdg.configFile."quickshell/launcher/words.json".text;
     in
     pkgs.runCommandLocal "the-launcher-means-one-thing-a-word" { } ''
       ${lib.getExe pkgs.python3} ${../../../tests/launcher-words.py} ${words} ${marks} \
-        ${../launcher/words.json}
+        ${lib.concatMapStringsSep " " (file: "${file}") sources}
       touch $out
     '';
 

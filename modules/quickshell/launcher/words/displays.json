@@ -1,0 +1,408 @@
+{
+  "things": [
+    {
+      "id": "displays:built-in",
+      "in": "displays",
+      "name": "Built-in Screen"
+    },
+    {
+      "id": "displays:brightness",
+      "in": "displays",
+      "name": "Brightness",
+      "term": "Desktop/brightness",
+      "answers": [
+        "brightness"
+      ],
+      "said": {
+        "followsRoom": "{now} of {most} steps; it follows the room, and the keys set it",
+        "followsRoomUnread": "{most} steps \u00b7 follows the room",
+        "everyFollows": "every screen follows it, and the keys set it"
+      }
+    },
+    {
+      "id": "displays:brightness:level",
+      "command": "set",
+      "argument": "brightness={n}",
+      "in": "displays:brightness",
+      "name": "{n}%",
+      "verb": "set"
+    },
+    {
+      "id": "displays:warmth",
+      "in": "displays",
+      "name": "Warmth",
+      "term": "Desktop/warmth",
+      "answers": [
+        "screen warmth"
+      ],
+      "said": {
+        "via": "via wl-gammarelay-rs",
+        "screen": "built-in screen",
+        "until": "night light until {time}",
+        "from": "night light from {time}",
+        "waits": "night light waits for where you are",
+        "following": "following the room",
+        "own": "the screen's own white",
+        "tomorrow": "tomorrow",
+        "yesterday": "yesterday"
+      }
+    },
+    {
+      "id": "displays:night-light",
+      "command": "set",
+      "argument": "nonightlight",
+      "in": "displays:warmth",
+      "name": "Night Light",
+      "term": "Desktop/night light",
+      "verb": "turn off",
+      "glyph": "nightLight",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "nightlight"
+        }
+      }
+    },
+    {
+      "id": "displays:follow-room",
+      "command": "set",
+      "argument": "nowarmth",
+      "in": "displays:warmth",
+      "name": "Follow the Room",
+      "verb": "turn off",
+      "glyph": "warmth",
+      "states": {
+        "off": {
+          "verb": "turn on",
+          "argument": "warmth"
+        }
+      }
+    },
+    {
+      "id": "displays:warmth:room",
+      "in": "displays:warmth",
+      "name": "Room's White"
+    },
+    {
+      "id": "displays:warmth:sunset",
+      "in": "displays:warmth",
+      "name": "Sunset"
+    },
+    {
+      "id": "displays:warmth:sunrise",
+      "in": "displays:warmth",
+      "name": "Sunrise"
+    },
+    {
+      "id": "displays:warmth:night",
+      "in": "displays:warmth",
+      "name": "Night White"
+    },
+    {
+      "id": "displays:sleep",
+      "command": "set",
+      "argument": "noscreens",
+      "in": "displays",
+      "name": "Turn Every Screen Off",
+      "verb": "turn off",
+      "glyph": "displayOff",
+      "said": {
+        "note": "a key wakes them \u00b7 hubs stay on"
+      }
+    },
+    {
+      "id": "displays:focus",
+      "in": "displays",
+      "name": "Focus It",
+      "verb": "focus",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:display-on",
+      "command": "setlocal",
+      "argument": "power",
+      "in": "displays",
+      "name": "Turn It On",
+      "verb": "turn on",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:display-off",
+      "command": "setlocal",
+      "argument": "nopower",
+      "in": "displays",
+      "name": "Turn It Off",
+      "glyph": "displayOff",
+      "said": {
+        "wakes": "a key wakes it"
+      }
+    },
+    {
+      "id": "verb:display-set",
+      "command": "setlocal",
+      "argument": "{setting}={value}",
+      "in": "displays",
+      "name": "{value}",
+      "verb": "set"
+    },
+    {
+      "id": "verb:display-unplug",
+      "command": "setlocal",
+      "argument": "unplugged",
+      "in": "displays",
+      "name": "Unplug It",
+      "glyph": "disconnect",
+      "said": {
+        "moves": "its windows move to the other screens"
+      }
+    },
+    {
+      "id": "displays:room",
+      "in": "displays",
+      "name": "Room Light",
+      "answers": [
+        "room light"
+      ],
+      "said": {
+        "hears": "as the screen's sensor hears it, from dark to daylight"
+      }
+    },
+    {
+      "id": "displays:scale",
+      "in": "displays",
+      "name": "Scale",
+      "answers": [
+        "screen scale"
+      ]
+    },
+    {
+      "id": "displays:refresh",
+      "in": "displays",
+      "name": "Refresh",
+      "answers": [
+        "refresh rate"
+      ]
+    },
+    {
+      "id": "displays:resolution",
+      "in": "displays",
+      "name": "Resolution",
+      "answers": [
+        "screen resolution"
+      ]
+    },
+    {
+      "id": "displays:rotation",
+      "in": "displays",
+      "name": "Rotation",
+      "answers": [
+        "rotation"
+      ],
+      "said": {
+        "90": "a quarter turn left",
+        "180": "upside down",
+        "270": "a quarter turn right",
+        "Normal": "upright",
+        "Flipped": "mirrored",
+        "Flipped90": "mirrored, a quarter turn left",
+        "Flipped180": "mirrored, upside down",
+        "Flipped270": "mirrored, a quarter turn right",
+        "typed-Normal": "upright",
+        "typed-90": "left",
+        "typed-180": "upside-down",
+        "typed-270": "right",
+        "typed-Flipped": "mirrored",
+        "typed-Flipped90": "mirrored-left",
+        "typed-Flipped180": "mirrored-upside-down",
+        "typed-Flipped270": "mirrored-right"
+      }
+    },
+    {
+      "id": "displays:depth",
+      "in": "displays",
+      "name": "Colour Depth",
+      "term": "Desktop/colour depth",
+      "answers": [
+        "colour depth"
+      ]
+    },
+    {
+      "id": "displays:colours",
+      "in": "displays",
+      "name": "Colours",
+      "term": "Desktop/colours",
+      "answers": [
+        "colour gamut"
+      ]
+    },
+    {
+      "id": "displays:white",
+      "in": "displays",
+      "name": "White Point",
+      "term": "Desktop/white point",
+      "answers": [
+        "white point"
+      ],
+      "said": {
+        "point": "x {x} y {y}"
+      }
+    },
+    {
+      "id": "displays:primaries",
+      "in": "displays",
+      "name": "Primaries",
+      "term": "Desktop/primaries",
+      "answers": [
+        "primaries"
+      ],
+      "said": {
+        "red": "red x {x} y {y}",
+        "green": "green x {x} y {y}",
+        "blue": "blue x {x} y {y}"
+      }
+    },
+    {
+      "id": "displays:hdr",
+      "in": "displays",
+      "name": "HDR",
+      "answers": [
+        "hdr"
+      ]
+    },
+    {
+      "id": "displays:maker",
+      "in": "displays",
+      "name": "Maker"
+    },
+    {
+      "id": "displays:model",
+      "in": "displays",
+      "name": "Model",
+      "term": "Machine/model"
+    },
+    {
+      "id": "displays:made",
+      "in": "displays",
+      "name": "Made"
+    },
+    {
+      "id": "displays:size",
+      "in": "displays",
+      "name": "Size"
+    },
+    {
+      "id": "displays:follows",
+      "in": "displays",
+      "name": "Follows"
+    },
+    {
+      "id": "displays:curve",
+      "in": "displays",
+      "name": "Curve"
+    },
+    {
+      "id": "displays:reads",
+      "in": "displays",
+      "name": "Reads"
+    },
+    {
+      "id": "displays:stepping",
+      "in": "displays",
+      "name": "Stepping"
+    },
+    {
+      "id": "displays:driven-by",
+      "in": "displays",
+      "name": "Driven By"
+    },
+    {
+      "id": "displays:raw",
+      "in": "displays",
+      "name": "Raw"
+    },
+    {
+      "id": "displays:per-count",
+      "in": "displays",
+      "name": "Per Count"
+    },
+    {
+      "id": "displays:offset",
+      "in": "displays",
+      "name": "Offset"
+    },
+    {
+      "id": "displays:device",
+      "in": "displays",
+      "name": "Device"
+    },
+    {
+      "id": "displays:sensor",
+      "in": "displays",
+      "name": "Sensor"
+    },
+    {
+      "id": "displays:input",
+      "in": "displays",
+      "name": "Input"
+    },
+    {
+      "id": "displays:edid",
+      "in": "displays",
+      "name": "EDID"
+    },
+    {
+      "id": "displays:mode",
+      "in": "displays",
+      "name": "Screen Mode",
+      "term": "Desktop/screen mode"
+    },
+    {
+      "id": "displays:variable",
+      "in": "displays",
+      "name": "Variable Refresh",
+      "verb": "turn off",
+      "states": {
+        "off": {
+          "verb": "turn on"
+        }
+      },
+      "said": {
+        "unsupported": "unsupported",
+        "on": "on",
+        "off": "off"
+      }
+    },
+    {
+      "id": "displays:logical",
+      "in": "displays",
+      "name": "Logical Size"
+    },
+    {
+      "id": "displays:position",
+      "in": "displays",
+      "name": "Position"
+    },
+    {
+      "id": "displays:modes",
+      "in": "displays",
+      "name": "Screen Modes",
+      "term": "Desktop/screen mode",
+      "said": {
+        "preferred": "preferred",
+        "custom": "custom",
+        "preferred-mode": "preferred {mode}",
+        "at": "{size} at {rate}"
+      }
+    },
+    {
+      "id": "displays:density",
+      "in": "displays",
+      "name": "Density"
+    },
+    {
+      "id": "displays:serial",
+      "in": "displays",
+      "name": "Serial"
+    }
+  ]
+}

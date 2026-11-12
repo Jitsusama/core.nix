@@ -1,0 +1,50 @@
+{
+  "things": [
+    {
+      "id": "meet:call:microphone",
+      "in": "meet:call",
+      "name": "Microphone",
+      "term": "Machine/microphone"
+    },
+    {
+      "id": "meet:call:people",
+      "in": "meet:call",
+      "name": "People"
+    },
+    {
+      "id": "meet:call:started",
+      "in": "meet:call",
+      "name": "Started"
+    },
+    {
+      "id": "meet:call:meeting",
+      "in": "meet:call",
+      "name": "Meeting",
+      "term": "Programs/meeting"
+    },
+    {
+      "id": "meet:call:code",
+      "in": "meet:call",
+      "name": "Code"
+    },
+    {
+      "id": "meet:call:show",
+      "in": "meet:call",
+      "name": "Go To the Call",
+      "verb": "go to"
+    },
+    {
+      "id": "meet:call:link",
+      "in": "meet:call",
+      "name": "Copy the Link",
+      "verb": "copy"
+    },
+    {
+      "id": "meet:call:leave",
+      "command": "leave",
+      "in": "meet:call",
+      "name": "Leave It",
+      "verb": "leave"
+    }
+  ]
+}

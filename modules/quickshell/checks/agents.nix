@@ -26,7 +26,7 @@
     given = [
       "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
       "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
-      "WORDS=${../launcher/words.json}"
+      "WORDS=${(import ../launcher/words.nix).file}"
     ];
   };
 

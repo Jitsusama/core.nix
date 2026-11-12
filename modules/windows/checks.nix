@@ -30,7 +30,7 @@ onLinux {
   # gone there fails this rather than blanking a row. The daemon itself
   # isn't built with it, or every change to the words would start it again.
   windows-reads-the-launchers-words = pkgs.callPackage ./package.nix {
-    words = ../quickshell/launcher/words.json;
+    words = (import ../quickshell/launcher/words.nix).file;
   };
   # clippy finds nothing in the windows daemon, its tests included.
   windows-passes-clippy = passesClippy "windows-passes-clippy" daemon;

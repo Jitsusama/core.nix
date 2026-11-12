@@ -1,0 +1,9 @@
+{
+  "things": [
+    {
+      "id": "file-chooser:name",
+      "in": "file-chooser:order",
+      "name": "Name"
+    }
+  ]
+}

@@ -1,0 +1,305 @@
+{
+  "things": [
+    {
+      "id": "firmware:version",
+      "in": "firmware",
+      "name": "Version",
+      "term": "Machine/version"
+    },
+    {
+      "id": "firmware:vendor",
+      "in": "firmware",
+      "name": "Vendor",
+      "said": {
+        "alone": "firmware",
+        "from": "from {vendor} \u00b7 firmware"
+      }
+    },
+    {
+      "id": "firmware:last-updated",
+      "in": "firmware",
+      "name": "Last Updated"
+    },
+    {
+      "id": "firmware:lowest",
+      "in": "firmware",
+      "name": "Lowest Version"
+    },
+    {
+      "id": "firmware:bootloader",
+      "in": "firmware",
+      "name": "Bootloader Version"
+    },
+    {
+      "id": "firmware:branch",
+      "in": "firmware",
+      "name": "Branch"
+    },
+    {
+      "id": "firmware:urgency",
+      "in": "firmware",
+      "name": "Urgency"
+    },
+    {
+      "id": "firmware:size",
+      "in": "firmware",
+      "name": "Size"
+    },
+    {
+      "id": "firmware:released",
+      "in": "firmware",
+      "name": "Released"
+    },
+    {
+      "id": "firmware:takes",
+      "in": "firmware",
+      "name": "Takes",
+      "said": {
+        "minutes": "{count} min"
+      }
+    },
+    {
+      "id": "firmware:held",
+      "in": "firmware",
+      "name": "Blocked By",
+      "term": "Machine/blocked by",
+      "said": {
+        "system-power-too-low": "low power",
+        "unreachable": "out of reach",
+        "power-too-low": "its battery low",
+        "update-pending": "an update waiting to go in",
+        "require-ac-power": "no charger",
+        "lid-is-closed": "lid shut",
+        "is-emulated": "emulated",
+        "missing-license": "no licence",
+        "system-inhibit": "updates turned off",
+        "update-in-progress": "another update going",
+        "in-use": "in use",
+        "display-required": "no screen",
+        "lower-priority": "another device first",
+        "insecure-platform": "an insecure signing key",
+        "firmware-locked": "firmware locked"
+      }
+    },
+    {
+      "id": "firmware:none",
+      "in": "firmware",
+      "name": "Nothing Offered"
+    },
+    {
+      "id": "firmware:failed",
+      "in": "firmware",
+      "name": "Last Install"
+    },
+    {
+      "id": "firmware:flashes",
+      "in": "firmware",
+      "name": "Flashes Left"
+    },
+    {
+      "id": "firmware:battery",
+      "in": "firmware",
+      "name": "Battery"
+    },
+    {
+      "id": "firmware:protocols",
+      "in": "firmware",
+      "name": "Protocols"
+    },
+    {
+      "id": "firmware:plugin",
+      "in": "firmware",
+      "name": "Plugin"
+    },
+    {
+      "id": "firmware:serial",
+      "in": "firmware",
+      "name": "Serial"
+    },
+    {
+      "id": "firmware:security",
+      "in": "firmware",
+      "name": "Security Level",
+      "term": "Machine/security level",
+      "said": {
+        "0": "none of the basic protections",
+        "1": "only the most basic protections",
+        "2": "the basic and important protections",
+        "3": "those below and out-of-band protection",
+        "4": "those below and encryption and execution protection",
+        "5": "those below and out-of-band attestation",
+        "eyebrow": "on this machine \u00b7 rating",
+        "lowered": "lowered by what's running",
+        "sentence": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}.",
+        "sentence-lowered": "fwupd rates the firmware's defences at level {level} of 5, which holds {meaning}, and what's running lowers it."
+      }
+    },
+    {
+      "id": "firmware:needed",
+      "in": "firmware",
+      "name": "Needed for Level {level}"
+    },
+    {
+      "id": "firmware:lowered",
+      "in": "firmware",
+      "name": "Lowered By"
+    },
+    {
+      "id": "firmware:result",
+      "in": "firmware",
+      "name": "Found",
+      "said": {
+        "unknown": "unknown",
+        "enabled": "enabled",
+        "not-enabled": "not enabled",
+        "valid": "valid",
+        "not-valid": "not valid",
+        "locked": "locked",
+        "not-locked": "not locked",
+        "encrypted": "encrypted",
+        "not-encrypted": "not encrypted",
+        "tainted": "tainted",
+        "not-tainted": "not tainted",
+        "found": "found",
+        "not-found": "not found",
+        "supported": "supported",
+        "not-supported": "not supported",
+        "missing": "unread"
+      }
+    },
+    {
+      "id": "firmware:group",
+      "in": "firmware",
+      "name": "Group",
+      "said": {
+        "level": "level {level}",
+        "running": "running",
+        "kind": "check"
+      }
+    },
+    {
+      "id": "firmware:passes-as",
+      "in": "firmware",
+      "name": "Passes As"
+    },
+    {
+      "id": "firmware:fixed-in",
+      "in": "firmware",
+      "name": "Fixed In",
+      "said": {
+        "setup": "firmware setup",
+        "system": "the system's settings",
+        "maker": "an update from its maker"
+      }
+    },
+    {
+      "id": "firmware:setting",
+      "in": "firmware",
+      "name": "Firmware Setting"
+    },
+    {
+      "id": "firmware:set-to",
+      "in": "firmware",
+      "name": "Set To"
+    },
+    {
+      "id": "firmware:should-be",
+      "in": "firmware",
+      "name": "Should Be"
+    },
+    {
+      "id": "firmware:kernel-set-to",
+      "in": "firmware",
+      "name": "Linux Set To"
+    },
+    {
+      "id": "firmware:kernel-should-be",
+      "in": "firmware",
+      "name": "Linux Should Be"
+    },
+    {
+      "id": "firmware:attribute",
+      "in": "firmware",
+      "name": "Attribute"
+    },
+    {
+      "id": "firmware:product",
+      "in": "firmware",
+      "name": "Product"
+    },
+    {
+      "id": "firmware:rated",
+      "in": "firmware",
+      "name": "Rated By"
+    },
+    {
+      "id": "verb:firmware:install",
+      "command": "install",
+      "in": "firmware",
+      "name": "Install {version}",
+      "verb": "install",
+      "glyph": "firmware",
+      "sure": "Install {version} on {device} Now",
+      "said": {
+        "final": "it can't be undone",
+        "final-at-restart": "it can't be undone, and finishes at a restart",
+        "installing": "installing",
+        "waits": "restart to finish",
+        "installed": "installed",
+        "failed": "didn't install",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:fix",
+      "command": "secure",
+      "in": "firmware",
+      "name": "Secure It",
+      "verb": "fix",
+      "glyph": "firmware",
+      "sure": "Secure {attribute} Now",
+      "said": {
+        "what": "fwupd changes the setting",
+        "final": "fwupd changes the setting, and may need a restart",
+        "changing": "securing",
+        "changed": "secured",
+        "failed": "didn't secure",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:undo",
+      "command": "undo",
+      "in": "firmware",
+      "name": "Undo It",
+      "verb": "undo",
+      "glyph": "firmware",
+      "sure": "Undo the Fix to {attribute} Now",
+      "said": {
+        "what": "fwupd puts the setting back as it was",
+        "final": "it lowers the level, and may need a restart",
+        "changing": "undoing",
+        "changed": "undone",
+        "failed": "didn't undo",
+        "stopped": "stopped waiting after {count} min"
+      }
+    },
+    {
+      "id": "verb:firmware:setup",
+      "command": "reboot",
+      "argument": "setup",
+      "in": "firmware",
+      "name": "Reboot Into Firmware Setup",
+      "verb": "reboot",
+      "glyph": "firmware",
+      "sure": "Reboot Into Firmware Setup Now",
+      "said": {
+        "set": "set {setting} to {target} there",
+        "find": "set it there",
+        "final": "it closes every window",
+        "failed": "didn't reboot",
+        "stopped": "stopped waiting after {count} min"
+      }
+    }
+  ]
+}

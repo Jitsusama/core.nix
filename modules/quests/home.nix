@@ -33,7 +33,7 @@ lib.mkIf (pkgs.stdenv.hostPlatform.isLinux && realm != null) {
       ExecStart = lib.escapeShellArgs [
         (lib.getExe package)
         "--vocabulary"
-        "${../quickshell/launcher/words.json}"
+        "${(import ../quickshell/launcher/words.nix).file}"
         "--node"
         "%t/mycelium/${realm}.sock"
         "--socket"

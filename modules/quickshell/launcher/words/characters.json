@@ -1,0 +1,59 @@
+{
+  "things": [
+    {
+      "id": "characters:decimal",
+      "in": "characters",
+      "name": "Decimal"
+    },
+    {
+      "id": "characters:hex",
+      "in": "characters",
+      "name": "Hex"
+    },
+    {
+      "id": "characters:binary",
+      "in": "characters",
+      "name": "Binary"
+    },
+    {
+      "id": "characters:point",
+      "in": "characters",
+      "name": "Code Point"
+    },
+    {
+      "id": "characters:name",
+      "in": "characters",
+      "name": "Name"
+    },
+    {
+      "id": "characters:utf8",
+      "in": "characters",
+      "name": "UTF-8"
+    },
+    {
+      "id": "characters:escaped",
+      "in": "characters",
+      "name": "Escaped"
+    },
+    {
+      "id": "characters:percent",
+      "in": "characters",
+      "name": "Percent-Encoded"
+    },
+    {
+      "id": "characters:bits",
+      "in": "characters",
+      "name": "Bits"
+    },
+    {
+      "id": "characters:points",
+      "in": "characters",
+      "name": "Code Points"
+    },
+    {
+      "id": "characters:length",
+      "in": "characters",
+      "name": "Length"
+    }
+  ]
+}

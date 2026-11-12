@@ -1,0 +1,20 @@
+{
+  "things": [
+    {
+      "id": "verb:sheets:open",
+      "command": "open",
+      "in": "sheets:spreadsheet",
+      "name": "Open in Sheets",
+      "verb": "open",
+      "glyph": "googleSpreadsheet"
+    },
+    {
+      "id": "verb:sheets:link",
+      "command": "yank",
+      "in": "sheets:spreadsheet",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
+    }
+  ]
+}

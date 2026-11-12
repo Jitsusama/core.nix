@@ -1,0 +1,1030 @@
+{
+  "things": [
+    {
+      "id": "shortcuts:keys",
+      "in": "shortcuts",
+      "name": "Keys"
+    },
+    {
+      "id": "shortcuts:also",
+      "in": "shortcuts",
+      "name": "Also"
+    },
+    {
+      "id": "shortcuts:where",
+      "in": "shortcuts",
+      "name": "Works"
+    },
+    {
+      "id": "shortcuts:desktop",
+      "in": "shortcuts",
+      "name": "Desktop",
+      "term": "Desktop/desktop",
+      "glyph": "desktop"
+    },
+    {
+      "id": "shortcuts:terminal",
+      "in": "shortcuts",
+      "name": "Terminal"
+    },
+    {
+      "id": "shortcuts:neovim",
+      "in": "shortcuts",
+      "name": "Neovim"
+    },
+    {
+      "id": "shortcuts:pi",
+      "in": "shortcuts",
+      "name": "Agents",
+      "term": "Agents/agent",
+      "glyph": "agent"
+    },
+    {
+      "id": "shortcuts:btop",
+      "in": "shortcuts",
+      "name": "Processes",
+      "glyph": "processor"
+    },
+    {
+      "id": "shortcuts:swayimg",
+      "in": "shortcuts",
+      "name": "Picture Viewer",
+      "glyph": "picture"
+    },
+    {
+      "id": "shortcuts:reader",
+      "in": "shortcuts",
+      "name": "Markdown Reader",
+      "glyph": "document"
+    },
+    {
+      "id": "shortcuts:zathura",
+      "in": "shortcuts",
+      "name": "Document Viewer",
+      "glyph": "book"
+    },
+    {
+      "id": "shortcuts:mpv",
+      "in": "shortcuts",
+      "name": "Player",
+      "term": "Programs/player",
+      "glyph": "film"
+    },
+    {
+      "id": "shortcuts:chrome",
+      "in": "shortcuts",
+      "name": "Browser",
+      "glyph": "web"
+    },
+    {
+      "id": "shortcuts:google-mail",
+      "in": "shortcuts",
+      "name": "Mail",
+      "term": "Programs/mail",
+      "said": {
+        "note": "works once Gmail's keyboard shortcuts are on"
+      }
+    },
+    {
+      "id": "shortcuts:google-calendar",
+      "in": "shortcuts",
+      "name": "Calendar",
+      "term": "Programs/calendar"
+    },
+    {
+      "id": "shortcuts:google-meet",
+      "in": "shortcuts",
+      "name": "Meet"
+    },
+    {
+      "id": "shortcuts:google-docs",
+      "in": "shortcuts",
+      "name": "Docs"
+    },
+    {
+      "id": "shortcuts:google-sheets",
+      "in": "shortcuts",
+      "name": "Sheets"
+    },
+    {
+      "id": "shortcuts:google-slides",
+      "in": "shortcuts",
+      "name": "Slides"
+    },
+    {
+      "id": "shortcuts:google-drive",
+      "in": "shortcuts",
+      "name": "Drive"
+    },
+    {
+      "id": "shortcuts:slack",
+      "in": "shortcuts",
+      "name": "Slack",
+      "glyph": "chat"
+    },
+    {
+      "id": "shortcuts:onepassword",
+      "in": "shortcuts",
+      "name": "Passwords",
+      "term": "Security/passwords",
+      "glyph": "password"
+    },
+    {
+      "id": "shortcuts:gimp",
+      "in": "shortcuts",
+      "name": "Picture Editor",
+      "glyph": "brush"
+    },
+    {
+      "id": "shortcuts:inkscape",
+      "in": "shortcuts",
+      "name": "Drawing Editor",
+      "glyph": "vector"
+    },
+    {
+      "id": "shortcuts:spotify",
+      "in": "shortcuts",
+      "name": "Music",
+      "glyph": "playing"
+    },
+    {
+      "id": "shortcuts:desktop:windows",
+      "in": "shortcuts",
+      "name": "Windows",
+      "term": "Desktop/window",
+      "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:columns",
+      "in": "shortcuts",
+      "name": "Columns",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces",
+      "in": "shortcuts",
+      "name": "Workspaces",
+      "term": "Desktop/workspace",
+      "glyph": "workspace"
+    },
+    {
+      "id": "shortcuts:desktop:screens",
+      "in": "shortcuts",
+      "name": "Screens",
+      "term": "Desktop/screen",
+      "glyph": "display"
+    },
+    {
+      "id": "shortcuts:desktop:launcher",
+      "in": "shortcuts",
+      "name": "Launcher",
+      "term": "Desktop/launcher",
+      "glyph": "launcher"
+    },
+    {
+      "id": "shortcuts:desktop:capture",
+      "in": "shortcuts",
+      "name": "Capture",
+      "term": "Desktop/capture",
+      "glyph": "capture"
+    },
+    {
+      "id": "shortcuts:desktop:sound",
+      "in": "shortcuts",
+      "name": "Sound",
+      "term": "Machine/Sound",
+      "glyph": "volume"
+    },
+    {
+      "id": "shortcuts:desktop:typing",
+      "in": "shortcuts",
+      "name": "Typing",
+      "glyph": "keyboard"
+    },
+    {
+      "id": "shortcuts:desktop:windows:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:windows:place",
+      "in": "shortcuts",
+      "name": "Move",
+      "glyph": "floating"
+    },
+    {
+      "id": "shortcuts:desktop:windows:size",
+      "in": "shortcuts",
+      "name": "Size",
+      "glyph": "fullscreen"
+    },
+    {
+      "id": "shortcuts:desktop:windows:new",
+      "in": "shortcuts",
+      "name": "New Windows",
+      "glyph": "below"
+    },
+    {
+      "id": "shortcuts:desktop:columns:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:columns:place",
+      "in": "shortcuts",
+      "name": "Move",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:columns:width",
+      "in": "shortcuts",
+      "name": "Width",
+      "glyph": "fullscreen"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "workspace"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:column",
+      "in": "shortcuts",
+      "name": "The Column",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:window",
+      "in": "shortcuts",
+      "name": "The Window",
+      "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:workspaces:near",
+      "in": "shortcuts",
+      "name": "Above and Below",
+      "glyph": "workspace"
+    },
+    {
+      "id": "shortcuts:desktop:screens:focus",
+      "in": "shortcuts",
+      "name": "Focus",
+      "glyph": "display"
+    },
+    {
+      "id": "shortcuts:desktop:screens:column",
+      "in": "shortcuts",
+      "name": "The Column",
+      "glyph": "columns"
+    },
+    {
+      "id": "shortcuts:desktop:screens:window",
+      "in": "shortcuts",
+      "name": "The Window",
+      "glyph": "windows"
+    },
+    {
+      "id": "shortcuts:desktop:screens:this",
+      "in": "shortcuts",
+      "name": "This Screen",
+      "glyph": "brightness"
+    },
+    {
+      "id": "shortcuts:desktop:launcher:notices",
+      "in": "shortcuts",
+      "name": "Notices",
+      "term": "Desktop/notice",
+      "glyph": "notifications"
+    },
+    {
+      "id": "shortcuts:desktop:capture:sharing",
+      "in": "shortcuts",
+      "name": "Sharing",
+      "glyph": "sharing"
+    },
+    {
+      "id": "shortcuts:terminal:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:terminal:numbers",
+      "in": "shortcuts",
+      "name": "Tab Numbers"
+    },
+    {
+      "id": "shortcuts:terminal:scrollback",
+      "in": "shortcuts",
+      "name": "Scrollback"
+    },
+    {
+      "id": "shortcuts:terminal:clipboard",
+      "in": "shortcuts",
+      "name": "Clipboard",
+      "term": "Desktop/clipboard",
+      "glyph": "clipboard"
+    },
+    {
+      "id": "shortcuts:terminal:text",
+      "in": "shortcuts",
+      "name": "Text"
+    },
+    {
+      "id": "shortcuts:neovim:files",
+      "in": "shortcuts",
+      "name": "Files"
+    },
+    {
+      "id": "shortcuts:neovim:files:open",
+      "in": "shortcuts",
+      "name": "Open Files"
+    },
+    {
+      "id": "shortcuts:neovim:files:folders",
+      "in": "shortcuts",
+      "name": "Folders"
+    },
+    {
+      "id": "shortcuts:neovim:files:splits",
+      "in": "shortcuts",
+      "name": "Splits"
+    },
+    {
+      "id": "shortcuts:neovim:files:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:neovim:files:numbers",
+      "in": "shortcuts",
+      "name": "Tab Numbers"
+    },
+    {
+      "id": "shortcuts:neovim:search",
+      "in": "shortcuts",
+      "name": "Search",
+      "term": "Keyboards/search"
+    },
+    {
+      "id": "shortcuts:neovim:search:text",
+      "in": "shortcuts",
+      "name": "Text"
+    },
+    {
+      "id": "shortcuts:neovim:search:symbols",
+      "in": "shortcuts",
+      "name": "Symbols"
+    },
+    {
+      "id": "shortcuts:neovim:search:lists",
+      "in": "shortcuts",
+      "name": "Lists"
+    },
+    {
+      "id": "shortcuts:neovim:search:jumps",
+      "in": "shortcuts",
+      "name": "Jumps"
+    },
+    {
+      "id": "shortcuts:neovim:code",
+      "in": "shortcuts",
+      "name": "Code"
+    },
+    {
+      "id": "shortcuts:neovim:problems",
+      "in": "shortcuts",
+      "name": "Problems"
+    },
+    {
+      "id": "shortcuts:neovim:outline",
+      "in": "shortcuts",
+      "name": "Outline"
+    },
+    {
+      "id": "shortcuts:neovim:tests",
+      "in": "shortcuts",
+      "name": "Tests"
+    },
+    {
+      "id": "shortcuts:neovim:git",
+      "in": "shortcuts",
+      "name": "Git",
+      "glyph": "branch"
+    },
+    {
+      "id": "shortcuts:neovim:github",
+      "in": "shortcuts",
+      "name": "GitHub"
+    },
+    {
+      "id": "shortcuts:neovim:pulls",
+      "in": "shortcuts",
+      "name": "Changes"
+    },
+    {
+      "id": "shortcuts:neovim:github:issues",
+      "in": "shortcuts",
+      "name": "Issues"
+    },
+    {
+      "id": "shortcuts:neovim:github:people",
+      "in": "shortcuts",
+      "name": "People and Labels"
+    },
+    {
+      "id": "shortcuts:neovim:github:comments",
+      "in": "shortcuts",
+      "name": "Comments"
+    },
+    {
+      "id": "shortcuts:neovim:github:reactions",
+      "in": "shortcuts",
+      "name": "Reactions"
+    },
+    {
+      "id": "shortcuts:neovim:github:runs",
+      "in": "shortcuts",
+      "name": "Workflow Runs"
+    },
+    {
+      "id": "shortcuts:neovim:editor",
+      "in": "shortcuts",
+      "name": "Editor"
+    },
+    {
+      "id": "shortcuts:neovim:editor:suggestions",
+      "in": "shortcuts",
+      "name": "Suggestions"
+    },
+    {
+      "id": "shortcuts:neovim:editor:commands",
+      "in": "shortcuts",
+      "name": "Command Line",
+      "term": "Keyboards/command line"
+    },
+    {
+      "id": "shortcuts:neovim:editor:looks",
+      "in": "shortcuts",
+      "name": "Appearance"
+    },
+    {
+      "id": "shortcuts:neovim:editor:insides",
+      "in": "shortcuts",
+      "name": "Insides"
+    },
+    {
+      "id": "shortcuts:neovim:tests:running",
+      "in": "shortcuts",
+      "name": "Running Tests"
+    },
+    {
+      "id": "shortcuts:neovim:tests:results",
+      "in": "shortcuts",
+      "name": "Test Results"
+    },
+    {
+      "id": "shortcuts:neovim:files:finding",
+      "in": "shortcuts",
+      "name": "Finding a File"
+    },
+    {
+      "id": "shortcuts:neovim:files:browser",
+      "in": "shortcuts",
+      "name": "File Browser"
+    },
+    {
+      "id": "shortcuts:neovim:code:definitions",
+      "in": "shortcuts",
+      "name": "Definitions and Calls"
+    },
+    {
+      "id": "shortcuts:neovim:code:hints",
+      "in": "shortcuts",
+      "name": "Hints and Fixes"
+    },
+    {
+      "id": "shortcuts:neovim:code:refactoring",
+      "in": "shortcuts",
+      "name": "Refactoring"
+    },
+    {
+      "id": "shortcuts:neovim:code:formatting",
+      "in": "shortcuts",
+      "name": "Formatting"
+    },
+    {
+      "id": "shortcuts:neovim:code:selecting",
+      "in": "shortcuts",
+      "name": "Selecting Code"
+    },
+    {
+      "id": "shortcuts:neovim:code:pieces",
+      "in": "shortcuts",
+      "name": "Blocks of Code"
+    },
+    {
+      "id": "shortcuts:neovim:code:through",
+      "in": "shortcuts",
+      "name": "Moving Through Code"
+    },
+    {
+      "id": "shortcuts:neovim:code:server",
+      "in": "shortcuts",
+      "name": "Language Servers"
+    },
+    {
+      "id": "shortcuts:neovim:problems:finding",
+      "in": "shortcuts",
+      "name": "Finding Problems"
+    },
+    {
+      "id": "shortcuts:neovim:problems:showing",
+      "in": "shortcuts",
+      "name": "Showing Problems"
+    },
+    {
+      "id": "shortcuts:neovim:problems:through",
+      "in": "shortcuts",
+      "name": "Moving Through Problems"
+    },
+    {
+      "id": "shortcuts:neovim:problems:opening",
+      "in": "shortcuts",
+      "name": "Opening a Problem"
+    },
+    {
+      "id": "shortcuts:neovim:problems:list",
+      "in": "shortcuts",
+      "name": "The Problems List"
+    },
+    {
+      "id": "shortcuts:neovim:problems:folding",
+      "in": "shortcuts",
+      "name": "Folding the List"
+    },
+    {
+      "id": "shortcuts:neovim:outline:showing",
+      "in": "shortcuts",
+      "name": "Showing the Outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:symbols",
+      "in": "shortcuts",
+      "name": "Going to a Symbol"
+    },
+    {
+      "id": "shortcuts:neovim:outline:through",
+      "in": "shortcuts",
+      "name": "Moving Through the Outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:holding",
+      "in": "shortcuts",
+      "name": "What a Symbol Holds"
+    },
+    {
+      "id": "shortcuts:neovim:outline:folding",
+      "in": "shortcuts",
+      "name": "Folding the Outline"
+    },
+    {
+      "id": "shortcuts:neovim:outline:walking",
+      "in": "shortcuts",
+      "name": "Walking the Outline"
+    },
+    {
+      "id": "shortcuts:neovim:git:changes",
+      "in": "shortcuts",
+      "name": "Edits"
+    },
+    {
+      "id": "shortcuts:neovim:git:staging",
+      "in": "shortcuts",
+      "name": "Staging"
+    },
+    {
+      "id": "shortcuts:neovim:git:commits",
+      "in": "shortcuts",
+      "name": "Commits"
+    },
+    {
+      "id": "shortcuts:neovim:git:branches",
+      "in": "shortcuts",
+      "name": "Branches and Tags"
+    },
+    {
+      "id": "shortcuts:neovim:git:stashes",
+      "in": "shortcuts",
+      "name": "Stashes"
+    },
+    {
+      "id": "shortcuts:neovim:git:remote",
+      "in": "shortcuts",
+      "name": "Pushing and Pulling"
+    },
+    {
+      "id": "shortcuts:neovim:git:status",
+      "in": "shortcuts",
+      "name": "Git's Status"
+    },
+    {
+      "id": "shortcuts:neovim:github:repositories",
+      "in": "shortcuts",
+      "name": "Repositories"
+    },
+    {
+      "id": "shortcuts:neovim:github:notifications",
+      "in": "shortcuts",
+      "name": "GitHub Notices"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:finding",
+      "in": "shortcuts",
+      "name": "Finding Changes"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:pull",
+      "in": "shortcuts",
+      "name": "The Change"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:merging",
+      "in": "shortcuts",
+      "name": "Merging"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:checks",
+      "in": "shortcuts",
+      "name": "Checks"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:reviewing",
+      "in": "shortcuts",
+      "name": "Starting a Review"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:threads",
+      "in": "shortcuts",
+      "name": "Threads"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:files",
+      "in": "shortcuts",
+      "name": "Changed Files"
+    },
+    {
+      "id": "shortcuts:neovim:pulls:submitting",
+      "in": "shortcuts",
+      "name": "Submitting a Review"
+    },
+    {
+      "id": "shortcuts:pi:message",
+      "in": "shortcuts",
+      "name": "Message"
+    },
+    {
+      "id": "shortcuts:pi:editing",
+      "in": "shortcuts",
+      "name": "Editing"
+    },
+    {
+      "id": "shortcuts:pi:scrollback",
+      "in": "shortcuts",
+      "name": "Scrollback"
+    },
+    {
+      "id": "shortcuts:pi:conversation",
+      "in": "shortcuts",
+      "name": "Conversation"
+    },
+    {
+      "id": "shortcuts:pi:models",
+      "in": "shortcuts",
+      "name": "Models",
+      "term": "Agents/model"
+    },
+    {
+      "id": "shortcuts:swayimg:moving",
+      "in": "shortcuts",
+      "name": "Moving"
+    },
+    {
+      "id": "shortcuts:swayimg:picture",
+      "in": "shortcuts",
+      "name": "The Picture"
+    },
+    {
+      "id": "shortcuts:reader:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
+      "id": "shortcuts:reader:view",
+      "in": "shortcuts",
+      "name": "In View"
+    },
+    {
+      "id": "shortcuts:reader:jumping",
+      "in": "shortcuts",
+      "name": "Jumping"
+    },
+    {
+      "id": "shortcuts:reader:links",
+      "in": "shortcuts",
+      "name": "Links and Files"
+    },
+    {
+      "id": "shortcuts:reader:searching",
+      "in": "shortcuts",
+      "name": "Searching"
+    },
+    {
+      "id": "shortcuts:reader:selecting",
+      "in": "shortcuts",
+      "name": "Selecting"
+    },
+    {
+      "id": "shortcuts:reader:objects",
+      "in": "shortcuts",
+      "name": "Text Objects"
+    },
+    {
+      "id": "shortcuts:reader:copying",
+      "in": "shortcuts",
+      "name": "Copying"
+    },
+    {
+      "id": "shortcuts:reader:page",
+      "in": "shortcuts",
+      "name": "The Page"
+    },
+    {
+      "id": "shortcuts:reader:commands",
+      "in": "shortcuts",
+      "name": "Command Line",
+      "term": "Keyboards/command line"
+    },
+    {
+      "id": "shortcuts:zathura:turning",
+      "in": "shortcuts",
+      "name": "Turning Pages"
+    },
+    {
+      "id": "shortcuts:zathura:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
+      "id": "shortcuts:zathura:fitting",
+      "in": "shortcuts",
+      "name": "Fitting the Page"
+    },
+    {
+      "id": "shortcuts:zathura:finding",
+      "in": "shortcuts",
+      "name": "Finding Words"
+    },
+    {
+      "id": "shortcuts:zathura:places",
+      "in": "shortcuts",
+      "name": "Places"
+    },
+    {
+      "id": "shortcuts:mpv:seeking",
+      "in": "shortcuts",
+      "name": "Seeking"
+    },
+    {
+      "id": "shortcuts:mpv:speed",
+      "in": "shortcuts",
+      "name": "Playback Speed"
+    },
+    {
+      "id": "shortcuts:mpv:loudness",
+      "in": "shortcuts",
+      "name": "Loudness"
+    },
+    {
+      "id": "shortcuts:mpv:list",
+      "in": "shortcuts",
+      "name": "In the List"
+    },
+    {
+      "id": "shortcuts:mpv:frame",
+      "in": "shortcuts",
+      "name": "The Frame"
+    },
+    {
+      "id": "shortcuts:chrome:tabs",
+      "in": "shortcuts",
+      "name": "Tabs"
+    },
+    {
+      "id": "shortcuts:chrome:numbers",
+      "in": "shortcuts",
+      "name": "Tab Numbers"
+    },
+    {
+      "id": "shortcuts:chrome:pages",
+      "in": "shortcuts",
+      "name": "On the Page"
+    },
+    {
+      "id": "shortcuts:chrome:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
+      "id": "shortcuts:chrome:finding",
+      "in": "shortcuts",
+      "name": "Finding Words"
+    },
+    {
+      "id": "shortcuts:chrome:links",
+      "in": "shortcuts",
+      "name": "Links"
+    },
+    {
+      "id": "shortcuts:slack:conversations",
+      "in": "shortcuts",
+      "name": "Conversations"
+    },
+    {
+      "id": "shortcuts:slack:messages",
+      "in": "shortcuts",
+      "name": "Messages"
+    },
+    {
+      "id": "shortcuts:onepassword:finding",
+      "in": "shortcuts",
+      "name": "Finding Items"
+    },
+    {
+      "id": "shortcuts:onepassword:item",
+      "in": "shortcuts",
+      "name": "The Chosen Item"
+    },
+    {
+      "id": "shortcuts:gimp:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:gimp:view",
+      "in": "shortcuts",
+      "name": "Zooming the Picture"
+    },
+    {
+      "id": "shortcuts:gimp:selection",
+      "in": "shortcuts",
+      "name": "Selecting"
+    },
+    {
+      "id": "shortcuts:gimp:layers",
+      "in": "shortcuts",
+      "name": "Layers"
+    },
+    {
+      "id": "shortcuts:inkscape:tools",
+      "in": "shortcuts",
+      "name": "Tools"
+    },
+    {
+      "id": "shortcuts:inkscape:view",
+      "in": "shortcuts",
+      "name": "Zooming the Drawing"
+    },
+    {
+      "id": "shortcuts:inkscape:objects",
+      "in": "shortcuts",
+      "name": "Objects"
+    },
+    {
+      "id": "shortcuts:inkscape:panels",
+      "in": "shortcuts",
+      "name": "Panels"
+    },
+    {
+      "id": "shortcuts:btop:processes",
+      "in": "shortcuts",
+      "name": "The Process List"
+    },
+    {
+      "id": "shortcuts:btop:boxes",
+      "in": "shortcuts",
+      "name": "The Boxes"
+    },
+    {
+      "id": "shortcuts:spotify:going",
+      "in": "shortcuts",
+      "name": "Going Places"
+    },
+    {
+      "id": "shortcuts:spotify:playing",
+      "in": "shortcuts",
+      "name": "Playing"
+    },
+    {
+      "id": "shortcuts:spotify:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
+      "id": "shortcuts:google-mail:going",
+      "in": "shortcuts",
+      "name": "Moving Around"
+    },
+    {
+      "id": "shortcuts:google-mail:conversations",
+      "in": "shortcuts",
+      "name": "In a Conversation"
+    },
+    {
+      "id": "shortcuts:google-mail:writing",
+      "in": "shortcuts",
+      "name": "Writing Mail"
+    },
+    {
+      "id": "shortcuts:google-calendar:views",
+      "in": "shortcuts",
+      "name": "Choosing the Days"
+    },
+    {
+      "id": "shortcuts:google-calendar:events",
+      "in": "shortcuts",
+      "name": "Making an Event"
+    },
+    {
+      "id": "shortcuts:google-calendar:anywhere",
+      "in": "shortcuts",
+      "name": "Anywhere in Calendar"
+    },
+    {
+      "id": "shortcuts:google-meet:you",
+      "in": "shortcuts",
+      "name": "Being Heard and Seen"
+    },
+    {
+      "id": "shortcuts:google-meet:seeing",
+      "in": "shortcuts",
+      "name": "Arranging the Call"
+    },
+    {
+      "id": "shortcuts:google-docs:text",
+      "in": "shortcuts",
+      "name": "Styling Text"
+    },
+    {
+      "id": "shortcuts:google-docs:paragraphs",
+      "in": "shortcuts",
+      "name": "Shaping Paragraphs"
+    },
+    {
+      "id": "shortcuts:google-docs:reviewing",
+      "in": "shortcuts",
+      "name": "Reviewing"
+    },
+    {
+      "id": "shortcuts:google-sheets:rows",
+      "in": "shortcuts",
+      "name": "Arranging Rows and Columns"
+    },
+    {
+      "id": "shortcuts:google-sheets:cells",
+      "in": "shortcuts",
+      "name": "Filling Cells"
+    },
+    {
+      "id": "shortcuts:google-sheets:sheets",
+      "in": "shortcuts",
+      "name": "Moving Between Sheets"
+    },
+    {
+      "id": "shortcuts:google-slides:slides",
+      "in": "shortcuts",
+      "name": "Arranging Slides"
+    },
+    {
+      "id": "shortcuts:google-slides:objects",
+      "in": "shortcuts",
+      "name": "Arranging Objects"
+    },
+    {
+      "id": "shortcuts:google-slides:presenting",
+      "in": "shortcuts",
+      "name": "Presenting"
+    },
+    {
+      "id": "shortcuts:google-drive:making",
+      "in": "shortcuts",
+      "name": "Making and Finding"
+    },
+    {
+      "id": "shortcuts:google-drive:files",
+      "in": "shortcuts",
+      "name": "Handling a File"
+    }
+  ]
+}

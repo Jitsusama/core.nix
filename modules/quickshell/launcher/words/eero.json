@@ -1,0 +1,713 @@
+{
+  "things": [
+    {
+      "id": "eero:internet",
+      "in": "eero",
+      "name": "Internet",
+      "term": "Network/internet",
+      "glyph": "web",
+      "said": {
+        "mesh": "home network {state}",
+        "providerDown": "provider down",
+        "sqmOn": "conferencing and gaming on",
+        "sqmOff": "conferencing and gaming off",
+        "noOutages": "no outages",
+        "outage": "1 outage",
+        "outages": "{count} outages",
+        "inDays": "{outages} in 30 days",
+        "node": "1 node online",
+        "nodes": "{count} nodes online",
+        "offline": "{count} offline",
+        "pending": "{count} pending",
+        "onNow": "{devices} on now",
+        "signedOut": "signed out of eero",
+        "unreachable": "eero unreachable"
+      }
+    },
+    {
+      "id": "eero:node",
+      "in": "eero",
+      "name": "Node",
+      "term": "Network/node",
+      "glyph": "accessPoint",
+      "said": {
+        "gateway": "gateway node",
+        "ethernet": "Ethernet",
+        "wifi": "Wi-Fi",
+        "from": "Wi-Fi from {node}",
+        "over": "Wi-Fi over {radio}",
+        "fromOver": "Wi-Fi from {node} over {radio}",
+        "bars": "{n} of 5 bars",
+        "2.4GHz": "2.4 GHz",
+        "5.2GHz": "5 GHz low",
+        "5.8GHz": "5 GHz high",
+        "5GHz": "5 GHz",
+        "6GHz": "6 GHz",
+        "ghz": "{n} GHz"
+      }
+    },
+    {
+      "id": "eero:gateway",
+      "in": "eero",
+      "name": "Gateway Node",
+      "term": "Network/gateway node",
+      "glyph": "accessPoint"
+    },
+    {
+      "id": "eero:device",
+      "in": "eero",
+      "name": "Device",
+      "term": "Network/device",
+      "said": {
+        "thisMachine": "this machine",
+        "ethernet": "Ethernet",
+        "dbm": "{n} dBm",
+        "channel": "channel {n}",
+        "idle": "idle"
+      }
+    },
+    {
+      "id": "eero:profile",
+      "in": "eero",
+      "name": "Profile",
+      "term": "Network/profile",
+      "glyph": "people",
+      "said": {
+        "paused": "paused",
+        "onNow": "{count} on now",
+        "noneOnNow": "none on now"
+      }
+    },
+    {
+      "id": "eero:profile:state",
+      "in": "eero:profile",
+      "name": "State"
+    },
+    {
+      "id": "eero:profile:devices",
+      "in": "eero:profile",
+      "name": "Devices",
+      "term": "Network/device"
+    },
+    {
+      "id": "eero:profile:listed",
+      "in": "eero:profile",
+      "name": "Devices in It"
+    },
+    {
+      "id": "eero:profile:blocks",
+      "in": "eero:profile",
+      "name": "Blocks"
+    },
+    {
+      "id": "eero:profile:enforces",
+      "in": "eero:profile",
+      "name": "Enforces"
+    },
+    {
+      "id": "eero:profile:allows",
+      "in": "eero:profile",
+      "name": "Allows"
+    },
+    {
+      "id": "eero:profile:schedule",
+      "in": "eero:profile",
+      "name": "Schedule"
+    },
+    {
+      "id": "eero:profile:default",
+      "in": "eero:profile",
+      "name": "Default"
+    },
+    {
+      "id": "eero:profile:traffic",
+      "in": "eero:profile",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "eero:internet:events",
+      "in": "eero:internet",
+      "name": "What Happened"
+    },
+    {
+      "id": "eero:device:events",
+      "in": "eero:device",
+      "name": "What Happened"
+    },
+    {
+      "id": "eero:sqm",
+      "in": "eero",
+      "command": "set",
+      "argument": "sqm",
+      "name": "Optimize for Conferencing and Gaming",
+      "verb": "on",
+      "glyph": "traffic",
+      "states": {
+        "on": {
+          "verb": "off",
+          "argument": "nosqm"
+        }
+      }
+    },
+    {
+      "id": "verb:eero:speedtest",
+      "command": "speedtest",
+      "in": "eero",
+      "name": "Run a Speed Test",
+      "verb": "run",
+      "glyph": "traffic"
+    },
+    {
+      "id": "eero:internet:state",
+      "in": "eero:internet",
+      "name": "State"
+    },
+    {
+      "id": "eero:internet:mesh",
+      "in": "eero:internet",
+      "name": "Home Network",
+      "term": "Network/home network"
+    },
+    {
+      "id": "eero:internet:isp",
+      "in": "eero:internet",
+      "name": "Provider",
+      "term": "Network/internet provider"
+    },
+    {
+      "id": "eero:internet:addressing",
+      "in": "eero:internet",
+      "name": "Addressing"
+    },
+    {
+      "id": "eero:internet:public",
+      "in": "eero:internet",
+      "name": "Public Address"
+    },
+    {
+      "id": "eero:internet:lease",
+      "in": "eero:internet",
+      "name": "Lease",
+      "term": "Network/lease"
+    },
+    {
+      "id": "eero:internet:gateway",
+      "in": "eero:internet",
+      "name": "Gateway Node",
+      "term": "Network/gateway node"
+    },
+    {
+      "id": "eero:internet:mode",
+      "in": "eero:internet",
+      "name": "Mode",
+      "term": "Network/mode"
+    },
+    {
+      "id": "eero:internet:dns",
+      "in": "eero:internet",
+      "name": "DNS"
+    },
+    {
+      "id": "eero:internet:ipv6",
+      "in": "eero:internet",
+      "name": "IPv6"
+    },
+    {
+      "id": "eero:internet:main-subnet",
+      "in": "eero:internet",
+      "name": "Main Subnet"
+    },
+    {
+      "id": "eero:internet:guest-subnet",
+      "in": "eero:internet",
+      "name": "Guest Subnet"
+    },
+    {
+      "id": "eero:internet:forwards",
+      "in": "eero:internet",
+      "name": "Port Forwards"
+    },
+    {
+      "id": "eero:internet:pinholes",
+      "in": "eero:internet",
+      "name": "IPv6 Pinholes"
+    },
+    {
+      "id": "eero:internet:speed-test",
+      "in": "eero:internet",
+      "name": "Speed Test",
+      "term": "Network/speed test"
+    },
+    {
+      "id": "eero:internet:speed-tests",
+      "in": "eero:internet",
+      "name": "Speed Tests",
+      "term": "Network/speed test"
+    },
+    {
+      "id": "eero:internet:down",
+      "in": "eero:internet",
+      "name": "Down",
+      "term": "Network/down"
+    },
+    {
+      "id": "eero:internet:up",
+      "in": "eero:internet",
+      "name": "Up",
+      "term": "Network/up"
+    },
+    {
+      "id": "eero:internet:kept",
+      "in": "eero:internet",
+      "name": "Kept"
+    },
+    {
+      "id": "eero:internet:settings",
+      "in": "eero:internet",
+      "name": "Settings"
+    },
+    {
+      "id": "eero:internet:sqm",
+      "in": "eero:internet",
+      "name": "Conferencing and Gaming"
+    },
+    {
+      "id": "eero:internet:upnp",
+      "in": "eero:internet",
+      "name": "UPnP"
+    },
+    {
+      "id": "eero:internet:randomization",
+      "in": "eero:internet",
+      "name": "Port Randomization"
+    },
+    {
+      "id": "eero:internet:steering",
+      "in": "eero:internet",
+      "name": "Band Steering"
+    },
+    {
+      "id": "eero:internet:wpa3",
+      "in": "eero:internet",
+      "name": "WPA3"
+    },
+    {
+      "id": "eero:internet:security",
+      "in": "eero:internet",
+      "name": "Wi-Fi Security"
+    },
+    {
+      "id": "eero:internet:wifi-mode",
+      "in": "eero:internet",
+      "name": "Wi-Fi Mode"
+    },
+    {
+      "id": "eero:internet:ac-compatibility",
+      "in": "eero:internet",
+      "name": "Wi-Fi 5 Compatibility"
+    },
+    {
+      "id": "eero:internet:name-clash",
+      "in": "eero:internet",
+      "name": "Name Clash"
+    },
+    {
+      "id": "eero:internet:mlo",
+      "in": "eero:internet",
+      "name": "Multi-Link Operation"
+    },
+    {
+      "id": "eero:internet:thread",
+      "in": "eero:internet",
+      "name": "Thread"
+    },
+    {
+      "id": "eero:internet:guest",
+      "in": "eero:internet",
+      "name": "Guest Network"
+    },
+    {
+      "id": "eero:internet:ddns",
+      "in": "eero:internet",
+      "name": "Dynamic DNS"
+    },
+    {
+      "id": "eero:internet:backup",
+      "in": "eero:internet",
+      "name": "Backup Internet"
+    },
+    {
+      "id": "eero:internet:power-saving",
+      "in": "eero:internet",
+      "name": "Power Saving"
+    },
+    {
+      "id": "eero:internet:outages",
+      "in": "eero:internet",
+      "name": "Outages",
+      "term": "Network/outage"
+    },
+    {
+      "id": "eero:internet:nodes",
+      "in": "eero:internet",
+      "name": "Nodes",
+      "term": "Network/node"
+    },
+    {
+      "id": "eero:internet:firmware",
+      "in": "eero:internet",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "eero:internet:updates",
+      "in": "eero:internet",
+      "name": "Updates",
+      "term": "Network/update"
+    },
+    {
+      "id": "eero:internet:traffic",
+      "in": "eero:internet",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "eero:internet:read",
+      "in": "eero:internet",
+      "name": "Last Read"
+    },
+    {
+      "id": "eero:internet:probe",
+      "in": "eero:internet",
+      "name": "From This Machine"
+    },
+    {
+      "id": "eero:internet:looked",
+      "in": "eero:internet",
+      "name": "Last Look"
+    },
+    {
+      "id": "eero:internet:to-gateway",
+      "in": "eero:internet",
+      "name": "To the Gateway Node"
+    },
+    {
+      "id": "eero:internet:to-internet",
+      "in": "eero:internet",
+      "name": "To the Internet"
+    },
+    {
+      "id": "eero:internet:lookup",
+      "in": "eero:internet",
+      "name": "Name Lookup"
+    },
+    {
+      "id": "eero:internet:outage-list",
+      "in": "eero:internet",
+      "name": "Outages in the Last 30 Days"
+    },
+    {
+      "id": "eero:node:devices-off",
+      "in": "eero:node",
+      "name": "Not on Now"
+    },
+    {
+      "id": "eero:node:joins-and-leaves",
+      "in": "eero:node",
+      "name": "Joined and Left in the Last Day"
+    },
+    {
+      "id": "eero:node:model",
+      "in": "eero:node",
+      "name": "Model",
+      "term": "Machine/model"
+    },
+    {
+      "id": "eero:node:serial",
+      "in": "eero:node",
+      "name": "Serial Number"
+    },
+    {
+      "id": "eero:node:state",
+      "in": "eero:node",
+      "name": "State"
+    },
+    {
+      "id": "eero:node:heard",
+      "in": "eero:node",
+      "name": "Last Heard"
+    },
+    {
+      "id": "eero:node:backhaul",
+      "in": "eero:node",
+      "name": "Backhaul",
+      "term": "Network/backhaul"
+    },
+    {
+      "id": "eero:node:devices",
+      "in": "eero:node",
+      "name": "Devices",
+      "term": "Network/device"
+    },
+    {
+      "id": "eero:node:radios",
+      "in": "eero:node",
+      "name": "Radios",
+      "term": "Network/radio"
+    },
+    {
+      "id": "eero:node:bssids",
+      "in": "eero:node",
+      "name": "Radios' Hardware Addresses"
+    },
+    {
+      "id": "eero:node:ports",
+      "in": "eero:node",
+      "name": "Ports"
+    },
+    {
+      "id": "eero:node:port",
+      "in": "eero:node",
+      "name": "Port {n}"
+    },
+    {
+      "id": "eero:node:on-it",
+      "in": "eero:node",
+      "name": "Devices on It"
+    },
+    {
+      "id": "eero:node:about",
+      "in": "eero:node",
+      "name": "This Node"
+    },
+    {
+      "id": "eero:node:firmware",
+      "in": "eero:node",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "eero:node:support",
+      "in": "eero:node",
+      "name": "Support Ends"
+    },
+    {
+      "id": "eero:node:up",
+      "in": "eero:node",
+      "name": "Up For"
+    },
+    {
+      "id": "eero:node:cloud",
+      "in": "eero:node",
+      "name": "On the Cloud For"
+    },
+    {
+      "id": "eero:node:added",
+      "in": "eero:node",
+      "name": "Added"
+    },
+    {
+      "id": "eero:node:address",
+      "in": "eero:node",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "eero:node:ipv6",
+      "in": "eero:node",
+      "name": "IPv6"
+    },
+    {
+      "id": "eero:node:mac",
+      "in": "eero:node",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "eero:node:light",
+      "in": "eero:node",
+      "name": "Light",
+      "term": "Network/light"
+    },
+    {
+      "id": "eero:node:power",
+      "in": "eero:node",
+      "name": "Power"
+    },
+    {
+      "id": "eero:node:traffic",
+      "in": "eero:node",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "eero:node:busy",
+      "in": "eero:node",
+      "name": "How Busy"
+    },
+    {
+      "id": "eero:node:radio-power",
+      "in": "eero:node",
+      "name": "Transmit Power"
+    },
+    {
+      "id": "eero:device:kind",
+      "in": "eero:device",
+      "name": "Kind"
+    },
+    {
+      "id": "eero:device:node",
+      "in": "eero:device",
+      "name": "Node",
+      "term": "Network/node"
+    },
+    {
+      "id": "eero:device:signal",
+      "in": "eero:device",
+      "name": "Signal",
+      "term": "Network/signal"
+    },
+    {
+      "id": "eero:device:score",
+      "in": "eero:device",
+      "name": "Score"
+    },
+    {
+      "id": "eero:device:band",
+      "in": "eero:device",
+      "name": "Band",
+      "term": "Network/band"
+    },
+    {
+      "id": "eero:device:bssid",
+      "in": "eero:device",
+      "name": "Radio's Hardware Address"
+    },
+    {
+      "id": "eero:device:port",
+      "in": "eero:device",
+      "name": "Port"
+    },
+    {
+      "id": "eero:device:rx",
+      "in": "eero:device",
+      "name": "Rate Down"
+    },
+    {
+      "id": "eero:device:tx",
+      "in": "eero:device",
+      "name": "Rate Up"
+    },
+    {
+      "id": "eero:device:speed",
+      "in": "eero:device",
+      "name": "Speed",
+      "term": "Network/speed"
+    },
+    {
+      "id": "eero:device:retries",
+      "in": "eero:device",
+      "name": "Retries"
+    },
+    {
+      "id": "eero:device:packets",
+      "in": "eero:device",
+      "name": "Packets"
+    },
+    {
+      "id": "eero:device:resent",
+      "in": "eero:device",
+      "name": "Sent Again"
+    },
+    {
+      "id": "eero:device:failed",
+      "in": "eero:device",
+      "name": "Never Sent"
+    },
+    {
+      "id": "eero:device:dropped",
+      "in": "eero:device",
+      "name": "Dropped"
+    },
+    {
+      "id": "eero:device:where",
+      "in": "eero:device",
+      "name": "On the Network"
+    },
+    {
+      "id": "eero:device:network",
+      "in": "eero:device",
+      "name": "Network"
+    },
+    {
+      "id": "eero:device:address",
+      "in": "eero:device",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "eero:device:reserved",
+      "in": "eero:device",
+      "name": "Reserved Address",
+      "term": "Network/reserved address"
+    },
+    {
+      "id": "eero:device:addresses",
+      "in": "eero:device",
+      "name": "Other Addresses"
+    },
+    {
+      "id": "eero:device:mac",
+      "in": "eero:device",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "eero:device:hostname",
+      "in": "eero:device",
+      "name": "Hostname"
+    },
+    {
+      "id": "eero:device:nickname",
+      "in": "eero:device",
+      "name": "Nickname"
+    },
+    {
+      "id": "eero:device:first-seen",
+      "in": "eero:device",
+      "name": "First Seen"
+    },
+    {
+      "id": "eero:device:on-since",
+      "in": "eero:device",
+      "name": "On Since"
+    },
+    {
+      "id": "eero:device:last-active",
+      "in": "eero:device",
+      "name": "Last Active"
+    },
+    {
+      "id": "eero:device:profile",
+      "in": "eero:device",
+      "name": "Profile",
+      "term": "Network/profile"
+    },
+    {
+      "id": "eero:device:held",
+      "in": "eero:device",
+      "name": "Held Off"
+    },
+    {
+      "id": "eero:device:snr",
+      "in": "eero:device",
+      "name": "Above the Noise"
+    },
+    {
+      "id": "eero:device:roams",
+      "in": "eero:device",
+      "name": "Moved in the Last Day"
+    }
+  ]
+}

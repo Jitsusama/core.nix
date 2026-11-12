@@ -1,0 +1,417 @@
+{
+  "things": [
+    {
+      "id": "time:utc",
+      "in": "time",
+      "name": "UTC"
+    },
+    {
+      "id": "time:unix",
+      "in": "time",
+      "name": "Unix Time",
+      "said": {
+        "since": "seconds since 1970"
+      }
+    },
+    {
+      "id": "time:tai",
+      "in": "time",
+      "name": "TAI",
+      "said": {
+        "ahead": "UTC + 37 s, every leap second since 1972"
+      }
+    },
+    {
+      "id": "time:gps",
+      "in": "time",
+      "name": "GPS Time",
+      "said": {
+        "week": "week {week} \u00b7 {seconds} s",
+        "ahead": "UTC + 18 s"
+      }
+    },
+    {
+      "id": "time:sidereal",
+      "in": "time",
+      "name": "Sidereal Time",
+      "said": {
+        "local": "by the stars, at {longitude}",
+        "greenwich": "by the stars, at Greenwich"
+      }
+    },
+    {
+      "id": "verb:time:put-back",
+      "command": "set",
+      "argument": "time&",
+      "in": "time",
+      "name": "Put It Back",
+      "verb": "put back",
+      "glyph": "zone"
+    },
+    {
+      "id": "time:day",
+      "in": "time",
+      "name": "Date"
+    },
+    {
+      "id": "time:apart",
+      "in": "time",
+      "name": "From Here"
+    },
+    {
+      "id": "time:zone",
+      "in": "time",
+      "name": "Zone",
+      "said": {
+        "never": "none before 2046",
+        "iana": "the IANA time zone database"
+      }
+    },
+    {
+      "id": "time:zone:offset",
+      "in": "time:zone",
+      "name": "Offset"
+    },
+    {
+      "id": "time:zone:abbreviation",
+      "in": "time:zone",
+      "name": "Abbreviation"
+    },
+    {
+      "id": "time:zone:next",
+      "in": "time:zone",
+      "name": "Next Change"
+    },
+    {
+      "id": "time:zone:database",
+      "in": "time:zone",
+      "name": "Zone Database"
+    },
+    {
+      "id": "time:zone:plate",
+      "in": "time:zone",
+      "name": "Time Zone"
+    },
+    {
+      "id": "time:clock",
+      "in": "time",
+      "name": "Clock",
+      "empty": "Nothing keeps the time.",
+      "said": {
+        "synchronised": "synchronised",
+        "unsynchronised": "not synchronised",
+        "nothing": "nothing keeps the time",
+        "onTime": "on time",
+        "fast": "{offset} fast",
+        "slow": "{offset} slow",
+        "gains": "gains {seconds} a day",
+        "loses": "loses {seconds} a day",
+        "lastOffset": "last update {offset}",
+        "residual": "{ppm} still to correct",
+        "leap:normal": "none announced",
+        "leap:insert": "one added at midnight",
+        "leap:delete": "one taken at midnight",
+        "leap:unsynchronised": "unknown until synchronised",
+        "never": "never",
+        "by": "by {server}",
+        "next": "in {span}",
+        "every": "every {span}",
+        "running": "running",
+        "average": "the long-run average",
+        "between": "between the last two updates",
+        "samples": "{samples} over {span}",
+        "runs": "{runs} runs of one sign",
+        "via": "via {server}"
+      }
+    },
+    {
+      "id": "time:clock:offset",
+      "in": "time:clock",
+      "name": "Offset"
+    },
+    {
+      "id": "time:clock:rms-offset",
+      "in": "time:clock",
+      "name": "RMS Offset"
+    },
+    {
+      "id": "time:clock:frequency",
+      "in": "time:clock",
+      "name": "Frequency"
+    },
+    {
+      "id": "time:clock:skew",
+      "in": "time:clock",
+      "name": "Skew"
+    },
+    {
+      "id": "time:clock:stratum",
+      "in": "time:clock",
+      "name": "Stratum"
+    },
+    {
+      "id": "time:clock:root-delay",
+      "in": "time:clock",
+      "name": "Root Delay"
+    },
+    {
+      "id": "time:clock:root-dispersion",
+      "in": "time:clock",
+      "name": "Root Dispersion"
+    },
+    {
+      "id": "time:clock:leap",
+      "in": "time:clock",
+      "name": "Leap Second"
+    },
+    {
+      "id": "time:clock:last-sync",
+      "in": "time:clock",
+      "name": "Last Sync"
+    },
+    {
+      "id": "time:clock:update-interval",
+      "in": "time:clock",
+      "name": "Update Interval"
+    },
+    {
+      "id": "time:clock:next-poll",
+      "in": "time:clock",
+      "name": "Next Poll"
+    },
+    {
+      "id": "time:clock:hardware",
+      "in": "time:clock",
+      "name": "Hardware Clock"
+    },
+    {
+      "id": "time:clock:drift",
+      "in": "time:clock",
+      "name": "Hardware Clock Drift"
+    },
+    {
+      "id": "time:clock:hardware-samples",
+      "in": "time:clock",
+      "name": "Hardware Clock Samples"
+    },
+    {
+      "id": "time:clock:hardware-measured",
+      "in": "time:clock",
+      "name": "Hardware Clock Measured"
+    },
+    {
+      "id": "time:clock:service",
+      "in": "time:clock",
+      "name": "Service"
+    },
+    {
+      "id": "time:servers",
+      "in": "time",
+      "name": "Servers",
+      "said": {
+        "outOfReach": "{count} out of reach",
+        "offline": "{count} offline",
+        "burst": "{count} in a burst",
+        "unresolved": "{count} unresolved",
+        "kind:server": "time server",
+        "kind:peer": "time peer",
+        "kind:reference": "reference clock",
+        "interleaved": "interleaved",
+        "basic": "basic",
+        "authenticated": "authenticated",
+        "unauthenticated": "unauthenticated",
+        "exchange": "{mode} \u00b7 {authentication}",
+        "measured": "measured {offset} \u00b7 within {error}",
+        "allGood": "{sent} sent, all good",
+        "runs": "{runs} runs of one sign",
+        "standing:chosen": "chosen",
+        "standing:combined": "agrees",
+        "standing:notCombined": "agrees, not combined",
+        "standing:tooVariable": "set aside: too variable",
+        "standing:disagrees": "set aside: disagrees",
+        "unreachable": "out of reach",
+        "silent": "not answering",
+        "unsampled": "no sample yet",
+        "unusable": "set aside",
+        "aside": "set aside: {why}",
+        "why:noSelect": "never to be chosen",
+        "why:tooFewSamples": "too few samples yet",
+        "why:unsynchronised": "not synchronised itself",
+        "why:stratum": "its stratum is out of range",
+        "why:tooDistant": "too far from its own reference",
+        "why:tooVariable": "too variable",
+        "why:waitingForOthers": "waiting on the others' samples",
+        "why:stale": "its samples are too old",
+        "why:orphan": "an orphan's stratum",
+        "why:untrusted": "disagrees with the trusted servers",
+        "why:disagrees": "disagrees with the others",
+        "why:waitingForSources": "waiting for more servers",
+        "why:notPreferred": "another is preferred",
+        "why:waitingForSample": "waiting for a new sample",
+        "why:tooFarToCombine": "too far to combine",
+        "why:combined": "combined with the chosen one",
+        "why:chosen": "the clock is kept by it",
+        "why:other": "for a reason chrony gives no name",
+        "ago": "{span} ago",
+        "reach": "{count} of the last 8",
+        "within": "within {error}",
+        "interval": "{low} to {high}",
+        "samples": "{samples} over {span}",
+        "tests": "{passed} of 10",
+        "packets": "{sent} sent \u00b7 {received} received \u00b7 {valid} valid \u00b7 {good} good"
+      }
+    },
+    {
+      "id": "time:server",
+      "in": "time:servers",
+      "name": "Time Server",
+      "term": "Desktop/time server"
+    },
+    {
+      "id": "time:server:why",
+      "in": "time:server",
+      "name": "Why"
+    },
+    {
+      "id": "time:server:stratum",
+      "in": "time:server",
+      "name": "Stratum"
+    },
+    {
+      "id": "time:server:poll",
+      "in": "time:server",
+      "name": "Poll Interval"
+    },
+    {
+      "id": "time:server:reach",
+      "in": "time:server",
+      "name": "Reach"
+    },
+    {
+      "id": "time:server:last-sample",
+      "in": "time:server",
+      "name": "Last Sample"
+    },
+    {
+      "id": "time:server:offset",
+      "in": "time:server",
+      "name": "Offset"
+    },
+    {
+      "id": "time:server:interval",
+      "in": "time:server",
+      "name": "Error Bounds"
+    },
+    {
+      "id": "time:server:score",
+      "in": "time:server",
+      "name": "Score"
+    },
+    {
+      "id": "time:server:samples",
+      "in": "time:server",
+      "name": "Samples"
+    },
+    {
+      "id": "time:server:estimate",
+      "in": "time:server",
+      "name": "Estimated Offset"
+    },
+    {
+      "id": "time:server:deviation",
+      "in": "time:server",
+      "name": "Standard Deviation"
+    },
+    {
+      "id": "time:server:frequency",
+      "in": "time:server",
+      "name": "Frequency"
+    },
+    {
+      "id": "time:server:skew",
+      "in": "time:server",
+      "name": "Skew"
+    },
+    {
+      "id": "time:server:leap",
+      "in": "time:server",
+      "name": "Leap Second"
+    },
+    {
+      "id": "time:server:reference-time",
+      "in": "time:server",
+      "name": "Reference Time"
+    },
+    {
+      "id": "time:server:ntp-version",
+      "in": "time:server",
+      "name": "NTP Version"
+    },
+    {
+      "id": "time:server:exchange",
+      "in": "time:server",
+      "name": "Exchange"
+    },
+    {
+      "id": "time:server:precision",
+      "in": "time:server",
+      "name": "Precision"
+    },
+    {
+      "id": "time:server:root-delay",
+      "in": "time:server",
+      "name": "Root Delay"
+    },
+    {
+      "id": "time:server:root-dispersion",
+      "in": "time:server",
+      "name": "Root Dispersion"
+    },
+    {
+      "id": "time:server:delay",
+      "in": "time:server",
+      "name": "Delay"
+    },
+    {
+      "id": "time:server:dispersion",
+      "in": "time:server",
+      "name": "Dispersion"
+    },
+    {
+      "id": "time:server:response",
+      "in": "time:server",
+      "name": "Response Time"
+    },
+    {
+      "id": "time:server:jitter-asymmetry",
+      "in": "time:server",
+      "name": "Jitter Asymmetry"
+    },
+    {
+      "id": "time:server:tests",
+      "in": "time:server",
+      "name": "Tests Passed"
+    },
+    {
+      "id": "time:server:packets",
+      "in": "time:server",
+      "name": "Packets"
+    },
+    {
+      "id": "time:server:address",
+      "in": "time:server",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "time:server:reference",
+      "in": "time:server",
+      "name": "Reference"
+    },
+    {
+      "id": "time:server:local-address",
+      "in": "time:server",
+      "name": "Local Address"
+    }
+  ]
+}

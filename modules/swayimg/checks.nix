@@ -32,7 +32,7 @@ onLinux {
       cp ${./Swayimg.js} launcher/Swayimg.js
       cp ${../quickshell/FileFacts.js} FileFacts.js
       cp ${../quickshell/When.js} When.js
-      cp ${../quickshell/launcher/words.json} words.json
+      cp ${(import ../quickshell/launcher/words.nix).file} words.json
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

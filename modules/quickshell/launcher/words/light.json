@@ -1,0 +1,94 @@
+{
+  "things": [
+    {
+      "id": "light:desk:brightness",
+      "in": "light",
+      "name": "Brightness",
+      "term": "Machine/brightness"
+    },
+    {
+      "id": "light:desk:warmth",
+      "in": "light",
+      "name": "Warmth",
+      "term": "Desktop/warmth"
+    },
+    {
+      "id": "light:desk:output",
+      "in": "light",
+      "name": "Output"
+    },
+    {
+      "id": "light:desk:hid-device",
+      "in": "light",
+      "name": "HID Device"
+    },
+    {
+      "id": "light:desk:serial",
+      "in": "light",
+      "name": "Serial"
+    },
+    {
+      "id": "light:desk:level",
+      "command": "set",
+      "argument": "deskbrightness={n}",
+      "in": "light:desk:brightness",
+      "name": "{n}%",
+      "verb": "set"
+    },
+    {
+      "id": "light:desk:kelvin",
+      "command": "set",
+      "argument": "deskwarmth={k}",
+      "in": "light:desk:warmth",
+      "name": "{warmth}",
+      "verb": "set"
+    },
+    {
+      "id": "verb:brighter",
+      "command": "set",
+      "argument": "deskbrightness+=10",
+      "in": "light:desk:brightness",
+      "name": "Brighter",
+      "verb": "brighter"
+    },
+    {
+      "id": "verb:dimmer",
+      "command": "set",
+      "argument": "deskbrightness-=10",
+      "in": "light:desk:brightness",
+      "name": "Dimmer",
+      "verb": "dimmer"
+    },
+    {
+      "id": "verb:warmer",
+      "command": "set",
+      "argument": "deskwarmth-=500",
+      "in": "light:desk:warmth",
+      "name": "Warmer",
+      "verb": "warmer"
+    },
+    {
+      "id": "verb:cooler",
+      "command": "set",
+      "argument": "deskwarmth+=500",
+      "in": "light:desk:warmth",
+      "name": "Cooler",
+      "verb": "cooler"
+    },
+    {
+      "id": "verb:turn",
+      "command": "set",
+      "argument": "nodesklight",
+      "in": "light",
+      "name": "Turn It Off",
+      "verb": "off",
+      "states": {
+        "off": {
+          "name": "Turn It On",
+          "verb": "on",
+          "argument": "desklight"
+        }
+      }
+    }
+  ]
+}

@@ -626,6 +626,10 @@
     no two of the theme's marks share a glyph unless they are named as meaning one thing, as heat
     and temperature are
   '';
+  each-places-words-are-a-file-of-their-own = ''
+    every thing's words sit in the file of the place it's in, under launcher/words/, and the
+    frame holds none, so two changes to different places' words never touch the same file
+  '';
   eero-completes-in-zsh = ''
     eero completes in zsh with its views and commands, each node, each device by its name or, where
     another shares it, its address, each profile, and --json after a view

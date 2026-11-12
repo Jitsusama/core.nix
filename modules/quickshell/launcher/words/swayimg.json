@@ -1,0 +1,14 @@
+{
+  "things": [
+    {
+      "id": "swayimg:screenshots:newest",
+      "in": "swayimg:screenshots",
+      "name": "Newest Screenshot"
+    },
+    {
+      "id": "swayimg:screenshots:count",
+      "in": "swayimg:screenshots",
+      "name": "Screenshots"
+    }
+  ]
+}

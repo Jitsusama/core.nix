@@ -1,0 +1,573 @@
+{
+  "things": [
+    {
+      "id": "verb:slack:sign-in",
+      "command": "open",
+      "in": "applications",
+      "name": "Sign In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
+      "id": "verb:passwords:let-in",
+      "command": "signin",
+      "in": "applications",
+      "name": "Let the Launcher In",
+      "verb": "open",
+      "glyph": "signIn"
+    },
+    {
+      "id": "passwords:vault",
+      "in": "applications",
+      "name": "{vault}",
+      "verb": "more",
+      "glyph": "vault",
+      "said": { "entry": "{count} entry", "entries": "{count} entries" }
+    },
+    {
+      "id": "passwords:entries",
+      "in": "applications",
+      "name": "Entries",
+      "term": "Security/entry"
+    },
+    {
+      "id": "passwords:favourites",
+      "in": "applications",
+      "name": "Favourites",
+      "term": "Security/favourite"
+    },
+    {
+      "id": "tuple",
+      "in": "applications",
+      "name": "The Call"
+    },
+    {
+      "id": "vm",
+      "in": "applications",
+      "name": "VM",
+      "term": "Machine/VM",
+      "glyph": "vm",
+      "parts": [
+        "vm:processors",
+        "vm:memory",
+        "vm:most-memory",
+        "vm:processor-time",
+        "vm:autostart",
+        "vm:persistent",
+        "vm:managed-save",
+        "vm:id",
+        "vm:uuid",
+        "vm:security-model",
+        "vm:security-label",
+        "vm:messages"
+      ],
+      "said": {
+        "running": "running",
+        "waiting": "waiting",
+        "paused": "paused",
+        "stopping": "powering off",
+        "off": "off",
+        "crashed": "crashed",
+        "asleep": "asleep",
+        "unknown": "unknown",
+        "reading": "\u2026",
+        "count": "{count} {state}",
+        "system": "system",
+        "session": "on this machine \u00b7 VM",
+        "inSystem": "on the system \u00b7 VM",
+        "password": "asks for your password",
+        "yes": "yes",
+        "no": "no",
+        "noLimit": "no limit",
+        "and": "and"
+      },
+      "tells": {
+        "system": "It runs in the system, so starting it, powering it off, forcing it off or opening its console asks for your password.",
+        "stopped": "Known only while it runs: {figures}.",
+        "unsaid": "Not known for it: {figures}."
+      }
+    },
+    {
+      "id": "gimp",
+      "in": "applications",
+      "name": "The Newest Screenshot"
+    },
+    {
+      "id": "verb:gimp:picture",
+      "command": "new",
+      "argument": "picture",
+      "in": "applications",
+      "name": "New Image From the Copied Picture",
+      "verb": "start",
+      "glyph": "picture"
+    },
+    {
+      "id": "verb:inkscape:drawing",
+      "command": "new",
+      "argument": "drawing",
+      "in": "applications",
+      "name": "New Drawing",
+      "verb": "start",
+      "glyph": "vector",
+      "said": {
+        "eyebrow": "in {folder} \u00b7 {kind}",
+        "drawing": "drawing",
+        "svg": "SVG",
+        "now": "just now",
+        "minutes": "{minutes} min ago",
+        "yesterday": "yesterday",
+        "tomorrow": "tomorrow"
+      }
+    },
+    {
+      "id": "verb:inkscape:copied",
+      "command": "new",
+      "argument": "copied",
+      "in": "applications",
+      "name": "New Drawing From the Copied Picture",
+      "verb": "start",
+      "glyph": "picture"
+    },
+    {
+      "id": "inkscape:last",
+      "in": "applications",
+      "name": "Last Drawing"
+    },
+    {
+      "id": "inkscape:lately",
+      "in": "applications",
+      "name": "Recent Drawings"
+    },
+    {
+      "id": "verb:nvim:find",
+      "command": "edit",
+      "in": "applications",
+      "name": "Open a File by Name",
+      "verb": "open",
+      "glyph": "folder",
+      "ask": "which repository?",
+      "empty": "No repositories under {folder}."
+    },
+    {
+      "id": "verb:nvim:copied",
+      "command": "open",
+      "argument": "path",
+      "in": "applications",
+      "name": "Open the Copied Path",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "nvim:files",
+      "in": "applications",
+      "name": "Files",
+      "said": {
+        "modified": "modified",
+        "tab": "tab {index}",
+        "tabs": "tabs {indices}",
+        "shown": "shown",
+        "hidden": "hidden",
+        "windows": "in {count} windows",
+        "inWindow": "{count} in 1 window",
+        "inWindows": "{count} in {windows} windows",
+        "silent": "not answering"
+      }
+    },
+    {
+      "id": "nvim:modified",
+      "in": "applications",
+      "name": "Modified"
+    },
+    {
+      "id": "nvim:buffer",
+      "in": "applications",
+      "name": "Buffer"
+    },
+    {
+      "id": "nvim:used",
+      "in": "applications",
+      "name": "Last Used"
+    },
+    {
+      "id": "verb:chrome:repository",
+      "command": "open",
+      "argument": "github",
+      "in": "applications",
+      "name": "Open a Repository on GitHub",
+      "verb": "open",
+      "glyph": "branch",
+      "ask": "which repository?",
+      "empty": "No repository under {folder} has a remote on GitHub."
+    },
+    {
+      "id": "verb:chrome:link",
+      "command": "open",
+      "argument": "page",
+      "in": "applications",
+      "name": "Open the Copied Link",
+      "verb": "open",
+      "glyph": "web"
+    },
+    {
+      "id": "verb:chrome:download",
+      "command": "open",
+      "argument": "download",
+      "in": "applications",
+      "name": "Open the Latest Download",
+      "verb": "open",
+      "glyph": "path"
+    },
+    {
+      "id": "verb:reader:markdown",
+      "command": "open",
+      "argument": "markdown",
+      "in": "applications",
+      "name": "Read the Copied Markdown",
+      "verb": "open",
+      "glyph": "book"
+    },
+    {
+      "id": "verb:zathura:copied",
+      "command": "open",
+      "argument": "document",
+      "in": "applications",
+      "name": "Read the Copied Document",
+      "verb": "open",
+      "glyph": "book"
+    },
+    {
+      "id": "zathura:reading",
+      "in": "applications",
+      "name": "Reading",
+      "said": {
+        "page": "p. {page} of {pages}",
+        "through": "{share}% through",
+        "open": "open"
+      }
+    },
+    {
+      "id": "reader:to-finish",
+      "in": "applications",
+      "name": "Still to Finish"
+    },
+    {
+      "id": "swayimg",
+      "in": "applications",
+      "name": "Screenshots"
+    },
+    {
+      "id": "verb:swayimg:folder",
+      "command": "open",
+      "argument": "gallery",
+      "in": "applications",
+      "name": "Look Through {folder}",
+      "verb": "look"
+    },
+    {
+      "id": "verb:meet:code",
+      "command": "meet",
+      "in": "applications",
+      "name": "Join by Code",
+      "verb": "join",
+      "glyph": "joinCall",
+      "ask": "which code?"
+    },
+    {
+      "id": "verb:meet:link",
+      "command": "yank",
+      "in": "applications",
+      "name": "Copy a New Meeting's Link",
+      "verb": "copy",
+      "glyph": "link"
+    },
+    {
+      "id": "verb:mpv:link",
+      "command": "open",
+      "argument": "link",
+      "in": "applications",
+      "name": "Play the Copied Link",
+      "verb": "play",
+      "glyph": "link"
+    },
+    {
+      "id": "drive:kept",
+      "in": "applications",
+      "name": "Kept Here",
+      "term": "Programs/kept here",
+      "said": {
+        "of": "{held} of {most}"
+      }
+    },
+    {
+      "id": "verb:start",
+      "command": "new",
+      "in": "applications",
+      "name": "New Window",
+      "verb": "start",
+      "glyph": "below"
+    },
+    {
+      "id": "verb:program:switch",
+      "command": "buffer",
+      "in": "applications",
+      "name": "Go To",
+      "verb": "go to",
+      "glyph": "windows"
+    },
+    {
+      "id": "verb:program:quit",
+      "command": "halt",
+      "in": "applications",
+      "name": "Quit",
+      "verb": "quit",
+      "glyph": "close",
+      "sure": "Quit Now",
+      "act": "ending",
+      "ends": "quit"
+    },
+    {
+      "id": "program:media",
+      "in": "applications",
+      "name": "Media",
+      "term": "Programs/Media",
+      "verb": "more",
+      "glyph": "playing",
+      "said": {
+        "eyebrow": "on {player} \u00b7 track",
+        "on": "on",
+        "off": "off",
+        "track": "track",
+        "playlist": "playlist",
+        "disc": "disc {disc}",
+        "range": "{least} to {most}"
+      }
+    },
+    {
+      "id": "applications:processor",
+      "in": "applications",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
+    {
+      "id": "applications:memory",
+      "in": "applications",
+      "name": "Memory",
+      "term": "Machine/memory"
+    },
+    {
+      "id": "applications:processes",
+      "in": "applications",
+      "name": "Processes"
+    },
+    {
+      "id": "applications:playing",
+      "in": "applications",
+      "name": "Playing"
+    },
+    {
+      "id": "applications:opens",
+      "in": "applications",
+      "name": "Opens"
+    },
+    {
+      "id": "applications:handles",
+      "in": "applications",
+      "name": "Handles"
+    },
+    {
+      "id": "applications:categories",
+      "in": "applications",
+      "name": "Categories"
+    },
+    {
+      "id": "applications:command",
+      "in": "applications",
+      "name": "Command"
+    },
+    {
+      "id": "applications:desktop-id",
+      "in": "applications",
+      "name": "Desktop ID"
+    },
+    {
+      "id": "applications:keywords",
+      "in": "applications",
+      "name": "Keywords"
+    },
+    {
+      "id": "applications:starts-in",
+      "in": "applications",
+      "name": "Starts In"
+    },
+    {
+      "id": "applications:runs-in",
+      "in": "applications",
+      "name": "Runs In"
+    },
+    {
+      "id": "applications:entry-file",
+      "in": "applications",
+      "name": "Entry File"
+    },
+    {
+      "id": "applications:version",
+      "in": "applications",
+      "name": "Version"
+    },
+    {
+      "id": "applications:package",
+      "in": "applications",
+      "name": "Package"
+    },
+    {
+      "id": "applications:window-class",
+      "in": "applications",
+      "name": "Window Class"
+    },
+    {
+      "id": "applications:store-path",
+      "in": "applications",
+      "name": "Store Path"
+    },
+    {
+      "id": "kitty:repositories",
+      "in": "applications",
+      "name": "Repositories"
+    },
+    {
+      "id": "kitty:machines",
+      "in": "applications",
+      "name": "Machines",
+      "term": "Machine/machine"
+    },
+    {
+      "id": "tuple:last-call",
+      "in": "applications",
+      "name": "Last Call"
+    },
+    {
+      "id": "tuple:calls-lately",
+      "in": "applications",
+      "name": "Recent Calls"
+    },
+    {
+      "id": "mpv:to-finish",
+      "in": "applications",
+      "name": "Still to Finish"
+    },
+    {
+      "id": "program:sound",
+      "in": "applications",
+      "name": "Sound",
+      "term": "Machine/Sound",
+      "verb": "more",
+      "glyph": "volume",
+      "said": {
+        "muted": "muted",
+        "now": "now {level}",
+        "recording": "recording",
+        "yes": "yes",
+        "no": "no"
+      }
+    },
+    {
+      "id": "program:notices",
+      "in": "applications",
+      "name": "Notices",
+      "term": "Desktop/notice",
+      "verb": "more",
+      "glyph": "notifications"
+    },
+    {
+      "id": "program:recent",
+      "in": "applications",
+      "name": "Recent",
+      "term": "Desktop/Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none",
+        "open": "{count} open",
+        "tab": "1 tab",
+        "tabs": "{count} tabs",
+        "recent": "{count} recent",
+        "next": "next {when} \u00b7 {name}",
+        "today": "{count} today",
+        "parts": "{count} new",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
+      }
+    },
+    {
+      "id": "verb:kitty:repository",
+      "command": "new",
+      "argument": "repository",
+      "in": "applications",
+      "name": "New Window in a Repository",
+      "verb": "open",
+      "glyph": "folder",
+      "ask": "which repository?",
+      "said": {
+        "never": "never opened"
+      }
+    },
+    {
+      "id": "verb:kitty:ssh",
+      "command": "new",
+      "argument": "ssh",
+      "in": "applications",
+      "once": ["Host"],
+      "name": "SSH to a Machine",
+      "verb": "ssh",
+      "glyph": "sshMachine",
+      "ask": "which machine?"
+    },
+    {
+      "id": "kitty:tabs",
+      "in": "applications",
+      "name": "Tabs",
+      "verb": "more",
+      "glyph": "windows",
+      "ask": "which tab?",
+      "said": {
+        "active": "active",
+        "rang": "rang",
+        "output": "new output",
+        "closed": "closed",
+        "panes": "{count} panes",
+        "ssh": "ssh {machine}",
+        "tab": "tab {index} of {count}",
+        "inWindow": "{count} in 1 window",
+        "inWindows": "{count} in {windows} windows"
+      }
+    },
+    {
+      "id": "kitty:agents",
+      "in": "applications",
+      "name": "Agents' Windows",
+      "verb": "go to",
+      "glyph": "agent",
+      "said": {
+        "one": "1 agent's pane",
+        "many": "{count} agents' panes"
+      },
+      "tells": {
+        "where": "Each is in Agents, by its session."
+      }
+    },
+    {
+      "id": "meet:held",
+      "in": "applications",
+      "name": "Call",
+      "term": "Programs/call",
+      "verb": "join",
+      "glyph": "joinCall",
+      "said": {
+        "two": "{first} and {second}",
+        "others": "{first} and {count} others",
+        "eyebrow": "on Meet \u00b7 call"
+      }
+    }
+  ]
+}

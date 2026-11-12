@@ -37,7 +37,7 @@ let
   launcher = config.jitsusama.quickshell.launcher or null;
   words = pkgs.writeText "notices-words.json" (
     builtins.toJSON (
-      if launcher == null then lib.importJSON ../quickshell/launcher/words.json else launcher.words
+      if launcher == null then (import ../quickshell/launcher/words.nix).value else launcher.words
     )
   );
   # Each program's own mark, so a notice wears the mark its program's row

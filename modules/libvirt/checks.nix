@@ -80,7 +80,7 @@
       cp ${../quickshell/launcher/Order.js} Order.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
       cp ${../quickshell/launcher/Interfaces.js} Interfaces.js
-      cp ${../quickshell/launcher/words.json} words.json
+      cp ${(import ../quickshell/launcher/words.nix).file} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       # The case reads the words beside it, which Qt's engine reads from a

@@ -1,0 +1,81 @@
+{
+  "things": [
+    {
+      "id": "verb:job:go",
+      "command": "buffer",
+      "in": "jobs",
+      "name": "Go To",
+      "verb": "go to"
+    },
+    {
+      "id": "jobs:vm-test",
+      "in": "jobs",
+      "name": "VM Test",
+      "term": "Checks/VM test"
+    },
+    {
+      "id": "jobs:vm-check",
+      "in": "jobs",
+      "name": "VM Check"
+    },
+    {
+      "id": "jobs:build",
+      "in": "jobs",
+      "name": "Build"
+    },
+    {
+      "id": "jobs:benchmark",
+      "in": "jobs",
+      "name": "Benchmark"
+    },
+    {
+      "id": "jobs:checks",
+      "in": "jobs",
+      "name": "Checks",
+      "term": "Checks/check"
+    },
+    {
+      "id": "jobs:quest",
+      "in": "jobs",
+      "name": "Quest",
+      "term": "Agents/quest"
+    },
+    {
+      "id": "jobs:session",
+      "in": "jobs",
+      "name": "Session",
+      "term": "Agents/session"
+    },
+    {
+      "id": "jobs:command",
+      "in": "jobs",
+      "name": "Command"
+    },
+    {
+      "id": "jobs:class",
+      "in": "jobs",
+      "name": "Class"
+    },
+    {
+      "id": "jobs:needs",
+      "in": "jobs",
+      "name": "Needs"
+    },
+    {
+      "id": "jobs:held",
+      "in": "jobs",
+      "name": "Memory",
+      "term": "Machine/memory"
+    },
+    {
+      "id": "jobs:since",
+      "in": "jobs",
+      "name": "Since"
+    },
+    {
+      "id": "jobs:last",
+      "in": "jobs",
+      "name": "Last Run"
+    }
+  ]
+}

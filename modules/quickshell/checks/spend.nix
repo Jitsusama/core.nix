@@ -56,7 +56,8 @@
       cat > serve.json <<EOF
       {"sessions": "$PWD/sessions", "runs": "$PWD/runs.db", "registry": "$PWD/registry",
        "quests": "$PWD/quests", "state": "$PWD/state", "runtime": "$PWD/runtime/spend-watch",
-       "zone": "UTC", "notices": {"enable": false}, "vocabulary": "${../launcher/words.json}"}
+       "zone": "UTC", "notices": {"enable": false},
+       "vocabulary": "${(import ../launcher/words.nix).file}"}
       EOF
       ${lib.getExe watch} --config config.json import
       ${lib.getExe watch} --config config.json show > runtime/written/status.json

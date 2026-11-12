@@ -1,0 +1,107 @@
+{
+  "things": [
+    {
+      "id": "vm:processors",
+      "in": "vm",
+      "name": "Processors"
+    },
+    {
+      "id": "vm:memory",
+      "in": "vm",
+      "name": "Memory in Use"
+    },
+    {
+      "id": "vm:most-memory",
+      "in": "vm",
+      "name": "Most Memory"
+    },
+    {
+      "id": "vm:processor-time",
+      "in": "vm",
+      "name": "Processor Time"
+    },
+    {
+      "id": "vm:autostart",
+      "in": "vm",
+      "name": "Starts with the Machine"
+    },
+    {
+      "id": "vm:persistent",
+      "in": "vm",
+      "name": "Kept When Off"
+    },
+    {
+      "id": "vm:managed-save",
+      "in": "vm",
+      "name": "Saved State"
+    },
+    {
+      "id": "vm:id",
+      "in": "vm",
+      "name": "ID"
+    },
+    {
+      "id": "vm:uuid",
+      "in": "vm",
+      "name": "UUID"
+    },
+    {
+      "id": "vm:security-model",
+      "in": "vm",
+      "name": "Security Model"
+    },
+    {
+      "id": "vm:security-label",
+      "in": "vm",
+      "name": "Security Label"
+    },
+    {
+      "id": "vm:messages",
+      "in": "vm",
+      "name": "Messages"
+    },
+    {
+      "id": "verb:vm:console",
+      "command": "open",
+      "in": "vm",
+      "name": "Open the Console",
+      "verb": "open",
+      "glyph": "display"
+    },
+    {
+      "id": "verb:vm:start",
+      "command": "boot",
+      "in": "vm",
+      "name": "Start It",
+      "verb": "start",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:vm:resume",
+      "command": "resume",
+      "in": "vm",
+      "name": "Resume It",
+      "verb": "resume",
+      "glyph": "resume"
+    },
+    {
+      "id": "verb:vm:power-off",
+      "command": "off",
+      "in": "vm",
+      "name": "Power It Off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "ends": "power off"
+    },
+    {
+      "id": "verb:vm:force-off",
+      "command": "forceoff",
+      "in": "vm",
+      "name": "Force It Off",
+      "verb": "off",
+      "glyph": "poweroff",
+      "act": "ending",
+      "ends": "force off"
+    }
+  ]
+}

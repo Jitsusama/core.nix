@@ -1,0 +1,157 @@
+{
+  "things": [
+    {
+      "id": "keyboards:laptop",
+      "in": "keyboards",
+      "name": "The Laptop's Keyboard"
+    },
+    {
+      "id": "keyboards:caps",
+      "in": "keyboards",
+      "name": "Caps Lock"
+    },
+    {
+      "id": "keyboards:num",
+      "in": "keyboards",
+      "name": "Num Lock"
+    },
+    {
+      "id": "keyboards:scroll",
+      "in": "keyboards",
+      "name": "Scroll Lock"
+    },
+    {
+      "id": "keyboards:locks",
+      "in": "keyboards",
+      "name": "Locks"
+    },
+    {
+      "id": "keyboards:layer",
+      "in": "keyboards",
+      "name": "Layer",
+      "term": "Keyboards/layer"
+    },
+    {
+      "id": "keyboards:repeat",
+      "in": "keyboards",
+      "name": "Repeat",
+      "said": "after {delay} ms \u00b7 {rate} Hz"
+    },
+    {
+      "id": "keyboards:lights",
+      "once": ["Backlight"],
+      "in": "keyboards",
+      "name": "Light",
+      "term": "Keyboards/light",
+      "answers": [
+        "keyboard light"
+      ]
+    },
+    {
+      "id": "keyboards:lights:to",
+      "command": "set",
+      "argument": "kbdlevel={n}",
+      "in": "keyboards:lights",
+      "name": "Light to {n} of {most}",
+      "verb": "set",
+      "states": {
+        "off": {
+          "name": "Light Off",
+          "verb": "turn off"
+        }
+      }
+    },
+    {
+      "id": "keyboards:lights:on",
+      "in": "keyboards:lights",
+      "name": "Light On",
+      "verb": "turn on"
+    },
+    {
+      "id": "keyboards:lights:brighter",
+      "in": "keyboards:lights",
+      "name": "Brighter",
+      "verb": "brighter"
+    },
+    {
+      "id": "keyboards:lights:dimmer",
+      "in": "keyboards:lights",
+      "name": "Dimmer",
+      "verb": "dimmer"
+    },
+    {
+      "id": "keyboards:timeout",
+      "in": "keyboards",
+      "name": "Light Off After"
+    },
+    {
+      "id": "keyboards:connection",
+      "in": "keyboards",
+      "name": "Connection",
+      "term": "Machine/connection"
+    },
+    {
+      "id": "keyboards:maker",
+      "in": "keyboards",
+      "name": "Maker"
+    },
+    {
+      "id": "keyboards:model",
+      "in": "keyboards",
+      "name": "Model",
+      "term": "Machine/model"
+    },
+    {
+      "id": "keyboards:presses",
+      "in": "keyboards",
+      "name": "Presses"
+    },
+    {
+      "id": "keyboards:held",
+      "in": "keyboards",
+      "name": "Held"
+    },
+    {
+      "id": "keyboards:layers",
+      "in": "keyboards",
+      "name": "On Layers"
+    },
+    {
+      "id": "keyboards:modified",
+      "in": "keyboards",
+      "name": "With a Modifier"
+    },
+    {
+      "id": "keyboards:most",
+      "in": "keyboards",
+      "name": "Most Pressed"
+    },
+    {
+      "id": "keyboards:polling-rate",
+      "in": "keyboards",
+      "name": "Polling Rate"
+    },
+    {
+      "id": "keyboards:keys",
+      "in": "keyboards",
+      "name": "Keys",
+      "term": "Keyboards/key"
+    },
+    {
+      "id": "keyboards:firmware",
+      "in": "keyboards",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "keyboards:usb-id",
+      "in": "keyboards",
+      "name": "USB ID"
+    },
+    {
+      "id": "keyboards:serial",
+      "in": "keyboards",
+      "name": "Serial"
+    }
+  ]
+}

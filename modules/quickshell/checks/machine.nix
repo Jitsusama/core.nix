@@ -154,7 +154,7 @@
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
         export FONTCONFIG_FILE=${noFonts}
         ${lib.getExe machine} "$XDG_RUNTIME_DIR/daemons/machine.sock" \
-          --words ${../launcher/words.json} &
+          --words ${(import ../launcher/words.nix).file} &
         daemon=$!
         ${shellFolderLint}
         timeout 60 ${qs} -p shell.qml

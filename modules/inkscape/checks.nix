@@ -75,7 +75,6 @@ onLinux {
         "Recent.js"
         "Captured.js"
         "Ago.js"
-        "words.json"
       ];
       # Kept in Nix because it's a stand-in's few properties, as each
       # program's check in the launcher writes its niri.
@@ -139,6 +138,7 @@ onLinux {
       ${lib.concatMapStrings (file: ''
         cp ${launcher + "/${file}"} launcher/${file}
       '') launched}
+      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
       cp ${./InkscapeProgram.qml} launcher/InkscapeProgram.qml
       cp ${./Inkscape.js} launcher/Inkscape.js
       cp ${../../tests/inkscape-program.qml} shell.qml

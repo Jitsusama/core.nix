@@ -1,0 +1,139 @@
+{
+  "things": [
+    {
+      "id": "inkscape:dimensions",
+      "in": "verb:inkscape:drawing",
+      "name": "Dimensions"
+    },
+    {
+      "id": "inkscape:size",
+      "in": "verb:inkscape:drawing",
+      "name": "Size"
+    },
+    {
+      "id": "inkscape:path",
+      "in": "verb:inkscape:drawing",
+      "name": "Path"
+    },
+    {
+      "id": "reader:left:heading",
+      "in": "verb:reader:on",
+      "name": "Heading"
+    },
+    {
+      "id": "reader:left:read",
+      "in": "verb:reader:on",
+      "name": "Read"
+    },
+    {
+      "id": "reader:left:mark",
+      "in": "verb:reader:on",
+      "name": "Mark",
+      "term": "Keyboards/mark"
+    },
+    {
+      "id": "reader:left:path",
+      "in": "verb:reader:on",
+      "name": "Path"
+    },
+    {
+      "id": "swayimg:gallery:newest",
+      "in": "verb:swayimg:folder",
+      "name": "Newest"
+    },
+    {
+      "id": "swayimg:gallery:taken",
+      "in": "verb:swayimg:folder",
+      "name": "Taken"
+    },
+    {
+      "id": "swayimg:gallery:added",
+      "in": "verb:swayimg:folder",
+      "name": "Added"
+    },
+    {
+      "id": "swayimg:gallery:count",
+      "in": "verb:swayimg:folder",
+      "name": "Pictures"
+    },
+    {
+      "id": "mpv:stopped:to-go",
+      "in": "verb:mpv:on",
+      "name": "Still to Play"
+    },
+    {
+      "id": "mpv:stopped:speed",
+      "in": "verb:mpv:on",
+      "name": "Speed",
+      "term": "Programs/speed"
+    },
+    {
+      "id": "mpv:stopped:volume",
+      "in": "verb:mpv:on",
+      "name": "Volume",
+      "term": "Machine/volume"
+    },
+    {
+      "id": "mpv:stopped:audio",
+      "in": "verb:mpv:on",
+      "name": "Audio"
+    },
+    {
+      "id": "mpv:stopped:subtitles",
+      "in": "verb:mpv:on",
+      "name": "Subtitles"
+    },
+    {
+      "id": "mpv:stopped:size",
+      "in": "verb:mpv:on",
+      "name": "Size"
+    },
+    {
+      "id": "mpv:stopped:path",
+      "in": "verb:mpv:on",
+      "name": "Path"
+    },
+    {
+      "id": "kitty:machine",
+      "in": "verb:kitty:ssh",
+      "name": "Machine",
+      "term": "Machine/machine",
+      "verb": "ssh",
+      "glyph": "sshMachine",
+      "said": {
+        "now": "connected now",
+        "once": "once",
+        "times": "{count} times",
+        "never": "never",
+        "config": "~/.ssh/config",
+        "known": "~/.ssh/known_hosts",
+        "eyebrow": "in {file} \u00b7 machine"
+      }
+    },
+    {
+      "id": "verb:file-chooser:unmark-all",
+      "command": "argdelete",
+      "argument": "*",
+      "in": "verb:file-chooser:marked",
+      "name": "Forget Them",
+      "verb": "forget",
+      "glyph": "forget"
+    },
+    {
+      "id": "verb:file-chooser:copy-marked",
+      "command": "yank",
+      "in": "verb:file-chooser:marked",
+      "name": "Copy the Paths",
+      "verb": "copy",
+      "glyph": "copy"
+    },
+    {
+      "id": "verb:quest:start-anywhere",
+      "command": "new",
+      "in": "verb:quest:open",
+      "name": "Wherever It Fits",
+      "verb": "start",
+      "glyph": "agent"
+    }
+  ]
+}

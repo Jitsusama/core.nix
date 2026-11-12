@@ -1,0 +1,39 @@
+{
+  "things": [
+    {
+      "id": "transcript:length",
+      "in": "transcript",
+      "name": "Length"
+    },
+    {
+      "id": "transcript:with",
+      "in": "transcript",
+      "name": "With"
+    },
+    {
+      "id": "verb:transcript:open",
+      "command": "open",
+      "in": "transcript",
+      "name": "Open the Transcript",
+      "verb": "open",
+      "glyph": "lines"
+    },
+    {
+      "id": "verb:transcript:folder",
+      "command": "open",
+      "argument": "folder",
+      "in": "transcript",
+      "name": "Open Its Folder",
+      "verb": "open",
+      "glyph": "folder"
+    },
+    {
+      "id": "verb:transcript:copy",
+      "command": "yank",
+      "in": "transcript",
+      "name": "Copy the Path",
+      "verb": "copy",
+      "glyph": "copy"
+    }
+  ]
+}

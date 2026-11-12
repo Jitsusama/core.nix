@@ -1,0 +1,136 @@
+{
+  "things": [
+    {
+      "id": "spend:start",
+      "in": "spend",
+      "name": "Start the Watch",
+      "verb": "start"
+    },
+    {
+      "id": "spend:copy",
+      "in": "spend",
+      "name": "Copy What It Found"
+    },
+    {
+      "id": "spend:expect",
+      "in": "spend",
+      "name": "It's Expected",
+      "verb": "expect"
+    },
+    {
+      "id": "spend:standing",
+      "in": "spend",
+      "name": "Standing"
+    },
+    {
+      "id": "spend:warns",
+      "in": "spend",
+      "name": "Warns"
+    },
+    {
+      "id": "spend:resets",
+      "in": "spend",
+      "name": "Resets"
+    },
+    {
+      "id": "spend:read",
+      "in": "spend",
+      "name": "Read By"
+    },
+    {
+      "id": "spend:state",
+      "in": "spend",
+      "name": "Feed Says"
+    },
+    {
+      "id": "spend:spent",
+      "in": "spend",
+      "name": "Spent"
+    },
+    {
+      "id": "spend:worth",
+      "in": "spend",
+      "name": "Worth at List"
+    },
+    {
+      "id": "spend:providers",
+      "in": "spend",
+      "name": "Providers"
+    },
+    {
+      "id": "spend:reading",
+      "in": "spend",
+      "name": "Feed"
+    },
+    {
+      "id": "spend:override",
+      "in": "spend",
+      "name": "Override Ends"
+    },
+    {
+      "id": "spend:changed",
+      "in": "spend",
+      "name": "Last Changed"
+    },
+    {
+      "id": "spend:ends",
+      "in": "spend",
+      "name": "Ends Near"
+    },
+    {
+      "id": "spend:from",
+      "in": "spend",
+      "name": "Read From"
+    },
+    {
+      "id": "spend:rebuilding",
+      "in": "spend",
+      "name": "Rebuilding Context"
+    },
+    {
+      "id": "spend:most-quest",
+      "in": "spend",
+      "name": "Most by Quest"
+    },
+    {
+      "id": "spend:most-model",
+      "in": "spend",
+      "name": "Most by Model"
+    },
+    {
+      "id": "spend:most-agent",
+      "in": "spend",
+      "name": "Most by Agent"
+    },
+    {
+      "id": "spend:most-repo",
+      "in": "spend",
+      "name": "Most by Repo"
+    },
+    {
+      "id": "spend:most-session",
+      "in": "spend",
+      "name": "Most by Session"
+    },
+    {
+      "id": "spend:most-tool",
+      "in": "spend",
+      "name": "Most by Tool"
+    },
+    {
+      "id": "spend:most-day",
+      "in": "spend",
+      "name": "Most by Day"
+    },
+    {
+      "id": "spend:most-source",
+      "in": "spend",
+      "name": "Most by Source"
+    },
+    {
+      "id": "spend:most-budget",
+      "in": "spend",
+      "name": "Most by Budget"
+    }
+  ]
+}

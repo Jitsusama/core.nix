@@ -24,7 +24,7 @@ let
   # so a place the launcher opens on niri has what Joel's has.
   clipboard = [
     "CLIPBOARD=${lib.getExe (pkgs.callPackage ../clipboard/package.nix { })}"
-    "CLIPBOARD_WORDS=${../launcher/words.json}"
+    "CLIPBOARD_WORDS=${(import ../launcher/words.nix).file}"
   ];
 in
 {
@@ -541,7 +541,7 @@ in
       cp ${../launcher/WarpSwitch.js} WarpSwitch.js
       cp ${../launcher/HomeNetwork.js} HomeNetwork.js
       cp ${../launcher/Ago.js} Ago.js
-      cp ${../launcher/words.json} words.json
+      cp ${(import ../launcher/words.nix).file} words.json
       cp ${../../warp/warp.json} warp.json
       cp ${../launcher/Keyboards.js} Keyboards.js
       cp ${../launcher/KeyCounts.js} KeyCounts.js

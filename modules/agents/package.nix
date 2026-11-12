@@ -19,10 +19,16 @@ rustPlatform.buildRustPackage rec {
       ./tests/words.json
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
-      ../quickshell/launcher/words.json
     ];
   };
   sourceRoot = "${src.name}/agents";
+  # The launcher's words, joined from each place's file, put where its
+  # sources and tests read words.json (../quickshell/launcher/words.nix).
+  postUnpack = ''
+    chmod -R u+w ${src.name}
+    mkdir -p ${src.name}/quickshell/launcher
+    cp ${(import ../quickshell/launcher/words.nix).file} ${src.name}/quickshell/launcher/words.json
+  '';
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
     description = "Makes Agents' rows ready for the launcher";

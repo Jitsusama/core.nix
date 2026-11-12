@@ -1,0 +1,174 @@
+{
+  "things": [
+    {
+      "id": "awake:idle-held",
+      "in": "session:awake",
+      "name": "Idle Held By"
+    },
+    {
+      "id": "awake:sleep-held",
+      "in": "session:awake",
+      "name": "Sleep Held By"
+    },
+    {
+      "id": "awake:lid-held",
+      "in": "session:awake",
+      "name": "Lid Held By"
+    },
+    {
+      "id": "awake:idle-sleep",
+      "in": "session:awake",
+      "name": "Idle Sleep"
+    },
+    {
+      "id": "awake:put-off",
+      "in": "session:awake",
+      "name": "Sleep Put Off By"
+    },
+    {
+      "id": "awake:slept",
+      "in": "session:awake",
+      "name": "Last Slept"
+    },
+    {
+      "id": "session:quiet:60",
+      "command": "set",
+      "argument": "dnd=60",
+      "in": "session:quiet",
+      "name": "For an Hour",
+      "glyph": "quiet"
+    },
+    {
+      "id": "session:quiet:0",
+      "command": "set",
+      "argument": "dnd",
+      "in": "session:quiet",
+      "name": "Until It's Ended",
+      "glyph": "quiet"
+    },
+    {
+      "id": "session:profile:drawer",
+      "in": "session:profile",
+      "said": {
+        "eyebrow": "on this machine \u00b7 power profile",
+        "held": "{app} for {reason}",
+        "lap": "on a lap",
+        "heat": "too hot"
+      }
+    },
+    {
+      "id": "session:profile:held",
+      "in": "session:profile",
+      "name": "Held By"
+    },
+    {
+      "id": "session:profile:slowed",
+      "in": "session:profile",
+      "name": "Held Back",
+      "term": "Machine/held back"
+    },
+    {
+      "id": "session:profile:now",
+      "in": "session:profile",
+      "name": "On Now"
+    },
+    {
+      "id": "session:profile:firmware",
+      "in": "session:profile",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "session:profile:offers",
+      "in": "session:profile",
+      "name": "Firmware Offers"
+    },
+    {
+      "id": "session:profile:processor",
+      "in": "session:profile",
+      "name": "Processor",
+      "term": "Machine/processor"
+    },
+    {
+      "id": "session:profile:processor-driver",
+      "in": "session:profile",
+      "name": "Processor Driver"
+    },
+    {
+      "id": "session:profile:firmware-driver",
+      "in": "session:profile",
+      "name": "Firmware Driver"
+    },
+    {
+      "id": "session:Lock:key",
+      "in": "session:Lock",
+      "name": "Key"
+    },
+    {
+      "id": "session:Lock:open",
+      "in": "session:Lock",
+      "name": "Stays Open"
+    },
+    {
+      "id": "sleep:others",
+      "in": "session:Suspend",
+      "name": "Other Modes"
+    },
+    {
+      "id": "sleep:ways",
+      "in": "session:Suspend",
+      "name": "Ways to Sleep"
+    },
+    {
+      "id": "sleep:slept",
+      "in": "session:Suspend",
+      "name": "Slept"
+    },
+    {
+      "id": "sleep:failed",
+      "in": "session:Suspend",
+      "name": "Failed"
+    },
+    {
+      "id": "sleep:error",
+      "in": "session:Suspend",
+      "name": "Last Error",
+      "said": {
+        "EPERM": "it wasn't allowed",
+        "EIO": "a device couldn't read or write",
+        "EAGAIN": "a device asked to be tried again",
+        "ENOMEM": "memory ran out",
+        "EBUSY": "a device was busy",
+        "ENODEV": "a device was missing",
+        "EINVAL": "a device was asked what it can't do",
+        "ETIMEDOUT": "a device took too long"
+      }
+    },
+    {
+      "id": "sleep:hardware",
+      "in": "session:Suspend",
+      "name": "Last Hardware Sleep"
+    },
+    {
+      "id": "sleep:hardware-all",
+      "in": "session:Suspend",
+      "name": "All Hardware Sleep"
+    },
+    {
+      "id": "sleep:counts-to",
+      "in": "session:Suspend",
+      "name": "Hardware Counts To"
+    },
+    {
+      "id": "sleep:device",
+      "in": "session:Suspend",
+      "name": "Blocked By",
+      "term": "Machine/blocked by"
+    },
+    {
+      "id": "sleep:code",
+      "in": "session:Suspend",
+      "name": "Error Code"
+    }
+  ]
+}
