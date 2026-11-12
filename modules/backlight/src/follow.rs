@@ -52,6 +52,16 @@ impl Follow {
         &self.curve
     }
 
+    /// Stub, for the red run.
+    pub fn floored(self, _floor: Option<Curve>) -> Self {
+        self
+    }
+
+    /// Stub, for the red run.
+    pub fn floor(&self) -> Option<&Curve> {
+        None
+    }
+
     /// The light last heard, once there's been any.
     pub fn lux(&self) -> Option<f64> {
         self.lux
@@ -367,6 +377,7 @@ impl Keys {
 mod tests {
     use super::*;
     use crate::curve::Point;
+    use crate::evening::SHARE;
     use crate::steer::{BRIGHTENING, DIMMING};
 
     /// A while longer than any light is waited on before it's followed.
@@ -530,6 +541,73 @@ mod tests {
         let _ = follow.heard(10.0, 0.75, start + DIMMING);
         while follow.step(start + LATER).is_some() {}
         assert_eq!(follow.start(0.2, start + LATER + BRIGHTENING), None);
+    }
+
+    /// The clock's evening looked at once a minute for `minutes`, as the
+    /// daemon does, with the screen at `shown`.
+    fn evening_for(follow: &mut Follow, minutes: u32, shown: f64, start: Instant) {
+        for minute in 0..minutes {
+            follow.dims(SHARE, shown, start + Duration::from_mins(minute.into()));
+        }
+    }
+
+    #[test]
+    fn a_start_inside_the_evening_eases_from_where_the_screen_is() {
+        // 12 Nov, 00:00: a restart deep in the evening took Joel's screen
+        // from 85% to 43% within seconds.
+        let start = Instant::now();
+        let mut follow = Follow::new(curve(), true);
+        follow.dims(SHARE, 0.8, start);
+        let _ = follow.heard(1000.0, 0.8, start);
+        let first = follow.asks(1000.0);
+        assert!(
+            (first - 0.8).abs() < 0.01,
+            "a start in the evening asked {first} at once of a screen at 0.8"
+        );
+        evening_for(&mut follow, 31, 0.8, start);
+        let eased = follow.asks(1000.0);
+        assert!(
+            (eased - 0.8 * SHARE).abs() < 1e-9,
+            "half an hour on it asked {eased}"
+        );
+    }
+
+    #[test]
+    fn a_pick_in_the_evening_holds_for_the_rest_of_it() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        evening_for(&mut follow, 31, 0.8, start);
+        assert_eq!(follow.chose(0.75), Some(1000.0));
+        evening_for(&mut follow, 120, 0.75, start + LATER);
+        let asks = follow.asks(1000.0);
+        assert!(
+            (asks - 0.75).abs() < 1e-9,
+            "0.75 picked in the evening came to ask {asks}"
+        );
+        let learned = follow.curve().level_at(1000.0);
+        assert!(
+            (learned - 0.8).abs() < 1e-9,
+            "a pick in the evening moved the day's curve to {learned}"
+        );
+    }
+
+    #[test]
+    fn the_evening_never_dims_past_what_joel_set_at_that_light() {
+        // 12 Nov: 43% at 18 lux was too dark; a pick up says so, and a
+        // restart keeps it.
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        evening_for(&mut follow, 31, 0.8, start);
+        let _ = follow.chose(0.7);
+        let floor = follow.floor().cloned();
+        let mut again = Follow::new(curve(), true).floored(floor);
+        let _ = again.heard(1000.0, 0.7, start);
+        evening_for(&mut again, 120, 0.7, start);
+        let asks = again.asks(1000.0);
+        assert!(
+            asks >= 0.7 - 1e-9,
+            "after a restart the evening dimmed past 0.7 to {asks}"
+        );
     }
 
     #[test]
