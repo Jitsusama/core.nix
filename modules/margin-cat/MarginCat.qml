@@ -61,10 +61,13 @@ Scope {
     // through layoutsChanged, not through its windows' revision.
     property int settled: 0
 
-    // The windows daemon says where tiles are only while something wants
-    // them, and the cat follows the one Joel's in.
-    Component.onCompleted: Niri.wantTiles("cat", true)
-    Component.onDestruction: Niri.wantTiles("cat", false)
+    // The windows daemon says where a tile is only while something wants
+    // it, and the cat follows the one Joel's in, so it hears that tile
+    // alone, and none while it's away for a share or the overview.
+    readonly property var over: shared || Niri.overview ? null : Niri.current
+    onOverChanged: Niri.wantTile("cat", over)
+    Component.onCompleted: Niri.wantTile("cat", over)
+    Component.onDestruction: Niri.wantTile("cat", null)
 
     IdleMonitor {
         id: dozing
