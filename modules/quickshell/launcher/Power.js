@@ -88,10 +88,7 @@ function choiceFacts(daemon, known, said) {
 // The programs whose windows are open, the most windows first, then A to
 // Z, as amounts are (Order.js), each { name, count }, from niri's windows (Niri.qml's, by id),
 // each named by `named` from its app_id, and how many windows in all, a
-// window with no app_id counted there alone. A stopgap against the rule
-// that daemons count and sort (Y2YBTS, 2207fa52): the windows daemon
-// (ZINAWZ) serves it as windows-open:power by Thu 12 Nov 18:00, and
-// Session.qml reads that record in its place the day it lands.
+// window with no app_id counted there alone.
 function byProgram(windows, named) {
     const counted = Object.create(null);
     let open = 0;
@@ -146,19 +143,6 @@ function lockSaid(open, chord, said) {
             { id: "session:Lock:key", value: chord },
             { id: "session:Lock:open", value: told.programs }
         ].filter(fact => fact.value !== "")
-    };
-}
-
-// The drawer of a row that ends the session, Log Out's, Reboot's or Power
-// Off's, an act's that ends something (VKCF3Z, 37e49991): its lead says
-// what it does and how many windows it closes, "Reboots the machine,
-// closing 14 windows.", and its Ends fact, by the id `ends`, whose they
-// are. `open` is byProgram's.
-function endingSaid(open, ends, said) {
-    const told = openSaid(open, said);
-    return {
-        lead: told.windows === "" ? said.alone : filled(said.lead, { windows: told.windows }),
-        facts: [{ id: ends, value: told.programs }].filter(fact => fact.value !== "")
     };
 }
 

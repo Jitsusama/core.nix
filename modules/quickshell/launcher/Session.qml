@@ -138,23 +138,6 @@ Provider {
         };
     }
 
-    // The drawer of a row that ends the session (Power.js's endingSaid):
-    // what it does and how many windows it closes, then whose, in the
-    // words Lock counts windows in. Worked out only as it's drawn.
-    function endingDrawer(key) {
-        const entry = Words.of(key);
-        const words = Object.assign({}, Words.of("session:Lock").said, entry.said, entry.tells);
-        const told = Power.endingSaid(Power.byProgram(Niri.windows, provider.programNamed),
-            `${key}:ends`, words);
-        return {
-            eyebrow: words.eyebrow ?? "",
-            eyebrowNames: true,
-            title: Words.name(key),
-            facts: told.facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
-            body: told.lead
-        };
-    }
-
     readonly property var days: ({
         yesterday: (Words.of("file-chooser:changed").said ?? {}).yesterday,
         date: (at, format) => Qt.formatDate(at, format)
@@ -686,22 +669,28 @@ Provider {
         { was: "Power Off", run: () => Niri.spawn(["systemctl", "poweroff"]) }
     ].map(action => {
         const key = `session:${action.was}`;
+        const sure = Words.of(key).sure ?? "";
         const asked = Words.of(key).asked ?? "";
-        const arms = (Words.of(key).said ?? {}).arms ?? "";
         return said(key, "", Object.assign({
             chord: action.does ? bound(action.does) : [],
             hue: "machine",
             run: action.run,
-            // Those that end the session arm on a first Return, in place,
-            // and a second does it (Launcher.qml's pressArming; VKCF3Z,
-            // 2026-11-12), since everyday words now find them; the : line
-            // and a terminal's `launcher do` ask once (y/n).
-            confirm: asked !== "",
-            arms,
+            // Those that end the session ask once, as a second Return, since
+            // everyday words now find them.
+            confirm: sure !== "",
             // Asked, it says what it does to what, then what it closes, as
             // "Reboot the Machine, Closing 12 Windows" (Confirm.question).
-            asked: asked !== "" ? () => asked + provider.closing : undefined
-        }, arms !== "" ? { thing: true, drawer: () => provider.endingDrawer(key) } : {},
-        action.fields ?? {}));
+            asked: asked !== "" ? () => asked + provider.closing : undefined,
+            verbs: sure !== "" ? () => [provider.thing({
+                key: `${key}:sure`,
+                // The step that asks Joel to be sure, so its Return does it (Launcher.lands).
+                sure: true,
+                verb: Words.verb(key),
+                name: sure + provider.closing,
+                glyph: Words.glyph(key),
+                hue: "alert",
+                run: action.run
+            })] : null
+        }, action.fields ?? {}));
     }))
 }

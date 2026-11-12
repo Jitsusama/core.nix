@@ -110,21 +110,6 @@
       "name": "Stays Open"
     },
     {
-      "id": "session:Log Out:ends",
-      "in": "session:Log Out",
-      "name": "Ends"
-    },
-    {
-      "id": "session:Reboot:ends",
-      "in": "session:Reboot",
-      "name": "Ends"
-    },
-    {
-      "id": "session:Power Off:ends",
-      "in": "session:Power Off",
-      "name": "Ends"
-    },
-    {
       "id": "sleep:others",
       "in": "session:Suspend",
       "name": "Other Modes"
