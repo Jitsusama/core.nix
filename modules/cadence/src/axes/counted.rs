@@ -4,10 +4,10 @@
 //! lines where Joel sounded pained, which health counts in its day file;
 //! the security musts past due and holes open, which ISXEG8 files in the
 //! ledger; the asks for a secret, which health counts from secret-asks's
-//! journal; boot, shutdown, disk and memory, from health's day file; the
-//! launcher's keys, from the shell; and his apps' stalls, from cadence
-//! day's own figures. The daily measure's readings keep a file of their
-//! own, measure.rs. Each stays unread until its program has written a day.
+//! journal; boot, shutdown, disk, memory and launches, from health's day
+//! file; and his apps' stalls, from cadence day's own figures. The daily
+//! measure's readings keep a file of their own, measure.rs, and so do the
+//! launcher's, launcher.rs. Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -179,51 +179,6 @@ pub fn held(s: &Sources) -> Vec<Reading> {
             "80ECO2",
         )
         .from(from),
-    ]
-}
-
-/// The launcher's keys today, held to docs/design.md's budget: drawn in
-/// 50 ms at the median and 100 ms at the 99th percentile. Health reads them
-/// from the summary each opening ends with, each key timed from its press
-/// in the Wayland event to niri presenting the frame that drew it, so they
-/// are his key to his screen (Y2YBTS and 80ECO2, 2026-11-12). Its median
-/// weighs each opening's by its keys. Its 99th is the slowest opening's,
-/// only a ceiling, since percentiles of batches can't be pooled; so it's
-/// said, never judged, until the shell keeps each key's time.
-#[must_use]
-pub fn keys(s: &Sources) -> Vec<Reading> {
-    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
-    let from = "health's day file, from the shell's presented keys";
-    vec![
-        Reading::new(
-            "the launcher's middle key {} today, from his key to his screen",
-            figure("health.launcher.keys.median-ms"),
-            " ms",
-            "Y2YBTS",
-        )
-        .bar(Bar::AtMost(50.0))
-        .detail(
-            figure("health.launcher.keys.late-percent")
-                .map(|late| format!("{} of keys took longer than 50 ms", shown(late, "%"))),
-        )
-        .from(from)
-        .his(),
-        Reading::new(
-            "the launcher's slowest key in a hundred today {}",
-            None,
-            " ms",
-            "Y2YBTS",
-        )
-        .bar(Bar::AtMost(100.0))
-        .detail(figure("health.launcher.keys.p99-ms").map(|ceiling| {
-            format!(
-                "at most {}, the slowest batch's: batches can't be pooled exactly, \
-                 so an exact figure waits on the shell keeping each key's time",
-                shown(ceiling, " ms")
-            )
-        }))
-        .from(from)
-        .his(),
     ]
 }
 
@@ -549,51 +504,6 @@ mod tests {
             read.iter().map(Reading::out).collect::<Vec<_>>(),
             [true, false, false],
             "only the disk has a bar to be past"
-        );
-    }
-
-    #[test]
-    fn launcher_keys_come_from_healths_presented_keys() {
-        let s = Sources {
-            health: Some(BTreeMap::from([
-                ("health.launcher.keys.median-ms".to_owned(), 52.0),
-                ("health.launcher.keys.p99-ms".to_owned(), 1_209.0),
-                ("health.launcher.keys.late-percent".to_owned(), 43.2),
-            ])),
-            ..Sources::default()
-        };
-        let read = keys(&s);
-        let words: Vec<String> = read.iter().map(Reading::words).collect();
-        assert_eq!(
-            words,
-            [
-                "the launcher's middle key 52 ms today, from his key to his screen, at most 50 ms",
-                "the launcher's slowest key in a hundred today: no reading yet",
-            ]
-        );
-        assert!(read[0].out(), "a 52 ms middle key was in spec");
-        assert!(
-            read[0].his,
-            "health times keys from his press to niri's frame"
-        );
-        assert_eq!(
-            read[0].detail.as_deref(),
-            Some("43% of keys took longer than 50 ms"),
-            "the middle key says how many keys were late"
-        );
-        assert_eq!(
-            read[1].detail.as_deref(),
-            Some(
-                "at most 1,209 ms, the slowest batch's: batches can't be pooled exactly, \
-                 so an exact figure waits on the shell keeping each key's time"
-            ),
-            "a ceiling is said, never judged as the 99th itself"
-        );
-        assert!(
-            keys(&Sources::default())
-                .iter()
-                .all(|r| r.figure().is_none()),
-            "a day with no keys reads as unread, not as fast"
         );
     }
 

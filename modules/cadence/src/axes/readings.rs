@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{Axis, Bar, Reading, shown};
-use super::{counted, landings, measure, network, plans};
+use super::{counted, landings, launcher, measure, network, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -109,7 +109,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         axis(
             "responsiveness",
             [
-                counted::keys(&s.counted),
+                launcher::readings(&s.counted),
                 counted::stalls(s.day.as_ref().map(|d| &d.figures)),
                 counted::responds(&s.counted),
             ]
