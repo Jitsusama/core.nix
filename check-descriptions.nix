@@ -1546,7 +1546,8 @@
     token first, never takes the name from another server, and keeps its history and ids over a
     restart; each notice's rows list its card's acts in its order, in three places each worded for
     its list, signed as the desktop knows its sender; and a notice read where it came from closes,
-    saying where it was read, while one read here stays open
+    saying where it was read, while one read here stays open; and one from a conversation with one
+    open takes its place, folding it, read, and saying how many came in all
   '';
   notices-passes-clippy = ''
     clippy finds nothing in the notices daemon or its tests

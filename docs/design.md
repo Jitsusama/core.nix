@@ -2120,7 +2120,11 @@ works the same way everywhere.
 - **A notice gone is not lost.** Every notice of the session stays in the
   desktop's memory. One clicked, or withdrawn by its program because it was
   read there, was seen; one that left by itself was missed, and the notices'
-  row at home says how many until they're opened. Return on one goes to the
+  row at home says how many until they're opened. One from a conversation
+  with one open, the same program saying the same title, takes its place,
+  so a conversation holds one card, its side saying how many came; the one
+  it took over is in History, read "into a newer one" (Joel's wish that
+  notices clear themselves, 2026-11-12). Return on one goes to the
   program that sent it, its window when one is open. Its row is named by
   its title alone, or by its words' first line when it has none; its note
   is the line of its words holding what's typed, else their first, giving

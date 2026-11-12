@@ -26,7 +26,8 @@
         "bounced": "mail bounced",
         "unread": "unread",
         "read": "read",
-        "notice": "notice"
+        "notice": "notice",
+        "folds": "{count} in all"
       }
     }
   ]
