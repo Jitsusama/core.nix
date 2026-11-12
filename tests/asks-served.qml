@@ -124,44 +124,12 @@ ShellRoot {
         return asks.everything().find(row => row.key === `ask:${id}`) ?? null;
     }
 
-    // Waits for `holds`, ten seconds at most, then goes on to `then`, or
-    // fails saying `what`; `then` failing fails too.
-    function until(what, holds, then) {
-        waits.what = what;
-        waits.holds = holds;
-        waits.then = then;
-        waits.left = 200;
-        waits.start();
-    }
-
-    Timer {
+    // Each wait for the daemon, as the test library waits.
+    Until {
         id: waits
-
-        property string what: ""
-        property var holds: null
-        property var then: null
-        property int left: 0
-
-        interval: 50
-        repeat: true
-        onTriggered: {
-            try {
-                if (holds()) {
-                    stop();
-                    then();
-                } else if (--left === 0) {
-                    stop();
-                    throw new Error(`${what} never held`);
-                }
-            } catch (error) {
-                stop();
-                console.warn(`FAIL ${error.message}\n${error.stack ?? ""}`);
-                Qt.callLater(() => Qt.exit(1));
-            }
-        }
     }
 
-    Component.onCompleted: until("both asks served",
+    Component.onCompleted: waits.until("both asks served",
         () => rowOf(root.yes) !== null && rowOf(root.no) !== null, listed)
 
     function listed() {
@@ -179,7 +147,7 @@ ShellRoot {
             ["release", ["Release It", "Refuse It"]]);
         locked.setText("yes");
         row.run();
-        until("a locked yes refused", () => asking.refusals.length > 0, lockedOut);
+        waits.until("a locked yes refused", () => asking.refusals.length > 0, lockedOut);
     }
 
     function lockedOut() {
@@ -188,7 +156,7 @@ ShellRoot {
         same("op never ran for it", lines(opRan), 0);
         locked.setText("no");
         rowOf(root.yes).run();
-        until("the yes answered", () => answerOf(ran)?.state === "ran"
+        waits.until("the yes answered", () => answerOf(ran)?.state === "ran"
             && asks.forYou.length === 1, released);
     }
 
@@ -198,13 +166,13 @@ ShellRoot {
         same("For You holds only the ask still waiting",
             asks.forYou.map(one => one.row.key), [`ask:${root.no}`]);
         rowOf(root.no).verbs()[1].run();
-        until("the no answered", () => answerOf(answered)?.why === "refused by Joel"
+        waits.until("the no answered", () => answerOf(answered)?.why === "refused by Joel"
             && asks.forYou.length === 0, refused);
     }
 
     function refused() {
         same("op didn't run for the no", lines(opRan), 1);
-        until("none said waiting", () => asks.counted() === "none waiting", () => {
+        waits.until("none said waiting", () => asks.counted() === "none waiting", () => {
             console.info("every case held");
             Qt.callLater(() => Qt.exit(0));
         });
