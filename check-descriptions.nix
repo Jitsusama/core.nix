@@ -3139,14 +3139,17 @@
     using the machine only once a part saying them is looked at
   '';
   the-margin-cat-follows-the-keys-on-niri = ''
-    on a nested niri, the margin's cat sits over the column the keys are in and moves when they
-    move to another, on the overlay layer taking no keys, leaves while a window is fullscreen, and
-    is drawn in whole screen pixels of its hue at scales 1.5 and 2, each screen kept as its result
+    on a nested niri, the margin's cat sits over the column the keys are in and, two seconds after
+    they move to another, trots there in nine strides and at most 12 frames from the key, never
+    for h then l tapped; on the overlay layer taking no keys, it leaves while a window is
+    fullscreen, and is drawn in whole screen pixels of its hue at scales 1.5 and 2, each screen
+    kept as its result
   '';
   the-margin-cat-sits-above-its-column = ''
-    the margin's cat sits on the focused column's top edge over the middle of what's seen of it,
-    beside the margin's marks rather than on them, nowhere in fullscreen or a gap too shallow, and
-    is drawn in whole device pixels about two thirds of the gap tall
+    the margin's cat sits a cell above the focused column's top edge over the middle of what's
+    seen of it, beside the margin's marks rather than on them, nowhere in fullscreen or a gap too
+    shallow, is drawn in whole device pixels about two thirds of the gap tall, and walks in nine
+    strides on whole screen pixels, its feet touching down on every other
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces
