@@ -108,10 +108,12 @@ const AIR_RISE_MS: f64 = 0.05;
 /// A call's round trip through the VPN jitters by this much, a server's
 /// whole path away, with no queue standing.
 const VPN_MARGIN_MS: f64 = 5.0;
-/// How fast that round trip's baseline may rise, each second: faster than
-/// the air's, since a queue for the VPN drains within a second or two of a
-/// cut, and a round trip longer than that is the VPN's path moving.
-const VPN_RISE_MS: f64 = 1.0;
+/// How long back that round trip's least is taken from. A least that rose
+/// a millisecond a second whenever the VPN's CAKE held nothing went from
+/// 25 to 62 ms on 11 November, under a queue of 100 to 350 ms standing for
+/// minutes, and counted none of it; a path that moved is learned within
+/// this, or at once when the guard lets go.
+const VPN_LEAST_S: f64 = 300.0;
 /// A direction carrying under this share of its rate is idle, and its
 /// delay measures the path.
 const IDLE: f64 = 0.1;
@@ -777,6 +779,9 @@ pub struct Controller {
     pub down: Way,
     air_base: Option<f64>,
     vpn_base: Option<f64>,
+    /// Each round trip through the VPN heard over the last `VPN_LEAST_S`,
+    /// and when.
+    vpn_heard: VecDeque<(f64, f64)>,
     last_at: Option<f64>,
     answered_at: Option<f64>,
     started_at: Option<f64>,
@@ -793,6 +798,7 @@ impl Controller {
             down: Way::new(down),
             air_base: None,
             vpn_base: None,
+            vpn_heard: VecDeque::new(),
             last_at: None,
             answered_at: None,
             started_at: None,
@@ -824,7 +830,8 @@ impl Controller {
 
     /// The upload's queue in the router that only the VPN's flow waits in,
     /// in ms.
-    /// It's what the VPN's round trip took over its least, past what the
+    /// It's what the VPN's round trip took over the least heard in the last
+    /// `VPN_LEAST_S`, whatever its CAKE held then, past what the
     /// probes on the link found each way, while the VPN's CAKE held a
     /// queue: then the VPN sends as fast as it's let, and what it fills is
     /// the upload's. With our CAKE holding nothing, the VPN's flow is
@@ -834,21 +841,20 @@ impl Controller {
     /// off: it was a few ms in the trace on 11 November, beside a median
     /// 33 ms in the router, and counting nothing while the link's CAKE
     /// held any left that queue to grow.
-    fn hidden(&mut self, seen: &Seen, dt: f64) -> f64 {
+    fn hidden(&mut self, seen: &Seen) -> f64 {
         let Some(vpn) = seen.vpn_ms else {
             return 0.0;
         };
         let queued = seen.up_ours.filter(|ours| ours.in_vpn || ours.vpn_queued);
-        // The base follows the path up only while the VPN's CAKE holds
-        // nothing: rising under load, it rose from 29 to 55 ms on 11
-        // November, and took a standing queue for the path. A path that
-        // moved under load is learned again once the guard lets go.
-        let rise = if queued.is_some() {
-            0.0
-        } else {
-            VPN_RISE_MS * dt
-        };
-        let base = self.vpn_base.map_or(vpn, |b| vpn.min(b + rise));
+        self.vpn_heard.push_back((seen.at_s, vpn));
+        while self
+            .vpn_heard
+            .front()
+            .is_some_and(|&(at, _)| seen.at_s - at > VPN_LEAST_S)
+        {
+            self.vpn_heard.pop_front();
+        }
+        let base = self.vpn_heard.iter().map(|&(_, ms)| ms).fold(vpn, f64::min);
         self.vpn_base = Some(base);
         let Some(ours) = queued else {
             return 0.0;
@@ -897,7 +903,7 @@ impl Controller {
                 down: None,
             };
         }
-        let hidden = self.hidden(seen, dt);
+        let hidden = self.hidden(seen);
         let up = seen.up_delay_ms.map(|d| (d - air).max(0.0));
         let down = seen.down_delay_ms.map(|d| (d - air).max(0.0));
         let idle_up = self.up.idle(seen.up_kbit);
@@ -928,6 +934,7 @@ impl Controller {
                 // A queue no cut drains may be a VPN's path that moved,
                 // which its base, held under load, would not follow.
                 self.vpn_base = None;
+                self.vpn_heard.clear();
             }
         }
         if self.given_up() {
@@ -2096,7 +2103,7 @@ mod tests {
     // from 29 to 55, though the least heard kept coming back to 29: a
     // standing queue of 20 ms was counted as the path.
     #[test]
-    fn the_vpn_s_base_rises_only_while_its_cake_holds_nothing() {
+    fn the_vpn_s_least_is_the_least_heard_in_five_minutes() {
         let mut c = Controller::new(None, None);
         run(&mut c, 0.0, 1.0, through_the_vpn(true, 30.0));
         run(&mut c, 1.0, 21.0, through_the_vpn(true, 50.0));
@@ -2105,11 +2112,26 @@ mod tests {
             Some(30.0),
             "a standing queue was taken for the path"
         );
-        run(&mut c, 21.0, 41.0, through_the_vpn(false, 50.0));
+        run(&mut c, 21.0, 330.0, through_the_vpn(false, 50.0));
         assert_eq!(
             c.vpn_base().map(f64::round),
             Some(50.0),
-            "the path itself moved"
+            "the path itself moved, and five minutes passed"
+        );
+    }
+
+    // As live on 11 November from 20:44: in spells while the VPN's CAKE
+    // held nothing, its least crept up a millisecond a second, from 25 to
+    // 62 ms, and a queue of 100 to 350 ms past CAKE went uncounted.
+    #[test]
+    fn the_vpn_s_least_holds_through_minutes_of_a_queue() {
+        let mut c = Controller::new(None, None);
+        run(&mut c, 0.0, 1.0, through_the_vpn(false, 25.0));
+        run(&mut c, 1.0, 241.0, through_the_vpn(false, 125.0));
+        assert_eq!(
+            c.vpn_base().map(f64::round),
+            Some(25.0),
+            "a queue of minutes was taken for the path"
         );
     }
 
