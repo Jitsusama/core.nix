@@ -149,7 +149,7 @@ pub fn serve(
 ) -> Result<(), String> {
     let listener = listener()?;
     let (events, heard) = mpsc::channel();
-    let prime = device != "CPU" && accelerated();
+    let prime = device != "CPU" && dictation::npu();
     let jobs = worker(model.to_owned(), device, cache, words, events.clone());
     if prime {
         let _ = jobs.send(Job::Prime);
@@ -180,14 +180,6 @@ pub fn serve(
     }
     drop(coordinator);
     Ok(())
-}
-
-/// Whether the machine has an NPU, which shows as an accel device. Only its
-/// compile is slow enough to do ahead; without one the encoder compiles for
-/// the CPU as quickly as it loads, so loading at sign-in would only take
-/// memory for nothing.
-fn accelerated() -> bool {
-    std::fs::read_dir("/dev/accel").is_ok_and(|mut entries| entries.next().is_some())
 }
 
 fn listener() -> Result<UnixListener, String> {

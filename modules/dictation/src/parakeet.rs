@@ -105,13 +105,39 @@ impl Parakeet {
         cache: Option<&Path>,
         priority: Priority,
     ) -> Result<Self> {
-        let parts = [dir.as_os_str().as_encoded_bytes(), device.as_bytes()];
-        let kept = cache.map(|cache| cache::kept(cache, &parts));
+        let kept = cache.map(|cache| cache::kept(cache, &Self::parts(dir, device)));
         let parakeet = Self::load_in(dir, device, kept.as_deref(), priority)?;
         if let (Some(cache), Some(kept)) = (cache, &kept) {
             cache::forget_others(cache, kept);
         }
         Ok(parakeet)
+    }
+
+    /// Whether the models for `dir` on `device` are compiled in `cache`
+    /// for this build, so a load needn't compile them: the folder `load`
+    /// keeps them in holds something. OpenVINO writes each model there once
+    /// it's compiled, so a compile cut short still counts, and the next
+    /// load compiles only what's missing.
+    pub fn compiled(dir: &Path, device: &str, cache: Option<&Path>) -> bool {
+        cache.is_some_and(|cache| {
+            let kept = cache::kept(cache, &Self::parts(dir, device));
+            std::fs::read_dir(kept).is_ok_and(|mut held| held.next().is_some())
+        })
+    }
+
+    /// Whether to compile the models for `dir` on `device` ahead of need:
+    /// only on an NPU the machine has, which `npu` says, and only while
+    /// nothing is compiled for this build. The NPU's compile takes a
+    /// minute; without one the encoder compiles for the CPU as it loads,
+    /// and compiling it early only held 2.4 GB, which filled a desktop
+    /// VM's memory on 12 November.
+    pub fn worth_compiling(dir: &Path, device: &str, cache: Option<&Path>, npu: bool) -> bool {
+        device != "CPU" && npu && !Self::compiled(dir, device, cache)
+    }
+
+    /// What the compiled models' folder is keyed on besides the build.
+    fn parts<'a>(dir: &'a Path, device: &'a str) -> [&'a [u8]; 2] {
+        [dir.as_os_str().as_encoded_bytes(), device.as_bytes()]
     }
 
     fn load_in(dir: &Path, device: &str, cache: Option<&Path>, priority: Priority) -> Result<Self> {
@@ -428,6 +454,63 @@ mod tests {
 
     fn vocab() -> Vocab {
         Vocab::parse(VOCAB).unwrap()
+    }
+
+    #[test]
+    fn parakeet_is_compiled_once_its_own_folder_holds_models() {
+        let cache = std::env::temp_dir().join(format!("parakeet-compiled-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        let dir = Path::new("/models/parakeet");
+        assert!(
+            !Parakeet::compiled(dir, "NPU", Some(&cache)),
+            "an empty cache was taken for compiled"
+        );
+        let other = cache::kept(&cache, &[dir.as_os_str().as_encoded_bytes(), b"GPU"]);
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::write(other.join("encoder.blob"), b"compiled").unwrap();
+        assert!(
+            !Parakeet::compiled(dir, "NPU", Some(&cache)),
+            "models compiled for another device were taken for this one's"
+        );
+        let kept = cache::kept(&cache, &[dir.as_os_str().as_encoded_bytes(), b"NPU"]);
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("encoder.blob"), b"compiled").unwrap();
+        assert!(
+            Parakeet::compiled(dir, "NPU", Some(&cache)),
+            "its own folder's models weren't found"
+        );
+        assert!(
+            !Parakeet::compiled(dir, "NPU", None),
+            "with no cache nothing is kept, so nothing is compiled ahead"
+        );
+        let _ = std::fs::remove_dir_all(&cache);
+    }
+
+    #[test]
+    fn parakeet_compiles_ahead_only_on_an_npu_the_machine_has() {
+        let cache = std::env::temp_dir().join(format!("parakeet-ahead-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&cache);
+        let dir = Path::new("/models/parakeet");
+        assert!(
+            Parakeet::worth_compiling(dir, "NPU", Some(&cache), true),
+            "an NPU with nothing compiled wasn't compiled for ahead"
+        );
+        assert!(
+            !Parakeet::worth_compiling(dir, "NPU", Some(&cache), false),
+            "with no NPU, Parakeet would be compiled ahead on the CPU"
+        );
+        assert!(
+            !Parakeet::worth_compiling(dir, "CPU", Some(&cache), true),
+            "set to the CPU, Parakeet would be compiled ahead"
+        );
+        let kept = cache::kept(&cache, &[dir.as_os_str().as_encoded_bytes(), b"NPU"]);
+        std::fs::create_dir_all(&kept).unwrap();
+        std::fs::write(kept.join("encoder.blob"), b"compiled").unwrap();
+        assert!(
+            !Parakeet::worth_compiling(dir, "NPU", Some(&cache), true),
+            "compiled already, it would be compiled again"
+        );
+        let _ = std::fs::remove_dir_all(&cache);
     }
 
     /// A model whose joint gives each frame's scores from a script, a

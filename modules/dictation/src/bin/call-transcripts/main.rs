@@ -134,6 +134,18 @@ impl Settings {
         }
     }
 
+    /// Whether Parakeet is worth compiling before a call: on the NPU, when
+    /// nothing is compiled for this build, so a call's first take waits
+    /// seconds rather than a minute.
+    pub fn worth_compiling(&self) -> bool {
+        Parakeet::worth_compiling(
+            &self.model,
+            &self.device,
+            self.cache.as_deref(),
+            dictation::npu(),
+        )
+    }
+
     /// Parakeet, at the NPU's background priority.
     pub fn load(&self) -> Result<Parakeet, String> {
         Parakeet::load(
