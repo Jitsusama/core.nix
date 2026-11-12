@@ -1000,6 +1000,12 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # Something on air lingers in the margin once it goes; a moment is
         # enough to see it, and keeps the test's waits for it to go short.
         jitsusama.quickshell.margin.linger = 2;
+        # The VM keeps UTC, so whenever a builder runs it at night, its clock
+        # sits inside the evening and the backlight halves what the light
+        # asks for. Kept off where the screen's following of the light is
+        # tested, so it reads the same at any hour; the evening's own cases
+        # are its unit tests (modules/backlight/src/evening.rs, follow.rs).
+        jitsusama.backlight.evening.start = lib.mkIf (area == "shows-then-rests") null;
         # The test types nothing for long stretches while it reads the
         # journal, so it never counts as away, and its notices go by
         # themselves when they're meant to.
