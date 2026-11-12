@@ -660,6 +660,17 @@ in
       "pi off the Claude plan doesn't start on anthropic/claude-opus-5-5 at high thinking."
       (starts (account workstation) && starts (account macWorkstation));
 
+  # pi starts without a warning that the harness's codemode took the
+  # built-in's place: the settings turn the built-in off, on Linux and on a
+  # Mac.
+  pi-leaves-out-the-built-in-codemode =
+    let
+      leaves = home: home.jitsusama.pi.settings.extensions == [ "-builtin:codemode" ];
+    in
+    holds "pi-leaves-out-the-built-in-codemode"
+      "pi's settings don't turn off the built-in codemode, so pi warns of it at every start."
+      (leaves (account workstation) && leaves (account macWorkstation));
+
   # pi tells mycelium what its sessions start with in each realm: plain pi
   # at home, pi-claude in the plan's realm, plain pi alone on a machine on
   # the plan, and nothing for a machine in no realm.

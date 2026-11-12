@@ -457,6 +457,12 @@ in
     jitsusama.pi-packages.sources = config.jitsusama.pi.packages;
     jitsusama.pi.settings.packages = config.jitsusama.pi-packages.links;
 
+    # The harness registers a codemode of its own, one that hands a long
+    # script off after a minute, so pi leaves its built-in out and, unless
+    # told to here, warns of it at every start. A package can't say it
+    # replaces a built-in; only the settings can.
+    jitsusama.pi.settings.extensions = lib.mkDefault [ "-builtin:codemode" ];
+
     # The room kept for what a compaction writes. pi's default, 16,384
     # tokens, runs out summarising a long session, which then compacts
     # nothing and runs on toward the model's limit.
