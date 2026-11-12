@@ -3429,13 +3429,14 @@ def test_agents_windows_are_one_row_in_windows(shell: Shell) -> None:
             shell.close(window)
 
 
-def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell, machine: StandIn) -> None:
+@pytest.mark.usefixtures("machine")
+def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell) -> None:
     """Return on a served row whose one act is a copy copies it, never opening a list of it.
 
     Power's Charge is served with a copy alone, so stepping in showed one row named by its act's
     key (Joel, 2026-11-11: "if they have nothing under them, we shouldn't open a submenu for
-    them"). The charge is told once Charge is shown, so the row says it as it's watched: told
-    before opening, it reached no watch, and a case before's 79% stayed.
+    them"). It copies what the row says, whichever charge that is: inside Machine's Power,
+    Power's rows aren't watched, so a figure told then isn't heard (RCTRF8's, 2026-11-12).
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -3448,13 +3449,13 @@ def test_a_row_holding_only_a_copy_copies_on_return(shell: Shell, machine: Stand
     shell.step_in()
     shell.launcher_until(lambda shown: "Charge" in shown["rows"])
     shell.down_to("Charge")
-    machine.told(battery(80), [])
-    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "80%")
-    assert shell.showing()["selected"]["verb"] == "copy", shell.showing()["selected"]
+    charge = shell.showing()["selected"]
+    assert charge["verb"] == "copy", charge
+    assert re.fullmatch(r"\d+%", charge["side"]), charge
     with shell.told("parted copied"):
         shell.send_key("ret")
     shell.launcher_closed()
-    assert shell.copied() == "80%", shell.copied()
+    assert shell.copied() == charge["side"], shell.copied()
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:
