@@ -51,11 +51,16 @@
 //! Every call to wl-gammarelay-rs is given a moment to answer (ask.rs), so
 //! the warmth never holds the brightness, the keys or the lid.
 //!
-//! Usage: backlight <standard curve> [night white]. The standard curve is
-//! where learning starts, a point to a line: the lux, a space and the share
-//! of the brightest. What it learns is kept in
+//! In the evening, by the local clock, the screen eases to half what the
+//! curve asks for, and back in the morning (evening.rs), looked at each
+//! minute.
+//!
+//! Usage: backlight <standard curve> [night white] [evening]. The standard
+//! curve is where learning starts, a point to a line: the lux, a space and
+//! the share of the brightest. What it learns is kept in
 //! `$XDG_STATE_HOME/backlight/learned`. The night white is the night light's
-//! warmth in kelvin, 4000 unless it's given.
+//! warmth in kelvin, 4000 unless it's given. The evening is when the screen
+//! dims, as "21:30-05:00", or "off", which it is unless it's given.
 //!
 //! Usage: backlight --keeps-the-open-level <saver>, as root. It keeps the
 //! panel's saved level current while the lid is open (keep.rs), running the
@@ -66,6 +71,7 @@ mod answering;
 mod ask;
 mod curve;
 mod dbus;
+mod evening;
 mod facts;
 mod follow;
 mod keep;
@@ -95,6 +101,7 @@ use curve::Curve;
 use dbus::{
     ManagerProxy, RelayProxy, SessionProxy, lid_moved, relay, relay_started, switched, woke,
 };
+use evening::Evening;
 use follow::{Follow, Keys};
 use keyboard::Keyboard;
 use light::{Heard, Readings, Sensor};
@@ -314,6 +321,17 @@ fn night_white() -> Result<u16, String> {
         .ok_or_else(|| format!("{said} is no night white between 1000 and {WHITE} K"))
 }
 
+/// The evening the command line gives, after the night white, or none.
+fn evening() -> Result<Option<Evening>, String> {
+    match env::args().nth(3) {
+        None => Ok(None),
+        Some(said) if said == "off" => Ok(None),
+        Some(said) => Evening::read(&said)
+            .map(Some)
+            .ok_or_else(|| format!("{said} is no evening, as 21:30-05:00")),
+    }
+}
+
 /// What learning goes on from: the curve kept in `learned`, and that it's
 /// Joel's, or the standard curve while none is kept or what's kept holds
 /// none.
@@ -336,10 +354,11 @@ fn learned_curve(standard: Curve, learned: &Path) -> io::Result<(Curve, bool)> {
 async fn run() -> Result<(), Box<dyn Error>> {
     let standard = env::args_os()
         .nth(1)
-        .ok_or("usage: backlight <standard curve> [night white]")?;
+        .ok_or("usage: backlight <standard curve> [night white] [evening]")?;
     let standard = Curve::read(&fs::read_to_string(&standard)?)
         .ok_or_else(|| format!("{} holds no curve", Path::new(&standard).display()))?;
     let night_white = night_white()?;
+    let evening = evening()?;
 
     let Some(screen) = Screen::find(Path::new("/sys/class/backlight"))? else {
         eprintln!("<5>this machine has no backlight to set");
@@ -388,6 +407,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             runtime.join("whereabouts/here.json"),
         ),
         relay_down: None,
+        evening,
+        evening_due: evening.map(|_| Instant::now()),
     };
     // Held for as long as the daemon runs, since it holds the switch's name.
     let (_switch_bus, mut said, mut said_night) = backlight.serve_switch().await;
@@ -482,6 +503,10 @@ struct Backlight<'a> {
     night: Nightly,
     /// Until when what sets the warmth is let be, after it couldn't.
     relay_down: Option<Instant>,
+    /// When the screen dims in the evening, if it does, and when the clock
+    /// is next looked at for it.
+    evening: Option<Evening>,
+    evening_due: Option<Instant>,
 }
 
 /// How long what sets the warmth is let be after it couldn't, unless it
