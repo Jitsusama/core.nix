@@ -3,7 +3,8 @@
 //! day judges into its findings ledger under keys starting `code.`; the
 //! lines where Joel sounded pained, which health counts in its day file;
 //! the turns making one tool call, which the daily measure counts; and
-//! the security musts past due, which ISXEG8 files in the ledger.
+//! the security musts past due, which ISXEG8 files in the ledger; and the
+//! asks for a secret, which health counts from secret-asks's journal.
 //! Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
@@ -56,6 +57,53 @@ pub fn musts(s: &Sources, now: i64) -> Reading {
     Reading::new("{} security musts past due", late.map(count), "", "ISXEG8")
         .bar(Bar::AtMost(0.0))
         .from("cadence day's findings, as ISXEG8 files them")
+}
+
+/// The asks for a secret today, as health counts them from secret-asks:
+/// an ask is worth its interruption only while asks stay rare, read before
+/// they're answered, asked once, and never one a minted token would have
+/// spared. The first three are what Joel saw and did, so they're his side.
+#[must_use]
+pub fn asks(s: &Sources) -> Vec<Reading> {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let from = "health's day file, from secret-asks";
+    vec![
+        Reading::new(
+            "{} asks for a secret shown to Joel today",
+            figure("health.asks.shown"),
+            "",
+            "ISXEG8",
+        )
+        .bar(Bar::AtMost(3.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "{} asks said yes to before they could be read",
+            figure("health.asks.unread-yeses"),
+            "",
+            "ISXEG8",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "{} asks for an item and command already asked for today",
+            figure("health.asks.again"),
+            "",
+            "ISXEG8",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from(from)
+        .his(),
+        Reading::new(
+            "{} of asks a minted token would have spared",
+            figure("health.asks.avoidable-percent"),
+            "%",
+            "ISXEG8",
+        )
+        .bar(Bar::AtMost(0.0))
+        .from(from),
+    ]
 }
 
 /// The lines Joel typed today that sounded pained, as health counts them.
@@ -226,6 +274,27 @@ mod tests {
         );
         assert_eq!(one_call(Some("# Measure\n")).figure(), None);
         assert_eq!(one_call(None).figure(), None);
+    }
+
+    #[test]
+    fn asks_come_from_healths_figures() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.asks.shown".to_owned(), 4.0),
+                ("health.asks.unread-yeses".to_owned(), 1.0),
+            ])),
+            ..Sources::default()
+        };
+        let words: Vec<String> = asks(&s).iter().map(Reading::words).collect();
+        assert_eq!(
+            words,
+            [
+                "4 asks for a secret shown to Joel today, at most 3",
+                "1 ask said yes to before they could be read, at most 0",
+                "asks for an item and command already asked for today: no reading yet",
+                "of asks a minted token would have spared: no reading yet",
+            ]
+        );
     }
 
     #[test]
