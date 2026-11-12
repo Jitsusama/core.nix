@@ -61,10 +61,10 @@ impl Words {
     /// `verb:person:slack` lack.
     pub fn read(vocabulary: &Value) -> Result<Words, String> {
         Ok(Words {
-            title: word(vocabulary, "slack:person:title", &["name"])?,
             status: word(vocabulary, "slack:person:status", &["name"])?,
             presence: word(vocabulary, "slack:person:presence", &["name"])?,
             zone: word(vocabulary, "slack:person:zone", &["name"])?,
+            title: word(vocabulary, "slack:person:title", &["name"])?,
             missing: word(vocabulary, WRITE, &["said", "missing"])?,
             conversation: word(vocabulary, "slack:conversation", &["name"])?,
             glyph: word(vocabulary, "slack:conversation", &["glyph"])?,
