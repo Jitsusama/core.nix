@@ -154,6 +154,15 @@ ShellRoot {
             Qt.exit(1);
             return;
         }
+        // Every row has a drawer giving a little more than its line (Joel, 2026-11-11
+        // 22:00), an act's saying what it does.
+        const startDrawer = typeof down[0].drawer === "function" ? down[0].drawer()
+            : down[0].drawer;
+        if (!String(startDrawer?.body ?? "").startsWith("Starts the watch on AI spend")) {
+            console.warn(`FAIL Start the Watch says what it does: ${JSON.stringify(startDrawer)}`);
+            Qt.exit(1);
+            return;
+        }
         down[0].run();
         collectionFile.setText(root.collected);
         budgetsFile.setText(root.budgeted);
