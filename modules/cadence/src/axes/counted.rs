@@ -438,8 +438,25 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .any(|e| e.path().extension().is_some_and(|x| x == "json")),
         health: fs::read_to_string(state_home.join(format!("health/{date}.json")))
             .ok()
-            .map(|json| crate::machine::figures(&json)),
+            .map(|json| healths(&json)),
     }
+}
+
+/// Every figure in health's day file, as `health.<figure>`. Cadence day's
+/// own reader keeps only the figures it holds a bar for, which leaves out
+/// programs opening, daemons and pi starting, and switch restarts, all of
+/// which responsiveness reads; so the axes read the file whole.
+fn healths(json: &str) -> BTreeMap<String, f64> {
+    let Ok(written) = serde_json::from_str::<serde_json::Value>(json) else {
+        return BTreeMap::new();
+    };
+    written
+        .get("figures")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, figure)| Some((format!("health.{key}"), figure.as_f64()?)))
+        .collect()
 }
 
 #[cfg(test)]
@@ -668,6 +685,27 @@ not a trial
             read[3].detail.as_deref(),
             Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
             "an opening says its spread and that it's timed from our side"
+        );
+    }
+
+    #[test]
+    fn healths_figures_are_read_whole() {
+        let figures = healths(
+            r#"{"date": "2026-11-12", "figures": {"boot.seconds": 27.0,
+                "launches.pi.p99-ms": 28572, "switch.restart.slowest-ms": 4200}}"#,
+        );
+        assert_eq!(
+            figures,
+            BTreeMap::from([
+                ("health.boot.seconds".to_owned(), 27.0),
+                ("health.launches.pi.p99-ms".to_owned(), 28_572.0),
+                ("health.switch.restart.slowest-ms".to_owned(), 4_200.0),
+            ]),
+            "a figure the axes read was lost because cadence day holds no bar for it"
+        );
+        assert!(
+            healths("not json").is_empty(),
+            "an unread file gives no figures"
         );
     }
 
