@@ -22,6 +22,7 @@ use crate::journal::{
     self, LAUNCHER_READY, Mark, RESTART_SCHEDULED, SHUTTING_DOWN, STARTUP_FINISHED, UNIT_STARTED,
 };
 use crate::lid::{self, Looked};
+use crate::memory;
 use crate::sessions;
 
 /// How often a changed day is written out and the lid looked at: often
@@ -46,6 +47,7 @@ pub struct Follower {
     pains: Option<PathBuf>,
     sessions: Option<PathBuf>,
     last_calls: BTreeMap<String, Option<String>>,
+    proc: Option<PathBuf>,
 }
 
 /// How much of the sessions' logs is read a tick, so a first start on a
@@ -72,7 +74,39 @@ impl Follower {
             pains: None,
             sessions: None,
             last_calls: BTreeMap::new(),
+            proc: None,
         }
+    }
+
+    /// Look at the watched programs' memory in `proc`.
+    #[must_use]
+    pub fn minding(self, proc: &Path) -> Self {
+        Self {
+            proc: Some(proc.to_owned()),
+            ..self
+        }
+    }
+
+    /// Keep what each watched program's copies hold now, at `at`.
+    pub fn mind(&mut self, at: i64) {
+        let Some(proc) = &self.proc else {
+            return;
+        };
+        if date_of(at, &self.zone) != self.day.date {
+            return;
+        }
+        // Every watched program is kept each look, none running when none
+        // was seen, so one that stopped doesn't go on showing its last.
+        let mut seen = memory::look(proc);
+        for name in memory::WATCHED {
+            let copies = seen.remove(name).unwrap_or_default();
+            self.day
+                .memory
+                .entry(name.to_owned())
+                .or_default()
+                .saw(at, &copies);
+        }
+        self.changed = true;
     }
 
     /// Read the agents' sessions' logs, a folder each place they ran,
@@ -317,6 +351,7 @@ pub fn follow(into: &Path) -> io::Result<()> {
     if let Some(state) = into.parent() {
         follower = follower.feeling(&state.join("pain-points"));
     }
+    follower = follower.minding(Path::new("/proc"));
     if let Some(home) = std::env::var_os("HOME") {
         follower = follower.hearing(&PathBuf::from(home).join(".pi/agent/sessions"));
     }
@@ -381,7 +416,9 @@ fn run(
         let at = now();
         if at.saturating_duration_since(ticked) >= EVERY {
             ticked = at;
-            follower.look_at_lid(look(), Timestamp::now().as_microsecond());
+            let wall = Timestamp::now().as_microsecond();
+            follower.look_at_lid(look(), wall);
+            follower.mind(wall);
             follower.feel();
             follower.hear(SESSIONS_A_TICK);
             follower.write()?;
@@ -629,6 +666,44 @@ mod tests {
         let feel = read(into.path(), "2026-11-12").feel;
         assert_eq!(feel.len(), 1, "the pain kept: {feel:?}");
         assert_eq!(feel[0].trying, "sound", "as the detector said it");
+    }
+
+    #[test]
+    fn memory_is_minded_and_kept_through_a_restart() {
+        let into = tempfile::tempdir().expect("a folder");
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        fs::write(proc.path().join("uptime"), "100.0 1.0\n").expect("uptime");
+        let pi = proc.path().join("7");
+        fs::create_dir_all(&pi).expect("a pi");
+        fs::write(pi.join("cmdline"), "pi\0").expect("its command");
+        fs::write(pi.join("status"), "VmRSS:\t 2048 kB\nVmSwap:\t 0 kB\n").expect("status");
+        let fields = "S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 0 0 0";
+        fs::write(pi.join("stat"), format!("7 (pi) {fields}\n")).expect("stat");
+        let mut follower =
+            Follower::new("2026-11-12", into.path(), TimeZone::UTC).minding(proc.path());
+        follower.mind(NOON);
+        fs::remove_dir_all(&pi).expect("the pi ends");
+        follower.mind(NOON + 1);
+        follower.write().expect("the day is written");
+        let day = read(into.path(), "2026-11-12");
+        let held = &day.memory["pi"];
+        assert_eq!(held.copies, 0, "none running at the last look: {held:?}");
+        assert_eq!(
+            (held.most_kib, held.most_at),
+            (2_048, NOON),
+            "the day's most"
+        );
+
+        let mut again = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+            .minding(proc.path())
+            .resuming(day);
+        again.mind(NOON + 2);
+        again.write().expect("the day is written again");
+        assert_eq!(
+            read(into.path(), "2026-11-12").memory["pi"].most_kib,
+            2_048,
+            "a restart keeps the day's most"
+        );
     }
 
     /// A failed bash call at a moment in microseconds, as pi logs it.

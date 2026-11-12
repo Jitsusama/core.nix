@@ -890,7 +890,8 @@
     wait and a shutdown to its boot's last entry, counts once a lid reading shut while the laptop's
     screen is on and its keys typed, keeps the pain-points detector's ranking, counts a tool call
     that failed, was refused or was made twice running and Joel's words that sound pained, reading
-    each session's log on from where it stopped and never twice, keeps a day by kind and writes it
+    each session's log on from where it stopped and never twice, keeps what pi and the shell hold
+    by their copies' ages and the day's most through a restart, keeps a day by kind and writes it
     every half minute however busy the journals, and shows the three worst pains in plain words,
     then a line a kind, the gravest first
   '';

@@ -10,6 +10,7 @@ use jiff::tz::TimeZone;
 
 use crate::day::{Badness, Boot, Day, Kind, Thing};
 use crate::feel;
+use crate::memory::{self, Memory};
 
 /// The kinds, in the order they're shown when as bad as each other.
 const KINDS: [Kind; 6] = [
@@ -73,6 +74,51 @@ pub fn day(day: &Day) -> String {
             );
         }
     }
+    for (name, held) in &day.memory {
+        if held.most_kib > 0 {
+            let _ = writeln!(
+                out,
+                "memory    {name}: {}; largest {}, oldest {}; at most {} at {}",
+                holding(held),
+                memory::size(held.largest_kib),
+                memory::age(held.oldest),
+                memory::size(held.most_kib),
+                clock(held.most_at)
+            );
+        }
+    }
+    out
+}
+
+/// What a watched program's copies held at the last look.
+fn holding(held: &Memory) -> String {
+    format!(
+        "{} hold {}, {} in swap",
+        held.copies,
+        memory::size(held.kib + held.swap_kib),
+        memory::size(held.swap_kib)
+    )
+}
+
+/// Each watched program's copies by age, what each age holds together
+/// and each copy on average, so a program that grows as it ages shows.
+fn memory_by_age(day: &Day) -> String {
+    let mut out = format!("memory on {}{}\n", day.date, until(day.to));
+    for (name, held) in day.memory.iter().filter(|(_, held)| held.most_kib > 0) {
+        let _ = writeln!(out, "{name}: {}", holding(held));
+        for (group, aged) in held.by_age.iter().enumerate() {
+            if aged.copies > 0 {
+                let _ = writeln!(
+                    out,
+                    "  {:<12} {:>3} hold {}, {} each",
+                    memory::aged(group),
+                    aged.copies,
+                    memory::size(aged.kib),
+                    memory::size(aged.kib / aged.copies)
+                );
+            }
+        }
+    }
     out
 }
 
@@ -82,6 +128,9 @@ pub fn day(day: &Day) -> String {
 pub fn asked(day: &Day, words: &str) -> String {
     if words == "boot" {
         return boot_stages(day);
+    }
+    if words == "memory" {
+        return memory_by_age(day);
     }
     if let Some(&kind) = KINDS.iter().find(|kind| kind.name() == words) {
         let mut out = format!("{} on {}{}\n", kind.name(), day.date, until(day.to));
@@ -395,6 +444,46 @@ mod tests {
         assert!(lines[3].ends_with(", finding P3 took 9 s"), "{shown}");
         assert!(!shown.contains("P4"), "three at most: {shown}");
         assert!(!lines[4].starts_with("feel"), "then the kinds: {shown}");
+    }
+
+    #[test]
+    fn each_watched_programs_memory_has_a_line_and_its_ages() {
+        let mut minded = a_day();
+        let copy = |kib, age| memory::Held {
+            kib,
+            swap_kib: 1 << 20,
+            age,
+        };
+        let mut pi = Memory::default();
+        pi.saw(0, &[copy(3 << 20, 600), copy(1 << 20, 79_200)]);
+        minded.memory.insert("pi".into(), pi);
+        minded.memory.insert("quickshell".into(), Memory::default());
+        let shown = day(&minded);
+        let line = shown
+            .lines()
+            .find(|line| line.starts_with("memory    pi: "))
+            .unwrap_or_else(|| panic!("a line for pi: {shown}"));
+        assert!(
+            line.starts_with(
+                "memory    pi: 2 hold 6.0 GiB, 2.0 GiB in swap; largest 4.0 GiB, oldest 22 h; \
+                 at most 6.0 GiB at "
+            ),
+            "{shown}"
+        );
+        assert!(
+            !shown.contains("quickshell"),
+            "not running all day: {shown}"
+        );
+        let aged = asked(&minded, "memory");
+        assert!(!aged.contains("quickshell"), "not running all day: {aged}");
+        assert!(
+            aged.contains("\n  under 1 h      1 hold 4.0 GiB, 4.0 GiB each\n"),
+            "{aged}"
+        );
+        assert!(
+            aged.contains("\n  6 h to 24 h    1 hold 2.0 GiB, 2.0 GiB each\n"),
+            "{aged}"
+        );
     }
 
     #[test]

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
+use crate::memory::Memory;
 use crate::sessions::{Heard, Said};
 use crate::sign;
 
@@ -104,6 +105,9 @@ pub struct Day {
     /// reads on rather than reading a day's logs again.
     #[serde(default)]
     pub read: BTreeMap<String, u64>,
+    /// What each watched program held, by its name.
+    #[serde(default)]
+    pub memory: BTreeMap<String, Memory>,
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in
@@ -303,12 +307,14 @@ impl Day {
     }
 
     /// Take from a day kept before this run what the journals don't say
-    /// again: the sessions' tallies and how far each log was read.
+    /// again: the sessions' tallies, how far each log was read, and the
+    /// memory the watched programs held.
     pub fn resume(&mut self, kept: Self) {
         if kept.date != self.date {
             return;
         }
         self.read = kept.read;
+        self.memory = kept.memory;
         self.things.extend(
             kept.things
                 .into_iter()

@@ -18,6 +18,9 @@
 //! reads the agents' sessions' logs on from where it stopped, for the
 //! tools: a call that failed, was refused or was made twice running; and
 //! for Joel's words, a line he typed that sounds like something hurt.
+//! And each half minute it keeps what every pi session and the shell hold
+//! in memory and swap, by how long each has run, so one that grows as it
+//! ages shows.
 //! It keeps the day in `~/.local/state/health/<date>.json`.
 //!
 //! `health` reads that file: the day's three most painful interactions,
@@ -32,6 +35,7 @@ mod feel;
 mod follow;
 mod journal;
 mod lid;
+mod memory;
 mod sessions;
 mod show;
 mod sign;
@@ -52,6 +56,7 @@ health                 what today's journals said, one line a kind, the worst fi
 health KIND            a kind's worst things: words, programs, services, devices,
                        security or tools
 health boot            each boot's stages, and each shutdown's seconds
+health memory          what pi and the shell hold, by how long each copy has run
 health WORDS           what each thing whose name holds the words kept saying
 health --day DATE ...  another day, as YYYY-MM-DD
 health follow          the daemon, which keeps the day's file current
