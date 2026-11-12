@@ -116,8 +116,12 @@ WARMED_SAID = "places kept as the shell started"
 WARMED = timedelta(seconds=20)
 
 # How long after a start every source here has first answered: what warming once waited out by
-# beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12).
+# beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
+# gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
+# case waits until no source has said a change for QUIET, for at most SETTLED.
 ANSWERED = timedelta(seconds=6)
+QUIET = timedelta(seconds=2)
+SETTLED = timedelta(seconds=30)
 
 
 @pytest.fixture(scope="module")
@@ -338,7 +342,7 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
-    answered_since(restarted)
+    answered_since(shell, restarted)
     made = made_by_others(shell, "windows")
     assert not made, f"first into Windows after a restart, other sources made rows: {made}"
 
@@ -444,14 +448,25 @@ def test_a_first_search_after_a_restart_makes_no_spots_on_its_key(shell: Shell) 
     assert "spots made on a key" not in said, f"a key made the spots: {said}"
 
 
-def answered_since(restarted: float) -> None:
+def answered_since(shell: Shell, restarted: float) -> None:
     """Wait until every source has first answered since the restart at `restarted`.
 
     Home and the chords' places are kept a second and a half after a start, before Networks
     and Displays first answer here, so the next opening's fill makes their rows again, as it
     catches up any source changed since it was kept: 6 here, which aren't what this counts.
+    It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
     """
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
+    deadline = time.monotonic() + SETTLED.total_seconds()
+    said = json.loads(shell.as_account(shell.ipc("changed")))
+    still = time.monotonic()
+    while time.monotonic() - still < QUIET.total_seconds():
+        if time.monotonic() > deadline:
+            pytest.fail(f"sources still changing {SETTLED} after a restart: {said}")
+        time.sleep(launcher_on_niri.POLL)
+        now = json.loads(shell.as_account(shell.ipc("changed")))
+        if now != said:
+            said, still = now, time.monotonic()
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:

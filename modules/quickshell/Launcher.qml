@@ -7128,6 +7128,13 @@ Scope {
             return String(root.changesIn[name] ?? 0);
         }
 
+        // How many changes each source has said since the shell started,
+        // by its name, for the check that waits for every source to have
+        // answered after a start before counting what an opening made.
+        function changed(): string {
+            return JSON.stringify(root.changesIn);
+        }
+
         // How many searches of what's typed have run, for the check that
         // text typed at once is searched once.
         function searched(): string {
