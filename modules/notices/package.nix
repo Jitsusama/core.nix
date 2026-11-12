@@ -23,6 +23,8 @@ rustPlatform.buildRustPackage rec {
       ./senders.json
       ./src
       ./tests
+      ../chrome/session/Cargo.toml
+      ../chrome/session/src
       ../daemon-client/Cargo.toml
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
