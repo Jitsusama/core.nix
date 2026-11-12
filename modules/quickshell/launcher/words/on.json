@@ -593,6 +593,7 @@
     },
     {
       "id": "verb:on:look:answer",
+      "command": "answer",
       "in": "on",
       "name": "Answer",
       "verb": "answer",
