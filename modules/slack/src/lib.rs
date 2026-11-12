@@ -89,6 +89,12 @@ pub struct Found {
     /// "" for nobody.
     #[serde(default)]
     pub handle: String,
+    /// Their title as their profile says it, "Staff Engineer", or ""
+    /// where it says none; who they are, so it's kept with their name.
+    /// Left out of what's said where it's "", so a person without one is
+    /// said as before.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
     /// Their direct messages with Joel, while Slack finds any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation: Option<Conversation>,
@@ -600,6 +606,7 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
         status: String::new(),
         emoji: String::new(),
         handle: String::new(),
+        title: String::new(),
         conversation: None,
     };
     if said.get("ok").and_then(Value::as_bool) == Some(true) {
@@ -629,6 +636,7 @@ pub fn found(said: &Value, email: &str, team: &str) -> Result<Found, Refused> {
             status,
             emoji,
             handle: text("/name").unwrap_or_default().to_owned(),
+            title: text("/profile/title").unwrap_or_default().to_owned(),
             conversation: None,
         });
     }
@@ -664,7 +672,7 @@ mod tests {
     fn someone_found_is_said_by_their_id_and_real_name() {
         let said = json!({ "ok": true, "user": { "id": "U1", "team_id": "T9",
             "real_name": "Ada L", "tz": "Europe/London",
-            "profile": { "real_name": "Ada Lovelace" } } });
+            "profile": { "real_name": "Ada Lovelace", "title": "Analyst" } } });
         assert_eq!(
             found(&said, "ada@example.com", "T1"),
             Ok(Found {
@@ -677,6 +685,7 @@ mod tests {
                 status: String::new(),
                 emoji: String::new(),
                 handle: String::new(),
+                title: "Analyst".into(),
                 conversation: None,
             })
         );
@@ -868,6 +877,7 @@ mod tests {
             status: "Writing".into(),
             emoji: "📝".into(),
             handle: "ada".into(),
+            title: "Analyst".into(),
             conversation: Some(Conversation {
                 channel: "D1".into(),
                 link: String::new(),

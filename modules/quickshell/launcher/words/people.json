@@ -65,6 +65,11 @@
       "name": "Time Zone"
     },
     {
+      "id": "slack:person:title",
+      "in": "people",
+      "name": "Title"
+    },
+    {
       "id": "slack:person:source",
       "in": "people",
       "name": "Slack"
