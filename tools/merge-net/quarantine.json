@@ -110,5 +110,12 @@
     "owner_pr": 3596,
     "reason": "failed twice at 4e0cc018600f, and at 1c6f5f469643 after it",
     "test": "vm-desktop-launcher-reads-mail"
+  },
+  {
+    "at": 1794483419,
+    "commit": "c254ba88cb66cfdac880b354e913ce9cf941367d",
+    "owner_pr": null,
+    "reason": "the kitty trial counts more letters than were typed at every main from c254ba88cb66 on, passing at 1c6f5f469643; the merges between don't build (#3613), so no merge can be blamed",
+    "test": "vm-desktop-launcher-moves-windows"
   }
 ]
