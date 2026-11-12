@@ -1019,7 +1019,8 @@
     reads ~/.ssh/config's machines but patterns and Match blocks and ~/.ssh/known_hosts' but
     hashed, marked and pattern lines, with each one's keys, other names and port, how many times
     and when zsh's history last reached each, orders them most used first, says each one's row,
-    drawer and ssh, and orders the repositories under ~/src by zoxide's last visit
+    drawer and ssh, orders the repositories under ~/src by zoxide's last visit, and says how many
+    agents' panes its row for them holds
   '';
   lag-watch-passes-clippy = ''
     clippy finds nothing in lag-watch or its tests
@@ -1853,9 +1854,10 @@
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
     answer within its deadline as not answering, stopping it and what it waits on, and goes on to
     the next, serves Programs' rows open first, counting the windows the windows daemon says each
-    has open and going to the latest, and again as those change, serves Chrome's open pages as
-    rows of their own, named by their titles and said by their sites, and again as Chrome writes
-    its session, finds Programs' rows for what's typed by
+    has open, Joel's apart from the agents', and going to his latest, and again as those change,
+    serves kitty's open list without the panes the agents daemon names, again as it tells,
+    serves Chrome's open pages as rows of their own, named by their titles and said by their
+    sites, and again as Chrome writes its session, finds Programs' rows for what's typed by
     name, keyword, comment and what their binds do, best first with the letters matched, finds
     what was taken by name, newest first, past Recent's nine and no more than asked, with the rows
     it never served and each served whole, unplaced, once it's ahead, counts the changes programs

@@ -186,7 +186,8 @@ Provider {
     function programActs(program) {
         if (program !== "kitty")
             return [];
-        return provider.repositoryAct().concat(provider.sshAct(), provider.tabsRow());
+        return provider.repositoryAct().concat(provider.sshAct(), provider.tabsRow(),
+            provider.agentsRow());
     }
 
     // What its drawer in Programs says it holds (Applications.qml asks
@@ -315,6 +316,23 @@ Provider {
             ask: Words.of(id).ask ?? "",
             nested: true,
             targets: () => provider.tabsNow().map(tab => provider.tabRow(tab))
+        })];
+    }
+
+    // The agents' panes are theirs: the programs daemon leaves them out of
+    // Tabs (agents.rs), and one row says how many, Return stepping into
+    // Agents, where each is (VKCF3Z, 2026-11-11 [3a742b67]).
+    function agentsRow() {
+        const count = listing.agents;
+        if (count === 0)
+            return [];
+        const id = "kitty:agents";
+        return [provider.said(id, id, {
+            thing: true,
+            hue: "program",
+            side: String(count),
+            run: () => provider.launcher?.goTo({ trail: ["collection:agents"], spot: "" }),
+            drawer: () => Kitty.agentsDrawer(count, provider.words(id))
         })];
     }
 

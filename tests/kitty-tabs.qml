@@ -424,6 +424,13 @@ QtObject {
         check("one in ~/src never seen", Opens.repositorySide("/h/src/e", places, seen, when),
             "never opened");
 
+        // The agents' panes' row says how many, and where they are.
+        const agents = { one: "1 agent's pane", many: "{count} agents' panes",
+            where: "Each is in Agents." };
+        check("one agent's pane", Kitty.agentsDrawer(1, agents),
+            { title: "1 agent's pane", body: "Each is in Agents." });
+        check("many agents' panes", Kitty.agentsDrawer(85, agents).title, "85 agents' panes");
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);
