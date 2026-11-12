@@ -648,13 +648,13 @@ def test_neovims_page_is_shot_at_each_scale(
 
 
 def latest_said(name: str, shown: Json) -> bool:
-    """Say whether Chrome's page holds its Open Tabs and Recent, and the latest download by name.
+    """Say whether Chrome's page holds its Tabs and Recent, and the latest download by name.
 
     Until its downloads are first read, the act waits in its place saying an ellipsis.
     """
     reads = [str(thing["reads"]) for thing in shown["things"]]
     latest = [read for read in reads if read.startswith(desktop_session.LATEST_DOWNLOAD)]
-    held = {"Open Tabs", "Recent"} <= set(shown["rows"])
+    held = {"Tabs", "Recent"} <= set(shown["rows"])
     return held and len(latest) == 1 and name in latest[0]
 
 

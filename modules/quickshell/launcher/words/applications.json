@@ -480,13 +480,13 @@
     },
     {
       "id": "program:open-tabs",
-      "in": "applications",
-      "name": "Open Tabs",
+      "in": "applications:browser",
+      "name": "Tabs",
       "verb": "more",
       "glyph": "web",
       "said": {
-        "one": "1 page",
-        "many": "{count} pages"
+        "one": "1 tab",
+        "many": "{count} tabs"
       }
     },
     {

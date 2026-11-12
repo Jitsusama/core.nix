@@ -1084,8 +1084,8 @@ Provider {
             : provider.openFiles(entry, source);
     }
 
-    // What a browser has open, as one row of its own, Open Tabs, holding
-    // its pages, so they read apart from its windows, acts and settings
+    // What a browser has open, as one row of its own, Tabs, holding its
+    // tabs by their pages, so they read apart from its windows, acts and settings
     // (Joel, 2026-11-11: "it also needs to be more obvious what part of
     // the program menu is tabs versus other stuff"). Typing in its step
     // still finds a page, as Recent's are found. What another program has

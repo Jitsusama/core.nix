@@ -386,9 +386,9 @@ ShellRoot {
             const rows = program("browser").verbs();
             same("stepped into, its open tabs stand as one row before its other windows and "
                 + "Recent, a window its front tab stands for not listed again", names(rows),
-                "Go To, New Window, New Window Below, Open Tabs, Left out, Recent, Quit");
-            same("Open Tabs says how many pages, and is stepped into",
-                `${rows[3].side} ${rows[3].nested} ${rows[3].verb}`, "5 pages true more");
+                "Go To, New Window, New Window Below, Tabs, Left out, Recent, Quit");
+            same("Tabs says how many tabs, and is stepped into",
+                `${rows[3].side} ${rows[3].nested} ${rows[3].verb}`, "5 tabs true more");
             same("its pages are its verbs and its targets alike",
                 names(rows[3].verbs()), names(rows[3].targets()));
             const visited = rows[5].targets();
