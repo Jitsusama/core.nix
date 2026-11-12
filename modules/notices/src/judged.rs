@@ -3,13 +3,16 @@
 //! whether Quiet holds it back, and whether it waits to be seen. The
 //! levels are Levels.js's, and the senders that only answer what Joel
 //! just did are those Notices.qml never counts as missed, read from
-//! senders.json beside this crate.
+//! senders.json beside this crate. A chat program the machine says who's
+//! Joel in (`addressed`) sounds only for what's to him, and counts the
+//! rest without a card ([`crate::addressed`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::addressed::{Addressed, To};
 use crate::notice::{Notice, Urgency};
 
 /// From the least reach to the most: kept in the history alone, counted
@@ -24,6 +27,14 @@ pub fn reached(level: Option<&str>, critical: bool) -> &'static str {
     let asked = if critical { 3 } else { 2 };
     let kept = level.and_then(|level| LEVELS.iter().position(|one| *one == level));
     LEVELS[kept.map_or(asked, |kept| kept.min(asked))]
+}
+
+/// A sender's level, kept to no more than `most`; one with no level, or
+/// one not known, is kept to `most`.
+fn at_most(level: Option<&str>, most: &str) -> &'static str {
+    let at = |one: &str| LEVELS.iter().position(|level| *level == one);
+    let most = at(most).unwrap_or(0);
+    LEVELS[level.and_then(at).map_or(most, |kept| kept.min(most))]
 }
 
 /// What a level does: whether the card shows, whether the notice counts
@@ -58,6 +69,9 @@ pub struct Judge {
     /// Each sender's level, by its name in lower case.
     pub levels: BTreeMap<String, String>,
     pub senders: Senders,
+    /// What's to Joel, by the sender's name in lower case, for those the
+    /// machine says it of.
+    pub addressed: BTreeMap<String, Addressed>,
 }
 
 impl Judge {
@@ -67,6 +81,16 @@ impl Judge {
         Ok(Judge {
             levels: serde_json::from_str(levels)?,
             senders: serde_json::from_str(senders)?,
+            addressed: BTreeMap::new(),
+        })
+    }
+
+    /// The same, saying what's to Joel as home.nix writes it,
+    /// `{ "<sender>": { names, bots, everyMessage } }`.
+    pub fn addressing(self, addressed: &str) -> Result<Judge, serde_json::Error> {
+        Ok(Judge {
+            addressed: serde_json::from_str(addressed)?,
+            ..self
         })
     }
 
@@ -74,16 +98,27 @@ impl Judge {
     /// held back, kept from the screen by its level or by Quiet, which an
     /// urgent one passes, and whether it waits to be seen. One sent at low
     /// urgency, or saying it answers with the `x-answers` hint, never does.
+    /// From a sender the machine says who's Joel in, one not to him is
+    /// counted at most, and one to him that's shown `chimes`, so the shell
+    /// sounds it.
     pub fn judge(&self, notice: &mut Notice, quiet: bool) {
         let name = notice.app.to_lowercase();
-        let level = reached(
-            self.levels.get(&name).map(String::as_str),
-            notice.urgency == Urgency::Critical,
-        );
+        let to = self
+            .addressed
+            .get(&name)
+            .map(|addressed| addressed.to(&notice.summary, &notice.body));
+        let kept = self.levels.get(&name).map(String::as_str);
+        let kept = if to == Some(To::Batched) {
+            Some(at_most(kept, "count"))
+        } else {
+            kept
+        };
+        let level = reached(kept, notice.urgency == Urgency::Critical);
         let reach = reach(level);
         level.clone_into(&mut notice.level);
         notice.urgent = reach.urgent;
         notice.held = !reach.shown || (quiet && !reach.urgent);
+        notice.chimes = to == Some(To::Him) && !notice.held;
         notice.missed = reach.counted
             && notice.urgency != Urgency::Low
             && !self.senders.answering.contains(&name)
@@ -181,6 +216,60 @@ mod tests {
                 urgent: true
             }
         );
+    }
+
+    /// A chat program's notice, said as Slack says one.
+    fn said(summary: &str, body: &str) -> Notice {
+        Notice {
+            summary: summary.into(),
+            body: body.into(),
+            ..from("Slack", Urgency::Normal)
+        }
+    }
+
+    fn addressing() -> Judge {
+        judge()
+            .addressing(r#"{"slack": {"names": ["ada"], "everyMessage": ["busy"]}}"#)
+            .expect("it reads")
+    }
+
+    #[test]
+    fn one_to_him_chimes_and_one_from_a_busy_channel_is_only_counted() {
+        let mut direct = said("[work] from Grace", "lunch?");
+        let mut busy = said("[work] in #busy", "Grace: lunch?");
+        addressing().judge(&mut direct, false);
+        addressing().judge(&mut busy, false);
+        // Level, held, missed and chimes, for each.
+        let judged = |one: &Notice| (one.level.clone(), one.held, one.missed, one.chimes);
+        assert_eq!(judged(&direct), ("card".into(), false, true, true));
+        assert_eq!(judged(&busy), ("count".into(), true, true, false));
+    }
+
+    #[test]
+    fn quiet_or_a_lower_level_keeps_one_to_him_from_chiming() {
+        let mut quiet = said("[work] from Grace", "lunch?");
+        addressing().judge(&mut quiet, true);
+        assert!(!quiet.chimes, "one held by quiet chimed");
+        let mut kept = said("[work] from Grace", "lunch?");
+        let mut levels = addressing();
+        levels.levels.insert("slack".into(), "history".into());
+        levels.judge(&mut kept, false);
+        assert_eq!((kept.level.as_str(), kept.chimes), ("history", false));
+    }
+
+    #[test]
+    fn a_sender_not_addressed_never_chimes() {
+        let mut mail = from("mail", Urgency::Normal);
+        addressing().judge(&mut mail, false);
+        assert_eq!((mail.level.as_str(), mail.chimes), ("card", false));
+    }
+
+    #[test]
+    fn a_level_is_kept_to_no_more_than_its_most() {
+        assert_eq!(at_most(None, "count"), "count");
+        assert_eq!(at_most(Some("card"), "count"), "count");
+        assert_eq!(at_most(Some("history"), "count"), "history");
+        assert_eq!(at_most(Some("nonsense"), "count"), "count");
     }
 
     #[test]

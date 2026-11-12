@@ -92,6 +92,9 @@ pub struct Notice {
     pub held: bool,
     /// Whether it waits to be seen.
     pub missed: bool,
+    /// Whether the shell sounds it as it's shown: one to Joel himself from
+    /// a chat program the machine says who he is in (judged.rs).
+    pub chimes: bool,
 
     pub read: bool,
     /// How it was read where that wasn't here, as `readInSlack`.

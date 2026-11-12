@@ -32,6 +32,17 @@ let
       )
     )
   );
+  # Who Joel is in each chat program's notices that says so, by its name
+  # in lower case (src/addressed.rs).
+  addressed = pkgs.writeText "notices-addressed.json" (
+    builtins.toJSON (
+      lib.mapAttrs' (name: sender: lib.nameValuePair (lib.toLower name) sender.addressed) (
+        lib.filterAttrs (_: sender: sender.addressed or null != null) (
+          config.jitsusama.quickshell.notices.senders or { }
+        )
+      )
+    )
+  );
   # The launcher's vocabulary, which each notice's rows are said in, as
   # the machine has it; its own words where it has no shell.
   launcher = config.jitsusama.quickshell.launcher or null;
@@ -77,6 +88,8 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
         "${words}"
         "--marks"
         "${marks}"
+        "--addressed"
+        "${addressed}"
         "--shells"
         "%S/quickshell/by-shell"
       ];
