@@ -150,8 +150,15 @@ fn fixture(folder: &Path) -> PathBuf {
     file
 }
 
-/// The launcher's words Capture's rows are said in, as words.json holds them.
+/// The launcher's words Capture's rows and the tabs' are said in, as
+/// words.json holds them: no program's name among them, so each is said by
+/// its desktop entry id.
 const WORDS: &str = r#"{"things": [
+  {"id": "tabs:tab", "said": {"in": "in {program}", "kind": "tab",
+    "silent": "{program} isn't answering"}},
+  {"id": "tabs:site", "name": "Site"},
+  {"id": "tabs:address", "name": "Address"},
+  {"id": "tabs:folder", "name": "Folder"},
   {"id": "capture:recent", "said": {"in": "in {folder}", "picture": "picture",
     "video": "video", "silent": "not answering"}},
   {"id": "capture:taken", "name": "Taken"},

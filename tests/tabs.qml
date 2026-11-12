@@ -29,8 +29,8 @@ ShellRoot {
             key, thing: `tab:${address}`, place: "tabs", kind: "tab", name: title,
             glyph: "web", hue: "program", side: [{ said: site, keep: 1 }], keywords: site,
             held: { address, app: "google-chrome", front, tabs: 1 },
-            acts: [{ key: "verb:recent:site:go", go: "google-chrome" },
-                { key: "verb:recent:site:link", copy: address }],
+            acts: [{ key: "verb:tabs:go", go: "google-chrome" },
+                { key: "verb:tabs:link", copy: address }],
             order
         } };
     }
@@ -167,6 +167,9 @@ ShellRoot {
             const kittys = tabs.everything()[3].verbs().map(made => made.name).join(", ");
             Expect.expect("a kitty tab goes to, closes and copies the tab",
                 kittys === "Go to the Tab, Close the Tab, Copy the Title", kittys);
+            const chromes = tabs.everything()[0].verbs().map(made => made.name).join(", ");
+            Expect.expect("a Chrome tab goes to the tab and copies its link",
+                chromes === "Go to the Tab, Copy the Link", chromes);
             const marks = tabs.things.map(made => made.name).join(", ");
             Expect.expect("the bookmarks alone are the main search's", marks === "Runbook", marks);
             const words = tabs.everything().concat(tabs.things)

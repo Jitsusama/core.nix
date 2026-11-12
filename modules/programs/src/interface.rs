@@ -9,8 +9,9 @@ use serde_json::{Value, json};
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
 
-/// The kinds of record this daemon keeps.
-pub const KINDS: [&str; 12] = [
+/// The kinds of record this daemon keeps, Tabs' head among them
+/// (`tab_rows.rs`).
+pub const KINDS: [&str; 13] = [
     "program",
     "recent",
     "opened",
@@ -23,6 +24,7 @@ pub const KINDS: [&str; 12] = [
     "machines",
     "reached",
     "row",
+    "head",
 ];
 
 /// The kind a key names: `program` for `program:kitty`.
