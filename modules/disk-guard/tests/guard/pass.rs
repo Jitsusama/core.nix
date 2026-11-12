@@ -580,6 +580,64 @@ fn upkeep_takes_everything_due_on_a_healthy_disk() {
     assert_eq!(run.taken, [Path::new("/tmp/tmpabcdefgh")]);
 }
 
+fn temps_of_two_days(count: usize) -> Vec<Candidate> {
+    (0..count)
+        .map(|n| Candidate {
+            path: PathBuf::from(format!("/tmp/tmp{n:02}cdefgh")),
+            class: Class::Temp,
+            idle: 2.0 * 86400.0,
+            size: GIB,
+            occupied: false,
+            spent: false,
+            checkout: None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_routine_pass_ends_unfinished_after_twenty_minutes() {
+    // On 12 November a laptop's upkeep had a day and a half of entries
+    // due, and a pass that never ended never recorded its upkeep.
+    let mut disk = FakeDisk::new(50 * GIB);
+    disk.each = 100.0;
+    let run = run(
+        disk,
+        &temps_of_two_days(20),
+        Goal::Upkeep,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Unfinished, "took {:?}", run.taken);
+    assert_eq!(
+        run.taken.len(),
+        12,
+        "twelve entries of 100 s fill twenty minutes: {:?}",
+        run.taken
+    );
+}
+
+#[test]
+fn a_pass_for_free_space_runs_as_long_as_it_needs() {
+    // Only routine work waits for the next step: a filling disk's pass
+    // goes on to its target.
+    let mut disk = FakeDisk::new(10 * GIB);
+    disk.each = 100.0;
+    let run = run(
+        disk,
+        &temps_of_two_days(20),
+        Goal::Reach,
+        BTreeMap::new(),
+        Vec::new(),
+    );
+    assert_eq!(run.end, End::Reached, "took {:?}", run.taken);
+    assert_eq!(
+        run.taken.len(),
+        10,
+        "10 GiB short of the target: {:?}",
+        run.taken
+    );
+}
+
 #[test]
 fn a_stop_ends_a_pass_before_its_next_candidate() {
     let candidates: Vec<Candidate> = (0..5)

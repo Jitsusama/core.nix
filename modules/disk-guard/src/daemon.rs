@@ -2187,7 +2187,9 @@ impl Guard {
                 Some(before) => before + PASS_WEIGHT * (seconds - before),
                 None => seconds,
             });
-        } else if goal == Goal::Upkeep {
+        } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
+            // Only a pass that got through what was due counts as upkeep:
+            // one cut short by its length or a stop leaves the rest due.
             // Kept by the survey before it was offered, or by the pass.
             let unvouched = scan.went_unheard()
                 && (self
@@ -2784,6 +2786,7 @@ fn ending(end: &End) -> String {
         End::Exhausted => "exhausted".to_owned(),
         End::Stalled => "stalled".to_owned(),
         End::Stopped => "stopped".to_owned(),
+        End::Unfinished => "unfinished".to_owned(),
         End::Failed(why) => format!("failed: {why}"),
     }
 }

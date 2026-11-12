@@ -34,7 +34,7 @@ impl Draw {
 
     fn class(&mut self) -> Class {
         let bool = |draw: &mut Draw| draw.below(2) == 0;
-        match self.below(19) {
+        match self.below(20) {
             0 => Class::Target,
             1 => Class::Install,
             2 => Class::Variant,
@@ -64,6 +64,7 @@ impl Draw {
             15 => Class::Log,
             16 => Class::QuestTemp,
             17 => Class::QuestScratch,
+            18 => Class::QuestRoot,
             _ => Class::Podman { unused: bool(self) },
         }
     }
@@ -363,6 +364,22 @@ fn what_a_quest_at_work_left_beside_its_tmp_goes_after_a_week_or_two_days_nearly
         sorted(taken(&all, Band::CriticallyFull)),
         ["day", "days", "hours", "week"]
     );
+}
+
+#[test]
+fn a_build_a_quest_at_work_linked_into_its_tmp_goes_after_a_day() {
+    // What the link keeps from collection, a build makes again in minutes,
+    // so a day unwritten is enough healthy, and six hours nearly full.
+    let root = |name, idle| candidate(name, Class::QuestRoot, idle);
+    let all = [
+        root("days", 2.0 * DAY),
+        root("hours", 7.0 * HOUR),
+        root("young", 5.0 * HOUR),
+    ];
+    assert_eq!(taken(&all, Band::Healthy), ["days"]);
+    assert_eq!(taken(&all, Band::Filling), ["days"]);
+    assert_eq!(sorted(taken(&all, Band::NearlyFull)), ["days", "hours"]);
+    assert_eq!(sorted(taken(&all, Band::CriticallyFull)), ["days", "hours"]);
 }
 
 #[test]

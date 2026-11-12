@@ -62,6 +62,96 @@ fn a_scan_older_than_its_freshness_is_taken_again() {
 }
 
 #[test]
+fn a_scan_is_trusted_from_when_it_ended() {
+    // On 12 November a scan of 1,900 processes took 1.8 s, longer than the
+    // second a scan is trusted for, so counted from its start every scan
+    // was stale by its first use and each entry paid for two.
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::OpenOptionsExt;
+    let proc = tempfile::tempdir().unwrap();
+    sitting(proc.path(), 100, "/home/u");
+    // A stat read from a pipe makes the scan as slow as its writer.
+    let slow = proc.path().join("100/stat");
+    fs::remove_file(&slow).unwrap();
+    let name = std::ffi::CString::new(slow.as_os_str().as_bytes()).unwrap();
+    // SAFETY: name is a valid C string naming a path in a temp directory.
+    let made = unsafe { libc::mkfifo(name.as_ptr(), 0o600) };
+    assert_eq!(made, 0, "the slow stat couldn't be made");
+    let writing = slow.clone();
+    let writer = std::thread::spawn(move || {
+        // Twice the scan's freshness, so a scan counted from its start is
+        // already stale when it ends.
+        std::thread::sleep(Duration::from_millis(600));
+        // Once for the scan, and once more for a second that shouldn't
+        // come; a failure is only the reader going.
+        for _ in 0..2 {
+            let _ = fs::write(&writing, stat(100, "sh", 0, 100));
+        }
+    });
+    let mut scan = Scan::new(
+        proc.path(),
+        &proc.path().join("locks"),
+        42,
+        Duration::from_millis(300),
+    );
+    let target = Path::new(TARGET);
+    assert_eq!(
+        scan.judge(target, None).unwrap(),
+        Use::Free,
+        "nothing sat in it"
+    );
+    sitting(proc.path(), 200, "/home/u/src/app/target/debug");
+    let second = scan.judge(target, None).unwrap();
+    // Lets a writer waiting for a second reader finish.
+    drop(
+        fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&slow),
+    );
+    writer.join().unwrap();
+    assert_eq!(
+        second,
+        Use::Free,
+        "the scan ended just now, so it was reused"
+    );
+}
+
+/// A stop waits for the guard to take it, and systemd kills a guard that
+/// keeps it waiting more than five seconds, as a scan of a busy desktop
+/// can. The stop is this thread's alone, and taken back before it ends.
+#[test]
+fn a_stop_ends_a_scan_and_its_judgement_fails() {
+    let proc = tempfile::tempdir().unwrap();
+    sitting(proc.path(), 100, "/home/u");
+    let judged = std::thread::spawn(move || {
+        let mut scan = Scan::new(proc.path(), &proc.path().join("locks"), 42, Duration::ZERO);
+        // SAFETY: set is a valid sigset_t; the signal goes to this thread,
+        // which blocks it, and is taken back before the thread ends.
+        unsafe {
+            let mut set = std::mem::zeroed::<libc::sigset_t>();
+            libc::sigemptyset(&raw mut set);
+            libc::sigaddset(&raw mut set, libc::SIGTERM);
+            libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut());
+            libc::pthread_kill(libc::pthread_self(), libc::SIGTERM);
+            let judged = scan
+                .judge(Path::new(TARGET), None)
+                .map_err(|error| error.kind());
+            let mut taken = 0;
+            libc::sigwait(&raw const set, &raw mut taken);
+            judged
+        }
+    })
+    .join()
+    .unwrap();
+    assert_eq!(
+        judged,
+        Err(std::io::ErrorKind::Interrupted),
+        "the scan went on with a stop waiting"
+    );
+}
+
+#[test]
 fn the_guard_itself_judges_nothing() {
     let proc = tempfile::tempdir().unwrap();
     sitting(proc.path(), 42, "/home/u/src/app/target");

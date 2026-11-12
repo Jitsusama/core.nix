@@ -511,10 +511,19 @@ fn hand(process: &Path) -> crate::held::Hand {
 /// Every process `/proc` shows, but kernel threads and zombies. A process
 /// that exits mid-scan is left out. One whose cwd, files or maps are hidden,
 /// as another account's are, reads as unreadable rather than as idle.
+///
+/// # Errors
+///
+/// `Interrupted` once a stop waits, since a scan of a busy desktop takes
+/// seconds and systemd gives the guard five: what it was judging for is
+/// then kept or put back, as anything whose use can't be judged is.
 pub fn processes(proc: &Path) -> io::Result<Vec<crate::activity::Process>> {
     let mut all = Vec::new();
     for entry in fs::read_dir(proc)? {
         let entry = entry?;
+        if crate::commands::stop_waiting() {
+            return Err(io::Error::new(io::ErrorKind::Interrupted, "stopping"));
+        }
         let Some(pid) = entry
             .file_name()
             .to_str()
@@ -604,15 +613,13 @@ fn process(dir: &Path, pid: u32) -> Option<crate::activity::Process> {
         files.dedup();
         files
     });
+    // Sorted to drop repeats, as the files are: a browser maps thousands of
+    // regions of hundreds of files, and looking each up in what was kept
+    // so far took a third of a scan of 1,900 processes on 12 November.
     let maps = fs::read_to_string(dir.join("maps")).map(|text| {
-        let mut maps: Vec<PathBuf> = Vec::new();
-        for line in text.lines() {
-            if let Some(path) = mapped_path(line)
-                && !maps.contains(&path)
-            {
-                maps.push(path);
-            }
-        }
+        let mut maps: Vec<PathBuf> = text.lines().filter_map(mapped_path).collect();
+        maps.sort();
+        maps.dedup();
         maps
     });
     let readable = cwd.is_ok() && files.is_ok() && maps.is_ok();
