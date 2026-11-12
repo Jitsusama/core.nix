@@ -476,7 +476,9 @@ fn messages(root: &Path, since: i64) -> Vec<Note> {
     let since_ms = since * 1000;
     // The mesh kept a folder a day until 12 November, then wrote each
     // message straight into the folder, named by when it was sent; a
-    // message written both ways counts once.
+    // message written both ways counts once. Either way a file is chosen
+    // by the time in its name before it's opened, since a day holds
+    // thousands and reading them all took seconds on a busy machine.
     let by_day = [since, since + DAY]
         .iter()
         .filter_map(|at| Timestamp::from_second(*at).ok())
@@ -484,19 +486,16 @@ fn messages(root: &Path, since: i64) -> Vec<Note> {
         .collect::<BTreeSet<PathBuf>>()
         .into_iter()
         .flat_map(|day| fs::read_dir(day).into_iter().flatten().flatten());
-    let flat = fs::read_dir(&folder)
-        .into_iter()
-        .flatten()
-        .flatten()
+    let flat = fs::read_dir(&folder).into_iter().flatten().flatten();
+    by_day
+        .chain(flat)
         .filter(|entry| {
             entry
                 .file_name()
                 .to_str()
                 .and_then(mesh::stamped_at)
                 .is_some_and(|ms| ms >= since_ms)
-        });
-    by_day
-        .chain(flat)
+        })
         .filter_map(|entry| serde_json::from_slice::<Note>(&fs::read(entry.path()).ok()?).ok())
         .filter(|m| mesh::stamped_at(&m.id).is_some_and(|ms| ms >= since_ms))
         .map(|m| (m.id.clone(), m))
@@ -635,6 +634,10 @@ mod tests {
         fs::write(folder.join(format!("{flat}.json")), body).expect("written");
         let (old, body) = note(since - 100_000, "c");
         fs::write(folder.join(format!("{old}.json")), body).expect("written");
+        // A file named for an hour before is never opened, by day or flat:
+        // what it holds isn't read, so the day's thousands cost nothing.
+        let (_, recent) = note(since + 30_000, "d");
+        fs::write(folder.join(format!("2026-11-12/{old}.json")), recent).expect("written");
 
         let mut ids: Vec<String> = messages(root.path(), since / 1000)
             .into_iter()
