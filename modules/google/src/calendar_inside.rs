@@ -15,12 +15,13 @@
 //!
 //! Move the Meeting steps in to the later times it offers, each a row
 //! saying its day and times and the meeting it would clash with, holding
-//! the one row asking Joel to be sure, whose Return moves it. Two things
-//! are still the shell's, each named for what takes it next: a time typed
-//! inside Move, which Calendar.js reads till the daemon answers it as a
-//! search within Move's row, so Move's row is served with `kind: "move"`
-//! for the shell to find; and Open the Transcript, which only
-//! call-transcripts knows (it serves that row next), so it isn't served.
+//! the one row asking Joel to be sure, whose Return moves it; a time typed
+//! inside Move is a search within Move's row (`calendar_typed`), Move's row
+//! served with `kind: "move"` for the shell to find. Open the Transcript is
+//! a row only call-transcripts can make, since only it knows whether a
+//! call was written down, so it's served lent (ready-rows.md's lends,
+//! `lentOnly`): call-transcripts' row where it lends one, and none where
+//! it doesn't.
 
 use serde_json::{Value, json};
 
@@ -96,8 +97,13 @@ pub(crate) fn inside(
                 rows.extend(facts(within, &key, meeting, words));
                 continue;
             }
-            // Open the Transcript is call-transcripts' to serve.
-            "verb:calendar:transcript" => continue,
+            // Call-transcripts' row of the meeting's call where it lends one, and none
+            // otherwise, so its acts here are never drawn.
+            "verb:calendar:transcript" => {
+                row["lends"] = json!(format!("transcript:{}", meeting.id));
+                row["lentOnly"] = json!(true);
+                row["acts"] = json!([]);
+            }
             "verb:calendar:yes" | "verb:calendar:maybe" | "verb:calendar:no" => {
                 row["acts"] = json!([{"key": verb, "ask": act["ask"]}]);
                 if act["given"] == true {

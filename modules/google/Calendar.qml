@@ -307,7 +307,9 @@ Singleton {
     // first lines, in the drawer. It's asked of any provider holding `transcriptOf`
     // (call-transcripts' Transcribed.qml), so a machine without
     // call-transcripts offers none; nor does a call with nothing yet
-    // written.
+    // written. A meeting the daemon serves takes the row it lends instead
+    // (Meetings.qml's servedActs), and this goes with Calendar.acts, by
+    // Sun 15 Nov.
     function transcribing(meeting, provider) {
         const calls = (provider.launcher?.sources ?? []).find(source => typeof source.transcriptOf
             === "function");

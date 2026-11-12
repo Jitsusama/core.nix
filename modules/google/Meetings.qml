@@ -24,9 +24,11 @@
 // document Documents' own row where they hold one (ready-rows.md's
 // lends), and Move the Meeting, its later times and the row asking Joel
 // to be sure of each, and a time typed inside it, which the daemon reads
-// as a search within Move's row. Its other acts stay the shell's till
-// call-transcripts serves Open the Transcript, by Sun 15 Nov; then every
-// act inside a meeting is the daemon's.
+// as a search within Move's row, and Open the Transcript, which
+// call-transcripts lends where a call was written down, none standing
+// where it doesn't (ready-rows.md's lentOnly). Its other acts stay
+// Calendar.acts' till they go, by Sun 15 Nov; then every act inside a
+// meeting is the daemon's.
 import qs
 import Quickshell
 import QtQuick
@@ -157,12 +159,14 @@ Provider {
     }
 
     // The row the daemon serves inside the meeting at `key` in place of
-    // the shell's `act`, for Guests and Attachments, or null for an act
-    // it doesn't yet serve whole, or one it served none of.
+    // the shell's `act`, for Guests, Attachments, Move and the transcript
+    // lent, or null for an act it doesn't yet serve whole, or one it served
+    // none of.
     readonly property var servedActs: ({
         "verb:calendar:guests": "guests",
         "verb:calendar:attachments": "attachments",
-        "verb:calendar:move": "move"
+        "verb:calendar:move": "move",
+        "verb:calendar:transcript": "transcript"
     })
     function servedInside(from, key, act) {
         const id = provider.servedActs[act?.key];

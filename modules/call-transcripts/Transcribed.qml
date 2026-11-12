@@ -5,10 +5,13 @@
 // row, found by a call's title or by who it was with, by name or
 // address, and its word, "transcripts", lists them all.
 //
-// `transcriptOf(event)` is a meeting's call, for the meeting's Open the
-// Transcript (Google's Calendar.qml asks any provider holding it), or
-// null; on a machine without call-transcripts nothing holds it, and no
-// meeting offers one.
+// A meeting's Open the Transcript is lent from here: google's daemon
+// serves it as `transcript:<meeting id>`, standing only where lent
+// (ready-rows.md's lentOnly), and `lent` makes it for a meeting whose
+// call was written down; `transcriptOf(event)` is that call's row, which
+// Calendar.qml asks for a meeting the daemon doesn't serve yet. On a
+// machine without call-transcripts nothing lends it, and no meeting
+// offers one.
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -61,6 +64,38 @@ Provider {
         const call = Transcripts.ofEvent(event);
         return call ? Transcripts.row(call, provider) : null;
     }
+
+    // A meeting's Open the Transcript, as google's daemon serves it lent:
+    // its call's transcript opened in the reader, closing the launcher, as
+    // Return on the call's row does, with its summary, or its first lines,
+    // in the drawer, each read from the call as it is then; null for a
+    // meeting with no call written down, which then offers none.
+    function lent(thing) {
+        const prefix = "transcript:";
+        const event = String(thing).startsWith(prefix) ? String(thing).slice(prefix.length) : "";
+        const call = event === "" ? null : transcriptOf(event);
+        if (!call || call.verb === "more")
+            return null;
+        const key = "verb:calendar:transcript";
+        return provider.thing({
+            key,
+            name: Words.name(key),
+            verb: Words.verb(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            later: true,
+            run: () => transcriptOf(event)?.run(),
+            drawer: () => transcriptOf(event)?.drawer() ?? null
+        });
+    }
+
+    // Which meetings' calls are written down, so only a call being written
+    // down, or gone, makes the rows lent again, not each line of a call
+    // going on.
+    readonly property string lentRevision: Transcripts.calls
+        .filter(call => call.event && call.transcript)
+        .map(call => `${call.event}:${call.transcript}`)
+        .join("\n")
 
     // A call is found by its title, or failing that by who it was with,
     // which counts for less, newest first among equals, since a call is
