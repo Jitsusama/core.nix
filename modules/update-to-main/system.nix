@@ -370,6 +370,43 @@ in
                   is. When the API fails, main is fetched.
                 '';
               };
+              mayFetch = mkOption {
+                type = types.nullOr (types.nonEmptyListOf types.str);
+                default = null;
+                example = [
+                  "sh"
+                  "-c"
+                  "h=$(date +%H); [ \"$h\" -ge 2 ] && [ \"$h\" -lt 7 ]"
+                ];
+                description = ''
+                  A command, run as the account in its checkout, that
+                  succeeds when main may be fetched into the checkout now:
+                  a fetch that moves a large repository's main can take
+                  minutes and gigabytes. When it fails, a head the checkout
+                  lacks and the API couldn't read is left for a later ask,
+                  and the machine takes `fetched`'s commit or stays where it
+                  is, with only its followed inputs moved on. When null,
+                  main is fetched whenever it's needed.
+                '';
+              };
+              fetched = mkOption {
+                type = types.nullOr (types.nonEmptyListOf types.str);
+                default = null;
+                example = [
+                  "git"
+                  "rev-parse"
+                  "refs/prefetch/remotes/origin/main"
+                ];
+                description = ''
+                  A command, run as the account in its checkout, that
+                  prints a commit of main the checkout already holds, such
+                  as a ref another fetch keeps. While main mayn't be
+                  fetched, the machine takes it when the host says main
+                  holds it and it descends from what the machine last
+                  switched to, so the account's word can at most keep the
+                  machine behind main's head.
+                '';
+              };
               path = mkOption {
                 type = types.listOf types.str;
                 default = [
