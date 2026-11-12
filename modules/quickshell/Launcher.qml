@@ -4801,7 +4801,10 @@ Scope {
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
             Report.say(`heard ${source.settings.name} ${Math.round(ago)} ms after a key's work`);
         if (byKey && !keyedActs.some(one => one.source === source && one.heard === keyHeardAt)) {
-            const act = { source: source, heard: keyHeardAt, done: Infinity };
+            // Who told it, and how long after the key's work, so a slow
+            // one says whether a daemon was late or the shell was.
+            const act = { source: source, heard: keyHeardAt, done: Infinity,
+                told: Math.round(ago), by: Hearing.heardBy() };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
             // When the key's own work is done, and the change could be shown.
             Qt.callLater(() => act.done = KeyTimes.now());
@@ -4927,8 +4930,10 @@ Scope {
             Report.say(`act shown in ${name} after ${took} ms, `
                 + `refreshed ${waited} ms after the key's work`);
             if (took >= 50)
-                console.info(
-                    `launcher: what a key changed in ${name} took ${took} ms to its frame`);
+                console.info(`launcher: what a key changed in ${name} took ${took} ms to its `
+                    + `frame: ${one.by || "the shell"} told it ${one.told} ms after the key's `
+                    + `work, its refresh began ${waited} ms later and was drawn `
+                    + `${Math.round(drawn - one.begun)} ms after that`);
         }
     }
     // A condition a shown place names has moved, as when the charger goes
