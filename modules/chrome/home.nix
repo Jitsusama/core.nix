@@ -5,7 +5,10 @@
 # nothing; a machine with Chrome imports it. Chrome takes no settings for
 # its keys, so these are its own, which mostly speak the keyboard's
 # language already (docs/design.md, The Keyboard): T tabs, W closes, a
-# number is that tab, and the arrows go back and forward. Its Recent in the
+# number is that tab, and the arrows go back and forward. Space and
+# Shift+Space move a screen and Home and End to an end of the page, F7 lays
+# a caret on it to move through and select by the keys, and Ctrl+Shift+a
+# searches the open tabs, all with no extension. Its Recent in the
 # launcher lists the sites it visited lately and the files it downloaded,
 # each read from its history as Chrome is stepped into (recent-sites), and
 # its own acts there open a repository's page on GitHub, the link copied
@@ -141,7 +144,24 @@ let
       chord = "Ctrl+Shift+Tab";
       does = "The tab before";
     }
+    {
+      chord = "Ctrl+Shift+a";
+      does = "Search the open tabs";
+    }
   ];
+
+  # Chrome's own for moving about a page, which work with or without
+  # Vimium, but for in a field, where they type or move the text's caret,
+  # and on Google's pages, whose own keys take them, as Sheets' Shift+Space
+  # selects the row.
+  outsideFields = map (
+    key:
+    key
+    // {
+      when = "outside a field";
+      leaves = lib.attrNames googlePages;
+    }
+  );
 
   numbers = inBrowser (
     map (number: {
@@ -176,6 +196,10 @@ let
         chord = "Ctrl+l";
         does = "Type an address";
       }
+      {
+        chord = "F7";
+        does = "Move through the page by a caret";
+      }
       (
         {
           chord = "Ctrl+f";
@@ -198,6 +222,24 @@ let
         does = "The page at its own size";
       }
     ]
+    ++ grouped "scrolling" (outsideFields [
+      {
+        chord = "Space";
+        does = "Down a screen";
+      }
+      {
+        chord = "Shift+Space";
+        does = "Up a screen";
+      }
+      {
+        chord = "Home";
+        does = "The top of the page";
+      }
+      {
+        chord = "End";
+        does = "The bottom of the page";
+      }
+    ])
     ++ [
       {
         chord = "Ctrl+n";

@@ -70,7 +70,8 @@ onLinux {
 
   # An account whose machine doesn't ask for Vimium, as one whose Chrome
   # is managed, gets no Vimium settings and no launcher row that needs it,
-  # so it lists no keys its Chrome can't take.
+  # so it lists no keys its Chrome can't take; and it lists Chrome's own
+  # for moving about a page and finding a tab, which it can.
   chrome-leaves-vimium-out-unasked =
     let
       home = account (bareNixos [
@@ -81,6 +82,15 @@ onLinux {
       rows = map (key: key.chord) (
         pkgs.lib.filter (key: pkgs.lib.hasInfix "Vimium" (key.when or "")) home.jitsusama.keys.chrome
       );
+      own = [
+        "F7"
+        "Ctrl+Shift+a"
+        "Space"
+        "Shift+Space"
+        "Home"
+        "End"
+      ];
+      missing = pkgs.lib.subtractLists (map (key: key.chord) home.jitsusama.keys.chrome) own;
     in
     pkgs.runCommandLocal "chrome-leaves-vimium-out-unasked" { } (
       if settings then
@@ -91,6 +101,11 @@ onLinux {
       else if rows != [ ] then
         ''
           echo "the launcher lists keys that need Vimium, unasked: ${pkgs.lib.concatStringsSep ", " rows}"
+          exit 1
+        ''
+      else if missing != [ ] then
+        ''
+          echo "the launcher leaves out Chrome's own keys: ${pkgs.lib.concatStringsSep ", " missing}"
           exit 1
         ''
       else
