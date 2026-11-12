@@ -1049,7 +1049,7 @@ def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: She
     """A look's choice, a step into its row in For You, reaches its session's inbox as an answer.
 
     Joel answers it where it is, rather than in a session that's moved on (2026-11-11), and the
-    session writes it resolved; until it does, its row says the answer was given.
+    session writes it resolved; once the node takes the answer, it waits no longer.
     """
     looks = STATE / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
@@ -1105,12 +1105,19 @@ def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: She
             "reads-right",
             "joel",
         ), said
-        # Back at its row, it says the answer was given, its choice no longer offered.
-        shell.send_chars("-")
+        shell.close_launcher()
+        # The node took it, so it has left what waits for History, saying the answer, though its
+        # file waits until the session writes it resolved (VKCF3Z, 2026-11-12).
+        in_for_you(shell)
         shell.launcher_until(
-            lambda shown: (shown["selected"] or {}).get("name") == "Asking Look"
-            and shown["selected"]["side"] == "answered Reads Right"
+            lambda shown: "To Look At" not in shown["rows"], timeout=timedelta(seconds=5)
         )
+        shell.down_to("History")
+        shell.step_in()
+        shell.launcher_until(lambda shown: "Asking Look" in shown["rows"])
+        shell.down_to("Asking Look")
+        side = shell.showing()["selected"]["side"]
+        assert re.fullmatch(r"answered Reads Right .+", side), shell.showing()
         shell.close_launcher()
     finally:
         look.unlink()

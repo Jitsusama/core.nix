@@ -92,6 +92,26 @@ function answering(one, answered, now) {
     return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
 }
 
+// The looks as `looks` splits them, with each waiting one whose answer the
+// node took (`answered`'s { [look id]: { label, at, taken } }) in History,
+// answered then, its side as `saying` words its choice: Joel's answer has
+// handled it, so it leaves what waits at once (VKCF3Z, 2026-11-12), though
+// its file waits until its session reads the steer and writes it resolved.
+function taken(split, answered, saying) {
+    const given = answered ?? {};
+    const moved = split.waiting.filter(one => given[one.id]?.taken === true);
+    if (moved.length === 0) {
+        return split;
+    }
+    const done = moved.map(one => Object.assign({}, one, { state: "answered",
+        how: saying(given[one.id].label), resolved: given[one.id].at }));
+    return {
+        waiting: split.waiting.filter(one => given[one.id]?.taken !== true),
+        history: Order.sorted(done.concat(split.history),
+            Order.stream(one => one.resolved ?? one.since))
+    };
+}
+
 // A look waiting since longer ago than QUIET_AFTER, as History holds it: gone quiet when its
 // time ran out, which History's side says. Its file still says it waits; nothing's written,
 // and the look as its file was read, kept to be read again, is left as it was.

@@ -317,6 +317,22 @@ QtObject {
             [Looks.answering(choosing, given, now + 59 * 1000),
                 Looks.answering(choosing, given, now + 61 * 1000),
                 Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
+        const saying = label => `answered ${label}`;
+        // Once the node takes it, the look leaves what waits for History at once
+        // (VKCF3Z, 2026-11-12), though its file waits until its session writes it.
+        const offering = { waiting: read.waiting.concat([choosing]), history: read.history };
+        expect("an answer the node hasn't taken yet leaves it waiting",
+            Looks.taken(offering, given, saying) === offering, true);
+        const took = Looks.taken(offering, { P: { label: "Posted", at: now, taken: true } },
+            saying);
+        expect("one it took leaves what waits", took.waiting.map(one => one.id),
+            ["H", "B", "A"]);
+        const answered = took.history.findIndex(one => one.id === "P");
+        expect("for History, by when it was answered, saying the answer",
+            [took.history[answered - 1]?.id, took.history[answered + 1]?.resolved < now,
+                ForYou.historySide(took.history[answered] ?? {}, say)],
+            ["E", true, "answered Posted 14:00"]);
+        expect("with the rest still there", took.history.length, offering.history.length + 1);
         expect("a look rewritten keeps its choices as its file gave them",
             JSON.parse(Looks.rewritten(choosing, "opened", "opened", now)).choices.length, 7);
 

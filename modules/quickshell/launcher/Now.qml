@@ -860,8 +860,12 @@ Provider {
     // file that changed is parsed again. A stopgap: KP0L6A's agents daemon
     // takes the looks over by Sat 14 Nov, and For You takes its rows from
     // it ready, with nothing to read or parse here.
-    readonly property var looks: Looks.looks(Object.keys(lookTexts)
+    readonly property var looksSplit: Looks.looks(Object.keys(lookTexts)
         .map(file => ({ file: file, text: lookTexts[file] })), looksParsed, looksHour * 3600000)
+    // Those read, each one Joel's answer has handled in History (Looks.js's
+    // taken), so it leaves To Look At once the node takes the answer.
+    readonly property var looks: Looks.taken(looksSplit, lookAnswers,
+        label => waitingSaid("answering", { choice: label }))
     readonly property var looksParsed: ({})
     // The hour the looks were last listed in, which a look that has waited
     // three days goes quiet by (Looks.js's quieted): set as the launcher
@@ -1030,17 +1034,19 @@ Provider {
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 
-    // The answers Joel gave looks, `{ [look id]: { label, at } }`, each
-    // shown as given while its file still waits and it may yet take
-    // (Looks.js's answering). Replaced whole, so what reads it hears.
+    // The answers Joel gave looks, `{ [look id]: { label, at, taken } }`,
+    // each shown as given while the node is asked (Looks.js's answering),
+    // then, once it took it, in History (Looks.js's taken). Replaced
+    // whole, so what reads it hears.
     property var lookAnswers: ({})
 
     // Answers a look with one of its choices where it is, rather than in a
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
     // into a pi sessino that has already moved on from it is a waste of my
     // time"): a steer tells the session that left it, or its quest's, which
-    // writes the look resolved. One the node didn't put is no longer shown
-    // as given, so its choices come back.
+    // writes the look resolved. One the node took leaves what waits at
+    // once; one it didn't is no longer shown as given, so its choices
+    // come back.
     function answerLook(one, choice) {
         const told = Looks.answer(one, choice, lookSession(one) !== null, Date.now());
         if (told === null)
@@ -1048,10 +1054,11 @@ Provider {
         lookAnswers = Object.assign({}, lookAnswers,
             { [one.id]: { label: choice.label, at: Date.now() } });
         Sessions.steer(told.address, told.steer, put => {
-            if (put)
-                return;
             const left = Object.assign({}, provider.lookAnswers);
-            delete left[one.id];
+            if (put)
+                left[one.id] = Object.assign({}, left[one.id], { taken: true });
+            else
+                delete left[one.id];
             provider.lookAnswers = left;
         });
     }
