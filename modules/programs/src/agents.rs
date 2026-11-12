@@ -16,7 +16,7 @@ use programs::agent_panes::{self, Pane};
 use programs::source::{self, Source, Without};
 use serde_json::{Value, json};
 
-use super::{Daemon, Shared, follow, keep, lock, rows};
+use super::{Daemon, Shared, follow, keep, lock, rows, tabs};
 
 /// The one watch held of the agents daemon.
 const WATCH: &str = r#"{"id":"programs","ask":"watch","kind":"agent-window","place":"agents"}"#;
@@ -66,6 +66,9 @@ fn told(shared: &Shared, said: &Value) {
     keep(&mut daemon, records, &[]);
     if rows::watched(&daemon) {
         rows::make(shared, &mut daemon, &[]);
+    }
+    if tabs::watched(&daemon) {
+        tabs::make(shared, &mut daemon);
     }
 }
 

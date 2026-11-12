@@ -35,10 +35,10 @@
 //! typed (search.rs). Capture's Recent's rows are made as a watch of them
 //! begins and as what was taken changes, worded from the launcher's
 //! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
-//! tells its lists changed has them read again (told.rs). Chrome's open
-//! tabs are rows of their own while watched (tabs.rs), and its bookmarks
-//! too, but for a page open now (bookmarks.rs). kitty's open list
-//! leaves out the panes the agents daemon names, and Programs counts
+//! tells its lists changed has them read again (told.rs). Chrome's and
+//! kitty's open tabs are rows of their own while watched (tabs.rs), and
+//! Chrome's bookmarks too, but for a page open now (bookmarks.rs). kitty's
+//! open list leaves out the panes the agents daemon names, and Programs counts
 //! their windows apart, as it tells (agents.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
@@ -124,8 +124,9 @@ struct Daemon {
     since: u64,
     /// The folders asked for by their paths, watched since first asked.
     looked: Looked,
-    /// What the windows daemon last said of each window, by its key.
-    windows: BTreeMap<String, Value>,
+    /// What the windows daemon last said of each window, by its key; none
+    /// until it's first heard.
+    windows: Option<BTreeMap<String, Value>>,
     /// Every entry's `program` record, as Programs' rows were last made
     /// from, until a folder of them changes.
     catalogue: Option<Vec<Value>>,
@@ -196,7 +197,7 @@ fn main() {
             took: VecDeque::new(),
             since: now_ms(),
             looked: Looked::default(),
-            windows: BTreeMap::new(),
+            windows: None,
             catalogue: None,
             rows: Kept::default(),
             taken: Kept::default(),
@@ -453,9 +454,7 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
             if taking && taken::watched(&daemon) {
                 taken::make(shared, &mut daemon, &[]);
             }
-            if what == Run::Opened && source.session.is_some() && tabs::watched(&daemon) {
-                tabs::make(shared, &mut daemon);
-            }
+            tabs::heard(shared, &mut daemon, at, what);
             // A page opened or shut leaves its bookmark's row or brings it
             // back, so home never lists one page twice.
             if what == Run::Opened && source.session.is_some() && bookmarks::watched(&daemon) {
@@ -727,14 +726,12 @@ fn answer(
                         _ => rows::make(shared, &mut daemon, &shown),
                     }
                 }
-                // What it's told first is queued under the lock that holds
-                // the watch, so a change read since, as inotify's are, is
-                // told after it. Queued once the lock was let go, a change
-                // could be said first, and the whole answer after it would
-                // put back what the change moved on from. One that can't
-                // be queued is hung up on, as a change would hang up on it.
-                // It's told first only what it would be told of as a
-                // change, so a watch of one place hears none of another's.
+                // What it's told first is queued under the lock that holds the watch, so a
+                // change read since, as inotify's are, is told after it. Queued once the lock
+                // was let go, a change could be said first, and the whole answer after it
+                // would put back what the change moved on from. One that can't be queued is
+                // hung up on, as a change would hang up on it. It's told first only what it
+                // would be told of as a change, so a watch of one place hears none of another's.
                 let watch = Watch {
                     connection,
                     id: id.clone(),
@@ -771,10 +768,7 @@ fn answer(
                 .retain(|watch| !(watch.connection == connection && watch.id == id));
             json!({"id": id, "unwatched": true})
         }
-        Ask::Changed { id, keys, from } => {
-            told::heard(shared, &keys, from);
-            json!({"id": id, "heard": keys})
-        }
+        Ask::Changed { id, keys, from } => told::heard(shared, &id, &keys, from),
         Ask::Health { id } => {
             let daemon = lock(&shared.daemon);
             json!({
@@ -791,6 +785,7 @@ fn answer(
             words,
             most,
         } => search::answer(shared, &lock(&shared.daemon), &id, &place, &words, most),
+        Ask::Tab { id, tab } => tabs::act(&id, tab),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }

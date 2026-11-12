@@ -1,20 +1,26 @@
 //! The Programs collection's rows as this daemon serves them
 //! (`program_rows.rs`), and what the windows daemon says each program has
 //! open, heard for as long as this runs: one watch of its `window`
-//! records naming only each one's program and when it was looked at, so a
-//! retitle or a window moving wakes nothing here. The rows are made again
-//! as that changes or an entry does, and only while a watch wants them.
+//! records naming only each one's program, when it was looked at, and its
+//! process and app id, which pair kitty's OS windows with niri's
+//! (`kitty_tabs.rs`) and never change, so a retitle or a window moving
+//! wakes nothing here. The rows are made again as that changes or an
+//! entry does, and only while a watch wants them, the tabs' too.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use programs::program_rows;
 use serde_json::Value;
 
-use super::{Daemon, Shared, agents, follow, keep, lock, programs};
+use super::{Daemon, Shared, agents, follow, keep, lock, programs, tabs};
 
 /// The one watch held of the windows daemon.
-const WATCH: &str = r#"{"id":"programs","ask":"watch","kind":"window","fields":["owner","order"]}"#;
+const WATCH: &str = concat!(
+    r#"{"id":"programs","ask":"watch","kind":"window","#,
+    r#""fields":["owner","order","pid","opened"]}"#
+);
 
 /// Where the windows daemon answers: `PROGRAMS_WINDOWS`, else beside this
 /// daemon's own socket, as systemd puts both.
@@ -40,9 +46,12 @@ pub fn hear(shared: &Arc<Shared>, socket: &Path) {
 /// went since; the rows made again where a watch wants them.
 fn windows_changed(shared: &Shared, said: &Value) {
     let mut daemon = lock(&shared.daemon);
-    follow::records(&mut daemon.windows, said);
+    follow::records(daemon.windows.get_or_insert_default(), said);
     if watched(&daemon) {
         make(shared, &mut daemon, &[]);
+    }
+    if tabs::watched(&daemon) {
+        tabs::make(shared, &mut daemon);
     }
 }
 
@@ -75,7 +84,8 @@ pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
         .flat_map(|watch| watch.shown.iter().cloned())
         .chain(also.iter().cloned())
         .collect();
-    let opened = program_rows::opened(daemon.windows.values(), &agents::windows(daemon));
+    let windows = daemon.windows.iter().flat_map(BTreeMap::values);
+    let opened = program_rows::opened(windows, &agents::windows(daemon));
     let rows = program_rows::rows(
         daemon.catalogue.as_deref().unwrap_or_default(),
         &opened,

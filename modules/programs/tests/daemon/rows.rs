@@ -36,7 +36,7 @@ fn programs_rows_count_the_windows_the_windows_daemon_says_each_has_open() {
     let asked: Value = serde_json::from_str(&asked).unwrap();
     assert_eq!(
         asked["fields"],
-        json!(["owner", "order"]),
+        json!(["owner", "order", "pid", "opened"]),
         "a retitle wakes nothing"
     );
     let tell = |said: Value| writeln!(&windows, "{said}").unwrap();
