@@ -559,8 +559,9 @@ Provider {
     // so a row made for a search costs no source anything until then.
     // One the daemon listed or found is drawn as its ready row says
     // (`ready`), its drawer as the daemon serves it (`served`, read as
-    // it's shown).
-    function made(person, stood, ready, served) {
+    // it's shown), which for anyone else is the one it served with them
+    // (servedFor).
+    function made(person, stood, ready, served = servedFor(person)) {
         const row = member({
             // A ready row's key is the daemon's; the person it is, which
             // Joel's picks remember, is its `thing`.
@@ -608,22 +609,18 @@ Provider {
         // is made again once its minute has passed. A function the drawer
         // calls (drawerOf) rather than a getter, which a copy of the row
         // would read, merging everyone for their facts (Y2YBTS, 2026-11-10).
-        // One the daemon serves merges nobody; until it serves one, as
-        // before its listing comes, it's what this person holds.
+        // The daemon serves every person's drawer, the line under their
+        // name with it, so it merges nobody. Until it has served one, as
+        // before its answer comes, they have none, since a drawer with
+        // nothing in it shouldn't open.
         let details = null;
         let detailsAt = -1;
         row.drawer = () => {
             const minute = Math.floor(Date.now() / 60000);
             if (details === null || detailsAt !== minute) {
-                // A served drawer comes with the line under their name;
-                // one made here is given it (Person.headed).
-                const drawn = served ? drawnFrom(served()) : null;
-                details = drawn ?? Person.details(person, zone => provider.there(zone));
-                if (details) {
+                details = drawnFrom(served());
+                if (details)
                     details.facts = firstsOf(person).concat(details.facts ?? []);
-                    if (!drawn)
-                        details = Person.headed(details, headLabels);
-                }
                 detailsAt = minute;
             }
             return details;
@@ -772,6 +769,23 @@ Provider {
         return kept ? [kept] : [];
     }
 
+    // The drawer the daemon served for someone, read as it's shown, so a
+    // row made in a binding reads nothing more there: their ready row's,
+    // listed, else the one a search or a Known ask came with, else null.
+    // One served none yet, as someone Slack named that no search found,
+    // is asked after as whoIs asks, and the answer remakes their row.
+    function servedFor(person) {
+        const key = `person:${person.key}`;
+        return () => {
+            const ready = lister.held[key] ? rowsHeld[`row:people:${person.key}`] : null;
+            const listed = ready ? Ready.drawerServed(ready, lister.held) : null;
+            const served = listed ?? soughtOf[key]?.drawer ?? unlisted.drawers[key] ?? null;
+            if (served === null && person.email)
+                unlistedOf(person.email.toLowerCase());
+            return served;
+        };
+    }
+
     // The person an address is, as their one row, for a thing that names
     // them, as a mail's sender or a meeting's guests (Mail.qml,
     // Calendar.qml): null when no source knows them, so nothing is listed
@@ -821,7 +835,10 @@ Provider {
     // same turn, and null until it answers, when namesRevision says so.
     // One it doesn't hold is asked again the next time, so someone it
     // learns of later is named. Plain, so keeping it notifies nothing.
-    readonly property var unlisted: ({ by: {}, due: [] })
+    // Each one's drawer, as the daemon served it with them, by their key,
+    // is kept while they're asked after again, so one shown stays until
+    // the next answer says it anew.
+    readonly property var unlisted: ({ by: {}, due: [], drawers: {} })
     function unlistedOf(address) {
         const kept = unlisted;
         if (address in kept.by)
@@ -843,6 +860,10 @@ Provider {
         book.find({ ask: "known", kind: "person", keys: due.map(one => `person:${one}`) },
             answer => {
                 const records = (answer?.records ?? []).filter(record => !record.gone);
+                for (const record of records) {
+                    if (record.drawer)
+                        kept.drawers[record.key] = record.drawer;
+                }
                 const daemon = fromDaemon(records);
                 const persons = Person.merged(heldBy.map(name => ({
                     name: name,
@@ -927,13 +948,6 @@ Provider {
     // drawer shown on a key makes no rows but the next meeting's and a
     // call's, rather than one for every meeting and mail they shared, and
     // its details hold for the minute (made's drawer).
-    // The facts their drawer says under their name, by the names sources
-    // give them, Slack's and Vault's alike.
-    readonly property var headLabels: ({
-        title: Words.name("people:title"),
-        team: Words.name("people:team")
-    })
-
     function firstsOf(person) {
         const now = Date.now();
         const coming = next(person)[0] ?? null;
