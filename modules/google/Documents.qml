@@ -47,6 +47,17 @@ Provider {
     // Named, so tests/documents.qml tells it records as the daemon would.
     readonly property alias served: ready
 
+    // A document another place serves as a row of its own, as a meeting's
+    // attachment, is this one's row (ReadyRows.qml's lentOf), made as it's
+    // asked for, so it's one row with its drawer wherever it shows; null
+    // for one this doesn't hold. `lentRevision` moves as its rows do.
+    function lent(thing) {
+        const id = String(thing).startsWith("gdoc:") ? String(thing).slice(5) : "";
+        const key = `row:documents:${id}`;
+        return id !== "" && ready.served(key) ? ready.rowAt(key) : null;
+    }
+    readonly property int lentRevision: ready.placings
+
     // Its rows, made only while the launcher is open or its rows are
     // wanted (Provider.qml's wanted), as a walk of every row is, so shut
     // it gives the rows it made last and a change wakes nothing. Open is

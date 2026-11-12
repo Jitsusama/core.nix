@@ -10,7 +10,10 @@
 // daemon's order; opened again, it makes only those that changed; a row
 // told ahead of the rest goes first, and one gone goes; and shut again,
 // it keeps the rows it made. A copy of a row makes no drawer, and its
-// drawer reads its record as it is now. It exits 0 once every case
+// drawer reads its record as it is now. Another place serving a document
+// as a row of its own, lending it, shows Documents' row for it, or its
+// own while Documents holds none, and only that row is made again as
+// Documents' change. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -50,6 +53,9 @@ ShellRoot {
         id: standIn
 
         property bool open: false
+        // The places the launcher holds, as Launcher.qml's sources, so a
+        // place serving a document as its own row borrows Documents'.
+        property var sources: [documents]
         // Whether Documents' rows are wanted (Provider.qml's wanted), as
         // the launcher says from where it stands: never while it's shut.
         function wants(source) {
@@ -62,6 +68,29 @@ ShellRoot {
 
         launcher: standIn
         settings: ({ name: "documents" })
+    }
+
+    // Another place's rows, as a meeting's attachments are served, each
+    // made as served (ReadyRows.qml's make) unless a place lends it.
+    Launcher.ReadyRows {
+        id: borrower
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/borrower.sock`
+        place: "calendar"
+        maker: QtObject {
+            readonly property var launcher: standIn
+        }
+    }
+
+    // A row of the borrower's at `order`, lending the document `id`, or
+    // with `id` empty, one of its own.
+    function borrowed(name, id, order) {
+        const key = `row:calendar:${name}`;
+        const lends = id === "" ? {} : { thing: `gdoc:${id}`, lends: `gdoc:${id}` };
+        return { key, kind: "row", row: Object.assign({
+            key, place: "calendar", kind: "attachment", name, glyph: "", hue: "program",
+            depth: 0, side: [], acts: [], order
+        }, lends) };
     }
 
     function titles() {
@@ -138,6 +167,29 @@ ShellRoot {
             Expect.expect("its drawer as it reads now",
                 shown?.title === "Roadmap, Revised"
                 && shown.facts[0].value === "Ada Lovelace", JSON.stringify(shown));
+            // A document another place serves is Documents' own row, its
+            // drawer with it, and one Documents doesn't hold stands as
+            // served, until Documents holds it (Y2YBTS, 2026-11-12).
+            borrower.link.took([borrowed("plan", "d1", 1024), borrowed("late", "d9", 2048),
+                borrowed("own", "", 3072)], []);
+            const lentPlan = borrower.rowAt("row:calendar:plan");
+            Expect.expect("a row lent is its lender's own",
+                lentPlan === documents.things.find(made => made.key === "gdoc:d1"),
+                JSON.stringify([lentPlan?.key, lentPlan?.name]));
+            Expect.expect("one nobody lends stands as served",
+                borrower.rowAt("row:calendar:late")?.name === "late",
+                borrower.rowAt("row:calendar:late")?.name);
+            const own = borrower.rowAt("row:calendar:own");
+            tell([row("d9", "Late Plan", 4096)]);
+            Expect.expect("a lender arriving late lends it",
+                borrower.rowAt("row:calendar:late")?.key === "gdoc:d9",
+                borrower.rowAt("row:calendar:late")?.key);
+            Expect.expect("and the rows it lends nothing are kept as made",
+                borrower.rowAt("row:calendar:own") === own, "");
+            tell([], ["row:documents:d9"]);
+            Expect.expect("and gone, the served row stands again",
+                borrower.rowAt("row:calendar:late")?.name === "late",
+                borrower.rowAt("row:calendar:late")?.name);
             standIn.open = false;
             const closed = documents.tally.rows;
             documents.served.turned();
