@@ -113,6 +113,23 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // [what, the rows shown, whether an answer gave way, those that may
+        // stand]: an ending is made again, and an answer given only while
+        // nothing else was goes once something comes, rather than standing
+        // dimmed above it with the selection on it (80ECO2, 2026-11-12).
+        const ask = { key: "", side: "", answered: true };
+        const ending = { key: "e", side: "", endedBy: {} };
+        const standings = [
+            ["an ending never stands", [ask, ending], false, ""],
+            ["an answer that holds stands", [ask, { key: "a", side: "" }], false, " a"],
+            ["one that gave way goes", [ask, { key: "a", side: "" }], true, "a"]
+        ];
+        for (const [what, shown, gaveWay, want] of standings) {
+            const got = read(Steady.standing(shown, gaveWay));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+
         const after = rows("a b c d");
         // [what, the row it was on, where it was, the lowest it goes, where it goes]
         const selections = [

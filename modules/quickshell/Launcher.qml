@@ -322,9 +322,9 @@ Scope {
         // question's first word is, gives way to anything found. A thing
         // found by its meaning is a guess below it, not a find: it comes
         // late, and taking the answer away then would move the row above it.
-        answer = said && said.fallback
-            && (listed.some(row => !row.category && !row.byMeaning) || gathered.length > 0)
-            ? null : said;
+        const gaveWay = !!said && said.fallback === true
+            && (listed.some(row => !row.category && !row.byMeaning) || gathered.length > 0);
+        answer = gaveWay ? null : said;
         // An answer still being asked for holds its row from the keystroke,
         // saying so, and one that held a row keeps it until a key, even if
         // it comes to nothing: added only once it came, its row pushed
@@ -369,7 +369,7 @@ Scope {
         // found, so an answer given only when nothing is still shows.
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
-        const composed = live((steadying && !ordering ? steadied(rows.concat(below))
+        const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         matches = listedAs(composed);
         // An answer only started gives way to a name that starts the same,
@@ -4452,11 +4452,10 @@ Scope {
         return row && !found.some(one => one.key === row.key) ? [row] : [];
     }
 
-    function steadied(found) {
-        // What ends a search comes after it all and is made again with it,
-        // so it's no row to hold in place: held, it stood dimmed above the
-        // one made again.
-        const shown = matches.filter(row => !row.endedBy);
+    // Given `gaveWay`, an answer there only while nothing else was has given
+    // way to what was found since, and goes (Steady.js's standing).
+    function steadied(found, gaveWay) {
+        const shown = Steady.standing(matches, gaveWay === true);
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
         if (!holdingRows) {
@@ -10144,9 +10143,10 @@ Scope {
                             // searched or timed (keepHome).
                             if (root.keeping)
                                 return;
-                            const due = root.keysDue;
-                            trials.retyped(due.length > 0 ? due[due.length - 1].text
-                                : root.typed, text);
+                            // From what the field read before this key, a
+                            // key held for answers included (Awaited.js).
+                            trials.retyped(Awaited.before({ due: root.keysDue,
+                                held: root.answersAwaited }, root.typed), text);
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }
