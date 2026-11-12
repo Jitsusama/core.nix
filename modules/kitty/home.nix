@@ -152,6 +152,8 @@ in
       name = "open";
       asked = true;
       told = true;
+      # The agents' panes are theirs, one row pointing at Agents.
+      without = "agents";
       list = [
         (lib.getExe' (pkgs.callPackage ../open-with/recent-files.nix { }) "open-now")
         "kitty"

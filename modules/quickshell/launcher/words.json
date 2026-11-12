@@ -13188,6 +13188,20 @@
       }
     },
     {
+      "id": "kitty:agents",
+      "in": "applications",
+      "name": "Agents' Windows",
+      "verb": "go to",
+      "glyph": "agent",
+      "said": {
+        "one": "1 agent's pane",
+        "many": "{count} agents' panes"
+      },
+      "tells": {
+        "where": "Each is in Agents, by its session."
+      }
+    },
+    {
       "id": "kitty:tab",
       "in": "kitty:tabs",
       "name": "Tab",

@@ -12,8 +12,10 @@
 //! one more of what it serves, over the same daemon: the repositories
 //! (repositories.rs), what kitty's page reads (kitty.rs), Programs' rows
 //! (rows.rs), their search and what programs tell (search.rs), Capture's
-//! (taken.rs), and what Chrome has open (chrome.rs).
+//! (taken.rs), what Chrome has open (chrome.rs), and kitty's open list
+//! without the agents' panes (agents.rs).
 
+mod agents;
 mod chrome;
 mod kitty;
 mod repositories;
@@ -107,6 +109,7 @@ fn fixture(folder: &Path) -> PathBuf {
             "name": "open",
             "asked": true,
             "told": true,
+            "without": "agents",
             "list": ["sh", "-c", open],
         },
         // What was taken lately, of a folder that's there and one that

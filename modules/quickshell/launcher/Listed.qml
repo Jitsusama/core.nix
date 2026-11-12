@@ -23,6 +23,9 @@ Scope {
     property bool wanted: false
     // The lines it printed, as the daemon last said them.
     property var lines: []
+    // How many panes the daemon left out as agents' (agents.rs), where it
+    // serves it without them, as kitty's open list.
+    property int agents: 0
     // Whether the daemon has said it once since the shell started.
     property bool read: false
     // Said each time the daemon says it.
@@ -40,6 +43,7 @@ Scope {
             if (!changed.includes(listed.key))
                 return;
             listed.lines = daemon.held[listed.key]?.lines ?? [];
+            listed.agents = daemon.held[listed.key]?.agents ?? 0;
             listed.read = true;
             listed.heard();
         }

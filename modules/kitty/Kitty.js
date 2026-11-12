@@ -435,6 +435,17 @@ function drawerOf(pane, words, now) {
     };
 }
 
+// The drawer of kitty's one row for the agents' panes, which the
+// programs daemon leaves out of Tabs (agents.rs): how many there are, and
+// that Agents is where each is, by the launcher's words for it: what it
+// says, and the sentence it tells.
+function agentsDrawer(count, said, tells) {
+    return {
+        title: fill(count === 1 ? said.one : said.many, { count }),
+        body: tells.where ?? ""
+    };
+}
+
 // What kitty's drawer in Programs says it holds, from what was read ahead
 // (VKCF3Z, 2026-11-08): its tabs and how many OS windows hold them, "7 in
 // 3 windows", then how many repositories and machines it opens a window
