@@ -466,9 +466,9 @@ in
         && unit.Service.NotifyAccess == "all"
         && unit.Service.Slice == "agents.slice"
         && first unit.Service.RestartPreventExitStatus == "78"
-        && unit.Service.WatchdogSec == "2min"
-        && unit.Unit.StartLimitIntervalSec == 600
-        && unit.Unit.StartLimitBurst == 3
+        && unit.Service.WatchdogSec or null == "2min"
+        && unit.Unit.StartLimitIntervalSec or null == 600
+        && unit.Unit.StartLimitBurst or null == 3
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
         && lib.hasPrefix "${node} " (first unit.Service.ExecStart)

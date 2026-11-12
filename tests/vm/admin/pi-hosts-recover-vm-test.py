@@ -64,8 +64,9 @@ class Host:
         self.machine.wait_until_succeeds(as_alice(command), timeout=COMING_BACK)
 
     def said(self) -> str:
-        """Give what the journal holds from and about the unit."""
-        return self.machine.succeed(f"journalctl --no-pager --user-unit {UNIT}")
+        """Give what alice's manager told the journal about the unit."""
+        # --user-unit matches the caller's own uid, which is root's here.
+        return self.machine.succeed(f"journalctl --no-pager _UID=1000 USER_UNIT={UNIT}")
 
     def afresh(self) -> None:
         """Start the host with nothing told, its starts and its start limit cleared."""
@@ -99,7 +100,7 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
     host.until(f"test -e {FOLDER}/hung && test $(wc -l < {STARTS}) -gt 1")
     host.until(f"systemctl --user is-active {UNIT}")
     said = host.said()
-    assert "Watchdog timeout" in said, said
+    assert "Failed with result 'watchdog'" in said, said
     # The watchdog's signal, which the harness's killed-host test sends its host too.
     assert "status=6/ABRT" in said, said
     assert host.starts()[0] == first
