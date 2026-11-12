@@ -4185,7 +4185,7 @@
     says a quiet machine's image fits, and with no room exits 1 saying not, plainly
   '';
   vm-joel-comes-first = ''
-    on an eighth of optimus's memory, with agents' sessions, their work and shared work each under
+    on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under
     its slice's ceiling and walking what it holds, a stand-in shell in session.slice drops no
     frame of 16 ms through a fetch in agents.slice and a grep and three commands in jobs.slice
     bursting until together they pass memory by a fifth, as at 12 November's 16:33 freeze

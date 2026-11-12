@@ -11,9 +11,6 @@ for what a VM lacks.
 | File                                            | Holds                                                           |
 | ----------------------------------------------- | --------------------------------------------------------------- |
 | `firmware-asks.nix`, `-vm-test.py`              | writing firmware asking an administrator, even at the seat      |
-| `joel-first.nix`, `-vm-test.py`                 | Joel's shell drawing on time while agents' work bursts          |
-| `joel-first-frames.py`                          | that test's stand-in shell, timing how late each frame comes    |
-| `joel-first-work.py`                            | that test's stand-in work, using what it holds over and over    |
 | `libvirt.nix`, `-vm-test.py`                    | libvirt's daemon stopping at once while its udev thread waits   |
 | `memory-tune.nix`, `-vm-test.py`                | four memory settings an administrator sets with no password     |
 | `niri-off-cpu.nix`, `-vm-test.py`               | an account in wheel tracing its own niri, and nobody else       |
@@ -33,5 +30,8 @@ for what a VM lacks.
 | `vm-first-guest.py`                             | that test's stand-in VM, its threads as vm-first sees them      |
 | `uid-range.nix`                                 | the build that test asks for a range of user ids with           |
 
+- `joel-first/`: Joel's shell drawing on time while agents' work bursts, with
+  its stand-in shell timing each frame and its stand-in work using what it
+  holds over and over.
 - `niri-off-cpu/`: a stand-in for niri's main thread, waiting and asleep as
   niri does.

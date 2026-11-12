@@ -1,7 +1,7 @@
 """Joel's shell keeps drawing on time while agents' work bursts for memory.
 
-joel-first.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
-It replays 12 November's 16:33 freeze on a machine of an eighth of optimus's memory. Agents'
+default.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py).
+It replays 12 November's 16:33 freeze on a machine of an eighth of the laptop's memory. Agents'
 sessions, their work, the work other sessions wait on and Joel's apps first hold memory, each in
 its slice, the sessions and the build using theirs over and over. A stand-in shell then draws a
 frame every 16 ms in session.slice, and a few seconds in, a fetch in agents.slice and a grep and
@@ -24,7 +24,7 @@ RUNTIME = "/run/user/1000"
 FILES = "/home/alice"
 
 # What each slice holds, in MiB. Joel's apps and the shell hold what they
-# held on optimus at 17:06 divided by eight, 5.9 GiB and 2.5. The rest is
+# held on the laptop at 17:06 divided by eight, 5.9 GiB and 2.5. The rest is
 # sized as 16:33 was: agents' sessions, with the fetch's 3.5 GiB, half read
 # and half its own, and jobs, with the grep's reading and three commands of
 # 1.4 to 1.8 GiB, each just under its slice's ceiling of today, and shared's
@@ -112,7 +112,7 @@ def stalls(machine: BaseMachine) -> int:
 
 @pytest.fixture(scope="module")
 def loaded(machine: BaseMachine, values: dict[str, Any]) -> Account:
-    """Give alice's account holding what optimus's slices held before the burst."""
+    """Give alice's account holding what the laptop's slices held before the burst."""
     machine.wait_for_unit("user@1000.service")
     # Written by root, the files' pages would be root's; out of the cache,
     # each is charged to the slice that reads it first.

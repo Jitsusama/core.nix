@@ -1,6 +1,6 @@
 """A stand-in for agents' work: holds SIZE MiB of its own and keeps using it.
 
-usage: joel-first-work.py SIZE EVERY SAID
+usage: stand-in-work.py SIZE EVERY SAID
 
 It fills SIZE MiB with distinct pages, which no compressor shrinks, writes its pid to SAID once
 full, and then writes a byte in every page of it each EVERY seconds, as a session's garbage

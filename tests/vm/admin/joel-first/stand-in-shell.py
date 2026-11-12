@@ -1,6 +1,6 @@
 """A stand-in for Joel's shell: draws a frame every 16 ms and says how late each came.
 
-usage: joel-first-frames.py HOLD SECONDS RESULT
+usage: stand-in-shell.py HOLD SECONDS RESULT
 
 It holds HOLD MiB of its own, as the shell holds its scene, and for each frame
 allocates 4 MiB afresh, as drawing one does, and touches a page in every MiB

@@ -7,6 +7,10 @@
 # threads, a wakeup in session.slice waited at most 751 us at this weight
 # against 1,962 us at the default.
 #
+# Long because every slice's floor, ceiling and weight is a share of one
+# machine's memory and CPU, sized against the others', so they're read and
+# changed together: a ceiling raised in one place passes memory in another.
+#
 # What Joel works in comes before the work it starts. The shell, pi, an
 # editor and a terminal's copy all sit in the window's own scope, kitty's
 # kitty-<pid>-<n>.scope, at an app's weight, so they answer as quickly as

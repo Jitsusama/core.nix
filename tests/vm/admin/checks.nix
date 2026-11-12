@@ -18,7 +18,7 @@ onLinux {
   vm-apps-come-first = import ./slices.nix { inherit self pkgs; };
   # Whether the shell draws on time while work bursts for memory shows only
   # with the kernel reclaiming and swapping across the account's real slices.
-  vm-joel-comes-first = import ./joel-first.nix { inherit self pkgs; };
+  vm-joel-comes-first = import ./joel-first { inherit self pkgs; };
   # Whether a check's VM goes ahead of the builds shows only with a build
   # user's process in the daemon's own cgroup and the service's real rights.
   vm-checks-go-first = import ./vm-first.nix { inherit self pkgs; };
