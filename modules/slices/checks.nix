@@ -85,6 +85,23 @@
       "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
       (weight slices.app >= 10 * weight slices.agents && watches "app.slice" && watches "agents.slice");
 
+  # A probe waits beside Joel's programs at their weight, so a watcher
+  # reading its slice's pressure reads what the rest of the machine makes
+  # one wait, and not his programs making each other wait.
+  a-probe-waits-beside-the-programs =
+    let
+      inherit (graphical.config.systemd.user) slices services;
+      probe = services.probe.serviceConfig;
+    in
+    holds "a-probe-waits-beside-the-programs"
+      "No probe sits in a slice of its own at the programs' weight, or it isn't the sorter's probe."
+      (
+        probe.Slice == "probe.slice"
+        && slices.probe.sliceConfig.CPUWeight == slices.app.sliceConfig.CPUWeight
+        && lib.hasSuffix "/bin/jobs-sorter probe" probe.ExecStart
+        && builtins.elem "default.target" services.probe.wantedBy
+      );
+
   # The one kitty every session's window is drawn by comes before the
   # sessions it holds, on the processor and in memory, inside their slice:
   # starved and swapped out beside them, it stopped drawing and lost Joel's
