@@ -138,5 +138,12 @@
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "test": "vm-desktop-launcher-holds-meetings"
+  },
+  {
+    "at": 1794519380,
+    "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
+    "owner_pr": 3794,
+    "reason": "failed, then passed, at b0e3be7a0f1b",
+    "test": "vm-desktop-looks-vi"
   }
 ]
