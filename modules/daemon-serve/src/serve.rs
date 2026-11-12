@@ -34,7 +34,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::asks::{Ask, Domain, VERSION, error, place_of, tells, trimmed};
+use crate::asks::{Ask, Domain, VERSION, error, place_of};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -59,8 +59,6 @@ struct Watch {
     kinds: Vec<String>,
     keys: Option<Vec<String>>,
     places: Option<Vec<String>>,
-    /// The fields it's told of each record, as each moves, or all of them.
-    fields: Option<Vec<String>>,
     told: SyncSender<String>,
     /// Its connection, to hang up on once it stops reading.
     stream: Arc<UnixStream>,
@@ -74,14 +72,19 @@ struct Watch {
 
 impl Watch {
     /// Whether it's the watch an ask names: on this connection, under
-    /// this id, of the same records and fields.
-    fn is(&self, connection: u64, asked: &Watch) -> bool {
+    /// this id, of the same records.
+    fn is(
+        &self,
+        connection: u64,
+        id: &Value,
+        records: (&[String], Option<&[String]>, Option<&[String]>),
+    ) -> bool {
+        let (kinds, keys, places) = records;
         self.connection == connection
-            && self.id == asked.id
-            && self.kinds == asked.kinds
-            && self.keys == asked.keys
-            && self.places == asked.places
-            && self.fields == asked.fields
+            && self.id == *id
+            && self.kinds == kinds
+            && self.keys.as_deref() == keys
+            && self.places.as_deref() == places
     }
 
     /// What it held back, told now: each key that moved as its record now
@@ -96,7 +99,7 @@ impl Watch {
         let mut gone = Vec::new();
         for key in &keys {
             match records.get(key) {
-                Some(record) => changed.push(trimmed(record, self.fields.as_deref())),
+                Some(record) => changed.push(record),
                 None => gone.push(key.as_str()),
             }
         }
@@ -120,10 +123,6 @@ impl Watch {
 struct Held {
     /// Every record, by key.
     records: BTreeMap<String, Value>,
-    /// Their keys in the order the daemon gave them, which a list and a
-    /// whole answer keep within each kind, as windows are listed the one
-    /// used last first.
-    given: Vec<String>,
     /// How each source stands, in the interface's words.
     sources: Value,
     watches: Vec<Watch>,
@@ -153,7 +152,7 @@ impl Held {
 
 /// The line telling a watch what moved: the records that changed, and
 /// the keys that went, when any did.
-fn moved(id: &Value, changed: &[Value], gone: &[&str]) -> Value {
+fn moved(id: &Value, changed: &[&Value], gone: &[&str]) -> Value {
     let mut told = json!({"id": id, "changed": changed});
     if !gone.is_empty() {
         told["gone"] = json!(gone);
@@ -198,7 +197,6 @@ impl Shared {
             own,
             held: Mutex::new(Held {
                 records: BTreeMap::new(),
-                given: Vec::new(),
                 sources: json!({}),
                 watches: Vec::new(),
                 since: now_ms(),
@@ -240,14 +238,6 @@ impl Shared {
         })
     }
 
-    /// Every key a watch names by key, as the windows daemon reads its
-    /// screens' light only while a screen's row is watched ahead.
-    pub fn keys_watched(&self) -> BTreeSet<String> {
-        let held = lock(self);
-        let keyed = held.watches.iter().filter_map(|watch| watch.keys.as_ref());
-        keyed.flatten().cloned().collect()
-    }
-
     fn heeded(&self, moved: bool) {
         if let Some(heed) = self.heed.get().filter(|_| moved) {
             heed();
@@ -271,10 +261,8 @@ impl Shared {
         let standing = (words(&held.sources) != words(&sources)).then(|| words(&sources));
         held.sources = sources;
         let mut now = BTreeMap::new();
-        let mut given = Vec::with_capacity(records.len());
         for record in records {
             if let Some(key) = record["key"].as_str() {
-                given.push(key.to_owned());
                 now.insert(key.to_owned(), record);
             }
         }
@@ -295,15 +283,13 @@ impl Shared {
         let mut stuck = Vec::new();
         let mut pacing = false;
         for watch in &mut held.watches {
-            let fields = watch.fields.as_deref();
             let records: Vec<&Value> = changed
                 .iter()
                 .copied()
                 .filter(|record| {
-                    record["key"].as_str().is_some_and(|key| {
-                        watch.wants(&self.domain, key)
-                            && tells(held.records.get(key), record, fields)
-                    })
+                    record["key"]
+                        .as_str()
+                        .is_some_and(|key| watch.wants(&self.domain, key))
                 })
                 .collect();
             let went: Vec<&str> = gone
@@ -324,11 +310,7 @@ impl Shared {
                     pacing = true;
                 }
             } else if !records.is_empty() || !went.is_empty() {
-                let told: Vec<Value> = records
-                    .iter()
-                    .map(|record| trimmed(record, fields))
-                    .collect();
-                lines.push(moved(&watch.id, &told, &went));
+                lines.push(moved(&watch.id, &records, &went));
             }
             if let Some(sources) = &standing {
                 lines.push(json!({"id": watch.id, "sources": sources}));
@@ -341,7 +323,6 @@ impl Shared {
             }
         }
         held.records = now;
-        held.given = given;
         self.heeded(held.hang_up(&stuck));
         if pacing {
             self.paced.notify_all();
@@ -555,15 +536,13 @@ fn owned(shared: &Shared, id: &Value, said: &Value) -> Value {
     answer
 }
 
-/// The records held of these kinds, those of them in these places, or
-/// these keys, in the daemon's order: by kind as the domain lists them,
-/// then as the daemon gave them; keys as asked.
+/// The records held of these kinds, or these keys, in the daemon's
+/// order: by kind as the domain lists them, then by key; keys as asked.
 fn records_of(
     domain: &Domain,
     held: &Held,
     kinds: &[String],
     keys: Option<&[String]>,
-    places: Option<&[String]>,
 ) -> Vec<Value> {
     if let Some(keys) = keys {
         return keys
@@ -577,15 +556,9 @@ fn records_of(
         .iter()
         .filter(|kind| kinds.iter().any(|k| k == *kind))
         .flat_map(|kind| {
-            held.given
+            held.records
                 .iter()
-                .filter_map(move |key| held.records.get_key_value(key))
-                .filter(move |(key, _)| {
-                    domain.kind_of(key) == Some(kind)
-                        && places.is_none_or(|places| {
-                            place_of(key).is_some_and(|place| places.iter().any(|p| p == place))
-                        })
-                })
+                .filter(move |(key, _)| domain.kind_of(key) == Some(kind))
                 .map(|(_, record)| record.clone())
         })
         .collect()
@@ -606,30 +579,29 @@ fn answer(
         kinds,
         keys,
         places,
-        fields,
         every,
     } = asked
     {
+        let records = (kinds.as_slice(), keys.as_deref(), places.as_deref());
+        if let Some(running) = held
+            .watches
+            .iter_mut()
+            .find(|watch| watch.is(connection, &id, records))
+        {
+            return kept_on(shared, running, &held.records, every);
+        }
         let watch = Watch {
             connection,
-            id,
+            id: id.clone(),
             kinds,
             keys,
             places,
-            fields,
             told: told.clone(),
             stream: Arc::clone(hangup),
             every,
             moved: BTreeSet::new(),
             due: None,
         };
-        if let Some(running) = held
-            .watches
-            .iter_mut()
-            .find(|running| running.is(connection, &watch))
-        {
-            return kept_on(shared, running, &held.records, every);
-        }
         let answer = watched(domain, held, watch);
         shared.heeded(true);
         return Some(answer);
@@ -640,11 +612,10 @@ fn answer(
             "since": held.since, "sources": words(&held.sources),
         }),
         Ask::Get { id, keys } => {
-            json!({"id": id, "records": records_of(domain, held, &[], Some(&keys), None)})
+            json!({"id": id, "records": records_of(domain, held, &[], Some(&keys))})
         }
-        Ask::List { id, kinds, places } => {
-            let records = records_of(domain, held, &kinds, None, places.as_deref());
-            json!({"id": id, "records": records})
+        Ask::List { id, kinds } => {
+            json!({"id": id, "records": records_of(domain, held, &kinds, None)})
         }
         Ask::Watch { .. } => unreachable!("a watch is answered above"),
         Ask::Unwatch { id } => {
@@ -670,10 +641,11 @@ fn answer(
 fn watched(domain: &Domain, held: &mut Held, watch: Watch) -> Value {
     held.watches
         .retain(|was| !(was.connection == watch.connection && was.id == watch.id));
-    let (kinds, keys, places) = (&watch.kinds, watch.keys.as_deref(), watch.places.as_deref());
-    let records: Vec<Value> = records_of(domain, held, kinds, keys, places)
+    let records: Vec<&Value> = held
+        .records
         .iter()
-        .map(|record| trimmed(record, watch.fields.as_deref()))
+        .filter(|(key, _)| watch.wants(domain, key))
+        .map(|(_, record)| record)
         .collect();
     let answer = json!({"id": watch.id, "records": records});
     held.watches.push(watch);

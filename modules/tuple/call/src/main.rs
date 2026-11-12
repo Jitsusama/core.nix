@@ -55,8 +55,6 @@ use tuple_call::ask::{self, Act, refused};
 const DOMAIN: Domain = Domain {
     name: "tuple",
     kinds: &[ask::KIND],
-    sole: &[],
-    named_only: &[],
 };
 use tuple_call::recent::Recent;
 use tuple_call::stream::{self, Line};
