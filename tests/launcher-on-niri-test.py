@@ -1778,7 +1778,7 @@ def test_a_closed_program_holding_only_new_windows_holds_nothing_to_go_into(
 ) -> None:
     """Tab on a closed program holding only its New Windows says not here, and Return starts it.
 
-    Programs › Foot Server, closed, went into a list of New Window and New Window Below, a
+    Foot Server in Programs, closed, went into a list of New Window and New Window Below, a
     submenu of acts alone (Y2YBTS's sweep, 2026-11-12 [39f55fff]: a row holding only acts is
     never stepped into). Foot's server opens no window, so its start is seen as the launcher
     closing; the server is stopped after.
