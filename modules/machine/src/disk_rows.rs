@@ -883,4 +883,88 @@ mod tests {
         assert_eq!(side(row(&said, "disk")), json!("300 GB free on /"));
         assert!(rows(&[]).is_empty(), "no disk should make no rows");
     }
+
+    /// Every row the Disk serves has a drawer giving a little more than
+    /// its line (Joel, 2026-11-11 22:00): a row holding more, what each a
+    /// step in says; any other, what Linux keeps behind it.
+    #[test]
+    fn every_disk_row_has_a_drawer_saying_more() {
+        let mut d = disk();
+        d["stat"] = json!({ "read I/Os": 1234, "read merges": 56, "read sectors": 789_000,
+            "read ticks": 400, "write I/Os": 321, "write merges": 7, "write sectors": 9_000,
+            "write ticks": 90, "in_flight": 1, "io_ticks": 600, "time_in_queue": 500,
+            "discard I/Os": 2, "discard merges": 0, "discard sectors": 4_096,
+            "discard ticks": 3, "flush I/Os": 40, "flush ticks": 8 });
+        d["file_systems"][0]["block_b"] = json!(4096);
+        d["health"]["total_data_written"] = json!(5_000_000_000_u64);
+        d["health"]["total_data_read"] = json!(9_000_000_000_u64);
+        d["health"]["power_on_hours"] = json!(1200);
+        let said = rows(&[d]);
+        let bare: Vec<&str> = said
+            .iter()
+            .filter(|each| {
+                let drawer = &each["drawer"];
+                let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+                !(drawer["title"].is_string() && (facts || drawer["body"].is_string()))
+            })
+            .filter_map(|each| each["key"].as_str())
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "rows whose drawer says nothing more: {bare:?}"
+        );
+        let facts = |id: &str| -> Vec<String> {
+            row(&said, id)["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| {
+                    let name = fact["name"].as_str().unwrap_or_default();
+                    format!("{name}={}", fact["said"].as_str().unwrap_or_default())
+                })
+                .collect()
+        };
+        assert_eq!(
+            facts("disk:reading"),
+            [
+                "read I/Os=1,234",
+                "read merges=56",
+                "read sectors=789,000",
+                "Read From=/sys/block/nvme0n1/stat"
+            ],
+            "a rate says the counts it's measured from, by the kernel's names"
+        );
+        assert_eq!(
+            facts("disk:scheduler"),
+            [
+                "queue/scheduler=[none] mq-deadline",
+                "Read From=/sys/block/nvme0n1"
+            ],
+            "what it is says the file that says it, as it says it"
+        );
+        assert_eq!(
+            facts("disk:spare"),
+            [
+                "avail_spare=100",
+                "spare_thresh=10",
+                "Read From=UDisks2 SmartGetAttributes"
+            ],
+            "its health says what its controller told UDisks"
+        );
+        assert_eq!(
+            facts("disk:file-system:/"),
+            [
+                "device=/dev/nvme0n1p2",
+                "type=btrfs",
+                "f_frsize=4,096",
+                "f_blocks=219,726,562",
+                "f_bfree=73,242,187",
+                "f_bavail=73,242,187",
+                "f_files=0",
+                "f_ffree=0",
+                "Read From=/proc/self/mountinfo \u{b7} statvfs(2)"
+            ],
+            "a file system says its mount and its room as statvfs counts it"
+        );
+    }
 }
