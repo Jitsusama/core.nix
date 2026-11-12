@@ -7354,6 +7354,11 @@
       "name": "Playing"
     },
     {
+      "id": "shortcuts:spotify:scrolling",
+      "in": "shortcuts",
+      "name": "Scrolling"
+    },
+    {
       "id": "shortcuts:google-mail:going",
       "in": "shortcuts",
       "name": "Moving Around"
@@ -14336,9 +14341,10 @@
       "word": "scrolling",
       "things": [
         "shortcuts:reader:scrolling",
-        "shortcuts:zathura:scrolling"
+        "shortcuts:zathura:scrolling",
+        "shortcuts:spotify:scrolling"
       ],
-      "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
+      "why": "The reader, the PDF viewer and Spotify all scroll a page, and each group says which program's it is beside it."
     },
     {
       "word": "command line",
