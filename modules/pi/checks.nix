@@ -13,28 +13,11 @@ args@{
   ...
 }:
 let
-  # pi as a host runs it, built from pi's own source with every host patch,
-  # applied exactly, never fuzzed, so a pi that moved under them fails here
-  # rather than in a host. Every pi an account starts stays unpatched: only
-  # the hosted checks build this one.
-  hostedPi = pkgs.pi-coding-agent.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [
-      ./pi-host-agent-interface.patch
-      ./pi-host-committed-turn.patch
-      ./pi-host-interactive-lifecycle.patch
-      ./pi-host-model-auth-context.patch
-      ./pi-host-extension-realpath.patch
-    ];
-    patchFlags = [
-      "-p1"
-      "--fuzz=0"
-    ];
-    # nixpkgs keeps the libraries pi's command loads and drops pi-schema, which
-    # the durable runtime a host drives imports through chord.
-    postInstall = old.postInstall + ''
-      cp -r packages/schema "$out/lib/node_modules/pi-monorepo/node_modules/@earendil-works/pi-schema"
-    '';
-  });
+  # pi as a host runs it, every host patch applied exactly (hosted-pi.nix).
+  hostedPi = import ./hosted-pi.nix {
+    inherit pkgs;
+    folder = "pi-monorepo";
+  };
 in
 # The hosts' own checks change with host.nix alone, so they sit beside it.
 import ./host-checks.nix args

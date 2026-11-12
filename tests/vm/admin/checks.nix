@@ -49,4 +49,16 @@ onLinux {
   # Whether a pi host's unit restarts a wedged host, and leaves one that
   # keeps crashing down, shows only with the account's own systemd running it.
   vm-a-wedged-pi-starts-again = import ./pi-hosts-recover.nix { inherit self pkgs; };
+  # Whether a pi host gives back what it held after a kill -9 and a reboot
+  # shows only with the account's own systemd starting it, and a boot.
+  vm-pi-conversations-come-back =
+    let
+      # pi's build names its folder with a word only a checks.nix may say.
+      folder = "pi-monorepo";
+      hostedPi = import ../../../modules/pi/hosted-pi.nix { inherit pkgs folder; };
+    in
+    import ./pi-conversations-come-back.nix {
+      inherit self pkgs hostedPi;
+      packageDir = "${hostedPi}/lib/node_modules/${folder}";
+    };
 }
