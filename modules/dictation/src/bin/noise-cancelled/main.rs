@@ -3,9 +3,9 @@
 //! "‹microphone›, Noise Cancelled" (the glossary's noise cancelled).
 //!
 //! ```text
-//! noise-cancelled serve MODELS [CLEANER]
+//! noise-cancelled serve MODELS [CLEANER [CHOSEN]]
 //! noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32
-//! noise-cancelled trial SOCKET MODELS RUNNING REFUSALS
+//! noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]
 //! ```
 //!
 //! CLEANER is deepfilternet, deepfilternet-gentle or rnnoise, and
@@ -16,15 +16,19 @@
 //!
 //! `serve` offers a source for each microphone PipeWire has (pipe.rs),
 //! which hears its microphone only while something records from it, and
-//! loads the model only then (worker.rs).
+//! loads the model only then (worker.rs). CHOSEN is the file a pick by ear
+//! is kept in (chosen.rs): each load cleans as it says, and as CLEANER or
+//! RUNNING says until it says a cleaner.
 //!
 //! `clean` cleans raw 32-bit float samples, one channel at 48 kHz, from
 //! standard input to standard output, as a check hears it.
 //!
 //! `trial` answers the launcher's Choose by Ear on SOCKET, or the socket
 //! systemd hands it (trial.rs): RUNNING is the cleaner the microphones run,
-//! and REFUSALS a JSON file of what refuses a recording while it holds.
+//! and REFUSALS a JSON file of what refuses a recording while it holds;
+//! a cleaned pick is kept in CHOSEN.
 
+mod chosen;
 mod denoise;
 mod pipe;
 mod trial;
@@ -36,34 +40,39 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::ExitCode;
 
+use chosen::Chosen;
 use denoise::{Cleaner, FRAME, Model};
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let done = match arguments.iter().map(String::as_str).collect::<Vec<_>>()[..] {
-        ["serve", models] => pipe::serve(Path::new(models), Cleaner::DeepFilterNet),
-        ["serve", models, cleaner] => {
-            Cleaner::named(cleaner).and_then(|cleaner| pipe::serve(Path::new(models), cleaner))
+        ["serve", models] => {
+            pipe::serve(Path::new(models), Chosen::new(None, Cleaner::DeepFilterNet))
         }
+        ["serve", models, cleaner] => Cleaner::named(cleaner)
+            .and_then(|cleaner| pipe::serve(Path::new(models), Chosen::new(None, cleaner))),
+        ["serve", models, cleaner, chosen] => Cleaner::named(cleaner).and_then(|cleaner| {
+            pipe::serve(Path::new(models), Chosen::new(Some(chosen.into()), cleaner))
+        }),
         ["clean", models] => clean(Path::new(models), Cleaner::DeepFilterNet),
         ["clean", models, cleaner] => {
             Cleaner::named(cleaner).and_then(|cleaner| clean(Path::new(models), cleaner))
         }
-        ["trial", socket, models, running, refusals] => {
+        ["trial", socket, models, running, refusals, ref chosen @ ..] if chosen.len() <= 1 => {
             Cleaner::named(running).and_then(|running| {
                 trial::serve(
                     Path::new(socket),
                     Path::new(models),
-                    running,
+                    Chosen::new(chosen.first().map(|file| (*file).into()), running),
                     Path::new(refusals),
                 )
             })
         }
         _ => {
             eprintln!(
-                "usage: noise-cancelled serve MODELS [CLEANER]\n       \
+                "usage: noise-cancelled serve MODELS [CLEANER [CHOSEN]]\n       \
                  noise-cancelled clean MODELS [CLEANER] < heard.f32 > cleaned.f32\n       \
-                 noise-cancelled trial SOCKET MODELS RUNNING REFUSALS"
+                 noise-cancelled trial SOCKET MODELS RUNNING REFUSALS [CHOSEN]"
             );
             return ExitCode::from(2);
         }

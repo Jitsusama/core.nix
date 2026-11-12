@@ -6,13 +6,19 @@ use std::sync::mpsc;
 use super::*;
 
 fn trial(refusals: Vec<Refusal>) -> Arc<Shared<Trial>> {
+    keeping(refusals, None)
+}
+
+/// A trial keeping its pick in `file`.
+fn keeping(refusals: Vec<Refusal>, file: Option<PathBuf>) -> Arc<Shared<Trial>> {
     let tools = Tools {
         dump: "false".to_owned(),
         record: "false".to_owned(),
         play: "true".to_owned(),
         metadata: "true".to_owned(),
     };
-    Trial::shared(PathBuf::new(), Cleaner::DeepFilterNet, refusals, tools)
+    let running = Chosen::new(file, Cleaner::DeepFilterNet);
+    Trial::shared(PathBuf::new(), running, refusals, tools)
 }
 
 fn ask(trial: &Arc<Shared<Trial>>, line: &str) -> Value {
@@ -129,6 +135,25 @@ fn a_pick_reveals_every_clip_and_lets_them_go() {
     );
     assert_eq!(record["costs"]["rnnoise"], 0.1);
     assert_eq!(trial.lock().clips.len(), 0, "the clips outlived the pick");
+}
+
+#[test]
+fn a_cleaned_pick_is_what_the_microphones_run_and_raw_changes_nothing() {
+    let file = std::env::temp_dir().join(format!("trial-pick-{}", std::process::id()));
+    let _ = std::fs::remove_file(&file);
+    let trial = keeping(Vec::new(), Some(file.clone()));
+    ready(&trial);
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
+    assert_eq!(trial.lock().record()["running"], "rnnoise");
+    assert_eq!(
+        Chosen::new(Some(file.clone()), Cleaner::DeepFilterNet).cleaner(),
+        Cleaner::RNNoise,
+        "the service would load some other cleaner than the one picked"
+    );
+    ready(&trial);
+    ask(&trial, r#"{"id":5,"ask":"act","act":"pick","clip":"B"}"#);
+    assert_eq!(trial.lock().record()["running"], "rnnoise");
+    let _ = std::fs::remove_file(&file);
 }
 
 #[test]

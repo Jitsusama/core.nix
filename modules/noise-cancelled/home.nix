@@ -20,7 +20,10 @@
 # and plays them back blind for Joel to pick one (trial.rs says how). It
 # starts from its socket, holds what he said only in memory, and may reach
 # no network. It records nothing while a call is on, or while anything in
-# jitsusama.noise-cancelled.refuseWhile says not to.
+# jitsusama.noise-cancelled.refuseWhile says not to. A cleaned pick is kept
+# in ~/.local/state/noise-cancelled/cleaner, which the service reads each
+# time it loads the model, so his next call cleans as he picked, in place
+# of jitsusama.noise-cancelled.cleaner, with nothing restarted.
 {
   config,
   lib,
@@ -31,6 +34,8 @@ let
   cfg = config.jitsusama.noise-cancelled;
   dictation = pkgs.callPackage ../dictation/package.nix { };
   model = pkgs.callPackage ./model.nix { };
+  # Where a pick by ear is kept, in the account's state folder (%S).
+  chosen = "%S/noise-cancelled/cleaner";
   refusals = pkgs.writeText "noise-cancelled-refusals.json" (
     builtins.toJSON (map (refusal: { inherit (refusal) command why; }) cfg.refuseWhile)
   );
@@ -44,9 +49,10 @@ in
     ];
     default = "deepfilternet";
     description = ''
-      How the noise-cancelled microphones clean a voice: deepfilternet takes
-      the room out, deepfilternet-gentle turns it down to 12 dB under the
-      voice, and rnnoise is the lightest, at a fraction of the processor.
+      How the noise-cancelled microphones clean a voice until Joel picks one
+      by ear, which wins from then on: deepfilternet takes the room out,
+      deepfilternet-gentle turns it down to 12 dB under the voice, and
+      rnnoise is the lightest, at a fraction of the processor.
     '';
   };
 
@@ -97,8 +103,9 @@ in
     Service = {
       ExecStart = lib.concatStringsSep " " [
         "${dictation}/bin/noise-cancelled trial %t/daemons/noise-cancelled.sock"
-        "${model} ${cfg.cleaner} ${refusals}"
+        "${model} ${cfg.cleaner} ${refusals} ${chosen}"
       ];
+      StateDirectory = "noise-cancelled";
       Environment = [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
       Slice = "session.slice";
       # What Joel said reaches nothing past PipeWire's own socket.
@@ -115,7 +122,7 @@ in
       X-SwitchMethod = "restart";
     };
     Service = {
-      ExecStart = "${dictation}/bin/noise-cancelled serve ${model} ${config.jitsusama.noise-cancelled.cleaner}";
+      ExecStart = "${dictation}/bin/noise-cancelled serve ${model} ${cfg.cleaner} ${chosen}";
       Slice = "session.slice";
       Restart = "on-failure";
       RestartSec = 5;

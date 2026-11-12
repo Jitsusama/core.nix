@@ -6,7 +6,8 @@
 //!
 //! The model is loaded when a microphone's source is first recorded from
 //! and let go once none has been for a while, so nothing is held between
-//! calls.
+//! calls. Each load cleans as Joel last picked by ear (chosen.rs), so a
+//! pick changes the next call and never one under way.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -18,7 +19,8 @@ use std::time::{Duration, Instant};
 
 use rtrb::{Consumer, Producer};
 
-use crate::denoise::{Cleaner, Denoiser, FRAME, Model};
+use crate::chosen::Chosen;
+use crate::denoise::{Denoiser, FRAME, Model};
 
 /// How long the model stays loaded once nothing records from a source.
 const UNUSED: Duration = Duration::from_mins(2);
@@ -62,14 +64,14 @@ pub struct Worker {
 }
 
 impl Worker {
-    /// Starts the thread, which cleans with `cleaner` and reads what it
-    /// needs from `models` when it's
-    /// first needed.
-    pub fn start(models: PathBuf, cleaner: Cleaner) -> Result<Self, String> {
+    /// Starts the thread, which cleans with the cleaner `chosen` says as
+    /// it loads, and reads what it needs from `models` when it's first
+    /// needed.
+    pub fn start(models: PathBuf, chosen: Chosen) -> Result<Self, String> {
         let (asks, heard) = mpsc::channel();
         let handle = thread::Builder::new()
             .name("denoiser".into())
-            .spawn(move || run(&models, cleaner, &heard))
+            .spawn(move || run(&models, &chosen, &heard))
             .map_err(|why| format!("the denoiser's thread wouldn't start: {why}"))?;
         Ok(Self {
             asks,
@@ -108,7 +110,7 @@ enum Loaded {
     Refused(Instant),
 }
 
-fn run(models: &std::path::Path, cleaner: Cleaner, asks: &Receiver<Ask>) {
+fn run(models: &std::path::Path, chosen: &Chosen, asks: &Receiver<Ask>) {
     let mut microphones: HashMap<u32, Microphone> = HashMap::new();
     let mut model = Loaded::No;
     let mut last_wanted = Instant::now();
@@ -136,7 +138,7 @@ fn run(models: &std::path::Path, cleaner: Cleaner, asks: &Receiver<Ask>) {
             .any(|microphone| microphone.ends.shared.wanted.load(Ordering::Acquire));
         if wanted {
             last_wanted = Instant::now();
-            model = loaded(model, models, cleaner);
+            model = loaded(model, models, chosen);
         } else if matches!(model, Loaded::Yes(_)) && last_wanted.elapsed() > UNUSED {
             model = Loaded::No;
             eprintln!("noise-cancelled: the model let go");
@@ -153,16 +155,17 @@ fn run(models: &std::path::Path, cleaner: Cleaner, asks: &Receiver<Ask>) {
 }
 
 /// The model, loading it unless it's loaded or was refused a moment ago.
-fn loaded(model: Loaded, models: &std::path::Path, cleaner: Cleaner) -> Loaded {
+fn loaded(model: Loaded, models: &std::path::Path, chosen: &Chosen) -> Loaded {
     match model {
         Loaded::Yes(_) => model,
         Loaded::Refused(when) if when.elapsed() < RETRY => model,
         Loaded::No | Loaded::Refused(_) => {
             let started = Instant::now();
+            let cleaner = chosen.cleaner();
             match Model::load(models, cleaner) {
                 Ok(loaded) => {
                     eprintln!(
-                        "noise-cancelled: the model loaded in {} ms",
+                        "noise-cancelled: the model loaded in {} ms, cleaning with {cleaner}",
                         started.elapsed().as_millis()
                     );
                     Loaded::Yes(loaded)

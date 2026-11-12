@@ -20,6 +20,7 @@ use std::time::{Duration, Instant};
 use dictation::daemon::{self, Answers, Shared, VERSION, Watches, error, now};
 use serde_json::{Value, json};
 
+use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 
 /// The record's key and kind.
@@ -169,7 +170,8 @@ struct Clip {
 pub struct Trial {
     me: Weak<Shared<Self>>,
     models: PathBuf,
-    running: Cleaner,
+    /// The cleaner the microphones run, and where a pick is kept for them.
+    running: Chosen,
     refusals: Vec<Refusal>,
     tools: Tools,
     watches: Watches,
@@ -196,7 +198,7 @@ impl Trial {
     /// The A/B, shared, ready for clients.
     pub fn shared(
         models: PathBuf,
-        running: Cleaner,
+        running: Chosen,
         refusals: Vec<Refusal>,
         tools: Tools,
     ) -> Arc<Shared<Self>> {
@@ -259,7 +261,7 @@ impl Trial {
             "picked": picked,
             "revealed": revealed,
             "costs": self.picked.map(|_| &self.costs),
-            "running": self.running.name(),
+            "running": self.running.cleaner().name(),
         })
     }
 
@@ -403,7 +405,10 @@ impl Trial {
         self.hush();
         let way = self.clips[letter].way;
         let twin = self.microphone.as_ref().map(Microphone::twin);
-        if let (Way::Cleaned(_), Some(twin)) = (way, twin) {
+        if let (Way::Cleaned(cleaner), Some(twin)) = (way, twin) {
+            // Kept first, so the microphone calls hear is never the twin
+            // cleaning some other way than the one picked.
+            self.running.choose(cleaner)?;
             default_microphone_is(&self.tools.metadata, &twin)?;
         }
         eprintln!(
@@ -713,15 +718,14 @@ pub fn shuffled(seed: u64) -> [usize; 4] {
 }
 
 /// Answers the launcher until systemd stops it.
-pub fn serve(
-    socket: &Path,
-    models: &Path,
-    running: Cleaner,
-    refusals: &Path,
-) -> Result<(), String> {
+pub fn serve(socket: &Path, models: &Path, running: Chosen, refusals: &Path) -> Result<(), String> {
     let refusals = std::fs::read_to_string(refusals)
         .map_err(|why| format!("reading {}: {why}", refusals.display()))
         .and_then(|text| Refusal::listed(&text))?;
+    eprintln!(
+        "noise-cancelled: choosing by ear, {} running",
+        running.cleaner()
+    );
     let trial = Trial::shared(models.to_path_buf(), running, refusals, Tools::default());
     let listener = match crate::handed() {
         Some(listener) => listener,
@@ -731,7 +735,6 @@ pub fn serve(
         let trial = Arc::clone(&trial);
         std::thread::spawn(move || daemon::answer_all(&trial, &listener));
     }
-    eprintln!("noise-cancelled: choosing by ear, {running} running");
     loop {
         std::thread::sleep(Duration::from_secs(10));
         trial.lock().forgotten();
