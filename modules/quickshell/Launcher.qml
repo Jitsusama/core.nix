@@ -2049,7 +2049,7 @@ Scope {
                     item: prepared,
                     score: byWord.score,
                     grade: byWord.grade,
-                    tier: Rank.wordTier(known.text, letters),
+                    tier: Rank.wordTier(known.text, letters, oldNames(row)),
                     choice: row
                 });
         }
@@ -2251,9 +2251,11 @@ Scope {
                 lead: source.collection.glyph,
                 leadHue: "voice",
                 from: source,
-                // Found by a word of its name, after the main search's own
-                // (Rank.js's placed).
-                tier: 1,
+                // Found by its name in the name's tiers, or by what it
+                // holds after every name, after the main search's own of
+                // the same tier (Rank.js's placed).
+                tier: Rank.gatheredTier(best, letters, Fuzzy.match(best.prepared
+                    ?? Fuzzy.prepare(best.name ?? ""), Fuzzy.words(letters), false).score >= 0),
                 verbs: () => found
             });
             // One with no act of its own, only more inside (an
@@ -4665,9 +4667,17 @@ Scope {
             ask(row);
             return true;
         }
+        // A step in from what's typed at the top says it was what was meant,
+        // as doing it would, so "void" and a step into The Void lands on
+        // it next time (VKCF3Z, 2026-11-12), however it was stepped into.
+        // One that can't be taken back is learned only once done, so a
+        // step into powering off and back out teaches nothing.
+        const meant = held.length === 0 && typed.trim() !== "" && !!row.key && !row.confirm;
         // A place found from the top that sits in another is stepped into
         // through it, so the path says where it lives.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
+            if (meant)
+                picks.picked(typed, row.key, knowing());
             intoCategory(row.category, typed);
             return true;
         }
@@ -4683,13 +4693,15 @@ Scope {
         const places = things && row.from ? partsOf(row.from).length : 0;
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
+        if (meant)
+            picks.picked(typed, row.key, knowing());
         const made = Date.now();
         // Going back lands on the row stepped into, as oil's - lands on the
         // folder it came from, though it was stepped into without being
         // selected, as the file picker holds each folder on the way to
         // where it opens; Return steps into the selection, so it's the same.
         held = held.concat([Object.assign(here(), { key: steadyId(row), row: row,
-            rows: into ?? [] })]);
+            rows: into ?? [], learned: meant })]);
         const pushed = Date.now();
         if (row.from)
             row.from.opened();
@@ -5843,7 +5855,8 @@ Scope {
                         item: choice.prepared,
                         score: byWord.score * choice.weight / (choice.named ? 1 : 4),
                         grade: byWord.grade,
-                        tier: choice.named ? 1 : Rank.wordTier(choice.keywords.text ?? "", letters),
+                        tier: choice.named ? 1
+                            : Rank.wordTier(choice.keywords.text ?? "", letters, oldNames(choice)),
                         choice: choice,
                         byWord: true
                     });
@@ -6758,7 +6771,10 @@ Scope {
         // One that can't be taken back is latched only once its first word's
         // been typed (Rank.js's leastOf), so a slip of two letters never
         // powers off.
-        picks.picked(picking ? typed : first.typed, meant.key, knowing());
+        // A thing stepped into from the top learned it then, so doing
+        // what's inside teaches it once, not twice.
+        if (picking || first.learned !== true)
+            picks.picked(picking ? typed : first.typed, meant.key, knowing());
         // Inside a thing's own page, what was picked is learned for what was
         // typed there too, apart from the top, so the same letters land on
         // it there next time (Rank.js's stepped). A collection or category

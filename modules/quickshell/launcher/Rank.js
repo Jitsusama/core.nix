@@ -8,10 +8,12 @@
 //   or their key) are one, in the first one's place, as the one with the
 //   most to say (its `rich`).
 // - Tiers: a name that is what's typed, then a name that starts with it,
-//   then a name with a later word that starts with it, then only
-//   something else it's known by, typed whole before only started. An act's name starts with its verb, so
-//   "pow" is the act that starts Power before one that uses power. Nothing lifts
-//   a row over a better tier but what was latched for what's typed.
+//   then later words typed whole, then a later word only started, a name
+//   it had ranked as a name; then something else it's known by, whole
+//   before started; then what it holds, as a screenshot's words. An act's
+//   name starts with its verb, so "pow" is the act that starts Power
+//   before one that uses power. Nothing lifts a row over a better tier but
+//   what was latched for what's typed.
 // - The latch: the row picked most for what's typed and for the words it
 //   starts, counted together, once it's been picked at least two more
 //   times than any other there, so one slip teaches nothing and a stray
@@ -130,15 +132,25 @@ function joined(top, inside) {
 // and one whose later word starts with it.
 const NAME_START = 0.5;
 
+// The tier of a name whose later words are what's typed whole: "void" is
+// The Void before Roxanne Voidonicolas (VKCF3Z, 2026-11-12).
+const WORD_WHOLE = 0.75;
+
 // The tier of a row found only by starting another word it's known by,
 // after one whose other word is typed whole: "quiet" is Turn on do not
 // disturb, known as quiet, before Turn the volume down, known as quieter.
 const WORD_START = 2.5;
 
+// The tier of a row found only by what it holds, as a screenshot by its
+// words, after every name and word it's known by (VKCF3Z, 2026-11-12: one
+// found so sat at the top in 7 searches, 4 of them given up).
+const CONTENT = 3;
+
 // Which tier a match is in: 0 for a name that is what's typed, 0.5 for a
-// name starting with it, 1 for a later word of its name starting with it,
-// 2 for something else it's known by. A row added late, at 1 unless it
-// says, goes among the word starts.
+// name starting with it, 0.75 for one whose words hold each word typed
+// whole, 1 for a later word of its name starting with it, 2 for something
+// else it's known by. A row added late, at 1 unless it says, goes among the
+// word starts.
 function tier(name, typed, byWord) {
     if (byWord) {
         return 2;
@@ -148,14 +160,35 @@ function tier(name, typed, byWord) {
     if (said === query) {
         return 0;
     }
-    return said.startsWith(firstWord(query)) ? NAME_START : 1;
+    if (said.startsWith(firstWord(query))) {
+        return NAME_START;
+    }
+    return says(said, query) ? WORD_WHOLE : 1;
 }
 
-// The tier of a row found by its other words (`known`, as one string):
-// 2 when each word typed is one of them whole, and WORD_START when one
-// only starts.
-function wordTier(known, typed) {
+// The tier of a row found by its other words (`known`, as one string): by
+// the name's tiers for a name it had (`olds`), as Caffeinate is Keep Awake;
+// else 2 when each word typed is one of them whole, WORD_START if started.
+function wordTier(known, typed, olds) {
+    const named = (olds ?? []).filter(old => startsEvery(old, typed))
+        .map(old => tier(old, typed, false));
+    if (named.length > 0) {
+        return named.reduce((best, one) => Math.min(best, one));
+    }
     return says(known, typed) ? 2 : WORD_START;
+}
+
+// Whether each word typed starts one of a name's words.
+function startsEvery(name, typed) {
+    const words = plainly(name).split(" ");
+    const query = plainly(typed);
+    return query !== "" && query.split(" ").every(word => words.some(one => one.startsWith(word)));
+}
+
+// The tier of a collection's best match gathered at the top: the name's,
+// found `byName`, else what it holds, after every name.
+function gatheredTier(best, typed, byName) {
+    return byName ? tier(best.name, typed, false) : CONTENT;
 }
 
 // Whether each word typed is one of a string's words whole.
@@ -394,11 +427,13 @@ function order(found, ask) {
 function placed(rows, later, latchedKey) {
     const all = rows.slice();
     const sunk = f => f.sinks === true && f.kept !== true;
+    // What's only meant comes after everything found by what it holds too.
+    const tierOf = f => f.byMeaning === true ? Number.POSITIVE_INFINITY : f.tier ?? 1;
     for (const row of later) {
         if (latchedKey !== "" && row.key === latchedKey) {
             all.unshift(row);
         } else {
-            const at = all.findIndex(f => sunk(f) || (f.tier ?? 1) > (row.tier ?? 1));
+            const at = all.findIndex(f => sunk(f) || tierOf(f) > tierOf(row));
             all.splice(at < 0 ? all.length : at, 0, row);
         }
     }
