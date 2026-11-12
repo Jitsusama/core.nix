@@ -21,13 +21,9 @@
 //! - `quiet { sharing }`: whether the shell holds notices while Joel
 //!   shares his screen, which only the shell sees.
 //!
-//! Two asks answer rather than change, each as a launcher's search is
-//! answered, the keys of the `notices` place's rows in order and beside
-//! them the rows its watch doesn't serve, those read past its page:
-//!
-//! - `search { words }`: those of the notices found.
-//! - `rows { notices? }`: every one's, or those of `notices`, so a list
-//!   of them reaches past the page.
+//! Two answer with keys of the `notices` place's rows, and the rows past
+//! its page beside them: `search { words }` those found, and
+//! `rows { notices? }` every one's, or those of `notices`, in order.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
