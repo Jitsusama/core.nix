@@ -324,6 +324,25 @@ def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell)
     time.sleep(PAUSE)
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["returned"].get("act") == "ran" and not shown["open"])
+    # The : line arms the row it stands on, as its Return does, rather
+    # than asking y/n (VKCF3Z, 2026-11-12), and the next Return does it.
+    shell.answer("reboot")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Reboot")
+    shell.normal()
+    shell.send_chars(":reboot")
+    shell.launcher_until(lambda shown: (shown["command"] or {}).get("line") == "reboot")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: (
+            shown["command"] is None
+            and shown["question"] == ""
+            and shown["armed"] == "again reboots"
+            and "\u21b5 again reboots" in (shown["selected"] or {}).get("told", [])
+        )
+    )
+    time.sleep(PAUSE)
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["returned"].get("act") == "ran" and not shown["open"])
     # A line written and left goes with the launcher, so the next opening
     # is on the find, not on a line still held.
     shell.answer("log out")
