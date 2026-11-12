@@ -1584,6 +1584,11 @@
     and otherwise only what eero says ails, worst first: the internet, the provider, the nodes'
     network and each node off line, and nothing while eero is out of reach
   '';
+  now-says-what-ails-the-work-network = ''
+    Now's Work Network piece says the link to work down, since when where the warp daemon saw it
+    drop, degraded, connecting for long or WARP not answering, and nothing while it's well, Joel
+    took it down himself or it's only coming up
+  '';
   one-niri = ''
     the screens go off through the machine's patched niri, not a second one
   '';

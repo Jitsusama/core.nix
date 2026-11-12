@@ -176,6 +176,18 @@
       }
     },
     {
+      "id": "on:work-network",
+      "in": "on",
+      "said": {
+        "well": "connected",
+        "down": "down",
+        "downSince": "down since {time}",
+        "degraded": "degraded",
+        "connecting": "connecting since {time}",
+        "notAnswering": "not answering"
+      }
+    },
+    {
       "id": "on:lag:waited",
       "in": "on",
       "name": "Time Waited"

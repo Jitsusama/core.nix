@@ -1181,6 +1181,12 @@ in
     glyph = nerd "f0582";
     console = "v";
     means = "a tunnel to another network, such as a VPN";
+    # A tunnel's mouth with its road's lane going in, for the margin while
+    # something ails the work network.
+    drawn = drawing [
+      "M0 12V6A6 6 0 0 1 12 6V12H10.25V6A4.25 4.25 0 0 0 1.75 6V12Z"
+      "M5.25 8H6.75V12H5.25Z"
+    ];
   };
   signIn = {
     glyph = nerd "f0342";
