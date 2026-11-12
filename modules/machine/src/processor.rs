@@ -444,13 +444,15 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
                 .ok()
         })
     };
-    let turbo = root
-        .number("/sys/devices/system/cpu/intel_pstate/no_turbo")
-        .map(|off| off == 0)
-        .or_else(|| {
-            root.number("/sys/devices/system/cpu/cpufreq/boost")
-                .map(|on| on == 1)
+    // Which file said whether it boosts, and what it said, for the
+    // drawer that says it.
+    let turbo_read = [("intel_pstate/no_turbo", 0), ("cpufreq/boost", 1)]
+        .into_iter()
+        .find_map(|(file, on)| {
+            let said = root.number(&format!("/sys/devices/system/cpu/{file}"))?;
+            Some((file, said, said == on))
         });
+    let turbo = turbo_read.map(|(_, _, on)| on);
     // A first read's rates are since the machine started.
     let span = over_ms.or_else(|| crate::boot::up_ms(root));
     let rate = |now: Option<u64>, before: Option<u64>| {
@@ -475,6 +477,7 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
         "governor": cpu(first, "scaling_governor"),
         "preference": cpu(first, "energy_performance_preference"),
         "turbo": turbo,
+        "turbo_read": turbo_read.map(|(file, said, _)| json!([file, said])),
         "load": load.iter().take(3).filter_map(|l| l.parse::<f64>().ok()).collect::<Vec<_>>(),
         "runnable": runnable,
         "tasks": tasks,
@@ -484,6 +487,10 @@ pub fn record(root: &Root, fixed: &Fixed, now: &Counters, before: Option<&Counte
         "interrupts_per_s": rate(now.interrupts, before.and_then(|b| b.interrupts)),
         "softirqs_per_s": rate(now.softirqs, before.and_then(|b| b.softirqs)),
         "forks_per_s": rate(now.forks, before.and_then(|b| b.forks)),
+        // The counts since startup the rates are measured from, by the
+        // names /proc/stat gives them.
+        "counts": { "ctxt": now.switches, "intr": now.interrupts,
+            "softirq": now.softirqs, "processes": now.forks },
         "pressure": crate::pressure::parse(root.read("/proc/pressure/cpu").as_deref()),
         "temperature": heat,
         "throttled": crate::heat::throttled(

@@ -48,6 +48,8 @@ const SPENT: [(&str, &[&str]); 7] = [
     ("stolen", &["steal"]),
     ("guests", &["guest", "guest_nice"]),
 ];
+/// Where cpufreq keeps what every core's clock is held to.
+const CPUFREQ: &str = "/sys/devices/system/cpu/cpu*/cpufreq";
 /// The NPU's driver counts its clock in megahertz.
 const MEGAHERTZ: f64 = 1000.0;
 /// A clock's units, from the hertz it's in.
@@ -63,16 +65,19 @@ pub fn row(processor: &Value, using: Option<&[Value]>, words: &Words) -> Option<
         p: processor,
     };
     let said = say.says("head", &[("busy", &percent(busy))]);
+    let name = words.name("machine:cpu", &[]);
+    let inside = ordered(words, "machine:cpu", say.parts(using));
     Some(Made {
         id: "cpu".to_owned(),
         kind: "processor",
-        name: words.name("machine:cpu", &[]),
         glyph: words.glyph("machine:cpu"),
         hue: "machine",
         side: vec![item(&said)],
         graph: Some(bar(busy, false)),
         note: say.since(),
-        inside: ordered(words, "machine:cpu", say.parts(using)),
+        drawer: Some(say.say.holding("cpu", &name, &inside)),
+        name,
+        inside,
         ..Made::default()
     })
 }
@@ -120,6 +125,33 @@ impl Cpu<'_> {
     /// A leaf worth having, as a model is, which copies what it says.
     fn leaf(&self, id: &str, said: &str) -> Made {
         self.figure(id, said.to_owned(), None, String::new())
+    }
+
+    /// A row's drawer saying what Linux keeps behind it, by its names.
+    fn linux<N: Into<String>>(
+        &self,
+        made: Made,
+        from: &str,
+        kept: impl IntoIterator<Item = (N, String)>,
+    ) -> Made {
+        let kept = kept.into_iter().map(|(name, said)| (name.into(), said));
+        self.say.as_linux_keeps(made, "cpu", from, kept.collect())
+    }
+
+    /// A clock as cpufreq keeps it, "4,000,000 kHz", or none.
+    fn khz_said(&self, khz: f64) -> String {
+        if khz > 0.0 {
+            format!("{} kHz", self.say.words.number(khz, 0))
+        } else {
+            String::new()
+        }
+    }
+
+    /// A count of the record's, whole, or none.
+    fn count(&self, value: &Value) -> String {
+        value
+            .as_f64()
+            .map_or_else(String::new, |n| self.say.words.number(n, 0))
     }
 
     /// A part whose figures aren't held yet: its place held, saying it's
@@ -196,7 +228,12 @@ impl Cpu<'_> {
         } else {
             self.cores_said(&flat)
         };
-        self.figure("maxed", said, None, self.say.says("cpu:maxed", "note", &[]))
+        let made = self.figure("maxed", said, None, self.say.says("cpu:maxed", "note", &[]));
+        let kept = cores
+            .iter()
+            .filter(|core| core.load() >= MAXED)
+            .map(|core| (format!("cpu{}", core.n()), percent(core.load())));
+        self.linux(made, "/proc/stat", kept)
     }
 
     fn parts(&self, using: Option<&[Value]>) -> Vec<Made> {
@@ -245,7 +282,7 @@ impl Cpu<'_> {
                         .unwrap_or_default(),
                 ]);
                 let n = core.n().to_string();
-                Made {
+                let made = Made {
                     name: self.say.words.name("machine:cpu:core", &[("n", &n)]),
                     ..self.figure(
                         &format!("core:{n}"),
@@ -253,7 +290,15 @@ impl Cpu<'_> {
                         Some(bar(core.load(), false)),
                         note,
                     )
-                }
+                };
+                let kept = [
+                    ("scaling_cur_freq", self.khz_said(clock)),
+                    ("cpuinfo_min_freq", self.khz_said(core.khz("min_khz"))),
+                    ("cpuinfo_max_freq", self.khz_said(core.khz("max_khz"))),
+                    ("base_frequency", self.khz_said(core.khz("base_khz"))),
+                    ("core_id", self.count(&core.0["core"])),
+                ];
+                self.linux(made, &format!("/sys/devices/system/cpu/cpu{n}"), kept)
             })
             .collect();
         let made = self.figure(
@@ -280,7 +325,13 @@ impl Cpu<'_> {
                 let share: f64 = fields.iter().map(|field| number(&time[*field])).sum();
                 let part = format!("spent-{id}");
                 let note = self.say.says(&format!("cpu:{part}"), "note", &[]);
-                self.figure(&part, percent(share), Some(bar(share, false)), note)
+                let made = self.figure(&part, percent(share), Some(bar(share, false)), note);
+                // Each field's share of the time since it was last read.
+                let kept = fields.iter().filter_map(|field| {
+                    let share = time.get(*field)?.as_f64()?;
+                    Some((*field, format!("{:.1}%", share * 100.0)))
+                });
+                self.linux(made, "/proc/stat", kept)
             })
             .collect();
         if inside.is_empty() {
@@ -351,7 +402,12 @@ impl Cpu<'_> {
             } else {
                 String::new()
             };
-            rows.push(self.figure("clock-range", said, None, note));
+            let made = self.figure("clock-range", said, None, note);
+            let kept = [
+                ("cpuinfo_min_freq", self.khz_said(lowest(&lows))),
+                ("cpuinfo_max_freq", self.khz_said(top_most)),
+            ];
+            rows.push(self.linux(made, CPUFREQ, kept));
         }
         if !bases.is_empty() {
             let (low, high, differ) = span(&bases);
@@ -365,15 +421,26 @@ impl Cpu<'_> {
                 self.ghz(low)
             };
             let note = self.say.says("cpu:clock-base", "note", &[]);
-            rows.push(self.figure("clock-base", said, None, note));
+            let made = self.figure("clock-base", said, None, note);
+            let base = if differ {
+                format!("{} to {}", self.khz_said(low), self.khz_said(high))
+            } else {
+                self.khz_said(low)
+            };
+            rows.push(self.linux(made, CPUFREQ, [("base_frequency", base)]));
         }
-        for (field, id) in [
-            ("driver", "clock-driver"),
-            ("governor", "clock-governor"),
-            ("preference", "clock-preference"),
+        for (field, id, file) in [
+            ("driver", "clock-driver", "scaling_driver"),
+            ("governor", "clock-governor", "scaling_governor"),
+            (
+                "preference",
+                "clock-preference",
+                "energy_performance_preference",
+            ),
         ] {
             if let Some(said) = p[field].as_str().filter(|said| !said.is_empty()) {
-                rows.push(self.leaf(id, said));
+                let made = self.leaf(id, said);
+                rows.push(self.linux(made, CPUFREQ, [(file, said.to_owned())]));
             }
         }
         if let Some(turbo) = p["turbo"].as_bool() {
@@ -382,7 +449,12 @@ impl Cpu<'_> {
                 .say
                 .says("cpu:clock-turbo", &format!("side-{phrase}"), &[]);
             let note = self.say.says("cpu:clock-turbo", phrase, &[]);
-            rows.push(self.figure("clock-turbo", said, None, note));
+            let made = self.figure("clock-turbo", said, None, note);
+            let read = &p["turbo_read"];
+            let file = read[0].as_str().unwrap_or_default();
+            let name = file.rsplit('/').next().unwrap_or_default();
+            let from = format!("/sys/devices/system/cpu/{file}");
+            rows.push(self.linux(made, &from, [(name, self.count(&read[1]))]));
         }
         rows
     }
@@ -399,12 +471,22 @@ impl Cpu<'_> {
             self.say
                 .says("cpu:temperature", "most", &[("degrees", &degrees)])
         });
-        Some(self.figure(
+        let made = self.figure(
             "temperature",
             self.degrees(value),
             Some(bar(level.value, level.warn)),
             note,
-        ))
+        );
+        // In thousandths of a degree, as hwmon writes them.
+        let milli = |value: Option<f64>| {
+            value.map_or_else(String::new, |v| self.say.words.number(v * 1000.0, 0))
+        };
+        let kept = [
+            ("temp_input", milli(Some(value))),
+            ("temp_max", milli(high)),
+            ("temp_crit", milli(critical)),
+        ];
+        Some(self.linux(made, "/sys/class/hwmon/*/temp*_input", kept))
     }
 
     fn using(&self, using: Option<&[Value]>) -> Made {
@@ -433,7 +515,7 @@ impl Cpu<'_> {
                 } else {
                     String::new()
                 };
-                Made {
+                let made = Made {
                     name: each["name"].as_str().unwrap_or_default().to_owned(),
                     ..self.figure(
                         &format!("using:{}", at + 1),
@@ -441,7 +523,11 @@ impl Cpu<'_> {
                         Some(bar(share, false)),
                         note,
                     )
-                }
+                };
+                // Its share of the processors, from each process's time
+                // on them, the 14th and 15th fields.
+                let kept = [("utime + stime", percent(share))];
+                self.linux(made, "/proc/<pid>/stat", kept)
             })
             .collect();
         let side = format!(
@@ -465,7 +551,15 @@ impl Cpu<'_> {
                 .map(|each| words.number(number(each), 2))
                 .collect();
             let note = self.say.says("cpu:load", "note", &[]);
-            rows.push(self.figure("load", said.join(" \u{b7} "), None, note));
+            let made = self.figure("load", said.join(" \u{b7} "), None, note);
+            let mut line: Vec<String> = load
+                .iter()
+                .map(|each| format!("{:.2}", number(each)))
+                .collect();
+            if let (Some(runnable), Some(tasks)) = (p["runnable"].as_u64(), p["tasks"].as_u64()) {
+                line.push(format!("{runnable}/{tasks}"));
+            }
+            rows.push(self.linux(made, "/proc/loadavg", [("loadavg", line.join(" "))]));
         }
         if let Some(running) = p["running"].as_f64() {
             let (blocked, tasks) = (number(&p["blocked"]), number(&p["tasks"]));
@@ -485,10 +579,17 @@ impl Cpu<'_> {
                 },
             ]);
             let running = words.number(running, 0);
-            rows.push(self.figure("running", running, None, note));
+            let made = self.figure("running", running, None, note);
+            let kept = [
+                ("procs_running", self.count(&p["running"])),
+                ("procs_blocked", self.count(&p["blocked"])),
+            ];
+            rows.push(self.linux(made, "/proc/stat", kept));
         }
+        let counted = |name: &str| (name.to_owned(), self.count(&p["counts"][name]));
         if let Some(switches) = p["switches_per_s"].as_f64() {
-            rows.push(self.figure("switches", self.say.often(switches), None, self.since()));
+            let made = self.figure("switches", self.say.often(switches), None, self.since());
+            rows.push(self.linux(made, "/proc/stat", [counted("ctxt")]));
         }
         if let Some(interrupts) = p["interrupts_per_s"].as_f64() {
             let deferred = number(&p["softirqs_per_s"]);
@@ -499,11 +600,14 @@ impl Cpu<'_> {
             } else {
                 String::new()
             };
-            rows.push(self.figure("interrupts", self.say.often(interrupts), None, note));
+            let made = self.figure("interrupts", self.say.often(interrupts), None, note);
+            let kept = [counted("intr"), counted("softirq")];
+            rows.push(self.linux(made, "/proc/stat", kept));
         }
         if let Some(forks) = p["forks_per_s"].as_f64() {
             let note = self.say.says("cpu:started", "note", &[]);
-            rows.push(self.figure("started", self.say.often(forks), None, note));
+            let made = self.figure("started", self.say.often(forks), None, note);
+            rows.push(self.linux(made, "/proc/stat", [counted("processes")]));
         }
         rows
     }
@@ -529,7 +633,14 @@ impl Cpu<'_> {
         } else {
             self.say.says("cpu:npu-load", "resting", &[])
         };
-        Some(self.figure("npu-load", percent(busy), Some(bar(busy, false)), note))
+        let made = self.figure("npu-load", percent(busy), Some(bar(busy, false)), note);
+        let field = |name: &str| npu.get(name).map_or_else(String::new, |n| self.count(n));
+        let kept = [
+            ("npu_busy_time_us", field("busy_us")),
+            ("npu_current_frequency_mhz", field("clock_mhz")),
+            ("npu_max_frequency_mhz", field("max_mhz")),
+        ];
+        Some(self.linux(made, "/sys/class/accel/accel0/device", kept))
     }
 
     fn kinds(&self, cores: &[Core]) -> Option<Made> {
@@ -562,12 +673,29 @@ impl Cpu<'_> {
                 };
                 let loads: Vec<f64> = members.iter().map(|core| core.load()).collect();
                 let numbers: Vec<u64> = members.iter().map(|core| core.n()).collect();
-                self.figure(
+                let made = self.figure(
                     kind,
                     said,
                     Some(strip(&loads, false)),
                     self.cores_said(&numbers),
-                )
+                );
+                // The kernel names its performance cores; the others are
+                // told apart by how fast cpufreq says each can clock.
+                let listed: Vec<String> = numbers.iter().map(u64::to_string).collect();
+                let top = members
+                    .iter()
+                    .map(|core| core.khz("max_khz"))
+                    .fold(0.0, f64::max);
+                let kept = [
+                    ("cpus", listed.join(",")),
+                    ("cpuinfo_max_freq", self.khz_said(top)),
+                ];
+                let from = if *kind == "performance" {
+                    "/sys/devices/cpu_core/cpus"
+                } else {
+                    CPUFREQ
+                };
+                self.linux(made, from, kept)
             })
             .collect();
         let counts: Vec<String> = present
@@ -584,9 +712,16 @@ impl Cpu<'_> {
     fn model(&self) -> Option<Made> {
         let p = self.p;
         let model = p["model"].as_str().filter(|model| !model.is_empty())?;
-        let mut inside = vec![self.leaf("model-name", model)];
+        let cpuinfo = |made: Made, kept: &[(&str, String)]| {
+            self.linux(made, "/proc/cpuinfo", kept.iter().cloned())
+        };
+        let mut inside = vec![cpuinfo(
+            self.leaf("model-name", model),
+            &[("model name", model.to_owned())],
+        )];
         if let Some(vendor) = p["vendor"].as_str().filter(|vendor| !vendor.is_empty()) {
-            inside.push(self.leaf("vendor", vendor));
+            let made = self.leaf("vendor", vendor);
+            inside.push(cpuinfo(made, &[("vendor_id", vendor.to_owned())]));
         }
         if let Some(family) = p["family"].as_u64() {
             let text = |field: &str| match &p[field] {
@@ -603,10 +738,16 @@ impl Cpu<'_> {
                     ("stepping", &text("stepping")),
                 ],
             );
-            inside.push(self.leaf("family", &said));
+            let kept = [
+                ("cpu family", family.to_string()),
+                ("model", text("model_number")),
+                ("stepping", text("stepping")),
+            ];
+            inside.push(cpuinfo(self.leaf("family", &said), &kept));
         }
         if let Some(microcode) = p["microcode"].as_str().filter(|code| !code.is_empty()) {
-            inside.push(self.leaf("microcode", microcode));
+            let made = self.leaf("microcode", microcode);
+            inside.push(cpuinfo(made, &[("microcode", microcode.to_owned())]));
         }
         inside.extend(self.caches());
         let made = self.figure("model", model.to_owned(), None, String::new());
@@ -666,10 +807,22 @@ impl Cpu<'_> {
                         self.say.says("cpu:cache", "line", &[("line", &line)])
                     }),
                 ]);
-                Made {
+                let made = Made {
                     name,
                     ..self.figure(&format!("cache:{}", at + 1), said, None, note)
-                }
+                };
+                let whole = |field: &str| self.count(&cache[field]);
+                let kept = [
+                    ("level", level.clone()),
+                    ("type", kind.to_owned()),
+                    (
+                        "size",
+                        format!("{}K", self.say.words.number(size(cache) / 1024.0, 0)),
+                    ),
+                    ("ways_of_associativity", whole("ways")),
+                    ("coherency_line_size", whole("line_b")),
+                ];
+                self.linux(made, "/sys/devices/system/cpu/cpu*/cache/index*", kept)
             })
             .collect();
         let note = self.say.says("cpu:caches", "note", &[]);
@@ -889,5 +1042,134 @@ mod tests {
         );
         assert_eq!(said(cache), "48.0 kB \u{d7} 4", "its size and count");
         assert_eq!(cache.note, "one a core \u{b7} cores 0 to 3", "whose it is");
+    }
+
+    /// The processor as a machine at work reads it: every part it has,
+    /// the NPU busy, and the programs using it read just now.
+    fn processor_at_work() -> Value {
+        let mut p = processor();
+        p["cores"][0]["base_khz"] = json!(2_200_000);
+        p["cores"][0]["core"] = json!(0);
+        for (field, value) in [
+            (
+                "time",
+                json!({ "user": 0.3, "system": 0.1, "iowait": 0.01, "irq": 0.0,
+                "softirq": 0.01, "nice": 0.0, "steal": 0.0 }),
+            ),
+            (
+                "pressure",
+                json!({ "some": { "avg10_pct": 4.0, "avg60_pct": 2.0,
+                "avg300_pct": 1.0, "total_us": 1_000 } }),
+            ),
+            ("driver", json!("intel_pstate")),
+            ("governor", json!("powersave")),
+            ("preference", json!("balance_performance")),
+            ("turbo_read", json!(["intel_pstate/no_turbo", 0])),
+            (
+                "temperature",
+                json!({ "temperature_c": 52.0, "high_c": 100.0,
+                "critical_c": 110.0 }),
+            ),
+            ("runnable", json!(3)),
+            ("tasks", json!(1234)),
+            ("running", json!(3)),
+            ("blocked", json!(1)),
+            ("switches_per_s", json!(4000.0)),
+            ("interrupts_per_s", json!(2000.0)),
+            ("softirqs_per_s", json!(900.0)),
+            ("forks_per_s", json!(3.0)),
+            (
+                "counts",
+                json!({ "ctxt": 987_654_321, "intr": 123_456_789,
+                "softirq": 45_678, "processes": 9_876 }),
+            ),
+            (
+                "npu",
+                json!({ "busy_ratio": 0.4, "busy_us": 5_000_000, "clock_mhz": 1400,
+                "max_mhz": 1400 }),
+            ),
+            ("vendor", json!("GenuineIntel")),
+            ("family", json!(6)),
+            ("model_number", json!(189)),
+            ("stepping", json!(1)),
+            ("microcode", json!("0x11f")),
+        ] {
+            p[field] = value;
+        }
+        p["caches"][0]["ways"] = json!(12);
+        p["caches"][0]["line_b"] = json!(64);
+        p
+    }
+
+    /// Every row the Processor serves has a drawer giving a little more
+    /// than its line (Joel, 2026-11-11 22:00): a row holding more, what
+    /// each a step in says; any other, what Linux keeps behind it.
+    #[test]
+    fn every_processor_row_has_a_drawer_saying_more() {
+        fn bare<'a>(made: &'a Made, found: &mut Vec<&'a str>) {
+            let drawer = made.drawer.as_ref().unwrap_or(&Value::Null);
+            let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+            if !(drawer["title"].is_string() && (facts || drawer["body"].is_string())) {
+                found.push(&made.id);
+            }
+            for part in &made.inside {
+                bare(part, found);
+            }
+        }
+        let programs = [json!({ "key": "using:cpu:1", "name": "cargo",
+            "share_ratio": 0.25, "processes": 3 })];
+        let made = row(&processor_at_work(), Some(&programs), &words()).expect("a row");
+        let mut found = Vec::new();
+        bare(&made, &mut found);
+        assert!(
+            found.is_empty(),
+            "rows whose drawer says nothing more: {found:?}"
+        );
+        let facts = |made: &Made| -> Vec<String> {
+            made.drawer.as_ref().unwrap()["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| {
+                    let said = &fact["said"];
+                    let said = said
+                        .as_str()
+                        .map_or_else(|| said.to_string(), str::to_owned);
+                    format!("{}={said}", fact["name"].as_str().unwrap_or_default())
+                })
+                .collect()
+        };
+        assert_eq!(
+            facts(&part(&made, "cpu:cores").inside[0]),
+            [
+                "scaling_cur_freq=4,000,000 kHz",
+                "cpuinfo_min_freq=400,000 kHz",
+                "cpuinfo_max_freq=5,000,000 kHz",
+                "base_frequency=2,200,000 kHz",
+                "core_id=0",
+                "Read From=/sys/devices/system/cpu/cpu0"
+            ],
+            "a core says its clocks as cpufreq keeps them"
+        );
+        assert_eq!(
+            facts(part(&made, "cpu:load")),
+            ["loadavg=1.50 1.25 1.00 3/1234", "Read From=/proc/loadavg"],
+            "the load says the kernel's own line"
+        );
+        assert_eq!(
+            facts(part(&made, "cpu:switches")),
+            ["ctxt=987,654,321", "Read From=/proc/stat"],
+            "a rate says the count since startup it's measured from"
+        );
+        assert_eq!(
+            facts(part(part(&made, "cpu:model"), "cpu:family")),
+            [
+                "cpu family=6",
+                "model=189",
+                "stepping=1",
+                "Read From=/proc/cpuinfo"
+            ],
+            "what it is, as cpuinfo says it"
+        );
     }
 }
