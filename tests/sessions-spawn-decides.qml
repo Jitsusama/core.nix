@@ -79,6 +79,9 @@ ShellRoot {
     function deciding() {
         Expect.expect("the one kept in the background opens no window", spawned("s-hosted").length === 0,
             Niri.spawns.join("\n"));
+        // Read afresh on each look, since a change notice for the last
+        // line written can be missed, and nothing would be written after.
+        decided.reload();
         const lines = decided.text().split("\n").filter(line => line !== "");
         const ended = lines.find(line => line.startsWith("ended s-slow at "));
         if (!ended
@@ -109,8 +112,6 @@ ShellRoot {
 
         path: Quickshell.env("DECIDED")
         blockLoading: true
-        watchChanges: true
-        onFileChanged: reload()
     }
 
     // Every step waits on a timer of Sessions' own or the decider, so
@@ -125,6 +126,7 @@ ShellRoot {
     Timer {
         running: true
         interval: 40000
-        onTriggered: Expect.fail(`still at ${root.stage}: ${Niri.spawns.join("\n")}`)
+        onTriggered: Expect.fail(`still at ${root.stage}: ${Niri.spawns.join("\n")}`
+            + `\ndecided:\n${decided.text()}`)
     }
 }

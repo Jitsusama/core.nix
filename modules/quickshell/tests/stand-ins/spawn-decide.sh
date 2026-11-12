@@ -16,8 +16,12 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+# Heard before it's noted as asked, so a signal that comes once the
+# check reads the note always finds the trap.
+staying=""
+trap 'echo "ended $id at $(date +%s%3N)" >>"$DECIDED"; [ -z "$staying" ] || kill "$staying"
+	exit 143' TERM
 echo "asked $id in $PWD quest=${QUEST_WORKFLOW_AUTOLOAD_ID:-} model=$model" >>"$DECIDED"
-trap 'echo "ended $id at $(date +%s%3N)" >>"$DECIDED"; exit 143' TERM
 
 case "$id" in
 s-hosted)
@@ -30,8 +34,12 @@ s-stayed)
 	exit 3
 	;;
 s-slow)
-	# Says nothing, as a decider that hangs would, until it's ended.
-	while :; do read -r -t 1 <> <(:) || true; done
+	# Says nothing, as a decider that hangs would, until it's ended. bash
+	# runs a trap the moment `wait` is signalled, so nothing it waits on
+	# holds the note of its ending back.
+	sleep infinity &
+	staying=$!
+	wait "$staying"
 	;;
 *) exit 1 ;;
 esac
