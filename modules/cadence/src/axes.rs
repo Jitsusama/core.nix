@@ -8,7 +8,10 @@
 //! (readings.rs): cadence's card and day, the daily measure, the journal,
 //! the mesh, the notices and niri. No model runs, and the page draws in
 //! under a second. A reading nothing measures yet says so and names its
-//! owner, rather than leave the axis looking fine. The bars are first
+//! owner, rather than leave the axis looking fine. Only a reading taken
+//! from Joel's side (his key, his screen, his time) can show an axis in
+//! spec: one read from ours is a stand-in, and an axis read on one is
+//! marked not judged, since what we measure is what we fix. The bars are first
 //! guesses from docs/delivery.md and the research behind this view
 //! (RSCH-20261111-I1QC91); they only ever tighten.
 
@@ -95,6 +98,10 @@ pub struct Reading {
     pub detail: Option<String>,
     /// Where it's read from, so it can be read again by hand.
     pub from: &'static str,
+    /// Whether it's read from Joel's side rather than from what we built.
+    pub his: bool,
+    /// Why its figure is held back, when its sources disagree on it.
+    pub held: Option<&'static str>,
 }
 
 impl Reading {
@@ -107,7 +114,30 @@ impl Reading {
             owner,
             detail: None,
             from: "",
+            his: false,
+            held: None,
         }
+    }
+
+    fn his(mut self) -> Self {
+        self.his = true;
+        self
+    }
+
+    fn held(mut self, why: &'static str) -> Self {
+        self.held = Some(why);
+        self
+    }
+
+    /// The figure as it may be shown: none while it's held back.
+    fn figure(&self) -> Option<f64> {
+        self.now.filter(|_| self.held.is_none())
+    }
+
+    /// Whether it can say its axis is in spec: read, shown, and from his
+    /// side.
+    fn judges(&self) -> bool {
+        self.his && self.figure().is_some()
     }
 
     fn bar(mut self, bar: Bar) -> Self {
@@ -125,11 +155,11 @@ impl Reading {
         self
     }
 
-    /// Whether its figure is past its bar; a reading with no figure or no
-    /// bar is never out.
+    /// Whether its figure is past its bar; a reading with no figure, a
+    /// held one or no bar is never out.
     #[must_use]
     pub fn out(&self) -> bool {
-        match (self.now, self.bar) {
+        match (self.figure(), self.bar) {
             (Some(now), Some(Bar::AtMost(bar))) => now > bar,
             (Some(now), Some(Bar::AtLeast(bar))) => now < bar,
             _ => false,
@@ -139,9 +169,14 @@ impl Reading {
     /// The reading as a line says it: "85 pi windows, at most 12".
     #[must_use]
     pub fn words(&self) -> String {
-        let Some(now) = self.now else {
+        let Some(now) = self.figure() else {
             let named = self.says.replace(" {}", "").replace("{} ", "");
-            return format!("{named}: no reading yet");
+            let why = if self.held.is_some() {
+                "not agreed yet"
+            } else {
+                "no reading yet"
+            };
+            return format!("{named}: {why}");
         };
         let said = self.says.replacen("{}", &shown(now, self.unit), 1);
         match self.bar {
@@ -159,13 +194,31 @@ pub struct Axis {
     pub readings: Vec<Reading>,
 }
 
+/// Where an axis stands: past a bar, in spec on his side's readings
+/// alone, read only on stand-ins or in part, or not read at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Standing {
+    Out,
+    InSpec,
+    StandIn,
+    Unread,
+}
+
 impl Axis {
     fn out(&self) -> Vec<&Reading> {
         self.readings.iter().filter(|r| r.out()).collect()
     }
 
-    fn unread(&self) -> bool {
-        self.readings.iter().all(|r| r.now.is_none())
+    fn standing(&self) -> Standing {
+        if self.readings.iter().any(Reading::out) {
+            Standing::Out
+        } else if self.readings.iter().all(|r| r.figure().is_none()) {
+            Standing::Unread
+        } else if self.readings.iter().all(Reading::judges) {
+            Standing::InSpec
+        } else {
+            Standing::StandIn
+        }
     }
 }
 
@@ -198,6 +251,8 @@ pub fn shown(x: f64, unit: &str) -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ink {
     pub failed: String,
+    /// The mark of an axis not yet judged from his side.
+    pub pending: String,
     pub separator: String,
     pub alert: Option<String>,
 }
@@ -207,6 +262,7 @@ impl Default for Ink {
     fn default() -> Self {
         Self {
             failed: "✕".into(),
+            pending: "◇".into(),
             separator: "·".into(),
             alert: None,
         }
@@ -226,6 +282,7 @@ impl Ink {
         };
         Self {
             failed: mark("failed", defaults.failed),
+            pending: mark("pending", defaults.pending),
             separator: mark("separator", defaults.separator),
             alert: colour.then(|| alert(theme)).flatten(),
         }
@@ -306,7 +363,8 @@ pub fn find<'a>(axes: &'a [Axis], asked: &str) -> Option<&'a Axis> {
 }
 
 /// The page of all nine: each axis's one line, marked when out of spec,
-/// saying its first reading out with its owner, else its first reading.
+/// saying its first reading out with its owner; marked pending when it's
+/// read only on stand-ins or in part, saying so; else its first reading.
 #[must_use]
 pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
     let sep = format!(" {} ", ink.separator);
@@ -314,32 +372,56 @@ pub fn page(axes: &[Axis], heading: &str, ink: &Ink) -> String {
     let mut out = format!("axes{sep}{heading}\n\n");
     for axis in axes {
         let off = axis.out();
-        let (mark, said) = if let Some(first) = off.first() {
-            let more = match off.len() {
-                1 => String::new(),
-                n => format!("{sep}{} more out", n - 1),
-            };
-            (
-                ink.failed(),
-                format!("{}{sep}{}{more}", first.words(), first.owner),
-            )
-        } else {
-            let said = axis.readings.iter().find(|r| r.now.is_some()).map_or_else(
-                || {
-                    let owner = axis.readings.first().map_or("", |r| r.owner);
-                    format!("no reading yet{sep}{owner}")
-                },
-                Reading::words,
-            );
-            (" ".to_owned(), said)
+        let shown = axis.readings.iter().find(|r| r.figure().is_some());
+        let (mark, said) = match (axis.standing(), off.first(), shown) {
+            (Standing::Out, Some(first), _) => {
+                let more = match off.len() {
+                    1 => String::new(),
+                    n => format!("{sep}{} more out", n - 1),
+                };
+                (
+                    ink.failed(),
+                    format!("{}{sep}{}{more}", first.words(), first.owner),
+                )
+            }
+            (Standing::InSpec, _, Some(first)) => (" ".to_owned(), first.words()),
+            (Standing::StandIn, _, Some(first)) => {
+                let why = if first.his {
+                    let unread = axis.readings.iter().filter(|r| !r.judges()).count();
+                    format!("{unread} more not read from your side")
+                } else {
+                    "read on a stand-in".to_owned()
+                };
+                (ink.pending.clone(), format!("{}{sep}{why}", first.words()))
+            }
+            _ => {
+                let first = axis.readings.first();
+                let said = match first.and_then(|r| r.held) {
+                    Some(_) => "not agreed yet",
+                    None => "no reading yet",
+                };
+                let owner = first.map_or("", |r| r.owner);
+                (ink.pending.clone(), format!("{said}{sep}{owner}"))
+            }
         };
         let _ = writeln!(out, "{mark} {:width$}  {said}", axis.name);
     }
-    let off = axes.iter().filter(|a| !a.out().is_empty()).count();
-    let unread = axes.iter().filter(|a| a.unread()).count();
-    let _ = write!(out, "\n{off} of {} out of spec", axes.len());
-    if unread > 0 {
-        let _ = write!(out, "{sep}{unread} not read yet");
+    let tally = |standing: Standing| axes.iter().filter(|a| a.standing() == standing).count();
+    let _ = write!(
+        out,
+        "\n{} of {} out of spec",
+        tally(Standing::Out),
+        axes.len()
+    );
+    for (standing, said) in [
+        (Standing::InSpec, "in spec"),
+        (Standing::StandIn, "read on a stand-in"),
+        (Standing::Unread, "not read yet"),
+    ] {
+        let n = tally(standing);
+        if n > 0 {
+            let _ = write!(out, "{sep}{n} {said}");
+        }
     }
     let _ = writeln!(out, "{sep}cadence axes <axis> steps into one");
     out
@@ -354,14 +436,21 @@ pub fn axis_page(axis: &Axis, heading: &str, ink: &Ink) -> String {
     for reading in &axis.readings {
         let mark = if reading.out() {
             ink.failed()
-        } else {
+        } else if reading.judges() {
             " ".to_owned()
+        } else {
+            ink.pending.clone()
         };
         let _ = writeln!(out, "{mark} {}{sep}{}", reading.words(), reading.owner);
-        let more: Vec<String> = reading
-            .detail
-            .iter()
-            .cloned()
+        // A held figure's detail says it too, so only why it's held shows.
+        let detail = reading
+            .held
+            .map_or_else(|| reading.detail.clone(), |why| Some(why.into()));
+        let side = (!reading.his && reading.figure().is_some())
+            .then(|| "a stand-in, read from our side rather than yours".to_owned());
+        let more: Vec<String> = detail
+            .into_iter()
+            .chain(side)
             .chain((!reading.from.is_empty()).then(|| format!("from {}", reading.from)))
             .collect();
         if !more.is_empty() {
@@ -404,7 +493,8 @@ mod tests {
                 readings: vec![
                     Reading::new("{} pi windows", Some(85.0), "", "OSPHT4")
                         .bar(Bar::AtMost(12.0))
-                        .from("niri's windows"),
+                        .from("niri's windows")
+                        .his(),
                     Reading::new("{} ghosts", Some(3.0), "", "85PKB2").bar(Bar::AtMost(0.0)),
                 ],
             },
@@ -419,6 +509,32 @@ mod tests {
             Axis {
                 name: "security",
                 readings: vec![Reading::new("{} musts past their date", None, "", "ISXEG8")],
+            },
+            Axis {
+                name: "polish",
+                readings: vec![
+                    Reading::new("{} slow keys", Some(0.0), "", "Y2YBTS")
+                        .bar(Bar::AtMost(0.0))
+                        .his(),
+                ],
+            },
+            Axis {
+                name: "stress",
+                readings: vec![
+                    Reading::new("{} asks waiting", Some(0.0), "", "WCJQSG")
+                        .bar(Bar::AtMost(0.0))
+                        .his(),
+                    Reading::new("{} complaints", None, "%", "1JQPPC").his(),
+                ],
+            },
+            Axis {
+                name: "resources",
+                readings: vec![
+                    Reading::new("{} a day", Some(9000.0), "$", "QCXZEB")
+                        .bar(Bar::AtMost(1.0))
+                        .detail(Some("yesterday $9,000".into()))
+                        .held("its sources disagree"),
+                ],
             },
         ]
     }
@@ -435,10 +551,13 @@ mod tests {
             "axes · Wednesday 11 November · read 19:45
 
 ✕ scale         85 pi windows, at most 12 · OSPHT4 · 1 more out
-  time to done  VM wait 0.4 min, at most 2 min
-  security      no reading yet · ISXEG8
+◇ time to done  VM wait 0.4 min, at most 2 min · read on a stand-in
+◇ security      no reading yet · ISXEG8
+  polish        0 slow keys, at most 0
+◇ stress        0 asks waiting, at most 0 · 1 more not read from your side
+◇ resources     not agreed yet · QCXZEB
 
-1 of 3 out of spec · 1 not read yet · cadence axes <axis> steps into one
+1 of 6 out of spec · 1 in spec · 2 read on a stand-in · 2 not read yet · cadence axes <axis> steps into one
 "
         );
     }
@@ -453,13 +572,23 @@ mod tests {
 ✕ 85 pi windows, at most 12 · OSPHT4
     from niri's windows
 ✕ 3 ghosts, at most 0 · 85PKB2
+    a stand-in, read from our side rather than yours
 "
+        );
+        assert_eq!(
+            axis_page(&axes[5], "read 19:45", &Ink::default()),
+            "resources · read 19:45
+
+◇ a day: not agreed yet · QCXZEB
+    its sources disagree
+",
+            "a held figure showed on its axis's page"
         );
         assert_eq!(
             axis_page(&axes[2], "read 19:45", &Ink::default()),
             "security · read 19:45
 
-  musts past their date: no reading yet · ISXEG8
+◇ musts past their date: no reading yet · ISXEG8
 "
         );
     }

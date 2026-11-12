@@ -87,12 +87,18 @@ pub fn read(s: &Sources) -> Vec<Axis> {
                 )
                 .bar(Bar::AtMost(0.0))
                 .detail(Some(format!("of {keys} keys")))
-                .from("the shell's journal"),
+                .from("the shell's journal")
+                .his(),
             ],
         ),
         stress(s),
     ]
 }
+
+/// Why a dollar figure is held back: the daily measure, spend-watch and
+/// the bill tell different stories of a day, and none goes before Joel
+/// until QCXZEB, who owns spend, says which is true.
+const DISAGREE: &str = "its sources disagree, and QCXZEB is settling which is true";
 
 fn resources(s: &Sources) -> Axis {
     let spends: Vec<f64> = s.measures.iter().filter_map(|m| spend(m)).collect();
@@ -100,14 +106,16 @@ fn resources(s: &Sources) -> Axis {
         let days: Vec<f64> = spends.iter().rev().skip(skip).take(7).copied().collect();
         (days.len() == 7).then(|| days.iter().sum::<f64>() / 7.0)
     };
-    let mut spend = Reading::new("{} a day this week", week(0), "$", "80ECO2")
+    let mut spend = Reading::new("spend {} a day this week", week(0), "$", "QCXZEB")
         .from("the daily measure's Spend lines")
+        .held(DISAGREE)
         .detail(
             spends
                 .last()
                 .map(|d| format!("yesterday {}, its bar the week before", shown(*d, "$"))),
         );
-    // Spend is in spec while it falls week on week.
+    // Read against the week before, though held: the bar it takes once
+    // let go is the bill per landing that reached him at quality.
     if let Some(before) = week(7) {
         spend = spend.bar(Bar::AtMost(before));
     }
@@ -119,13 +127,14 @@ fn resources(s: &Sources) -> Axis {
         vec![
             spend,
             Reading::new(
-                "{} on cache rewrites after compaction",
+                "spent on cache rewrites after compaction {}",
                 s.measures.last().and_then(|m| after_compaction(m)),
                 "$",
                 "QCXZEB",
             )
             .bar(Bar::AtMost(100.0))
-            .from("the daily measure's cache rewrites"),
+            .from("the daily measure's cache rewrites")
+            .held(DISAGREE),
             Reading::new(
                 "agents' CPU pressure {} over the day",
                 figure("pressure.cpu.jobs"),
@@ -325,7 +334,8 @@ fn organization(s: &Sources) -> Axis {
                 "{} min of his time asked in all",
                 shown(minutes, "")
             )))
-            .from("mission's waiting files"),
+            .from("mission's waiting files")
+            .his(),
             Reading::new("{} active quests with no live plan", None, "", "WCJQSG")
                 .bar(Bar::AtMost(0.0)),
         ],
@@ -343,7 +353,8 @@ fn scale(s: &Sources) -> Axis {
                 "OSPHT4",
             )
             .bar(Bar::AtMost(12.0))
-            .from("niri's windows"),
+            .from("niri's windows")
+            .his(),
             Reading::new(
                 "{} sessions listed live whose pi is gone",
                 s.ghosts.map(count),
@@ -372,7 +383,8 @@ fn stress(s: &Sources) -> Axis {
             .detail(Some(format!("{by_hand} he cleared by hand")))
             .from("the notices' record"),
             Reading::new("his typed lines that complain {}", None, "%", "1JQPPC")
-                .bar(Bar::AtMost(5.0)),
+                .bar(Bar::AtMost(5.0))
+                .his(),
         ],
     )
 }
@@ -671,7 +683,7 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
     }
 
     #[test]
-    fn spend_is_out_when_this_week_costs_more_than_the_one_before() {
+    fn spend_is_held_back_while_its_sources_disagree() {
         let mut measures: Vec<String> = (0..7).map(|_| measure("1,000")).collect();
         measures.extend((0..7).map(|_| measure("2,000")));
         let s = Sources {
@@ -679,9 +691,12 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             ..Sources::default()
         };
         let spend = &resources(&s).readings[0];
+        // It's still read against the week before, so letting it go is
+        // only taking the hold off.
+        assert_eq!(spend.now, Some(2000.0));
         assert_eq!(spend.bar, Some(Bar::AtMost(1000.0)));
-        assert!(spend.out(), "spend doubled on the week and was in spec");
-        assert_eq!(spend.words(), "$2,000 a day this week, at most $1,000");
+        assert!(!spend.out(), "a held figure was judged, and so was shown");
+        assert_eq!(spend.words(), "spend a day this week: not agreed yet");
     }
 
     #[test]
