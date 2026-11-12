@@ -75,7 +75,12 @@ or launchd, and [`home.nix`][2] the account's.
   goes the same way after a week, two days once the disk is nearly full
   and twelve hours once it's critically full, but for its handover and a
   folder of GC roots, whose links keep what running programs read.
-  `src/plan.rs` holds the table.
+  A `store-roots` source names links a tool keeps to hold its builds from
+  collection, as a development shell keeps its environment: those under
+  its roots that Nix's indirect roots list and its pattern matches go once
+  the place its pattern names has gone the source's window unwritten, six
+  hours at most once the disk is nearly full, unless a process works in
+  their tree. `src/plan.rs` holds the table.
 - **Use.** Before and after it moves a target aside, the guard judges whether
   any process uses it: a build holding cargo's or rustc's locks, a process
   with a file, map or working directory beneath it, or build variables
@@ -273,6 +278,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/plan.rs`, `pass.rs`  | the order, the windows, and a pass that measures as it goes |
 | `src/pace.rs`             | resting between batches, by the disk's own feel          |
 | `src/survey.rs`           | each source's candidates                                 |
+| `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |

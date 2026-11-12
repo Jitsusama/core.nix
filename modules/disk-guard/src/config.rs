@@ -249,6 +249,18 @@ pub enum Source {
     Coredumps { path: PathBuf },
     /// Build directories Nix left behind.
     NixBuilds { path: PathBuf },
+    /// Links a tool keeps under `roots` to hold a build of its own from
+    /// collection, which it makes again when next asked, as a development
+    /// shell's is. They're found among Nix's indirect roots, those whose
+    /// path `pattern` matches, and each goes once the folder its `place`
+    /// group names, the whole link's folder without one, has had nothing
+    /// written for `unused` of awake time, unless a process works in the
+    /// folder straight under a root that holds it.
+    StoreRoots {
+        roots: Vec<PathBuf>,
+        pattern: String,
+        unused: Span,
+    },
 }
 
 fn nearly_full() -> Band {
@@ -278,6 +290,7 @@ impl Source {
         match self {
             Source::Cargo { roots, .. }
             | Source::Installs { roots, .. }
+            | Source::StoreRoots { roots, .. }
             | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
             Source::Cache { path, .. }
             | Source::Scratch { path, .. }
@@ -311,6 +324,7 @@ impl Source {
             Source::Git { .. } => "git",
             Source::Coredumps { .. } => "coredumps",
             Source::NixBuilds { .. } => "nix-builds",
+            Source::StoreRoots { .. } => "store-roots",
         }
     }
 
@@ -333,6 +347,7 @@ impl Source {
         match self {
             Source::Cargo { roots, .. }
             | Source::Installs { roots, .. }
+            | Source::StoreRoots { roots, .. }
             | Source::Git { repos: roots } => roots.iter().map(PathBuf::as_path).collect(),
             Source::Workspaces {
                 path,
@@ -377,6 +392,10 @@ impl Source {
                 if !pattern.capture_names().any(|name| name == Some("pid")) {
                     return Err("its pattern has no pid group".into());
                 }
+            }
+            Source::StoreRoots { pattern, .. } => {
+                regex_lite::Regex::new(pattern)
+                    .map_err(|error| format!("its pattern doesn't compile: {error}"))?;
             }
             Source::Finished {
                 remote, command, ..
