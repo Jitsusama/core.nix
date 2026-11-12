@@ -956,7 +956,7 @@ in
   # empty, asleep in For You's empty tray (forYouEmpty's), sitting by any
   # other empty list. Each is 8 cells square and drawn in whole pixels, so
   # it's sharp at 1.5 as at 2, and the margin's cat is drawn from the same
-  # pixels.
+  # pixels, with two poses of its own: stretching and curled.
   nothingFound = {
     glyph = nerd "f02a0";
     console = "?";
@@ -988,6 +988,44 @@ in
       "#####..#"
       "#####..#"
       "#######."
+    ];
+  };
+  # The margin's cat stretching as the screen unlocks, held about half a
+  # second before it sits (2RCBOJ, 0f55b755): head low, forearms flat
+  # out in front, rump high and tail up. Its head is in profile, one eye
+  # and two ears, since it faces along the ground. The paw is its glyph,
+  # as curled's, since both are only ever the margin's cat.
+  stretching = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".......#"
+      "......#."
+      ".....##."
+      "#.#.###."
+      "######.."
+      "#.###.#."
+      "###...#."
+      "####..##"
+    ];
+  };
+  # The margin's cat asleep after a minute with no keys: curled alone,
+  # nose to tail, eye shut, a z above it as forYouEmpty's. No tray, since
+  # the tray means nothing is waiting for Joel (VKCF3Z, 151281bb).
+  curled = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".....###"
+      "......#."
+      ".....###"
+      "#.#....."
+      "#######."
+      "#..#####"
+      "########"
+      ".######."
     ];
   };
   # The padlock, as locked's is, beside anything typed that stays hidden.

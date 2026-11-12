@@ -24,11 +24,16 @@
   # No two marks share a glyph unless they mean one thing, so a mark never
   # asks Joel to remember which of two meanings it has here (Joel, 2026-11-07:
   # "icon pairs: we need them to be obvious and not require memory"). Heat
-  # and temperature both say how hot, so they share the thermometer.
+  # and temperature both say how hot, so they share the thermometer, and the
+  # margin's cat's own poses are all the margin's cat, so they share the paw.
   each-mark-means-one-thing =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
       oneMeaning = [
+        [
+          "curled"
+          "stretching"
+        ]
         [
           "heat"
           "temperature"
@@ -47,7 +52,8 @@
   # glyph does (docs/design.md, Marks one height): square, its ink touching
   # its top and bottom rows, and centred across to within a cell, so each
   # pose of the cat stands on the same middle line at the same height. The
-  # three empty places' marks are drawn, so it can't pass on none.
+  # three empty places' marks and the margin's cat's two poses are drawn,
+  # so it can't pass on none.
   every-pixel-mark-stands-level =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -69,9 +75,11 @@
         && lib.max left right - lib.min left right <= 1;
       crooked = lib.attrNames (lib.filterAttrs (_: mark: !level mark.pixels) drawn);
       missing = lib.filter (name: !(drawn ? ${name})) [
+        "curled"
         "forYouEmpty"
         "nothingFound"
         "nothingHere"
+        "stretching"
       ];
       said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
     in
