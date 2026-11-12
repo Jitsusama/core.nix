@@ -176,6 +176,17 @@ QtObject {
         ], [false, false]);
         expect("and with something typed, only when nothing answers",
             Showing.saysNothing("hist", [history], none), false);
+        expect("the line saying nothing wears the mark its nothing means", [
+            Showing.nothingMark("zz", null),
+            Showing.nothingMark("zz", { key: "on:waiting:desktop" }),
+            Showing.nothingMark("", { key: "on:waiting:desktop" }),
+            Showing.nothingMark("", { key: "on:waitingOnYou" }),
+            Showing.nothingMark("", { key: "capture:recent" }),
+            Showing.nothingMark("", {})
+        ], ["nothingFound", "nothingFound", "forYouEmpty", "forYouEmpty", "nothingHere",
+            "nothingHere"]);
+        expect("and with nothing typed and nothing stepped into, the greeting",
+            Showing.nothingMark("", null), "greeting");
         if (failed > 0) {
             console.warn(`${failed} failed`);
             Qt.exit(1);

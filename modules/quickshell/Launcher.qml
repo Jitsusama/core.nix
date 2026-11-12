@@ -7701,6 +7701,18 @@ Scope {
             asking: !!root.asking,
             // What the list says in place of rows, where it has none.
             nothing: nothingShown.visible ? nothingShown.name : "",
+            // The cat drawn beside it, if any: which mark's, a cell in the
+            // screen's pixels, and where its first cell starts in them, so
+            // a test can say it's whole pixels at every scale.
+            nothingDrawn: !nothingCat.visible ? null : {
+                mark: nothingShown.mark,
+                cell: nothingCat.cell * nothingCat.ratio,
+                at: nothingCat.drawnAt(),
+                // How far its foot stands from the sentence's baseline, in
+                // the screen's pixels, snapping included.
+                fromBaseline: (nothingCat.y + nothingCat.snapped.y + nothingCat.height
+                    - nothingCat.line) * nothingCat.ratio
+            },
             selected: !row ? null : {
                 name: row.name,
                 is: Rank.identity(row),
@@ -11256,9 +11268,36 @@ Scope {
                             visible: Showing.saysNothing(root.typed, root.matches,
                                 holder?.empty) && root.answer === null
                                 && root.asking === null && root.commanding === null
-                            glyph: root.typed === "" ? Theme.glyph.greeting
-                                : Theme.glyph.nothingFound
+                            // The mark its nothing means, and the cat drawn for
+                            // it where it's empty: reading by a find that
+                            // found nothing, asleep in For You's empty tray,
+                            // sitting by any other empty list. The greeting
+                            // draws its glyph (Showing.js's nothingMark).
+                            readonly property string mark: Showing.nothingMark(root.typed,
+                                holder)
+                            readonly property var drawing: Theme.pixels[mark] ?? []
+                            glyph: drawing.length > 0 ? "" : Theme.glyph[mark]
                             hue: Theme.voice
+
+                            PixelMark {
+                                id: nothingCat
+
+                                // Its foot on the sentence's baseline, the
+                                // capitals' foot (Choice.qml), so the pixel it
+                                // stands taller than a glyph rises as an
+                                // ascender would rather than hanging below
+                                // the line (VKCF3Z, e5239c50).
+                                readonly property real line: (nothingShown.height
+                                    + nothingShown.capitals) / 2
+
+                                x: nothingShown.markAt
+                                y: line - height
+                                visible: rows.length > 0
+                                // Its cells are made only once the line
+                                // shows, not on every first key typed.
+                                rows: nothingShown.visible ? nothingShown.drawing : []
+                                hue: nothingShown.hue
+                            }
                             quiet: true
                             voiced: true
                             name: root.typed !== ""

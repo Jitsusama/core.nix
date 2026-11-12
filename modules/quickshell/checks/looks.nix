@@ -226,6 +226,23 @@
       touch $out
     '';
 
+  # The empty places' cat is laid in whole pixels of the screen at 1, 1.5
+  # and 2, starting on one, so it's as sharp at the laptop's fractional
+  # scale as at 2, as tests/pixels.qml holds Pixels.js to in Qt's own engine.
+  the-cat-is-drawn-in-whole-pixels =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-cat-is-drawn-in-whole-pixels" { } ''
+      cp ${../../../tests/pixels.qml} pixels.qml
+      ${copied [ "Pixels.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml pixels.qml
+      touch $out
+    '';
+
   # A floating surface standing over another, as the launcher's drawer over
   # its card on a narrow screen, meets it with a square foot, its region
   # alike, its top and the card's foot staying round, as tests/floating.qml

@@ -724,6 +724,11 @@
     every path pattern merge-net's must-run.txt, ruff.toml's per-file ignores and treefmt's
     unread kinds past treefmt-nix's own give matches a file the repository holds
   '';
+  every-pixel-mark-stands-level = ''
+    every mark the theme draws in pixels, the empty places' cat in each pose, is square, its ink
+    touching its top and bottom rows and centred across to within a cell, and the three empty
+    places' marks are drawn
+  '';
   every-script-meets-shellcheck-at-its-strictest = ''
     every shell script meets shellcheck's optional checks for a hidden failure, a set -e turned
     off, an unset uppercase variable and a case with no default, but those still waiting
@@ -2405,6 +2410,10 @@
     the camera program takes a camera on a removable USB port over the machine's own while it's
     plugged in, never a built-in one on a fixed port, and the machine's own with none
   '';
+  the-cat-is-drawn-in-whole-pixels = ''
+    a pixel mark's ink is laid in runs along its rows, each cell a whole number of the screen's
+    pixels at 1, 1.5 and 2, and the drawing moved by less than one to start on a screen pixel
+  '';
   the-click-strength-finds-the-intensity = ''
     the click strength's setter finds a haptic pad's intensity, the XPS 14's among them, and writes
     only it, only when it differs
@@ -3863,7 +3872,8 @@
   '';
   vm-desktop-looks-rows = ''
     on the laptop's screen at 1.5 and at 2, a found row's note is in the serif a step after its
-    name and on its baseline to half a device pixel
+    name and on its baseline to half a device pixel, and an empty list's cat stands in the pose
+    its nothing means, each cell whole pixels of the screen and starting on one
   '';
   vm-desktop-looks-vi = ''
     on the laptop's screen at 1.5 and at 2, y flashes the rows it copies and d's ask stands on the

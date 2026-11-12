@@ -43,6 +43,42 @@
       "These marks share a glyph but mean different things: ${builtins.toJSON twoMeanings}."
       (twoMeanings == [ ]);
 
+  # Every mark drawn in pixels (the empty places' cat) stands as level as a
+  # glyph does (docs/design.md, Marks one height): square, its ink touching
+  # its top and bottom rows, and centred across to within a cell, so each
+  # pose of the cat stands on the same middle line at the same height. The
+  # three empty places' marks are drawn, so it can't pass on none.
+  every-pixel-mark-stands-level =
+    let
+      glyphs = import ./glyphs.nix { inherit lib; };
+      drawn = lib.filterAttrs (_: mark: (mark.pixels or [ ]) != [ ]) glyphs;
+      # Where along a row its ink is.
+      inked =
+        row: lib.filter (at: builtins.substring at 1 row == "#") (lib.range 0 (lib.stringLength row - 1));
+      level =
+        rows:
+        let
+          cells = lib.length rows;
+          across = lib.concatMap inked rows;
+          left = lib.foldl' lib.min cells across;
+          right = cells - 1 - lib.foldl' lib.max 0 across;
+        in
+        lib.all (row: lib.stringLength row == cells) rows
+        && inked (lib.head rows) != [ ]
+        && inked (lib.last rows) != [ ]
+        && lib.max left right - lib.min left right <= 1;
+      crooked = lib.attrNames (lib.filterAttrs (_: mark: !level mark.pixels) drawn);
+      missing = lib.filter (name: !(drawn ? ${name})) [
+        "forYouEmpty"
+        "nothingFound"
+        "nothingHere"
+      ];
+      said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
+    in
+    holds "every-pixel-mark-stands-level" "Pixel marks must be square, level and centred: ${said}." (
+      crooked == [ ] && missing == [ ]
+    );
+
   # A theme that draws text too faint to read doesn't build, by WCAG's ratio
   # or by APCA's lightness contrast. WCAG's black on white is 21:1, and
   # #777777 on white just misses 4.5:1; Osaka Jade's own muted, at 2.90:1, is

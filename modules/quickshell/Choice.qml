@@ -241,10 +241,14 @@ Rectangle {
     // in whole pixels.
     readonly property real fine: 8
 
+    // Where its mark column starts, which a drawing standing in for its
+    // glyph stands on too (the launcher's empty line's cat).
+    readonly property real markAt: Theme.space.rung.inset + row.indent
+
     // Its glyph, on the name's capitals (Mark.qml), whose baseline is the
     // row's middle less half the capitals.
     Mark {
-        x: Theme.space.rung.inset + row.indent
+        x: row.markAt
         line: (row.height + row.capitals) / 2
         // A swatch is the figure itself, so it stays, as does a figure's
         // mark saying how it stands.

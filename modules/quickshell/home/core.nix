@@ -16,6 +16,8 @@
   "Drawer.qml"
   "MarkSize.js"
   "Mark.qml"
+  "Pixels.js"
+  "PixelMark.qml"
   "Columns.js"
   "Reading.js"
   "Measures.js"

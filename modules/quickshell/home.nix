@@ -62,6 +62,8 @@ let
   ) (lib.filterAttrs (_: about: about ? command) config.jitsusama.keyLanguage.acts);
   # The marks the theme draws as paths, for Theme.drawn.
   drawn = lib.mapAttrs (_: mark: mark.drawn) (lib.filterAttrs (_: mark: mark.drawn != "") marks);
+  # The marks the theme draws in pixels, for Theme.pixels.
+  pixels = lib.mapAttrs (_: mark: mark.pixels) (lib.filterAttrs (_: mark: mark.pixels != [ ]) marks);
   slowed = milliseconds: builtins.floor (milliseconds * builtins.fromJSON motion.slowdown + 0.5);
   face = family: sizes: object ({ inherit family; } // lib.mapAttrs (_: builtins.fromJSON) sizes);
 
@@ -2056,6 +2058,9 @@ in
               // The marks drawn as paths, for where a glyph is too small to
               // read: on a 12 by 12 grid, filled even-odd.
               readonly property var drawn: ${object drawn}
+              // The marks drawn in pixels, the empty places' cat: each row a
+              // string, # for ink (PixelMark.qml).
+              readonly property var pixels: ${object pixels}
               // Each picture's file, empty for none.
               readonly property var wallpaper: ${
                 object {

@@ -67,6 +67,17 @@ let
           across it. Empty draws the glyph instead.
         '';
       };
+      pixels = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = ''
+          The mark as a pixel drawing, for a still character where a list
+          has nothing to show: its rows top to bottom, each as many cells
+          as there are rows, # for ink. Every one touches its top and bottom
+          rows and is centred across, so it stands as level as a glyph.
+          Empty for none.
+        '';
+      };
     };
   };
 in
