@@ -17,6 +17,7 @@
 //! keep, in a few milliseconds and with no program started, since the
 //! denoiser's thread reads it as a microphone starts being recorded.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -71,42 +72,49 @@ impl Where {
 
     /// The spot the machine is at now.
     pub fn spot(&self) -> Spot {
-        let (mut key, mut name) = match self.node() {
-            Some((node, location)) => (
+        let (first, mut name) = if let Some((node, location)) = self.node() {
+            (
                 format!("home={}", keyed(&node)),
                 location.unwrap_or_else(|| "home".to_owned()),
-            ),
-            None => {
-                let networks = self.networks();
-                let joined = if networks.is_empty() {
-                    "none".to_owned()
-                } else {
-                    let parts: Vec<String> =
-                        networks.iter().map(|network| keyed(network)).collect();
-                    parts.join(",")
-                };
-                (format!("network={joined}"), away(&networks))
-            }
+            )
+        } else {
+            let networks = self.networks();
+            let joined = if networks.is_empty() {
+                "none".to_owned()
+            } else {
+                let parts: Vec<String> = networks.iter().map(|network| keyed(network)).collect();
+                parts.join(",")
+            };
+            (format!("network={joined}"), away(&networks))
         };
         let screens = self.screens();
-        for (identity, _) in &screens {
-            key.push_str(&format!("+screen={identity}"));
-        }
         let docks = self.docks();
-        for identity in &docks {
-            key.push_str(&format!("+dock={}", keyed(identity)));
-        }
+        let parts: Vec<String> = std::iter::once(first)
+            .chain(
+                screens
+                    .iter()
+                    .map(|(identity, _)| format!("screen={identity}")),
+            )
+            .chain(
+                docks
+                    .iter()
+                    .map(|identity| format!("dock={}", keyed(identity))),
+            )
+            .collect();
         let named: Vec<String> = screens
             .iter()
             .map(|(_, screen)| format!("the {screen}"))
             .collect();
         if !named.is_empty() {
-            name.push_str(&format!(", with {}", named.join(" and ")));
+            name = format!("{name}, with {}", named.join(" and "));
         }
         if named.is_empty() && !docks.is_empty() {
             name.push_str(", docked");
         }
-        Spot { key, name }
+        Spot {
+            key: parts.join("+"),
+            name,
+        }
     }
 
     /// The home network's node this machine is on, and where the node is
@@ -226,10 +234,10 @@ fn edid_said(edid: &[u8]) -> Option<(String, String)> {
     if edid.len() < 128 || edid[..8] != HEADER {
         return None;
     }
-    let identity: String = edid[8..18]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let mut identity = String::new();
+    for byte in &edid[8..18] {
+        let _ = write!(identity, "{byte:02x}");
+    }
     // The four 18-byte descriptors; the one tagged 0xFC is the name,
     // ended by a line feed when it's short.
     let name = [54, 72, 90, 108]
@@ -253,19 +261,18 @@ fn edid_said(edid: &[u8]) -> Option<(String, String)> {
 /// put together with, written as a percent sign and its hex, so a Wi-Fi
 /// named "Roadside Inn" keeps its line of the picks' file whole.
 fn keyed(said: &str) -> String {
-    said.chars()
-        .map(|mark| {
-            if mark.is_whitespace() || "%+,=".contains(mark) {
-                let mut bytes = [0; 4];
-                mark.encode_utf8(&mut bytes)
-                    .bytes()
-                    .map(|byte| format!("%{byte:02X}"))
-                    .collect()
-            } else {
-                mark.to_string()
+    let mut key = String::new();
+    for mark in said.chars() {
+        if mark.is_whitespace() || "%+,=".contains(mark) {
+            let mut bytes = [0; 4];
+            for byte in mark.encode_utf8(&mut bytes).bytes() {
+                let _ = write!(key, "%{byte:02X}");
             }
-        })
-        .collect()
+        } else {
+            key.push(mark);
+        }
+    }
+    key
 }
 
 /// What a folder holds, or nothing when it isn't there.
