@@ -136,6 +136,12 @@ let
   # What mycelium carry runs to carry a quest's trees and sessions to
   # another machine, and to put them back on arriving: the harness's
   # program, run by the store's node.
+  # The launcher's AI actions, served and asked by the harness's program
+  # under the name its socket and units take, as every daemon is shown.
+  piVerbs = pkgs.writeShellScriptBin "pi-verbs" ''
+    exec -a pi-verbs ${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${verbsScript} "$@"
+  '';
+
   piCarry = pkgs.writeShellScriptBin "pi-carry" ''
     exec ${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${carryScript} "$@"
   '';
@@ -389,6 +395,7 @@ in
       ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
         pkgs.landrun
         pkgs.bubblewrap
+        piVerbs
       ];
 
     # The one SSH agent the agent fence lets in, at %t/pi-agent.sock: it
@@ -617,7 +624,7 @@ in
       Install.WantedBy = [ "timers.target" ];
     };
 
-    # The launcher's AI verbs: the harness's server lists them and builds
+    # The launcher's AI actions: the harness's server lists them and builds
     # each one's prompt, refusing a selection that looks like a secret, so
     # the launcher starts no program to read them or to use one. It's
     # TypeScript beside the harness's scrubber, which guards tool output
@@ -625,7 +632,7 @@ in
     # held by systemd, so the launcher asking while it starts waits on it.
     systemd.user.sockets.pi-verbs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
-        Description = "Where the launcher asks for its AI verbs";
+        Description = "Where the launcher asks for its AI actions";
         ConditionPathExists = verbsScript;
       };
       Socket = {
@@ -637,14 +644,14 @@ in
     };
     systemd.user.services.pi-verbs = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
-        Description = "Lists the launcher's AI verbs and builds their prompts";
+        Description = "Lists the launcher's AI actions and builds their prompts";
         ConditionPathExists = verbsScript;
         Requires = [ "pi-verbs.socket" ];
         After = [ "pi-verbs.socket" ];
         X-SwitchMethod = "restart";
       };
       Service = {
-        ExecStart = "@${lib.getExe pkgs.nodejs} pi-verbs --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${verbsScript} serve";
+        ExecStart = "@${lib.getExe piVerbs} pi-verbs serve";
         Restart = "always";
         RestartSec = 5;
         Slice = "background.slice";
