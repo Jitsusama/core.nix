@@ -159,7 +159,10 @@ mod tests {
     use super::*;
     use crate::rows;
 
-    #[expect(clippy::unnecessary_wraps, reason = "it's what read gives, to compare with")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "it's what read gives, to compare with"
+    )]
     fn invitation(answer: Answer, meeting: &str, when: &str, who: &str) -> Option<Invitation> {
         Some(Invitation {
             answer,
