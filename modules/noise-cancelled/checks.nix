@@ -60,4 +60,27 @@
           ${model.source}/assets/noise_freesound_573577.wav
         touch $out
       '';
+
+  # The scorer beside Joel's ear, on a noisy clip and the same cleaned:
+  # tests/a-cleaned-clip-scores-better.sh says what it proves.
+  noise-cancelled-scores-a-cleaned-clip-better =
+    let
+      dictation = pkgs.callPackage ../dictation/package.nix { };
+      model = pkgs.callPackage ./model.nix { };
+      models = pkgs.callPackage ./models.nix { };
+    in
+    pkgs.runCommand "noise-cancelled-scores-a-cleaned-clip-better"
+      {
+        nativeBuildInputs = [
+          pkgs.bc
+          pkgs.jq
+          pkgs.sox
+        ];
+      }
+      ''
+        $BASH ${./tests/a-cleaned-clip-scores-better.sh} ${dictation}/bin/noise-cancelled ${models} \
+          ${model.source}/assets/clean_freesound_33711.wav \
+          ${model.source}/assets/noise_freesound_573577.wav
+        touch $out
+      '';
 }
