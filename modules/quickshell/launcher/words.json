@@ -145,6 +145,7 @@
         "closedAt": "closed {time}",
         "closedOn": "closed {day} {time}",
         "allOf": "{spent} in all",
+        "closedCount": "{count} closed",
         "aboutAllOf": "about {spent} in all",
         "workingOf": "{count} of {all} working",
         "since": "since {at}",
@@ -383,6 +384,11 @@
       "id": "agents:under",
       "in": "agents",
       "name": "Its Sessions"
+    },
+    {
+      "id": "agents:closed",
+      "in": "agents",
+      "name": "Closed"
     },
     {
       "id": "agents:works",

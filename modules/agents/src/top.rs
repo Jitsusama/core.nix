@@ -12,7 +12,7 @@ use std::collections::HashSet;
 use serde_json::{Value, json};
 
 use crate::figures::Item;
-use crate::row::{Row, Shown};
+use crate::row::{Row, Shown, Words};
 use crate::said::Said;
 
 /// The launcher's place for the top level.
@@ -20,9 +20,26 @@ pub const PLACE: &str = "agents-top";
 
 /// What the top level reads beyond the rows: what an orchestration and
 /// those under it spent today in all, by its orchestrator's address,
-/// none while the screen is shared.
+/// none while the screen is shared; and the closed orchestrators'
+/// records, the one last live first (closed.rs).
 pub struct Known<'a> {
     pub spent: &'a dyn Fn(&str) -> Option<String>,
+    pub closed: &'a [Value],
+}
+
+/// Each session's drawer again under the top level's place, so a watch
+/// of the place reads a row's drawer as it reads the row, without
+/// watching Agents' own too (Y2YBTS, 2026-11-11).
+pub fn drawers(drawers: &[Value]) -> Vec<Value> {
+    drawers
+        .iter()
+        .filter_map(|drawer| {
+            let address = drawer["key"].as_str()?.strip_prefix("drawer:agents:")?;
+            let mut again = drawer.clone();
+            again["key"] = json!(format!("drawer:{PLACE}:{address}"));
+            Some(again)
+        })
+        .collect()
 }
 
 fn key_of(id: &str) -> String {
@@ -142,7 +159,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
         "kind": if members.is_empty() { "session" } else { "orchestration" },
         "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": 0,
         "side": items(&side), "note": row.note,
-        "drawer": format!("drawer:agents:{address}"), "acts": acts,
+        "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
         "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
     })
 }
@@ -165,7 +182,7 @@ fn member(row: &Row, parent: &str, depth: usize) -> Value {
         "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
         "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
         "depth": depth, "side": items(&row.side_items), "note": row.note,
-        "drawer": format!("drawer:agents:{address}"), "acts": acts,
+        "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
         "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
     })
 }
@@ -209,8 +226,10 @@ fn members(shown: &[Shown], above: &[(usize, String)], rows: &mut Vec<Value>) {
 /// needing Joel first, then the rest as Agents lists them, the one used
 /// last first (session.rs's `in_order`), each followed by its sessions.
 /// A row stepped into from another names it as `parent`; one with rows
-/// under it steps into them.
-pub fn rows(shown: &[Shown], known: &Known, said: &Said) -> Vec<Value> {
+/// under it steps into them. The closed orchestrators are one row at the
+/// end (VKCF3Z, 2026-11-11), stepped into as the rest are.
+pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
+    let said = &words.agents;
     let mut each: Vec<(bool, Vec<Value>)> = orchestrations(shown)
         .into_iter()
         .map(|entries| {
@@ -243,6 +262,47 @@ pub fn rows(shown: &[Shown], known: &Known, said: &Said) -> Vec<Value> {
             acts.insert(1, more());
         }
     }
+    rows.extend(closed(known.closed, words));
+    rows
+}
+
+/// The closed orchestrators' row and each of them inside it, muted, as a
+/// closed session's glyph is. Reopening one stays the shell's, which
+/// opens its window, so each carries its record as `held.closed`, and
+/// lists no act of the daemon's until the daemon reopens through the
+/// node.
+fn closed(records: &[Value], words: &Words) -> Vec<Value> {
+    if records.is_empty() {
+        return Vec::new();
+    }
+    let parent = key_of("closed");
+    let count = records.len().to_string();
+    let mut rows = vec![json!({
+        "key": parent, "place": PLACE, "kind": "closed",
+        "name": words.names.word("closed"), "glyph": "agent", "hue": "muted", "depth": 0,
+        "side": [{"said": words.agents.fill("closedCount", &[("count", &count)]), "keep": 3}],
+        "acts": [more()],
+    })];
+    for record in records {
+        let one = &record["closed"];
+        let address = one["address"].as_str().unwrap_or("");
+        let spent = one["spent"].as_str().filter(|spent| !spent.is_empty());
+        let side: Vec<Item> = [
+            Some((words.agents.word("closed").to_owned(), 4)),
+            spent.map(|spent| (words.agents.fill("allOf", &[("spent", spent)]), 3)),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|(said, keep)| Item { said, keep })
+        .collect();
+        rows.push(json!({
+            "key": key_of(&format!("closed:{address}")), "thing": format!("orchestrator:{address}"),
+            "place": PLACE, "parent": parent, "kind": "closed-orchestrator",
+            "name": one["name"], "glyph": "agent", "hue": "muted", "depth": 1,
+            "side": items(&side), "note": one["title"], "acts": [],
+            "held": {"address": address, "closed": one},
+        }));
+    }
     rows
 }
 
@@ -251,8 +311,8 @@ mod tests {
     use super::*;
     use crate::row::{Fold, Ranked};
 
-    fn said() -> Said {
-        Said::of_thing(crate::said::LAUNCHERS, "agents").expect("the launcher's words read")
+    fn words() -> Words {
+        Words::from_vocabulary(crate::said::LAUNCHERS).expect("the launcher's words read")
     }
 
     /// A session's row as row.rs makes it: `address`, how it `state`s,
@@ -288,8 +348,16 @@ mod tests {
     const LIVE: &[&str] = &["switch", "talk", "pause", "close"];
 
     fn top(shown: &[Shown]) -> Vec<Value> {
+        closing(shown, &[])
+    }
+
+    fn closing(shown: &[Shown], closed: &[Value]) -> Vec<Value> {
         let spent = |address: &str| (address == "O").then(|| "$604".to_owned());
-        rows(shown, &Known { spent: &spent }, &said())
+        let known = Known {
+            spent: &spent,
+            closed,
+        };
+        rows(shown, &known, &words())
     }
 
     fn found<'a>(rows: &'a [Value], key: &str) -> &'a Value {
@@ -347,8 +415,8 @@ mod tests {
             "Talk to It leads, then a look, a step in, and its own acts"
         );
         assert_eq!(
-            head["drawer"], "drawer:agents:O",
-            "its drawer is the session's own, as Agents serves it"
+            head["drawer"], "drawer:agents-top:O",
+            "its drawer is the session's own, served under the top level"
         );
     }
 
@@ -466,6 +534,71 @@ mod tests {
             sides(found(&rows, "row:agents-top:O")),
             ["3 of 5 working", "about $604 in all"],
             "a fold's members are counted with the rest"
+        );
+    }
+
+    #[test]
+    fn the_closed_orchestrators_are_one_row_at_the_end_each_inside_it() {
+        let closed = [
+            json!({"key": "closed:agents:BEACON", "closed": {"address": "BEACON",
+                "name": "Beacon", "title": "Light the beacon", "spent": "$12"}}),
+            json!({"key": "closed:agents:LAMPLT", "closed": {"address": "LAMPLT",
+                "name": "Lamplight", "title": "Keep the lamp lit", "spent": ""}}),
+        ];
+        let rows = closing(&[row("P", "working", 0, LIVE)], &closed);
+        let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "row:agents-top:P",
+                "row:agents-top:closed",
+                "row:agents-top:closed:BEACON",
+                "row:agents-top:closed:LAMPLT"
+            ],
+            "Closed comes last, its orchestrators in the order served"
+        );
+        let all = found(&rows, "row:agents-top:closed");
+        assert_eq!(
+            all["name"], "Closed",
+            "it's named from the launcher's words"
+        );
+        assert_eq!(sides(all), ["2 closed"], "it says how many it holds");
+        assert_eq!(acts(all), ["verb:more"], "it steps into them");
+        let beacon = found(&rows, "row:agents-top:closed:BEACON");
+        assert_eq!(
+            beacon["parent"], "row:agents-top:closed",
+            "Beacon is inside it"
+        );
+        assert_eq!(
+            sides(beacon),
+            ["closed", "$12 in all"],
+            "with what it spent"
+        );
+        assert_eq!(
+            sides(found(&rows, "row:agents-top:closed:LAMPLT")),
+            ["closed"],
+            "no amount where none was said"
+        );
+        assert_eq!(
+            beacon["held"]["closed"]["title"], "Light the beacon",
+            "its record goes with it, for the shell to reopen it by"
+        );
+        assert!(
+            !closing(&[], &[]).iter().any(|row| row["kind"] == "closed"),
+            "with none closed there's no Closed row"
+        );
+    }
+
+    #[test]
+    fn each_drawer_is_served_again_under_the_top_level() {
+        let again = drawers(&[
+            json!({"key": "drawer:agents:O", "kind": "drawer", "drawer": {"title": "O"}}),
+            json!({"key": "landed:agents:x"}),
+        ]);
+        assert_eq!(
+            again,
+            [json!({"key": "drawer:agents-top:O", "kind": "drawer", "drawer": {"title": "O"}})],
+            "a session's drawer, keyed under the top level, and nothing else"
         );
     }
 }

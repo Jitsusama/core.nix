@@ -327,13 +327,15 @@ impl Inputs {
             sharing: self.sharing,
             today: &today,
         };
-        let drawers = sessions
+        let mut drawers: Vec<Value> = sessions
             .iter()
             .map(|one| {
                 let orchestrates = orchestrating.contains(one.address());
                 drawer::drawer(*one, orchestrates, &self.words, &drawn)
             })
             .collect();
+        drawers.extend(top::drawers(&drawers));
+        let closed = self.closed();
         let quests: HashMap<&str, &str> = sessions
             .iter()
             .map(|one| (one.address(), one.quest()))
@@ -349,7 +351,11 @@ impl Inputs {
                 self.family(quest)
             }
         };
-        let top = top::rows(&rows, &top::Known { spent: &all_spent }, &self.words.agents);
+        let known_top = top::Known {
+            spent: &all_spent,
+            closed: &closed,
+        };
+        let top = top::rows(&rows, &known_top, &self.words);
         served::made(
             &rows,
             &summary::summary(&states, today_spent, &self.words.agents),
@@ -359,7 +365,7 @@ impl Inputs {
         .with_recent(recent)
         .with_reopens(reopens)
         .with_landed(self.landed().0)
-        .with_closed(self.closed())
+        .with_closed(closed)
     }
 }
 
