@@ -541,6 +541,7 @@ in
       cp ${../launcher/WarpSeen.js} WarpSeen.js
       cp ${../launcher/WarpSwitch.js} WarpSwitch.js
       cp ${../launcher/WarpWaiting.js} WarpWaiting.js
+      cp ${../launcher/WarpDrawer.js} WarpDrawer.js
       cp ${../launcher/HomeNetwork.js} HomeNetwork.js
       cp ${../launcher/Ago.js} Ago.js
       cp ${(import ../launcher/words.nix).file} words.json
