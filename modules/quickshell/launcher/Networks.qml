@@ -146,6 +146,38 @@ Provider {
     // empty until it answers, and where it isn't running.
     property var leases: ({})
     property var neighbours: ({})
+
+    // A connection's facts at a glance (glance), for its drawer and the way
+    // out's, each made the turn after it's first asked for rather than
+    // inside the launcher's binding that asks: they read files (standing,
+    // sys), and a read there changes what the binding read, so it made the
+    // drawer again and again, 297,092 loops in one VM run (opens-and-sets,
+    // 2026-11-12). Until they're made, the drawer says only what it is.
+    // They're let go as the connections, their leases or their neighbours
+    // change, and as the launcher opens, so they're said as they stand.
+    readonly property var drawersKept: ({})
+    property int drawersMade: 0
+    function keptGlance(name, said) {
+        const key = `${name}\n${said}`;
+        const kept = drawersMade >= 0 ? drawersKept[key] : undefined;
+        if (kept !== undefined)
+            return kept;
+        Qt.callLater(() => {
+            if (drawersKept[key] !== undefined)
+                return;
+            drawersKept[key] = glance(name, [said]);
+            drawersMade += 1;
+        });
+        return [];
+    }
+    function letDrawersGo() {
+        for (const key of Object.keys(drawersKept))
+            delete drawersKept[key];
+        drawersMade += 1;
+    }
+    onLinksChanged: letDrawersGo()
+    onLeasesChanged: letDrawersGo()
+    onNeighboursChanged: letDrawersGo()
     // The calls to networkd not yet answered, in order: one is sent at a
     // time, the next once the last is answered.
     property var calling: []
@@ -221,8 +253,10 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
-            if (provider.launcher.open)
+            if (provider.launcher.open) {
+                provider.letDrawersGo();
                 provider.look();
+            }
         }
     }
 
@@ -371,7 +405,7 @@ Provider {
     // A connection's drawer: what it is, then its parts at a glance, the
     // whole list a step in.
     function linkDrawer(name, title, side) {
-        return { eyebrow: eyebrow("connection"), title: title, facts: glance(name, [side]) };
+        return { eyebrow: eyebrow("connection"), title: title, facts: keptGlance(name, side) };
     }
 
     // The address answer's drawer, the way out's: named by the connection
@@ -384,7 +418,7 @@ Provider {
         return {
             eyebrow: eyebrow("wayOut"),
             title: title,
-            facts: (name === "" ? [] : glance(name, [headline])).concat(seen)
+            facts: (name === "" ? [] : keptGlance(name, headline)).concat(seen)
         };
     }
 

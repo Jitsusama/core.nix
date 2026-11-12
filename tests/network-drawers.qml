@@ -55,7 +55,16 @@ ShellRoot {
     }]
 
     // Once the providers are made, so their bindings hold the stand-ins.
-    Component.onCompleted: Qt.callLater(root.held)
+    Component.onCompleted: Qt.callLater(root.asked)
+
+    // Address's drawers asked for once, as the launcher's binding asks,
+    // and read the turn after, once their facts are made (keptGlance).
+    function asked() {
+        networks.links = links;
+        const address = networks.answer("address");
+        [address].concat(address?.rows ?? []).forEach(drawerOf);
+        Qt.callLater(root.held);
+    }
 
     function held() {
         try {
@@ -97,7 +106,6 @@ ShellRoot {
     }
 
     function run() {
-        networks.links = links;
         const address = networks.answer("address");
         Expect.expect("address answers", address !== null && address.rows.length === 2,
             JSON.stringify(address));
