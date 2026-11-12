@@ -141,6 +141,45 @@
       "term": "Agents/quest"
     },
     {
+      "id": "agents:landed",
+      "in": "agents",
+      "name": "Landed",
+      "term": "Agents/Landed",
+      "verb": "more",
+      "glyph": "done",
+      "said": {
+        "today": "{count} today",
+        "none": "none today",
+        "read": "read",
+        "kind": "landing",
+        "yesterday": "yesterday",
+        "sending": "sending",
+        "sent": "sent to {to}",
+        "sentAway": "sent to whoever landed it",
+        "toNoOne": "no one to tell: the landing names no quest or session",
+        "noMesh": "not sent: the mesh isn't running",
+        "unsent": "not sent: {why}"
+      },
+      "tells": {
+        "holding": "What sessions landed in the past 30 days, newest first."
+      }
+    },
+    {
+      "id": "agents:repo",
+      "in": "agents",
+      "name": "Repository"
+    },
+    {
+      "id": "agents:change",
+      "in": "agents",
+      "name": "Change"
+    },
+    {
+      "id": "agents:item",
+      "in": "agents",
+      "name": "Item"
+    },
+    {
       "id": "agents:works",
       "in": "agents",
       "name": "Working On",

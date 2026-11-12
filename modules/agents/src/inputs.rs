@@ -243,8 +243,10 @@ impl Inputs {
         recent::recent(self.sessions.records().map(|(_, one)| Session(one)), &shown)
     }
 
-    /// What the sessions landed, each a whole record, with how many
-    /// landed each day, and the keys of every landing held (landed.rs).
+    /// What the sessions landed, each a whole record with its drawer, with
+    /// how many landed each day, and the keys of every landing held
+    /// (landed.rs). A session ended is named by its quest's title, as the
+    /// node's quest records give it.
     pub fn landed(&self) -> (Vec<Value>, HashSet<String>) {
         let live: Vec<Session> = self
             .sessions
@@ -255,12 +257,19 @@ impl Inputs {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_millis());
-        landed::landed(
+        let (mut records, held) = landed::landed(
             self.landings.records().map(|(_, one)| one),
             &live,
             &self.read,
             i64::try_from(now).unwrap_or(0),
-        )
+        );
+        let titles: HashMap<&str, &str> = self
+            .quests
+            .records()
+            .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
+            .collect();
+        landed::drawn(&mut records, &self.words, &titles);
+        (records, held)
     }
 
     /// What sessions running or parked answered of Joel's talks, read or
