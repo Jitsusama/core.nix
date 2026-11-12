@@ -255,16 +255,17 @@ Provider {
     }
 
     // The desk light's answer. With no light its row stays where Machine's
-    // head names it, dimmed, saying whether none is plugged in or litra
-    // isn't answering, with nothing inside it to set (Y2YBTS, 2026-11-12:
-    // a place whose source is away keeps its row).
+    // head names it, saying whether none is plugged in or litra isn't
+    // answering, with nothing inside it to set (Y2YBTS, 2026-11-12: a
+    // place whose source is away keeps its row). It's never gone, since a
+    // show skips a gone row and a terminal's show must find the row
+    // Machine names, as Heat's held row is (Heat.qml's unheld).
     function deskTold() {
         if (DeskLight.light === null)
             return {
                 headline: "",
                 rows: [],
-                note: said(DeskLight.answering ? "unplugged" : "down"),
-                gone: true
+                note: said(DeskLight.answering ? "unplugged" : "down")
             };
         return {
             // Its side says only how it's lit, never its name again
