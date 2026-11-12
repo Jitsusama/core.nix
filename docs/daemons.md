@@ -52,7 +52,8 @@ Every ask carries an `id`, which each answer to it repeats.
   records whole, then tells only what changed, by key, and the keys that
   went. An `every` paces it, telling what moved at most once a pace.
   `unwatch` ends it, as closing the socket does.
-- `health` answers the daemon's state and each of its sources'.
+- `health` answers the daemon's state, and each of its sources' state with
+  its reason, where every other line says the state's word alone.
 
 A record is `{"key": "<kind>:<id>", "kind": ..., ...}`: an identity key, and
 each field as the [glossary][glossary] names it. Records hold facts, never
