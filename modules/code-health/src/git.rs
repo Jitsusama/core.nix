@@ -118,12 +118,25 @@ pub fn merged(checkout: &str, reference: &str, since: i64) -> Result<Vec<Merged>
             .lines()
             .filter_map(|time| time.parse::<i64>().ok())
             .min();
+        // What the merge brought onto the line it joined, not what that
+        // line gained meanwhile.
+        let files = git(
+            checkout,
+            &["diff", "-z", "--name-only", line_before, merge],
+            None,
+        )?;
+        let files = String::from_utf8_lossy(&files)
+            .split('\0')
+            .filter(|file| !file.is_empty())
+            .map(str::to_owned)
+            .collect();
         if let Some(first) = first {
             merged.push(Merged {
                 merge: merge.to_owned(),
                 title: title.to_owned(),
                 first,
                 landed: at,
+                files,
             });
         }
     }
@@ -243,9 +256,13 @@ mod tests {
         commit_at(path, 1_000, &[empty.as_slice(), &["start"]].concat());
         commit_at(path, 2_000, &["checkout", "-q", "-b", "change"]);
         commit_at(path, 2_000, &[empty.as_slice(), &["first edit"]].concat());
-        commit_at(path, 2_600, &[empty.as_slice(), &["second edit"]].concat());
+        std::fs::write(path.join("notes.md"), "an edit\n").expect("the edit wasn't written");
+        commit_at(path, 2_600, &["add", "notes.md"]);
+        commit_at(path, 2_600, &["commit", "-q", "-m", "second edit"]);
         commit_at(path, 3_000, &["checkout", "-q", "main"]);
-        commit_at(path, 3_000, &[empty.as_slice(), &["meanwhile"]].concat());
+        std::fs::write(path.join("other.md"), "meanwhile\n").expect("main's edit wasn't written");
+        commit_at(path, 3_000, &["add", "other.md"]);
+        commit_at(path, 3_000, &["commit", "-q", "-m", "meanwhile"]);
         commit_at(
             path,
             5_600,
@@ -271,6 +288,11 @@ mod tests {
             ),
             ("Show the change", 2_000, 5_600),
             "the merge wasn't timed from its first edit, or titled by its body"
+        );
+        assert_eq!(
+            timed[0].files,
+            ["notes.md"],
+            "the merge's files weren't what it brought, without main's meanwhile"
         );
         let later = merged(checkout, "main", START + 6_000).expect("the merges weren't read");
         assert!(
