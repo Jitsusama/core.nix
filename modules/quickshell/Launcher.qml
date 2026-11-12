@@ -8041,19 +8041,7 @@ Scope {
         }
         if (!source)
             return;
-        held = [Object.assign(here(), {
-            row: {
-                key: "",
-                name: source.collection.noun,
-                chip: source.collection.noun,
-                title: source.collection.title,
-                ask: source.collection.ask,
-                lead: source.collection.glyph,
-                leadHue: "voice",
-                from: source
-            },
-            rows: []
-        })];
+        held = [placeStep(source)];
         entering = null;
         source.opened();
         restart("");
@@ -8065,6 +8053,24 @@ Scope {
         if (lead)
             enter(lead);
         openedHere();
+    }
+
+    // The step a place opened straight into holds: the collection itself,
+    // standing where home stood.
+    function placeStep(source) {
+        return Object.assign(here(), {
+            row: {
+                key: "",
+                name: source.collection.noun,
+                chip: source.collection.noun,
+                title: source.collection.title,
+                ask: source.collection.ask,
+                lead: source.collection.glyph,
+                leadHue: "voice",
+                from: source
+            },
+            rows: []
+        });
     }
 
     // Says the place it shows now is where it opened, so normal's Escape at
@@ -8553,6 +8559,13 @@ Scope {
     // does. Made on its chord instead, Joel's first opening after a switch
     // made 328 rows and took 1,196 ms to its frame (2026-11-10, 13:04). One
     // opened before it's done is made whole, as it was.
+    // Each place a chord opens is kept first, a turn each, so the first
+    // chord into it draws from what's kept too: only a place a chord had
+    // opened before was, so all 22 of Joel's first chords into a place
+    // since a start took 70 to 413 ms to the frame, every later one 13 to
+    // 35 (2026-11-11, read by the shell's pid). Home is held only once
+    // they're kept. This is the one pass that makes rows while shut, once
+    // a start: a source changing later is caught up by the chord's fill.
     property int warmed: -1
     property real warmedTook: 0
     Timer {
@@ -8583,15 +8596,63 @@ Scope {
             warmingOn.start();
             return;
         }
+        const place = warmed - sources.length;
+        if (place === 0) {
+            choicesStale = true;
+            freshen();
+        }
+        if (place < chordPlaces.length) {
+            warmPlace(chordPlaces[place]);
+            warmedTook += KeyTimes.now() - began;
+            warmingOn.start();
+            return;
+        }
         warmingOn.stop();
-        choicesStale = true;
-        freshen();
-        restart("");
+        // Home is found with no place held, as the last place kept left
+        // its step held.
+        keeping = true;
+        try {
+            held = [];
+            homeDepth = 0;
+            restart("");
+        } finally {
+            keeping = false;
+        }
         keepHome();
         warmedTook += KeyTimes.now() - began;
         const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
-        console.info(`launcher: home kept as the shell started, ${rows} rows made in`
-            + ` ${Math.round(warmedTook)} ms over ${sources.length} turns`);
+        console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
+            + ` shell started, ${rows} rows made in ${Math.round(warmedTook)} ms over`
+            + ` ${warmed} turns`);
+    }
+
+    // The places a chord opens straight into, as the desktop's binds say
+    // (Shortcuts.actions' opens), but one that leads somewhere deeper as
+    // it opens, as Keyboard does into the program in use's keys, since
+    // what that leads to is known only as its chord is pressed.
+    readonly property var chordPlaces: [...new Set(Shortcuts.actions.map(action => action.opens))]
+        .filter(name => {
+            const source = collections.find(one => one.settings.name === name);
+            return !!source && typeof source.leading !== "function"
+                && leadingTo(name) === null;
+        })
+
+    // Keeps a place as its chord would leave it, its rows listed whole,
+    // while shut and without telling its source it opened, since a source
+    // may mark what it shows as seen (PastNotices.opened).
+    function warmPlace(name) {
+        const source = collections.find(one => one.settings.name === name);
+        if (placesKept[name])
+            return;
+        keeping = true;
+        try {
+            held = [placeStep(source)];
+            homeDepth = held.length;
+            restart("");
+            keepPlace(name);
+        } finally {
+            keeping = false;
+        }
     }
 
     // Whether the opening began from what was kept, and what filled it in:
