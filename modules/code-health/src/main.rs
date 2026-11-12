@@ -4,7 +4,9 @@
 //! does: its long files with no reason, its suppressions, its crowded
 //! folders with no reason, its lines of code repeated from elsewhere, the
 //! tests its merge net keeps in quarantine and the points its daemons wait
-//! on to agree (measure.rs says how each is counted).
+//! on to agree (measure.rs says how each is counted), and how long the
+//! changes it merged in the last day took from first edit to merge
+//! (merges.rs).
 //!
 //! It writes `<date>.json` in its folder as `{repo: {measure: figure}}`,
 //! the form cadence reads, and `<date>-named.json` beside it naming what
@@ -16,10 +18,12 @@
 //!         [--under NAME=FOLDER]... [--into FOLDER]
 //!
 //! A repository is read at `origin/main` unless `--ref` names another, and
-//! whole unless `--under` names the folder that's it in a larger one.
+//! whole unless `--under` names the folder that's it in a larger one,
+//! whose merges are the larger one's, so it isn't timed.
 
 mod git;
 mod measure;
+mod merges;
 
 use std::collections::BTreeMap;
 use std::env;
@@ -27,7 +31,10 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use jiff::Zoned;
+use jiff::{Timestamp, Zoned};
+
+/// The merges timed: those of the last day, as the read runs each day.
+const DAY: i64 = 24 * 60 * 60;
 
 /// A repository to read: where its checkout is, which ref, and which
 /// folder of it.
@@ -53,7 +60,19 @@ fn main() -> ExitCode {
     for (name, repo) in &repos {
         match git::files(&repo.checkout, &repo.reference, &repo.under) {
             Ok((paths, files)) => {
-                let health = measure::measure(&paths, &files);
+                let mut health = measure::measure(&paths, &files);
+                if repo.under.is_empty() {
+                    let since = Timestamp::now().as_second() - DAY;
+                    match git::merged(&repo.checkout, &repo.reference, since) {
+                        Ok(merged) => {
+                            if let Some((figure, named)) = merges::edit_to_merge(&merged) {
+                                health.figures.insert("edit-to-merge", figure);
+                                health.named.insert("edit-to-merge", named);
+                            }
+                        }
+                        Err(error) => eprintln!("code-health: {name}'s merges left out: {error}"),
+                    }
+                }
                 eprintln!("code-health: {name}: {:?}", health.figures);
                 figures.insert(name.clone(), health.figures);
                 named.insert(name.clone(), health.named);

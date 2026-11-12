@@ -22,7 +22,7 @@ const OPENING: usize = 40;
 /// than eight would count a function's usual opening or a list's tail.
 const SAME: usize = 8;
 /// How many names each measure keeps, so a day's file stays readable.
-const NAMED: usize = 200;
+pub const NAMED: usize = 200;
 /// The list of the points of docs/daemons.md each daemon still breaks,
 /// as the daemons-agree check keeps it.
 pub const DAEMONS_WAITING: &str = "tests/rules/daemons-agree-waiting.nix";

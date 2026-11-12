@@ -84,11 +84,16 @@ impl Measure {
     }
 
     /// How many times its median a figure must be to be a regression: a
-    /// fifth over it, except for a repository's figures, counts of what it
-    /// let in that move only when someone adds or takes one away, so any
-    /// rise past their floor is one.
+    /// fifth over it, except for a repository's counts, of what it let in,
+    /// which move only when someone adds or takes one away, so any rise
+    /// past their floor is one. A repository's times, which drift day to
+    /// day, take the fifth like any other time.
     pub fn worse(&self) -> f64 {
-        if self.key.contains('*') { 1.0 } else { WORSE }
+        if self.key.contains('*') && self.unit.is_empty() {
+            1.0
+        } else {
+            WORSE
+        }
     }
 }
 
@@ -304,6 +309,15 @@ const MEASURES: &[Measure] = &[
         unit: "",
         bar: None,
         floor: 1.0,
+    },
+    Measure {
+        key: "code.*.edit-to-merge",
+        axis: "time to done",
+        evidence: HEALTH,
+        says: "median time from a change's first edit to its merge",
+        unit: " min",
+        bar: None,
+        floor: 5.0,
     },
 ];
 
