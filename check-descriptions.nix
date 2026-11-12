@@ -2667,7 +2667,9 @@
   the-launcher-places-each-window-it-hears = ''
     the windows the windows daemon tells of are kept the one used last first, each a change names
     placed where its order puts it without sorting the rest, the same record again changing
-    nothing, and a window gone let go
+    nothing, and a window gone let go; and agents' windows, as the agents daemon pairs them,
+    fold into one row where the one used last was, named for its session, and inside it go
+    by orchestration, a session a step in under its orchestrator's own window
   '';
   the-launcher-places-the-time-only-when-now-is-wanted = ''
     an opening into a place that shows none of For You's rows places no time or date, so makes

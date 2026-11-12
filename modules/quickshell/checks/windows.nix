@@ -132,7 +132,9 @@
   # The launcher keeps the windows the windows daemon tells of in the order
   # it lists them, the one used last first, placing each window a change
   # names and letting those gone go, as tests/held-windows.qml holds
-  # launcher/HeldWindows.js to records made up there.
+  # launcher/HeldWindows.js to records made up there, and folds agents'
+  # windows into one row where the one used last was, as
+  # tests/agent-windows.qml holds launcher/AgentWindows.js.
   the-launcher-places-each-window-it-hears =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -140,12 +142,16 @@
     pkgs.runCommandLocal "the-launcher-places-each-window-it-hears" { } ''
       mkdir launcher
       cp ${../../../tests/held-windows.qml} held-windows.qml
-      ${copied [ "launcher/HeldWindows.js" ]}
+      cp ${../../../tests/agent-windows.qml} agent-windows.qml
+      ${copied [
+        "launcher/AgentWindows.js"
+        "launcher/HeldWindows.js"
+      ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
+      export FONTCONFIG_FILE=${noFonts} QML_IMPORT_PATH=${qt}/lib/qt-6/qml
       ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml held-windows.qml
+      for case in held-windows agent-windows; do timeout 60 ${qt}/bin/qml $case.qml; done
       touch $out
     '';
 

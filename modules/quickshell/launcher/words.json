@@ -10649,6 +10649,19 @@
       "glyph": "windows"
     },
     {
+      "id": "windows:agents",
+      "name": "Agents",
+      "in": "windows",
+      "term": "Agents/agent",
+      "verb": "go to",
+      "glyph": "agent",
+      "said": {
+        "more": "{title} \u00b7 {more} more",
+        "needsCount": "1 needs you",
+        "needCount": "{count} need you"
+      }
+    },
+    {
       "id": "session:awake",
       "command": "set",
       "argument": "keepawake",
