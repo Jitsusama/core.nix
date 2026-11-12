@@ -304,6 +304,38 @@ def test_the_cat_goes_in_fullscreen(shell: Shell) -> None:
     layered(shell, 1)
 
 
+def test_leaving_and_coming_back_at_1_5_works_its_place_out_once(shell: Shell) -> None:
+    """At 1.5 the cat goes and comes back without its place depending on itself.
+
+    Its window's scale and the screen's differ at a fractional scale, so showing or hiding the
+    window moved the scale its place is worked out from: Joel's shell logged a binding loop on
+    `place` 327 times from 15:12 to 15:57 on 2026-11-12, three around each launcher opening.
+    """
+    since = shell.mark()
+    filling = shell.opened("a column to leave at 1.5")
+    sits_over(shell, filling, since)
+    began = shell.mark()
+    shell.as_account("niri msg output winit scale 1.5")
+    try:
+        for _ in range(2):
+            since = shell.mark()
+            shell.as_account("niri msg action fullscreen-window")
+            heard(shell, lambda said: placed(said) is None, since)
+            since = shell.mark()
+            shell.as_account("niri msg action fullscreen-window")
+            heard(shell, lambda said: placed(said) is not None, since)
+        with shell.log.open("rb") as log:
+            log.seek(began)
+            looped = [
+                line
+                for line in log.read().decode(errors="replace").splitlines()
+                if "Binding loop" in line and "MarginCat" in line
+            ]
+        assert not looped, f"the cat's place depended on itself: {looped}"
+    finally:
+        shell.as_account("niri msg output winit scale 1")
+
+
 def screen() -> Path:
     """Give where a screenshot taken only to be read goes."""
     return Path(os.environ["TMPDIR"]) / "screen.png"

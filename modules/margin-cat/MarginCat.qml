@@ -154,9 +154,10 @@ Scope {
             // Each cell in whole device pixels, and the cat's size from them.
             // The window's own ratio, which a fractional scale sets, rather
             // than the screen's, as Hairline.qml reads it. Taken a moment
-            // late: showing the window sets its ratio, so read at once it
-            // would change the place that showed it, a loop Joel's shell said
-            // three times as it started at 1.5 (2026-11-12 15:12:29).
+            // late: showing or hiding the window sets its ratio, so read at
+            // once it would change the place that showed it, a loop Joel's
+            // shell said 327 times at 1.5 on 2026-11-12 from 15:12 to 15:57,
+            // three around each launcher opening.
             property real ratio: cat.Screen.devicePixelRatio > 0
                 ? cat.Screen.devicePixelRatio : 1
             Binding on ratio {
