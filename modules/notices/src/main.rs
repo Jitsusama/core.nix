@@ -32,13 +32,14 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::entries::{self, Entries};
 
-/// The daemon as the shell knows it: a record for each notice, and its
-/// rows.
+/// The daemon as the shell knows it: a record for each notice, its rows,
+/// and beside the mixed place's page the count it has rows for, sent
+/// only to a watch that names it, as the launcher's does.
 const DOMAIN: Domain = Domain {
     name: "notices",
-    kinds: &["notice", "row"],
+    kinds: &["notice", "row", "summary"],
     sole: &[],
-    named_only: &[],
+    named_only: &["summary"],
 };
 
 const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \
@@ -126,11 +127,14 @@ impl Served {
         } else {
             BTreeSet::new()
         };
-        let made = self.rows.make(holding.notices().iter(), signs, &looked);
-        self.looked = row::shown(&made[1]);
-        for (kept, rows) in self.places.iter_mut().zip(made) {
-            kept.take(rows, Vec::new());
-        }
+        let [mixed, desktop, history] = self.rows.make(holding.notices().iter(), signs, &looked);
+        self.looked = row::shown(&desktop);
+        // The mixed place serves a page, saying how many it has rows for.
+        let summary = json!({ "key": row::SUMMARY, "kind": "summary",
+            "summary": { "count": mixed.len() } });
+        self.places[0].take(row::paged(mixed), vec![summary]);
+        self.places[1].take(desktop, Vec::new());
+        self.places[2].take(history, Vec::new());
         let mut records: Vec<Value> = holding
             .notices()
             .iter()
@@ -149,8 +153,7 @@ impl Served {
     }
 
     /// The mixed place's rows its watch doesn't serve, by key, for a
-    /// search to answer with where it finds their notices. None yet, as
-    /// the place serves every notice's row.
+    /// search or a `rows` ask to answer with: those read past its page.
     fn unserved(&self) -> BTreeMap<String, Value> {
         self.rows
             .mixed()
@@ -329,4 +332,19 @@ fn main() -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DOMAIN;
+    use daemon_serve::asks::Ask;
+
+    #[test]
+    fn the_launcher_watches_the_notices_rows_with_their_summary() {
+        let ask = DOMAIN.ask(r#"{"id":1,"ask":"watch","kind":["row","summary"]}"#);
+        assert!(
+            matches!(&ask, Ask::Watch { kinds, .. } if kinds == &["row", "summary"]),
+            "the watch ReadyRows.qml sends was answered {ask:?}"
+        );
+    }
 }

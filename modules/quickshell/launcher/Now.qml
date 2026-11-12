@@ -1730,6 +1730,17 @@ Provider {
             provider.changed();
         }
     }
+    // History lists a notice past the notices place's page from the rows
+    // asked for once it's stepped into (PastNotices.qml's every), plain
+    // until they come, so it's said again once they do.
+    Connections {
+        target: provider.source("notices")
+        ignoreUnknownSignals: true
+
+        function onWholeHeard() {
+            provider.changed();
+        }
+    }
 
     // What each source holds, { holding, bands }: who each thing it holds
     // is from and when it came, newest first, and Lately's rows, heaviest

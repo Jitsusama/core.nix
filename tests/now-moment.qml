@@ -443,6 +443,26 @@ ShellRoot {
             expect("and listed again, it isn't made again",
                 pastNotices.search("parcel").rows[0] === found[0], "made again");
         }))
+            historyPastPage();
+    }
+    // For You's History lists a notice past the place's page with the row
+    // the daemon's `rows` answer brought, asked once as History was first
+    // stepped into, and let go as the launcher closes.
+    function historyPastPage() {
+        const parcel = noticesDaemon.unserved[0];
+        Notices.history = noticesDaemon.notices.concat([parcel]);
+        if (tried(() => {
+            const history = stepIn().history;
+            const row = history.find(one => one.name === "Parcel delivered") ?? null;
+            expect("History lists a notice past the page as its notice's row",
+                row !== null && row.key === "notice:31" && row.notice === 31,
+                JSON.stringify(history.map(one => [one.key, one.name])));
+            expect("the rows past the page were asked for once",
+                noticesDaemon.rowsAsked === 1, `${noticesDaemon.rowsAsked} asks`);
+            theLauncher.open = false;
+            expect("and they go as the launcher closes",
+                pastNotices.whole.kept === null, JSON.stringify(pastNotices.whole.kept?.keys));
+        }))
             Qt.exit(0);
     }
 

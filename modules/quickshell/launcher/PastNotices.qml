@@ -38,12 +38,16 @@ Provider {
     // Every notice, the unread saying so, for search, Notifications, a
     // program's own row (Applications.qml) and For You's History, which
     // holds a notice its sender withdrew unread beside those read, so the
-    // daemon's own history place, the read alone, isn't watched.
+    // daemon's own history place, the read alone, isn't watched. The
+    // daemon serves a page of it, the unread, the live and the newest read
+    // (row.rs's paged), with beside it how many it has rows for; the rest
+    // are asked for by those that list them (every).
     ReadyRows {
         id: mixed
 
         socket: provider.socket
         place: "notices"
+        beside: ["summary"]
         paced: provider.launcher
         maker: provider
         make: (row, key) => provider.made(mixed, row, key)
@@ -190,10 +194,14 @@ Provider {
             // A sender's Read closes a notice it doesn't keep, so only one
             // still open, still offering to be let go, is let go.
             for (const one of provider.parting) {
-                if ((mixed.served(one.key)?.acts ?? []).some(act => act.key === one.act.key))
+                if ((provider.servedRow(one.key)?.acts ?? []).some(act => act.key === one.act.key))
                     mixed.act(one.key, one.act);
             }
             provider.parting = [];
+            // The rows past the page go, kept only while they're listed.
+            provider.whole.kept = null;
+            provider.whole.of = null;
+            provider.whole.rows = [];
         }
     }
 
@@ -202,7 +210,73 @@ Provider {
     // does what it does here. `sent` says whether a sender's name is the
     // program.
     function sentBy(sent) {
-        return lined(all().filter(row => sent(row.sender)), []);
+        return lined(every().filter(row => sent(row.sender)), []);
+    }
+
+    // A notice's row as last served, by the place or past its page by an
+    // answer still kept: null for one no longer served.
+    function servedRow(key) {
+        return mixed.served(key) ?? whole.kept?.rows[key]
+            ?? answers.kept.map(one => one.rows[key]).find(row => !!row) ?? null;
+    }
+
+    // Every notice's row, those past the page too, in the daemon's order:
+    // the page alone while the daemon has nothing past it, and until it's
+    // answered the `rows` it's asked for once it's needed, as
+    // Notifications, a program's own row and For You's History list them.
+    // It's asked again only once the notices changed past what the answer
+    // can list, a notice new to it or one it didn't bring that the page no
+    // longer serves, rather than at every change, each answer being about
+    // 1.3 MB of Joel's. Those past the page are made once and let go as
+    // the launcher closes: held while it's closed, all 1,000 of Joel's
+    // cost the shell about 8 MB of its live heap in the lab, of 45
+    // (2026-11-12).
+    readonly property string summaryKey: "summary:notices"
+    readonly property var whole: ({ kept: null, asking: false, of: null, at: -1, rows: [] })
+    signal wholeHeard
+    function every() {
+        const page = all();
+        const count = mixed.held[summaryKey]?.summary?.count ?? page.length;
+        if (count <= page.length)
+            return page;
+        const kept = whole.kept;
+        if (kept === null) {
+            wholeAsked();
+            return page;
+        }
+        if (whole.of !== kept || whole.at !== mixed.placings) {
+            const rows = kept.keys.map(key => foundRow(kept, key));
+            whole.rows = rows.filter(row => row !== null);
+            whole.of = kept;
+            whole.at = mixed.placings;
+            if (!kept.listed)
+                kept.listed = new Set(kept.keys);
+            const listed = row => kept.listed.has(`row:${mixed.place}:${row.notice}`);
+            if (whole.rows.length < rows.length || !page.every(listed))
+                wholeAsked();
+        }
+        return whole.rows;
+    }
+
+    // Asks the daemon for every notice's row, unless it's being asked.
+    function wholeAsked() {
+        const link = mixed.link;
+        if (whole.asking || !link || link.wire === null)
+            return;
+        whole.asking = true;
+        link.find({ ask: "rows" }, answer => provider.wholeAnswered(answer));
+    }
+
+    // Every notice's row answered is kept, and what lists them told, so
+    // a list shown from the page alone fills in; one come once the
+    // launcher closed is let go at once.
+    function wholeAnswered(answer) {
+        whole.asking = false;
+        if (!Array.isArray(answer?.keys) || provider.launcher?.open === false)
+            return;
+        whole.kept = { keys: answer.keys, rows: answer.rows ?? {}, made: {}, listed: null };
+        provider.wholeHeard();
+        provider.changed();
     }
 
     // Every notice's row, one list until the daemon's places move, since
@@ -243,8 +317,10 @@ Provider {
     }
 
     function rowsOf(ids, where) {
-        if (where !== "desktop")
-            return lined(all().filter(row => ids.includes(row.notice)), []);
+        if (where !== "desktop") {
+            const wanted = new Set(ids);
+            return lined(every().filter(row => wanted.has(row.notice)), []);
+        }
         return lined(ids.map(id => desktop.rowAt(`row:${desktop.place}:${id}`)
             ?? [mixed.rowAt(`row:${mixed.place}:${id}`)].find(row => row?.unread === true))
             .filter(row => !!row), []);
@@ -380,7 +456,7 @@ Provider {
     }
 
     function everything() {
-        return listed(all(), []);
+        return listed(every(), []);
     }
 
     function looksThrough() {
@@ -388,7 +464,7 @@ Provider {
     }
 
     function counted() {
-        const held = all().length;
+        const held = mixed.held[summaryKey]?.summary?.count ?? all().length;
         return Notices.waiting.length > 0 ? `${Notices.waiting.length} missed`
             : held === 0 ? "none" : countedAs(held);
     }
