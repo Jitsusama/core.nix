@@ -179,7 +179,11 @@ Provider {
     // so the places held are said again with it. Unsaid, Battery's Health
     // was never found from the root (the net's goes-places run,
     // 2026-11-07). After that, a shown answer moves with each change, and
-    // one stepped into as its rows come or go.
+    // so does one stepped into, as Machine › Power › Battery is: it kept
+    // the charge it was stepped into with, since a new charge moves no key
+    // (Y2YBTS, 2026-11-12 [495f1a1b]). Power's figures change about once
+    // a minute, so saying each again costs little, where Heat's change
+    // every second.
     property string placedAnswered: ""
 
     Connections {
@@ -192,7 +196,7 @@ Provider {
             if (moved) {
                 provider.answered();
                 provider.launcher?.placesRead?.();
-            } else if (provider.shown) {
+            } else if (provider.shown || provider.steppedIn) {
                 provider.answered();
             }
         }

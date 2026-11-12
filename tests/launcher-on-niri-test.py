@@ -2857,6 +2857,10 @@ class StandIn:
         self.held: dict[str, Json] = {}
         # Each client watching, by what it watches (StandIn.theirs).
         self.clients: dict[socket.socket, str] = {}
+        # Every client that came, watching or not, so each is let go when it stops: one left
+        # open, as a connection that only said hello, kept the shell talking to a stand-in
+        # whose socket was gone, and the next case's never heard its watch (RCTRF8, 2026-11-12).
+        self.came: list[socket.socket] = []
         self.lock = threading.Lock()
         path.parent.mkdir(mode=0o700, exist_ok=True)
         self.listening = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -2923,6 +2927,8 @@ class StandIn:
                 client, _ = self.listening.accept()
             except OSError:
                 return
+            with self.lock:
+                self.came.append(client)
             threading.Thread(target=self.serve, args=(client,), daemon=True).start()
 
     def serve(self, client: socket.socket) -> None:
@@ -2981,8 +2987,13 @@ class StandIn:
         """Stop listening, let every client go and take the socket away, as a daemon stopped."""
         self.listening.close()
         with self.lock:
-            for client in self.clients:
+            for client in self.came:
+                # Shut first, since a client's own thread blocks reading it, and a bare close
+                # leaves the shell's end open until that read ends.
+                with contextlib.suppress(OSError):
+                    client.shutdown(socket.SHUT_RDWR)
                 client.close()
+            self.came.clear()
             self.clients.clear()
         self.path.unlink(missing_ok=True)
 
@@ -3200,6 +3211,36 @@ def test_an_answer_its_daemon_moves_is_presented_as_a_change_is(
     assert presented, "the battery's move was never said presented"
     change = presented[0]
     assert change["at"] >= change["from"], f"said {change}, presented before its line"
+
+
+def test_a_charge_told_in_batterys_step_is_said_there(shell: Shell, machine: StandIn) -> None:
+    """A charge the daemon tells while Battery's step is shown under Machine is said there.
+
+    Power watched the machine daemon only while its own answer or place could be seen, and a
+    step into Battery under Machine was neither, so Charge kept a figure held from before as
+    current (Y2YBTS, 2026-11-12 [495f1a1b]).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Power" in shown["rows"])
+    shell.down_to("Power")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Battery" in shown["rows"])
+    shell.down_to("Battery")
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Charge" in shown["rows"])
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    watched = machine.watching("place:power", deadline)
+    machine.told(battery(77), [])
+    shell.down_to("Charge")
+    if watched:
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "77%")
+    selected = shell.showing()["selected"]
+    shell.close_launcher()
+    assert watched, "Power's rows were never watched in Battery's step"
+    assert selected["side"] == "77%", selected
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:
