@@ -111,6 +111,12 @@ fn busy_before(seen: &[i64], index: usize) -> Option<i64> {
         })
 }
 
+/// The night a kept stop belongs to, read by `local`.
+pub fn night_at(stop: i64, local: impl Fn(i64) -> Option<Local>) -> Option<Night> {
+    let _ = (stop, local);
+    None
+}
+
 /// The night a stop at this local time belongs to.
 fn night_of(stop: i64, clock: Local) -> Night {
     let today = days_from_civil(clock.year, clock.month, clock.day);
@@ -142,6 +148,9 @@ pub struct Profile {
     /// Each weekday's, Sunday first, where it has three nights, the latest
     /// weighing most.
     pub weekdays: [Option<u32>; 7],
+    /// The evening the readings end at, where it isn't today's: the last
+    /// he was here, after a break.
+    pub from: Option<i64>,
 }
 
 impl Profile {
@@ -174,6 +183,7 @@ impl Profile {
             nights: recent.len(),
             usual: middle(recent),
             weekdays,
+            from: None,
         }
     }
 
@@ -417,6 +427,33 @@ mod tests {
             profile.weekdays[5].map(clock_of).as_deref(),
             Some("00:30"),
             "the last two Fridays outweigh six older ones"
+        );
+    }
+
+    #[test]
+    fn after_a_break_the_last_four_weeks_he_was_here_are_followed() {
+        // Four weeks of nights stopping at 01:00, the last forty days ago.
+        let seen = stopping((40..68).rev(), 25, 0);
+        let profile = Profile::of(&nights(&seen, 0, fixed(TORONTO)), WEDNESDAY);
+        assert_eq!(
+            profile.from,
+            Some(WEDNESDAY - 40),
+            "from the last evening he was here"
+        );
+        assert_eq!(
+            profile.tonight(3),
+            (7 * 60, true),
+            "his habit then, learned, not the guess"
+        );
+    }
+
+    #[test]
+    fn a_night_is_read_again_from_its_stop() {
+        let found = nights(&evening(WEDNESDAY, 24, 40), 0, fixed(TORONTO));
+        assert_eq!(
+            night_at(found[0].stop, fixed(TORONTO)),
+            Some(found[0]),
+            "the same night"
         );
     }
 

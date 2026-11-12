@@ -126,6 +126,7 @@ mod tests {
             nights: 23,
             usual: Some(6 * 60 + 40),
             weekdays,
+            from: None,
         }
     }
 
@@ -171,6 +172,7 @@ mod tests {
             nights: 3,
             usual: Some(6 * 60 + 40),
             weekdays: [None; 7],
+            from: None,
         };
         let read = said(&few, 4, None);
         assert!(

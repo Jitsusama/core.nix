@@ -82,6 +82,14 @@ fn now() -> i64 {
         })
 }
 
+/// The nights' stops worth keeping as of `now`: those the minutes seen
+/// found, and the kept ones from before the minutes seen begin at
+/// `seen_from`, back a year and a month, sorted.
+fn year(kept: Vec<i64>, found: &[i64], seen_from: i64, now: i64) -> Vec<i64> {
+    let _ = (kept, seen_from, now);
+    found.to_vec()
+}
+
 /// Minutes, sorted, each once, from the last `KEEP_DAYS` before `now`.
 fn kept(mut seen: Vec<i64>, now: i64) -> Vec<i64> {
     let since = now - KEEP_DAYS * 86_400;
@@ -336,6 +344,19 @@ pub fn keep(paths: &Paths) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_year_of_nights_is_kept_past_the_minutes() {
+        let day = 86_400;
+        let now = 500 * day;
+        let kept = vec![now - 410 * day, now - 200 * day, now - 10 * day];
+        let found = [now - 9 * day, now - 2 * day];
+        assert_eq!(
+            year(kept, &found, now - 120 * day, now),
+            vec![now - 200 * day, now - 9 * day, now - 2 * day],
+            "the minutes' nights, and the kept ones before them within the year"
+        );
+    }
 
     #[test]
     fn minutes_are_kept_once_sorted_and_for_a_season() {
