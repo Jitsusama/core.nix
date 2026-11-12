@@ -4,15 +4,20 @@
 //! date its answer is due, until its figure has been back for two days.
 //! Each owner is told once a day of what's new for it, in one message,
 //! and a finding still open past its date goes to the orchestrator once,
-//! so nothing a day found is lost and nobody is asked twice.
+//! so nothing a day found is lost and nobody is asked twice. A must a
+//! quest owes, filed with `cadence owe` (owe.rs), is kept here too, and
+//! stays open until its owner says it's done.
 
 use std::collections::BTreeMap;
+use std::fs;
+use std::io;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::DAY;
 use crate::day::{self, Day};
 use crate::judge::Finding;
+use crate::{DAY, write_whole};
 
 /// One finding as the ledger keeps it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,6 +46,30 @@ pub struct Entry {
     pub told: Option<String>,
     /// Whether the orchestrator has been told it's past its date.
     pub late: bool,
+    /// What a must its owner filed is, such as `hole` for a known exposure
+    /// not yet closed; none for a finding of cadence's own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
+/// The ledger kept at `path`, a line each; a line that isn't an entry is
+/// left out rather than failing the run.
+#[must_use]
+pub fn read(path: &Path) -> Vec<Entry> {
+    fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
+/// Keeps `ledger` at `path` whole, so a reader never sees half of it.
+pub fn keep(path: &Path, ledger: &[Entry]) -> io::Result<()> {
+    let lines: Vec<String> = ledger
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<_, _>>()?;
+    write_whole(path, &(lines.join("\n") + "\n"))
 }
 
 /// The rule every finding of cadence's closes by.
@@ -88,12 +117,14 @@ pub fn update(
                 open: true,
                 told: None,
                 late: false,
+                kind: None,
             });
         }
     }
     // Two runs a day apart without it, with a little slack for a timer
-    // that fired late; a run again the same evening closes nothing.
-    for entry in ledger.iter_mut().filter(|e| e.open) {
+    // that fired late; a run again the same evening closes nothing. A
+    // must its owner filed no day's read finds, so only its owner closes it.
+    for entry in ledger.iter_mut().filter(|e| e.open && e.kind.is_none()) {
         if day.to - entry.last_to >= 2 * DAY - DAY / 2 {
             entry.open = false;
         }
@@ -157,7 +188,7 @@ pub fn late(ledger: &mut [Entry], now: i64) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn found(key: &str) -> Finding {
@@ -170,7 +201,8 @@ mod tests {
         }
     }
 
-    fn day(date: &str, to: i64) -> Day {
+    /// A day that ended at `to`, for the ledger's tests and owe's.
+    pub(crate) fn day(date: &str, to: i64) -> Day {
         Day {
             date: date.to_owned(),
             to,

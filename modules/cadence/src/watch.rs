@@ -26,6 +26,10 @@ pub const JOEL_CPU_AVG300: f64 = 10.0;
 /// fixed forward or reverted by hand, and on 6 November a revert that
 /// conflicted left it so with only a log line said.
 pub const HELD_UNREVERTED_MIN: i64 = 10;
+/// The net's first revert still landing this long, in minutes, is stuck:
+/// its changed-checks took 6 to 26 minutes on 12 November, when a revert
+/// of #3613 was called stuck at 10 while they ran.
+pub const REVERT_LANDING_MIN: i64 = 40;
 /// The card is overdue when neither the watcher nor cadence sent one this
 /// long, in seconds; cadence then sends its own, since asking the watcher
 /// waits on that session's turn, and on 7 November three cards in a row
@@ -133,15 +137,19 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
     if let Some(breach) = s.round.as_ref().and_then(|round| lag(round, s.now)) {
         out.push(breach);
     }
-    if let Some(hold) = s
-        .net_hold
-        .as_ref()
-        .filter(|h| !h.reverting && s.now - h.at >= HELD_UNREVERTED_MIN * 60)
-    {
-        let culprit = hold.bad_pr.map_or_else(
-            || "it couldn't tell which merge broke it".to_owned(),
-            |pr| format!("it blames #{pr} and couldn't revert it"),
-        );
+    if let Some(hold) = s.net_hold.as_ref().filter(|h| {
+        let patience = if h.landing {
+            REVERT_LANDING_MIN
+        } else {
+            HELD_UNREVERTED_MIN
+        };
+        !h.reverting && s.now - h.at >= patience * 60
+    }) {
+        let culprit = match (hold.bad_pr, hold.landing) {
+            (None, _) => "it couldn't tell which merge broke it".to_owned(),
+            (Some(pr), true) => format!("it blames #{pr}, and its revert hasn't landed"),
+            (Some(pr), false) => format!("it blames #{pr} and couldn't revert it"),
+        };
         out.push(Breach {
             key: format!("hold:{}", hold.at),
             text: format!(
@@ -621,6 +629,33 @@ mod tests {
     }
 
     #[test]
+    fn a_revert_still_landing_is_given_the_time_its_checks_take() {
+        let mut s = calm(100_000);
+        let hold = NetHold {
+            at: 100_000 - 12 * 60,
+            test: "vm-a".into(),
+            bad_pr: Some(3613),
+            reverting: false,
+            landing: true,
+        };
+        s.net_hold = Some(hold.clone());
+        assert!(
+            breaches(&s).is_empty(),
+            "a revert whose checks run was called stuck"
+        );
+        s.net_hold = Some(NetHold {
+            at: 100_000 - 41 * 60,
+            ..hold
+        });
+        let said = breaches(&s);
+        let landing = "it blames #3613, and its revert hasn't landed";
+        assert!(
+            said.first().is_some_and(|b| b.text.contains(landing)),
+            "a revert landing past its checks' time wasn't said so: {said:?}"
+        );
+    }
+
+    #[test]
     fn a_hold_with_no_revert_is_said_once_after_ten_minutes() {
         let mut s = calm(100_000);
         let hold = NetHold {
@@ -628,6 +663,7 @@ mod tests {
             test: "vm-a".into(),
             bad_pr: Some(2059),
             reverting: false,
+            landing: false,
         };
         s.net_hold = Some(hold.clone());
         assert_eq!(breaches(&s), [] as [crate::watch::Breach; 0]);

@@ -15,7 +15,7 @@ use jiff::tz::TimeZone;
 
 use crate::builders;
 use crate::day::{self, Day};
-use crate::findings::{self, Entry};
+use crate::findings;
 use crate::health;
 use crate::judge;
 use crate::machine;
@@ -43,7 +43,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     let before = kept(&days, now);
     let judged = judge::judge(&today, &before);
     let kept_at = folder.join("findings.jsonl");
-    let mut ledger = ledger(&kept_at);
+    let mut ledger = findings::read(&kept_at);
     findings::update(&mut ledger, &today, &judged.worse, &told.owners);
     // A typed run tells nobody, so it marks nobody told or late.
     let sending = told.orchestrator.is_some();
@@ -57,11 +57,7 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
     } else {
         Vec::new()
     };
-    let lines: Vec<String> = ledger
-        .iter()
-        .map(serde_json::to_string)
-        .collect::<Result<_, _>>()?;
-    write_whole(&kept_at, &(lines.join("\n") + "\n"))?;
+    findings::keep(&kept_at, &ledger)?;
     let note = judge::note(&today, &judged, before.len(), &late);
     let mut record = serde_json::to_value(&today)?;
     record["worse"] = serde_json::to_value(&judged.worse)?;
@@ -84,16 +80,6 @@ pub fn run(folder: &Path, state_home: &Path, told: &Told, now: i64) -> io::Resul
         mesh.send(&message(orchestrator, "fyi", note))?;
     }
     Ok(())
-}
-
-/// The ledger as kept, a line each; a line that isn't an entry is left
-/// out rather than failing the day.
-fn ledger(path: &Path) -> Vec<Entry> {
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
 }
 
 /// The days kept before the one ending at `now`: the newest `BEFORE` that

@@ -333,7 +333,8 @@
   '';
   cadence-asks-when-a-target-slips = ''
     cadence asks the session keeping the cycle fast once about each missed target or overdue card,
-    tells the orchestrator above it when that session doesn't answer or is gone, tells an
+    gives the net's revert the time its checks take before calling it stuck, keeps a must a
+    quest owes open until its owner says it's done, tells the orchestrator above it when that session doesn't answer or is gone, tells an
     orchestrator of a session idle two hours by its log's last write, revives a crashed
     orchestrator while leaving one that was ended, marks each of Joel's axes past its bar
     with its owner, and holds the figures health writes, a boot past 30 s, an unread yes to an
