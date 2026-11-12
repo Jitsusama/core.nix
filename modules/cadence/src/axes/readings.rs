@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{Axis, Bar, Reading, shown};
-use super::{counted, landings, plans};
+use super::{counted, landings, measure, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -112,6 +112,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
             "responsiveness",
             [
                 counted::keys(&s.launcher, counted::timed(&s.trials, s.midnight * 1000)),
+                counted::stalls(s.day.as_ref().map(|d| &d.figures)),
                 counted::responds(&s.counted),
             ]
             .concat(),
@@ -119,11 +120,6 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         stress(s),
     ]
 }
-
-/// Why a dollar figure is held back: the daily measure, spend-watch and
-/// the bill tell different stories of a day, and none goes before Joel
-/// until QCXZEB, who owns spend, says which is true.
-const DISAGREE: &str = "its sources disagree, and QCXZEB is settling which is true";
 
 fn resources(s: &Sources) -> Axis {
     // Spend is the bill per core or harness change that reached him and
@@ -138,15 +134,7 @@ fn resources(s: &Sources) -> Axis {
         bill,
         changes,
         landings::harness(&s.harness, s.now, &TimeZone::system()),
-        Reading::new(
-            "spent on cache rewrites after compaction {}",
-            s.measures.last().and_then(|m| after_compaction(m)),
-            "$",
-            "QCXZEB",
-        )
-        .bar(Bar::AtMost(100.0))
-        .from("the daily measure's cache rewrites")
-        .held(DISAGREE),
+        measure::rewrites(s.measures.last().map(String::as_str)),
         Reading::new(
             "agents' CPU pressure {} over the day",
             figure("pressure.cpu.jobs"),
@@ -170,7 +158,7 @@ fn resources(s: &Sources) -> Axis {
         )
         .bar(Bar::AtMost(0.0))
         .from("cadence's day, the kernel's journal"),
-        counted::one_call(s.measures.last().map(String::as_str)),
+        measure::one_call(s.measures.last().map(String::as_str)),
     ];
     readings.extend(counted::held(&s.counted));
     axis("resources", readings)
@@ -416,25 +404,6 @@ pub(super) fn count(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
-fn money(text: &str) -> Option<f64> {
-    let digits: String = text
-        .trim_start_matches('$')
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == ',' || *c == '.')
-        .filter(|c| *c != ',')
-        .collect();
-    digits.parse().ok()
-}
-
-/// What cache rewrites after a compaction cost, from the measure's
-/// "- after compaction: 1183 times, $474" line.
-fn after_compaction(measure: &str) -> Option<f64> {
-    let line = measure
-        .lines()
-        .find_map(|l| l.strip_prefix("- after compaction: "))?;
-    money(line.split(", ").nth(1)?)
-}
-
 /// The median the card's line starting `what` says, none when it says
 /// none.
 fn card_median(card: &str, what: &str) -> Option<f64> {
@@ -650,14 +619,6 @@ VM wait for a builder (target median 2): median 0.0, p90 0.0, max 0.4 min (n 71)
 The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
 ";
 
-    fn measure(spend: &str) -> String {
-        format!(
-            "# Daily Measure\n\n## Audit\n\nSpend: ${spend} over 115278 turns, up 14% on the day \
-             before. Cache reads $3,893.\n\nCache rewrites, by cause:\n- after compaction: 1183 \
-             times, $474\n- idle over an hour: 139 times, $192\n"
-        )
-    }
-
     #[test]
     fn the_card_says_its_medians_and_what_waits() {
         assert_eq!(card_median(CARD, "Last commit to merge"), Some(0.9));
@@ -677,12 +638,6 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
         let on = &time(&s).readings[0];
         assert_eq!(on.now, Some(177.0));
         assert!(on.out(), "a merge waiting 177 min was in spec");
-    }
-
-    #[test]
-    fn the_measure_says_rewrites() {
-        assert_eq!(after_compaction(&measure("7,293")), Some(474.0));
-        assert_eq!(after_compaction("no rewrites here"), None);
     }
 
     #[test]
