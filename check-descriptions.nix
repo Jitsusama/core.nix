@@ -728,7 +728,9 @@
     saying more than its line, each fact named by the vocabulary and each eyebrow saying where
     and what: a connection's packet size, its link and its hardware, a rate's range over its
     reads and what it carried since startup; Ethernet with no card holds its place, not plugged
-    in; and Wi-Fi's own row leads with the network joined, its signal and how long
+    in; Wi-Fi's own row leads with the network joined, its signal and how long; and a
+    connection's drawer shows whole or not at all, its facts made unasked and made again in
+    place as it changes
   '';
   every-place-is-on-where-its-source-is = ''
     on a machine holding every module and all each reads, every launcher place is on, so a

@@ -55,7 +55,8 @@
   # of its own, has a drawer saying more than its line, each fact named by
   # the vocabulary (tests/network-drawers.qml): Address over two stand-in
   # connections, Traffic over the sandbox's own counters, Ethernet with no
-  # card, and Wi-Fi's own row's drawer.
+  # card, Wi-Fi's own row's drawer, and a connection's drawer shown whole or
+  # not at all, never growing.
   every-network-row-has-a-drawer = pkgs.runCommandLocal "every-network-row-has-a-drawer" { } ''
     mkdir -p launcher runtime && chmod 700 runtime
     ${copied [
@@ -70,6 +71,7 @@
     cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
     cp ${../../../tests/network-drawers.qml} shell.qml
     cp ${../../../tests/lib/Expect.js} Expect.js
+    cp ${../../../tests/lib/Until.qml} Until.qml
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
