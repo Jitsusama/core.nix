@@ -8,10 +8,13 @@
 //! way to bed, or a message an agent sent in his name, doesn't move it; a
 //! lone minute just before the gap gives way to the busy one before it.
 //!
-//! What's usual is the middle of the last four weeks' stops, and each
-//! weekday's the middle of the last eight weeks' stops on that weekday
-//! once there are three. Until there are a week's nights, the evening
-//! guesses a midnight stop, and says it guesses.
+//! What's usual is the middle of the last four weeks' stops, each week back
+//! counting half as much as the one after it, so a change of habit shows
+//! within a week and one late night moves nothing. Each weekday's is the
+//! middle of the last eight weeks' stops on that weekday once there are
+//! three, each fortnight back counting half, so a weekday follows its own
+//! change within two. Until there are a week's nights, the evening guesses
+//! a midnight stop, and says it guesses.
 
 use crate::clock::{Local, days_from_civil};
 
@@ -33,6 +36,11 @@ pub const GUESS: u32 = 6 * 60;
 const USUAL_DAYS: i64 = 28;
 const WEEKDAY_DAYS: i64 = 56;
 const WEEKDAY_NIGHTS: usize = 3;
+/// How many days back a night's weight halves, toward what's usual and
+/// toward its weekday's, and what the newest night weighs.
+const USUAL_HALVES: i64 = 7;
+const WEEKDAY_HALVES: i64 = 14;
+const NEWEST: u32 = 1 << 10;
 
 /// A night Joel stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -119,9 +127,11 @@ fn night_of(stop: i64, clock: Local) -> Night {
 pub struct Profile {
     /// How many nights the last four weeks hold.
     pub nights: usize,
-    /// The middle of their stops, in minutes after 18:00.
+    /// The middle of their stops, the latest weighing most, in minutes
+    /// after 18:00.
     pub usual: Option<u32>,
-    /// Each weekday's, Sunday first, where it has three nights.
+    /// Each weekday's, Sunday first, where it has three nights, the latest
+    /// weighing most.
     pub weekdays: [Option<u32>; 7],
 }
 
@@ -133,11 +143,19 @@ impl Profile {
                 .iter()
                 .filter(move |night| night.evening <= today && today - night.evening < days)
         };
-        let recent: Vec<u32> = within(USUAL_DAYS).map(|night| night.after_six).collect();
+        let weighed = |night: &Night, halves: i64| {
+            (
+                night.after_six,
+                NEWEST >> ((today - night.evening) / halves),
+            )
+        };
+        let recent: Vec<(u32, u32)> = within(USUAL_DAYS)
+            .map(|night| weighed(night, USUAL_HALVES))
+            .collect();
         let weekdays = std::array::from_fn(|weekday| {
-            let stops: Vec<u32> = within(WEEKDAY_DAYS)
+            let stops: Vec<(u32, u32)> = within(WEEKDAY_DAYS)
                 .filter(|night| night.weekday as usize == weekday)
-                .map(|night| night.after_six)
+                .map(|night| weighed(night, WEEKDAY_HALVES))
                 .collect();
             (stops.len() >= WEEKDAY_NIGHTS)
                 .then(|| middle(stops))
@@ -161,10 +179,20 @@ impl Profile {
     }
 }
 
-/// The middle of some stops, the lower of the two middle ones when even.
-fn middle(mut stops: Vec<u32>) -> Option<u32> {
+/// The middle of some stops by their weights: the first, earliest to
+/// latest, at which half the weight is reached, so of two equal halves the
+/// earlier.
+fn middle(mut stops: Vec<(u32, u32)>) -> Option<u32> {
     stops.sort_unstable();
-    stops.get(stops.len().saturating_sub(1) / 2).copied()
+    let total: u32 = stops.iter().map(|(_, weight)| weight).sum();
+    let mut reached = 0;
+    stops
+        .into_iter()
+        .find(|&(_, weight)| {
+            reached += weight;
+            2 * reached >= total
+        })
+        .map(|(stop, _)| stop)
 }
 
 /// A time in minutes after 18:00 as the clock says it, `00:40`.

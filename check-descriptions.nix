@@ -2032,7 +2032,8 @@
   rhythm-learns-when-joel-stops = ''
     rhythm finds each night's stop at the last busy minute before four hours' sleep, never at
     dinner, lunch or a stray key, makes four weeks' middle usual with each weekday's own habit,
-    guesses midnight and says so with under a week of nights, reads only the times Joel typed from
+    the latest nights weighing most so a change shows within a week, guesses midnight and says so
+    with under a week of nights, reads only the times Joel typed from
     zsh's history and pi's logs, and says it in plain words and its profile file; and it suggests a
     walk only in daylight after a long stretch at the machine, an hour and a half apart, at most
     three a day and one in poor weather, saying the weather and the sunset

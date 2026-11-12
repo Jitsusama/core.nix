@@ -10,7 +10,8 @@
 onLinux {
   # rhythm's tests run as it builds: a night stops at the last busy minute
   # before four hours' sleep, never at dinner, lunch or a stray key; the
-  # usual stop is four weeks' middle and a weekday keeps its own habit;
+  # usual stop is four weeks' middle, the latest weighing most, so a
+  # change of habit shows within a week, and a weekday keeps its own;
   # too few nights guess midnight and say so; the logs give only the
   # times Joel typed; Joel reads it plainly; and a walk is suggested only
   # in daylight after a long stretch, apart, three a day and one in poor
