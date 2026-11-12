@@ -4185,10 +4185,10 @@
     says a quiet machine's image fits, and with no room exits 1 saying not, plainly
   '';
   vm-joel-comes-first = ''
-    with an account's slices holding what optimus's held at 12 November's 16:33 freeze, an eighth
-    the size, a stand-in shell in session.slice draws a frame every 16 ms within 50 ms of its time
-    through a fetch in agents.slice and a grep and three commands in jobs.slice wanting a quarter
-    more of memory within seconds
+    on an eighth of optimus's memory, with agents' sessions, their work and shared work each under
+    its slice's ceiling and walking what it holds, a stand-in shell in session.slice drops no
+    frame of 16 ms through a fetch in agents.slice and a grep and three commands in jobs.slice
+    bursting until together they pass memory by a fifth, as at 12 November's 16:33 freeze
   '';
   vm-idle-sleep-comes-only-on-battery = ''
     a machine left idle on the charger stays awake, and sleeps once the charger is unplugged, even

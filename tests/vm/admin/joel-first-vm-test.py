@@ -48,9 +48,11 @@ WORK_WALK = 1
 # How long the shell draws, and how far in the burst comes.
 DRAWING = 40
 BURST_AFTER = 5
-# The latest a frame may come, in milliseconds: three frames, past which a
-# key's echo is a visible stall.
-LATEST = 50
+# The latest a frame may come, in milliseconds: a frame's time, past which
+# it misses the screen's next refresh and is dropped. On today's slices of
+# 12 November the worst came 108 ms and 34 ms late in two runs; with the
+# floors and ceilings fitted, 5.6 ms.
+LATEST = 16
 
 READS = {
     "pushed": SHARED_READ,
@@ -127,7 +129,7 @@ def loaded(machine: BaseMachine, values: dict[str, Any]) -> Account:
 
 
 def test_the_shell_draws_on_time_through_a_burst_of_work(loaded: Account) -> None:
-    """Joel's shell draws every frame within three of its time while agents' work bursts."""
+    """Joel's shell drops no frame while agents' work bursts."""
     machine = loaded.machine
     result = f"{RUNTIME}/frames.json"
     before = stalls(machine)
