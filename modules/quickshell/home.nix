@@ -226,7 +226,8 @@ let
     let
       # A + alone is the key too, as Calendar's Add a calendar is: split,
       # it was an empty key, and its chord drew nothing.
-      key = if keys == "+" || lib.hasSuffix "++" keys then "+" else lib.last (lib.splitString "+" keys);
+      lonePlus = keys == "+" || lib.hasSuffix "++" keys;
+      key = if lonePlus then "+" else lib.last (lib.splitString "+" keys);
       held = lib.init (lib.splitString "+" (lib.removeSuffix "+" keys));
       pressed = if lib.elem key wholeKeys then [ key ] else held ++ [ key ];
       face =

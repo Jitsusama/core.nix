@@ -37,21 +37,11 @@ Provider {
 
     collection: Words.collection("shortcuts", { searched: false })
 
-    readonly property var places: ({
-        desktop: "on the desktop",
-        terminal: "in the terminal",
-        neovim: "in Neovim",
-        pi: "in pi",
-        // Google's programs, each a page in Chrome, whose own keys are
-        // found beside Chrome's, so a chord found says whose it is.
-        "google-mail": "in Mail",
-        "google-calendar": "in Calendar",
-        "google-meet": "in Meet",
-        "google-docs": "in Docs",
-        "google-sheets": "in Sheets",
-        "google-slides": "in Slides",
-        "google-drive": "in Drive"
-    })
+    // Where each layer's chords work, by its name, as a row's note and its
+    // drawer's eyebrow both say it, one spelling for both (Y2YBTS's review
+    // of #3659). Google's programs are each a page in Chrome, whose own keys
+    // are found beside Chrome's, so a chord found says whose it is.
+    readonly property var places: Words.of("shortcuts").said?.places ?? ({})
 
     // The words that find a layer's shortcuts besides their names.
     readonly property var also: ({
@@ -151,7 +141,7 @@ Provider {
     function drawerOf(layer, bind) {
         const fact = (id, value) => ({ label: Words.name(`shortcuts:${id}`), value: value });
         const said = Words.of("shortcuts").said ?? {};
-        const place = layer.name === "desktop" ? said.desktop ?? placeOf(layer) : placeOf(layer);
+        const place = placeOf(layer);
         // Each other way a fact of its own, the first named Also and the
         // rest under it unnamed, since a value beside its name keeps to
         // one line (Drawer.qml, besideOnOneLine).

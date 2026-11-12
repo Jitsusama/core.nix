@@ -86,7 +86,7 @@ ShellRoot {
             const below = map.all.filter(one => one.name === "Go to the workspace below"
                 && String(one.key).startsWith("shortcut:desktop:"));
             expect("a swipe joins its chord's row", below.length === 1
-                && below[0].note === "on the desktop", below.map(one => one.note).join("; "));
+                && below[0].note === "on this desktop", below.map(one => one.note).join("; "));
             // Every chord's drawer says a little more than its line: its
             // keys, every other way to do it, where it works and what it
             // runs (docs/design.md, Every row says a little more beside it).
@@ -104,6 +104,13 @@ ShellRoot {
                     && values.includes("3 fingers up"), values.join(" | "));
             expect("a desktop chord's eyebrow says where",
                 plate.eyebrow === "on this desktop \u00b7 shortcut", plate.eyebrow);
+            // Seen together, the row and its drawer spell the place one way
+            // (Y2YBTS's review of #3659): each reads it from the words.
+            const spelled = map.all.filter(one => String(one.key).startsWith("shortcut:")
+                && !one.verbs && typeof one.drawer === "function"
+                && !one.drawer().eyebrow.startsWith(String(one.note).split(", ")[0]));
+            expect("a chord's row and drawer name its place alike", spelled.length === 0,
+                spelled.slice(0, 3).map(one => `${one.note} / ${one.drawer().eyebrow}`).join("; "));
             const undrawn = map.all.filter(one => !one.verbs && facts(one) === "");
             expect("every chord has a drawer", undrawn.length === 0,
                 names(undrawn.slice(0, 3)).join(", "));

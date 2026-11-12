@@ -725,7 +725,19 @@
       "ask": "which shortcut?",
       "said": {
         "eyebrow": "{place} \u00b7 shortcut",
-        "desktop": "on this desktop"
+        "places": {
+          "desktop": "on this desktop",
+          "terminal": "in the terminal",
+          "neovim": "in Neovim",
+          "pi": "in Agents",
+          "google-mail": "in Mail",
+          "google-calendar": "in Calendar",
+          "google-meet": "in Meet",
+          "google-docs": "in Docs",
+          "google-sheets": "in Sheets",
+          "google-slides": "in Slides",
+          "google-drive": "in Drive"
+        }
       }
     },
     {

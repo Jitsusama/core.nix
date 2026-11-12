@@ -1105,7 +1105,9 @@ def test_super_shift_shows_every_layers_shortcuts_and_runs_the_desktops(  # noqa
     desktop.type_in(swipe, selecting="Go to the workspace below")
     below = desktop.showing()
     assert not below["selected"]["chord"].startswith("3 "), below["selected"]
-    assert "3 fingers up" in below["footer"], below["footer"]
+    # The swipe is another way to do it, so its drawer says it, under Also (VKCF3Z, 358703a5).
+    also = [fact["value"] for fact in below["selected"]["drawer"]["facts"]]
+    assert "3 fingers up" in also, below["selected"]["drawer"]
     assert below["rows"].count("Go to the workspace below") == 1, below["rows"]
     desktop.shoot("launcher-swipes")
     for _ in swipe:
