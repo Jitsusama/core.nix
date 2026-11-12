@@ -20,7 +20,12 @@
 //! Work naming no quest, or one the file doesn't list, stays where it
 //! went before. The file is read again whenever it changes, and a quest
 //! whose weight changed is weighed again.
+//!
+//! Given tiers (src/tiers.rs), a quest's slice sits inside its tier's,
+//! jobs-work-walgit-qest20261024abc123.slice, so its weight ranks it only
+//! among the quests of its tier.
 
+use crate::tiers::{self, Tiers};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -121,6 +126,8 @@ pub struct Weights {
     /// Whether a failure to weigh has been said, apart from the sorter's
     /// other failures, so neither kind hides the other.
     failed: bool,
+    /// The tiers each quest's slice sits in, when the machine has them.
+    tiers: Option<Tiers>,
 }
 
 impl Weights {
@@ -131,7 +138,40 @@ impl Weights {
             by_quest: HashMap::new(),
             weighed: HashMap::new(),
             failed: false,
+            tiers: None,
         }
+    }
+
+    /// Puts each quest's slice inside its tier's.
+    pub fn rank_by(&mut self, tiers: Tiers) {
+        self.tiers = Some(tiers);
+    }
+
+    /// The slice a quest's work goes in under `base`: inside its tier's,
+    /// when ranking by tiers.
+    fn quest_slice(&self, base: &str, quest: &str) -> Option<String> {
+        match &self.tiers {
+            Some(ranks) => slice_for(&tiers::slice_for(base, ranks.tier_of(quest))?, quest),
+            None => slice_for(base, quest),
+        }
+    }
+
+    /// Each listed quest whose tier changed since it was last looked at,
+    /// with the tier it was in and the one it is in now, each said once.
+    pub fn moves(&mut self) -> Vec<(String, String, String)> {
+        let Some(ranks) = self.tiers.as_mut() else {
+            return Vec::new();
+        };
+        let mut quests: Vec<&String> = self.by_quest.keys().collect();
+        quests.sort();
+        quests
+            .into_iter()
+            .filter_map(|quest| {
+                let now = ranks.tier_of(quest).to_string();
+                let before = ranks.moved(quest, &now)?;
+                Some((quest.clone(), before, now))
+            })
+            .collect()
     }
 
     /// Takes a weights file's text as the current weights.
@@ -157,12 +197,20 @@ impl Weights {
         }
     }
 
+    /// Reads the weights and the tiers' files again, each if it changed.
+    pub fn refresh_all(&mut self) {
+        self.refresh();
+        if let Some(ranks) = self.tiers.as_mut() {
+            ranks.refresh();
+        }
+    }
+
     /// Where a piece of work in `base` goes and at what weight, from its
     /// root's environment, or `None` to leave it where it would have gone.
     pub fn place(&self, base: &str, environ: &[u8]) -> Option<(String, u64)> {
         let quest = quest_in(environ)?;
         let weight = *self.by_quest.get(quest)?;
-        let slice = slice_for(base, quest)?;
+        let slice = self.quest_slice(base, quest)?;
         Some((slice, weight.clamp(*WEIGHTS.start(), *WEIGHTS.end())))
     }
 
@@ -171,7 +219,7 @@ impl Weights {
         self.by_quest
             .iter()
             .filter_map(|(quest, weight)| {
-                let slice = slice_for(base, quest)?;
+                let slice = self.quest_slice(base, quest)?;
                 self.weighed
                     .contains_key(&slice)
                     .then(|| (slice, (*weight).clamp(*WEIGHTS.start(), *WEIGHTS.end())))
@@ -205,6 +253,83 @@ mod tests {
     use super::*;
 
     const FILE: &str = "{\n\t\"QEST-20261023-R82FBP\": 200,\n\t\"QEST-20261024-ABC123\": 400\n}\n";
+
+    /// Weights ranked by tiers: ABC123 heads walgit, and R82FBP is under
+    /// a quest no tier claims.
+    fn ranked() -> Weights {
+        let mut weights = Weights::new(PathBuf::new());
+        weights.take(FILE);
+        let mut ranks = Tiers::new(PathBuf::new(), PathBuf::new());
+        ranks.take_heads(r#"{"QEST-20261024-ABC123": "walgit"}"#);
+        ranks.take_parents(r#"{"QEST-20261023-R82FBP": "QEST-20261001-OTHER0"}"#);
+        weights.rank_by(ranks);
+        weights
+    }
+
+    #[test]
+    fn a_quests_slice_sits_inside_its_tiers() {
+        let weights = ranked();
+        assert_eq!(
+            weights.place("jobs-work.slice", b"PI_QUEST=QEST-20261024-ABC123\0"),
+            Some(("jobs-work-walgit-qest20261024abc123.slice".into(), 400))
+        );
+        assert_eq!(
+            weights.place("jobs-work.slice", b"PI_QUEST=QEST-20261023-R82FBP\0"),
+            Some(("jobs-work-unranked-qest20261023r82fbp.slice".into(), 200))
+        );
+    }
+
+    #[test]
+    fn a_ranked_quests_slice_is_weighed_where_its_work_went() {
+        let mut weights = ranked();
+        weights.weighed("jobs-work-walgit-qest20261024abc123.slice", 400);
+        assert_eq!(
+            weights.current("jobs-work.slice"),
+            vec![("jobs-work-walgit-qest20261024abc123.slice".to_string(), 400)]
+        );
+    }
+
+    #[test]
+    fn a_quest_moving_tier_is_said_once_with_both_tiers() {
+        let mut weights = ranked();
+        assert_eq!(weights.moves(), Vec::<(String, String, String)>::new());
+        // The zone's map now names the other quest delta's head, and no
+        // longer names ABC123.
+        weights
+            .tiers
+            .as_mut()
+            .unwrap()
+            .take_heads(r#"{"QEST-20261001-OTHER0": "delta"}"#);
+        assert_eq!(
+            weights.moves(),
+            vec![
+                (
+                    "QEST-20261023-R82FBP".into(),
+                    "unranked".into(),
+                    "delta".into()
+                ),
+                (
+                    "QEST-20261024-ABC123".into(),
+                    "walgit".into(),
+                    "unranked".into()
+                ),
+            ]
+        );
+        assert_eq!(weights.moves(), Vec::<(String, String, String)>::new());
+    }
+
+    #[test]
+    fn without_tiers_a_quests_slice_sits_under_the_base() {
+        let mut weights = Weights::new(PathBuf::new());
+        weights.take(FILE);
+        assert_eq!(weights.moves(), Vec::<(String, String, String)>::new());
+        assert_eq!(
+            weights
+                .place("jobs-work.slice", b"PI_QUEST=QEST-20261024-ABC123\0")
+                .map(|(slice, _)| slice),
+            Some("jobs-work-qest20261024abc123.slice".into())
+        );
+    }
 
     #[test]
     fn a_weighing_failure_is_said_once_whatever_else_failed() {

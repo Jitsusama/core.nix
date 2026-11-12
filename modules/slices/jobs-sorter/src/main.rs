@@ -44,7 +44,8 @@
 //!
 //! Work split into a `--by-quest` slice goes in its quest's slice there,
 //! weighted as the `--quests` file says, which `src/quests.rs` says why and
-//! how.
+//! how. With `--tiers` and `--parents`, each quest's slice sits inside its
+//! tier's, as `src/tiers.rs` says why and how.
 //!
 //! With `--background`, a window, a `--home` or `--weigh` scope, whose
 //! every pi is marked there as one nobody is at runs at `--low-weight`
@@ -78,6 +79,7 @@
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
+//!        [--tiers FILE --parents FILE]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 //!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
 //!        [--orchestrators DIR] [--niri niri] [--hosts PREFIX]
@@ -97,6 +99,7 @@ mod real_time;
 mod revive;
 mod strays;
 mod swap_in;
+mod tiers;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -122,6 +125,8 @@ struct Settings {
     no_real_time: Vec<String>,
     by_quest: Vec<String>,
     quests: Option<PathBuf>,
+    tiers: Option<PathBuf>,
+    parents: Option<PathBuf>,
     background: Option<PathBuf>,
     low_weight: u64,
     weigh: Vec<String>,
@@ -1318,6 +1323,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         no_real_time: Vec::new(),
         by_quest: Vec::new(),
         quests: None,
+        tiers: None,
+        parents: None,
         background: None,
         low_weight: 10,
         weigh: Vec::new(),
@@ -1339,6 +1346,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--no-real-time" => settings.no_real_time.push(value()?),
             "--by-quest" => settings.by_quest.push(value()?),
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
+            "--tiers" => settings.tiers = Some(PathBuf::from(value()?)),
+            "--parents" => settings.parents = Some(PathBuf::from(value()?)),
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
@@ -1434,12 +1443,29 @@ fn follow_focus(niri: Option<&Path>, watch: Option<&mut low::Watch>) -> Option<f
 /// Weighs each quest's slice under each of the `bases` that isn't yet weighed as
 /// its quest's priority says.
 fn weigh_quests(weights: &mut quests::Weights, bases: &[String]) {
-    weights.refresh();
+    weights.refresh_all();
+    // Said in the journal, so each move between tiers can be found later.
+    for (quest, before, now) in weights.moves() {
+        eprintln!("{quest} moved from the {before} tier to {now}.");
+    }
     for base in bases {
         for (slice, weight) in weights.unweighed(&weights.current(base)) {
             weigh(weights, &slice, weight);
         }
     }
+}
+
+/// The quests' weights, ranked into tiers when both files are given.
+fn weights_from(settings: &Settings) -> quests::Weights {
+    let mut weights = quests::Weights::new(settings.quests.clone().unwrap_or_default());
+    match (&settings.tiers, &settings.parents) {
+        (Some(heads), Some(parents)) => {
+            weights.rank_by(tiers::Tiers::new(heads.clone(), parents.clone()));
+        }
+        (None, None) => {}
+        _ => eprintln!("--tiers needs --parents, and --parents --tiers, so no quest is ranked."),
+    }
+    weights
 }
 
 fn run() -> Result<(), String> {
@@ -1475,7 +1501,7 @@ fn run() -> Result<(), String> {
     };
     let mut warned = false;
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
-    let mut weights = quests::Weights::new(settings.quests.clone().unwrap_or_default());
+    let mut weights = weights_from(&settings);
     let mut pass: u32 = 0;
     let windows = [settings.homes.as_slice(), &settings.weigh].concat();
     let mut watch = settings.background.as_deref().and_then(watch_marks);
@@ -1676,6 +1702,8 @@ mod tests {
             no_real_time: vec!["jobs.slice/jobs-work.slice".into()],
             by_quest: vec!["jobs-work.slice".into()],
             quests: None,
+            tiers: None,
+            parents: None,
             background: None,
             low_weight: 10,
             weigh: Vec::new(),
