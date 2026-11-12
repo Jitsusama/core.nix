@@ -119,7 +119,10 @@ function ordered(rows) {
 // The kinds For You gives a row of their own after what needs Joel now,
 // in the order the design lists them (VKCF3Z, 2026-11-09; Joel: "there is
 // no to look at section"): To Look At, then To Try.
-const OWN_ROWS = ["look", "try"];
+const OWN_ROWS = ["look", "try", "read"];
+// The kinds never lifted however long they've waited, as they ask nothing of Joel: a look
+// only to see (VKCF3Z, 2026-11-12).
+const NEVER_LIFTED = ["read"];
 
 // Whether a thing needs Joel now, whatever its kind, as a critical notice
 // is lifted over the rest: it blocks a session, or its deadline has
@@ -136,10 +139,11 @@ function pressingBy(thing, now, due) {
 // among what needs Joel now, `now`; a look or a thing to try otherwise in
 // its kind's own row, `look` or `try`.
 function bandOf(kind, thing, now) {
-    return OWN_ROWS.includes(kind) && !pressing(thing, now) ? kind : "now";
+    return NEVER_LIFTED.includes(kind) || OWN_ROWS.includes(kind) && !pressing(thing, now)
+        ? kind : "now";
 }
 
-// For You's items in their bands, { now, look, try }, each item
+// For You's items in their bands, { now, look, try, read }, each item
 // { kind, thing } with whatever else its caller keeps, and given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
 // then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
@@ -148,17 +152,19 @@ function bandOf(kind, thing, now) {
 // and held the shell's thread for seconds of each opening on the laptop
 // (2026-11-10).
 function banded(items, now) {
-    const bands = { now: [], look: [], try: [] };
+    const bands = { now: [], look: [], try: [], read: [] };
     const list = items ?? [];
     for (let at = 0; at < list.length; at += 1) {
         const item = list[at];
         const times = timesOf(item.thing);
-        const band = OWN_ROWS.includes(item.kind) && !pressingBy(item.thing, now, times.due)
+        const band = NEVER_LIFTED.includes(item.kind)
+            || OWN_ROWS.includes(item.kind) && !pressingBy(item.thing, now, times.due)
             ? item.kind : "now";
         bands[band].push({ at, since: times.since, item: Object.assign({}, item,
             { weight: weighBy(item.thing, now, times).weight }) });
     }
-    return { now: inOrder(bands.now), look: inOrder(bands.look), try: inOrder(bands.try) };
+    return { now: inOrder(bands.now), look: inOrder(bands.look), try: inOrder(bands.try),
+        read: inOrder(bands.read) };
 }
 
 // A band's items heaviest first, those alike the oldest first, one with no

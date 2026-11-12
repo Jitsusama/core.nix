@@ -114,6 +114,12 @@ QtObject {
             { kind: "look", since: now - hour }), ["try"]);
         expect("a kind with no row of its own needs him now", band("notice",
             { kind: "look" }), ["now"]);
+        // A look that asks nothing stands To Read, never lifted, since it
+        // asks nothing of him however long it's been (VKCF3Z, 2026-11-12).
+        expect("a look that asks nothing goes in To Read", band("read",
+            { kind: "look", since: now - hour }), ["read"]);
+        expect("and is never lifted", band("read", { kind: "look", blocks: 1,
+            due: now - hour }), ["read"]);
         // Inside each, the heaviest first, those alike the oldest first,
         // then as they came, and each item keeps what its caller gave it.
         const looked = ForYou.banded([
@@ -130,8 +136,8 @@ QtObject {
             [25, 25, 10, 10, 5]);
         expect("the rest in their own band", [looked.now.map(one => one.name),
             looked.try.length], [["f"], 0]);
-        expect("no items, three empty bands", ForYou.banded(undefined, now),
-            { now: [], look: [], try: [] });
+        expect("no items, four empty bands", ForYou.banded(undefined, now),
+            { now: [], look: [], try: [], read: [] });
         // Each thing's times are read once in banding it, whatever its sort
         // weighs: read in the comparator, each ISO time was parsed again
         // for every pair, seconds of each opening on the laptop.
@@ -205,6 +211,7 @@ QtObject {
             cleared: "cleared",
             resolved: "resolved",
             quiet: "went quiet",
+            expired: "expired",
             clock: at => new Date(at).toISOString().slice(11, 16),
             ago: at => `${Math.round((now - at) / 60000)} min ago`,
             day: at => (now - at >= 24 * hour ? "yesterday" : "")
@@ -268,6 +275,37 @@ QtObject {
         expect("a look read whole", read.waiting[0].title, "Review the change");
         expect("a look's time as a number", read.waiting[1].since,
             Date.parse("2026-11-08T09:00:00Z"));
+        expect("none of them to read", read.reading, []);
+
+        // A look that asks nothing is to read, not to look at, until it expires
+        // 24 hours on into History, though no session has written it so yet; one
+        // its session wrote expired, seen or replaced is in History (85PKB2,
+        // 2026-11-12). One saying nothing of asking asks, as the harness's
+        // older looks did.
+        const aging = Looks.looks([
+            { file: "r.json", text: lookOf({ id: "R", asks: false,
+                expiresAt: "2026-11-09T13:00:00Z" }) },
+            { file: "x.json", text: lookOf({ id: "X", asks: false,
+                expiresAt: "2026-11-08T13:30:00Z" }) },
+            { file: "y.json", text: lookOf({ id: "Y", asks: true }) },
+            { file: "z.json", text: lookOf({ id: "Z", state: "expired",
+                resolvedAt: "2026-11-08T12:00:00Z" }) },
+            { file: "s.json", text: lookOf({ id: "S", state: "resolved", how: "seen",
+                resolvedAt: "2026-11-08T11:00:00Z" }) }
+        ], {}, now);
+        expect("one asking nothing, to read", (aging.reading ?? []).map(one => one.id),
+            ["R"]);
+        expect("one asking, to look at", aging.waiting.map(one => one.id), ["Y"]);
+        expect("one past its time, and those done, in History",
+            aging.history.map(one => [one.id, one.state, one.resolved]),
+            [["X", "expired", Date.parse("2026-11-08T13:30:00Z")],
+                ["Z", "expired", Date.parse("2026-11-08T12:00:00Z")],
+                ["S", "resolved", Date.parse("2026-11-08T11:00:00Z")]]);
+        expect("one expired says so at its side", ForYou.historySide(aging.history[0], say),
+            "expired 13:30");
+        expect("an answer taken keeps those to read",
+            Looks.taken(aging, { Y: { label: "Posted", at: now, taken: true } },
+                label => label).reading?.map(one => one.id), ["R"]);
 
         // Read again keeping what was parsed, only a file that changed is
         // parsed again, and one gone is forgotten.

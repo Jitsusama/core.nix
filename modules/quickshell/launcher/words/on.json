@@ -394,6 +394,7 @@
         "cleared": "cleared",
         "resolved": "resolved",
         "quiet": "went quiet",
+        "expired": "expired",
         "openedHow": "opened",
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",
@@ -535,6 +536,13 @@
       "name": "To Try",
       "term": "Desktop/to try",
       "glyph": "toTry"
+    },
+    {
+      "id": "for-you:kind:read",
+      "in": "on:waiting",
+      "name": "To Read",
+      "term": "Desktop/to read",
+      "glyph": "look"
     },
     {
       "id": "for-you:source:sessions",

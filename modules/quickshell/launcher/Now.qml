@@ -1622,6 +1622,12 @@ Provider {
             // Read here so an answer given relists it, saying so.
             answered: provider.lookAnswers[one.id] ?? null,
             make: now => provider.keptLook(one, now)
+        })), looks.reading.map(one => ({
+            // A look that asks nothing, To Read's, its row a look's as any.
+            kind: "read",
+            thing: provider.lookThing(one),
+            answered: null,
+            make: now => provider.keptLook(one, now)
         })), given.waiting.map(one => ({
             kind: one.row.forYou?.kind ?? "do",
             thing: one.thing,
@@ -1669,7 +1675,7 @@ Provider {
         return band.map(one => one.make(now)).filter(row => row !== null);
     }
 
-    // A kind's own row, To Look At or To Try, holding what of that kind
+    // A kind's own row, To Look At, To Try or To Read, holding what of that kind
     // doesn't need Joel now (VKCF3Z, 2026-11-09; Joel: "there is no to look
     // at section"), none when it holds nothing: at its side how many, in
     // its note the heaviest's title, and inside each, heaviest first. It's
@@ -1712,7 +1718,8 @@ Provider {
 
     // For You's own rows, each as it's for (ForYou.js's bands), the
     // heaviest first in each: what needs Joel now, one by one, then To Look
-    // At and To Try, then Lately, Later and History (VKCF3Z, 2026-11-09).
+    // At, To Try and To Read, then Lately, Later and History (VKCF3Z,
+    // 2026-11-09, and 2026-11-12 for To Read, which nothing counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
@@ -1726,7 +1733,8 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         const rows = bandRows(bands.now, now).concat(kindRow("look", bandRows(bands.look, now)),
-            kindRow("try", bandRows(bands.try, now)), latelyRows(now),
+            kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
+            latelyRows(now),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
@@ -1744,7 +1752,7 @@ Provider {
         const now = Date.now();
         const bands = bandsAt(now);
         return bandRows(bands.now, now).concat(bandRows(bands.look, now),
-            bandRows(bands.try, now), latelyRows(now));
+            bandRows(bands.try, now), bandRows(bands.read, now), latelyRows(now));
     }
 
     // What came for Joel, For You's Lately band, after what he can do and
