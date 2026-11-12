@@ -12,7 +12,6 @@
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
-import "Wallpaper.js" as Pixels
 
 Scope {
     Variants {
@@ -29,35 +28,10 @@ Scope {
             screen: modelData
             // Mapped once the picture is read, and kept mapped after.
             visible: picture.read
-
-            // niri's scale for this screen's output: undefined until niri
-            // answers, null where it names none or doesn't answer in time.
-            // The screen says only a whole number, 2 for 1.5, and the window
-            // learns its own only once it's mapped, after the picture is
-            // read, so the picture is read once niri has said.
-            property var scale: undefined
-            readonly property var pixels: Pixels.pixels(modelData, scale ?? null)
-
-            function askScale(): void {
-                const name = window.modelData?.name ?? "";
-                Niri.request("Outputs", answer => {
-                    window.scale = Pixels.scaleOf(answer?.Outputs, name);
-                }, () => {
-                    window.scale = null;
-                });
-            }
-
-            Component.onCompleted: askScale()
-            // Asked again as the window's own changes, as it does when Joel
-            // scales the screen, so the picture is read again at its pixels.
-            onDevicePixelRatioChanged: askScale()
-
-            Timer {
-                // A niri that never answers leaves the screen's own ratio.
-                running: window.scale === undefined
-                interval: 2000
-                onTriggered: window.scale = null
-            }
+            // The window learns its own ratio only once it's mapped, after
+            // the picture is read, so the picture asks niri for it first,
+            // and again as the window's changes.
+            onDevicePixelRatioChanged: picture.askScale()
             anchors {
                 top: true
                 bottom: true
@@ -72,7 +46,7 @@ Scope {
             WlrLayershell.namespace: "wallpaper"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
-            Image {
+            ScreenPicture {
                 id: picture
 
                 // Whether it's been read once, or failed to be, when the
@@ -80,15 +54,11 @@ Scope {
                 property bool read: false
 
                 anchors.fill: parent
-                source: window.scale === undefined ? "" : "file://" + Theme.wallpaper.desktop
-                fillMode: Image.PreserveAspectCrop
-                // Read at the screen's own pixels, not the file's, from the
-                // screen rather than the window, which has no size until
-                // it's shown. A screen that goes away is read once more
-                // before its window does.
-                sourceSize: Qt.size(window.pixels.width, window.pixels.height)
-                asynchronous: true
-                cache: false
+                // Sized from the screen rather than the window, which has
+                // no size until it's shown. A screen that goes away is read
+                // once more before its window does.
+                screen: window.modelData
+                file: Theme.wallpaper.desktop
                 // Whole the first time it's shown, since it's read by then.
                 opacity: status === Image.Ready || !read ? 1 : 0
                 onStatusChanged: {

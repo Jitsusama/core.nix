@@ -49,10 +49,56 @@ QtObject {
             { width: 0, height: 0 });
     }
 
+    // A PNG's first 24 bytes, its signature and the start of its header,
+    // saying it's `width` by `height`.
+    function png(width, height) {
+        const bytes = new Uint8Array(24);
+        bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
+            0x49, 0x48, 0x44, 0x52]);
+        const view = new DataView(bytes.buffer);
+        view.setUint32(16, width);
+        view.setUint32(20, height);
+        return bytes.buffer;
+    }
+
+    // Qt reads a picture filling by crop at the size asked even past the
+    // file's own, so Joel's 2976 by 1632 wallpaper was held at 3840 by
+    // 2160, 14 MB more each in memory and on the GPU, which the GPU draws
+    // as well from the file's own pixels.
+    function capped() {
+        Expect.same("a PNG says its own size", Wallpaper.ownSize(png(2976, 1632)),
+            { width: 2976, height: 1632 });
+        Expect.same("a file that isn't a PNG has no size known",
+            Wallpaper.ownSize(new Uint8Array(24).buffer), null);
+        Expect.same("a file too short has no size known",
+            Wallpaper.ownSize(new Uint8Array(8).buffer), null);
+        Expect.same("nothing read has no size known", Wallpaper.ownSize(undefined), null);
+        Expect.same("a picture smaller than the screen is read at its own size",
+            Wallpaper.pixels(screen, 1.5, { width: 2976, height: 1632 }),
+            { width: 2976, height: 1632 });
+        Expect.same("a picture as large as the screen is read at its size",
+            Wallpaper.pixels(screen, 1.5, { width: 3840, height: 2160 }),
+            { width: 3840, height: 2160 });
+        Expect.same("a picture larger than the screen is read at the screen's pixels",
+            Wallpaper.pixels(screen, 1.5, { width: 7680, height: 4320 }),
+            { width: 3840, height: 2160 });
+        // Filling by crop, it's read as large as covers the screen both
+        // ways, so one that's only wider is still read down.
+        Expect.same("a wide picture taller than the screen is read at the screen's",
+            Wallpaper.pixels(screen, 1.5, { width: 8000, height: 2400 }),
+            { width: 3840, height: 2160 });
+        Expect.same("a wide picture shorter than the screen is read at its own",
+            Wallpaper.pixels(screen, 1.5, { width: 8000, height: 1800 }),
+            { width: 8000, height: 1800 });
+        Expect.same("with no size known, the screen's pixels stand",
+            Wallpaper.pixels(screen, 1.5, null), { width: 3840, height: 2160 });
+    }
+
     Component.onCompleted: {
         try {
             scaled();
             unknown();
+            capped();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);

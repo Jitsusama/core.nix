@@ -67,6 +67,7 @@
     "Measures.js"
     "Reading.js"
   ];
+  "ScreenPicture.qml" = [ "Wallpaper.js" ];
   "Sessions.qml" = [
     "PiSource.js"
     "Places.js"
@@ -81,7 +82,6 @@
   "Taken.qml" = [ "Fuzzy.js" ];
   "Trials.qml" = [ "launcher/Trials.js" ];
   "Waiting.js" = [ "PiSource.js" ];
-  "Wallpaper.qml" = [ "Wallpaper.js" ];
   "launcher/Accessories.qml" = [
     "Devices.js"
     "Fuzzy.js"
