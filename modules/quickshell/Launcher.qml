@@ -5683,18 +5683,23 @@ Scope {
                 often: often
             });
             const orderedAll = Date.now();
-            const made = ordered.map(f => Object.assign({
-                byWord: f.byWord === true,
-                times: (learned[f.choice.key] ?? { times: 0 }).times,
-                grade: f.grade,
-                tier: f.tier,
-                kept: !!learned[f.choice.key]
-            }, f.choice));
+            // Made a kind at a time, so a slow key's line says whose rows
+            // its making spent on; an answer's rows say no kind.
+            const making = Rank.madeByKind(ordered, f => f.choice.what || "answer",
+                f => Object.assign({
+                    byWord: f.byWord === true,
+                    times: (learned[f.choice.key] ?? { times: 0 }).times,
+                    grade: f.grade,
+                    tier: f.tier,
+                    kept: !!learned[f.choice.key]
+                }, f.choice), () => Date.now());
+            const made = making.made;
             const madeAll = Date.now();
             const spots = spotted(letters);
             root.found = made.concat(spots, meantBelow(letters, made.concat(spots, gathered)));
             costs = { matching: matchedAll - listed, ordering: orderedAll - matchedAll,
-                making: madeAll - orderedAll, spots: Date.now() - madeAll, looked: looked.length,
+                making: madeAll - orderedAll, madeBy: making.took,
+                spots: Date.now() - madeAll, looked: looked.length,
                 found: found.length };
         }
         const matched = Date.now();

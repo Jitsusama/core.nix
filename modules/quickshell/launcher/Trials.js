@@ -108,6 +108,17 @@ function madeWhileTyping(by) {
         : "";
 }
 
+// Whose rows a search's making spent on, in parentheses, each kind that
+// took a millisecond or more, most first then by name: " (password 8,
+// person 2)". Making copies each row found, which reads every getter a
+// row has, and Joel's first "c" spent 11 ms making 112 rows
+// (2026-11-12). Nothing where none took one.
+function madeOfKinds(took) {
+    const each = Object.entries(took ?? {}).filter(([, ms]) => ms >= 1)
+        .sort((one, other) => other[1] - one[1] || (one[0] < other[0] ? -1 : 1));
+    return each.length > 0 ? ` (${each.map(([kind, ms]) => `${kind} ${ms}`).join(", ")})` : "";
+}
+
 // The trial with one more key of this kind, or as it was for a kind not
 // counted.
 function counted(trial, kind) {
