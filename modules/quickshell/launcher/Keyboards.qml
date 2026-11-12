@@ -212,6 +212,9 @@ Provider {
         return {
             headline: `${count}, caps lock ${caps ? "on" : "off"}`,
             glyph: Theme.glyph.keyboard,
+            // A thing, as the desk light's answer is, so the launcher
+            // gives the drawer below rather than holding it for nothing.
+            thing: true,
             // A little more than its line, so it's stepped into less:
             // each keyboard by name and how it's joined, then Caps Lock
             // (docs/design.md, Every row says a little more beside it).
