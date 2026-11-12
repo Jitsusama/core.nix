@@ -553,7 +553,7 @@ fn history(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use serde_json::json;
 
@@ -576,7 +576,8 @@ mod tests {
         }
     }
 
-    fn marks(marks: &[(&str, &str)]) -> BTreeMap<String, String> {
+    /// Read marks by id, as `client.counts` says them.
+    pub(crate) fn marks(marks: &[(&str, &str)]) -> BTreeMap<String, String> {
         marks
             .iter()
             .map(|(id, mark)| ((*id).to_owned(), (*mark).to_owned()))

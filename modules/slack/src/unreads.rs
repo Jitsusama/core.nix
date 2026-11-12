@@ -12,9 +12,12 @@
 //! and what a grid answers to the browser's sign-in the harness keeps,
 //! where the documented `users.counts` is refused. Each conversation is
 //! named by `conversations.info`, a direct message by whose it is through
-//! `users.info`, asked once a run. It only ever reads.
+//! `users.info`, asked once a run. Each conversation he's read is named
+//! too, a few a round, so its read mark can be said by the name Slack's
+//! own notices give it (`seen`). It only ever reads.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::BuildHasher;
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -36,9 +39,62 @@ pub struct Said {
     pub messages: Vec<Raised>,
     /// Slack's read mark for each conversation holding one.
     pub marks: Vec<Mark>,
+    /// Slack's read mark for each conversation named so far, while asking
+    /// went well (`seen`).
+    pub seen: Vec<Seen>,
     /// Whether `messages` holds every message wanting him, so one missing
     /// from them was read (lib's `messages::Messages::whole`).
     pub whole: bool,
+}
+
+/// Slack's read mark for a conversation, by the name it goes by, so what
+/// holds Slack's own desktop notices, which name a conversation and
+/// nothing else of it, can read each one Joel has read past in Slack,
+/// where no message wanting him stands for it, as a channel's that
+/// doesn't mention him (2026-11-11: 416 of his 417 open were so).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Seen {
+    pub id: String,
+    pub name: String,
+    /// Slack's timestamp of the last message he read there.
+    pub read: String,
+}
+
+/// Each conversation's read mark that `names` names, by its id: one never
+/// read says nothing read past, so it's left out.
+#[must_use]
+pub fn seen<S: BuildHasher>(
+    read: &BTreeMap<String, String>,
+    names: &HashMap<String, String, S>,
+) -> Vec<Seen> {
+    read.iter()
+        .filter(|(_, mark)| !mark.is_empty())
+        .filter_map(|(id, mark)| {
+            Some(Seen {
+                id: id.clone(),
+                name: names.get(id)?.clone(),
+                read: mark.clone(),
+            })
+        })
+        .collect()
+}
+
+/// The conversations to name next, at most `most`: those he's read that
+/// `named` doesn't say are named, or known to name nothing, the last read
+/// first, since Slack's notices are of conversations he reads.
+#[must_use]
+pub fn unnamed(
+    read: &BTreeMap<String, String>,
+    named: impl Fn(&str) -> bool,
+    most: usize,
+) -> Vec<&str> {
+    let mut left: Vec<(&str, &str)> = read
+        .iter()
+        .filter(|(id, mark)| !mark.is_empty() && !named(id))
+        .map(|(id, mark)| (id.as_str(), mark.as_str()))
+        .collect();
+    left.sort_by(|(_, one), (_, other)| other.cmp(one));
+    left.into_iter().take(most).map(|(id, _)| id).collect()
 }
 
 /// How many conversations Slack's Recent holds, as every program's does,
@@ -412,6 +468,7 @@ fn iso(at: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messages::tests::marks;
 
     #[test]
     fn a_time_is_written_as_javascript_writes_it() {
@@ -604,5 +661,48 @@ mod tests {
         };
         assert_eq!(link("T1", &dm), "slack://channel?team=T1&id=D1");
         assert_eq!(link("T1", &threads), "slack://open?team=T1");
+    }
+
+    #[test]
+    fn each_conversation_named_and_read_says_its_mark_by_its_name() {
+        let read = marks(&[
+            ("C1", "1730000001.000100"),
+            ("C2", ""),
+            ("C3", "1730000003.1"),
+        ]);
+        let names: HashMap<String, String> = [("C1", "#aquifer"), ("C2", "#rain")]
+            .into_iter()
+            .map(|(id, name)| (id.to_owned(), name.to_owned()))
+            .collect();
+        assert_eq!(
+            seen(&read, &names),
+            [Seen {
+                id: "C1".to_owned(),
+                name: "#aquifer".to_owned(),
+                read: "1730000001.000100".to_owned(),
+            }],
+            "one never read, or not yet named, says no mark"
+        );
+    }
+
+    #[test]
+    fn the_conversations_read_last_are_named_first_a_few_at_a_time() {
+        let read = marks(&[
+            ("C1", "1730000001.000100"),
+            ("C2", "1730000009.000100"),
+            ("C3", ""),
+            ("C4", "1730000005.000100"),
+            ("C5", "1730000007.000100"),
+        ]);
+        assert_eq!(
+            unnamed(&read, |id| id == "C5", 2),
+            ["C2", "C4"],
+            "the last read first, skipping one named and one never read"
+        );
+        assert_eq!(
+            unnamed(&read, |_| true, 2),
+            Vec::<&str>::new(),
+            "none once all are named"
+        );
     }
 }

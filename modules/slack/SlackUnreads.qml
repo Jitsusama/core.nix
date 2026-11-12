@@ -1,7 +1,7 @@
 pragma Singleton
 // What in Slack is unread and what Joel read last, as Slack's daemon
 // serves it on its socket (src/daemon.rs): one connection, watching every
-// slack-unread, slack-recent, slack-message and slack-account record, each
+// slack-unread, slack-recent, slack-message, slack-seen and slack-account record, each
 // change heard as Slack's daemon hears it, so nothing here keeps a clock.
 // What's held is let go once the daemon stops answering, so no count
 // outlives it. What it says and how it stands are SlackUnreads.js's.
@@ -19,7 +19,7 @@ Singleton {
         id: slack
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/slack.sock`
-        kind: ["slack-unread", "slack-recent", "slack-message", "slack-account"]
+        kind: ["slack-unread", "slack-recent", "slack-message", "slack-seen", "slack-account"]
         keptThroughGap: false
     }
 
@@ -34,6 +34,7 @@ Singleton {
     property var conversationsHeld: []
     property var recentHeld: []
     property var messagesHeld: []
+    property var seenHeld: []
 
     Connections {
         target: slack
@@ -52,6 +53,8 @@ Singleton {
             recentHeld = Unreads.recentOf(kept);
         if (moved.messages)
             messagesHeld = Unreads.messagesOf(kept);
+        if (moved.seen)
+            seenHeld = Unreads.seenOf(kept);
     }
 
     // What the daemon holds, { state, conversations, recent, messages,
@@ -100,8 +103,16 @@ Singleton {
     // saying where, so History says "read in Slack" rather than "read here".
     // They're read once this change is done: reading them rewrites the
     // history readThere is found from, which inside its own change is a
-    // binding loop (tests/read-there.qml).
-    readonly property var readThere: Unreads.readInSlack(Notices.history, messages)
+    // binding loop (tests/read-there.qml). Those whose conversation's read
+    // mark has passed them are read too, the notices of channels that don't
+    // mention him among them, which no message held stands for. It's a
+    // stopgap in QML: the notices daemon is to hear Slack's marks and read
+    // them itself.
+    readonly property var readThere: {
+        const held = Unreads.readInSlack(Notices.history, messages);
+        return held.concat(Unreads.seenRead(Notices.history, seenHeld)
+            .filter(id => !held.includes(id)));
+    }
     onReadThereChanged: {
         if (readThere.length > 0)
             Qt.callLater(readReadThere);

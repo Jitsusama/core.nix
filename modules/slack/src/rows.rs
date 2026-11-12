@@ -193,6 +193,7 @@ mod tests {
             recent: vec![one("C1", Kind::Channel, 0)],
             messages: Vec::new(),
             marks: Vec::new(),
+            seen: Vec::new(),
             whole: false,
         }
     }
