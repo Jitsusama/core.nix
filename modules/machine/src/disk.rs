@@ -31,6 +31,27 @@ const FLUSHES: usize = 15;
 const FLUSH_MS: usize = 16;
 /// The kernel counts sectors in 512 bytes, whatever the disk's own.
 const SECTOR: u64 = 512;
+/// Each field of the stat file by the name the kernel's stat.rst gives
+/// it, for the drawers that say what each row is measured from.
+const STAT_NAMES: [&str; 17] = [
+    "read I/Os",
+    "read merges",
+    "read sectors",
+    "read ticks",
+    "write I/Os",
+    "write merges",
+    "write sectors",
+    "write ticks",
+    "in_flight",
+    "io_ticks",
+    "time_in_queue",
+    "discard I/Os",
+    "discard merges",
+    "discard sectors",
+    "discard ticks",
+    "flush I/Os",
+    "flush ticks",
+];
 /// The fields the kernel prints as 32-bit milliseconds (`%u`), which wrap:
 /// the weighted time does every few days of uptime.
 const WRAPPING: [usize; 6] = [READ_MS, WRITE_MS, IO_MS, WEIGHTED_MS, DISCARD_MS, FLUSH_MS];
@@ -149,6 +170,7 @@ fn room(root: &Root, mount: &str) -> Option<Value> {
     }
     let block = said.f_frsize;
     Some(json!({
+        "block_b": block,
         "size_b": said.f_blocks * block,
         "free_b": said.f_bfree * block,
         "available_b": said.f_bavail * block,
@@ -349,6 +371,11 @@ pub fn record(
         "read_b": value(SECTORS_READ).map(|s| s * SECTOR),
         "written_b": value(SECTORS_WRITTEN).map(|s| s * SECTOR),
         "discarded_b": value(SECTORS_DISCARDED).map(|s| s * SECTOR),
+        "stat": STAT_NAMES
+            .iter()
+            .zip(&fields)
+            .map(|(name, value)| ((*name).to_owned(), json!(value)))
+            .collect::<serde_json::Map<_, _>>(),
         "pressure": crate::pressure::parse(root.read("/proc/pressure/io").as_deref()),
         "temperatures": temperatures(root, controller.as_deref(), kept),
         "health": health,
