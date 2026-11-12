@@ -100,6 +100,11 @@ struct Graph {
     _core: Core,
 }
 
+// A model is loaded on a thread of its own and handed to the denoiser's,
+// then used only there. `OpenVINO`'s core and compiled models are safe to
+// use from any thread, so moving one once is too.
+unsafe impl Send for Model {}
+
 impl Model {
     /// What `cleaner` needs from `folder`: `DeepFilterNet`'s exported graph,
     /// compiled for the CPU on one thread, or nothing for `RNNoise`.

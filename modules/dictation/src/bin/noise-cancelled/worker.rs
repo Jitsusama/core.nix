@@ -1,12 +1,14 @@
 //! The denoiser's own thread, which every microphone's sound passes
-//! through. `OpenVINO`'s objects stay on the thread that made them, and a
+//! through. `OpenVINO`'s requests are used from one thread at a time, and a
 //! frame can take far longer than PipeWire's real-time thread may wait, so
 //! PipeWire's side only hands samples over through rings (pipe.rs), and
 //! this thread cleans them a frame at a time.
 //!
 //! The model is loaded when a microphone's source is first recorded from
 //! and let go once none has been for a while, so nothing is held between
-//! calls. Each load cleans as Joel last picked by ear (chosen.rs), so a
+//! calls. It loads on a thread of its own, taking about half a second, and
+//! voices pass as heard meanwhile, since a call's first words matter more
+//! than their noise. Each load cleans as Joel last picked by ear (chosen.rs), so a
 //! pick changes the next call and never one under way.
 
 use std::collections::HashMap;
@@ -169,30 +171,52 @@ fn loaded(model: Loaded, models: &Path, chosen: &Chosen) -> Loaded {
     }
 }
 
-/// Starts loading `cleaner`'s model with `load`.
+/// Starts loading `cleaner`'s model with `load`, on a thread of its own,
+/// so this one goes on passing voices as heard while it loads, and wakes
+/// this one once it has.
 fn loading(
     cleaner: Cleaner,
     load: impl FnOnce() -> Result<Model, String> + Send + 'static,
 ) -> Loaded {
-    let started = Instant::now();
-    match load() {
-        Ok(loaded) => {
-            eprintln!(
-                "noise-cancelled: the model loaded in {} ms, cleaning with {cleaner}",
-                started.elapsed().as_millis()
-            );
-            Loaded::Yes(loaded)
-        }
-        Err(why) => {
-            eprintln!("noise-cancelled: the model wouldn't load, so voices pass as heard: {why}");
-            Loaded::Refused(Instant::now())
-        }
+    let (sends, arrives) = mpsc::channel();
+    let waiting = thread::current();
+    let started = thread::Builder::new()
+        .name("model loader".into())
+        .spawn(move || {
+            let started = Instant::now();
+            let loaded = load();
+            if loaded.is_ok() {
+                eprintln!(
+                    "noise-cancelled: the model loaded in {} ms, cleaning with {cleaner}",
+                    started.elapsed().as_millis()
+                );
+            }
+            let _ = sends.send(loaded);
+            waiting.unpark();
+        });
+    match started {
+        Ok(_) => Loaded::Loading(arrives),
+        Err(why) => refused(&format!("its loader wouldn't start: {why}")),
     }
 }
 
-/// The model, if it's arrived from loading.
+/// The model, once it's arrived from loading.
 fn arrived(model: Loaded) -> Loaded {
-    model
+    let Loaded::Loading(arrives) = model else {
+        return model;
+    };
+    match arrives.try_recv() {
+        Ok(Ok(loaded)) => Loaded::Yes(loaded),
+        Ok(Err(why)) => refused(&why),
+        Err(TryRecvError::Empty) => Loaded::Loading(arrives),
+        Err(TryRecvError::Disconnected) => refused("its loader stopped"),
+    }
+}
+
+/// A model that wouldn't load, tried again after a while.
+fn refused(why: &str) -> Loaded {
+    eprintln!("noise-cancelled: the model wouldn't load, so voices pass as heard: {why}");
+    Loaded::Refused(Instant::now())
 }
 
 /// Cleans every whole frame one microphone has heard. Its voice passes as
