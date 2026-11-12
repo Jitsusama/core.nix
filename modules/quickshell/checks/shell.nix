@@ -229,7 +229,9 @@
   # The shell's own files are compiled once and kept, and only a file that
   # changed is compiled again, though Quickshell serves them on its own qs:
   # scheme, which stock Qt never caches (tests/compiled-once.sh, over
-  # qtdeclarative-caches-what-is-served.patch).
+  # qtdeclarative-caches-what-is-served.patch). Kept in Nix because each
+  # line sets up the sandbox or hands the script a path Nix gives it, and
+  # the script holds the test.
   the-shell-compiles-once = pkgs.runCommandLocal "the-shell-compiles-once" { } ''
     mkdir runtime && chmod 700 runtime
     cp -r ${../../../tests/compiled-once} shell && chmod -R u+w shell

@@ -27,7 +27,8 @@ kept() {
 
 start first
 first=$(kept)
-if [ "$(wc -l <<< "$first")" -lt 3 ] || [ -z "$first" ]; then
+files=$(wc -l <<< "$first")
+if [ "$files" -lt 3 ] || [ -z "$first" ]; then
   echo "the first start kept no compiled unit for each of the shell's three files:" >&2
   echo "${first:-nothing}" >&2
   exit 1
