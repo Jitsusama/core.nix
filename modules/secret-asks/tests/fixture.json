@@ -37,14 +37,14 @@
           "eyebrow": "8IDU4E · Release the Package Index",
           "facts": [
             {
+              "identifies": true,
               "name": "Runs",
-              "said": "secret-asks received",
-              "whole": true
+              "said": "secret-asks received"
             },
             {
+              "identifies": true,
               "name": "In",
-              "said": "~/src/package-index at 4f2a91c03b1d",
-              "whole": true
+              "said": "~/src/package-index at 4f2a91c03b1d"
             },
             {
               "hue": "warning",
@@ -93,14 +93,14 @@
           "eyebrow": "8IDU4E · Release the Package Index",
           "facts": [
             {
+              "identifies": true,
               "name": "Runs",
-              "said": "secret-asks received",
-              "whole": true
+              "said": "secret-asks received"
             },
             {
+              "identifies": true,
               "name": "In",
-              "said": "~/src/package-index at 4f2a91c03b1d",
-              "whole": true
+              "said": "~/src/package-index at 4f2a91c03b1d"
             },
             {
               "name": "Given as",

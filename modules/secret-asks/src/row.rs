@@ -157,8 +157,9 @@ pub fn row(held: &Held, home: &str, words: &Words) -> Value {
         None => words.fill("notGit", &[("path", &path)]),
     };
     let mut facts = vec![
-        json!({"name": words.fill("runs", &[]), "said": command.join(" "), "whole": true}),
-        json!({"name": words.fill("in", &[]), "said": place, "whole": true}),
+        // Each identifies what runs, so the drawer lays it whole, never cut.
+        json!({"name": words.fill("runs", &[]), "said": command.join(" "), "identifies": true}),
+        json!({"name": words.fill("in", &[]), "said": place, "identifies": true}),
     ];
     let changes = match held.tree.uncommitted {
         Some(0) => None,
