@@ -127,6 +127,9 @@ QtObject {
         expect("never to a gutter off the screen",
             MarginCat.gutter(at(column(600, 12, 400),
                 { others: others(column(1012, 12, 300)) })), null);
+        expect("but to its left when the right's is off the screen",
+            MarginCat.gutter(at(column(600, 12, 396),
+                { others: others(column(1012, 12, 300), column(100, 12, 488)) })), { x: 590, y: 3 });
         expect("nor onto the margin's marks",
             MarginCat.gutter(at(column(100, 12, 394),
                 { marks: 3, others: others(column(506, 12, 300)) })), null);

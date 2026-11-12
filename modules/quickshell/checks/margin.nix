@@ -233,10 +233,31 @@
     tests = ../../../tests/margin-cat-on-niri-test.py;
     # Its doze in 45 s rather than the laptop's ten minutes, so a case
     # sees it fall asleep; the tests wake it with a key before each case.
-    shell.cat.dozes = 45;
+    # Its scenes come a hundred times later than its own rests, so none
+    # lands in a case counting its frames; the next check sees them.
+    shell.cat = {
+      dozes = 45;
+      pace = 1.0e-2;
+    };
     given = [
       "QT_QUICK_BACKEND=rhi"
       "QSG_RHI_BACKEND=opengl"
     ];
+  };
+
+  # The cat's scale on a real niri (tests/margin-cat-plays-on-niri-test.py):
+  # niri's idle timers and columns reaching its scenes, which Qt's engine
+  # holds beside its module. Paused after 3 s, away after 8 s, and its
+  # scenes fifteen times sooner than the laptop's, so each is seen in
+  # seconds; asleep only long after the cases end.
+  the-margin-cat-plays-more-the-less-he-types-on-niri = launcherOnNiri {
+    name = "the-margin-cat-plays-more-the-less-he-types-on-niri";
+    tests = ../../../tests/margin-cat-plays-on-niri-test.py;
+    shell.cat = {
+      dozes = 600;
+      pauses = 3;
+      idles = 8;
+      pace = 15;
+    };
   };
 }
