@@ -2570,7 +2570,8 @@ def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell)
 
     Every row has a drawer (VKCF3Z, 2026-11-12). Its lead says how the link stands and its
     round trip, and for how long only where the daemon saw it begin, as it did here if an
-    earlier case changed the link; warp-cli's own words for it come last (WarpDrawer.js).
+    earlier case changed the link; warp-cli's own words for it are its nerdy bits, and its
+    status, which State says, is none (WarpDrawer.js; VKCF3Z, f8984db0).
     """
     said = warp_said()
     try:
@@ -2585,12 +2586,15 @@ def test_the_work_networks_row_has_a_drawer_saying_how_work_stands(shell: Shell)
         assert drawer["title"] == "Work Network", str(drawer)
         body = str(drawer["body"])
         assert body.startswith("Connected to work"), str(drawer)
-        assert body.endswith(", with a 127 ms round trip."), str(drawer)
+        assert body.endswith("; a round trip takes 127 ms."), str(drawer)
         facts = {fact["label"]: fact["value"] for fact in drawer["facts"]}
         assert facts["State"] == "connected", str(facts)
         assert facts["Round Trip"] == "127 ms", str(facts)
-        assert list(facts)[-2:] == ["Status", "Reason"], str(facts)
-        assert facts["Reason"] == "NetworkHealthy", str(facts)
+        assert "Status" not in facts, str(facts)
+        assert "Reason" not in facts, str(facts)
+        nerd = {bit["label"]: bit["value"] for bit in drawer.get("nerd") or []}
+        assert nerd.get("Reason") == "NetworkHealthy", str(drawer)
+        assert "Tunnel Mode" in nerd, str(drawer)
     finally:
         warp_forgotten(said)
 

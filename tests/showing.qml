@@ -83,6 +83,10 @@ QtObject {
                 groups: [[{ label: "Next", value: "Standup" }], [null]] }),
             { eyebrow: "Saturday", body: "1 needs you",
                 groups: [[{ label: "Next", value: "Standup" }]] });
+        expect("its nerdy bits, one with no value gone, as Drawer.qml leaves it out",
+            Showing.drawer({ title: "Work Network", nerd: [{ label: "Reason",
+                value: "NetworkHealthy" }, { label: "Tunnel Mode", value: "" }, null] }),
+            { title: "Work Network", nerd: [{ label: "Reason", value: "NetworkHealthy" }] });
         expect("a styled body said as words", Showing.drawer({ title: "Mail", styled: true,
             body: "<b>Joel</b> &amp; Ada<br>said hi" }),
             { title: "Mail", body: "Joel & Ada\nsaid hi" });

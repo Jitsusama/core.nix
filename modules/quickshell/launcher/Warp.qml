@@ -179,16 +179,22 @@ Provider {
                 eyebrow: drawn.eyebrow,
                 title: Words.name("warp"),
                 body: drawn.body,
-                facts: drawn.facts.map(fact => ({
-                    label: Words.name(`warp:${fact.id}`),
-                    value: fact.value,
-                    identifies: fact.identifies === true
-                }))
+                facts: drawn.facts.map(named),
+                nerd: drawn.nerd.map(named)
             },
             glyph: Words.glyph("warp"),
             rows: [switchRow()].concat(parts.map(partRow)),
             note: "",
             live: provider
+        };
+    }
+
+    // A fact or nerdy bit of the Work Network's drawer, named by the
+    // vocabulary as its part is.
+    function named(fact) {
+        return {
+            label: Words.name(`warp:${fact.id}`),
+            value: fact.value
         };
     }
 
