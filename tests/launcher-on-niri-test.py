@@ -498,7 +498,8 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
     all of Joel's windows: 657 and 287 rows in four minutes, for nobody (2026-11-10). Opened,
     the window that came meanwhile is found by its title, so the rows are made as it opens.
     Shut, a pick still knows that window, since its rows as last made don't hold it, and a
-    pick forgets what it knows nothing of.
+    pick forgets what it knows nothing of. A workspace switched to is the one exception, made
+    shut in one batch, as the next case says.
     """
 
     def window_rows() -> dict[str, int]:
@@ -528,6 +529,58 @@ def test_the_shut_launcher_makes_no_window_rows_as_windows_change(shell: Shell) 
         f"a pick made shut knows no window come since: {windows}"
     )
     assert "capture:window" in taking, f"a pick made shut knows no window to take: {taking}"
+
+
+# How long after the last of a run of workspace switches the shut shell remakes the rows whose
+# words they turned, its Windows' rewordingLater.
+REWORDING = timedelta(seconds=1)
+
+
+def test_the_shut_launcher_rewords_the_windows_a_switch_moved(shell: Shell) -> None:
+    """The shut launcher remakes the rows a workspace switch reworded, so an opening makes none.
+
+    Joel's openings remade 29 to 76 Windows rows each (2026-11-11), most of them windows whose
+    workspace he had switched away from while it was shut, so each opening's first frame said
+    where they had been. Shut, the rows already made whose words turned are made again in one
+    batch a second after the switches settle (Y2YBTS, 2026-11-11 [c4acd8f5]); an opening then
+    makes none, and says where each window is now.
+    """
+
+    def windows_made() -> int:
+        return int(json.loads(shell.as_account(shell.ipc("made")))["rows"].get("windows", 0))
+
+    def side_of(title: str) -> str:
+        path = shlex.quote("\u203adesktop\u203awindows")
+        asked = f"qs -p {shell.folder} ipc call -- launcher show {path}"
+        rows = json.loads(shell.as_account(asked)).get("rows", [])
+        return str(next(row.get("side", "") for row in rows if row["name"] == title))
+
+    # The window Joel's in is never listed, so the one read is opened first.
+    window = shell.opened("Curlew Notes")
+    over = shell.opened("Dunlin Notes")
+    try:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        here = side_of("Curlew Notes")
+        shell.close_launcher()
+        before = windows_made()
+        shell.as_account("niri msg action focus-workspace 2")
+        # The span measured, for the switch to reach the shell and its batch to follow, not a
+        # wait for something to happen.
+        time.sleep((SETTLING + REWORDING).total_seconds())
+        shut = windows_made()
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        opened = windows_made()
+        there = side_of("Curlew Notes")
+        shell.close_launcher()
+    finally:
+        shell.as_account("niri msg action focus-workspace 1")
+        shell.close(window)
+        shell.close(over)
+    assert shut > before, f"the shut launcher remade no window a switch moved: {before}"
+    assert opened == shut, f"the opening made {opened - shut} window rows after the switch"
+    assert "workspace 1" in there, f"a window left behind said {there!r}, here {here!r}"
 
 
 RESIZES = 20

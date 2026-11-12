@@ -10637,6 +10637,7 @@
         "empty": "empty",
         "counted": "{program} \u00d7{count}",
         "here": "here",
+        "needs": "needs you",
         "nextTime": "next time {chord}"
       },
       "states": {

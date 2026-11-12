@@ -22,12 +22,11 @@
 // before the rest, so what needs him is a key away. It adds no row of its own to the
 // search, where each window is already found by itself. Agents' windows
 // give way there to one Agents row, where the one used last would be,
-// and Tab steps into them (AgentWindows.js); typed, each is found alone.
+// and Tab steps into them (AgentsFold.qml); typed, each is found alone.
 import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
-import "AgentWindows.js" as AgentWindows
 import "HeldWindows.js" as HeldWindows
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
@@ -131,7 +130,7 @@ Provider {
     function everything() {
         if (provider.waiting)
             return [];
-        return provider.promoted(provider.folded(provider.loose()));
+        return provider.promoted(agentsFold.folded(provider.loose()));
     }
 
     // The one used last first, then those waiting on Joel, then the rest.
@@ -149,73 +148,11 @@ Provider {
                 && (heard ? !window.focused : window.id !== Niri.current));
     }
 
-    // The agents' windows as the agents daemon pairs them with the windows
-    // daemon's, each session's record by its window's key. Watched while
-    // the shell runs, as a session starting or ending is all it tells, so
-    // the first frame of any opening folds them. Down, none folds.
-    property var agents: ({})
-    Daemon {
-        id: agentsDaemon
+    // Agents' windows, given way to one Agents row (AgentsFold.qml).
+    AgentsFold {
+        id: agentsFold
 
-        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-        kind: "agent-window"
-        watching: ({ place: "agents" })
-        answersWhole: true
-        onHeard: provider.agentsHeard()
-        onStateChanged: provider.agentsHeard()
-    }
-    function agentsHeard() {
-        provider.agents = agentsDaemon.state === "not answering" ? {}
-            : AgentWindows.agentsOf(Object.values(agentsDaemon.held));
-        if (provider.wanted)
-            provider.changed();
-    }
-
-    // The rows with every agents' window given way to the one Agents row,
-    // where the agents' window used last would be: made again only as
-    // what it says moves, so a list read again finds the same row.
-    property var fold: ({ said: "", row: null, inside: [] })
-    function folded(rows) {
-        const made = AgentWindows.foldOf(rows, provider.agents,
-            Words.of("windows:agents").said.more);
-        if (made === null)
-            return rows;
-        if (made.said !== provider.fold.said)
-            provider.fold = { said: made.said, inside: made.inside,
-                row: provider.foldRow(made.lead, made.side, made.needing) };
-        const fold = AgentWindows.foldKey();
-        return made.listed.map(key => key === fold ? provider.fold.row : made.byKey[key]);
-    }
-
-    // The one Agents row: Return goes to the agents' window used last, as
-    // Super+Tab then Return always went to the window used last, and its
-    // side names that window's session so he sees where (VKCF3Z,
-    // 2026-11-11 [23daa469]).
-    function foldRow(lead, side, needing) {
-        return thing({
-            thing: true,
-            key: "windows:agents",
-            is: "windows:agents",
-            verb: Words.verb("windows:agents"),
-            name: Words.name("windows:agents"),
-            glyph: Words.glyph("windows:agents"),
-            hue: "program",
-            side: side,
-            waiting: needing > 0,
-            count: AgentWindows.needed(needing, Words.of("windows:agents").said),
-            run: () => Niri.act({ FocusWindow: { id: lead } }),
-            verbs: () => provider.agentsInside()
-        });
-    }
-
-    // Inside it, the agents' windows by orchestration, each its own row as
-    // Windows makes it, a step in under its orchestrator's own window.
-    function agentsInside() {
-        const placed = AgentWindows.depths(
-            AgentWindows.byOrchestration(provider.fold.inside, provider.agents));
-        return placed.map(one => ({ row: provider.kept[one.key], depth: one.depth }))
-            .filter(one => one.row !== undefined)
-            .map(one => provider.gotten(one.row, { depth: () => one.depth }));
+        provider: provider
     }
 
     // Every window's key as its row says it, and This Window's, for a pick
@@ -229,7 +166,7 @@ Provider {
             const title = provider.tidy(window.title ?? "", program) || program;
             return { key: `window:${window.app_id}:${title}` };
         });
-        const agents = Object.keys(provider.agents).length > 0 ? [{ key: "windows:agents" }] : [];
+        const agents = Object.keys(agentsFold.agents).length > 0 ? [{ key: "windows:agents" }] : [];
         return (Niri.current === null ? keys : keys.concat([{ key: "windows:this" }]))
             .concat(agents);
     }
@@ -335,12 +272,12 @@ Provider {
         return daemon.linesHeard + used.linesHeard;
     }
 
-    // While the launcher is shut, when each window was used and which has
-    // the focus, and only that: told a line only as the focus moves, of the
-    // window it went to and the one it left, never as one
-    // is retitled, resized or scrolled past, so the shut shell wakes once
-    // a focus move and makes no row, and the next opening's first frame
-    // lists the windows in the order used now. On Joel's shell, held from
+    // While the launcher is shut, when each window was used, which has the
+    // focus, and what its row says: told a line as the focus moves, a
+    // workspace switches or a window is retitled, never as one is resized
+    // or scrolled past, so the shut shell wakes once for each of Joel's
+    // moves, and the next opening's first frame lists the windows in the
+    // order used now, each saying where it is now. On Joel's shell, held from
     // the last opening, Super+Tab then Return went to the window used
     // last at that opening (vm-desktop-launcher-moves-windows,
     // 2026-11-10). A window opened meanwhile is asked for whole and held,
@@ -351,7 +288,7 @@ Provider {
 
         socket: daemon.socket
         kind: "window"
-        watching: ({ fields: ["order", "focused"] })
+        watching: ({ fields: ["order", "focused"].concat(HeldWindows.worded()) })
         live: !daemon.live
         answersWhole: true
         onHeard: (changed, gone) => provider.heardUsed(changed, gone)
@@ -378,6 +315,10 @@ Provider {
         // turned is made again, but only once the rows are wanted.
         for (const key of told.turned)
             provider.unmade[key] = true;
+        for (const key of told.reworded.filter(key => key in provider.kept))
+            provider.rewording[key] = provider.unmade[key] = true;
+        if (told.reworded.length > 0)
+            rewordingLater.restart();
         letGo(windowsOnly(gone));
         if (told.unknown.length > 0)
             provider.askWhole(told.unknown);
@@ -425,6 +366,29 @@ Provider {
     // The windows held whole, or whose focus turned, while the rows
     // weren't wanted, whose rows are made once they are, by key.
     property var unmade: ({})
+    // The one exception to the shut launcher making no row: a row already
+    // made whose words turned, as Joel switched workspace, is made again
+    // in one batch a second after his last move, as only his hands cause
+    // it, so an opening makes none of them after its first frame
+    // (Y2YBTS, 2026-11-11 [c4acd8f5]). Opened first, they're made then; a
+    // window closed meanwhile has nothing to make.
+    property var rewording: ({})
+    Timer {
+        id: rewordingLater
+
+        interval: 1000
+        onTriggered: provider.reworded()
+    }
+    function reworded() {
+        const keys = Object.keys(provider.rewording)
+            .filter(key => provider.unmade[key] && key in provider.held.records);
+        provider.rewording = {};
+        if (provider.wanted)
+            return;
+        for (const key of keys)
+            delete provider.unmade[key];
+        provider.remake(keys, []);
+    }
     function madeAtLast() {
         const keys = Object.keys(provider.unmade).filter(key => key in provider.held.records);
         provider.unmade = {};
@@ -581,7 +545,7 @@ Provider {
             context: said.workspace !== null ? `on workspace ${said.workspace}` : "",
             focused: said.focused,
             waiting: said.waiting,
-            count: said.waiting ? "waiting on you" : "",
+            count: said.waiting ? Words.of("windows").said.needs : "",
             run: () => Niri.act({ FocusWindow: { id: window.id } }),
             below: below,
             verbs: () => provider.verbs(window, title, program, below),

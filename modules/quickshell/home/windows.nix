@@ -3,4 +3,5 @@
 [
   "NiriRecords.js"
   "launcher/AgentWindows.js"
+  "launcher/AgentsFold.qml"
 ]

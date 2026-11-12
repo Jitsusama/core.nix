@@ -77,6 +77,7 @@
       ${copied [
         "Daemon.qml"
         "Words.qml"
+        "launcher/AgentsFold.qml"
         "launcher/Capture.qml"
         "launcher/Previewer.qml"
         "launcher/Provider.qml"

@@ -12,6 +12,10 @@ function kept() {
     return { records: {}, windows: {}, order: [] };
 }
 
+// The fields of a window's record its row's words come from: where it is
+// against the workspace in front, its name, and the title it copies.
+const WORDED = ["elsewhere", "named", "title"];
+
 // Whether two records say the same, field by field; a record's fields
 // are plain values.
 function same(a, b) {
@@ -122,10 +126,14 @@ function take(held, records, gone) {
 // (`turned`). Told only `order`, the window the focus left kept saying it
 // had it, so an opening's first frame listed it as Joel's, and its rows
 // were made again once the opening's whole answer said otherwise
-// (ZINAWZ, 2026-11-11).
+// (ZINAWZ, 2026-11-11). Those whose words turned, a workspace come in
+// front or gone behind, a retitling, are `reworded`: unheard, every
+// opening after Joel switched workspace made them again after its first
+// frame, which still said the old workspace.
 function used(held, records) {
     const unknown = [];
     const turned = [];
+    const reworded = [];
     for (const record of records) {
         const was = held.records[record.key];
         if (was === undefined) {
@@ -139,6 +147,9 @@ function used(held, records) {
         if (was.focused !== now.focused) {
             turned.push(record.key);
         }
+        if (WORDED.some((field) => was[field] !== now[field])) {
+            reworded.push(record.key);
+        }
         held.records[record.key] = now;
         held.windows[record.key] = asWindow(now);
         if (was.order !== now.order) {
@@ -146,7 +157,13 @@ function used(held, records) {
             held.order.splice(placeOf(held, now), 0, record.key);
         }
     }
-    return { unknown, turned };
+    return { unknown, turned, reworded };
+}
+
+// What of a window's record its row says, beside whether it has the focus
+// and when it was used, which the shut launcher hears (Windows.qml's used).
+function worded() {
+    return WORDED.slice();
 }
 
 // The workspaces a window on this one could go to, from the daemon's
