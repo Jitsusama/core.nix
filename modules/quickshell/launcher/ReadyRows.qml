@@ -505,7 +505,7 @@ Scope {
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
             run: () => act(key, first),
-            actsOnly: Beneath.actsOnly(acts)
+            actsOnly: Beneath.actsOnly(acts, row.actsOnly)
         }, Ready.leaving(first));
         // A row asking Joel to be sure holds its one act alone, as the
         // shell's own sure rows did, so the key language reads that act's

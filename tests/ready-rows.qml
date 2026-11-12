@@ -223,6 +223,12 @@ QtObject {
             title: "Ada Lovelace",
             prose: "yes"
         }, now, said), { title: "Ada Lovelace", facts: [], body: "" });
+        // An emoji's: its code points are raw, folded behind za.
+        const code = [{ label: "Code Points", value: "U+1F469 U+200D U+1F4BB" }];
+        Expect.same("a drawer keeps its nerdy bits", Ready.drawerOf({
+            title: "Woman technologist",
+            nerd: code
+        }, now, said), { title: "Woman technologist", facts: [], body: "", nerd: code });
         const items = [{ said: "in ~/Videos/Recordings", keep: 2, path: "~/Videos/Recordings" },
             { said: "video", keep: 1 }];
         const shown = Ready.drawerOf({
@@ -470,6 +476,14 @@ QtObject {
         Expect.same("one with a second act of its own keeps it reached", Beneath.actsOnly([
             copy, { key: "verb:open", open: "https://example.org" }]), false);
         Expect.same("one with no acts holds what it holds", Beneath.actsOnly([]), false);
+        // An emoji's copy is asked of the history rather than set here,
+        // so its row says what the acts alone can't (ready-rows.md).
+        const asked = [{ key: "verb:emoji:paste", ask: { ask: "paste", text: "🙂" } },
+            { key: "verb:emoji:copy", ask: { ask: "copy", text: "🙂" } }, details];
+        Expect.same("one its daemon says holds only acts holds none",
+            Beneath.actsOnly(asked, true), true);
+        Expect.same("while one it doesn't keeps its second act reached",
+            Beneath.actsOnly(asked, undefined), false);
     }
 
     // Whether a row told again moved only, as a daemon making room between
