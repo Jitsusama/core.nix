@@ -11,8 +11,8 @@
 # its PRs are the account's; the machine gives nix and nix-offload.
 #
 # Beside it, `changed-checks keep-main` keeps each head of main's checks
-# where nix-offload sends changed-checks runs, once the head has stood two
-# minutes, so a branch cut from it pays for its own tree alone rather than
+# where nix-offload sends changed-checks runs, once the head has stood 30
+# seconds, so a branch cut from it pays for its own tree alone rather than
 # the first run after each merge paying for the base too. A builder lent
 # afresh gets it again; with none lent it sends nothing, so it never asks
 # for one or holds one lent. It keeps its clone in
