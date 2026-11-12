@@ -71,7 +71,9 @@ fn now() -> i64 {
 fn kept(mut seen: Vec<i64>, now: i64) -> Vec<i64> {
     let since = now - KEEP_DAYS * 86_400;
     seen.retain(|moment| (since..=now).contains(moment));
-    seen.iter_mut().for_each(|moment| *moment = minute(*moment));
+    for moment in &mut seen {
+        *moment = minute(*moment);
+    }
     seen.sort_unstable();
     seen.dedup();
     seen
