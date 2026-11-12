@@ -49,6 +49,11 @@
     in
     pkgs.runCommand "noise-cancelled-cleans-a-noisy-clip"
       {
+        # The sandbox has no NPU, so the frames go first to the processor
+        # as they would to it, started without waiting, with the processor
+        # behind for those late; the other checks clean on the processor
+        # alone, as where the NPU won't compile.
+        NOISE_CANCELLED_DEVICE = "CPU";
         nativeBuildInputs = [
           pkgs.bc
           pkgs.sox

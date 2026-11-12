@@ -61,11 +61,6 @@ impl Lane {
         }
     }
 
-    /// Whether frames go to the NPU.
-    pub fn open(&self) -> bool {
-        self.run.is_some()
-    }
-
     /// How many frames the processor took over.
     pub fn late(&self) -> u64 {
         self.late
@@ -84,9 +79,50 @@ impl Lane {
         state: &mut Vec<f32>,
         behind: impl FnOnce(&[f32; FRAME], &[f32]) -> Result<Cleaned, String>,
     ) -> Result<[f32; FRAME], String> {
-        let (cleaned, next) = behind(frame, state)?;
+        let (cleaned, next) = match self.ahead(frame, state) {
+            Ok(Some(cleaned)) => cleaned,
+            Ok(None) => behind(frame, state)?,
+            Err(why) => {
+                eprintln!("noise-cancelled: the NPU failed, so the processor cleans: {why}");
+                self.run = None;
+                behind(frame, state)?
+            }
+        };
         *state = next;
         Ok(cleaned)
+    }
+
+    /// `frame` cleaned on the NPU, or nothing when it's busy or late.
+    fn ahead(&mut self, frame: &[f32; FRAME], state: &[f32]) -> Result<Option<Cleaned>, String> {
+        let Some(run) = self.run.as_mut() else {
+            return Ok(None);
+        };
+        if self.busy {
+            if !run.done(Duration::ZERO)? {
+                return Ok(None);
+            }
+            self.busy = false;
+        }
+        run.start(frame, state)?;
+        if run.done(BOUND)? {
+            return run.taken().map(Some);
+        }
+        self.busy = true;
+        self.late += 1;
+        Ok(None)
+    }
+}
+
+impl Drop for Lane {
+    /// Says how often the processor stood in, so a call's journal shows
+    /// whether the NPU kept up.
+    fn drop(&mut self) {
+        if self.late() > 0 {
+            eprintln!(
+                "noise-cancelled: the processor cleaned {} frames the NPU was late with",
+                self.late()
+            );
+        }
     }
 }
 

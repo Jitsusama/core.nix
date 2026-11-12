@@ -5,8 +5,9 @@
 #
 # The program is dictation's fourth, noise-cancelled, sharing its OpenVINO
 # calls (modules/dictation/src/bin/noise-cancelled/main.rs says how), with
-# DeepFilterNet 3 exported a frame at a time (model.nix) on the processor,
-# or RNNoise, as jitsusama.noise-cancelled.cleaner says.
+# DeepFilterNet 3 exported a frame at a time (model.nix) on the NPU, with
+# the processor behind it for any frame the NPU is late with, or RNNoise,
+# as jitsusama.noise-cancelled.cleaner says.
 # It's a PipeWire client of its own: a microphone is heard only while
 # something records from its noise-cancelled one, and the model is held
 # only while something does, and let go a little after.
@@ -46,6 +47,12 @@ let
   models = pkgs.callPackage ./models.nix { };
   # Where a pick by ear is kept, in the account's state folder (%S).
   chosen = "%S/noise-cancelled/cleaner";
+  # What OpenVINO needs to reach the NPU, as dictation has it: the driver's
+  # loader, and its plugin's own log kept to errors.
+  npu = [
+    "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
+    "OV_NPU_LOG_LEVEL=LOG_ERROR"
+  ];
   refusals = pkgs.writeText "noise-cancelled-refusals.json" (
     builtins.toJSON (map (refusal: { inherit (refusal) command why; }) cfg.refuseWhile)
   );
@@ -116,7 +123,7 @@ in
         "${models} ${cfg.cleaner} ${refusals} ${chosen}"
       ];
       StateDirectory = "noise-cancelled";
-      Environment = [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
+      Environment = npu ++ [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
       Slice = "session.slice";
       # What Joel said reaches nothing past PipeWire's own socket.
       RestrictAddressFamilies = "AF_UNIX";
@@ -133,6 +140,7 @@ in
     };
     Service = {
       ExecStart = "${dictation}/bin/noise-cancelled serve ${model} ${cfg.cleaner} ${chosen}";
+      Environment = npu;
       Slice = "session.slice";
       Restart = "on-failure";
       RestartSec = 5;
