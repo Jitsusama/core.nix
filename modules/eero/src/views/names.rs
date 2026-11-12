@@ -47,24 +47,24 @@ pub fn nodes(model: &HomeNetwork) -> Vec<Named> {
 pub fn devices(model: &HomeNetwork) -> Vec<Named> {
     let on = model.devices.iter().map(|device| {
         let name = device_name(device);
-        let found = find_device(model, name, None).is_ok_and(|found| found.mac == device.mac);
+        let found = find_device(model, &name, None).is_ok_and(|found| found.mac == device.mac);
         let on = location(model, device.node.as_deref());
         if found {
-            (name.to_owned(), format!("on {on}"))
+            (name.into_owned(), format!("on {on}"))
         } else {
             (device.mac.clone(), format!("{name} on {on}"))
         }
     });
     let off = model.devices_off.iter().map(|device| {
         let name = off_name(device);
-        let found = !on_now_answers_to(model, name)
-            && off_device(model, name).is_some_and(|found| found.mac == device.mac);
+        let found = !on_now_answers_to(model, &name)
+            && off_device(model, &name).is_some_and(|found| found.mac == device.mac);
         let last = match device.node.as_deref() {
             Some(node) => format!("not on now, last on {}", location(model, Some(node))),
             None => "not on now".to_owned(),
         };
         if found {
-            (name.to_owned(), last)
+            (name.into_owned(), last)
         } else {
             (device.mac.clone(), format!("{name}, {last}"))
         }

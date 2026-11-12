@@ -25,6 +25,7 @@
 //! `eero names views|nodes|devices|profiles` what it offers of each.
 
 mod api;
+mod called;
 mod cloud;
 mod daemon;
 mod desktop;

@@ -41,6 +41,9 @@ pub fn rate(mbps: f64) -> String {
         .collect()
 }
 
+use std::borrow::Cow;
+
+use crate::called;
 use crate::model::{CloudState, Device, DeviceOff, HomeNetwork, Node, Profile};
 use figures::joined;
 use marks::marks;
@@ -242,7 +245,6 @@ fn location<'a>(model: &'a HomeNetwork, id: Option<&'a str>) -> &'a str {
         .map_or(id, node_name)
 }
 
-/// A device's name, the one eero shows, or its hardware address.
 /// The devices on the node `id` names, this machine first and the rest as
 /// eero orders them, so this machine is found where it hangs.
 fn on_node<'a>(model: &'a HomeNetwork, id: Option<&str>) -> Vec<&'a Device> {
@@ -255,28 +257,20 @@ fn on_node<'a>(model: &'a HomeNetwork, id: Option<&str>) -> Vec<&'a Device> {
     on
 }
 
-pub fn device_name(device: &Device) -> &str {
-    device
-        .name
-        .as_deref()
-        .or(device.nickname.as_deref())
-        .or(device.hostname.as_deref())
-        .unwrap_or(&device.mac)
+/// What a device on now is called (`called`), its maker said as the
+/// command line says one.
+pub fn device_name(device: &Device) -> Cow<'_, str> {
+    called::device(device, called::MADE)
 }
 
 /// What a device not on now is called, as `device_name` says one on now.
-pub fn off_name(device: &DeviceOff) -> &str {
-    device
-        .name
-        .as_deref()
-        .or(device.nickname.as_deref())
-        .or(device.hostname.as_deref())
-        .unwrap_or(&device.mac)
+pub fn off_name(device: &DeviceOff) -> Cow<'_, str> {
+    called::off(device, called::MADE)
 }
 
 /// What the device with a hardware address is called, on now or not; none
 /// for one eero doesn't list.
-pub fn listed_name<'a>(model: &'a HomeNetwork, mac: &str) -> Option<&'a str> {
+pub fn listed_name<'a>(model: &'a HomeNetwork, mac: &str) -> Option<Cow<'a, str>> {
     let on = model
         .devices
         .iter()

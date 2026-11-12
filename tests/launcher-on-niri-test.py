@@ -2690,7 +2690,10 @@ def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shel
     drawer = home["row"]["drawer"]
     assert drawer["eyebrow"] == "via eero \u00b7 network", str(drawer)
     assert drawer["title"] == "Home Network", str(drawer)
-    expected = "Connected at 370 Mb/s down, with 3 nodes online and 15 devices on now."
+    expected = (
+        "Connected to the internet, last tested at 370 Mb/s down, with 3 nodes online"
+        " and 15 devices on now."
+    )
     assert drawer["body"] == expected, str(drawer)
     facts = {fact["label"]: fact["value"] for fact in drawer["facts"]}
     assert facts["Provider"] == "Example ISP", str(facts)

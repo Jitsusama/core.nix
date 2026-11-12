@@ -33,7 +33,8 @@ fn the_drawer_says_whose_it_is_how_the_home_network_stands_and_its_figures() {
     assert_eq!(drawer["title"], "Home Network");
     assert_eq!(
         drawer["body"],
-        "Connected at 370 Mb/s down, with 3 nodes online and 15 devices on now."
+        "Connected to the internet, last tested at 370 Mb/s down, with 3 nodes online and 15 \
+         devices on now."
     );
     assert_eq!(
         drawer["facts"],

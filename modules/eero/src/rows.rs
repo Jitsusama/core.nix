@@ -17,6 +17,7 @@ use ready_rows::order::by_name;
 use ready_rows::time::{self, Form};
 use serde_json::{Value, json};
 
+use crate::called;
 use crate::model::{BackhaulKind, CloudState, Device, HomeNetwork, Node, Profile};
 use crate::place;
 use crate::time::to_unix;
@@ -79,6 +80,7 @@ const SAID: &[(&str, &[&str])] = &[
             "onNow",
             "signedOut",
             "unreachable",
+            "tested",
         ],
     ),
     (
@@ -90,7 +92,7 @@ const SAID: &[(&str, &[&str])] = &[
     ),
     (
         "eero:device",
-        &["thisMachine", "ethernet", "dbm", "channel", "idle"],
+        &["thisMachine", "ethernet", "dbm", "channel", "idle", "made"],
     ),
     ("eero:profile", &["paused", "onNow", "noneOnNow"]),
 ];
@@ -278,15 +280,6 @@ fn node_name(node: &Node) -> &str {
         .unwrap_or(&node.id)
 }
 
-/// What a device is called: the name eero shows, else its nickname, its
-/// hostname, or at least its hardware address.
-fn device_name(device: &Device) -> &str {
-    [&device.name, &device.nickname, &device.hostname]
-        .into_iter()
-        .find_map(|name| name.as_deref().filter(|name| !name.is_empty()))
-        .unwrap_or(&device.mac)
-}
-
 /// The nodes as the place lists them: the gateway node first, then each
 /// node after the one it hangs from, as the backhaul runs, siblings by
 /// location, and any whose upstream eero didn't name last.
@@ -371,6 +364,13 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
     let answering = model.cloud.state == CloudState::Answering;
     let state = state_said(model, words);
     let down = words.each_way(test.down_mbps, None, numbers);
+    // The side's figure is the last speed test's, not the speed now, so
+    // it says so (VKCF3Z, 2026-11-12).
+    let tested = if down.is_empty() {
+        String::new()
+    } else {
+        fill(words.say("eero:internet", "tested"), &[("speed", &down)])
+    };
     let up = words.each_way(None, test.up_mbps, numbers);
     let day = test
         .at
@@ -414,7 +414,7 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
         "key": key("internet"), "thing": "eero:internet", "place": PLACE, "kind": "internet",
         "name": words.internet, "glyph": words.glyph("eero:internet"), "hue": "machine",
         "depth": 0,
-        "side": items([item(state), item(if answering { down } else { String::new() })]),
+        "side": items([item(state), item(if answering { tested } else { String::new() })]),
         "note": items(note),
     })
 }
@@ -598,7 +598,7 @@ fn device_row(device: &Device, profiles: &[Profile], words: &Words, numbers: &Nu
     json!({
         "key": key(&format!("device:{}", device.mac)),
         "thing": format!("eero:device:{}", device.mac), "place": PLACE, "kind": "device",
-        "name": device_name(device), "glyph": glyph, "hue": "machine", "depth": 1,
+        "name": called::device(device, words.say("eero:device", "made")), "glyph": glyph, "hue": "machine", "depth": 1,
         "side": items([
             item(if device.this_machine { words.say("eero:device", "thisMachine") } else { "" }),
             item(signal),

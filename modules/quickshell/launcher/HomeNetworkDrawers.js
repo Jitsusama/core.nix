@@ -407,11 +407,13 @@ function rateOf(rate, settings) {
 // its profile, where it moved over the last day, and what eero said and the
 // daemon told of it. What moves sparks its last hour, as the daemon keeps
 // it.
-// `asked` gives the launcher's number settings and the device's readings
-// since the shell started, { settings, readings }, each optional, which
+// `asked` gives the launcher's number settings, the device's readings
+// since the shell started and what its row is called, as the eero daemon
+// serves it, { settings, readings, called }, each optional; the readings
 // spark its signal and speed only where the record keeps no history.
 function device(model, one, now, asked) {
     const settings = asked?.settings;
+    const title = asked?.called || Home.nameOf(one);
     const on = (model?.nodes ?? []).find((each) => each.id === one.node) ?? null;
     const seen = asked?.readings ?? { signal: [], speed: [] };
     const sparks = History.deviceSparks(one);
@@ -422,7 +424,7 @@ function device(model, one, now, asked) {
         // is starts its facts.
         eyebrow: joined([on ? `on ${Home.nodeName(on)}` : "", one.ethernet ? "Ethernet" : "Wi-Fi"]),
         names: on !== null,
-        title: Home.nameOf(one),
+        title,
         facts: kept([
             fact("signal", Home.signalOf(one), { figure: History.signalSpark(one, seen.signal)
                 ?? (known(one.signal_dbm) ? stroke(Interfaces.level(one.signal_dbm)) : null) }),
@@ -461,7 +463,7 @@ function device(model, one, now, asked) {
             fact("addresses", (one.addresses ?? []).filter((each) => each !== one.address)
                 .join(DOT)),
             fact("mac", joined([one.mac, one.private ? "private" : ""])),
-            fact("hostname", one.hostname !== Home.nameOf(one) ? one.hostname : null),
+            fact("hostname", one.hostname !== title ? one.hostname : null),
             fact("nickname", one.nickname),
             fact("first-seen", History.when(one.first_seen, now)),
             fact("on-since", History.when(one.first_active, now)),

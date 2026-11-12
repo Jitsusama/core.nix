@@ -295,9 +295,14 @@ fn usage(answer: &Value) -> Option<Usage> {
 /// first. It's matched by address rather than by the Wi-Fi link's BSSID,
 /// so a machine on Ethernet is found too, and the address is the one the
 /// interface has now, which is what eero sees even when it's private.
-pub fn mark_this_machine(model: &mut HomeNetwork, own: &[String]) {
+/// Where eero knows no hostname for it, it goes by `host`, its own, so it
+/// isn't called by its Wi-Fi card's maker.
+pub fn mark_this_machine(model: &mut HomeNetwork, own: &[String], host: Option<&str>) {
     for device in &mut model.devices {
         device.this_machine = own.iter().any(|mac| mac.eq_ignore_ascii_case(&device.mac));
+        if device.this_machine && device.hostname.is_none() {
+            device.hostname = host.map(str::to_owned);
+        }
     }
 }
 
