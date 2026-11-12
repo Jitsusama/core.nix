@@ -100,12 +100,16 @@ pub struct Notice {
     pub live: bool,
     /// Whether it's open but off the screen.
     pub resting: bool,
-    /// How it left, once it has: expired, dismissed or withdrawn.
+    /// How it left, once it has: expired, dismissed, withdrawn, or folded
+    /// into a newer one from the same conversation.
     pub left: Option<String>,
     pub left_at: Option<i64>,
     /// When it was last said again with something new, so the screen
     /// brings it back to the front.
     pub raised_at: Option<i64>,
+    /// How many earlier ones from the same conversation it took the place
+    /// of, so its card says how many came, not only the newest.
+    pub folds: u32,
 }
 
 impl Notice {

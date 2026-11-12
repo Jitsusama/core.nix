@@ -103,7 +103,11 @@ impl State {
     }
 
     /// Takes a notice sent over the bus, answering the id it's known by:
-    /// the one it replaces, while that's open, else one never given.
+    /// the one it replaces, while that's open, else one never given. One
+    /// that replaces nothing, from a program and conversation with one
+    /// open, as Slack's that never say what they replace, takes that
+    /// one's place, counting it: Joel wants a card a conversation, not one
+    /// a message (1JQPPC's wish 1, 2026-11-12).
     pub fn notify(&mut self, sent: Sent, now: i64) -> u32 {
         let replacing = sent.replaces != 0 && self.holding.is_live(sent.replaces);
         let id = if replacing {
@@ -111,6 +115,17 @@ impl State {
         } else {
             self.holding.new_id()
         };
+        let folding = (!replacing && !sent.summary.is_empty())
+            .then(|| {
+                self.holding.notices().iter().find(|open| {
+                    open.live
+                        && !open.transient
+                        && open.app == sent.app
+                        && open.summary == sent.summary
+                })
+            })
+            .flatten()
+            .map(|open| (open.id, open.folds));
         let (actions, reply) = split(&sent.actions);
         let hint = |name: &str| sent.hints.get(name).and_then(Value::as_str).unwrap_or("");
         let yes = |name: &str| {
@@ -151,8 +166,12 @@ impl State {
             hints: sent.hints,
             expire: sent.expire,
             picture,
+            folds: folding.map_or(0, |(_, folds)| folds + 1),
             ..Notice::default()
         };
+        if let Some((open, _)) = folding {
+            self.close(open, Closed::Folded, now);
+        }
         if replacing {
             let was = self.holding.get(id).map(|was| was.picture.clone());
             if let Some(was) = was.filter(|was| *was != notice.picture) {
@@ -665,6 +684,57 @@ mod tests {
             state.owed,
             [Signal::Closed(earlier, 1), Signal::Closed(slack, 1)],
             "Slack is told each closed, newest first, as they're held"
+        );
+    }
+
+    #[test]
+    fn a_notice_from_a_conversation_with_one_open_takes_its_place() {
+        let mut state = state("folds");
+        let slack = |summary: &str| Sent {
+            app: "Slack".into(),
+            ..sent(summary, &[])
+        };
+        // 193 cards came from one Slack conversation on 2026-11-11, each a
+        // card of its own (1JQPPC's wish 1).
+        let first = state.notify(slack("[harbour] in #rain"), 1);
+        let other = state.notify(slack("[harbour] from Binks"), 2);
+        let second = state.notify(slack("[harbour] in #rain"), 3);
+        let third = state.notify(slack("[harbour] in #rain"), 4);
+        // Another program saying the same words is another conversation.
+        let mail = state.notify(sent("[harbour] in #rain", &[]), 5);
+        let stands = |id| {
+            let notice = state.holding.get(id).expect("held");
+            (notice.live, notice.left.clone(), notice.folds)
+        };
+        assert_eq!(
+            [
+                stands(first),
+                stands(second),
+                stands(third),
+                stands(other),
+                stands(mail)
+            ],
+            [
+                (false, Some("folded".into()), 0),
+                (false, Some("folded".into()), 1),
+                (true, None, 2),
+                (true, None, 0),
+                (true, None, 0)
+            ],
+            "each conversation keeps one card open, the newest, counting those it took over"
+        );
+        assert_eq!(
+            state.owed,
+            [Signal::Closed(first, 4), Signal::Closed(second, 4)],
+            "Slack is told each folded one closed"
+        );
+        assert_eq!(
+            state
+                .holding
+                .get(first)
+                .map(|one| (one.read, one.read_how.clone())),
+            Some((true, Some("folded".into()))),
+            "one folded is read, its newer one standing for it, and says so"
         );
     }
 }

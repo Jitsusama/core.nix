@@ -29,6 +29,9 @@ pub enum Closed {
     Dismissed = 2,
     /// Its program withdrew it, `CloseNotification`.
     Withdrawn = 3,
+    /// A newer one from the same conversation took its place, which the
+    /// specification's reasons don't name, so its sender hears 4.
+    Folded = 4,
 }
 
 impl Closed {
@@ -38,6 +41,7 @@ impl Closed {
             Closed::Expired => "expired",
             Closed::Dismissed => "dismissed",
             Closed::Withdrawn => "withdrawn",
+            Closed::Folded => "folded",
         }
     }
 }
@@ -155,6 +159,13 @@ impl Holding {
         if why == Closed::Withdrawn {
             notice.read = true;
             notice.read_how = None;
+        }
+        // The newer one from its conversation stands for it, so it's no
+        // longer one to read on its own, and History says why.
+        if why == Closed::Folded && !notice.read {
+            notice.read = true;
+            notice.read_how = Some("folded".to_owned());
+            notice.read_at = Some(now);
         }
         let transient = notice.transient;
         if transient {

@@ -522,6 +522,7 @@
         "read": "read here",
         "readInSlack": "read in Slack",
         "withdrawn": "withdrawn",
+        "folded": "into a newer one",
         "earlier": "read"
       },
       "empty": "Nothing unread from the desktop."

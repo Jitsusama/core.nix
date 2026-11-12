@@ -123,6 +123,9 @@
         "withdrawn": {
           "said": "taken back by its sender at {at}"
         },
+        "folded": {
+          "said": "into a newer one at {at}"
+        },
         "resting": {
           "said": "off the screen \u00b7 still open"
         },

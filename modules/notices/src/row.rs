@@ -278,9 +278,16 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
     let (name, note) = named(&notice.summary, &read.plain);
     let said = said(notice, &read);
     let marked = body::marked(&read);
+    // One standing for those it folded says how many came in all, as a
+    // conversation's card is one, not each of its messages.
+    let folds = (notice.folds > 0).then(|| {
+        let all = (notice.folds + 1).to_string();
+        json!({ "said": words.said(PLACE, "folds").replace("{count}", &all) })
+    });
     let side: Vec<Value> = (!standing.is_empty())
         .then(|| json!({ "said": standing }))
         .into_iter()
+        .chain(folds)
         .chain(std::iter::once(json!({ "at": notice.at, "as": "came" })))
         .collect();
     // Its words styled as its card draws them where they carry markup or
@@ -445,6 +452,15 @@ mod tests {
             words: &words,
         };
         rows.make(notices.iter(), &signs, &looked.iter().copied().collect())
+    }
+
+    #[test]
+    fn one_standing_for_its_conversation_says_how_many_came() {
+        let folded = notice(4, &json!({ "read": true, "folds": 2 }));
+        let [mixed, _, history] = making(&[folded], &[]);
+        let side = json!([{ "said": "3 in all" }, { "at": 4_000, "as": "came" }]);
+        assert_eq!(mixed[0]["side"], side, "the two it took over and itself");
+        assert_eq!(history[0]["side"], side, "and so in History");
     }
 
     #[test]
