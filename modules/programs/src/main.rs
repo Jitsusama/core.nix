@@ -15,7 +15,10 @@
 //! changed since, or every time for a source that's `asked`, or for one
 //! that's `told` too, once a program said it changed, and on each
 //! change of its file while it's watched; what a program has open, as a
-//! watch of its key begins and on each get. A page's list of folders is
+//! watch of its key begins and on each get, and Chrome's, which this
+//! daemon reads itself from its extension's host's socket or its session
+//! file with no command, again on each change of that file while it's
+//! watched (heard.rs, chrome-session). A page's list of folders is
 //! read by this daemon itself, with no command, as its watch begins if
 //! one of them changed since, and on each change in them while watched;
 //! a folder asked for by its path, as `folder`, as each ask names it and
@@ -428,8 +431,11 @@ fn read_source(shared: &Shared, at: usize, what: Run) {
         daemon.read_as_of[at] = changed_at(source);
     }
     let started = Instant::now();
+    let read = (what == Run::Opened).then(|| source::open_now(source));
     let printed = if what == Run::List && source.list.is_empty() {
         Ok(source::files_in(&source.folders))
+    } else if let Some(Some(read)) = read {
+        read
     } else {
         command::run(argv)
     };

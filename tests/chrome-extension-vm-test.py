@@ -84,9 +84,9 @@ def command(asked: list[str], tab: str = "") -> str:
     return " ".join(shlex.quote(part.replace("{id}", tab)) for part in asked)
 
 
-def tabs(machine: QemuMachine, source: dict[str, Any]) -> list[list[str]]:
-    """Give each tab Chrome's source says is open, as its fields, from the profile here."""
-    listed = as_account(machine, command([*source["opened"], f"{PROFILE}/Default"]))
+def tabs(machine: QemuMachine) -> list[list[str]]:
+    """Give each tab the host says is open, as its fields, as the programs daemon asks it."""
+    listed = as_account(machine, "chrome-open-tabs list")
     return [line.split("\t") for line in listed.splitlines()]
 
 
@@ -98,9 +98,11 @@ def titled(listed: list[list[str]], title: str) -> list[str]:
 def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     machine: QemuMachine, values: dict[str, Any]
 ) -> None:
-    """Chrome's source lists Chromium's two pages by the host, goes to one, closes the other."""
+    """The host lists Chromium's two pages, and Chrome's source goes to one, closes the other."""
     source = values["source"]
     assert {"go", "close"} <= source.keys(), f"the source found no host to act through: {source}"
+    asking = source.get("session", {}).get("host")
+    assert asking is True, f"the source doesn't say to ask the host: {source}"
     minute = int(timedelta(minutes=1).total_seconds())
     # Run alone, nothing before it has waited for the machine to start, and
     # there's no Chromium to stop, which pkill fails on.
@@ -124,21 +126,18 @@ def test_the_launcher_hears_the_open_tabs_and_goes_to_or_closes_one(
     except AssertionError as late:
         message = f"the host never listed both pages; {seen(machine, values['id'])}"
         raise AssertionError(message) from late
-    hosted = sorted(
-        line.split("\t")[0] for line in as_account(machine, "chrome-open-tabs list").splitlines()
-    )
-    listed = tabs(machine, source)
-    assert sorted(tab[0] for tab in listed) == hosted, f"not the host's ids: {listed} {hosted}"
+    listed = tabs(machine)
+    assert all(tab[0].isdigit() for tab in listed), f"not each tab by the host's id: {listed}"
     one, two = titled(listed, "One"), titled(listed, "Two")
     assert one[1] == two[1], f"the two pages aren't in one window: {listed}"
 
     as_account(machine, command(source["go"], one[0]))
-    fronted = tabs(machine, source)
+    fronted = tabs(machine)
     assert titled(fronted, "One")[2] == "true", f"going to One left it behind: {fronted}"
     assert titled(fronted, "Two")[2] == "false", f"Two stayed in front: {fronted}"
 
     as_account(machine, command(source["close"], two[0]))
-    left = [tab[5] for tab in tabs(machine, source)]
+    left = [tab[5] for tab in tabs(machine)]
     assert left == ["One"], f"closing Two left {left}"
 
 
@@ -146,7 +145,7 @@ def written(machine: QemuMachine) -> str:
     """Say what the session file holds, what's served, and what Chromium itself has open."""
     sessions = f"{SESSIONED}/Default/Sessions"
     _, listed = machine.execute(f"ls -la {sessions} 2>&1")
-    _, read = machine.execute(f"su - joel -c 'chrome-recent-sites open {SESSIONED}/Default' 2>&1")
+    _, read = machine.execute(f"su - joel -c 'chrome-session {SESSIONED}/Default' 2>&1")
     _, served = machine.execute("curl -sS http://pages.example.org/one.html 2>&1")
     _, live = machine.execute(
         "su - joel -c 'XDG_RUNTIME_DIR=/run/user/1000 chrome-open-tabs list' 2>&1"
@@ -160,8 +159,8 @@ def written(machine: QemuMachine) -> str:
     )
 
 
-def test_chrome_recent_sites_reads_every_tab_from_the_session_file(machine: QemuMachine) -> None:
-    """chrome-recent-sites reads both pages Chromium opened, from the session file it writes."""
+def test_chrome_session_reads_every_tab_from_the_session_file(machine: QemuMachine) -> None:
+    """chrome-session reads both pages Chromium opened, from the session file it writes."""
     minute = int(timedelta(minutes=1).total_seconds())
     machine.succeed("pkill -u joel -f chromium || true")
     machine.wait_until_fails("pgrep -u joel -f chromium", timeout=minute)
@@ -173,7 +172,7 @@ def test_chrome_recent_sites_reads_every_tab_from_the_session_file(machine: Qemu
         f"--password-store=basic --user-data-dir={SESSIONED} {pages} > {LOG} 2>&1 &",
         account="joel",
     )
-    reading = f"chrome-recent-sites open {SESSIONED}/Default"
+    reading = f"chrome-session {SESSIONED}/Default"
     # Chromium here writes the session as it starts, before either page has loaded, so their
     # titles aren't in it yet; the case reads what that holds. Tests in session.rs read titles.
     try:

@@ -4,6 +4,7 @@
 //! program page's own lists, as Chrome's downloads, into `listed` ones.
 
 use std::fmt::Write;
+use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
@@ -56,6 +57,23 @@ pub struct Source {
     /// The command printing what it has open now.
     #[serde(default)]
     pub opened: Vec<String>,
+    /// Chrome's session, whose open pages this daemon reads itself, with
+    /// no command, as it's stepped into and as the file changes while
+    /// watched (`opened` gives way to it).
+    #[serde(default)]
+    pub session: Option<Session>,
+}
+
+/// Where a source's Chrome keeps what it has open.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct Session {
+    /// Its profile's folder, whose newest session file is read.
+    pub profile: String,
+    /// Whether its extension's host is asked first, on its socket, since
+    /// only the tabs it lists can be gone to or closed; the file's are
+    /// read where it isn't there or lists none.
+    #[serde(default)]
+    pub host: bool,
 }
 
 impl Source {
@@ -81,7 +99,7 @@ impl Source {
     /// The `opened` key what it has open is held under, where it says.
     pub fn opened_key(&self) -> Option<String> {
         let app = self.app.as_deref()?;
-        (!self.opened.is_empty()).then(|| format!("opened:{app}"))
+        (!self.opened.is_empty() || self.session.is_some()).then(|| format!("opened:{app}"))
     }
 
     /// Whether it has a list to read, by a command or of its folders.
@@ -216,8 +234,25 @@ pub fn files_in(folders: &[String]) -> String {
         })
 }
 
+/// The extension's host's socket, in the account's runtime folder, as
+/// chrome-open-tabs listens on it.
+const HOST: &str = "chrome-open-tabs.sock";
+
+/// What a source's program has open, read by this daemon itself, with no
+/// command, where the source names Chrome's profile (`session`): as the
+/// lines a command would print, the host's tabs where it's asked and
+/// lists any, else the session file's; none for a source naming none.
+pub fn open_now(source: &Source) -> Option<Result<String, String>> {
+    let session = source.session.as_ref()?;
+    let host = std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|_| session.host)
+        .map(|runtime| Path::new(&runtime).join(HOST));
+    let open = chrome_session::open::open(Path::new(&session.profile), host.as_deref());
+    Some(open.map(|tabs| tabs.iter().map(|tab| tab.line() + "\n").collect()))
+}
+
 /// The `opened` record of what a source's program has open, as its
-/// command printed it: a site's tabs, its id, window, whether it's in
+/// command printed it or `open_now` read it: a site's tabs, its id, window, whether it's in
 /// front, when it was last looked at, its address and its title; or a
 /// file's process and path, or, where one process has many windows,
 /// niri's window (`@` and its id), the path, and what Go To is given.

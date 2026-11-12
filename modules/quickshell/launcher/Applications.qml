@@ -1077,7 +1077,7 @@ Provider {
     // Programs is stepped into (Provider.qml).
     function openRows(entry) {
         const source = provider.sourceOf(entry);
-        if (!source?.opened || !provider.isRunning(entry))
+        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
             return [];
         provider.recents.ask(entry.id);
         return source.kind === "site" ? provider.openSites(entry, source)
@@ -1093,7 +1093,7 @@ Provider {
 
     function ownOpenKeys(entry) {
         const source = provider.sourceOf(entry);
-        if (!source?.opened || !provider.isRunning(entry))
+        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
             return [];
         const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
         return source.kind === "site"
@@ -1123,7 +1123,7 @@ Provider {
     // it, and each window a file it has open is in.
     function heldWindows(entry) {
         const source = provider.sourceOf(entry);
-        if (!source?.opened || !provider.isRunning(entry))
+        if (!provider.recents.tellsOpen(source) || !provider.isRunning(entry))
             return [];
         const lines = provider.recents.openIn(entry.id).map(line => line.split("\t"));
         if (source.kind === "site") {

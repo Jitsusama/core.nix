@@ -22,6 +22,8 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      ../chrome/session/Cargo.toml
+      ../chrome/session/src
       ../programs/Cargo.toml
       ../programs/src
       ../ready-rows/Cargo.toml

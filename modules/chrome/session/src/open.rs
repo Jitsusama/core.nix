@@ -1,21 +1,30 @@
 //! What Chrome has open now, as the launcher is told of it: from the
-//! extension's host, chrome-open-tabs, where it answers, since only its
-//! ids can be gone to or closed, and from Chrome's session file otherwise.
+//! extension's host, chrome-open-tabs, where it answers on its socket,
+//! since only its ids can be gone to or closed, and from Chrome's session
+//! file otherwise, with no process started for either.
 //!
 //! The two name a tab apart. The host gives the id Chrome's tabs have for
 //! an extension, which `chrome-open-tabs go` and `close` take; the file
 //! gives the id Chrome wrote it under, which may be from a Chrome before
-//! the one running, so it's never printed, and a tab read from the file
-//! has no id. The launcher's Go To and Close It hand a tab's id to the
-//! host, so only an id the host gave ever reaches it, and one it never
-//! gave can't go to or close another tab (the host refuses an empty one).
-//! Both are held to the same rule of which pages are rows: one with a
-//! program of its own, or off the web, keeps its title alone.
+//! the one running, so it's never said, and a tab read from the file has
+//! no id. The launcher's Go To and Close It hand a tab's id to the host,
+//! so only an id the host gave ever reaches it, and one it never gave
+//! can't go to or close another tab (the host refuses an empty one). Both
+//! are held to the same rule of which pages are rows: one with a program
+//! of its own, or off the web, keeps its title alone.
 
+use std::io::{Read as _, Write as _};
+use std::net::Shutdown;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use crate::{on_the_web, one_line, session};
+
+/// How long the host is waited on: the two seconds it waits on the
+/// extension (chrome-open-tabs's WAITING), and one for itself, as its own
+/// command waits.
+const WAITING: Duration = Duration::from_secs(3);
 
 /// A tab open now, as a line the launcher reads.
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +40,10 @@ pub struct Told {
 }
 
 impl Told {
+    /// It as a line, as the host says a tab: its id, or nothing, its
+    /// window, whether it's in front, when it was last looked at, its
+    /// address and its title, tab-separated.
+    #[must_use]
     pub fn line(&self) -> String {
         let id = self.id.map(|id| id.to_string()).unwrap_or_default();
         format!(
@@ -40,7 +53,7 @@ impl Told {
     }
 }
 
-/// The tabs in what the host printed, a tab a line: its id, its window,
+/// The tabs in what the host said, a tab a line: its id, its window,
 /// whether it's in front, when it was looked at, its address and its
 /// title. A line it can't read is left out.
 fn from_host(said: &str) -> Vec<Told> {
@@ -79,26 +92,34 @@ fn from_session(open: Vec<session::Open>) -> Vec<Told> {
         .collect()
 }
 
-/// What the host lists, or nothing when it can't be run or fails; it
-/// waits on the extension as long as the launcher would.
-fn listed(host: &Path) -> String {
-    Command::new(host)
-        .arg("list")
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .ok()
-        .filter(|ran| ran.status.success())
-        .map(|ran| String::from_utf8_lossy(&ran.stdout).into_owned())
-        .unwrap_or_default()
+/// What the host on `socket` lists, as its own `list` asks it, or nothing
+/// when it isn't there, as it isn't with Chrome closed or refusing the
+/// extension, or doesn't answer in time.
+fn listed(socket: &Path) -> String {
+    let Ok(mut stream) = UnixStream::connect(socket) else {
+        return String::new();
+    };
+    let mut said = String::new();
+    let asked = stream
+        .set_read_timeout(Some(WAITING))
+        .and_then(|()| stream.write_all(b"list\n"))
+        .and_then(|()| stream.shutdown(Shutdown::Write))
+        .and_then(|()| stream.read_to_string(&mut said));
+    if asked.is_err() {
+        said.clear();
+    }
+    said
 }
 
-/// What a profile has open now: the host's tabs, where `host` is given and
-/// lists any, and otherwise the session file's.
+/// What a profile has open now: the host's tabs, where its socket is
+/// given and it lists any, and otherwise the session file's.
+///
+/// # Errors
+///
+/// When the profile's newest session file can't be read, saying why.
 pub fn open(profile: &Path, host: Option<&Path>) -> Result<Vec<Told>, String> {
     let live = host
-        .map(listed)
-        .map(|said| from_host(&said))
+        .map(|socket| from_host(&listed(socket)))
         .unwrap_or_default();
     if !live.is_empty() {
         return Ok(live);
@@ -109,14 +130,15 @@ pub fn open(profile: &Path, host: Option<&Path>) -> Result<Vec<Told>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use crate::written::{session, tab};
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::net::UnixListener;
     use std::path::PathBuf;
+    use std::thread;
 
     fn folder(name: &str) -> PathBuf {
-        let folder = env::temp_dir().join(format!(
-            "chrome-recent-sites-test-{}-tabs-{name}",
+        let folder = std::env::temp_dir().join(format!(
+            "chrome-session-test-{}-open-{name}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&folder);
@@ -124,17 +146,21 @@ mod tests {
         folder
     }
 
-    /// A stand-in host in `folder`, printing `said` when asked to list, as
-    /// chrome-open-tabs does, and failing when asked anything else.
-    fn host(folder: &Path, said: &str) -> PathBuf {
-        let program = folder.join("chrome-open-tabs");
-        fs::write(
-            &program,
-            format!("#!/bin/sh\n[ \"$*\" = list ] || exit 2\nprintf '{said}'\n"),
-        )
-        .unwrap();
-        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
-        program
+    /// A stand-in host on a socket in `folder`, answering one ask with
+    /// `said` when it's `list`, as chrome-open-tabs does, and with nothing
+    /// otherwise.
+    fn host(folder: &Path, said: &'static str) -> PathBuf {
+        let socket = folder.join("chrome-open-tabs.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut asked = String::new();
+            stream.read_to_string(&mut asked).unwrap();
+            if asked == "list\n" {
+                stream.write_all(said.as_bytes()).unwrap();
+            }
+        });
+        socket
     }
 
     /// A profile whose session file holds one tab, Chrome's id for it 10.
@@ -143,7 +169,7 @@ mod tests {
         fs::create_dir_all(profile.join("Sessions")).unwrap();
         fs::write(
             profile.join("Sessions/Session_13437850409745633"),
-            session::tests::one_tab(10, "https://saved.example.org/"),
+            session(&tab(1, 10, 0, "https://saved.example.org/", 1)),
         )
         .unwrap();
         profile
@@ -158,11 +184,12 @@ mod tests {
         let profile = sessioned("hosted");
         let host = host(
             &profile,
-            "412\\t7\\ttrue\\t1761753600123\\thttps://live.example.org/\\tLive\\n",
+            "412\t7\ttrue\t1761753600123\thttps://live.example.org/\tLive\n",
         );
         assert_eq!(
             lines(&open(&profile, Some(&host)).unwrap()),
-            ["412\t7\ttrue\t1761753600123\thttps://live.example.org/\tLive"]
+            ["412\t7\ttrue\t1761753600123\thttps://live.example.org/\tLive"],
+            "the host's tab, by its id"
         );
     }
 
@@ -170,12 +197,12 @@ mod tests {
     fn with_the_host_listing_nothing_the_session_files_tabs_have_no_id() {
         let profile = sessioned("unhosted");
         let quiet = host(&profile, "");
-        let missing = profile.join("nowhere");
+        let missing = profile.join("nowhere.sock");
         for asked in [Some(quiet.as_path()), Some(missing.as_path()), None] {
             assert_eq!(
                 lines(&open(&profile, asked).unwrap()),
                 ["\t1\tfalse\t1\thttps://saved.example.org/\tTitle 10"],
-                "{asked:?}"
+                "the file's tab, with no id, asking {asked:?}"
             );
         }
     }
@@ -195,7 +222,8 @@ mod tests {
                 "1\t1\tfalse\t5\t\tInbox",
                 "2\t1\tfalse\t4\t\tNew Tab",
                 "3\t1\ttrue\t3\thttps://example.org/\tTwo words",
-            ]
+            ],
+            "Google's own and Chrome's own pages by their titles alone, a title on one line"
         );
     }
 }

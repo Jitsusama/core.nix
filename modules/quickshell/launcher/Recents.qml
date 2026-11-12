@@ -93,10 +93,17 @@ Scope {
         const keys = [];
         if (mine.some(source => source.asked && (source.list ?? []).length > 0))
             keys.push(`recent:${app}`);
-        if (mine.some(source => (source.opened ?? []).length > 0))
+        if (mine.some(tellsOpen))
             keys.push(`opened:${app}`);
         if (keys.length > 0)
             recents.stepped = keys;
+    }
+
+    // Whether a source says what its program has open now: by a command
+    // (`opened`), or, as Chrome's does, by the session the programs
+    // daemon reads itself (`session`).
+    function tellsOpen(source) {
+        return (source?.opened ?? []).length > 0 || typeof source?.session?.profile === "string";
     }
 
     // What a program has open now, a line each, or none.

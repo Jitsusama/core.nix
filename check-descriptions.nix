@@ -394,6 +394,15 @@
     Chrome's sites are read whole from a history caught halfway through a write, its last whole
     write listed, Chrome's files left alone and no copy left behind
   '';
+  chrome-session-passes-clippy = ''
+    clippy finds nothing in what reads Chrome's open pages from its session file, or its tests
+  '';
+  chrome-session-reads-what-chrome-has-open = ''
+    every tab Chrome's session file holds open is read with its window, whether it's in front and
+    when it was looked at, a pruned tab on the page it went back to, none of a closed tab or window
+    or an app's, a page with a program of its own by its title alone, a command cut off left for
+    the next reading, and a file of another version refused saying which
+  '';
   chromium-leaves-the-panel-to-niri = ''
     the XPS 14's Chrome, Slack and 1Password leave its panel's colours to niri, which maps sRGB onto them
   '';
@@ -3479,11 +3488,11 @@
   vm-chrome-says-its-open-tabs = ''
     Chromium, standing in for Chrome, installs the open-tabs extension from the local file the
     Chrome module names, unasked, its tabs and nativeMessaging permissions granted and nothing
-    disabling it, and the account's Chrome source, finding the host through the file the
-    module writes, lists two pages it opened by the host's ids, brings one to the front and
-    closes the other through it; and with no extension asked, chrome-recent-sites reads two pages it
-    opened from the session file it writes, each with its address, in one window with one in
-    front, looked at lately
+    disabling it, and the host the account's Chrome source names lists two pages it opened by
+    its ids, and the source's commands, finding the host through the file the module writes,
+    bring one to the front and close the other; and with no extension asked, chrome-session reads
+    two pages it opened from the session file it writes, each with its address, in one window
+    with one in front, looked at lately
   '';
   vm-cargo-builds-on-their-own-filesystem = ''
     on a Btrfs disk, cargo's image is made without copy-on-write at the size asked, attached with

@@ -19,32 +19,32 @@ use std::path::Path;
 use crate::{on_the_web, one_line};
 
 /// The session's commands this reads; Chrome's names, ids as it numbers them.
-const SET_TAB_WINDOW: u8 = 0;
-const SET_TAB_INDEX_IN_WINDOW: u8 = 2;
-const UPDATE_TAB_NAVIGATION: u8 = 6;
-const SET_SELECTED_NAVIGATION_INDEX: u8 = 7;
+pub(crate) const SET_TAB_WINDOW: u8 = 0;
+pub(crate) const SET_TAB_INDEX_IN_WINDOW: u8 = 2;
+pub(crate) const UPDATE_TAB_NAVIGATION: u8 = 6;
+pub(crate) const SET_SELECTED_NAVIGATION_INDEX: u8 = 7;
 const SET_SELECTED_TAB_IN_INDEX: u8 = 8;
 const SET_WINDOW_TYPE: u8 = 9;
 const TAB_CLOSED: u8 = 16;
 const WINDOW_CLOSED: u8 = 17;
-const LAST_ACTIVE_TIME: u8 = 21;
+pub(crate) const LAST_ACTIVE_TIME: u8 = 21;
 const TAB_NAVIGATION_PATH_PRUNED: u8 = 24;
 
 /// The one version read, which marks where its starting state ends.
-const VERSION: i32 = 3;
+pub(crate) const VERSION: i32 = 3;
 
 /// A browser window, as against an app's, a popup or developer tools.
 const NORMAL: i32 = 0;
 
 /// Microseconds from 1601, when Chrome's clock starts, to 1970.
-const TO_UNIX: i64 = 11_644_473_600_000_000;
+pub(crate) const TO_UNIX: i64 = 11_644_473_600_000_000;
 
 /// A tab open now, as the launcher is told of it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Open {
     /// Chrome's id for it in this file, which orders two tabs looked at at
-    /// once; it's never printed (tabs.rs), since the file may be from a
-    /// Chrome before this one, whose ids a running Chrome gives again.
+    /// once; it's never said (`line`), since the file may be from a Chrome
+    /// before this one, whose ids a running Chrome gives again.
     pub id: i32,
     pub window: i32,
     pub front: bool,
@@ -56,6 +56,20 @@ pub struct Open {
     /// is how a window it's in front of is found.
     pub address: String,
     pub title: String,
+}
+
+impl Open {
+    /// It as a line, as the extension's host says a tab but with no id,
+    /// since no command can act on a tab by the file's: its window,
+    /// whether it's in front, when it was last looked at, its address and
+    /// its title, a tab before each.
+    #[must_use]
+    pub fn line(&self) -> String {
+        format!(
+            "\t{}\t{}\t{}\t{}\t{}",
+            self.window, self.front, self.last, self.address, self.title
+        )
+    }
 }
 
 #[derive(Default)]
@@ -286,68 +300,9 @@ pub fn read(profile: &Path) -> Result<Vec<Open>, String> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
-
-    /// A session file holding one tab in window 1, on one page, as tabs.rs
-    /// reads one.
-    pub(crate) fn one_tab(id: i32, address: &str) -> Vec<u8> {
-        session(&tab(1, id, 0, address, 1))
-    }
-
-    /// A session file holding these commands, as Chrome writes them.
-    fn session(commands: &[(u8, Vec<u8>)]) -> Vec<u8> {
-        let mut file = b"SNSS".to_vec();
-        file.extend(VERSION.to_le_bytes());
-        for (id, carried) in commands {
-            let size = u16::try_from(carried.len() + 1).unwrap();
-            file.extend(size.to_le_bytes());
-            file.push(*id);
-            file.extend(carried);
-        }
-        file
-    }
-
-    fn ints(values: &[i32]) -> Vec<u8> {
-        values
-            .iter()
-            .flat_map(|value| value.to_le_bytes())
-            .collect()
-    }
-
-    fn padded(mut bytes: Vec<u8>) -> Vec<u8> {
-        bytes.resize(bytes.len().next_multiple_of(4), 0);
-        bytes
-    }
-
-    fn page(tab: i32, index: i32, address: &str, title: &str) -> (u8, Vec<u8>) {
-        let mut pickle = ints(&[tab, index, i32::try_from(address.len()).unwrap()]);
-        pickle.extend(padded(address.as_bytes().to_vec()));
-        let units: Vec<u16> = title.encode_utf16().collect();
-        pickle.extend(ints(&[i32::try_from(units.len()).unwrap()]));
-        pickle.extend(padded(
-            units.iter().flat_map(|unit| unit.to_le_bytes()).collect(),
-        ));
-        // What Chrome writes after the title, which nothing here reads.
-        pickle.extend(ints(&[0, 0]));
-        let mut carried = ints(&[i32::try_from(pickle.len()).unwrap()]);
-        carried.extend(pickle);
-        (UPDATE_TAB_NAVIGATION, carried)
-    }
-
-    /// A tab in a window at a place, on one page, looked at a while after
-    /// 1970.
-    fn tab(window: i32, tab: i32, index: i32, address: &str, looked: i64) -> Vec<(u8, Vec<u8>)> {
-        let mut active = ints(&[tab, 0]);
-        active.extend((TO_UNIX + looked * 1000).to_le_bytes());
-        vec![
-            (SET_TAB_WINDOW, ints(&[window, tab])),
-            (SET_TAB_INDEX_IN_WINDOW, ints(&[tab, index])),
-            page(tab, 0, address, &format!("Title {tab}")),
-            (SET_SELECTED_NAVIGATION_INDEX, ints(&[tab, 0])),
-            (LAST_ACTIVE_TIME, active),
-        ]
-    }
+    use crate::written::{ints, page, session, tab};
 
     fn lines(open: &[Open]) -> Vec<String> {
         open.iter()
@@ -375,6 +330,16 @@ pub(crate) mod tests {
                 "20 2 true 200 https://c.example.org/ Title 20",
                 "11 1 true 100 https://b.example.org/x Title 11",
             ]
+        );
+    }
+
+    #[test]
+    fn a_tab_is_said_on_a_line_with_no_id_since_none_can_act_on_it() {
+        let open = replay(&session(&tab(1, 10, 0, "https://a.example.org/", 300))).unwrap();
+        assert_eq!(
+            open[0].line(),
+            "\t1\tfalse\t300\thttps://a.example.org/\tTitle 10",
+            "its window, front, last look, address and title, after an empty id"
         );
     }
 
@@ -458,7 +423,7 @@ pub(crate) mod tests {
     #[test]
     fn the_newest_session_file_is_read_and_a_profile_without_one_has_none() {
         let profile = std::env::temp_dir().join(format!(
-            "chrome-recent-sites-test-{}-sessions",
+            "chrome-session-test-{}-sessions",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&profile);

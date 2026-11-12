@@ -8,6 +8,7 @@
 }:
 let
   recent-sites = pkgs.callPackage ./recent-sites/package.nix { };
+  session = pkgs.callPackage ./session/package.nix { };
   pack-extension = pkgs.callPackage ./pack-extension/package.nix { };
   open-tabs = pkgs.callPackage ./open-tabs/host/package.nix { };
 in
@@ -23,6 +24,17 @@ onLinux {
   # clippy finds nothing in what reads Chrome's sites for the launcher, its
   # tests included.
   chrome-recent-sites-passes-clippy = passesClippy "chrome-recent-sites-passes-clippy" recent-sites;
+
+  # clippy finds nothing in what reads Chrome's open pages from its session
+  # file, its tests included.
+  chrome-session-passes-clippy = passesClippy "chrome-session-passes-clippy" session;
+
+  # Its tests run as it builds: every tab Chrome's session file holds open,
+  # with its window, whether it's in front and when it was looked at, the
+  # page a pruned tab went back to, none of a closed tab or window or an
+  # app's, a page with a program of its own by its title alone, a command
+  # cut off waiting for the next reading, and only version 3 read.
+  chrome-session-reads-what-chrome-has-open = session;
 
   # Chrome's sites are read whole from a history caught halfway through a
   # write, as Chrome leaves it while it browses: the half-written pages in

@@ -1,7 +1,8 @@
 # The programs daemon, built from this directory, its tests run as it builds.
 # Its socket's tests ask it with a crate every daemon's tests share
-# (../daemon-client), and it keeps Programs' rows with the ready-rows
-# crate (../ready-rows), so the source is cut from the modules folder
+# (../daemon-client), it keeps Programs' rows with the ready-rows
+# crate (../ready-rows), and it reads what Chrome has open with
+# chrome-session (../chrome/session), so the source is cut from the modules folder
 # holding them, and built from this one.
 {
   lib,
@@ -23,6 +24,8 @@ rustPlatform.buildRustPackage rec {
       ../ready-rows/src
       ../daemon-client/Cargo.toml
       ../daemon-client/src
+      ../chrome/session/Cargo.toml
+      ../chrome/session/src
     ];
   };
   sourceRoot = "${src.name}/programs";

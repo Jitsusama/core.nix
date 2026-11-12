@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "chrome-session"
+version = "0.1.0"
+
+[[package]]
 name = "daemon-client"
 version = "0.1.0"
 dependencies = [
@@ -40,6 +44,7 @@ dependencies = [
 name = "programs"
 version = "0.1.0"
 dependencies = [
+ "chrome-session",
  "daemon-client",
  "libc",
  "ready-rows",

@@ -118,7 +118,7 @@ let
         does = "The page on the whole screen";
       }
     ];
-  # What reads Chrome's sites, its downloads and its session (recent-sites).
+  # What reads Chrome's sites and its downloads (recent-sites).
   recentSites = lib.getExe (pkgs.callPackage ./recent-sites/package.nix { });
   # The extension's host, chrome-open-tabs, where the machine's own Chrome
   # module (nixos.nix) wrote the file Chrome starts it from, built from the
@@ -141,13 +141,16 @@ in
 
   jitsusama.keys.chrome = keys;
 
-  # Its sites, and its tabs open now. Where the machine installs the
-  # extension, they're the host's, which Go To brings forward and Close It
-  # closes by the ids it gave; otherwise, and whenever the host lists
-  # nothing, as with a managed Chrome refusing the extension, they're its
-  # own session file's, which needs no extension but can't name a tab to
-  # the host, so recent-sites gives those no id and Go To brings the
-  # tab's window forward alone. Without the host there's no Close It.
+  # Its sites, and its tabs open now, which the programs daemon reads
+  # itself, with no process started, as Chrome is stepped into and as
+  # Chrome writes its session while it's watched. Where the machine
+  # installs the extension, they're its host's, asked on its socket, which
+  # Go To brings forward and Close It closes by the ids it gave; otherwise,
+  # and whenever the host isn't there or lists nothing, as with a managed
+  # Chrome refusing the extension, they're the profile's own session
+  # file's (./session), which needs no extension but can't name a tab to
+  # the host, so those have no id and Go To brings the tab's window
+  # forward alone. Without the host there's no Close It.
   jitsusama.quickshell.launcher.recents = [
     (
       {
@@ -156,14 +159,10 @@ in
         asked = true;
         list = [ recentSites ];
         dated = true;
-        opened = [
-          recentSites
-          "open"
-        ]
-        ++ lib.optionals (openTabs != null) [
-          "--tabs-from"
-          openTabs
-        ];
+        session = {
+          profile = "${config.home.homeDirectory}/.config/google-chrome/Default";
+          host = openTabs != null;
+        };
       }
       // lib.optionalAttrs (openTabs != null) {
         go = [
