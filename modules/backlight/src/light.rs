@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 
-use crate::uevent;
+use crate::{uevent, windowed};
 
 /// Linux's `O_NONBLOCK`, the same on every architecture core builds for.
 const O_NONBLOCK: i32 = 0o4000;
@@ -307,25 +307,42 @@ impl Sensor {
         let file = unsafe { AsyncFd::register_with_interest(file, Interest::READABLE) }
             .map_err(io::Error::from)?;
         Ok((
-            Readings {
+            Readings::Buffered(Buffer {
                 file,
                 units: self.units,
                 samples,
-            },
+            }),
             now,
         ))
     }
 }
 
-pub struct Readings {
-    file: AsyncFd<File>,
-    units: Units,
-    samples: Vec<u8>,
+/// A sensor's readings as they come: from its buffer, or, from a colour
+/// sensor with no buffer for its light, each time its count leaves the
+/// window around the last (windowed.rs).
+pub enum Readings {
+    Buffered(Buffer),
+    Windowed(windowed::Window),
 }
 
 impl Readings {
     /// Waits for the reading to change, and says what it changed to.
     pub async fn changed(&mut self) -> io::Result<f64> {
+        match self {
+            Readings::Buffered(buffer) => buffer.changed().await,
+            Readings::Windowed(window) => window.changed().await,
+        }
+    }
+}
+
+pub struct Buffer {
+    file: AsyncFd<File>,
+    units: Units,
+    samples: Vec<u8>,
+}
+
+impl Buffer {
+    async fn changed(&mut self) -> io::Result<f64> {
         loop {
             let mut ready = self.file.readable_mut().await?;
             let samples = &mut self.samples;

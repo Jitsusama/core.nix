@@ -2,7 +2,9 @@
 //! learns from the brightness Joel picks.
 //!
 //! The light comes from the ambient light sensor's buffer, which wakes the
-//! daemon only when the light changes (light.rs). The curve says how bright
+//! daemon only when the light changes (light.rs), or from a colour sensor's
+//! window of thresholds where no sensor has a buffer for it (windowed.rs).
+//! The curve says how bright
 //! the screen should be in that light (curve.rs), and once the light holds
 //! (steer.rs) the brightness moves there through logind, which lets the
 //! session set its own backlight.
@@ -84,6 +86,7 @@ mod steer;
 mod switch;
 mod uevent;
 mod warmth;
+mod windowed;
 
 use std::env;
 use std::error::Error;
@@ -132,9 +135,28 @@ async fn main() -> ExitCode {
 /// A light sensor's readings and the reading now, or none when there's no
 /// sensor to hear. Without the light the daemon only tells the shell of
 /// picks, and without the warmth the screens keep their own white. Only the
-/// first look says it found none.
+/// first look says it found none. The light comes from a colour sensor's
+/// window where no sensor has a buffer for it.
 fn listen(heard: Heard, first: bool) -> Option<(Readings, f64)> {
-    let sensor = match Sensor::find(Path::new("/sys/bus/iio/devices"), Path::new("/dev"), heard) {
+    let (root, dev) = (Path::new("/sys/bus/iio/devices"), Path::new("/dev"));
+    let found = Sensor::find(root, dev, heard);
+    if heard == Heard::Light && matches!(found, Ok(None)) {
+        match windowed::Sensor::find(root, dev) {
+            Ok(Some(sensor)) => {
+                let name = sensor.name();
+                return match sensor.open() {
+                    Ok((window, lux)) => Some((Readings::Windowed(window), lux)),
+                    Err(error) => {
+                        eprintln!("<4>can't hear {name}: {error}");
+                        None
+                    }
+                };
+            }
+            Ok(None) => {}
+            Err(error) => eprintln!("<4>can't look for a colour sensor: {error}"),
+        }
+    }
+    let sensor = match found {
         Ok(Some(sensor)) => sensor,
         Ok(None) => {
             match heard {
