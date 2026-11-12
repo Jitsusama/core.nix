@@ -307,3 +307,37 @@ fn a_vocabulary_without_a_word_says_which() {
         Err("the vocabulary's eero:internet has no said.sqmOn".into())
     );
 }
+
+/// The rows the desktop's tests serve as the daemon would
+/// (tests/desktop/stand-in-eero.py), held to the records the daemon serves
+/// of the contract's network, each ordered as Kept orders it, so the
+/// stand-in never says what the daemon wouldn't.
+/// `EERO_GOLDEN=write cargo test` writes them afresh, to be read before
+/// they're committed. They're compared as JSON, so `nix fmt` may lay the
+/// file out as it likes.
+#[test]
+fn the_rows_the_desktops_tests_serve_are_the_daemons() {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/rows.json");
+    let mut kept = ready_rows::kept::Kept::default();
+    kept.take(made(&model()), vec![]);
+    let rows: Value = kept.all().cloned().collect();
+    if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
+        let text = serde_json::to_string_pretty(&rows).expect("rows are JSON");
+        std::fs::write(&file, text + "\n").expect("tests/rows.json can be written");
+        return;
+    }
+    let golden: Value = std::fs::read_to_string(&file)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| {
+            panic!(
+                "no rows at {}; write them with EERO_GOLDEN=write",
+                file.display()
+            )
+        });
+    assert!(
+        golden == rows,
+        "tests/rows.json isn't what the daemon makes of home-network.json; write it afresh with \
+         EERO_GOLDEN=write"
+    );
+}

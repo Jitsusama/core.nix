@@ -18,6 +18,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/osaka-jade.json
       # The launcher's words the rows are tested in.
       ./tests/words.json
+      # The rows the desktop's tests serve, held to those the daemon makes.
+      ./tests/rows.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
     ];
