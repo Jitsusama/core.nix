@@ -11,6 +11,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
+use std::path::Path;
 
 use daemon_serve::watch::Held;
 use serde_json::{Value, json};
@@ -52,9 +53,21 @@ fn pane_id(id: &Value) -> Option<String> {
     (id > 0).then(|| id.to_string())
 }
 
-/// The process of the kitty a socket, `unix:@kitty-<pid>`, belongs to.
+/// The process of the kitty a socket belongs to: named in it, as single
+/// instance kitty's `unix:@kitty-<pid>` is, else, for one listening on a
+/// socket file, as written beside it, `kitty.pid` for `kitty.sock`, since
+/// kitty appends no pid to a socket it's given on its command line. The
+/// sessions kitty is one (home.nix's pi-sessions, whose unit writes it).
 fn kitty_pid(socket: &str) -> Option<u64> {
-    socket.strip_prefix("unix:@kitty-")?.parse().ok()
+    if let Some(pid) = socket.strip_prefix("unix:@kitty-") {
+        return pid.parse().ok();
+    }
+    let path = Path::new(socket.strip_prefix("unix:")?);
+    if !path.is_absolute() {
+        return None;
+    }
+    let written = std::fs::read_to_string(path.with_extension("pid")).ok()?;
+    written.trim().parse().ok()
 }
 
 /// The windows daemon's windows, oldest first.
@@ -130,13 +143,20 @@ pub fn records<S: BuildHasher>(
         .iter()
         .map(|one| (one.address(), one.named().0))
         .collect();
+    // Each kitty's pid is found once a making, as one written in a file is
+    // read from it.
+    let mut pids: HashMap<String, Option<u64>> = HashMap::new();
     sessions
         .iter()
         .filter(|one| one.here() && matches!(one.lives(), Lives::Running | Lives::Parked))
         .filter(|one| !one.address().is_empty())
         .filter_map(|one| {
             let kitty = kitty(*one);
-            let pid = kitty.as_ref().and_then(|(socket, _)| kitty_pid(socket));
+            let pid = kitty.as_ref().and_then(|(socket, _)| {
+                *pids
+                    .entry(socket.clone())
+                    .or_insert_with(|| kitty_pid(socket))
+            });
             let opened = one.opened();
             let among: Vec<&Window> = windows
                 .iter()
