@@ -2993,6 +2993,32 @@ def test_a_devices_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> Non
     assert last["label"], str(last)
 
 
+def test_the_internets_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
+    """The internet's drawer says who carries it, its last look and what happened to it.
+
+    The eero daemon makes the internet's drawer (its drawers/internet.rs) and serves it beside
+    the internet's row, its times sent for the shell to word as it draws them.
+    """
+    internet = terminal_shown_until(
+        shell,
+        lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("facts")),
+        "network",
+        "home network",
+        "internet",
+    )
+    drawer = internet["row"]["drawer"]
+    assert drawer["title"] == "Internet", str(drawer)
+    assert drawer["eyebrow"] == "via Example ISP", str(drawer)
+    facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
+    assert facts["Provider"] == "Example ISP \u00b7 AS64496", str(facts)
+    assert str(facts["Last Look"]).endswith(" \u00b7 from home"), str(facts)
+    assert not str(facts["Last Look"]).startswith("{"), str(facts)
+    last = drawer["facts"][-1]
+    assert last["value"] == (
+        "The internet is out. Nothing past the home network answers this machine."
+    ), str(last)
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)

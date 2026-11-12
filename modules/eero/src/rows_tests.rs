@@ -1,9 +1,8 @@
 //! The Home Network's rows made from the model the contract draws
 //! (home-network.json), in the launcher's own words for them
 //! (tests/words.json, a slice of launcher/words.json that
-//! `the-daemons-test-the-launchers-words` holds to the vocabulary). They're
-//! the cases tests/home-network.qml holds HomeNetwork.js to, which stay
-//! beside it until the place draws these rows.
+//! `the-daemons-test-the-launchers-words` holds to the vocabulary), held to
+//! what the shell's own rows said before the place drew these.
 
 use super::*;
 

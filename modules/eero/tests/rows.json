@@ -2075,6 +2075,303 @@
   },
   {
     "drawer": {
+      "eyebrow": "via Example ISP",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "as": "moment",
+          "at": 1793875935000,
+          "name": "Speed Test",
+          "said": "370 Mb/s down · 11.9 Mb/s up · {time}"
+        },
+        {
+          "name": "Nodes",
+          "said": "3 nodes online"
+        },
+        {
+          "name": "Outages",
+          "said": "1 outage in 30 days"
+        },
+        {
+          "name": "Provider",
+          "said": "Example ISP · AS64496"
+        },
+        {
+          "name": "Home Network",
+          "said": "connected"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "moment",
+          "at": 1794035955000,
+          "name": "Updates",
+          "said": "at 02:00 · last {time}"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.9396319874782346, 0.8595709983829419, 1.0, 0.8793875156941667, 0.4778590081955002,
+              0.5033064599737664, 0.25195751914157344, 0.39896111040063736, 0.3110748000548674,
+              0.4048382003445327, 0.5806082008547371, 0.6494512444454941, 0.44125418839119585,
+              0.9218799966788447, 0.9555241276137574, 0.7137633516457319, 0.7221322433230446,
+              0.6304752274642311, 0.7504985817508459, 0.6272903680407427
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "167 GB down · 72.7 GB up"
+        },
+        {
+          "as": "moment",
+          "at": 1794092083000,
+          "name": "Last Read",
+          "said": "{time} · answering"
+        },
+        {
+          "heading": "From This Machine"
+        },
+        {
+          "as": "moment",
+          "at": 1794092083000,
+          "name": "Last Look",
+          "said": "{time} · from home"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8750000000000001, 0.75, 1.0, 0.7916666666666666, 0.9166666666666667,
+              0.8333333333333334
+            ],
+            "warn": false
+          },
+          "name": "To the Gateway Node",
+          "said": "2.00 ms"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.900763358778626, 0.9465648854961832, 1.0, 0.8854961832061069, 0.916030534351145,
+              0.9083969465648856
+            ],
+            "warn": false
+          },
+          "name": "To the Internet",
+          "said": "11.9 ms"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8930817610062892, 0.8616352201257861, 1.0, 0.8742138364779874, 0.9308176100628931,
+              0.8867924528301886
+            ],
+            "warn": false
+          },
+          "name": "Name Lookup",
+          "said": "14.1 ms"
+        },
+        {
+          "heading": "Outages in the Last 30 Days"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1793675560000
+          },
+          "said": "1 min · seen by this machine"
+        },
+        {
+          "heading": "Speed Tests"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.999891874358004, 0.99972968589501, 0.9996215602530141, 0.9997567173055091,
+              0.999891874358004, 1.0, 0.9997567173055091, 0.999702654484511, 0.999945937179002,
+              0.999837811537006, 0.9999189057685031, 0.999837811537006, 0.9999189057685031,
+              0.9995945288425151, 0.9997837487160081
+            ],
+            "warn": false
+          },
+          "name": "Down",
+          "said": "370 Mb/s"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.9362549800796812, 0.9474103585657371, 0.952988047808765, 0.9792828685258963,
+              0.945019920318725, 0.9808764940239044, 0.9784860557768923, 0.9824701195219123,
+              0.9402390438247012, 0.9155378486055776, 0.9322709163346612, 1.0, 0.9721115537848605,
+              0.9346613545816733, 0.9505976095617529
+            ],
+            "warn": false
+          },
+          "name": "Up",
+          "said": "11.9 Mb/s"
+        },
+        {
+          "as": "moment",
+          "at": 1790243611000,
+          "name": "Kept",
+          "said": "15 speed tests since {time}"
+        },
+        {
+          "heading": "Addressing"
+        },
+        {
+          "name": "Public Address",
+          "said": "203.0.113.1"
+        },
+        {
+          "name": "Lease",
+          "said": "DHCP · 203.0.113.1/23 · router 203.0.113.2"
+        },
+        {
+          "name": "Gateway Node",
+          "said": "10.0.0.1"
+        },
+        {
+          "name": "Mode",
+          "said": "NAT · addresses automatic"
+        },
+        {
+          "name": "DNS",
+          "said": "automatic · 203.0.113.3 · 203.0.113.4 · caching off · IPv6 automatic"
+        },
+        {
+          "name": "IPv6",
+          "said": "off"
+        },
+        {
+          "name": "Main Subnet",
+          "said": "10.0.0.0/22 · DHCP 10.0.0.20 to 10.0.0.254"
+        },
+        {
+          "name": "Guest Subnet",
+          "said": "off · 10.0.0.0/21 · DHCP 10.0.0.20 to 10.0.0.254"
+        },
+        {
+          "name": "Port Forwards",
+          "said": "none"
+        },
+        {
+          "name": "IPv6 Pinholes",
+          "said": "none"
+        },
+        {
+          "heading": "Settings"
+        },
+        {
+          "name": "Conferencing and Gaming",
+          "said": "optimized"
+        },
+        {
+          "name": "UPnP",
+          "said": "on"
+        },
+        {
+          "name": "Port Randomization",
+          "said": "off"
+        },
+        {
+          "name": "Band Steering",
+          "said": "on"
+        },
+        {
+          "name": "WPA3",
+          "said": "off"
+        },
+        {
+          "name": "Wi-Fi Security",
+          "said": "WPA2"
+        },
+        {
+          "name": "Wi-Fi Mode",
+          "said": "default"
+        },
+        {
+          "name": "Wi-Fi 5 Compatibility",
+          "said": "off"
+        },
+        {
+          "name": "Name Clash",
+          "said": "none seen"
+        },
+        {
+          "name": "Multi-Link Operation",
+          "said": "off"
+        },
+        {
+          "name": "Thread",
+          "said": "off · name 56 · channel 25"
+        },
+        {
+          "name": "Guest Network",
+          "said": "off · name 49"
+        },
+        {
+          "name": "Dynamic DNS",
+          "said": "off"
+        },
+        {
+          "name": "Backup Internet",
+          "said": "on"
+        },
+        {
+          "name": "Power Saving",
+          "said": "off"
+        },
+        {
+          "heading": "What Happened"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794036253000
+          },
+          "said": "The nodes updated to v7.17.4-5. They were on v7.17.3-9.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1793982093000
+          },
+          "said": "A firmware update is waiting. eero updates the nodes to v7.17.4-5 at 02:00.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1793675650000
+          },
+          "said": "The internet is back. It was out for 1 min 30 s.",
+          "words": true
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1793675560000
+          },
+          "said": "The internet is out. Nothing past the home network answers this machine.",
+          "words": true
+        }
+      ],
+      "title": "Internet"
+    },
+    "key": "drawer:eero:internet",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
       "eyebrow": "on home · node",
       "eyebrowNames": true,
       "facts": [
@@ -3637,6 +3934,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:internet",
       "glyph": "web",
       "hue": "machine",
       "key": "row:eero:internet",

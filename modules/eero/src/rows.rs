@@ -96,6 +96,48 @@ const SAID: &[(&str, &[&str])] = &[
             "signedOut",
             "unreachable",
             "tested",
+            "via",
+            "asn",
+            "ispDown",
+            "updateReady",
+            "anUpdate",
+            "upToDate",
+            "updateAt",
+            "lastStarted",
+            "answering",
+            "fromHome",
+            "awayFromHome",
+            "notReached",
+            "ms",
+            "byProbe",
+            "byEero",
+            "timeNotGiven",
+            "soFar",
+            "days",
+            "hours",
+            "minutes",
+            "underMinute",
+            "speedTest",
+            "speedTests",
+            "since",
+            "behindNat",
+            "router",
+            "addresses",
+            "caching",
+            "ipv6",
+            "mask",
+            "dhcp",
+            "off",
+            "on",
+            "noInternet",
+            "open",
+            "subnet",
+            "none",
+            "optimized",
+            "notOptimized",
+            "clash",
+            "noClash",
+            "channel",
         ],
     ),
     (
@@ -213,7 +255,7 @@ const GLYPHS: [&str; 4] = ["eero:internet", "eero:node", "eero:gateway", "eero:p
 pub struct Words {
     /// The place's name, and the internet row's.
     place: String,
-    internet: String,
+    pub(crate) internet: String,
     /// The names of the parts the place's drawer says (place.rs's NAMES),
     /// and its lead's sentences, the place's `tells` (place.rs's TELLS).
     names: BTreeMap<&'static str, String>,
@@ -249,6 +291,7 @@ impl Words {
             .chain(drawers::NAMES)
             .chain(drawers::NODE_NAMES)
             .chain(drawers::DEVICE_NAMES)
+            .chain(drawers::INTERNET_NAMES)
         {
             words.names.insert(id, word(id, &["name"])?);
         }
@@ -525,7 +568,7 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
     json!({
         "key": key("internet"), "thing": "eero:internet", "place": PLACE, "kind": "internet",
         "name": words.internet, "glyph": words.glyph("eero:internet"), "hue": "machine",
-        "depth": 0,
+        "depth": 0, "drawer": drawers::INTERNET_KEY,
         "side": items([item(state), item(if answering { tested } else { String::new() })]),
         "note": items(note),
     })
