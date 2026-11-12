@@ -46,6 +46,8 @@ use serde_json::{Value, json};
 const DOMAIN: Domain = Domain {
     name: "jobs-broker",
     kinds: &[],
+    sole: &[],
+    named_only: &[],
 };
 
 /// Where the broker listens, below the runtime folder.
