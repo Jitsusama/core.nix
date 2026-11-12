@@ -68,6 +68,10 @@ in
             ExecStart = "${sshTpmAgent} --key-dir ${folder realm}";
             # As ssh-tpm-agent's own unit has it.
             SuccessExitStatus = 2;
+            # A node's sign-ins are the agents' work, not Joel's programs',
+            # and the agent asks oomd to spare it there, keys and all.
+            Slice = "agents.slice";
+            ManagedOOMPreference = "avoid";
           };
         };
       }) cfg
