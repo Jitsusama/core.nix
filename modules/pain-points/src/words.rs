@@ -63,8 +63,27 @@ pub fn asking_status(text: &str) -> bool {
 /// Whether a message only sets a session going again, as a "." or a
 /// "carry on" typed into one that went quiet: what follows is work he
 /// handed it, not a reply he waits on.
-pub fn nudging(_text: &str) -> bool {
-    false
+pub fn nudging(text: &str) -> bool {
+    let low = lowered(text);
+    let words: Vec<&str> = low
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.is_empty() {
+        // Only marks: a "." nudges, a "?" asks.
+        return low.contains('.') && !low.contains('?');
+    }
+    [
+        "continue",
+        "carry on",
+        "go on",
+        "go ahead",
+        "keep going",
+        "keep at it",
+        "proceed",
+        "resume",
+    ]
+    .contains(&words.join(" ").as_str())
 }
 
 /// How alike two messages are, from 0 to 1: the share of letter pairs

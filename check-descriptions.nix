@@ -1619,8 +1619,9 @@
     with nothing; joins an opening that came straight back to a failed search or the same row,
     ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
     reads pi's logs from where it stopped, counting only what Joel typed up to the call that hands
-    his turn back, pi's own share past a second (its queue, tools and preparing of calls), a
-    provider's error, a stopped turn or a message said again, never the model's thinking, at most
+    his turn back, pi's queue and preparing past a second, a tool holding the session past pi's
+    minute, a provider's error, a stopped turn or a message said again, and after a nudge only
+    its first reply, never the model's thinking or the work he asked for, at most
     two minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or
     its line; and reads Chrome's history from its bytes in memory, asking only when each visit
     began and how, to count reloads a minute apart and going back within seconds, keeping no page

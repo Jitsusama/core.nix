@@ -55,6 +55,10 @@ pub struct Call {
 /// A message Joel typed, and the calls that answered it before the next
 /// message reached the session.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a separate reading of his words, any of them true together"
+)]
 pub struct Turn {
     /// Where its line begins in the log, so the next read can find the
     /// message again to compare the one after it with.
@@ -83,17 +87,6 @@ pub struct Turn {
     /// call's end and the last tool's.
     #[serde(default)]
     pub tool_mark: i64,
-}
-
-impl Turn {
-    /// When its last call ended, or when it was typed if none answered.
-    pub fn end(&self) -> i64 {
-        self.calls
-            .iter()
-            .map(|c| c.start + c.ms)
-            .max()
-            .unwrap_or(self.enter)
-    }
 }
 
 /// What's been read of one session's log: how far, whether the last
@@ -484,18 +477,18 @@ mod tests {
     }
 
     #[test]
-    fn waiting_on_tools_is_pis_own_and_on_the_model_is_not() {
+    fn a_tool_holding_the_session_past_a_minute_is_pis_own_and_the_model_is_not() {
         let text = typed(AT, AT, "run the tests")
             + &reply(AT + 500, 10_000, "toolUse")
-            + &tool_ended(AT + 40_500, "bash")
-            + &reply(AT + 41_000, 5000, "stop");
+            + &tool_ended(AT + 100_500, "bash")
+            + &reply(AT + 101_000, 5000, "stop");
         let log = read(&text);
-        assert_eq!(log.turns[0].tools_ms, 30_000, "the tool ran 30 s");
+        assert_eq!(log.turns[0].tools_ms, 90_000, "the tool ran 90 s");
         let p = &painful(&[&log.turns], AT - 1, AT + 1)[0];
         assert_eq!(
             (p.lost_seconds, p.slowed, p.part),
-            (30.0, "waiting", "pi"),
-            "of 46 s, the model's 15 aren't lost, nor the spec's second"
+            (30.5, "waiting", "pi"),
+            "of 106 s, the model's 15 aren't lost, nor the tool's first minute"
         );
         let Signs::Pi(signs) = &p.signs else {
             panic!("a pi moment carries pi's signs");
@@ -507,7 +500,7 @@ mod tests {
                 signs.pi_ms,
                 signs.tools_ms
             ),
-            (15_000, 0, 31_000, 30_000)
+            (15_000, 0, 91_000, 90_000)
         );
     }
 
@@ -564,7 +557,6 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(turn.end(), AT + 9300);
         assert_eq!(log.end, u64::try_from(text.len()).expect("a length fits"));
     }
 
