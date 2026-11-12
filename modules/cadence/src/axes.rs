@@ -17,6 +17,7 @@
 
 mod counted;
 mod landings;
+mod measure;
 mod open;
 mod plans;
 mod readings;
@@ -136,6 +137,15 @@ impl Reading {
         self
     }
 
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "nothing is held today; kept so a figure whose sources disagree is \
+                      held back rather than shown, as no spend figure reaches Joel until \
+                      QCXZEB agrees it"
+        )
+    )]
     fn held(mut self, why: &'static str) -> Self {
         self.held = Some(why);
         self
