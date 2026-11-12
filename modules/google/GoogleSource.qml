@@ -9,8 +9,10 @@
 // not yet over, their Unread the mail they sent that wants him, and their
 // Recent the meetings with them over in the last month and the mail he
 // sent them or read from them in it (Google.held, Google.lately), each
-// drawn by its own row (Calendar.row, Mail.row), so a meeting or a mail
-// there is the very one it is everywhere else. Mail that still wants him
+// drawn by its own row, so a meeting or a mail there is the very one it
+// is everywhere else: a meeting the row the google daemon serves
+// (Meetings.qml's lent), with Calendar.row's only for one it doesn't,
+// and a mail Mail.row's. Mail that still wants him
 // is Unread and never Recent, and Recent is what Joel had with them
 // (GB56HX).
 // Google's own contacts would need a sign-in pi doesn't ask for, so
@@ -45,7 +47,16 @@ PersonSource {
         const coming = Calendar.meetings.filter(meeting => meeting.end > now
             && Google.withThem(meeting, person.emails))
             .sort((a, b) => a.start - b.start)[0];
-        return coming ? { at: coming.start, row: Calendar.row(coming, provider) } : null;
+        return coming ? { at: coming.start, row: meetingRow(coming, provider) } : null;
+    }
+
+    // A meeting's one row: the Calendar place's, as the daemon serves it,
+    // or Calendar.row's where that place has none.
+    function meetingRow(meeting, provider) {
+        const calendar = (provider.launcher?.sources ?? [])
+            .find(one => one.settings?.name === "calendar") ?? null;
+        return calendar?.lent?.(`calendar:meeting:${meeting.id}`)
+            ?? Calendar.row(meeting, provider);
     }
 
     function unread(person, provider) {
@@ -60,7 +71,7 @@ PersonSource {
         const now = Date.now();
         const meetings = Google.held.concat(Calendar.meetings).filter(meeting => meeting.end
             <= now && Google.withThem(meeting, person.emails))
-            .map(meeting => ({ at: meeting.end, row: Calendar.row(meeting, provider),
+            .map(meeting => ({ at: meeting.end, row: meetingRow(meeting, provider),
                 kind: "met", one: alone(meeting) }));
         const mail = Google.lately.filter(one => Google.mailedWith(one, person.emails))
             .map(one => ({ at: one.at, row: Mail.row(one, provider.thing), kind: "wrote",

@@ -37,7 +37,8 @@
 // drawer with no row made, since a drawer is shown on each key: { met,
 // wait }, the newest met as { at, name, one } and the oldest waiting as
 // { at, name, what, mine }, each or null. Each row is drawn
-// by that thing's own component (Mail.row, Calendar.row), never one of
+// by that thing's own component (Mail.row, a meeting the Calendar place's
+// served row, Meetings.qml's lent), never one of
 // its own. `page` is the link to their page in the source, for one that
 // keeps a page for each person, or "": People lists it as one row, Open
 // in the source, by the name it's `called`, after the ways to reach them

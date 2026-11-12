@@ -880,6 +880,22 @@ def test_a_meetings_guests_and_a_mails_sender_step_through_to_the_person(
             == ["Lunch on Friday", "Write a Mail", "Standup", "Last Met", "ada@example.com"]
         )
     )
+    # Her next meeting is the row the daemon serves, so its Move holds the
+    # daemon's later times, keyed under the meeting, not the shell's.
+    desktop.down_to("Standup")
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Move the Meeting" in shown["rows"])
+    desktop.down_to("Move the Meeting")
+    desktop.step_in("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            "Fifteen Minutes Later" in shown["rows"]
+            and all(
+                str(thing["is"]).startswith("calendar:meeting:standup:move:")
+                for thing in shown["things"]
+            )
+        )
+    )
     desktop.as_account("qs ipc call launcher toggle")
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
 
