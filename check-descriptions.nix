@@ -3544,6 +3544,11 @@
     ZZ closes the camera's viewfinder, and Escape and q leave it open, even where a script in
     mpv's own folder binds Z, as the player's vi keys do, since the viewfinder loads none of them
   '';
+  the-wallpaper-is-read-at-its-screens-pixels = ''
+    the wallpaper's picture is read at its screen's own pixels, by niri's scale for the output
+    where niri names one, 3840 by 2160 on a 4K screen at 1.5 rather than the 5120 by 2880 the
+    screen's whole-number ratio gives, and by that ratio where niri doesn't
+  '';
   the-web-kit-carries-the-theme = ''
     the web kit's CSS holds every role of the machine's theme as its dark look and of core's light
     theme as its light one, and a first view's three faces come in under 350 KB
