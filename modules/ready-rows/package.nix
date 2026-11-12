@@ -1,6 +1,6 @@
 # ready-rows, built from this directory's crate, a library with no
 # program, its tests run as it builds, the figures' among them reading
-# numbers.json beside it.
+# numbers.json beside it and the matcher's fuzzy.json.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage {
   pname = "ready-rows";
@@ -10,6 +10,7 @@ rustPlatform.buildRustPackage {
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
+      ./fuzzy.json
       ./numbers.json
       ./src
     ];

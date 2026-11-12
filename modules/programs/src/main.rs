@@ -26,15 +26,19 @@
 //! of zoxide and ssh, as each ask names it (visited.rs, machines.rs). The
 //! Programs collection's rows are made as a watch of them begins and again
 //! as the windows daemon says a window opened, closed or was looked at, or
-//! an entry changed (rows.rs). Capture's Recent's rows are made as a watch
-//! of them begins and as what was taken changes, worded from the
-//! launcher's vocabulary WORDS, and with no WORDS none is (taken.rs).
+//! an entry changed (rows.rs), and searched as each `search` names what's
+//! typed (search.rs). Capture's Recent's rows are made as a watch of them
+//! begins and as what was taken changes, worded from the launcher's
+//! vocabulary WORDS, and with no WORDS none is (taken.rs). A program that
+//! tells its lists changed has them read again (told.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
 //! answer back, and is stopped past ten seconds (command.rs).
 
 mod heard;
 mod rows;
+mod search;
 mod taken;
+mod told;
 mod watch;
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
@@ -93,6 +97,9 @@ struct Daemon {
     /// one that hasn't is read as each ask comes, as an untold one is.
     listers: Vec<Vec<u64>>,
     tellers: HashSet<u64>,
+    /// How many `changed` asks were heard, which health says, so how
+    /// often kitty tells can be counted.
+    told: u64,
     /// The commands running now, and those asked for again meanwhile.
     running: HashSet<(usize, Run)>,
     again: HashSet<(usize, Run)>,
@@ -163,6 +170,7 @@ fn main() {
             read_as_of: vec![None; sources.len()],
             listers: vec![Vec::new(); sources.len()],
             tellers: HashSet::new(),
+            told: 0,
             running: HashSet::new(),
             again: HashSet::new(),
             commands: BTreeMap::new(),
@@ -557,31 +565,6 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
     }
 }
 
-/// Each told list these keys name is read again: at once, on a thread of
-/// its own, where a watch names its key, as a page open on it does, and
-/// otherwise as it's next asked. A list that isn't told reads as it always
-/// does, so a program saying so changes nothing of it.
-fn told_changed(shared: &Arc<Shared>, keys: &[String]) {
-    for at in sources_of(shared, Run::List, &[], Some(keys)) {
-        let source = &shared.sources[at];
-        if !source.told {
-            continue;
-        }
-        let key = source.list_key();
-        let named = {
-            let mut daemon = lock(&shared.daemon);
-            daemon.stale[at] = true;
-            daemon
-                .watches
-                .iter()
-                .any(|watch| watch.keys.as_ref().is_some_and(|keys| keys.contains(&key)))
-        };
-        if named {
-            start(shared, at, Run::List);
-        }
-    }
-}
-
 /// What a get or a list reads first, on this thread: the entries not yet
 /// held, each list not read since it changed or that's asked, and what
 /// each program has open now.
@@ -708,6 +691,7 @@ fn answer(
             shown,
             place,
             folders,
+            also,
         } => {
             // An entry is read at once, a file or two, so the answer holds
             // it; a list's command may be slow, so it's told after.
@@ -744,6 +728,7 @@ fn answer(
                     shown,
                     place,
                     folders,
+                    also,
                     told: told.clone(),
                     stream: Arc::clone(hangup),
                 };
@@ -772,10 +757,7 @@ fn answer(
             json!({"id": id, "unwatched": true})
         }
         Ask::Changed { id, keys, from } => {
-            if let Some(from) = from {
-                lock(&shared.daemon).tellers.insert(from);
-            }
-            told_changed(shared, &keys);
+            told::heard(shared, &keys, from);
             json!({"id": id, "heard": keys})
         }
         Ask::Health { id } => {
@@ -785,7 +767,11 @@ fn answer(
                 "since": daemon.since, "sources": sources(&daemon),
                 "watches": daemon.watches.len(),
                 "took_us": daemon.took.iter().collect::<Vec<_>>(),
+                "told": {"asks": daemon.told, "tellers": daemon.tellers.len()},
             })
+        }
+        Ask::Search { id, place, words } => {
+            search::answer(&lock(&shared.daemon), &id, &place, &words)
         }
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))

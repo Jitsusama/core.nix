@@ -4,6 +4,8 @@
 // and runs `qml -platform offscreen fuzzy.qml`, over a fixed list shaped like
 // a real desktop's: its actions, programs and session commands. Each query
 // names the row that has to come first, leaves few rows, or finds nothing.
+// It copies fuzzy.json beside it too, every case the daemons' matcher is
+// held to, each scored and marked as it says.
 import QtQuick
 import "Fuzzy.js" as Fuzzy
 
@@ -388,10 +390,34 @@ QtObject {
         if (washing > 4)
             slow.push(`the letters to wash in 400 rows took ${washing.toFixed(2)} ms, more than 4`);
 
+        // Every text against every query scores and marks as fuzzy.json
+        // says, the cases the daemons' own matcher is held to too
+        // (modules/ready-rows/src/fuzzy.rs), so the launcher and a daemon
+        // answering its search find and rank alike. A text a query's list
+        // leaves out misses.
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("fuzzy.json"), false);
+        request.send();
+        const cases = JSON.parse(request.responseText);
+        const shared = cases.texts.map(text => Fuzzy.prepare(text));
+        for (const query in cases.found) {
+            const said = {};
+            for (const [at, score, positions] of cases.found[query])
+                said[at] = JSON.stringify([score, positions]);
+            shared.forEach((item, at) => {
+                const got = Fuzzy.match(item, Fuzzy.words(query), true);
+                const reads = got.score >= 0 ? JSON.stringify([got.score, got.positions]) : "none";
+                if (reads !== (said[at] ?? "none"))
+                    failures.push(`"${query}" in "${cases.texts[at]}" gave ${reads}, `
+                        + `where fuzzy.json says ${said[at] ?? "none"}`);
+            });
+        }
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures.concat(slow))
             console.warn(failure);
-        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 9;
+        const asked = Object.keys(firsts).length + nothing.length + Object.keys(atMost).length + 9
+            + Object.keys(cases.found).length;
         console.warn(failures.length > 0 ? `${failures.length} of ${asked} went wrong`
             : slow.length > 0 ? `${slow.length} of ${asked} too slow in this process`
             : `all ${asked} held`);

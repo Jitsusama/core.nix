@@ -1769,8 +1769,10 @@
     file-preview it keeps, again only once the file changed, says a file that file-preview doesn't
     answer within its deadline as not answering, stopping it and what it waits on, and goes on to
     the next, serves Programs' rows open first, counting the windows the windows daemon says each
-    has open and going to the latest, and again as those change, follows a data folder through
-    each link a switch replaces, and refuses an ask or a kind it doesn't know
+    has open and going to the latest, and again as those change, finds them for what's typed by
+    name, keyword, comment and what their binds do, best first with the letters matched, counts
+    the changes programs tell of in its health, follows a data folder through each link a switch
+    replaces, and refuses an ask, a kind or a place to search it doesn't know
   '';
   programs-passes-clippy = ''
     clippy finds nothing in the programs daemon or its tests
@@ -1883,7 +1885,8 @@
   ready-rows-keeps-each-rows-place = ''
     a row moved among a daemon's ready rows takes an order midway and the rest keep theirs, a
     making is told only what reads differently and what went, names go A to Z with case alike
-    and numbers by their worth, and each figure is said as numbers.json's cases say
+    and numbers by their worth, each figure is said as numbers.json's cases say, and every text
+    matches every query, scored and marked, as fuzzy.json, made by the shell's Fuzzy.js, says
   '';
   ready-rows-passes-clippy = ''
     clippy finds nothing in ready-rows, the form every daemon serves the launcher's rows in
@@ -2508,7 +2511,8 @@
     goes to their session, opens an answer whole, and hides amounts while sharing
   '';
   the-launcher-finds-what-is-meant = ''
-    the right row comes first for each query, within budget
+    the right row comes first for each query, within budget, and every text matches every query,
+    scored and marked, as fuzzy.json says, the cases the daemons' matcher is held to too
   '';
   the-launcher-groups-every-shortcut = ''
     every shortcut of every layer lands in one place in Shortcuts, a desktop chord always in a group,
@@ -2523,7 +2527,8 @@
     changes nothing, an act another provider gives makes its own row and no program's, a step
     asked again makes none of its Recent's rows again, and a row the programs daemon serves is
     the program's, going to the window served or starting it, its windows left to a say that
-    counts what it holds
+    counts what it holds; typed inside Programs, the rows holding its letters stand at once, and
+    the programs daemon's answer takes its own order, the list shown again
   '';
   the-launcher-holds-still-as-it-refreshes = ''
     a list the launcher shows keeps its order and its selection as what's in it changes

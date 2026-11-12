@@ -2,6 +2,7 @@
 //! change, and, of the `row` kind, the one place whose rows it hears
 //! (ready-rows.md), with what that place's rows are made of.
 
+use std::collections::BTreeMap;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 use std::sync::mpsc::SyncSender;
@@ -22,6 +23,9 @@ pub struct Watch {
     /// taken from (`taken_rows.rs`).
     pub place: Option<String>,
     pub folders: Vec<String>,
+    /// What each program's key binds do, by its id, which its search
+    /// finds it by too (search.rs).
+    pub also: BTreeMap<String, String>,
 }
 
 impl Watch {

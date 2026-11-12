@@ -13,7 +13,11 @@
 //!   say, its cases in `numbers.json`.
 //! - [`time`]: a time as it travels, for the shell to word, since a row
 //!   that said the time itself would change every minute.
+//! - [`fuzzy`]: matching by words as the shell's Fuzzy.js does, so a
+//!   daemon answering a search finds and ranks what the launcher would,
+//!   its cases in `fuzzy.json`.
 
+pub mod fuzzy;
 pub mod kept;
 pub mod numbers;
 pub mod order;
