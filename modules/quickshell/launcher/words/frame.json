@@ -49,6 +49,11 @@
       "term": "Machine",
       "glyph": "computer",
       "holds": [
+        "waits",
+        "machine:cpu",
+        "machine:memory",
+        "heat",
+        "machine:disk",
         "energy",
         "session:awake",
         "bluetooth",
@@ -56,11 +61,6 @@
         "media",
         "cameras",
         "light",
-        "machine:cpu",
-        "machine:memory",
-        "heat",
-        "machine:disk",
-        "waits",
         "firmware",
         "machines"
       ],

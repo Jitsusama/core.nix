@@ -1354,6 +1354,31 @@ fn a_watchers_status_is_told_as_it_writes_it_and_said_silent_once_its_heartbeat_
     assert_eq!(client.changed("status:lag-watch")["silent"], true);
 }
 
+// While memory held the desktop up, Lag is told the program holding the
+// most of it (VKCF3Z, 2026-11-12); using.rs's cases hold the rest.
+#[test]
+fn a_wait_on_memory_is_told_with_the_program_holding_the_most() {
+    let running = Running::new("behind");
+    let mut client = running.client();
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "status"}));
+    let folder = running.root().join("run/user/1000/lag-watch");
+    std::fs::create_dir_all(&folder).unwrap();
+    let ended = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    let window = json!({"ended": ended, "trouble": ["the desktop waited on memory"],
+        "worst": "memory"});
+    std::fs::write(folder.join(".writing"), window.to_string()).unwrap();
+    std::fs::rename(folder.join(".writing"), folder.join("status.json")).unwrap();
+    let top = &client.changed("status:lag-watch")["said"]["top"];
+    assert_eq!(
+        (&top["of"], &top["name"]),
+        (&json!("memory"), &json!("kitty")),
+        "told {top}"
+    );
+}
+
 // A guard long silent is told with how its unit stands, asked of
 // systemd's bus; with no bus to ask, as here, it's taken as stopped.
 #[test]

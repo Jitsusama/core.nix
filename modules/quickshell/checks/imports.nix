@@ -307,7 +307,11 @@
     "launcher/Traffic.js"
   ];
   "launcher/Vendors.qml" = [ "launcher/Addresses.js" ];
-  "launcher/Waits.qml" = [ "launcher/Numbers.js" ];
+  "launcher/Waits.js" = [ "launcher/Numbers.js" ];
+  "launcher/Waits.qml" = [
+    "launcher/Numbers.js"
+    "launcher/Waits.js"
+  ];
   "launcher/Weather.qml" = [
     "launcher/Moment.js"
     "launcher/Numbers.js"

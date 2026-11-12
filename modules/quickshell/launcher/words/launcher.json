@@ -430,10 +430,17 @@
       "name": "Lag",
       "term": "Machine/lag",
       "answers": [
-        "lag"
+        "lag",
+        "slow"
       ],
       "said": {
         "calm": "nothing's slowing the desktop",
+        "cause:cpu": "slowed by the processor",
+        "cause:memory": "slowed by memory",
+        "cause:disk": "slowed by the disk",
+        "cause:niri": "the desktop's slow to answer",
+        "cores": "{name} \u00b7 {used} of {all} cores",
+        "holds": "{name} \u00b7 {held}",
         "first": "measuring its first ten seconds",
         "several": "{count} things are slowing it",
         "answers": "in {typical}, at worst {worst}",

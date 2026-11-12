@@ -1,6 +1,6 @@
 // The machine's firmware, answered in the field by Firmware's words
 // ("firmware", "update" or "updates", as words.json lists them) and listed
-// last in Machine, after Lag, since it's the computer and its devices
+// near the end of Machine, after Light, since it's the computer and its devices
 // (VKCF3Z, 2026-10-29). The headline says whether anything is offered,
 // "up to date" or "1 update ready", the latter in the warning colour; the
 // rows are each device fwupd knows, those with an update first, then in

@@ -687,22 +687,24 @@ def test_machine_holds_power_which_holds_the_battery_and_what_ends_a_session(
     desktop.answer("machine")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Machine")
     desktop.step_in("ret")
-    # Power comes first, saying how it stands at its right, the charge and
-    # what it's doing, as Processor says how busy it is, and what it holds
-    # after its name, as at home (VKCF3Z, 2a429f67), its parts run by dots
-    # (VKCF3Z, 15a4a36a). Memory is a row of its
-    # own, before Heat, as the processor is,
-    # Disk after it and Lag last, since what it points at is the
-    # processor, the memory and the disk.
+    # The machine's health comes first, Lag leading it, since Joel asked
+    # Machine why the laptop was slow and never found Lag 13th of 15
+    # (VKCF3Z, 9e0788ff). Power follows, saying how it stands at its right,
+    # the charge and what it's doing, as Processor says how busy it is, and
+    # what it holds after its name, as at home (VKCF3Z, 2a429f67), its parts
+    # run by dots (VKCF3Z, 15a4a36a).
     # The queue is Agents', so Machine keeps only the machine's own.
+    health = ["Lag", "Processor", "Memory", "Heat", "Disk"]
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == "Power"
+            (shown["selected"] or {}).get("name") == "Lag"
             and "Queue" not in shown["rows"]
-            and re.match(r"\d+%", str(shown["selected"].get("side", "")))
-            and "Memory" in shown["rows"]
-            and shown["rows"][shown["rows"].index("Memory") + 1 :][:3] == ["Heat", "Disk", "Lag"]
+            and shown["rows"][:6] == [*health, "Power"]
         )
+    )
+    desktop.down_to("Power")
+    desktop.launcher_until(
+        lambda shown: re.match(r"\d+%", str((shown["selected"] or {}).get("side", ""))) is not None
     )
     desktop.step_in("ret")
     desktop.launcher_until(
@@ -758,9 +760,8 @@ def test_lag_stands_in_its_place_until_its_first_ten_seconds_then_says_them(
     )
 
     def lag(shown: Json) -> Json | None:
-        """Lag's row as it's shown in its place after Disk, or None."""
-        rows = shown["rows"]
-        if "Disk" not in rows or rows[rows.index("Disk") + 1 :][:1] != ["Lag"]:
+        """Lag's row as it's shown in its place, Machine's first, or None."""
+        if shown["rows"][:1] != ["Lag"]:
             return None
         return next(
             (thing for thing in shown["things"] if str(thing["reads"]).startswith("Lag")), None
@@ -1045,9 +1046,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(
-        lambda shown: holds(shown, "Machine", ["Power", "Bluetooth"], wraps=True)
-    )
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
     desktop.down_to("Network")
     desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)

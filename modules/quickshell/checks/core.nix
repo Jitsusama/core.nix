@@ -529,6 +529,7 @@ in
       cp ${../launcher/Asking.js} Asking.js
       cp ${../launcher/Machine.js} Machine.js
       cp ${../launcher/Heat.js} Heat.js
+      cp ${../launcher/Waits.js} Waits.js
       cp ${../launcher/Power.js} Power.js
       cp ${../launcher/Seen.js} Seen.js
       cp ${../launcher/Awake.js} Awake.js
