@@ -86,9 +86,10 @@ let
         StartLimitBurst = 3;
         # A host left down, at its start limit or on the exit it isn't
         # restarted for, holds its conversations out of reach until someone
-        # starts it, so Joel is told at once. A watchdog's kill that it comes
-        # back from doesn't reach this; the journal and cadence's evening read
-        # keep those.
+        # starts it, so Joel is told at once. A crash or a watchdog's kill it
+        # is restarted from doesn't reach this, since RestartMode below skips
+        # the failed state a restart would pass through; the journal and
+        # cadence's evening read keep those.
         OnFailure = [ "pi-host-down@%N.service" ];
       };
       Service = {
@@ -135,6 +136,10 @@ let
         # takes back what it held.
         Restart = "on-failure";
         RestartSec = "5s";
+        # A restart goes straight back to starting rather than through
+        # failed, which would tell Joel the host is down at every crash it
+        # comes back from; once no restart comes, it fails as before.
+        RestartMode = "direct";
         # A host whose loop stops turning answers nobody yet stays active, so
         # once ready it pings from its own loop four times in each of these,
         # and one gone quiet for the whole of it is killed and restarted, to

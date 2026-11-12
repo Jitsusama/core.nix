@@ -1846,8 +1846,8 @@
     once it says so, in agents.slice with its realm's environment and its folders first on its
     PATH, left stopped after refusing
     what it was given and left running through a switch, watched by a two-minute watchdog,
-    started at most three times in ten minutes and said to be down once left down, and a machine
-    naming none, or a Mac, gets none
+    started at most three times in ten minutes and said to be down once left down, never at a
+    restart, and a machine naming none, or a Mac, gets none
   '';
   pi-hosts-refuse-an-unproven-runtime = ''
     a realm's pi reaches its hosts only with the proof that pnpm test:host passed on the runtime
