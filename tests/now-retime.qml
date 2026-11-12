@@ -43,15 +43,20 @@ ShellRoot {
         settings: ({ name: "on" })
     }
 
-    // The start's own placing is let through first.
+    // The start's own placing is let through first. The cases read the
+    // wall clock's minute, so one begun in a minute's last seconds would see
+    // it turn and rightly place the time again: begun then, they wait for
+    // the next minute's start instead, the 100 ms let through after it, and
+    // take the time as placed in that minute (intoAPlace).
     Timer {
         running: true
-        interval: 100
+        interval: Date.now() % 60000 > 55000 ? 60100 - Date.now() % 60000 : 100
         onTriggered: root.intoAPlace()
     }
 
     function intoAPlace() {
         try {
+            now.timedMinute = now.minuteNow();
             theLauncher.placed = 0;
             theLauncher.open = true;
             Expect.same("opened into a place, it places no time", theLauncher.placed, 0);
