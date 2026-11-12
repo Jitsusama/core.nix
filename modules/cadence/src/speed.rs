@@ -57,7 +57,7 @@ struct Batches {
 
 impl Batches {
     /// From "N ... presented a median M ms from the ..., the slowest S ms,
-    /// W within 50 ms".
+    /// W within 50 ms", with or without a figure between the two.
     fn add(&mut self, said: &str) {
         let Some(count) = first_number(said) else {
             return;
@@ -68,10 +68,12 @@ impl Batches {
         else {
             return;
         };
-        // The first " ms, " ends the slowest, and the within follows it.
+        // The count just before " within ", so a figure the shell adds
+        // after the slowest, such as its p99, is no count.
         let within = said
-            .split_once(" ms, ")
-            .and_then(|(_, rest)| first_number(rest));
+            .split_once(" within ")
+            .and_then(|(before, _)| before.rsplit(' ').next())
+            .and_then(|count| count.parse::<f64>().ok());
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
@@ -118,7 +120,7 @@ mod tests {
   INFO qml: launcher: 3 keys presented a median 60 ms from the key, the slowest 71 ms, \
 0 within 50 ms: a median 2 ms before the shell heard it, 10 in the shell
   INFO qml: launcher: 1 keys presented a median 20 ms from the key, the slowest 20 ms, \
-1 within 50 ms
+the p99 20 ms, 1 within 50 ms
   INFO qml: launcher: 3 keys landed a median 79 ms from the key, the slowest 89 ms, 0 within 50 ms
   INFO qml: launcher: 1 change in on presented a median 76 ms from the line, the slowest \
 76 ms, 0 within 50 ms
