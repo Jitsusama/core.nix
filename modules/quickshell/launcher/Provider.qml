@@ -47,6 +47,7 @@ import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../ProgramGlyphs.js" as ProgramGlyphs
 import "Asking.js" as Asking
+import "Member.js" as Member
 import "Numbers.js" as Numbers
 
 Scope {
@@ -483,10 +484,11 @@ Scope {
     readonly property var tally: ({ rows: 0, looked: 0 })
 
     // A collection's row: a thing whose name is made ready to match only
-    // when it's first drawn, since a collection has thousands.
+    // when it's first drawn, since a collection has thousands. Member.js
+    // says why its getter comes first, even for a row made from a row.
     function member(fields) {
         tally.rows += 1;
-        const made = Object.assign({
+        return Member.made({
             what: provider.what,
             chord: [],
             side: "",
@@ -500,13 +502,7 @@ Scope {
             now: false,
             keywords: null,
             weight: provider.weight
-        }, fields);
-        let prepared = null;
-        Object.defineProperty(made, "prepared", {
-            enumerable: true,
-            get: () => prepared ?? (prepared = Fuzzy.kept(made.name))
-        });
-        return made;
+        }, fields, Fuzzy.kept);
     }
 
     // A row made again with each of `getters` read as it's asked for, in

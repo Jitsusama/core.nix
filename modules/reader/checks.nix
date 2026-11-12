@@ -96,6 +96,7 @@ onLinux {
       launched = [
         "Provider.qml"
         "Asking.js"
+        "Member.js"
         "Numbers.js"
         "Applications.qml"
         "ReadyRows.qml"

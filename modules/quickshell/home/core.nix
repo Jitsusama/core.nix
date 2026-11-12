@@ -33,6 +33,7 @@
   "Hearing.js"
   "Watchers.qml"
   "launcher/Provider.qml"
+  "launcher/Member.js"
   "launcher/ReadyRows.qml"
   "launcher/Listed.qml"
   "launcher/Numbers.js"
