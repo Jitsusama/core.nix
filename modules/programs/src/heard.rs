@@ -10,14 +10,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
+use programs::bookmark_rows;
 use programs::notify::Notify;
 use programs::xdg;
 
-use programs::bookmark_rows;
-
-use super::{
-    Run, Shared, bookmarks, entries_changed, lock, read_named, start, tabs, watched,
-};
+use super::{Run, Shared, bookmarks, entries_changed, lock, read_named, start, tabs, watched};
 
 /// What a watched folder is to this daemon; one can be more than one.
 #[derive(Default)]
