@@ -189,7 +189,12 @@ impl Reading {
             };
             return format!("{named}: {why}");
         };
-        let said = self.says.replacen("{}", &shown(now, self.unit), 1);
+        let says = if (now - 1.0).abs() < f64::EPSILON && self.unit.is_empty() {
+            one(self.says)
+        } else {
+            self.says.to_owned()
+        };
+        let said = says.replacen("{}", &shown(now, self.unit), 1);
         match self.bar {
             Some(Bar::AtMost(bar)) => format!("{said}, at most {}", shown(bar, self.unit)),
             Some(Bar::AtLeast(bar)) => format!("{said}, at least {}", shown(bar, self.unit)),
@@ -238,6 +243,34 @@ impl Axis {
 /// A figure as a line says it: whole from ten, else to one place, with
 /// thousands set apart.
 #[must_use]
+/// A count's words for one of it: the first plural among the three words
+/// after its figure goes singular, so "{} core changes" says "1 core
+/// change" and "{} crashes" says "1 crash". Words with no plural there,
+/// like "{} a day", stay as they are.
+fn one(says: &str) -> String {
+    let Some((before, after)) = says.split_once("{}") else {
+        return says.to_owned();
+    };
+    let mut words: Vec<String> = after.split(' ').map(str::to_owned).collect();
+    if let Some(word) = words
+        .iter_mut()
+        .skip(1)
+        .take(3)
+        .find(|w| w.len() > 2 && w.ends_with('s'))
+    {
+        let cut = if ["ches", "shes", "sses", "xes"]
+            .iter()
+            .any(|end| word.ends_with(end))
+        {
+            2
+        } else {
+            1
+        };
+        word.truncate(word.len() - cut);
+    }
+    format!("{before}{{}}{}", words.join(" "))
+}
+
 pub fn shown(x: f64, unit: &str) -> String {
     let number = if x.abs() >= 10.0 || x.fract() == 0.0 {
         let whole = format!("{:.0}", x.abs());
@@ -503,6 +536,31 @@ mod tests {
         assert_eq!(shown(3.0, ""), "3");
         let unread = Reading::new("turns making one tool call {}", None, "%", "QCXZEB");
         assert_eq!(unread.words(), "turns making one tool call: no reading yet");
+    }
+
+    #[test]
+    fn a_count_of_one_says_its_thing_once() {
+        let said = |says, n: f64| Reading::new(says, Some(n), "", "WCJQSG").words();
+        assert_eq!(
+            said("{} quests worked on with no live plan", 1.0),
+            "1 quest worked on with no live plan"
+        );
+        assert_eq!(said("{} crashes over the day", 1.0), "1 crash over the day");
+        assert_eq!(
+            said("{} core changes reached you", 1.0),
+            "1 core change reached you"
+        );
+        assert_eq!(
+            said("{} machine-wide out-of-memory kills", 1.0),
+            "1 machine-wide out-of-memory kill"
+        );
+        assert_eq!(said("{} a day", 1.0), "1 a day");
+        assert_eq!(
+            said("{} crashes over the day", 2.0),
+            "2 crashes over the day"
+        );
+        let share = Reading::new("{} of notices cleared", Some(1.0), "%", "2RCBOJ");
+        assert_eq!(share.words(), "1% of notices cleared");
     }
 
     #[test]
