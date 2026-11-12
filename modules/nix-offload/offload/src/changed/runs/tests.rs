@@ -26,3 +26,18 @@ fn only_whole_lines_not_already_home_are_added() {
     // Nothing found adds nothing.
     assert_eq!(kept("", &home).unwrap(), 0, "nothing was found");
 }
+
+#[test]
+fn a_line_two_runs_wrote_into_each_other_stays_on_the_builder() {
+    // On 12 November two gates on the lent builder ended a second apart
+    // and wrote their lines into each other, which no reader could parse.
+    let folder = tempfile::tempdir().unwrap();
+    let home = folder.path().join("changed-runs.jsonl");
+    let added = kept("{\"at\":1}\n{\"at\":{\"a2t\":3}\n{\"at\":4}\n", &home).unwrap();
+    assert_eq!(added, 2, "only the lines a reader can parse come home");
+    assert_eq!(
+        fs::read_to_string(&home).unwrap(),
+        "{\"at\":1}\n{\"at\":4}\n",
+        "the mixed line came home"
+    );
+}

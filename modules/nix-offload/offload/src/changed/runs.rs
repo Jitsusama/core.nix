@@ -78,13 +78,15 @@ pub fn bring(lent: &Builder, scratch: &Path, from: Option<u64>, home: &Path) {
 }
 
 /// Adds to `home` each whole line of `found` that it doesn't hold lately,
-/// and says how many it added.
+/// and says how many it added. A line that isn't JSON stays behind: two
+/// runs ending at once on a builder have written theirs into each other.
 pub fn kept(found: &str, home: &Path) -> io::Result<usize> {
     let lately = held_lately(home)?;
     let mut held: HashSet<&str> = lately.lines().collect();
     let mut adding = String::new();
     let whole = found.rsplit_once('\n').map_or("", |(whole, _)| whole);
-    for line in whole.lines().filter(|line| !line.trim().is_empty()) {
+    let read = |line: &&str| serde_json::from_str::<serde_json::Value>(line).is_ok();
+    for line in whole.lines().filter(read) {
         if held.insert(line) {
             adding.push_str(line);
             adding.push('\n');
