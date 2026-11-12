@@ -148,6 +148,25 @@
       touch $out
     '';
 
+  # Every module core offers is brought into an example machine, by a role,
+  # a hardware model, the example itself or another module, so it meets the
+  # others there and two that clash fail the example, not a machine
+  # (tests/repository/every-module-meets-the-others.sh).
+  every-module-meets-the-others =
+    let
+      offered = system: map (name: "${system} ${name}") (lib.attrNames self.${system});
+      outputs = lib.concatMap offered [
+        "homeModules"
+        "nixosModules"
+        "darwinModules"
+      ];
+    in
+    pkgs.runCommandLocal "every-module-meets-the-others" { nativeBuildInputs = [ pkgs.ripgrep ]; } ''
+      ${lib.getExe pkgs.bash} ${./every-module-meets-the-others.sh} ${../..} \
+        ${pkgs.writeText "outputs" (lib.concatLines outputs)}
+      touch $out
+    '';
+
   # The glossary gives each thing one word and each word one thing within
   # its context, and writes no name it replaces
   # (tests/repository/glossary.py), printing each word to settle.
