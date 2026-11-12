@@ -2166,6 +2166,10 @@
     writes it back 0600 in its own shape keeping its refresh token; finds a device to play on;
     and says signed out, nowhere to play and out of reach apart
   '';
+  spotify-scrolls-on-vim-keys = ''
+    Spotify's page scrolls on Vim's j, k, Ctrl+e, Ctrl+y, Ctrl+d, Ctrl+u, Ctrl+b, gg and G as Vim
+    scrolls, leaving Ctrl+f, Alt, a field and a dialog to Spotify, rather than on nothing
+  '';
   sshd-lets-a-gone-caller-go = ''
     every NixOS machine's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';

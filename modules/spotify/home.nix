@@ -10,7 +10,10 @@
 # takes no settings for its keys, and it has every key of the desktop's but
 # one: Escape only closes and lets go there. So a Spicetify extension of
 # ours, backs-out.js, makes Escape go back a page once nothing is left to
-# close or let go of, as it backs out a step everywhere else.
+# close or let go of, as it backs out a step everywhere else. Another,
+# scrolls.js, scrolls its page on the key language's keys for scrolling
+# (modules/keys/language.toml), but Ctrl+f, which Spotify keeps for
+# filtering a list.
 #
 # The shell shows each new track itself (Music.qml). Spotify's own notice
 # for one is off unless it's turned on in Spotify's settings, and Spotify
@@ -62,6 +65,59 @@ let
   };
 
   grouped = group: map (key: key // { inherit group; });
+
+  # What each of the language's acts for scrolling a page does in Spotify,
+  # in the launcher's words.
+  scrollActs = {
+    down = "Scroll down";
+    up = "Scroll up";
+    scroll-down = "Scroll down a line";
+    scroll-up = "Scroll up a line";
+    half-down = "Down half a page";
+    half-up = "Up half a page";
+    screen-down = "Down a page";
+    screen-up = "Up a page";
+    first = "The top of the page";
+    last = "The bottom of the page";
+  };
+
+  # Each act's keys scrolls.js reads: letters and Ctrl's. Not a named key,
+  # as Page Down, which Spotify scrolls by itself, nor Ctrl+f, Spotify's
+  # filter.
+  scrollKeys =
+    act:
+    lib.filter (
+      key: builtins.match "<C-.>|[^<]+" key != null && key != "<C-f>"
+    ) config.jitsusama.keyLanguage.acts.${act}.keys;
+
+  # Every key scrolls.js takes, with its act.
+  scrollBinds = lib.concatMap (act: map (key: { inherit act key; }) (scrollKeys act)) (
+    lib.attrNames scrollActs
+  );
+
+  # What scrolls.js reads: each key's act, and how long a g waits for its
+  # second.
+  language = {
+    inherit (config.jitsusama.keyLanguage.timing) wait;
+    keys = lib.listToAttrs (map (bind: lib.nameValuePair bind.key bind.act) scrollBinds);
+  };
+
+  # A key in the launcher's spelling: <C-d> is Ctrl+d, G is Shift+g and gg
+  # is g g.
+  chordOf =
+    key:
+    lib.concatMapStringsSep " " (
+      token:
+      let
+        ctrl = builtins.match "<C-(.)>" token;
+      in
+      if ctrl != null then
+        "Ctrl+${lib.head ctrl}"
+      else if lib.toLower token != token then
+        "Shift+${lib.toLower token}"
+      else
+        token
+    ) (map lib.head (lib.filter lib.isList (builtins.split "(<C-.>|.)" key)));
 
   # Spotify's own keys, which it takes no settings for, from its list for
   # Windows and Linux (support.spotify.com's keyboard shortcuts), and the
@@ -121,6 +177,13 @@ let
         does = "The queue";
       }
     ]
+    ++ grouped "scrolling" (
+      map (bind: {
+        chord = chordOf bind.key;
+        does = scrollActs.${bind.act};
+        inherit (bind) act;
+      }) scrollBinds
+    )
     ++ grouped "playing" [
       {
         chord = "Space";
@@ -214,6 +277,14 @@ in
       {
         src = pkgs.writeTextDir "backs-out.js" (builtins.readFile ./backs-out.js);
         name = "backs-out.js";
+      }
+      {
+        src = pkgs.writeTextDir "scrolls.js" (
+          lib.replaceStrings [ ''"@language@"'' ] [ (builtins.toJSON (builtins.toJSON language)) ] (
+            builtins.readFile ./scrolls.js
+          )
+        );
+        name = "scrolls.js";
       }
     ];
   };

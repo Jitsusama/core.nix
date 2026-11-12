@@ -143,6 +143,26 @@ onLinux {
       touch $out
     '';
 
+  # Spotify's page scrolls on the key language's keys for scrolling, all
+  # but Ctrl+f, Spotify's filter: the extension the account's client
+  # carries and loads, with the language written in, moves a stand-in for
+  # Spotify's page as Vim moves one (tests/spotify-scrolls-on-vim-keys.mjs).
+  spotify-scrolls-on-vim-keys =
+    let
+      home = account graphical;
+      client = "${home.programs.spicetify.spicedSpotify}/share/spotify/Apps/xpui";
+    in
+    pkgs.runCommandLocal "spotify-scrolls-on-vim-keys" { } ''
+      if [ ! -e ${client}/extensions/scrolls.js ]; then
+        echo "Spotify's client carries no extension scrolling its page"
+        exit 1
+      fi
+      ${lib.getExe pkgs.nodejs} --no-warnings ${./tests/spotify-scrolls-on-vim-keys.mjs} \
+        ${client}/extensions/scrolls.js
+      grep -q -F "extensions/scrolls.js" ${client}/index.html
+      touch $out
+    '';
+
   # spotify-player reads its settings before anything else and stops at a
   # value it can't use; it ignores a setting it doesn't know.
   spotify-player-accepts-its-configuration =
