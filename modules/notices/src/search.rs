@@ -3,27 +3,38 @@
 //! they need to serve the launcher"): what's typed in, the keys of the
 //! notices' rows it finds out, in the order the launcher lists them. Each
 //! is found by its name, else by anything it said, as the launcher's
-//! PastNotices.qml found them, and ranked by how well, then newest first.
+//! PastNotices.qml found them, and ranked by how well, then newest first,
+//! matched by the daemons' one matcher, Fuzzy.js's (ready-rows' fuzzy).
 //! Matching in Qt's engine was most of what a key spent on notices, 64 of
 //! the 89 ms "ca" took on Joel's own (2026-11-11).
 
 use std::collections::BTreeMap;
 
+use ready_rows::fuzzy::{Item, Typed};
 use serde_json::{Value, json};
 
 use crate::body;
-use crate::fuzzy::{Prepared, Words};
 use crate::notice::Notice;
 use crate::row;
 
 /// One notice's texts made ready to match, kept while what it said is the
 /// same, so a key matches and makes nothing ready.
-#[derive(Debug)]
 struct Ready {
     summary: String,
     body: String,
-    name: Prepared,
-    said: Prepared,
+    name: Item,
+    said: Item,
+}
+
+/// Said by what it was made from, since a matcher's ready text says
+/// nothing of its own.
+impl std::fmt::Debug for Ready {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ready")
+            .field("summary", &self.summary)
+            .field("body", &self.body)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Ready {
@@ -32,8 +43,8 @@ impl Ready {
         Ready {
             summary: notice.summary.clone(),
             body: notice.body.clone(),
-            name: Prepared::of(&name),
-            said: Prepared::of(&spaced(&said)),
+            name: Item::of(&name),
+            said: Item::of(&spaced(&said)),
         }
     }
 
@@ -70,7 +81,7 @@ impl Searched {
     /// notice found is graded 0, as the launcher's matching grades every
     /// match now.
     pub fn answer(&mut self, notices: &[Notice], typed: &str) -> Value {
-        let words = Words::of(typed);
+        let words = Typed::of(typed);
         let mut ready = std::mem::take(&mut self.ready);
         let mut found: Vec<(i32, i64, u32)> = Vec::new();
         for notice in notices {
