@@ -103,5 +103,12 @@
     "owner_pr": 3363,
     "reason": "failed, then passed, at 461743399d56",
     "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1794453030,
+    "commit": "486ea49dbb24a25c5f793b4765e0501b262573cf",
+    "owner_pr": null,
+    "reason": "fails 3 of 18 on others' gates: a reset remakes rows a read left alone; Y2YBTS mends ReadyRows.qml by Thu 12 Nov 12:00 and takes it off this list",
+    "test": "the-launcher-shows-the-moment-in-now"
   }
 ]
