@@ -1014,7 +1014,12 @@ so it's as sharp at 1.5 as at 2. It keeps beside the marks rather than on
 them, since they say what's true. It takes no keys and no pointer, and
 it's gone wherever the gap can't hold it (fullscreen, the overview) and
 while a call shares the screen; a screenshot shows it, as it shows the
-marks. At rest it draws no frame.
+marks. At rest it draws no frame. Once the keys rest two seconds on
+another column it trots there, in nine strides of whole pixels over about a
+second, its feet touching down on every other: stepped, never a glide, and
+never for keys passing through, so h and l tapped along the columns leave it
+sitting. A column it sat on that's gone has it on the keys' column at once,
+since nothing walks in from nowhere.
 
 What takes the keys appears on the next frame, a notice slides in from its
 corner, and a prompt's scrim fades in.

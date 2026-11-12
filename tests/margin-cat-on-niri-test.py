@@ -3,10 +3,11 @@
 modules/quickshell/checks/margin.nix runs this through pytest in tests/nested-niri.sh, with the
 shell launcher_on_niri.py starts once a run, as the graphical account has it with the cat's
 module (modules/margin-cat). Where over a column it sits, beside the margin's marks or nowhere,
-is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml); here, only that niri's real
-layout reaches it, that its layer is one taking no keys, that it goes in fullscreen, where
-the gap it sits in is gone, and that niri draws it in whole pixels at 1.5 and at 2, each
-screen kept as the check's result.
+is held in Qt's engine (modules/margin-cat/tests/margin-cat.qml), as are a walk's strides; here,
+only that niri's real layout reaches it, that it rests two seconds before trotting over in a
+few frames, and never for a tap along the columns, that its layer is one taking no keys, that
+it goes in fullscreen, where the gap it sits in is gone, and that niri draws it in whole pixels
+at 1.5 and at 2, each screen kept as the check's result.
 """
 
 from __future__ import annotations
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
 
 # What the cat says each time it's placed (modules/margin-cat/MarginCat.qml).
 SITS = "sits cat "
+# How long the keys rest on a column before the cat trots there, how many strides its walk
+# takes, and the most frames it may draw for a focus move (modules/margin-cat/MarginCat.js).
+RESTS, STRIDES, FOCUS_MOVE = 2.0, 9, 12
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 POLL = 0.05
@@ -63,18 +67,21 @@ def placed(said: str) -> Json | None:
 
 
 def sits_over(shell: Shell, window: Json, since: int) -> None:
-    """Wait until the cat says it sits on this window's column, over its middle.
+    """Wait until the cat says it sits on this window's column, over its middle, its walk done.
 
-    It sits a cell of air above the column's top, so its feet stand clear of the border.
+    It sits a cell of air above the column's top, so its feet stand clear of the border. Each
+    report is held to the window and column it names itself, never to where the windows are
+    by the time it's read, since niri lays them out again as others open and close.
     """
 
     def over(said: str) -> bool:
         at = placed(said)
-        if at is None:
+        if at is None or at["walking"] or at.get("window") != window["id"]:
             return False
-        now = next(shown for shown in shell.windows() if shown["id"] == window["id"])
-        left, top = now["layout"]["tile_pos_in_workspace_view"]
-        width = now["layout"]["tile_size"][0]
+        column = json.loads(said.split(" over ", 1)[1])
+        if column is None:
+            return False
+        left, top, width = column["left"], column["top"], column["width"]
         middle = at["x"] + at["size"] / 2
         return bool(left <= middle <= left + width and at["y"] + at["size"] + at["air"] == top)
 
@@ -130,9 +137,66 @@ def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
     )
 
 
+def walked(shell: Shell, since: int) -> int:
+    """Give how many strides the cat has said it took since the mark.
+
+    Each is a place it walked to; it says where it is again as the column under it changes too,
+    so a stride said twice in the same place is one.
+    """
+    said, _ = shell.said_since(since)
+    reports = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    places = [(at["x"], at["y"]) for at in reports if at is not None and at["walking"]]
+    return sum(1 for at, before in zip(places, [None, *places], strict=False) if at != before)
+
+
+def counting(shell: Shell) -> str:
+    """Give the command that counts the shell's frames by window (Frames.qml)."""
+    return f"qs -p {shell.folder} ipc call frames"
+
+
+def test_the_cat_trots_over_once_the_keys_rest(shell: Shell) -> None:
+    """Two seconds after the keys move to another column, it trots there in a few frames.
+
+    From the key to the cat sitting over its new column it draws at most 12 frames, nine of
+    them its walk (VKCF3Z, 2026-11-12: "a focus move draws at most 12"), and it rests two
+    seconds first, so a glance along the columns doesn't set it off.
+    """
+    since = shell.mark()
+    first = shell.opened("a column to trot to")
+    second = shell.opened("a column to trot from")
+    sits_over(shell, second, since)
+    shell.as_account(f"{counting(shell)} start")
+    since = shell.mark()
+    moved = time.monotonic()
+    shell.as_account("niri msg action focus-column-left")
+    sits_over(shell, first, since)
+    rested = time.monotonic() - moved
+    drawn = json.loads(shell.as_account(f"{counting(shell)} said"))
+    cat = sum(count for name, count in drawn.items() if name.startswith("cat "))
+    assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
+    assert walked(shell, since) == STRIDES, f"the cat took {walked(shell, since)} strides"
+    assert cat <= FOCUS_MOVE, f"the cat drew {cat} frames for a focus move: {drawn}"
+
+
+def test_tapping_along_the_columns_never_sets_it_running(shell: Shell) -> None:
+    """Tapping h then l, back within the rest, leaves the cat sitting where it was."""
+    since = shell.mark()
+    shell.opened("a column tapped past")
+    sat = shell.opened("a column the cat stays on")
+    sits_over(shell, sat, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-column-left")
+    time.sleep(RESTS / 4)
+    shell.as_account("niri msg action focus-column-right")
+    time.sleep(RESTS + 1)
+    assert walked(shell, since) == 0, f"tapping set the cat off: {walked(shell, since)} strides"
+
+
 def test_the_cat_goes_in_fullscreen(shell: Shell) -> None:
     """A window in fullscreen leaves no gap above it, so the cat goes, and comes back after."""
-    shell.opened("a column to fill the screen")
+    since = shell.mark()
+    filling = shell.opened("a column to fill the screen")
+    sits_over(shell, filling, since)
     layered(shell, 1)
     since = shell.mark()
     shell.as_account("niri msg action fullscreen-window")
@@ -279,7 +343,8 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
     kept as the check's result, for a look at it (WCJQSG, 2026-11-12: "Send VKCF3Z a scale-2
     shot of each before it reaches Joel").
     """
-    shell.opened(f"a column at {scale}")
+    since = shell.mark()
+    sits_over(shell, shell.opened(f"a column at {scale}"), since)
     since = shell.mark()
     shell.as_account(f"niri msg output winit scale {scale}")
     try:
