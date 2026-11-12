@@ -4175,7 +4175,8 @@
     UDP to Meet's media servers on 443 and Tuple's daemon video, even what it leaves to send as
     it ends, names and the shaper's pings voice; a call's packets turn real-time on; a slice made
     again keeps its class; the client's own network isn't slowed; inside a WireGuard VPN the same
-    classes reach the VPN's own CAKE; the queues follow the default route, a link unplugged and
+    classes reach the VPN's own CAKE, and the VPN's own packets go best effort on the connection
+    even carrying only bulk; the queues follow the default route, a link unplugged and
     plugged back in is shaped afresh both ways, udev sets nothing on the IFBs, and they go when the shaper stops
   '';
   vm-updates-itself-to-signed-main = ''

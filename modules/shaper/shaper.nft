@@ -34,9 +34,6 @@ set meet6 {
 set local4 { type ipv4_addr; flags interval; }
 set local6 { type ipv6_addr; flags interval; }
 set uplinks { type ifname; }
-# The firewall marks of the VPNs carrying nothing but bulk now, which the
-# shaper fills each step (src/quiet.rs says why).
-set vpnbulk { type mark; }
 # Every VPN's mark, and what its own packets cost the connection, which
 # the shaper holds its VPNs by (src/cost.rs says why).
 set vpns { type mark; }
@@ -141,7 +138,12 @@ chain input {
 # CAKE's handle, 2:, and the root HTB sends priority 1:1 to its class for
 # local traffic. Only the shaper's uplinks are given one: elsewhere a
 # priority means whatever that link's own queue makes of it. A VPN's own
-# packets carry its mark, and go as bulk while it carries only bulk.
+# packets carry its mark, and go as best effort whatever they carry: the
+# connection sees a VPN as one flow, so whatever comes next inside it waits
+# behind what that flow holds, and the VPN's own CAKE sorts it instead.
+# Sent as bulk on 12 November, an app's first packets inside waited in the
+# connection's bulk queue, and were dropped there, before the VPN came out
+# of it.
 chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
@@ -153,7 +155,6 @@ chain postrouting {
   # own and kept.
   ct mark and 0x07000000 == 0x01000000 ip dscp cs0 ip dscp set cs1
   ct mark and 0x07000000 == 0x01000000 ip6 dscp cs0 ip6 dscp set cs1
-  meta mark @vpnbulk meta priority set 2:1 return
   ct mark and 0x07000000 == 0x01000000 meta priority set 2:1 return
   ct mark and 0x07000000 == 0x02000000 meta priority set 2:2 return
   ct mark and 0x07000000 == 0x03000000 meta priority set 2:3 return

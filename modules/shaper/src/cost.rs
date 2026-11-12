@@ -66,6 +66,33 @@ impl Cost {
     }
 }
 
+/// The mark a VPN's own packets carry, by which the connection counts
+/// them: the `fwmark` of a rule, in `ip -j rule show`, whose table routes
+/// through `dev`. A VPN routes its own packets past itself by one, `not
+/// fwmark M lookup T`, as `wg-quick` does for a `WireGuard` tunnel.
+/// `routes` gives `ip -j route show table T` for a table.
+pub fn mark_of(rules: &str, dev: &str, routes: impl Fn(&str) -> String) -> Option<String> {
+    let Ok(Value::Array(rules)) = serde_json::from_str::<Value>(rules) else {
+        return None;
+    };
+    rules.iter().find_map(|rule| {
+        // A masked mark, `0xca6c/0xffff`, names its value before the mask.
+        let mark = rule["fwmark"].as_str()?.split('/').next()?;
+        let table = match &rule["table"] {
+            Value::String(name) => name.clone(),
+            Value::Number(number) => number.to_string(),
+            _ => return None,
+        };
+        let Ok(Value::Array(found)) = serde_json::from_str::<Value>(&routes(&table)) else {
+            return None;
+        };
+        found
+            .iter()
+            .any(|route| route["dev"] == dev)
+            .then(|| mark.to_owned())
+    })
+}
+
 /// The bytes a named counter has counted, from `nft -j list counter`.
 pub fn counter_bytes(json: &str) -> Option<u64> {
     let Ok(Value::Object(all)) = serde_json::from_str::<Value>(json) else {
@@ -80,6 +107,39 @@ pub fn counter_bytes(json: &str) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vpns_mark_is_its_rules_whose_table_routes_through_it() {
+        let rules = r#"[{"priority":0,"src":"all","table":"local"},
+            {"priority":32764,"not":null,"src":"all","fwmark":"0x51","table":"77"},
+            {"priority":32765,"not":null,"src":"all","fwmark":"0xca6c/0xffff","table":"51820"},
+            {"priority":32766,"src":"all","table":"main"}]"#;
+        let routes = |table: &str| match table {
+            "77" => r#"[{"dst":"default","dev":"other0"}]"#.to_owned(),
+            "51820" => r#"[{"dst":"default","dev":"wg0"}]"#.to_owned(),
+            _ => String::new(),
+        };
+        assert_eq!(
+            mark_of(rules, "wg0", routes),
+            Some("0xca6c".to_owned()),
+            "a masked mark names its value"
+        );
+        assert_eq!(
+            mark_of(rules, "other0", routes),
+            Some("0x51".to_owned()),
+            "a table named by number"
+        );
+        assert_eq!(
+            mark_of(rules, "wg1", routes),
+            None,
+            "no rule routes through wg1"
+        );
+        assert_eq!(
+            mark_of("not json", "wg0", routes),
+            None,
+            "rules unread are no mark"
+        );
+    }
 
     /// A second's bytes at a rate in kbit/s.
     fn bytes(kbit: u64) -> u64 {

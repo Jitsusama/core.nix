@@ -43,9 +43,6 @@ pub struct Sets {
     /// The windows in an account's apps whose pi sessions run turns nobody
     /// typed, which `untyped` finds.
     pub bulk5: Vec<String>,
-    /// The firewall marks of the VPNs carrying only bulk now, whose own
-    /// packets go as bulk too.
-    pub vpnbulk: Vec<String>,
 }
 
 const SYSTEM_BULK: [&str; 2] = ["build.slice", "machine.slice"];
@@ -275,7 +272,6 @@ pub fn transaction(table: &str, sets: &Sets, local: &Local) -> String {
     fill("video5", &sets.video5, true);
     fill("awaited5", &sets.awaited5, true);
     fill("bulk5", &sets.bulk5, true);
-    fill("vpnbulk", &sets.vpnbulk, false);
     fill("vpns", &local.marks, false);
     fill("local4", &local.v4, false);
     fill("local6", &local.v6, false);
@@ -515,7 +511,6 @@ mod tests {
     fn the_transaction_empties_every_set_and_fills_what_has_members() {
         let sets = Sets {
             bulk1: vec!["build.slice".into()],
-            vpnbulk: vec!["0xca6c".into()],
             ..Sets::default()
         };
         let local = Local {
@@ -530,7 +525,6 @@ mod tests {
         ));
         assert!(text.contains(
             "flush set inet shaper awaited5\nflush set inet shaper bulk5\n\
-             flush set inet shaper vpnbulk\nadd element inet shaper vpnbulk { 0xca6c }\n\
              flush set inet shaper vpns\nadd element inet shaper vpns { 0xca6c, 0x80000 }\n\
              flush set inet shaper local4\n"
         ));
