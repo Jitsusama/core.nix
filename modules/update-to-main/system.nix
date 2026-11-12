@@ -412,6 +412,16 @@ in
         their group writes. An agent asks as one of them, through the node.
       '';
     };
+    follower = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "someone";
+      description = ''
+        The account, one of the askers, whose service (a launchd agent on
+        a Mac) asks for an update whenever main or a followed input moves,
+        and at least every ten minutes; none to ask only when someone does.
+      '';
+    };
     health = mkOption {
       type = types.listOf (types.nonEmptyListOf types.str);
       description = ''
@@ -457,6 +467,10 @@ in
       gates on CPU pressure instead, so drop it.
     '';
     assertions = [
+      {
+        assertion = cfg.follower == null || lib.elem cfg.follower cfg.askers;
+        message = "jitsusama.update-to-main.follower has to be one of its askers.";
+      }
       {
         assertion = cfg.hosted == null || (cfg.signers.ssh == [ ] && cfg.signers.openpgp == [ ]);
         message = "jitsusama.update-to-main.hosted trusts the host, so it takes no signers.";

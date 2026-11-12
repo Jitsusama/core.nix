@@ -3357,6 +3357,11 @@
     restarts on a switch, the Mac's daemon names no store path, both start it from the running
     system, the Mac's waiting until that system holds it, and its askers are its group's members
   '';
+  update-to-main-follows-on-a-mac = ''
+    a Mac's follower is its primary user's launchd agent, started again whenever follow ends and
+    naming no store path; a Mac refuses an update during a call, and the follower's switch waits
+    while someone is at the Mac, for 45 minutes at most
+  '';
   update-to-main-passes-clippy = ''
     clippy finds nothing in update-to-main or its tests
   '';

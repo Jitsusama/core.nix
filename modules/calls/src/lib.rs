@@ -6,7 +6,8 @@
 //!
 //! pause-for-calls and call-transcripts follow calls as they come and go
 //! with this ([`Call`]), and a-call-is-on (src/main.rs) asks once, for
-//! whatever mustn't cut one.
+//! whatever mustn't cut one. On a Mac it asks Core Audio which processes
+//! record ([`MacRecording`]), and counts them the same way.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -181,6 +182,46 @@ impl Recording {
     }
 }
 
+/// Programs on a Mac that record from a microphone without being a call,
+/// by bundle id: Siri and its notifications listening for their names,
+/// the daemon answering it, and Sound Recognition, as a Mac listed them
+/// on 11 November.
+pub const NOT_CALLS_ON_A_MAC: [&str; 4] = [
+    "com.apple.CoreSpeech",
+    "com.apple.SiriNCService",
+    "com.apple.assistantd",
+    "com.apple.accessibility.heard",
+];
+
+/// The processes recording from a microphone on a Mac, as Core Audio lists
+/// them: each one's process id and bundle id. One with no bundle id is a
+/// command-line recorder, which, as a program unnamed is on Linux, is no
+/// call.
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub struct MacRecording {
+    calling: HashSet<(i32, String)>,
+}
+
+impl MacRecording {
+    /// Takes in a process Core Audio says records from a microphone.
+    pub fn hears(&mut self, pid: i32, bundle: &str) {
+        if !bundle.is_empty() && !NOT_CALLS_ON_A_MAC.contains(&bundle) {
+            self.calling.insert((pid, bundle.to_owned()));
+        }
+    }
+
+    /// Whether anything that calls records.
+    pub fn any(&self) -> bool {
+        !self.calling.is_empty()
+    }
+
+    /// Whether a process that records here records in `later` too, the
+    /// same process, as a call that went on does.
+    pub fn goes_on_in(&self, later: &MacRecording) -> bool {
+        !self.calling.is_disjoint(&later.calling)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +392,50 @@ mod tests {
             "another node is another moment of recording"
         );
         assert!(!first.goes_on_in(&Recording::default()));
+    }
+
+    fn on_a_mac(processes: &[(i32, &str)]) -> MacRecording {
+        let mut recording = MacRecording::default();
+        for (pid, bundle) in processes {
+            recording.hears(*pid, bundle);
+        }
+        recording
+    }
+
+    #[test]
+    fn a_call_app_recording_on_a_mac_is_a_call() {
+        assert!(
+            on_a_mac(&[(53_522, "us.zoom.xos")]).any(),
+            "Zoom recording is a call"
+        );
+        assert!(!on_a_mac(&[]).any(), "nothing recording is no call");
+    }
+
+    #[test]
+    fn what_records_on_a_mac_without_calling_is_left_out() {
+        let listening = on_a_mac(&[
+            (1394, "com.apple.CoreSpeech"),
+            (82_762, "com.apple.SiriNCService"),
+            (1101, "com.apple.assistantd"),
+            (3091, "com.apple.accessibility.heard"),
+            (40_606, ""),
+        ]);
+        assert!(
+            !listening.any(),
+            "Siri, Sound Recognition and a command-line recorder are no call: {listening:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_same_process_recording_later_goes_on_on_a_mac() {
+        let first = on_a_mac(&[(53_703, "com.google.Chrome.helper")]);
+        assert!(
+            first.goes_on_in(&on_a_mac(&[(53_703, "com.google.Chrome.helper")])),
+            "the same process still recording goes on"
+        );
+        assert!(
+            !first.goes_on_in(&on_a_mac(&[(53_704, "com.google.Chrome.helper")])),
+            "another process is another moment of recording"
+        );
     }
 }

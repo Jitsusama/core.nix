@@ -23,25 +23,7 @@ in
 {
   imports = [ ./system.nix ];
 
-  options.jitsusama.update-to-main.follower = lib.mkOption {
-    type = lib.types.nullOr lib.types.str;
-    default = null;
-    example = "someone";
-    description = ''
-      The account, one of the askers, whose service asks for an update
-      whenever main or a followed input moves, and at least every ten
-      minutes; none to ask only when someone does.
-    '';
-  };
-
   config = {
-    assertions = [
-      {
-        assertion = cfg.follower == null || lib.elem cfg.follower cfg.askers;
-        message = "jitsusama.update-to-main.follower has to be one of its askers.";
-      }
-    ];
-
     jitsusama.update-to-main.system = {
       kind = "nixos";
       # Where an asker grants a switch a held daemon's restart, in a

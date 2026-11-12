@@ -1,6 +1,9 @@
 //! a-call-is-on against a stand-in pw-dump, which prints the graph in
 //! graph.json in the runtime folder it's given, or later.json once asked
 //! before when there is one, and fails while that folder holds `fails`.
+//! A Mac reads no PipeWire, so these are Linux's; src/lib.rs's tests say
+//! what counts as a call on a Mac.
+#![cfg(target_os = "linux")]
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
