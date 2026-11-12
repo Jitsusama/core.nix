@@ -213,7 +213,8 @@ Scope {
     function rowAt(key) {
         if (!(key in made)) {
             const row = served(key);
-            made[key] = row ? lentOf(row, key) ?? ready.make(row, key) : null;
+            const lent = row ? lentOf(row, key) : null;
+            made[key] = lent ?? (row && row.lentOnly !== true ? ready.make(row, key) : null);
             if (made[key])
                 madeOf[made[key].key] = key;
             madeFrom[key] = row;
@@ -223,12 +224,11 @@ Scope {
         return made[key];
     }
 
-    // A row served with `lends` is one thing another place makes the row
-    // of, as a meeting's guest is People's person (ready-rows.md's lends):
-    // the row the first place holding `lent` gives for it, so one thing
-    // has one row, made by its own place, or null where none does, and the
-    // served row stands. Asked once as the row is made, each lender
-    // answering from what it holds, never by asking anyone.
+    // A row served with `lends` is one thing another place makes the row of, as a meeting's
+    // guest is People's person (ready-rows.md's lends): the first lender's row, so one thing has
+    // one row, made by its own place; where none lends it the served row stands, or with
+    // `lentOnly` none does. Asked once as the row is made, each lender answering from what it
+    // holds, never by asking anyone.
     readonly property var lending: ({})
     function lentOf(row, key) {
         if (typeof row.lends !== "string" || row.lends === "")

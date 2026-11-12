@@ -246,6 +246,7 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
             ("Join the Meeting", "joinCall"),
             ("Write to the Guests", "writeMail"),
             ("Show in Calendar", "meetingDetails"),
+            ("Open the Transcript", "lines"),
             ("Going", "going"),
             ("Maybe", "maybeGoing"),
             ("Not Going", "notGoing"),
@@ -254,7 +255,7 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
             ("Attachments", "attachment"),
             ("Copy the Link", "link"),
         ],
-        "Cancel only for one Joel holds, and the transcript call-transcripts' to serve"
+        "Cancel only for one Joel holds"
     );
     assert!(
         inside.iter().all(|row| row["depth"] == 1
@@ -285,23 +286,32 @@ fn its_acts_are_rows_inside_it_in_the_one_order_each_doing_what_it_names() {
         "Show in Calendar steps in to what's known of it, beside the meeting's own drawer"
     );
     assert_eq!(
-        first(inside[3]),
+        (
+            inside[3]["lends"].clone(),
+            inside[3]["lentOnly"].clone(),
+            inside[3]["acts"].clone()
+        ),
+        (json!("transcript:e1"), json!(true), json!([])),
+        "Open the Transcript is call-transcripts' row of its call, and none where it lends none"
+    );
+    assert_eq!(
+        first(inside[4]),
         json!({"key": "verb:calendar:yes",
             "ask": {"ask": "act", "act": {"answer": {"id": "e1", "with": "yes"}}}}),
         "Going asks the daemon to answer"
     );
     assert_eq!(
-        [inside[3]["side"].clone(), inside[4]["side"].clone()],
+        [inside[4]["side"].clone(), inside[5]["side"].clone()],
         [json!([{"said": "your answer"}]), json!([])],
         "only the answer given says so"
     );
     assert_eq!(
-        (inside[6]["kind"].clone(), first(inside[6])),
+        (inside[7]["kind"].clone(), first(inside[7])),
         (json!("move"), json!({"key": "verb:more", "step": "rows"})),
         "Move steps into its later times, found by the shell for a time typed there"
     );
     assert_eq!(
-        (first(inside[9]), inside[9]["side"].clone()),
+        (first(inside[10]), inside[10]["side"].clone()),
         (
             json!({"key": "verb:calendar:link", "copy": "https://meet.google.com/abc-defg-hij"}),
             json!([{"said": "its call"}])
