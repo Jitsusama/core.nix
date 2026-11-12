@@ -7,7 +7,7 @@ use std::process::Command;
 use serde_json::{Map, Value};
 
 use crate::asks::{self, Ask};
-use crate::launcher;
+use crate::{launcher, launches};
 
 /// The fields each entry is read by; journalctl always adds its time.
 const FIELDS: &str = "MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,USER_UNIT,UNIT,_SYSTEMD_UNIT,\
@@ -249,6 +249,12 @@ pub fn followed() -> Vec<Vec<String>> {
         vec![
             format!("SYSLOG_IDENTIFIER={}", launcher::IDENTIFIER),
             format!("--grep={LAUNCHER_READY}|{}", launcher::FOLLOWED),
+        ],
+        // How long each program took to open and to end, which the
+        // windows daemon says as information.
+        vec![
+            format!("SYSLOG_IDENTIFIER={}", launches::IDENTIFIER),
+            format!("--grep={}", launches::FOLLOWED),
         ],
         // Each ask for a secret Joel answered, said only as information.
         vec![format!("SYSLOG_IDENTIFIER={}", asks::IDENTIFIER)],

@@ -92,6 +92,25 @@ then its class in any case, the first by id where two match alike. A
 browser's window of its own that names none counts for the listed entry
 whose own page it opened deeper in (BrowserWindows.js said it so).
 
+## How Long a Program Takes
+
+The daemon tells the journal how long each program took to open and to
+end, for health to read (src/timed.rs):
+
+```text
+opened foot 212 ms after its process started
+closed foot; its process ended 14 ms later
+closed zoom; its process was still running 30 s later
+```
+
+An opening is a process's first window within a minute of its start, read
+from /proc, so a new window of a program already running, Chrome's or a
+session in kitty's one instance, says nothing. A closing is a process's
+last window gone, and its process is then looked at every 20 ms, on a
+thread that ends with the wait, for up to 30 s. niri's event stream says
+nothing of the key that asked a window to close, so a quit is timed from
+the window gone, not from the ask.
+
 ## Left Out, and Why
 
 - **A row's tile.** A window's record says its column and how far down,

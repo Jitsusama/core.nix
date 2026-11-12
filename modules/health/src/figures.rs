@@ -54,8 +54,9 @@ pub fn side(name: &str) -> Side {
 /// moments, the most each watched program held, the agents that died, and
 /// the asks for a secret: shown, said yes to unread, asked again, avoidable;
 /// and the most any disk was in use, when a guard said any; each part of
-/// the launcher's median, p99, slowest and share past its bar, and the worst
-/// p99 of typing into pi, when any were timed. A kind with no errors is
+/// the launcher's median, p99, slowest and share past its bar, the same of
+/// programs' openings and ends with how many outlived the wait, and the
+/// worst p99 of typing into pi, when any were timed. A kind with no errors is
 /// written as none, so its days have a median.
 #[must_use]
 #[expect(
@@ -114,6 +115,28 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
             put("slowest-ms", timed.slowest_ms as f64);
             put("late-percent", timed.late_percent());
         }
+    }
+    // Our side's: an opening from its process's start, an end from its
+    // window gone, neither from Joel's ask.
+    for (name, spread) in [
+        ("opened", day.launches.openings()),
+        ("ended", day.launches.ends()),
+    ] {
+        if let Some(spread) = spread {
+            let mut put = |figure: &str, value: f64| {
+                figures.insert(format!("launches.{name}.{figure}"), value);
+            };
+            put("median-ms", spread.median_ms as f64);
+            put("p99-ms", spread.p99_ms as f64);
+            put("slowest-ms", spread.slowest.0 as f64);
+            put("late-percent", spread.late_percent());
+        }
+    }
+    if day.launches.said().is_some() {
+        figures.insert(
+            "launches.outlived".to_owned(),
+            day.launches.outlived() as f64,
+        );
     }
     if let Some(worst) = typing::worst(&day.typing) {
         figures.insert("typing.worst-p99-ms".to_owned(), worst.p99_ms);
@@ -253,6 +276,36 @@ mod tests {
                 Some(21.0)
             ),
             "the launcher's parts or typing in pi weren't figured from the day: {figures:?}"
+        );
+    }
+
+    #[test]
+    fn openings_and_ends_are_figured_as_ours() {
+        let mut day = Day::new("2026-11-12");
+        for line in [
+            "opened foot 212 ms after its process started",
+            "opened foot 420 ms after its process started",
+            "closed zoom; its process was still running 30 s later",
+        ] {
+            day.launches.took(line);
+        }
+        let figures = of(&day);
+        let figure = |name: &str| figures.get(name).copied();
+        assert_eq!(
+            (
+                figure("launches.opened.median-ms"),
+                figure("launches.opened.slowest-ms"),
+                figure("launches.opened.late-percent"),
+                figure("launches.ended.median-ms"),
+                figure("launches.outlived"),
+            ),
+            (Some(212.0), Some(420.0), Some(50.0), None, Some(1.0)),
+            "the day's openings and ends weren't figured: {figures:?}"
+        );
+        assert_eq!(
+            side("launches.opened.p99-ms"),
+            Side::Ours,
+            "an opening timed from its process's start was taken for Joel's own wait"
         );
     }
 

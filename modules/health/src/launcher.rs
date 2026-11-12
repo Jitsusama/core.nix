@@ -288,7 +288,7 @@ fn number(text: &str) -> Option<u64> {
 }
 
 /// A share, to a tenth under ten percent and whole above.
-fn percent(share: f64) -> String {
+pub(crate) fn percent(share: f64) -> String {
     if share < 10.0 {
         format!("{share:.1}%")
     } else {

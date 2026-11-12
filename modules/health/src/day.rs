@@ -13,6 +13,7 @@ use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::launcher::{self, Launcher};
+use crate::launches::{self, Launches};
 use crate::memory::Memory;
 use crate::sessions::{Heard, Said};
 use crate::sign;
@@ -128,6 +129,9 @@ pub struct Day {
     /// the journal on each start, so never resumed.
     #[serde(default)]
     pub launcher: Launcher,
+    /// How long programs took to open and end, read again likewise.
+    #[serde(default)]
+    pub launches: Launches,
     /// pi-keys' samples of typing into pi, read again each tick.
     #[serde(default)]
     pub typing: Vec<Sample>,
@@ -276,8 +280,8 @@ impl Day {
             return;
         }
         if entry.priority > 4
-            && entry.thing == launcher::IDENTIFIER
-            && self.launcher.took(&entry.message)
+            && ((entry.thing == launcher::IDENTIFIER && self.launcher.took(&entry.message))
+                || (entry.thing == launches::IDENTIFIER && self.launches.took(&entry.message)))
         {
             return;
         }
