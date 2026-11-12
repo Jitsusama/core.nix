@@ -312,7 +312,9 @@ in
     # Chrome refusing the extension, they're the profile's own session
     # file's (./session), which needs no extension but can't name a tab to
     # the host, so those have no id and Go To brings the tab's window
-    # forward alone. Without the host there's no Close It.
+    # forward alone. Without the host there's no Close It. Its bookmarks are
+    # read from the same profile's Bookmarks and AccountBookmarks files,
+    # whole and never written.
     jitsusama.quickshell.launcher.recents = [
       (
         {
@@ -388,7 +390,8 @@ in
       ];
     };
     # Chrome's open tabs, each found from home by its title or its site, as
-    # the programs daemon serves them from Chrome's session.
+    # the programs daemon serves them from Chrome's session, and its
+    # bookmarks, but for a page open now, each opened in Chrome by Return.
     jitsusama.quickshell.launcher.providers.tabs = {
       order = 53;
       source = ./Tabs.qml;

@@ -119,14 +119,30 @@ fn chromes_bookmarks_are_rows_of_their_own_but_for_a_page_open_now() {
         ],
     );
     let mut client = running.client();
-    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "bookmarks"}));
-    let a = client.changed("row:bookmarks:https://a.example.org/docs");
+    let answer =
+        client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "bookmarks"}));
+    let a = answer["records"]
+        .as_array()
+        .and_then(|records| {
+            records
+                .iter()
+                .find(|record| record["key"] == "row:bookmarks:https://a.example.org/docs")
+        })
+        .unwrap_or_else(|| panic!("a watch isn't told the bookmarks' rows: {answer}"))
+        .clone();
     assert_eq!(a["row"]["name"], "Docs", "a bookmark's row isn't named by it: {a}");
     assert_eq!(
         a["row"]["acts"][0],
         json!({"key": "verb:recent:site:open", "open": "https://a.example.org/docs",
                "in": "chrome"}),
         "a bookmark's Return doesn't open it in Chrome: {a}"
+    );
+    // The session's read as the watch begins, and its open page leaves.
+    let gone = client.gone();
+    assert_eq!(
+        gone,
+        [json!("row:bookmarks:https://open.example.org/")],
+        "a bookmark whose page is open isn't left out"
     );
     bookmarked(
         &running,

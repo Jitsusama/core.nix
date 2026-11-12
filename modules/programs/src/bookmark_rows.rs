@@ -10,6 +10,7 @@
 //! Chrome, by running it with the address, and Copy the Link copies it.
 
 use std::collections::HashSet;
+use std::hash::BuildHasher;
 use std::path::Path;
 
 use chrome_session::{host, one_line};
@@ -97,7 +98,11 @@ fn children(node: &Value) -> impl Iterator<Item = &Value> {
 /// The rows of a program's bookmarks, by its desktop entry id, leaving
 /// out each page open now, in the order Chrome files them.
 #[must_use]
-pub fn rows(app: &str, bookmarks: &[Bookmark], open: &HashSet<&str>) -> Vec<Value> {
+pub fn rows<S: BuildHasher>(
+    app: &str,
+    bookmarks: &[Bookmark],
+    open: &HashSet<&str, S>,
+) -> Vec<Value> {
     bookmarks
         .iter()
         .filter(|bookmark| !open.contains(bookmark.address.as_str()))
