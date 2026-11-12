@@ -1,6 +1,6 @@
 //! The evening's dimming: from a time of Joel's evening to a time of his
-//! morning, the built-in screen eases to half the brightness the curve asks
-//! for, over half an hour, and eases back over the half hour after.
+//! morning, the built-in screen eases to `SHARE` of the brightness the curve
+//! asks for, over half an hour, and eases back over the half hour after.
 //!
 //! Why: the light that sets the body clock falls as the screen's brightness
 //! does, and brightness can take far more of it away than warmth can (the
@@ -10,14 +10,20 @@
 //! the sun, since the evening that matters is the one before sleep, and in
 //! November the sun sets five hours before it.
 //!
-//! A brightness Joel picks in the evening is learned as what he'd want by
-//! day in that light, so a pick both sets the screen now and is still
-//! dimmed the next evening. The dimming never takes the screen under
-//! `FLOOR`, about 20 nits, so text stays easy to read; a screen the curve
-//! already sets dimmer than that is left as it is.
+//! It never jumps: the share moves toward what the clock says by no more
+//! than the clock's own ease would in a minute, from wherever the screen is,
+//! so a start or a restart deep in the evening eases too (follow.rs). On 12
+//! Nov a restart at 00:00 took Joel's screen from 85% to 43% within seconds.
+//! A brightness he picks in the evening holds for the rest of it, and the
+//! evening never again dims past what he set in that light (follow.rs), so
+//! a press up teaches it where too dark is. The dimming never takes the
+//! screen under `FLOOR`, about 20 nits, so text stays easy to read; a screen
+//! the curve already sets dimmer than that is left as it is.
 
-/// What the evening leaves of the brightness, once it's fully under way.
-pub const SHARE: f64 = 0.5;
+/// What the evening leaves of the brightness, once it's fully under way:
+/// 43% at 18 lux, half of what Joel had, was too dark for him on 12 Nov, so
+/// it starts gentler, and his own picks set how far it goes.
+pub const SHARE: f64 = 0.7;
 
 /// How long, in minutes, the evening takes to ease in, and the morning to
 /// ease out.
@@ -74,19 +80,18 @@ fn minute(said: &str) -> Option<f64> {
 }
 
 /// The brightness the screen goes to when the curve asks for `level` and
-/// the evening leaves `share` of it.
+/// the evening leaves `share` of it; a share past all of it, as a pick
+/// brighter than the curve holds, stops at the brightest.
 pub fn dimmed(level: f64, share: f64) -> f64 {
-    (level * share).max(FLOOR.min(level))
+    (level * share).min(1.0).max(FLOOR.min(level))
 }
 
-/// The brightness by day that `dimmed` takes to `level`, so a pick in the
-/// evening teaches the curve what Joel would pick in that light by day.
-pub fn undimmed(level: f64, share: f64) -> f64 {
-    if level <= FLOOR {
-        level
-    } else {
-        (level / share).clamp(FLOOR, 1.0)
-    }
+/// The share a minute on from `share`, toward what the clock says,
+/// `clock`: by no more than the clock's own ease moves in a minute, so the
+/// evening comes in over half an hour from wherever it starts.
+pub fn eased(share: f64, clock: f64) -> f64 {
+    let step = (1.0 - SHARE) / EASE;
+    share + (clock - share).clamp(-step, step)
 }
 
 /// glibc's broken-down time.
@@ -147,7 +152,11 @@ mod tests {
 
     #[test]
     fn the_evening_eases_in_over_half_an_hour() {
-        assert!((at(21.0, 45.0) - 0.75).abs() < 1e-9, "a quarter hour in");
+        let half_way = 1.0 - (1.0 - SHARE) / 2.0;
+        assert!(
+            (at(21.0, 45.0) - half_way).abs() < 1e-9,
+            "a quarter hour in"
+        );
         assert!((at(22.0, 0.0) - SHARE).abs() < 1e-9, "half an hour in");
         assert!((at(2.0, 0.0) - SHARE).abs() < 1e-9, "past midnight");
     }
@@ -155,7 +164,8 @@ mod tests {
     #[test]
     fn the_morning_eases_out_over_half_an_hour() {
         assert!((at(5.0, 0.0) - SHARE).abs() < 1e-9, "at its end");
-        assert!((at(5.0, 15.0) - 0.75).abs() < 1e-9, "a quarter hour on");
+        let half_way = 1.0 - (1.0 - SHARE) / 2.0;
+        assert!((at(5.0, 15.0) - half_way).abs() < 1e-9, "a quarter hour on");
     }
 
     #[test]
@@ -166,26 +176,42 @@ mod tests {
     }
 
     #[test]
-    fn dimming_halves_down_to_the_floor_and_no_further() {
-        assert!((dimmed(0.6, SHARE) - 0.3).abs() < 1e-9, "halved");
+    fn dimming_takes_its_share_down_to_the_floor_and_no_further() {
+        assert!((dimmed(0.6, 0.5) - 0.3).abs() < 1e-9, "halved");
         assert!(
-            (dimmed(0.08, SHARE) - FLOOR).abs() < 1e-9,
+            (dimmed(0.06, 0.5) - FLOOR).abs() < 1e-9,
             "held at the floor"
         );
-        assert!((dimmed(0.03, SHARE) - 0.03).abs() < 1e-9, "left under it");
+        assert!((dimmed(0.03, 0.5) - 0.03).abs() < 1e-9, "left under it");
         assert!((dimmed(0.6, 1.0) - 0.6).abs() < 1e-9, "by day");
+        assert!(
+            (dimmed(0.8, 1.5) - 1.0).abs() < 1e-9,
+            "at most the brightest"
+        );
     }
 
     #[test]
-    fn an_evening_pick_teaches_what_the_day_would_want() {
-        assert!((undimmed(0.3, SHARE) - 0.6).abs() < 1e-9, "doubled");
+    fn the_share_eases_a_minute_at_a_time() {
+        let step = (1.0 - SHARE) / EASE;
         assert!(
-            (undimmed(0.7, SHARE) - 1.0).abs() < 1e-9,
-            "held at the brightest"
+            (eased(1.0, SHARE) - (1.0 - step)).abs() < 1e-9,
+            "one step down"
         );
         assert!(
-            (undimmed(0.03, SHARE) - 0.03).abs() < 1e-9,
-            "left under the floor"
+            (eased(SHARE, 1.0) - (SHARE + step)).abs() < 1e-9,
+            "one step up"
+        );
+        assert!(
+            (eased(SHARE + step / 2.0, SHARE) - SHARE).abs() < 1e-9,
+            "arrives"
+        );
+        let mut share = 1.0;
+        for _ in 0..30 {
+            share = eased(share, SHARE);
+        }
+        assert!(
+            (share - SHARE).abs() < 1e-9,
+            "half an hour took it to {share}"
         );
     }
 

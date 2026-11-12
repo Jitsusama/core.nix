@@ -358,8 +358,16 @@ impl Backlight<'_> {
         self.wrote = None;
         let level = self.screen.level_of(steps);
         if let Some(lux) = self.follow.chose(level) {
-            self.keep();
-            eprintln!("<6>learns {:.0}% for {lux:.0} lux", level * 100.0);
+            if self.follow.holding() {
+                self.keep_floor();
+                eprintln!(
+                    "<6>holds {:.0}% for the evening, and dims no further at {lux:.0} lux",
+                    level * 100.0
+                );
+            } else {
+                self.keep();
+                eprintln!("<6>learns {:.0}% for {lux:.0} lux", level * 100.0);
+            }
         }
         if let Err(error) = write_whole(&self.chosen, &format!("{level:.3}\n")) {
             eprintln!("<4>can't tell the shell about the pick: {error}");
@@ -392,6 +400,17 @@ impl Backlight<'_> {
     fn keep(&self) {
         if let Err(error) = write_whole(&self.learned, &self.follow.curve().write()) {
             eprintln!("<4>can't keep what was learned: {error}");
+        }
+    }
+
+    /// Keeps what Joel set in the evening, beside the curve, so the evening
+    /// never dims past it there after a restart either.
+    fn keep_floor(&self) {
+        let Some(floor) = self.follow.floor() else {
+            return;
+        };
+        if let Err(error) = write_whole(&self.learned.with_file_name("evening"), &floor.write()) {
+            eprintln!("<4>can't keep what was set in the evening: {error}");
         }
     }
 
@@ -430,7 +449,7 @@ impl Backlight<'_> {
         let was = self.follow.share();
         if (share < 1.0) != (was < 1.0) {
             if share < 1.0 {
-                eprintln!("<6>the evening dims the screen toward half");
+                eprintln!("<6>the evening eases the screen dimmer");
             } else {
                 eprintln!("<6>the morning gives the screen back its brightness");
             }
