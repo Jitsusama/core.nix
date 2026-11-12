@@ -30,6 +30,10 @@
 //! devices, are read only while the lid is shut or a close is doubted, once a second.
 //! `LID_HINGE_IIO` and `LID_HINGE_NODES` name where IIO's devices and their nodes are, for a
 //! test's stand-ins.
+//!
+//! Long because it's one program rustc builds alone, with no crates (nixos.nix), so the judge,
+//! the hinge's buffer, the switch it offers through uinput and the hands it feels all sit here,
+//! each in its own part.
 
 use std::env;
 use std::f64::consts::PI;
