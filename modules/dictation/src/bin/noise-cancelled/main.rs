@@ -30,7 +30,8 @@
 //!
 //! `trial` answers the launcher's Choose by Ear on SOCKET, or the socket
 //! systemd hands it (trial.rs): RUNNING is the cleaner the microphones run,
-//! and REFUSALS a JSON file of what refuses a recording while it holds;
+//! and REFUSALS a JSON file of what refuses a recording while it holds
+//! (refusals.rs);
 //! a cleaned pick is kept in CHOSEN.
 
 mod chosen;
@@ -38,6 +39,7 @@ mod defaults;
 mod denoise;
 mod loudness;
 mod pipe;
+mod refusals;
 mod score;
 mod trial;
 mod worker;

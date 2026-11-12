@@ -34,6 +34,7 @@ use crate::chosen::Chosen;
 use crate::defaults::{default_microphone_is, default_output, dumped};
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
+use crate::refusals::Refusal;
 use crate::score::{self, Marks};
 
 /// The record's key and kind.
@@ -99,41 +100,6 @@ impl Stage {
             Self::Picked => "picked",
             Self::Refused => "refused",
         }
-    }
-}
-
-/// Something that, while it exits 0, means nothing may be recorded.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Refusal {
-    pub command: Vec<String>,
-    pub why: String,
-}
-
-impl Refusal {
-    /// Each refusal a file's JSON lists, as `[{"command": [...], "why": "..."}]`.
-    pub fn listed(text: &str) -> Result<Vec<Self>, String> {
-        let listed: Value =
-            serde_json::from_str(text).map_err(|why| format!("reading the refusals: {why}"))?;
-        let strings = |value: &Value| -> Option<Vec<String>> {
-            value
-                .as_array()?
-                .iter()
-                .map(|word| word.as_str().map(str::to_owned))
-                .collect()
-        };
-        listed
-            .as_array()
-            .ok_or_else(|| "the refusals aren't a list".to_owned())?
-            .iter()
-            .map(|refusal| {
-                let command = strings(&refusal["command"]);
-                let why = refusal["why"].as_str().map(str::to_owned);
-                command
-                    .zip(why)
-                    .map(|(command, why)| Self { command, why })
-                    .ok_or_else(|| format!("a refusal needs a command and a why: {refusal}"))
-            })
-            .collect()
     }
 }
 
@@ -409,7 +375,7 @@ impl Trial {
         if matches!(self.stage, Stage::Recording | Stage::Cleaning) {
             return Err("it's already recording".to_owned());
         }
-        if let Some(refusal) = self.refusals.iter().find(|refusal| refused(refusal)) {
+        if let Some(refusal) = self.refusals.iter().find(|refusal| refusal.holds()) {
             let why = refusal.why.clone();
             self.refuse(&why);
             return Err(why);
@@ -591,20 +557,6 @@ impl Answers for Trial {
     fn gone(&mut self, connection: u64) {
         self.watches.gone(connection);
     }
-}
-
-/// Whether a refusal holds now: its command ran and exited 0.
-fn refused(refusal: &Refusal) -> bool {
-    let Some((program, arguments)) = refusal.command.split_first() else {
-        return false;
-    };
-    Command::new(program)
-        .args(arguments)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
 }
 
 /// Hears the recording out, cleans it every way, and offers the clips.
