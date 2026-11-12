@@ -13,7 +13,7 @@ use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
 use crate::launcher::{self, Launcher};
-use crate::launches::{self, Launches};
+use crate::launches::Launches;
 use crate::memory::Memory;
 use crate::sessions::{Heard, Said};
 use crate::sign;
@@ -281,7 +281,7 @@ impl Day {
         }
         if entry.priority > 4
             && ((entry.thing == launcher::IDENTIFIER && self.launcher.took(&entry.message))
-                || (entry.thing == launches::IDENTIFIER && self.launches.took(&entry.message)))
+                || self.launches.took(&entry.thing, &entry.message))
         {
             return;
         }

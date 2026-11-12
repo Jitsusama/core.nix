@@ -945,7 +945,8 @@
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
     launcher part and pi's modelled typing against their budgets, keeps each program's openings
-    and ends as the windows daemon timed them as ours, and says each figure's side
+    and ends as the windows daemon timed them and each daemon's ready as it said it as ours, and
+    says each figure's side
   '';
   hibernate-unlock-lets-go-only-after-the-disk-asked = ''
     hibernate-unlock reads the TPM's counts, keeps them only for sleeps that write an image, takes a
@@ -4348,8 +4349,9 @@
     launcher taking the keys; says a window closed as gone, names a window's program again once an
     entry is added, describes the desktop again once niri is gone and back, and refuses an ask or
     a kind it doesn't know; times a program's first window from its process's start and waits
-    for its process once its last window closes, and says nothing of a second window, a window
-    there as the stream began or a process started long before
+    for its process once its last window closes, looking ever more seldom once past the budget,
+    and says nothing of a second window, a window there as the stream began or a process started
+    long before
   '';
   windows-passes-clippy = ''
     clippy finds nothing in the windows daemon or its tests
