@@ -441,8 +441,9 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
             (shown["selected"] or {}).get("name") == "Maybe" and shown["footer"] == "going"
         )
     )
-    # Answering reaches the one who asked, so Return writes its line, which asks first.
-    desktop.line_answered("answer maybe")
+    # An answer to what Joel was asked ends nothing, and stepping into the meeting was the
+    # deliberate act, so one Return answers, with no line and no ask (VKCF3Z, 2026-11-12).
+    machine.send_key("ret")
     # Its note moves at once, before Google answers.
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "your answer")
     line = json.dumps({"answer": {"id": "standup", "with": "maybe"}}, separators=(",", ":"))

@@ -1204,26 +1204,17 @@ changes = true
 undoable = true
 range = true
 
-# A meeting answered yes, maybe or no: Going, Maybe and Not Going.
+# A choice put to Joel answered: a meeting's Going, Maybe and Not Going, a
+# look's own choices, or one of the answers a session offers to its question.
+# Answering ends nothing, and stepping into what asks was the deliberate act,
+# so one Return answers (VKCF3Z, 2026-11-12: one act, one word).
 [acts.answer]
-ends = true
 command = "answer"
 short = "ans"
 kinds = ["list"]
 changes = true
 undoable = true
 range = true
-
-# One of the answers a session offers to the question it asks, given to
-# it: a choice's Return inside For You's row for that session. Stepping in
-# and picking a labelled answer was the asking, so it doesn't end as
-# :answer does (VKCF3Z, 2026-11-12: "Return on a choice answers at once").
-[acts.choose]
-command = "choose"
-short = "cho"
-kinds = ["list"]
-changes = true
-guarded = true
 
 # A meeting called off for everyone in it. Cancel the Meeting.
 [acts.cancel]

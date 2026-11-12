@@ -608,6 +608,14 @@
         "reader:to-finish"
       ],
       "why": "The video player's drawer and the reader's each say what was left part way, and each is said only in its own program's drawer."
+    },
+    {
+      "word": "answer",
+      "things": [
+        "verb:on:look:answer",
+        "verb:on:waiting:answer"
+      ],
+      "why": "A look's choices and a session's question are answered by one act, each on its own row, so the two never stand side by side."
     }
   ],
   "terminal": {

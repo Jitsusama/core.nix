@@ -22,7 +22,9 @@ orchestration spent today only where it spent anything, Return reopening it. A s
 this boot, its owner gone, stands alone in Recent, after Landed and before Start a Session,
 saying when it closed and where it ran. A folder the disk guard measured offers to talk to the
 session working in it, by its title and how it stands, and what Joel tells it reaches its inbox
-with the folder and its size. Shut, a session arriving with a landing makes none of Agents' rows,
+with the folder and its size. A look's choice, stepped into from For You, reaches the session
+that left it as an answer, and its row says so until the session writes it resolved. Shut, a
+session arriving with a landing makes none of Agents' rows,
 which show both once it opens, and a change to its rows isn't told the shell at once, but told it
 at once as it opens.
 
@@ -1041,6 +1043,93 @@ def test_a_folder_filling_the_disk_offers_to_talk_to_the_session_working_in_it(
         status.unlink()
         for one in talks(inbox):
             one.unlink()
+
+
+def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: Shell) -> None:
+    """A look's choice, a step into its row in For You, reaches its session's inbox as an answer.
+
+    Joel answers it where it is, rather than in a session that's moved on (2026-11-11), and the
+    session writes it resolved; once the node takes the answer, it waits no longer.
+    """
+    looks = STATE / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "asking.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    came = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    look.write_text(
+        json.dumps(
+            {
+                "v": 1,
+                "id": "asking",
+                "title": "Asking Look",
+                "target": "/etc/hostname",
+                "kind": "file",
+                "state": "waiting",
+                "at": came,
+                "address": "LISTEN",
+                "ask": "Say whether it reads right.",
+                "choices": [{"value": "reads-right", "label": "Reads Right"}],
+            }
+        )
+    )
+    inbox = STEER / "LISTEN"
+    try:
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "To Look At" in shown["rows"])
+        shell.down_to("To Look At")
+        shell.step_in()
+        shell.launcher_until(lambda shown: "Asking Look" in shown["rows"])
+        shell.down_to("Asking Look")
+        # Return opens a look, so its acts are stepped into as any row's are.
+        shell.step_in("ctrl-bracketright")
+        shell.launcher_until(lambda shown: "Reads Right" in shown["rows"])
+        shell.normal()
+        shell.down_to("Reads Right")
+        # Stepping into the look was the deliberate act, so one Return answers, with no line
+        # and no ask (modules/keys/language.toml's answer, VKCF3Z 2026-11-12).
+        shell.send_key("ret")
+        deadline = time.monotonic() + 10
+        while not (told := answers(inbox)):
+            shown = shell.showing()
+            assert time.monotonic() < deadline, (
+                "no answer reached the session's inbox",
+                shown["command"],
+                shown["question"],
+                shown["returned"],
+            )
+            time.sleep(0.1)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["look"], said["value"], said["from"]) == (
+            "answer",
+            "asking",
+            "reads-right",
+            "joel",
+        ), said
+        shell.close_launcher()
+        # The node took it, so it has left what waits for History, saying the answer, though its
+        # file waits until the session writes it resolved (VKCF3Z, 2026-11-12).
+        in_for_you(shell)
+        shell.launcher_until(
+            lambda shown: "To Look At" not in shown["rows"], timeout=timedelta(seconds=5)
+        )
+        shell.down_to("History")
+        shell.step_in()
+        shell.launcher_until(lambda shown: "Asking Look" in shown["rows"])
+        shell.down_to("Asking Look")
+        side = shell.showing()["selected"]["side"]
+        assert re.fullmatch(r"answered Reads Right .+", side), shell.showing()
+        shell.close_launcher()
+    finally:
+        look.unlink()
+        for one in answers(inbox):
+            one.unlink()
+
+
+def answers(inbox: Path) -> list[Path]:
+    """Give the steers in an inbox that answer a look."""
+    return [
+        one for one in inbox.glob("*.json") if json.loads(one.read_text()).get("act") == "answer"
+    ]
 
 
 def talks(inbox: Path) -> list[Path]:
