@@ -331,6 +331,42 @@ mod tests {
         );
     }
 
+    /// The nights of these evenings, each a number of days back from
+    /// Wednesday, stopping at `hour:minute`.
+    fn stopping(backs: impl Iterator<Item = i64>, hour: i64, minute: i64) -> Vec<i64> {
+        backs
+            .flat_map(|back| evening(WEDNESDAY - back, hour, minute))
+            .collect()
+    }
+
+    #[test]
+    fn a_change_of_habit_shows_within_a_week() {
+        let mut seen = stopping((7..28).rev(), 24, 30);
+        seen.extend(stopping((0..7).rev(), 25, 30));
+        let profile = Profile::of(&nights(&seen, fixed(TORONTO)), WEDNESDAY);
+        assert_eq!(profile.nights, 28, "four weeks of nights");
+        assert_eq!(
+            profile.usual.map(clock_of).as_deref(),
+            Some("01:30"),
+            "this week's 01:30 outweighs three older weeks at 00:30"
+        );
+    }
+
+    #[test]
+    fn a_weekday_follows_its_own_change_within_two_weeks() {
+        // Wednesday's last eight Fridays, five days back and every week
+        // before: the six older at 02:30, the two latest at 00:30.
+        let fridays = |weeks: std::ops::Range<i64>| weeks.rev().map(|week| 5 + 7 * week);
+        let mut seen = stopping(fridays(2..8), 26, 30);
+        seen.extend(stopping(fridays(0..2), 24, 30));
+        let profile = Profile::of(&nights(&seen, fixed(TORONTO)), WEDNESDAY);
+        assert_eq!(
+            profile.weekdays[5].map(clock_of).as_deref(),
+            Some("00:30"),
+            "the last two Fridays outweigh six older ones"
+        );
+    }
+
     #[test]
     fn too_few_nights_guess_midnight() {
         let few: Vec<Night> = four_weeks().into_iter().rev().take(ENOUGH - 1).collect();
