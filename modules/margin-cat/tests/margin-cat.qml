@@ -63,6 +63,74 @@ QtObject {
 
         walks(expect);
 
+        // How engaged Joel is says how lively the cat may be (Joel, 2026-11-12:
+        // "mild movements when i'm active, increeeasing as I'm less engaged").
+        const heard = more => Object.assign({
+            paused: false, idle: false, asleep: false, quiet: false
+        }, more ?? {});
+        expect("while he types it's mild", MarginCat.level(heard()), "typing");
+        expect("ten seconds with no keys, a little more",
+            MarginCat.level(heard({ paused: true })), "paused");
+        expect("a minute with none, livelier",
+            MarginCat.level(heard({ paused: true, idle: true })), "idle");
+        expect("asleep it does nothing",
+            MarginCat.level(heard({ paused: true, idle: true, asleep: true })), "asleep");
+        expect("in Do Not Disturb it keeps still at any level",
+            MarginCat.level(heard({ paused: true, idle: true, quiet: true })), "still");
+
+        // The rest before each scene: about a minute while he types, half a
+        // minute when he pauses, 20 to 40 s when he's left the keys.
+        expect("typing rests 45 s at the least", MarginCat.rest("typing", 0), 45000);
+        expect("and 75 s at the most", MarginCat.rest("typing", 1), 75000);
+        expect("a pause rests 20 to 40 s",
+            [MarginCat.rest("paused", 0), MarginCat.rest("paused", 1)], [20000, 40000]);
+        expect("as does a minute with no keys",
+            [MarginCat.rest("idle", 0), MarginCat.rest("idle", 1)], [20000, 40000]);
+        expect("asleep there's no next scene", MarginCat.rest("asleep", 0.5), null);
+        expect("nor in Do Not Disturb", MarginCat.rest("still", 0.5), null);
+
+        // A scene is its beats, each a pose held, and it sits again after.
+        const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
+        const typed = [0, 0.4, 0.9].map(chance => MarginCat.scene("typing", chance));
+        expect("while he types it's one pose and back",
+            typed.map(beats => beats.length), [1, 1, 1]);
+        expect("an ear flick, a tail swish or a blink",
+            typed.map(beats => beats[0].pose), ["earFlick", "tailSwish", "blinking"]);
+        expect("held a few hundred ms", typed.every(beats => long(beats) <= 500), true);
+        const paused = [0, 0.5, 0.99].map(chance => MarginCat.scene("paused", chance));
+        expect("a pause's scenes keep to the mild poses",
+            paused.every(beats => beats.every(beat =>
+                ["earFlick", "tailSwish", "blinking", "nothingHere"].includes(beat.pose))),
+            true);
+        expect("and last at most a second and a half",
+            paused.every(beats => long(beats) > 0 && long(beats) <= 1500), true);
+        expect("past a minute it strolls", MarginCat.scene("idle", 0)[0].walk, true);
+        expect("or plays as when he pauses",
+            MarginCat.scene("idle", 0.99).every(beat => beat.walk !== true), true);
+        expect("asleep there's no scene", MarginCat.scene("asleep", 0), []);
+        expect("nor in Do Not Disturb", MarginCat.scene("still", 0), []);
+        // Eight poses a second at the most: no beat under 125 ms.
+        expect("no beat is quicker than an eighth of a second",
+            [...typed, ...paused].every(beats => beats.every(beat => beat.ms >= 125)), true);
+
+        // Where a stroll goes: the gutter beside its column, between two of
+        // the windows, sat as on a column's edge, and nowhere without one.
+        const others = (...columns) => columns;
+        expect("with no column beside it, there's nowhere to stroll",
+            MarginCat.gutter(at(column(100, 12, 400), { others: others() })), null);
+        expect("it strolls to the gutter on its right, over the gap's middle",
+            MarginCat.gutter(at(column(100, 12, 400),
+                { others: others(column(512, 12, 300)) })), { x: 502, y: 3 });
+        expect("or its left where nothing's on the right",
+            MarginCat.gutter(at(column(412, 12, 400),
+                { others: others(column(100, 12, 300)) })), { x: 402, y: 3 });
+        expect("never to a gutter off the screen",
+            MarginCat.gutter(at(column(600, 12, 400),
+                { others: others(column(1012, 12, 300)) })), null);
+        expect("nor onto the margin's marks",
+            MarginCat.gutter(at(column(100, 12, 394),
+                { marks: 3, others: others(column(506, 12, 300)) })), null);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);

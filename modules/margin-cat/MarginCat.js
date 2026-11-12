@@ -207,3 +207,19 @@ function walked(shown, drawing, unseen) {
 function turned(drawing, way) {
     return way > 0 ? drawing.map(row => row.split("").reverse().join("")) : drawing;
 }
+
+function level(heard) {
+    return "typing";
+}
+
+function rest(at, chance) {
+    return 0;
+}
+
+function scene(at, chance) {
+    return [];
+}
+
+function gutter(at) {
+    return null;
+}
