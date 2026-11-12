@@ -240,6 +240,25 @@ mod tests {
     }
 
     #[test]
+    fn a_kitty_on_a_socket_of_its_own_is_known_by_the_pid_written_beside_it() {
+        let folder = std::env::temp_dir().join(format!("agents-kitty-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        std::fs::write(folder.join("kitty.pid"), "7\n").expect("the pid written");
+        let socket = format!("unix:{}", folder.join("kitty.sock").display());
+        let kitty = json!({"terminal": "kitty", "within": socket, "id": 3});
+        let made = made(
+            &[held("SKIFF", &json!({}), &kitty)],
+            &[window(2, 9, ""), window(4, 7, "")],
+        );
+        std::fs::remove_dir_all(&folder).expect("the folder gone");
+        assert_eq!(
+            windows_of(&made),
+            vec![("SKIFF".to_owned(), json!("window:4"))],
+            "the sessions kitty's pid is read from beside its socket (home.nix's pi-sessions)"
+        );
+    }
+
+    #[test]
     fn one_that_cant_be_told_apart_says_no_window() {
         let kitty = json!({"terminal": "kitty", "within": "unix:@kitty-7", "id": 3});
         let made = made(
