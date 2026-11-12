@@ -208,18 +208,111 @@ function turned(drawing, way) {
     return way > 0 ? drawing.map(row => row.split("").reverse().join("")) : drawing;
 }
 
+// How lively the cat may be, from how engaged Joel is ("mild movements
+// when i'm active, increeeasing as I'm less engaged", 2026-11-12), as
+// `heard` says: `paused` ten seconds with no keys, `idle` a minute, `asleep`
+// at the doze, and `quiet` while Do Not Disturb holds, which keeps it still
+// whatever else is true, since being left alone means the cat too.
 function level(heard) {
-    return "typing";
+    if (heard.quiet) {
+        return "still";
+    }
+    if (heard.asleep) {
+        return "asleep";
+    }
+    if (heard.idle) {
+        return "idle";
+    }
+    return heard.paused ? "paused" : "typing";
 }
 
-function rest(at, chance) {
-    return 0;
+// The rest before its next scene at a level (`lively`), in ms, `chance` (0 to 1)
+// choosing where in its span: 45 to 75 s while he types, so a move is a
+// rare thing at the edge of his eye, and 20 to 40 s once he's paused or
+// left; null where nothing comes next, asleep or still.
+function rest(lively, chance) {
+    const spans = { typing: [45_000, 75_000], paused: [20_000, 40_000], idle: [20_000, 40_000] };
+    const span = spans[lively];
+    return span ? Math.round(span[0] + (span[1] - span[0]) * chance) : null;
 }
 
-function scene(at, chance) {
+// What a single pose held while he types takes: long enough to be seen at
+// the edge of his eye, short of a word's typing.
+const GLANCE = 375;
+
+// A pause's scenes: the sitting cat's own small moves, each at most a
+// second and a half, sitting again between them. No beat is quicker than
+// 125 ms, so it never moves more than eight poses a second.
+const MILD = [
+    [{ pose: "earFlick", ms: 250 }, { pose: "nothingHere", ms: 150 },
+        { pose: "earFlick", ms: 250 }],
+    [{ pose: "tailSwish", ms: 375 }, { pose: "nothingHere", ms: 250 },
+        { pose: "tailSwish", ms: 375 }],
+    [{ pose: "blinking", ms: 150 }, { pose: "nothingHere", ms: 200 },
+        { pose: "blinking", ms: 150 }],
+    [{ pose: "earFlick", ms: 375 }, { pose: "nothingHere", ms: 375 },
+        { pose: "tailSwish", ms: 500 }]
+];
+
+// One of `list`, `chance` (0 to 1) choosing which.
+function pick(list, chance) {
+    return list[Math.min(list.length - 1, Math.floor(chance * list.length))];
+}
+
+// A scene at a level (`lively`), `chance` (0 to 1) choosing which: its beats, each a
+// pose held `ms`, after which it sits again. While he types it's a single
+// pose, an ear flick, a tail swish or a blink; paused, one of the mild
+// scenes; idle, half the time a stroll to the gutter beside its column
+// and back (`walk`, its beats `to` where and a sit between), else a mild
+// scene; asleep or still, none.
+function scene(lively, chance) {
+    if (lively === "typing") {
+        return [{ pose: pick(["earFlick", "tailSwish", "blinking"], chance), ms: GLANCE }];
+    }
+    if (lively === "paused") {
+        return pick(MILD, chance);
+    }
+    if (lively === "idle") {
+        return chance < 0.5
+            ? [{ walk: true, to: "gutter" }, { pose: "nothingHere", ms: 6000 },
+                { walk: true, to: "column" }]
+            : pick(MILD, (chance - 0.5) * 2);
+    }
     return [];
 }
 
+// Where a stroll goes, from `at` as sits takes it with the other columns
+// on the screen (`others`): over the middle of the gutter beside its
+// column, between it and its neighbour, the right one first, at the
+// height it sits at; null where neither side has a neighbour, or the
+// gutter is off the screen or under the margin's marks, since there it
+// would cover what's true or be nowhere.
 function gutter(at) {
-    return null;
+    const { column } = at;
+    if (!column || column.top < at.tall + at.air) {
+        return null;
+    }
+    const right = column.left + column.width;
+    const beside = [
+        (at.others ?? []).filter(other => other.left >= right)
+            .map(other => (right + other.left) / 2).sort((a, b) => a - b)[0],
+        (at.others ?? []).filter(other => other.left + other.width <= column.left)
+            .map(other => (other.left + other.width + column.left) / 2)
+            .sort((a, b) => b - a)[0]
+    ];
+    const middle = beside.find(found => found !== undefined);
+    if (middle === undefined) {
+        return null;
+    }
+    const x = middle - at.wide / 2;
+    if (x < 0 || x + at.wide > at.across) {
+        return null;
+    }
+    if (at.marks > 0) {
+        const reach = (at.marks * at.cell) / 2 + at.cell / 2;
+        if (x + at.wide > at.across / 2 - reach && x < at.across / 2 + reach) {
+            return null;
+        }
+    }
+    return { x, y: column.top - at.tall - at.air };
 }
