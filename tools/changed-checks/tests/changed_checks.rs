@@ -25,7 +25,9 @@ fn starting() -> MutexGuard<'static, ()> {
 /// `unpushed`, one it doesn't, and no untracked files. Main's quarantine
 /// list is `quarantine.json`, once a test writes it. The working
 /// tree has a change in it, until a test writes `clean`, and then it's its
-/// commit; origin has that commit once a test writes `pushed`.
+/// commit; origin has that commit once a test writes `pushed`. A
+/// commit's tree is `tree`'s, or `basetree`, the change from the base
+/// is `diff`, and the base holds the paths `based` lists.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
   rev-parse)
@@ -44,6 +46,9 @@ case "$1" in
           *) exit 1 ;;
         esac ;;
       ls-files) ;;
+      rev-parse) cat "$STAND_IN/tree" 2>/dev/null || echo basetree ;;
+      diff) cat "$STAND_IN/diff" 2>/dev/null ;;
+      cat-file) grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null ;;
       show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
     esac ;;
 esac
@@ -61,6 +66,8 @@ esac
 /// checks each system has, it answers `systems.json`, or x86_64-linux's
 /// alone. Every evaluation and build must be pure and take no flake's
 /// config, since a fenced session's flake is evaluated on a lent builder.
+/// The flake's source is `source`, and evaluated from it as a plain path
+/// it gives the base's checks.
 const NIX: &str = r#"#!/bin/sh
 case " $* " in
   *" --impure "*) echo "evaluated impurely" >&2; exit 1 ;;
@@ -81,6 +88,7 @@ case "$1" in
     done 2>/dev/null
     exit 0 ;;
 esac
+if [ "$2" = --raw ]; then echo "$STAND_IN/source"; exit 0; fi
 case "$5" in
   builtins.mapAttrs*)
     cat "$STAND_IN/systems.json" 2>/dev/null || echo '{"x86_64-linux": 4}'
@@ -89,7 +97,7 @@ esac
 [ "$5" = builtins.currentSystem ] && { echo "asked Nix for this machine's system" >&2; exit 1; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
-case "$3" in *'?rev='*) side=base ;; esac
+case "$3" in *'?rev='*|path:*) side=base ;; esac
 under_way() { find "$STAND_IN" -maxdepth 1 -name 'evaluating.*' | wc -l; }
 case "$5" in
   builtins.attrNames) cat "$STAND_IN/$side-names.json" ;;
@@ -148,6 +156,15 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
   >> "$XDG_STATE_HOME/nix-offload/there.jsonl"
 "#;
 
+/// strace as changed-checks asks it: the trace it writes is `trace`, each
+/// SOURCE in it the flake's source, and it runs what it traces.
+const STRACE: &str = r#"#!/bin/sh
+while [ "$1" != -o ]; do shift; done
+sed "s|SOURCE|$STAND_IN/source|g" "$STAND_IN/trace" > "$2" 2>/dev/null || : > "$2"
+shift 2
+exec "$@"
+"#;
+
 /// A folder holding the stand-ins and what they read, emptied first and
 /// gone once the test ends, even when it fails: the tests' `$TMPDIR` is a
 /// quest's scratch, where a folder left behind stays until the quest ends.
@@ -183,7 +200,13 @@ impl StandIn {
         let _ = fs::remove_dir_all(&folder);
         fs::create_dir_all(folder.join("bin")).expect("a folder for the stand-ins");
         let _starting = starting();
-        for (name, script) in [("git", GIT), ("nix", NIX), ("nix-offload", NIX_OFFLOAD)] {
+        let stand_ins = [
+            ("git", GIT),
+            ("nix", NIX),
+            ("nix-offload", NIX_OFFLOAD),
+            ("strace", STRACE),
+        ];
+        for (name, script) in stand_ins {
             let path = folder.join("bin").join(name);
             fs::write(&path, script).expect("a stand-in");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("it runs");
@@ -238,6 +261,7 @@ impl StandIn {
             .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
+            .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -836,6 +860,7 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
     let stand_in = StandIn::new("keeps");
     // The working tree has no checks to give, so evaluating it would fail.
     stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
 
     let ran = stand_in.run(&["--system", "x86_64-linux", "--keep-base", "--here"]);
 
@@ -844,6 +869,215 @@ fn asked_to_keep_the_base_it_keeps_it_and_evaluates_nothing_else() {
     assert!(text(&ran.stderr).contains("kept x86_64-linux's checks at 0123456789ab"));
     let kept = Path::new("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
     assert!(stand_in.folder.join(kept).exists());
+    assert!(
+        stand_in.path(READS).exists(),
+        "a keep records what the VM tests read as it evaluates them, so every kept base has \
+         its record"
+    );
+}
+
+#[test]
+fn keeping_a_base_a_gate_kept_first_traces_only_its_vm_tests() {
+    let stand_in = StandIn::new("reads-gated");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    fs::create_dir_all(stand_in.path("cache/changed-checks")).expect("made");
+    let kept = "cache/changed-checks/0123456789abcdef0123-x86_64-linux.json";
+    fs::write(stand_in.path(kept), BASE).expect("written");
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        stand_in.path(READS).exists(),
+        "a base kept from git alone got no record"
+    );
+    let runs = stand_in.runs();
+    assert_eq!(evaluated(&runs[0]), ["reads"], "{}", runs[0]);
+}
+
+#[test]
+fn a_keep_whose_trace_fails_keeps_the_base_its_vm_tests_evaluated_from_git() {
+    let stand_in = StandIn::new("reads-fallback");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), "").expect("written");
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let kept = "cache/changed-checks/0123456789abcdef0123-x86_64-linux.json";
+    let kept: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(stand_in.path(kept)).expect("kept"))
+            .expect("JSON");
+    assert_eq!(kept["vm-x"], "v.drv", "the VM test went unkept: {kept}");
+    let runs = stand_in.runs();
+    assert_eq!(
+        evaluated(&runs[0]),
+        ["base", "base"],
+        "the ordinary checks, then the VM tests from git: {}",
+        runs[0]
+    );
+}
+
+/// What the base's VM test read, as strace saw it: its flake, a file it
+/// imported and a folder it listed.
+const TRACE: &str = r#"openat(AT_FDCWD</tmp>, "SOURCE/flake.nix", O_RDONLY) = 7<SOURCE/flake.nix>
+4242 newfstatat(AT_FDCWD</tmp>, "SOURCE/tests", {st_mode=S_IFDIR|0555, ...}, 0) = 0
+4242 openat(AT_FDCWD</tmp>, "SOURCE/tests/x.nix", O_RDONLY|O_CLOEXEC) = 7<SOURCE/tests/x.nix>
+4243 openat(AT_FDCWD</tmp>, "SOURCE/listed", O_RDONLY|O_DIRECTORY) = 8<SOURCE/listed>
+4243 getdents64(8<SOURCE/listed>, 0x5555 /* 3 entries */, 32768) = 80
+"#;
+
+/// A stand-in whose base has been kept, with what its VM test read, and
+/// whose working tree changes `diff`'s files.
+fn kept_with_reads(test: &str, diff: &str) -> StandIn {
+    let stand_in = StandIn::new(test);
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    stand_in.checks("working", WORKING);
+    fs::write(stand_in.path("diff"), diff).expect("written");
+    stand_in
+}
+
+/// Keeping a base, as keep-main asks for it.
+const KEEPING: [&str; 4] = ["--system", "x86_64-linux", "--keep-base", "--here"];
+
+/// Where a base's record of what its VM tests read is kept.
+const READS: &str = "cache/changed-checks/0123456789abcdef0123-x86_64-linux.reads.json";
+
+#[test]
+fn keeping_a_base_keeps_what_its_vm_tests_read_and_how_long_reading_took() {
+    let stand_in = kept_with_reads("reads-kept", "");
+
+    let kept: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(stand_in.path(READS)).expect("kept"))
+            .expect("JSON");
+    assert_eq!(
+        kept,
+        serde_json::json!({
+            "tree": "basetree",
+            "read": ["flake.nix", "listed", "tests", "tests/x.nix"],
+            "missing": [],
+            "listed": ["listed"],
+        })
+    );
+    let runs = stand_in.runs();
+    assert_eq!(evaluated(&runs[0]), ["base", "reads"], "{}", runs[0]);
+}
+
+#[test]
+fn a_gate_whose_change_reaches_nothing_the_vm_tests_read_keeps_their_base_derivations() {
+    // On 12 November 95 of 152 gates that named anything named no VM test,
+    // and each spent half its evaluating on them.
+    // A listing gives names alone, so a file changed in a folder listed
+    // moves nothing, nor one added in a folder that was there already.
+    let stand_in = kept_with_reads(
+        "reads-unreached",
+        "M\ta\nA\tnew\nD\tgone\nM\tlisted/old.nix\nA\tlisted/kept/new.nix\n",
+    );
+    fs::create_dir_all(stand_in.path("repo/listed/kept")).expect("made");
+    fs::write(stand_in.path("based"), "listed/kept\n").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "added    new\nchanged  a\nremoved  gone\n",
+        "the VM test is the base's, so unchanged"
+    );
+    assert!(
+        text(&ran.stderr).contains(
+            "the change reaches nothing x86_64-linux's 1 VM tests read at 0123456789ab, \
+             so each keeps the base's derivation unevaluated"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+    let runs = stand_in.runs();
+    let tree = &runs[1]["evaluated"][0];
+    assert_eq!(tree["of"], "tree", "{}", runs[1]);
+    assert_eq!(
+        tree["chunks"].as_array().map(Vec::len),
+        Some(1),
+        "only ordinary: {tree}"
+    );
+}
+
+#[test]
+fn a_gate_whose_change_reaches_what_the_vm_tests_read_evaluates_them() {
+    for diff in [
+        "M\ttests/x.nix\n",
+        "A\tlisted/new.nix\n",
+        "A\tlisted/came/new.nix\n",
+        "D\ttests/y.nix\n",
+        "M\tflake.lock\n",
+    ] {
+        let stand_in = kept_with_reads("reads-reached", diff);
+        fs::create_dir_all(stand_in.path("repo/listed/came")).expect("made");
+
+        let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+        assert_eq!(
+            text(&ran.stdout),
+            "added    new\nchanged  a\nchanged  vm-x\nremoved  gone\n",
+            "{diff:?} reaches the VM test, so it was evaluated"
+        );
+    }
+}
+
+#[test]
+fn a_record_made_from_another_tree_or_a_change_git_cant_name_evaluates_them() {
+    for (test, odd) in [("reads-tree", "tree"), ("reads-rename", "diff")] {
+        let stand_in = kept_with_reads(test, "M\ta\n");
+        let said = if odd == "tree" {
+            "othertree\n"
+        } else {
+            "R100\ta\tb\n"
+        };
+        fs::write(stand_in.path(odd), said).expect("written");
+
+        let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+        assert!(ran.status.success(), "{}", text(&ran.stderr));
+        assert!(
+            text(&ran.stdout).contains("changed  vm-x\n"),
+            "{odd} was odd, yet the record was used"
+        );
+    }
+}
+
+#[test]
+fn a_base_whose_trace_cant_be_read_or_whose_inputs_are_local_keeps_no_record() {
+    let unread = "4242 chdir(\"SOURCE/tests\") = 0\n";
+    let lock = r#"{"nodes": {"x": {"locked": {"type": "path", "path": "/x"}}}}"#;
+    for (test, trace, lock) in [
+        ("reads-unread", unread, None),
+        ("reads-empty", "", None),
+        ("reads-local", TRACE, Some(lock)),
+    ] {
+        let stand_in = StandIn::new(test);
+        stand_in.checks("base", BASE);
+        fs::write(stand_in.path("trace"), trace).expect("written");
+        if let Some(lock) = lock {
+            fs::create_dir_all(stand_in.path("source")).expect("made");
+            fs::write(stand_in.path("source/flake.lock"), lock).expect("written");
+        }
+
+        let ran = stand_in.run(&KEEPING);
+
+        assert!(ran.status.success(), "{test}: {}", text(&ran.stderr));
+        assert!(
+            text(&ran.stderr)
+                .contains("couldn't record what x86_64-linux's VM tests read at 0123456789ab"),
+            "{test}: {}",
+            text(&ran.stderr)
+        );
+        assert!(!stand_in.path(READS).exists(), "{test} kept a record");
+    }
 }
 
 #[test]

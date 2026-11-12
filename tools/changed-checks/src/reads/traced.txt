@@ -1,0 +1,108 @@
+== vm-imports
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-imports.drvPath", 0x7ffec0d38620, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/imported", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/imported/a.nix", {st_mode=S_IFREG|0444, st_size=11, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/imported/a.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/imported/a.nix>
+== vm-reads
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-reads.drvPath", 0x7ffc161a09e0, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/read", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/read/b.txt", {st_mode=S_IFREG|0444, st_size=2, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/read/b.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/read/b.txt>
+== vm-lists
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-lists.drvPath", 0x7fff289e3110, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/listed", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/listed", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/listed>
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/listed>, 0x55f89145ade0 /* 4 entries */, 32768) = 96
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/listed>, 0x55f89145ade0 /* 0 entries */, 32768) = 0
+== vm-looks
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-looks.drvPath", 0x7ffc0d267530, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/looked", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/looked/missing", 0x7ffc0d2657d0, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+== vm-fileset
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-fileset.drvPath", 0x7ffc33e44790, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>, 0x56534c58bf60 /* 3 entries */, 32768) = 80
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>, 0x56534c58bf60 /* 0 entries */, 32768) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>, 0x56534c6290a0 /* 3 entries */, 32768) = 80
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set>, 0x56534c6290a0 /* 0 entries */, 32768) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set/e.txt", {st_mode=S_IFREG|0444, st_size=2, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set/e.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/set/e.txt>
+== vm-src
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-src.drvPath", 0x7fffbb84b3a0, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole>
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole>, 0x55f6a278b0a0 /* 3 entries */, 32768) = 80
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole>, 0x55f6a278b0a0 /* 0 entries */, 32768) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole/f.txt", {st_mode=S_IFREG|0444, st_size=2, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole/f.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/whole/f.txt>
+== vm-cleaned
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-cleaned.drvPath", 0x7ffd08ba7940, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned>
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned>, 0x55799e51c0a0 /* 3 entries */, 32768) = 80
+getdents64(7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned>, 0x55799e51c0a0 /* 0 entries */, 32768) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned/g.txt", {st_mode=S_IFREG|0444, st_size=2, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned/g.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/cleaned/g.txt>
+== vm-interpolated
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.vm-interpolated.drvPath", 0x7fffa9e503e0, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/other", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/other/h.txt", {st_mode=S_IFREG|0444, st_size=2, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/other/h.txt", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/other/h.txt>
+== ordinary
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/tmp/nix-offload-changed-3925695/tree/path:/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source#checks.x86_64-linux.ordinary.drvPath", 0x7ffdc226e9e0, AT_SYMLINK_NOFOLLOW) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", {st_mode=S_IFREG|0444, st_size=955, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source", {st_mode=S_IFDIR|0555, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.nix>
+newfstatat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", {st_mode=S_IFREG|0444, st_size=569, ...}, AT_SYMLINK_NOFOLLOW) = 0
+openat(AT_FDCWD</tmp/nix-offload-changed-3925695/tree>, "/nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock", O_RDONLY|O_NOFOLLOW|O_CLOEXEC) = 7</nix/store/0rnx5qbx219cyjiiaiml7jl7jkpr3sgs-source/flake.lock>

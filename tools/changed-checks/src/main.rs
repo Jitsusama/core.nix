@@ -17,7 +17,9 @@
 //! leaves every later comparison against that commit one evaluation to pay.
 //! It goes only to a builder already standing.
 //! `changed-checks keep-main` does that for each head of origin's main, once
-//! it has stood two minutes, where runs are sent (`keep.rs` says why).
+//! it has stood 30 s, where runs are sent (`keep.rs` says why). A keep
+//! also keeps what the base's VM tests read, for gates to pass over those
+//! a change doesn't reach (`reads.rs`).
 //!
 //! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
 //! [--keep-base] [--here]`, or `changed-checks keep-main`
@@ -74,6 +76,7 @@ mod first;
 mod keep;
 mod pressure;
 mod quarantine;
+mod reads;
 mod runs;
 #[cfg(test)]
 mod scratch;
@@ -300,7 +303,7 @@ fn changed(options: &Options) -> Result<ExitCode, String> {
     };
     let held = quarantine::on_main(&root, ORIGIN_MAIN);
     let mut noted = Run::new(&base, &system);
-    let compared = compare(options, &flake, &base, &system, &held, &mut noted);
+    let compared = compare(options, &root, &base, &system, &held, &mut noted);
     let log = state().join("changed-checks/runs.jsonl");
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
@@ -508,12 +511,13 @@ fn elsewhere(
 /// what each step took, and build what changed if asked.
 fn compare(
     options: &Options,
-    flake: &str,
+    root: &str,
     base: &str,
     system: &str,
     held: &[Held],
     noted: &mut Run,
 ) -> Result<ExitCode, String> {
+    let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
     let kept = |noted: &mut Run| {
         checks::kept(&checks::keeping(&cache(), base, system), || {
@@ -521,7 +525,10 @@ fn compare(
         })
     };
     if options.keep_base {
-        kept(noted)?;
+        let kept = checks::kept(&checks::keeping(&cache(), base, system), || {
+            reads::evaluated_base(root, base, system, noted)
+        })?;
+        reads::keep(root, base, system, &kept, noted);
         eprintln!("kept {system}'s checks at {short}");
         return Ok(ExitCode::SUCCESS);
     }
@@ -570,7 +577,10 @@ fn compare(
                 let derivations = after.clone();
                 scope.spawn(move || built(flake, system, held, &targets, &derivations))
             }));
-            after.extend(evaluated(flake, system, &vm, &mut evaluation)?);
+            match reads::unread(root, base, system, &before, &vm) {
+                Some(unread) => after.extend(unread),
+                None => after.extend(evaluated(flake, system, &vm, &mut evaluation)?),
+            }
             noted.evaluated(evaluation);
             Ok(after)
         };
@@ -589,14 +599,7 @@ fn compare(
     });
     let after = after?;
     let comparison = checks::compare(&before, &after);
-    let mut named = 0;
-    for (kind, names) in comparison.kinds() {
-        for name in names {
-            println!("{kind:<8} {name}");
-            named += 1;
-        }
-    }
-    noted.named(named);
+    noted.named(named(&comparison));
     let whole = comparison.broken.is_empty();
     let build = match building {
         Some(began) => began.transpose()?,
@@ -624,6 +627,18 @@ fn compare(
             ExitCode::FAILURE
         },
     )
+}
+
+/// Name each check a comparison moved, a line each, and say how many.
+fn named(comparison: &checks::Comparison) -> usize {
+    let mut named = 0;
+    for (kind, names) in comparison.kinds() {
+        for name in names {
+            println!("{kind:<8} {name}");
+            named += 1;
+        }
+    }
+    named
 }
 
 /// Those of the checks a comparison moved that `passed` doesn't say passed
