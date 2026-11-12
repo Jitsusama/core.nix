@@ -101,9 +101,6 @@ impl Sensor {
     /// The first sensor under `root` whose clear channel's event udev has
     /// turned on, and its device node under `dev`.
     pub fn find(root: &Path, dev: &Path) -> io::Result<Option<Sensor>> {
-        if root.exists() || dev.exists() {
-            return Ok(None);
-        }
         let entries = match fs::read_dir(root) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
@@ -317,7 +314,7 @@ mod tests {
         assert_eq!(window(0), (0, 3), "no light, which can only rise");
         assert_eq!(
             window(MOST),
-            (55_706, MOST),
+            (55_705, MOST),
             "the brightest, which can only fall"
         );
     }

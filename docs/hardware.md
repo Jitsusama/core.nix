@@ -1626,6 +1626,7 @@ sealed to.
 | Power      | the profiles are read on the charger only, not yet on battery                  |
 | Wi-Fi      | what dozing saves on battery, and roaming between access points, aren't read   |
 | Devices    | each watched device is named once its path goes; no driver is unbound yet      |
+| Light      | the APDS-9960's counts turn into lux only roughly, until a lux meter sets them |
 
 [1]: kernel.md
 [2]: ../hardware/dell-xps-14-da14260/nixos.nix
