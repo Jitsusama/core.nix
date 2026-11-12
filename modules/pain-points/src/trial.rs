@@ -127,8 +127,22 @@ impl Trial {
     /// where he typed or stepped in and picked nothing, and "glanced"
     /// where he did neither.
     pub fn trying(&self) -> String {
-        let _ = (WORDED, vocabulary(""));
-        String::new()
+        if !self.picked_one() {
+            return if self.sought() {
+                "looked for something"
+            } else {
+                "glanced"
+            }
+            .to_string();
+        }
+        let mut words = self.picked.split(':');
+        let first = words.next().unwrap_or_default();
+        match words.next() {
+            Some(second) if WORDED.contains(&first) && vocabulary(second) => {
+                format!("{first}:{second}")
+            }
+            _ => first.to_string(),
+        }
     }
 }
 
@@ -153,8 +167,10 @@ fn vocabulary(word: &str) -> bool {
 /// that doesn't read as one, as the last one cut short by a write, is
 /// passed over.
 pub fn read(text: &str) -> Vec<Trial> {
-    let _ = text;
-    Vec::new()
+    text.lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
 }
 
 #[cfg(test)]
@@ -162,7 +178,12 @@ mod tests {
     use super::*;
 
     fn picking(picked: &str) -> Trial {
-        Trial { picked: picked.to_string(), ms: 2000, open: 2000, ..Trial::default() }
+        Trial {
+            picked: picked.to_string(),
+            ms: 2000,
+            open: 2000,
+            ..Trial::default()
+        }
     }
 
     #[test]
@@ -174,24 +195,45 @@ mod tests {
 
     #[test]
     fn a_copy_s_pick_never_says_what_was_copied() {
-        assert_eq!(picking("copy:@Levi heads up from the review").trying(), "copy");
+        assert_eq!(
+            picking("copy:@Levi heads up from the review").trying(),
+            "copy"
+        );
         assert_eq!(picking("copy:short").trying(), "copy");
     }
 
     #[test]
     fn ids_names_and_paths_stay_out() {
         assert_eq!(picking("agent:85PKB2").trying(), "agent");
-        assert_eq!(picking("file:/home/jitsusama/Documents/x.pdf").trying(), "file");
+        assert_eq!(
+            picking("file:/home/jitsusama/Documents/x.pdf").trying(),
+            "file"
+        );
         assert_eq!(picking("on:look:bad88285473c0b1a").trying(), "on:look");
         assert_eq!(picking("person:Some One").trying(), "person");
-        assert_eq!(picking("slack:conversation:C0123ABCD").trying(), "slack:conversation");
+        assert_eq!(
+            picking("slack:conversation:C0123ABCD").trying(),
+            "slack:conversation"
+        );
     }
 
     #[test]
     fn nothing_picked_says_whether_he_looked() {
-        let looked = Trial { keys: Keys { letters: 3, ..Keys::default() }, ..Trial::default() };
+        let looked = Trial {
+            keys: Keys {
+                letters: 3,
+                ..Keys::default()
+            },
+            ..Trial::default()
+        };
         assert_eq!(looked.trying(), "looked for something");
-        let stepped = Trial { keys: Keys { steps: 1, ..Keys::default() }, ..Trial::default() };
+        let stepped = Trial {
+            keys: Keys {
+                steps: 1,
+                ..Keys::default()
+            },
+            ..Trial::default()
+        };
         assert_eq!(stepped.trying(), "looked for something");
         assert_eq!(Trial::default().trying(), "glanced");
     }
@@ -202,10 +244,10 @@ mod tests {
         let trials = read(&format!("{line}\n{{\"at\":1,\n"));
         assert_eq!(trials.len(), 1, "the cut-short line is passed over");
         let trial = &trials[0];
-        assert_eq!(trial.at, 1794455364916);
+        assert_eq!(trial.at, 1_794_455_364_916);
         assert_eq!(trial.keys.erased, 4);
         assert_eq!(trial.ms, 19521);
-        assert_eq!(trial.closed(), 1794455364916 + 19546);
+        assert_eq!(trial.closed(), 1_794_455_364_916 + 19_546);
         assert_eq!(trial.timed.as_ref().map(|t| t.felt.len()), Some(1));
         assert_eq!(trial.frames.as_ref().map(|f| f.longest), Some(69.0));
     }

@@ -29,9 +29,7 @@ const DAY_MS: i64 = 86_400_000;
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.first().map(String::as_str) != Some("read") {
-        eprintln!(
-            "usage: pain-points read [--trials FILE] [--journalctl PATH] [--date PATH]"
-        );
+        eprintln!("usage: pain-points read [--trials FILE] [--journalctl PATH] [--date PATH]");
         std::process::exit(64);
     }
     let given = |flag: &str| {
@@ -59,16 +57,27 @@ fn run(trials: &Path, journalctl: &Path, date: &Path) -> Result<(), String> {
         .and_then(offset_of)
         .unwrap_or(0);
     let (name, start) = local_day(millis_now(), offset);
-    let before: Vec<_> = every
+    // His usual for a kind of pick counts today's too, so one he began
+    // making today is held to his own pace once he has made it a few
+    // times, rather than to the spec.
+    let fortnight: Vec<_> = every
         .iter()
-        .filter(|t| t.at < start && t.at >= start - USUAL_DAYS * DAY_MS)
+        .filter(|t| t.at >= start - USUAL_DAYS * DAY_MS)
         .cloned()
         .collect();
     let today: Vec<_> = every.iter().filter(|t| t.at >= start).cloned().collect();
     let usable = Usable::new(
         output(
             Command::new(journalctl)
-                .args(["--user", "-u", "quickshell.service", "-o", "json", "--since", "today"])
+                .args([
+                    "--user",
+                    "-u",
+                    "quickshell.service",
+                    "-o",
+                    "json",
+                    "--since",
+                    "today",
+                ])
                 .args(["-g", "launcher: opening usable"]),
         )
         .unwrap_or_default()
@@ -77,7 +86,7 @@ fn run(trials: &Path, journalctl: &Path, date: &Path) -> Result<(), String> {
         .filter_map(|(at, message)| pain::usable_of(&message).map(|ms| (at, ms)))
         .collect(),
     );
-    let named = pain::painful(&today, &usable, &Usual::of(&before));
+    let named = pain::painful(&today, &usable, &Usual::of(&fortnight));
     let lines: String = named
         .iter()
         .map(|p| serde_json::to_string(p).map(|line| line + "\n"))
@@ -98,21 +107,29 @@ fn run(trials: &Path, journalctl: &Path, date: &Path) -> Result<(), String> {
             worst.lost_seconds,
             worst.slowed
         ),
-        None => println!("pain-points: none of {} openings today cost him a second", today.len()),
+        None => println!(
+            "pain-points: none of {} openings today cost him a second",
+            today.len()
+        ),
     }
     Ok(())
 }
 
 /// What a command printed, where it ran and said anything.
 fn output(command: &mut Command) -> Option<String> {
-    let out = command.stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+    let out = command
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
     String::from_utf8(out.stdout).ok().filter(|s| !s.is_empty())
 }
 
 fn state_home() -> PathBuf {
-    env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".local/state"))
+    env::var_os("XDG_STATE_HOME").map_or_else(
+        || PathBuf::from(env::var_os("HOME").unwrap_or_default()).join(".local/state"),
+        PathBuf::from,
+    )
 }
 
 /// The launcher's record from the shell that wrote it last: the shell
@@ -135,21 +152,62 @@ fn millis_now() -> i64 {
 }
 
 /// The offset from UTC, in seconds, from what `date +%z` prints ("-0500").
-fn offset_of(_printed: &str) -> Option<i64> {
-    None
+fn offset_of(printed: &str) -> Option<i64> {
+    let printed = printed.trim();
+    let sign = match printed.chars().next()? {
+        '+' => 1,
+        '-' => -1,
+        _ => return None,
+    };
+    let digits = printed
+        .get(1..5)
+        .filter(|d| d.len() == 4 && printed.len() == 5)?;
+    let hours: i64 = digits[..2].parse().ok()?;
+    let minutes: i64 = digits[2..].parse().ok()?;
+    Some(sign * (hours * 3600 + minutes * 60))
 }
 
 /// The local day holding `at` (milliseconds since 1970) at `offset`
 /// seconds from UTC: its name, YYYY-MM-DD, and when it began, in
 /// milliseconds since 1970.
-fn local_day(_at: i64, _offset: i64) -> (String, i64) {
-    (String::new(), 0)
+fn local_day(at: i64, offset: i64) -> (String, i64) {
+    let local = at + offset * 1000;
+    let days = local.div_euclid(DAY_MS);
+    // Days since 1970 as a civil date, by Howard Hinnant's algorithm.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (
+        format!("{y:04}-{m:02}-{d:02}"),
+        days * DAY_MS - offset * 1000,
+    )
 }
 
 /// A journal entry printed by `journalctl -o json`: when it was logged, in
 /// milliseconds since 1970, and its message.
-fn journal_entry(_line: &str) -> Option<(i64, String)> {
-    None
+fn journal_entry(line: &str) -> Option<(i64, String)> {
+    let entry: serde_json::Value = serde_json::from_str(line).ok()?;
+    let micros: i64 = entry.get("__REALTIME_TIMESTAMP")?.as_str()?.parse().ok()?;
+    // The shell colours its lines, and journald keeps a message holding
+    // escapes as an array of its bytes rather than a string.
+    let message = match entry.get("MESSAGE")? {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(bytes) => {
+            let bytes: Option<Vec<u8>> = bytes
+                .iter()
+                .map(|b| b.as_u64().and_then(|b| u8::try_from(b).ok()))
+                .collect();
+            String::from_utf8_lossy(&bytes?).into_owned()
+        }
+        _ => return None,
+    };
+    Some((micros / 1000, message))
 }
 
 #[cfg(test)]
@@ -167,8 +225,14 @@ mod tests {
     fn a_day_is_named_and_begun_in_local_time() {
         // 2026-11-12 03:30 UTC is still the 11th at 22:30 in Toronto.
         let at = 1_794_454_200_000;
-        assert_eq!(local_day(at, -18_000), ("2026-11-11".to_string(), 1_794_373_200_000));
-        assert_eq!(local_day(at, 0), ("2026-11-12".to_string(), 1_794_441_600_000));
+        assert_eq!(
+            local_day(at, -18_000),
+            ("2026-11-11".to_string(), 1_794_373_200_000)
+        );
+        assert_eq!(
+            local_day(at, 0),
+            ("2026-11-12".to_string(), 1_794_441_600_000)
+        );
     }
 
     #[test]
@@ -177,6 +241,15 @@ mod tests {
         let (at, message) = journal_entry(line).expect("the entry reads");
         assert_eq!(at, 1_794_455_125_123);
         assert_eq!(pain::usable_of(&message), Some(195.0));
-        assert_eq!(journal_entry(r#"{"MESSAGE":[1,2,3]}"#), None);
+        let coloured = r#"{"__REALTIME_TIMESTAMP":"1000","MESSAGE":[27,91,51,50,109,104,105]}"#;
+        assert_eq!(
+            journal_entry(coloured),
+            Some((1, "\u{1b}[32mhi".to_string()))
+        );
+        assert_eq!(journal_entry(r#"{"MESSAGE":"no time"}"#), None);
+        assert_eq!(
+            journal_entry(r#"{"__REALTIME_TIMESTAMP":"1","MESSAGE":[300]}"#),
+            None
+        );
     }
 }
