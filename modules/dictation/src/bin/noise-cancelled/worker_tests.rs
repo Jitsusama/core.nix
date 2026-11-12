@@ -7,7 +7,7 @@ use super::*;
 /// A microphone that's recorded from, with the test's ends of its rings:
 /// where it hears, and where its cleaned sound comes out.
 fn recorded() -> (Microphone, Producer<f32>, Consumer<f32>) {
-    let (hears, heard) = RingBuffer::new(16 * FRAME);
+    let (microphone_side, heard) = RingBuffer::new(16 * FRAME);
     let (cleaned, out) = RingBuffer::new(16 * FRAME);
     let shared = Arc::new(Shared::default());
     shared.wanted.store(true, Ordering::Release);
@@ -19,7 +19,7 @@ fn recorded() -> (Microphone, Producer<f32>, Consumer<f32>) {
         },
         denoiser: None,
     };
-    (microphone, hears, out)
+    (microphone, microphone_side, out)
 }
 
 /// A frame of a voice-like tone.
