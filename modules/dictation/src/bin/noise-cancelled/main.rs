@@ -30,6 +30,7 @@
 
 mod chosen;
 mod denoise;
+mod loudness;
 mod pipe;
 mod trial;
 mod worker;
