@@ -129,6 +129,8 @@ pub struct Trial {
     until: Option<u64>,
     /// The clips by letter, while ready.
     clips: Vec<Clip>,
+    /// The floor of the room they were recorded in, raw (room.rs).
+    floor: Option<i32>,
     /// Each letter's way, kept past a pick for the reveal.
     ways: Vec<Way>,
     costs: BTreeMap<&'static str, f64>,
@@ -174,6 +176,7 @@ impl Trial {
                 output: None,
                 until: None,
                 clips: Vec::new(),
+                floor: None,
                 ways: Vec::new(),
                 costs: BTreeMap::new(),
                 marks: BTreeMap::new(),
@@ -478,6 +481,11 @@ impl Trial {
                 default_microphone_is(&self.tools.metadata, &microphone.name)?;
                 crate::offer::settled(&self.running, &microphone.name, &spot.key)?;
             }
+            // Either way, a call far louder or quieter than this room offers
+            // Choose by Ear again.
+            if let Some(floor) = self.floor {
+                crate::room::kept(&self.running, &microphone.name, &spot.key, floor)?;
+            }
         }
         eprintln!(
             "noise-cancelled: {} picked by ear, over {}",
@@ -626,11 +634,14 @@ fn recorded(me: &Weak<Shared<Trial>>, generation: u64, mut recorder: Child, mode
         .iter()
         .map(|sample| f32::from_le_bytes(*sample))
         .collect();
+    // Measured raw, since the clips are made as loud as each other after.
+    let floor = crate::room::of(&samples);
     let cleaned = ways::every_way(models, &samples);
     let mut trial = trial.lock();
     if trial.generation != generation {
         return;
     }
+    trial.floor = floor;
     match cleaned {
         Ok(clips) => {
             let order = shuffled(now());

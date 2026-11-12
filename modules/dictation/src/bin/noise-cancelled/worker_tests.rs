@@ -28,6 +28,7 @@ fn named(name: &str) -> (Microphone, Producer<f32>, Consumer<f32>) {
         cleaner: None,
         denoiser: None,
         began: None,
+        room: Room::default(),
     };
     (microphone, microphone_side, out)
 }
@@ -228,6 +229,63 @@ fn a_call_that_ends_offers_choose_by_ear() {
     assert!(
         said.contains("\"node\":\"mv7\""),
         "the MV7 should be offered: {said:?}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// A frame of a steady hum at `amplitude`, a room's noise.
+fn hum(amplitude: f32) -> [f32; FRAME] {
+    std::array::from_fn(|at| if at % 2 == 0 { amplitude } else { -amplitude })
+}
+
+#[test]
+fn what_a_microphone_hears_raw_is_its_room() {
+    let (mut microphone, mut hears, mut out) = recorded();
+    for _ in 0..12 {
+        for _ in 0..10 {
+            hears
+                .push_entire_slice(&hum(0.01))
+                .expect("the ring has room");
+        }
+        clean(&mut microphone, None);
+        drained(&mut out);
+    }
+    assert_eq!(microphone.room.floor(), Some(-40), "the hum is the room");
+}
+
+#[test]
+fn a_call_in_a_room_far_from_its_picks_offers_choose_by_ear_again() {
+    let folder = std::env::temp_dir().join(format!("worker-room-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet)
+        .within(Where::at(&folder.join("nowhere")));
+    let here = chosen.spot();
+    chosen
+        .choose("mv7", &here, Cleaner::RNNoise)
+        .expect("the pick is kept");
+    crate::room::kept(&chosen, "mv7", &here.key, -70).expect("its room is kept");
+    let offer = chosen.beside("offer").expect("picks are kept");
+    let mut offers = Offers::new(&chosen, Vec::new());
+    let mut microphones = HashMap::from([(1, named("mv7").0)]);
+    settled(&mut microphones, &chosen, &mut offers);
+    let call = Instant::now().checked_sub(Duration::from_mins(2));
+    let microphone = microphones.get_mut(&1).expect("the MV7 is there");
+    let began = microphone.began.as_mut().expect("its recording began");
+    began.0 = call.expect("the clock goes back 2 minutes");
+    for _ in 0..200 {
+        microphone.room.heard(&hum(0.01));
+    }
+    microphone
+        .ends
+        .shared
+        .wanted
+        .store(false, Ordering::Release);
+    settled(&mut microphones, &chosen, &mut offers);
+    offers.stand(&chosen);
+    let said = std::fs::read_to_string(&offer).unwrap_or_default();
+    assert!(
+        said.contains("\"new\":\"noise\"") && said.contains("\"by\":30"),
+        "a room 30 dB louder should be offered again: {said:?}"
     );
     let _ = std::fs::remove_dir_all(&folder);
 }

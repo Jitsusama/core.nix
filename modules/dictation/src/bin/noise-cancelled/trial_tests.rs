@@ -534,3 +534,30 @@ fn a_raw_pick_makes_the_microphone_itself_the_one_calls_hear() {
     );
     let _ = std::fs::remove_dir_all(&folder);
 }
+
+#[test]
+fn a_pick_keeps_the_room_it_was_recorded_in() {
+    let folder = std::env::temp_dir().join(format!("trial-room-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    let desk = Spot {
+        key: "home=6366013".to_owned(),
+        name: "the desk".to_owned(),
+    };
+    for (clip, floor) in [("C", -55), ("B", -48)] {
+        ready(&trial);
+        trial.lock().spot = Some(desk.clone());
+        trial.lock().floor = Some(floor);
+        ask(
+            &trial,
+            &format!(r#"{{"id":4,"ask":"act","act":"pick","clip":"{clip}"}}"#),
+        );
+        let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet);
+        assert_eq!(
+            crate::room::picked_in(&chosen, "mv7", &desk.key),
+            Some((floor, false)),
+            "clip {clip}'s pick didn't keep its room"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&folder);
+}

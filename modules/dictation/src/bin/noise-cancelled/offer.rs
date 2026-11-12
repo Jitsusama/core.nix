@@ -42,9 +42,19 @@ pub struct Offer {
     /// The microphone's name, as Sound says it.
     pub microphone: String,
     pub spot: Spot,
-    /// Whether the microphone has never been picked for anywhere, rather
-    /// than only here.
-    pub new_microphone: bool,
+    pub why: Why,
+}
+
+/// Why Choose by Ear is offered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    /// The microphone has never been picked for anywhere.
+    Microphone,
+    /// It's been picked for, but never at this spot.
+    Spot,
+    /// The call's room was `by` dB louder, or quieter under nought, than
+    /// the one its pick here was made in, whose floor was `from` (room.rs).
+    Noise { by: i32, from: i32 },
 }
 
 /// The offer waiting to stand, and what keeps it from standing.
@@ -70,9 +80,10 @@ impl Offers {
     }
 
     /// After `microphone`, by its `node`, was recorded from at `spot` for
-    /// `lasted`: waits to offer Choose by Ear for it there, if that was a
-    /// call, it's never been picked for there, and it's never been
-    /// offered there. The newest call's waits in place of any before.
+    /// `lasted`, its room's floor `floor`: waits to offer Choose by Ear for
+    /// it there, if that was a call, it's never been picked for there, and
+    /// it's never been offered there. The newest call's waits in place of
+    /// any before.
     pub fn heard(
         &mut self,
         chosen: &Chosen,
@@ -80,7 +91,9 @@ impl Offers {
         microphone: &str,
         spot: &Spot,
         lasted: Duration,
+        floor: Option<i32>,
     ) {
+        let _ = floor;
         if lasted < CALL || chosen.picked(node, Some(&spot.key)) || offered(chosen, node, &spot.key)
         {
             return;
@@ -89,7 +102,11 @@ impl Offers {
             node: node.to_owned(),
             microphone: microphone.to_owned(),
             spot: spot.clone(),
-            new_microphone: !chosen.picked(node, None),
+            why: if chosen.picked(node, None) {
+                Why::Spot
+            } else {
+                Why::Microphone
+            },
         });
     }
 
@@ -245,18 +262,22 @@ fn said(offer: &Offer) -> String {
 
 /// The offer's fields, as `offer` holds them.
 fn told(offer: &Offer) -> Value {
-    let new = if offer.new_microphone {
-        "microphone"
-    } else {
-        "spot"
-    };
-    json!({
+    let mut told = json!({
         "microphone": offer.microphone,
         "node": offer.node,
         "spot": offer.spot.name,
         "key": offer.spot.key,
-        "new": new,
-    })
+    });
+    told["new"] = match offer.why {
+        Why::Microphone => json!("microphone"),
+        Why::Spot => json!("spot"),
+        Why::Noise { by, from } => {
+            told["by"] = json!(by);
+            told["from"] = json!(from);
+            json!("noise")
+        }
+    };
+    told
 }
 
 /// An offer from what `offer` holds, or none when it doesn't read.
@@ -270,7 +291,17 @@ fn read(said: &str) -> Option<Offer> {
             key: text("key")?,
             name: text("spot")?,
         },
-        new_microphone: said["new"].as_str() == Some("microphone"),
+        why: match said["new"].as_str() {
+            Some("microphone") => Why::Microphone,
+            Some("noise") => {
+                let decibels = |name: &str| said[name].as_i64().and_then(|n| i32::try_from(n).ok());
+                Why::Noise {
+                    by: decibels("by")?,
+                    from: decibels("from")?,
+                }
+            }
+            _ => Why::Spot,
+        },
     })
 }
 
