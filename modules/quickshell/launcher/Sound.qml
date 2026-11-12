@@ -45,7 +45,6 @@
 import qs
 import Quickshell
 import Quickshell.Bluetooth
-import Quickshell.Io
 import Quickshell.Services.Pipewire
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
@@ -390,47 +389,27 @@ Provider {
         return options;
     }
 
-    // What desk-facts knows of each card, by its ALSA id and direction; a
-    // card it says nothing of, or no file at all, has no facts.
-    property var facts: ({})
-
-    FileView {
-        path: `${Quickshell.env("XDG_RUNTIME_DIR")}/desk/sound.json`
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: provider.facts = provider.parsed(text())
-        onLoadFailed: provider.facts = ({})
+    // What desk-facts says of a device's card, as the sound daemon serves
+    // it last inside the device's row (desk.rs), so the shell reads no
+    // file for it: the keys of those rows, in the daemon's order.
+    function factKeys(node) {
+        const parent = `row:sound:${node.name}`;
+        return ready.keys.filter(key => {
+            const row = ready.served(key);
+            return row?.parent === parent && row.kind === "fact";
+        });
     }
 
-    // What the kernel says of a device's card, by its key in the file, or
-    // "". A card with one device each way is keyed by its id and direction
-    // ("MV7:in"); one with several, as the machine's own has its speakers,
-    // headphones and displays, by its device's number too
-    // ("sofsoundwire,2:out"), and whichever the file holds is the one.
-    function factKey(node) {
-        // Read once: Quickshell makes a node's properties afresh each time.
-        const properties = node.properties;
-        const card = properties["alsa.id"];
-        if (!card)
-            return "";
-        const way = node.isSink ? "out" : "in";
-        const device = properties["alsa.device"] ?? properties["api.alsa.pcm.device"];
-        const keys = (device !== undefined ? [`${card},${device}:${way}`] : [])
-            .concat([`${card}:${way}`]);
-        return keys.find(each => facts[each] !== undefined) ?? "";
-    }
-
+    // Each fact by its own name and what it says, as the Hardware and the
+    // drawer ask them.
     function factsOf(node) {
-        const key = factKey(node);
-        return key === "" ? [] : facts[key] ?? [];
+        return factKeys(node).map(key => ready.served(key)).map(row => ({
+            name: row.held?.fact ?? "", value: row.side?.[0]?.said ?? ""
+        }));
     }
 
-    // Each of them named first as a part is, Return copying its value.
     function factRows(node) {
-        const key = factKey(node);
-        return key === "" ? []
-            : factParts("sound", key, facts[key], ["lighting", "playing", "recording"]);
+        return factKeys(node).map(key => ready.rowAt(key));
     }
 
     // The facts a device's or a stream's drawer knows, each by its word and
@@ -651,9 +630,9 @@ Provider {
 
     // Using it, when it isn't the one chosen, then its parts, and what the
     // kernel says of its card. Using it, Muted, its Volume, its programs,
-    // its Port, its Channels and its Profile are served; the rest are made
-    // here until the daemon serves them too, each by `kept` (verbs) where
-    // it's given, from what that part says.
+    // its Port, its Channels, its Profile and its card's facts are served;
+    // the rest are made here until the daemon serves them too, each by
+    // `kept` (verbs) where it's given, from what that part says.
     function partsMade(node, kept) {
         const made = kept ?? ((part, from, make) => make());
         const programs = node.isSink ? "programs" : "recorders";
@@ -665,8 +644,7 @@ Provider {
             servedPart(node, "channels"),
             servedPart(node, "profile"),
             made("hardware", hardwareSaid(node), () => hardwarePart(node))];
-        return parts.filter(part => part !== null)
-            .concat(made("facts", factsOf(node), () => factRows(node)));
+        return parts.filter(part => part !== null).concat(factRows(node));
     }
 
     // Figures, as the theme draws them.
