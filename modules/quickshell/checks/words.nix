@@ -176,6 +176,31 @@
       touch $out
     '';
 
+  # Every command the launcher offers says a little more in its drawer than
+  # its line: what it answers in a sentence, then one or two worked examples
+  # typed as it starts, naming only documentation addresses
+  # (tests/command-drawers.qml), as launcher/CommandRow.js makes it from the
+  # vocabulary the account writes.
+  every-command-row-has-a-drawer =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      words =
+        pkgs.writeText "words.json"
+          (account graphical).xdg.configFile."quickshell/launcher/words.json".text;
+    in
+    pkgs.runCommandLocal "every-command-row-has-a-drawer" { } ''
+      cp ${../../../tests/command-drawers.qml} command-drawers.qml
+      cp ${../launcher/CommandRow.js} CommandRow.js
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      cp ${words} words.json
+      export QML_XHR_ALLOW_FILE_READ=1
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml command-drawers.qml
+      touch $out
+    '';
+
   # The launcher's answers that build their parts' ids as they answer, the
   # calculator's bases, the time's, today's, the waits', a hardware
   # address's, a network's and a character's, name every part as the
