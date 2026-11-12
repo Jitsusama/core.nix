@@ -92,6 +92,38 @@ QtObject {
         expect("another word whole", Rank.wordTier("Turn on do not disturb dnd quiet", "quiet"), 2);
         expect("another word started", Rank.wordTier("Turn the volume down quieter", "quiet"),
             2.5);
+        // A later word typed whole before one only started (VKCF3Z,
+        // 2026-11-12: "void" put Roxanne Voidonicolas over The Void).
+        expect("a later word whole", Rank.tier("The Void", "void", false) < Rank.tier(
+            "Roxanne Voidonicolas", "void", false), true);
+        expect("a later word whole, after the name's start", Rank.tier("Voids", "void", false)
+            < Rank.tier("The Void", "void", false), true);
+        expect("every later word whole", Rank.tier("The Void Says It", "void says", false),
+            Rank.tier("The Void", "void", false));
+        expect("a later word only started", Rank.tier("The Void", "voi", false), 1);
+        // A name it had is a name: "caffe" is Keep Awake, once called
+        // Caffeinate, as a name's start, over a person found by a later
+        // word, rather than among the words it's known by (VKCF3Z,
+        // 2026-11-12).
+        expect("an old name's start", Rank.wordTier("let it sleep Caffeinate", "caffe",
+            ["Caffeinate"]), 0.5);
+        expect("an old name typed", Rank.wordTier("Caffeinate", "caffeinate", ["Caffeinate"]), 0);
+        expect("an old name's later word", Rank.wordTier("Tall Thing", "thing", ["Tall Thing"]),
+            Rank.tier("The Void", "void", false));
+        expect("a word that's no old name", Rank.wordTier("let it sleep Caffeinate", "sleep",
+            ["Caffeinate"]), 2);
+        // What a collection gathered says how it was found: its best by its
+        // name in the name's tiers, and by what it holds (a screenshot's
+        // words, a person's mail) after every name, old names and other
+        // words included (VKCF3Z, 2026-11-12: a screenshot found by the
+        // words in it sat at the top in 7 searches).
+        expect("gathered by its name", Rank.gatheredTier(row("person:r", "Roxanne Voidonicolas"),
+            "void", true), 1);
+        expect("gathered by its name whole", Rank.gatheredTier(row("session:v", "The Void"),
+            "void", true), Rank.tier("The Void", "void", false));
+        expect("gathered by what it holds", Rank.gatheredTier(row("file:shot",
+            "Screenshot from 2026-11-12"), "void", false) > Rank.wordTier("quieter", "quiet", []),
+            true);
         expect("every word whole", Rank.says("Clipboard copies pictures", "pi"), false);
         expect("a short word whole", Rank.says("Agents sessions pi ai", "pi"), true);
 
@@ -268,6 +300,24 @@ QtObject {
             "program:a program:b copy:x program:c");
         expect("late but latched", keys(Rank.placed(ordered, [row("copy:x", "X", { tier: 1 })],
             "copy:x")), "copy:x program:a program:b program:c");
+        // A screenshot found by its words comes after every name, a spot
+        // found by its name too, and before what's only meant, which comes
+        // after everything found (Joel, 2026-11-07: "never over
+        // truthfulness").
+        const spotted = ordered.concat([row("spot:x", "X", { tier: 2 }),
+            row("meant:y", "Y", { byMeaning: true })]);
+        const shot = row("file:shot", "Screenshot", { tier: Rank.gatheredTier(
+            row("file:shot", "Screenshot"), "void", false) });
+        expect("its contents after every name", keys(Rank.placed(spotted, [shot], "")),
+            "program:a program:b program:c spot:x file:shot meant:y");
+        // The Void, gathered from Agents after Roxanne from People, still
+        // goes ahead of her, its later word typed whole.
+        const roxanne = row("person:r", "Roxanne Voidonicolas", { tier: Rank.gatheredTier(
+            row("person:r", "Roxanne Voidonicolas"), "void", true) });
+        const theVoid = row("session:v", "The Void", { tier: Rank.gatheredTier(
+            row("session:v", "The Void"), "void", true) });
+        expect("a whole word gathered later first", keys(Rank.placed(ordered,
+            [roxanne, theVoid], "")), "program:a session:v program:b person:r program:c");
 
         // A program's own act found from the top comes after anything else
         // found, whatever its tier, unless Joel picked it for what's typed
