@@ -1336,14 +1336,13 @@ Provider {
     // To, Close It, its window, then Copy the Link. Its window is the one
     // niri titles by what's in front of it, as Chrome titles its windows,
     // of two the one used last. Go To asks the source to bring the tab
-    // forward (`go`) when it can, and brings its window forward either
-    // way. Close It is there only when the source can close a tab
-    // (`close`) and every tab of the page has an id to close it by, as a
-    // tab Chrome's session file says has none, since a running Chrome may
-    // give that run's ids to other tabs; it keeps the launcher, its foot saying how many tabs it
-    // closes when it's more than one, and the page stays where it was,
-    // said closed and holding only Copy the Link, until the launcher opens
-    // again.
+    // forward (`go`) and brings its window forward, and Close It closes
+    // the page's tabs (`close`), each only where the source reaches them by
+    // ids it gave (Recent.js's reaches); otherwise its window's row leads,
+    // as Go To would only have done what it does. Close It keeps the
+    // launcher, its foot saying how many tabs it closes when it's more
+    // than one, and the page stays where it was, said closed and holding
+    // only Copy the Link, until the launcher opens again.
     function openSite(entry, source, page, tabs) {
         const [tab] = page;
         const words = Words.of("recent:site").said ?? {};
@@ -1356,20 +1355,18 @@ Provider {
             .find(one => titled(one, entry) === front.title) ?? null;
         const open = page.length > 1 ? counted(words.tabs) : words.open ?? "";
         const ask = (command, id) => (command ?? []).map(part => part.replace("{id}", id));
-        const named = one => String(one.id ?? "") !== "";
         const go = () => {
-            if (source.go && named(tab))
-                Niri.spawn(ask(source.go, tab.id));
+            Niri.spawn(ask(source.go, tab.id));
             if (window)
                 Niri.act({ FocusWindow: { id: window.id } });
         };
-        const goes = said("verb:recent:site:go", "", {
+        const goes = !Recent.reaches(source.go, [tab]) ? [] : [said("verb:recent:site:go", "", {
             key: `verb:recent:site:go:${tab.address}`,
             hue: "action",
             side: window ? titled(window, entry) : "",
             run: go
-        });
-        const closes = !source.close || !page.every(named) ? [] : [said("verb:recent:site:close", "", {
+        })];
+        const closes = !Recent.reaches(source.close, page) ? [] : [said("verb:recent:site:close", "", {
             key: `verb:recent:site:close:${tab.address}`,
             hue: "action",
             stays: true,
@@ -1380,7 +1377,7 @@ Provider {
                 provider.recents.closing(entry.id, tab.address);
             }
         })];
-        const acts = [goes].concat(closes, window ? [windowRow(window, entry)] : []);
+        const acts = goes.concat(closes, window ? [windowRow(window, entry)] : []);
         // The state before the host, as a file's before its folder
         // (Files.held), so a side cut short keeps it.
         return site(tab.address, tab.title, `${open} \u00b7 ${host}`, acts);

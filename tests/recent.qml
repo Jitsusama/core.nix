@@ -167,6 +167,19 @@ QtObject {
                 { pid: null, window: 9, path: "/b.md", go: "2" }] })),
             JSON.stringify(["412\t/a.md", "@9\t/b.md\t2"]));
 
+        // Go To and Close It reach a page's tabs only by ids the source gave,
+        // never a session file's tab's, which has none.
+        const go = ["chrome-open-tabs", "go", "{id}"];
+        check(failures, "a tab the host named is reached", Recent.reaches(go, [{ id: "7" }]),
+            true);
+        check(failures, "one read from the session file isn't",
+            Recent.reaches(go, [{ id: "" }]), false);
+        check(failures, "nor a page one of whose tabs is",
+            Recent.reaches(go, [{ id: "7" }, { id: "" }]), false);
+        check(failures, "nor any where the source can't", Recent.reaches(undefined,
+            [{ id: "7" }]), false);
+        check(failures, "and a page of no tabs reaches nothing", Recent.reaches(go, []), false);
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
