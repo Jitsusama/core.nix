@@ -155,6 +155,7 @@
         cargo = ./modules/cargo/home.nix;
         chrome = ./modules/chrome/home.nix;
         claude = ./modules/claude/home.nix;
+        code-health = ./modules/code-health/home.nix;
         collector = ./modules/collector/home.nix;
         curl = ./modules/curl/home.nix;
         delta = ./modules/delta/home.nix;

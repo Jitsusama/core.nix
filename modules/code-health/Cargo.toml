@@ -1,0 +1,17 @@
+# code-health reads each repository it's given and writes the day's figures
+# of how messy it is, for cadence to hold against the days before
+# (src/main.rs says how).
+[package]
+name = "code-health"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+jiff = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

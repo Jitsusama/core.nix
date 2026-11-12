@@ -15,6 +15,7 @@ use jiff::tz::TimeZone;
 
 use crate::day::{self, Day};
 use crate::findings::{self, Entry};
+use crate::health;
 use crate::judge;
 use crate::mesh::Mesh;
 use crate::speed;
@@ -228,6 +229,12 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         .insert("switch.pieces.here".to_owned(), f64::from(read.here));
     day.figures
         .insert("switch.pieces.heavy".to_owned(), f64::from(read.heavy));
+
+    // code-health writes each repository's figures before the day is read.
+    let health = state_home.join(format!("code-health/{}.json", day.date));
+    day.figures.extend(health::figures(
+        &fs::read_to_string(health).unwrap_or_default(),
+    ));
     day
 }
 

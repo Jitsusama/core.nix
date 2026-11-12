@@ -12,8 +12,6 @@ pub const BEFORE: usize = 7;
 /// Fewer days before than this, and a figure is said but not judged
 /// against them, since a median of one or two days is that day's luck.
 const ENOUGH: usize = 3;
-/// How much worse than its median a figure must be to be a regression.
-const WORSE: f64 = 1.2;
 
 /// Something the day found that someone should look into.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,56 +42,48 @@ pub struct Judged {
 #[must_use]
 pub fn judge(day: &Day, before: &[Day]) -> Judged {
     let mut judged = Judged::default();
-    for measure in MEASURES {
-        let Some(&now) = day.figures.get(measure.key) else {
-            continue;
-        };
+    for (measure, key, whose, now) in MEASURES.iter().flat_map(|measure| {
+        measure
+            .read(&day.figures)
+            .into_iter()
+            .map(move |(key, whose, now)| (measure, key, whose, now))
+    }) {
         judged.read += 1;
         let past: Vec<f64> = before
             .iter()
-            .filter_map(|d| d.figures.get(measure.key).copied())
+            .filter_map(|d| d.figures.get(key).copied())
             .collect();
+        let says = whose.map_or_else(
+            || measure.says.to_owned(),
+            |whose| format!("{whose}'s {}", measure.says),
+        );
+        let worse = measure.worse();
         let middle = (past.len() >= ENOUGH).then(|| median(&past)).flatten();
         if middle.is_some() {
             judged.held += 1;
         }
         let said = |value: f64| format!("{}{}", round(value), measure.unit);
         if let Some(bar) = measure.bar.filter(|bar| now > *bar) {
-            let words = format!(
-                "{} was {}, past its bar of {}",
-                measure.says,
-                said(now),
-                said(bar)
-            );
+            let words = format!("{says} was {}, past its bar of {}", said(now), said(bar));
             judged.worse.push(Finding {
-                key: measure.key.to_owned(),
+                key: key.to_owned(),
                 bar: Some(bar),
                 before: middle,
                 now,
                 words,
             });
         } else if let Some(middle) = middle {
-            if now > middle * WORSE && now - middle >= measure.floor {
-                let words = format!(
-                    "{} went from {} to {}",
-                    measure.says,
-                    said(middle),
-                    said(now)
-                );
+            if now > middle * worse && now - middle >= measure.floor {
+                let words = format!("{says} went from {} to {}", said(middle), said(now));
                 judged.worse.push(Finding {
-                    key: measure.key.to_owned(),
+                    key: key.to_owned(),
                     bar: None,
                     before: Some(middle),
                     now,
                     words,
                 });
-            } else if now * WORSE < middle && middle - now >= measure.floor {
-                let words = format!(
-                    "{} went from {} to {}",
-                    measure.says,
-                    said(middle),
-                    said(now)
-                );
+            } else if now * worse < middle && middle - now >= measure.floor {
+                let words = format!("{says} went from {} to {}", said(middle), said(now));
                 judged.better.push(words);
             }
         }

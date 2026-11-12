@@ -19,9 +19,11 @@
 # finished its piece doesn't wait the night for its next.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
-# failed units, out-of-memory kills, pressure, switches) against the seven
-# before it, keeps it in day/ beside them, and sends the orchestrator a note of
-# what got worse and better, so a regression is named the day it appears.
+# failed units, out-of-memory kills, pressure, switches, and each
+# repository's figures that modules/code-health wrote) against the seven
+# before it, keeps it in day/ beside them, and sends the orchestrator a
+# note of what got worse and better, so a regression is named the day it
+# appears.
 # Each finding stays in findings.jsonl until its figure is back two days,
 # goes once to the owner `owners` names for it, and to the orchestrator
 # once more if it's still open past its date.

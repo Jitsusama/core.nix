@@ -26,17 +26,18 @@ onLinux {
   # live pi host holds runs, and one ended or done is left, once per
   # address, not twice in ten minutes nor past three an hour; and of the
   # day, crashes, failed units, kills, pressure and switches are read from
-  # their records, a figure past its bar or worse than the days before by a
-  # fifth and its floor and a crash or failure not seen before are found,
-  # too few days before judge nothing, the note keeps to ten lines and
-  # says a late finding first, pieces the laptop built for want of the
-  # builders are counted apart from the light ones, the launcher's
-  # openings, keys and changes are read from its lines, each key weighed
-  # alike, and a day without them has none; of the ledger, a
-  # finding goes to the longest prefix's owner, is kept once and closes two
-  # days after its last, each owner is told once in one message, and a
-  # finding past its date is late once; and of the axes, each reading is
-  # parsed from the card, the measure, the mesh, the notices and niri, a
+  # their records and each repository's figures from code-health's file, a
+  # figure past its bar or worse than the days before by a fifth and its
+  # floor, a repository's by any rise past its floor, and a crash or
+  # failure not seen before are found, too few days before judge nothing,
+  # the note keeps to ten lines and says a late finding first, pieces the
+  # laptop built for want of the builders are counted apart from the light
+  # ones, the launcher's openings, keys and changes are read from its
+  # lines, each key weighed alike, and a day without them has none; of the
+  # ledger, a finding goes to the longest prefix's owner, is kept once and
+  # closes two days after its last, each owner is told once in one message,
+  # and a finding past its date is late once; and of the axes, each reading
+  # is parsed from the card, the measure, the mesh, the notices and niri, a
   # figure past its bar marks its axis with its owner, a reading nothing
   # measures says so, and an axis is found by the start of its name.
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };

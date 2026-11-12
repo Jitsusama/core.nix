@@ -24,6 +24,8 @@ pub struct Day {
 
 /// A figure the loop reads each day, where more is always worse.
 pub struct Measure {
+    /// Its figure's key, or, with `*` in place of the repository, each
+    /// repository's: `code.*.long-files` holds `code.core.long-files`.
     pub key: &'static str,
     /// Which of the loop's axes it reads: resources, time to done,
     /// quality, polish and the others the loop's research names.
@@ -44,6 +46,49 @@ const LAUNCHER: &str = "journalctl --user -u quickshell over the day, its launch
 const KILLS: &str = "journalctl -k --grep=oom-kill: over the day";
 const STALLS: &str = "lag-watch's day files, each slice's mean cpu_some and memory_full";
 const UPDATES: &str = "journalctl -u update-to-main.service over the day";
+const HEALTH: &str = "code-health's ~/.local/state/code-health/<date>.json and its -named.json";
+
+/// How much worse than its median a figure must be to be a regression.
+const WORSE: f64 = 1.2;
+
+impl Measure {
+    /// Each of a day's figures this measure holds, by its key, with whose
+    /// it is when the measure is each repository's.
+    pub fn read<'a>(
+        &self,
+        figures: &'a BTreeMap<String, f64>,
+    ) -> Vec<(&'a str, Option<&'a str>, f64)> {
+        figures
+            .iter()
+            .filter(|(key, _)| self.holds(key))
+            .map(|(key, now)| (key.as_str(), self.whose(key), *now))
+            .collect()
+    }
+
+    /// Whether this measure holds a figure's key.
+    fn holds(&self, key: &str) -> bool {
+        if self.key.contains('*') {
+            self.whose(key).is_some()
+        } else {
+            key == self.key
+        }
+    }
+
+    /// Whose a figure is, when this measure is each repository's.
+    fn whose<'k>(&self, key: &'k str) -> Option<&'k str> {
+        let (before, after) = self.key.split_once('*')?;
+        let whose = key.strip_prefix(before)?.strip_suffix(after)?;
+        (!whose.is_empty()).then_some(whose)
+    }
+
+    /// How many times its median a figure must be to be a regression: a
+    /// fifth over it, except for a repository's figures, counts of what it
+    /// let in that move only when someone adds or takes one away, so any
+    /// rise past their floor is one.
+    pub fn worse(&self) -> f64 {
+        if self.key.contains('*') { 1.0 } else { WORSE }
+    }
+}
 
 /// Every figure the day reads. The bars are docs/delivery.md's targets.
 pub const MEASURES: &[Measure] = &[
@@ -187,6 +232,52 @@ pub const MEASURES: &[Measure] = &[
         bar: Some(0.0),
         floor: 1.0,
     },
+    // Each repository's, from code-health's figures (health.rs).
+    Measure {
+        key: "code.*.long-files",
+        axis: "organization",
+        evidence: HEALTH,
+        says: "long files that don't say why",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
+    Measure {
+        key: "code.*.crowded-folders",
+        axis: "organization",
+        evidence: HEALTH,
+        says: "crowded folders that don't say why",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
+    Measure {
+        key: "code.*.suppressions",
+        axis: "quality",
+        evidence: HEALTH,
+        says: "lint suppressions",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
+    Measure {
+        key: "code.*.duplicated-lines",
+        axis: "quality",
+        evidence: HEALTH,
+        says: "lines repeated from elsewhere",
+        unit: "",
+        bar: None,
+        floor: 20.0,
+    },
+    Measure {
+        key: "code.*.quarantined-tests",
+        axis: "quality",
+        evidence: HEALTH,
+        says: "tests in quarantine",
+        unit: "",
+        bar: None,
+        floor: 1.0,
+    },
 ];
 
 /// A kind of thing that goes wrong by name, judged by whether a name is
@@ -221,7 +312,7 @@ pub fn about(key: &str) -> Option<(&'static str, &'static str)> {
     let kind = key.split_once(':').map_or(key, |(kind, _)| kind);
     MEASURES
         .iter()
-        .find(|m| m.key == key)
+        .find(|m| m.holds(key))
         .map(|m| (m.axis, m.evidence))
         .or_else(|| {
             KINDS
@@ -463,6 +554,20 @@ pub fn median(values: &[f64]) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_repositorys_figure_is_about_its_measures_axis() {
+        assert_eq!(
+            about("code.core.nix.long-files"),
+            Some(("organization", HEALTH)),
+            "a repository's figure didn't find the measure that holds it"
+        );
+        assert_eq!(
+            about("code..long-files"),
+            None,
+            "a figure naming no repository was taken for one"
+        );
+    }
 
     #[test]
     fn crashes_are_counted_by_program() {
