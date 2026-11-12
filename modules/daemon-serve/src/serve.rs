@@ -47,6 +47,13 @@ const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
 /// without its id, or none for an ask it doesn't know.
 pub type Own = Box<dyn Fn(&Value) -> Option<Value> + Send + Sync>;
 
+/// What answers those of a daemon's own asks that turn on who asked: the
+/// ask whole and the connection it came on, whose peer the kernel names
+/// (`SO_PEERPIDFD`), and its answer without its id, as [`Own`] answers.
+/// The jobs broker moves only the process asking, so it must know that
+/// process from the socket rather than from anything the ask says.
+pub type Peered = Box<dyn Fn(&Value, &UnixStream) -> Option<Value> + Send + Sync>;
+
 /// What's told as a watch begins or ends. It's told with every record
 /// held, so it may only pass that on, as onto a channel, and never ask
 /// anything of what serves it.
@@ -173,6 +180,9 @@ pub struct Shared {
     heed: OnceLock<Heed>,
     /// The daemon's own asks answered each on a thread of its own.
     slow: OnceLock<&'static [&'static str]>,
+    /// The daemon's own asks answered knowing their connection, and what
+    /// answers them.
+    peered: OnceLock<(&'static [&'static str], Peered)>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -206,6 +216,7 @@ impl Shared {
             paced: Condvar::new(),
             heed: OnceLock::new(),
             slow: OnceLock::new(),
+            peered: OnceLock::new(),
         })
     }
 
@@ -221,6 +232,14 @@ impl Shared {
     /// its connection; only the first a daemon gives is kept.
     pub fn slow(&self, asks: &'static [&'static str]) {
         let _ = self.slow.set(asks);
+    }
+
+    /// Answers these of the daemon's own asks with `answer`, which is
+    /// handed the connection each came on, from then on; only the first a
+    /// daemon gives is kept. Each is answered on its connection's thread,
+    /// or on one of its own when it's slow too.
+    pub fn peered(&self, asks: &'static [&'static str], answer: Peered) {
+        let _ = self.peered.set((asks, answer));
     }
 
     fn is_slow(&self, said: &Value) -> bool {
@@ -460,13 +479,13 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
         if let Ask::Own { id, said } = &asked
             && shared.is_slow(said)
         {
-            apart(shared, id, said, &told);
+            apart(shared, id, said, &told, &hangup);
             continue;
         }
         // The daemon's own asks are answered before the lock is taken, so
         // one handing its ask to the daemon's loop never waits on a change.
         let own = match &asked {
-            Ask::Own { id, said } => Some(owned(shared, id, said)),
+            Ask::Own { id, said } => Some(owned(shared, id, said, &hangup)),
             _ => None,
         };
         let hello = matches!(asked, Ask::Hello { .. });
@@ -507,12 +526,18 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
 
 /// One of the daemon's slow asks, answered on a thread of its own once
 /// it's done, so nothing asked after it waits on it.
-fn apart(shared: &Arc<Shared>, id: &Value, said: &Value, told: &SyncSender<String>) {
+fn apart(
+    shared: &Arc<Shared>,
+    id: &Value,
+    said: &Value,
+    told: &SyncSender<String>,
+    stream: &Arc<UnixStream>,
+) {
     let (shared, told) = (Arc::clone(shared), told.clone());
-    let (id, said) = (id.clone(), said.clone());
+    let (id, said, stream) = (id.clone(), said.clone(), Arc::clone(stream));
     std::thread::spawn(move || {
         // One no longer read is hung up on by the next line it's told.
-        let _ = told.try_send(owned(&shared, &id, &said).to_string());
+        let _ = told.try_send(owned(&shared, &id, &said, &stream).to_string());
     });
 }
 
@@ -546,8 +571,13 @@ fn states(sources: &Value) -> Value {
 
 /// The answer to one of the daemon's own asks, or a refusal of an ask
 /// it doesn't know.
-fn owned(shared: &Shared, id: &Value, said: &Value) -> Value {
-    let Some(mut answer) = (shared.own)(said) else {
+fn owned(shared: &Shared, id: &Value, said: &Value, stream: &UnixStream) -> Value {
+    let asked = said["ask"].as_str().unwrap_or("");
+    let answered = match shared.peered.get() {
+        Some((asks, answer)) if asks.contains(&asked) => answer(said, stream),
+        _ => (shared.own)(said),
+    };
+    let Some(mut answer) = answered else {
         let ask = said["ask"].as_str().unwrap_or("");
         return error(id, "unknown-ask", &format!("no ask {ask:?} here"));
     };
@@ -657,7 +687,7 @@ fn answer(
             "since": held.since, "sources": states(&held.sources),
             "watches": held.watches.len(), "records": held.records.len(),
         }),
-        Ask::Own { id, said } => owned(shared, &id, &said),
+        Ask::Own { id, said } => owned(shared, &id, &said, hangup),
         Ask::UnknownKind { id, kind } => {
             error(&id, "unknown-kind", &format!("no kind {kind} here"))
         }
