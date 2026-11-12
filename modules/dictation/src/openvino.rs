@@ -15,8 +15,7 @@ pub use started::Started;
 /// one: with Whisper busy, a camera's frames waited up to 36 ms.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Priority {
-    /// What's heard as it happens, such as a call's voice, every frame
-    /// due within 10 ms.
+    /// What's heard as it happens, such as a call's voice.
     Live,
     /// What Joel waits on, such as dictation's take.
     Waited,
@@ -536,10 +535,8 @@ impl Request {
     pub fn infer(&mut self, inputs: &[Input<'_>]) -> Result<()> {
         self.given(inputs)?;
         // SAFETY: every input is set and their values outlive the run.
-        check(
-            unsafe { ov_infer_request_infer(self.0) },
-            "running the model",
-        )
+        let ran = unsafe { ov_infer_request_infer(self.0) };
+        check(ran, "running the model")
     }
 
     /// Sets `inputs` for the next run, which reads their values in place.
