@@ -116,6 +116,7 @@
         "disk": "on this machine \u00b7 disk",
         "uptime": "on this machine \u00b7 uptime",
         "power": "on this machine \u00b7 power",
+        "heat": "on this machine \u00b7 heat",
         "more": "and {n} more, a step in"
       }
     },

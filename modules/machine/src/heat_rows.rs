@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::parts::{self, Fan, Gathered, Left, Part, Throttled, Trip, Zone};
+use crate::parts::{self, Fan, Files, Gathered, Left, Part, Throttled, Trip, Zone};
 pub use crate::rows::Ready;
 use crate::rows::{GRAPHED, Made, bar, figure, item, spark, strip};
 use crate::words::Words;
@@ -193,6 +193,33 @@ fn fan_key(fan: &Fan) -> String {
 fn level(value: f64, part: &Part) -> Value {
     let said = parts::level(value, part.high, part.crit, &part.id);
     bar(said.value, said.warn)
+}
+
+/// Whether a file is what a reading says now: hwmon's `_input`, a zone's
+/// `temp`, or the processor's telemetry's part and degrees.
+fn read_now(name: &str) -> bool {
+    name.ends_with("_input") || matches!(name, "temp" | "part" | "celsius")
+}
+
+/// Whether a file is a fan's power, `pwm<n>` alone.
+fn pwm(name: &str) -> bool {
+    name.starts_with("pwm") && !name.contains('_')
+}
+
+/// Where the kernel counts a logical processor's slowing to cool down.
+fn throttle_folder(cpu: u64) -> String {
+    format!("/sys/devices/system/cpu/cpu{cpu}/thermal_throttle")
+}
+
+/// Counts as the kernel keeps them, by its names, each said as a number.
+fn counted(folder: String, kept: &[(&str, Option<u64>)]) -> Files {
+    Files {
+        folder,
+        said: kept
+            .iter()
+            .filter_map(|(name, count)| Some(((*name).to_owned(), count?.to_string())))
+            .collect(),
+    }
 }
 
 fn hottest<T>(list: &[T], value: impl Fn(&T) -> f64) -> Option<&T> {
@@ -433,6 +460,55 @@ impl Say<'_> {
         Some(json!({ "eyebrow": eyebrow, "eyebrowNames": true, "title": title, "facts": facts }))
     }
 
+    /// A row's drawer saying the files Linux keeps behind it, by their own
+    /// names and as they say them, a number grouped as Memory's are, then
+    /// the folder each is in (#2204's bar: the kernel's own, never
+    /// smoothed over). A row none of whose files is known is left as it is.
+    fn keeps(&self, made: Made, files: &[&Files], wanted: impl Fn(&str) -> bool) -> Made {
+        let mut facts = Vec::new();
+        for each in files {
+            let kept = each.only(&wanted);
+            if kept.is_empty() {
+                continue;
+            }
+            facts.extend(
+                kept.into_iter()
+                    .map(|(name, said)| json!({ "name": name, "said": self.raw(&said) })),
+            );
+            facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
+                "said": each.folder, "identifies": true }));
+        }
+        if facts.is_empty() {
+            return made;
+        }
+        let drawer = json!({ "eyebrow": self.words.said("machine:read-from", PLACE, &[]),
+            "eyebrowNames": true, "title": made.name, "facts": facts });
+        Made {
+            drawer: Some(drawer),
+            ..made
+        }
+    }
+
+    /// What a file says, a whole number grouped: "68,850".
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a sensor's file says far below 2^52"
+    )]
+    fn raw(&self, said: &str) -> String {
+        said.parse::<i64>()
+            .map_or_else(|_| said.to_owned(), |n| self.words.number(n as f64, 0))
+    }
+
+    /// A holder's drawer, what it holds without stepping in, as Machine's
+    /// holders say it.
+    fn holding(&self, made: Made) -> Made {
+        let say = crate::machine_rows::Say { words: self.words };
+        Made {
+            drawer: Some(say.holding(PLACE, &made.name, &made.inside)),
+            ..made
+        }
+    }
+
     /// A voltage, current or power in the unit that fits it: a figure
     /// under one in its unit is said in thousandths, "3.00 mV", rather
     /// than "0.00300 V"; one that rounds up to one is said whole.
@@ -510,23 +586,27 @@ impl Say<'_> {
             .cloned()
             .unwrap_or_else(|| vec![part.value]);
         let at = |what: &str| format!("{key}/{what}");
-        let mut rows = vec![self.lately(
+        let lately = self.lately(
             at("lately"),
             &values,
             |v| self.degrees(v),
             &parts::heat_spark(&values),
-        )];
+        );
+        let mut rows = vec![self.keeps(lately, &[&part.files], read_now)];
         rows.extend(self.cores_row(part, &key));
         for sensor in &part.sensors {
             let said = self.degrees(sensor.value);
             let name = self.sensor_name(&sensor.label);
-            rows.push(figure(
+            let made = figure(
                 at(&format!("sensor/{}", sensor.n)),
                 name,
                 said,
                 Some(level(sensor.value, part)),
                 String::new(),
-            ));
+            );
+            rows.push(self.keeps(made, &[&sensor.files], |name| {
+                name.ends_with("_input") || name.ends_with("_label")
+            }));
         }
         rows.extend(self.limits(part, &key));
         rows
@@ -542,7 +622,7 @@ impl Say<'_> {
                 .map(|each| parts::level(each.value, part.high, part.crit, &part.id))
                 .collect();
             let count = part.cores.len().to_string();
-            Made {
+            self.holding(Made {
                 id: at("cores"),
                 kind: "holder",
                 name: self.name("cores", &[]),
@@ -567,17 +647,20 @@ impl Say<'_> {
                     .map(|each| {
                         let name = self.name("core", &[("n", &each.cpu.to_string())]);
                         let said = self.degrees(each.value);
-                        figure(
+                        let made = figure(
                             at(&format!("cores/{}", each.cpu)),
                             name,
                             said,
                             Some(level(each.value, part)),
                             String::new(),
-                        )
+                        );
+                        self.keeps(made, &[&each.files], |name| {
+                            name.ends_with("_input") || name.ends_with("_label")
+                        })
                     })
                     .collect(),
                 ..Made::default()
-            }
+            })
         })
     }
 
@@ -585,14 +668,22 @@ impl Say<'_> {
     fn limits(&self, part: &Part, key: &str) -> Vec<Made> {
         let at = |what: &str| format!("{key}/{what}");
         let mut rows = Vec::new();
+        // Each limit's drawer is the file the chip says it in.
         let point = |id: &str, value: f64| {
-            figure(
+            let file = match id {
+                "high" => "_max",
+                "critical" => "_crit",
+                "low" => "_min",
+                _ => "_emergency",
+            };
+            let made = figure(
                 at(id),
                 self.name(id, &[]),
                 self.degrees(value),
                 None,
                 self.says(id, "note", &[]),
-            )
+            );
+            self.keeps(made, &[&part.files], |name| name.ends_with(file))
         };
         if let Some(high) = part
             .high
@@ -619,7 +710,7 @@ impl Say<'_> {
                 self.says("alarm", "note", &[]),
             );
             alarm.hue = "warning";
-            rows.push(alarm);
+            rows.push(self.keeps(alarm, &[&part.files], |name| name.ends_with("alarm")));
         }
         rows
     }
@@ -633,7 +724,7 @@ impl Say<'_> {
             Some(ms) => self.says("throttled", "for", &[("time", &self.lasted(ms))]),
             None => self.says("throttled", "since", &[]),
         };
-        Made {
+        let made = Made {
             id: "throttled".to_owned(),
             kind: "throttled",
             name: self.name("throttled", &[]),
@@ -644,7 +735,25 @@ impl Say<'_> {
             note,
             inside: self.throttled_parts(said),
             ..Made::default()
-        }
+        };
+        self.package_keeps(made, said)
+    }
+
+    /// A row of the package's slowing, with the counts the kernel keeps
+    /// of it in its drawer.
+    fn package_keeps(&self, made: Made, said: &Throttled) -> Made {
+        let Some(cpu) = said.package_cpu else {
+            return made;
+        };
+        let files = counted(
+            throttle_folder(cpu),
+            &[
+                ("package_throttle_count", Some(said.times)),
+                ("package_throttle_total_time_ms", said.ms),
+                ("package_throttle_max_time_ms", said.longest),
+            ],
+        );
+        self.keeps(made, &[&files], |_| true)
     }
 
     #[expect(clippy::cast_precision_loss, reason = "a count is far below 2^52")]
@@ -668,13 +777,14 @@ impl Say<'_> {
         .flatten()
         .collect();
         let times = self.times(said.times);
-        let mut rows = vec![figure(
+        let package = figure(
             "throttled/package".to_owned(),
             self.name("package", &[]),
             times,
             None,
             note.join(", "),
-        )];
+        );
+        let mut rows = vec![self.package_keeps(package, said)];
         if said.cores.is_empty() {
             return rows;
         }
@@ -691,38 +801,50 @@ impl Say<'_> {
             None => self.says("throttled-cores", "alone", &[]),
         };
         let total = self.times(said.total);
-        rows.push(Made {
-            id: "throttled/cores".to_owned(),
-            kind: "holder",
-            name: self.name("throttled-cores", &[]),
-            glyph: self.words.glyph(PLACE),
-            side: vec![item(&total)],
-            copies: total,
-            graph: Some(strip(
-                &said
+        rows.push(
+            self.holding(Made {
+                id: "throttled/cores".to_owned(),
+                kind: "holder",
+                name: self.name("throttled-cores", &[]),
+                glyph: self.words.glyph(PLACE),
+                side: vec![item(&total)],
+                copies: total,
+                graph: Some(strip(
+                    &said
+                        .cores
+                        .iter()
+                        .map(|(_, count)| *count as f64 / most)
+                        .collect::<Vec<_>>(),
+                    false,
+                )),
+                note,
+                inside: said
                     .cores
                     .iter()
-                    .map(|(_, count)| *count as f64 / most)
-                    .collect::<Vec<_>>(),
-                false,
-            )),
-            note,
-            inside: said
-                .cores
-                .iter()
-                .map(|(cpu, count)| {
-                    let name = self.name("throttled-core", &[("n", &cpu.to_string())]);
-                    figure(
-                        format!("throttled/cores/{cpu}"),
-                        name,
-                        self.times(*count),
-                        Some(bar(*count as f64 / most, false)),
-                        String::new(),
-                    )
-                })
-                .collect(),
-            ..Made::default()
-        });
+                    .map(|(cpu, count)| {
+                        let name = self.name("throttled-core", &[("n", &cpu.to_string())]);
+                        let made = figure(
+                            format!("throttled/cores/{cpu}"),
+                            name,
+                            self.times(*count),
+                            Some(bar(*count as f64 / most, false)),
+                            String::new(),
+                        );
+                        let (ms, longest) = said.core_ms.get(cpu).copied().unwrap_or_default();
+                        let files = counted(
+                            throttle_folder(*cpu),
+                            &[
+                                ("core_throttle_count", Some(*count)),
+                                ("core_throttle_total_time_ms", ms),
+                                ("core_throttle_max_time_ms", longest),
+                            ],
+                        );
+                        self.keeps(made, &[&files], |_| true)
+                    })
+                    .collect(),
+                ..Made::default()
+            }),
+        );
         rows
     }
 
@@ -749,7 +871,7 @@ impl Say<'_> {
             .flatten()
             .filter(|said| !said.is_empty())
             .collect();
-        Made {
+        let made = Made {
             id: fan_key(fan),
             kind: "fan",
             name: self.fan_name(fan),
@@ -760,7 +882,8 @@ impl Say<'_> {
             note: note.join(", "),
             inside: self.fan_parts(fan),
             ..Made::default()
-        }
+        };
+        self.keeps(made, &fan.files.iter().collect::<Vec<_>>(), |_| true)
     }
 
     fn fan_parts(&self, fan: &Fan) -> Vec<Made> {
@@ -771,39 +894,48 @@ impl Say<'_> {
             .cloned()
             .unwrap_or_else(|| vec![fan.value]);
         let at = |what: &str| format!("{key}/{what}");
-        let mut rows = vec![self.lately(
+        let files: Vec<&Files> = fan.files.iter().collect();
+        let keeps = |made: Made, wanted: fn(&str) -> bool| self.keeps(made, &files, wanted);
+        let lately = self.lately(
             at("lately"),
             &values,
             |v| self.rpm(v),
             &parts::fan_spark(&values),
-        )];
+        );
+        // A fan told by two chips keeps its own reading first, so its Last
+        // Reads say only its own chip's.
+        let own: Vec<&Files> = files.iter().take(1).copied().collect();
+        let mut rows = vec![self.keeps(lately, &own, read_now)];
         if let Some(power) = fan.power {
             let pct = format!("{}%", percent(power));
-            rows.push(figure(
+            let made = figure(
                 at("power"),
                 self.name("power", &[]),
                 pct,
                 Some(bar(power, false)),
                 self.says("power", "note", &[]),
-            ));
+            );
+            rows.push(keeps(made, pwm));
         }
         if let Some(target) = fan.target {
-            rows.push(figure(
+            let made = figure(
                 at("aiming"),
                 self.name("aiming", &[]),
                 self.rpm(target),
                 None,
                 self.says("aiming", "note", &[]),
-            ));
+            );
+            rows.push(keeps(made, |name| name.ends_with("_target")));
         }
         if let Some(min) = fan.min {
-            rows.push(figure(
+            let made = figure(
                 at("least"),
                 self.name("least", &[]),
                 self.rpm(min),
                 None,
                 self.says("least", "note", &[]),
-            ));
+            );
+            rows.push(keeps(made, |name| name.ends_with("_min")));
         }
         let control = fan
             .mode
@@ -811,13 +943,14 @@ impl Say<'_> {
             .map(|mode| self.says("control", mode, &[]))
             .unwrap_or_default();
         if !control.is_empty() {
-            rows.push(figure(
+            let made = figure(
                 at("control"),
                 self.name("control", &[]),
                 control,
                 None,
                 self.says("control", "note", &[]),
-            ));
+            );
+            rows.push(keeps(made, |name| name.ends_with("_enable")));
         }
         rows
     }
@@ -896,7 +1029,8 @@ mod tests {
             json!({ "key": "sensor:nvme", "part": "disk", "folder": "/sys/class/hwmon/hwmon1",
                 "temperatures": [
                 { "n": 1, "label": "Composite", "temperature_c": 52.9, "high_c": 82.9,
-                    "critical_c": 84.9, "files": [["temp1_input", "52850"]] },
+                    "critical_c": 84.9, "files": [["temp1_input", "52850"],
+                        ["temp1_max", "82850"], ["temp1_crit", "84850"]] },
                 { "n": 2, "label": "Sensor 2", "temperature_c": 68.9,
                     "files": [["temp2_input", "68850"], ["temp2_label", "Sensor 2"]] }],
                 "fans": [] }),
