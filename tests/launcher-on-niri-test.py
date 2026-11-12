@@ -252,6 +252,27 @@ def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> 
     copied(shell, "12*7", "84")
 
 
+def test_arming_goes_as_the_launcher_shuts(shell: Shell) -> None:
+    """A row armed is let go as the launcher shuts, by a key the line never takes.
+
+    Only a key the line took let arming go, so Return on Reboot, Super+Space to shut it, and an
+    hour later Super+Space and a click on Reboot, no key between, rebooted (Y2YBTS,
+    2026-11-12).
+    """
+    shell.answer("reboot")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Reboot")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: shown["armed"] == "again reboots" and shown["armedRow"] != ""
+    )
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_until(lambda shown: not shown["open"] and shown["armedRow"] == "")
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["armedRow"] == "")
+    shell.close_launcher()
+
+
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's

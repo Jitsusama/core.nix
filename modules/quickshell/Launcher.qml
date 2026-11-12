@@ -7629,6 +7629,10 @@ Scope {
             landed: root.landedOn(root.selected) ? root.verbOf(root.selected) : "",
             // What the cursor row a first Return armed says a second does.
             armed: root.armedOn(root.selected) ? root.armedSaid(root.selected) : "",
+            // The row standing armed, by its steady id, wherever the cursor
+            // is, or "", so a test sees arming let go as the launcher shuts.
+            armedRow: Arming.holds(root.armed, root.armed.key, prompt.keysTaken)
+                ? root.armed.key : "",
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.
@@ -8457,6 +8461,12 @@ Scope {
             rowChanges = Changes.changes();
             lastChange = null;
             commanding = null;
+            // A row armed or landed on is let go as it shuts, by no key the
+            // line takes, so a reopening's Return or click arms or lands
+            // again rather than doing it (Y2YBTS, 2026-11-12: an hour after
+            // Reboot was armed and the launcher shut, a click rebooted).
+            armed = Arming.rest();
+            landedKey = "";
             // Shut in the mode it opens in, so what it keeps is weighed for
             // that mode while shut, and the opening's take() changes no
             // mode. Closed by :q from normal, each reopening weighed its
