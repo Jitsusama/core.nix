@@ -50,6 +50,10 @@ pub const MEASURES: &[Measure] = &[
 struct Line {
     started: Option<i64>,
     ended: Option<i64>,
+    /// What the run was given: `--name-only` is merge-net naming a
+    /// merge's checks, in seconds, not a gate.
+    #[serde(default)]
+    run: Vec<String>,
 }
 
 /// Puts the day's gate lengths into `day`, from the keeper's records, or
@@ -96,6 +100,7 @@ pub fn lengths(records: &[String], from: i64, to: i64) -> Vec<f64> {
         .iter()
         .flat_map(|text| text.lines())
         .filter_map(|line| serde_json::from_str::<Line>(line).ok())
+        .filter(|line| !line.run.iter().any(|given| given == "--name-only"))
         .filter_map(|line| Some((line.started?, line.ended?)))
         .filter(|(started, ended)| (from..to).contains(ended) && ended >= started)
         .map(|(started, ended)| (ended - started) as f64 / 60.0)
@@ -140,11 +145,13 @@ mod tests {
             record(0, 900),
             // A run kept before the field, with no end to read.
             r#"{"dir":null,"run":[],"printed":"","started":1500}"#.to_owned(),
+            // merge-net naming a merge's checks, which is no gate.
+            r#"{"dir":null,"run":["--name-only"],"started":1500,"ended":1520}"#.to_owned(),
         ];
         assert_eq!(
             lengths(&records, 1_000, 10_000),
             [10.0, 5.0, 30.0],
-            "a gate was read from a check's line, the day before or with no end"
+            "a gate was read from a check's line, the day before, with no end or naming"
         );
         let figures = figures(&[10.0, 5.0, 30.0]);
         assert_eq!(
