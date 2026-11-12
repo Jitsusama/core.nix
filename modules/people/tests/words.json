@@ -20,20 +20,6 @@
       }
     },
     {
-      "id": "person:recent",
-      "in": "people",
-      "name": "Recent",
-      "term": "Desktop/Recent",
-      "verb": "more",
-      "glyph": "recent",
-      "empty": "Nothing yet.",
-      "said": {
-        "none": "none",
-        "twice": "{name}, twice",
-        "times": "{name}, {count} times"
-      }
-    },
-    {
       "id": "people:email",
       "in": "people",
       "name": "Email"

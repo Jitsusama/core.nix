@@ -22,12 +22,13 @@
 // such row (VKCF3Z, 8a0f14ea). With Slack's sign-in refused or missing,
 // or the daemon not answering, nothing stands in waiting.
 //
-// Their direct messages with Joel are one conversation in their Recent,
+// Their direct messages with Joel are one conversation in their Messages,
 // named by its newest message's first words, beside "Slack" and noted
-// with when, among mail and meetings by that time; Return opens it in
+// with when, among mail by that time, and in their Waiting too while one
+// owes the other an answer; Return opens it in
 // Slack, and inside are Open in Slack then Copy the Link, its drawer its
 // last few messages (VKCF3Z, 42b57b7d). It's asked ahead too, so their
-// Recent is there as Joel steps in rather than coming late.
+// Messages are there as Joel steps in rather than coming late.
 import qs
 import Quickshell
 import QtQuick
@@ -144,9 +145,21 @@ PersonSource {
     }
 
     // Their conversation with Joel, when Slack found one.
+    // Their direct messages are what they wrote each other, saying whether
+    // Joel wrote last, as their page's Messages says (People.qml).
     function recent(person, provider) {
         const said = Slack.talked(person.emails, known);
-        return said ? [{ at: said.conversation.at, row: conversation(said, provider) }] : [];
+        return said ? [{ at: said.conversation.at, row: conversation(said, provider),
+            kind: "wrote", mine: Slack.wroteLast(said) }] : [];
+    }
+
+    // And they wait while one of them owes the other an answer
+    // (Slack.owing), in their page's Waiting.
+    function unread(person, provider) {
+        const said = Slack.talked(person.emails, known);
+        return said && Slack.owing(said, Date.now())
+            ? [{ at: said.conversation.at, row: conversation(said, provider),
+                what: source.called, mine: Slack.wroteLast(said) }] : [];
     }
 
     // Slack's conversation row, the one every surface shows

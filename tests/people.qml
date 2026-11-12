@@ -121,9 +121,13 @@ ShellRoot {
         return people.all.find(row => row.name === name);
     }
 
-    // What Return does first inside someone: call or join them.
+    // What Return does first inside someone: call or join them, after what
+    // waits on Joel, which comes before (the stand-in's Lunch on Friday).
+    function firstAct(row) {
+        return row.verbs().find(one => one.key !== "mail:lunch");
+    }
     function reach(row) {
-        row.verbs()[0].run();
+        firstAct(row).run();
         return Niri.spawned.join(" ");
     }
 
@@ -317,15 +321,43 @@ ShellRoot {
                     reach(open[3]) === "tuple call start cal@example.com", Niri.spawned.join(" "));
 
                 const steps = open[0].verbs();
-                expect("their page after the ways to reach them, the address last",
-                    names(steps) === "Call Them, Open in Pages, Recent, Favourite, ada@example.com",
+                expect("their page: what waits first, then the ways to reach them, what's "
+                    + "between them, the address last", names(steps) === "Lunch on Friday, "
+                    + "Call Them, Open in Pages, Last Met, Messages, Favourite, ada@example.com",
                     names(steps));
-                // Recent stands with nothing in it, saying so, so it's always
-                // where it was; Unread stands only while there's any.
-                expect("an empty Recent says none", steps[2].side === "none"
-                    && steps[2].empty === "Nothing yet.", `${steps[2].side} ${steps[2].empty}`);
-                steps[1].run();
-                expect("their page opens", steps[1].verb === "open" && Niri.spawned.join(" ")
+                // What's between them, as VKCF3Z ruled it (0cea8a93), and
+                // as a show of two people for it: one with mail waiting,
+                // one without.
+                const shown = rows => rows.map(row => `${row.name}  [${row.side ?? ""}]`
+                    + (row.heldNames ? ` holding ${row.heldNames.join("; ")}` : ""));
+                console.log(`Ada's page:\n  ${shown(steps).join("\n  ")}`);
+                console.log(`Ben's page:\n  ${shown(open[1].verbs()).join("\n  ")}`);
+                expect("one thing waiting stands as itself, Return its own act, saying why",
+                    steps[0].key === "mail:lunch"
+                        && steps[0].side.startsWith("needs you \u00b7 mail \u00b7 "),
+                    `${steps[0].key} ${steps[0].side}`);
+                expect("Last Met says when the newest was",
+                    steps[3].side === "yesterday" && steps[3].verbs().length === 2,
+                    `${steps[3].side} ${names(steps[3].verbs())}`);
+                expect("Messages says who wrote last and when, leaving out what waits",
+                    steps[4].side === "you wrote \u00b7 5 min ago",
+                    `${steps[4].side} ${names(steps[4].verbs())}`);
+                expect("and holds the rest, newest first",
+                    names(steps[4].verbs()) === "See you then, Trip Notes",
+                    names(steps[4].verbs()));
+                const ben = open[1].verbs();
+                const benMet = ben.find(row => row.name === "Last Met");
+                expect("nothing waiting, no Waiting; a meeting of the two of them says so",
+                    !names(ben).includes("Waiting") && !names(ben).includes("Lunch")
+                        && benMet?.side === "yesterday \u00b7 1:1",
+                    `${names(ben)} ${benMet?.side}`);
+                const thanks = ben.find(row => row.name === "Thanks!");
+                expect("one message alone stands as itself, after Last Met, saying who wrote",
+                    names(ben).includes("Last Met, Thanks!, Favourite")
+                        && thanks?.side === "they wrote \u00b7 yesterday",
+                    `${names(ben)} ${thanks?.side}`);
+                steps[2].run();
+                expect("their page opens", steps[2].verb === "open" && Niri.spawned.join(" ")
                     === "xdg-open https://pages.example.com/ada", Niri.spawned.join(" "));
                 expect("one with no page has no row for it",
                     !names(open[1].verbs()).includes("Open in"), names(open[1].verbs()));
@@ -350,9 +382,9 @@ ShellRoot {
                     facts.join("; "));
                 expect("showing their drawer merges no one", people.merging.merges === merges,
                     `${people.merging.merges - merges} merges`);
-                expect("a favourite says so", steps[3].side === "yes" && steps[3].verb === "unstar",
-                    `${steps[3].side} ${steps[3].verb}`);
-                expect("their email copies itself", steps[4].verb === "copy", steps[4].verb);
+                expect("a favourite says so", steps[5].side === "yes" && steps[5].verb === "unstar",
+                    `${steps[5].side} ${steps[5].verb}`);
+                expect("their email copies itself", steps[6].verb === "copy", steps[6].verb);
                 // Nor is anyone's drawer made with them: it's made when it's
                 // first shown, and kept for the minute its time there holds.
                 const eager = people.everyone().filter(row => {
@@ -376,7 +408,7 @@ ShellRoot {
             expect("called by their id", reach(hal[0]) === "tuple call start 108",
                 Niri.spawned.join(" "));
             expect("and nothing of theirs to copy",
-                names(hal[0].verbs()) === "Call Them, Recent, Favourite", names(hal[0].verbs()));
+                names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
         }),
         seeking("eli", "flipping Favourite", () => {
             const making = found("eli")[0].verbs().find(row => row.name === "Favourite");
@@ -460,8 +492,8 @@ ShellRoot {
             holds: () => names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore"
                 && sides(people.all) === "in a call, in a call, , offline",
             check: () => {
-                expect("is joined", people.all[0].verbs()[0].name === "Join Their Call",
-                    people.all[0].verbs()[0].name);
+                expect("is joined", firstAct(people.all[0]).name === "Join Their Call",
+                    firstAct(people.all[0]).name);
             }
         },
         {

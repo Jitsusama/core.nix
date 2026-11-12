@@ -1349,8 +1349,17 @@ works the same way everywhere.
   is a place's row: nothing after its name, how many at its right, its
   members in its drawer, nothing in the foot (VKCF3Z, dafc2199).
   What waits on Joel is
-  never Recent: a person's unread mail is their Unread, before it,
-  standing only while there's any.
+  never Recent. A person has no Recent, which named when rather than
+  what: their page says what's between them by what it is. Waiting
+  (their mail he hasn't read, and a conversation owing either an
+  answer) comes first, above the ways to reach them, since it needs
+  him; then their next meeting, Last Met (meetings and calls, its
+  side when the last was, "yesterday · 1:1" for the two of them),
+  then Messages (its side "they wrote · 14:02"). Each stands only
+  while it holds anything, and one thing alone stands as itself, its
+  own act on Return, saying at its side what its heading would have:
+  "needs you · mail · 14:02", "met · yesterday" (VKCF3Z, 0cea8a93
+  and 17e0f150, 2026-11-12).
 - **Acts in one order.** Every kind of thing lists what's inside it in
   the same order, so three anchors are all there is to learn: the top row
   does it, what ends it comes near the bottom, and Copy is last. Between

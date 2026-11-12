@@ -50,16 +50,30 @@ PersonSource {
 
     function unread(person, provider) {
         return Mail.mail.filter(one => Google.withThem(one, person.emails))
-            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing) }));
+            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing), what: "mail" }));
     }
 
+    // Meetings are where they met, each saying whether it was the two of
+    // them alone, and mail what they wrote each other, saying whether Joel
+    // sent it, as their page's Last Met and Messages say (People.qml).
     function recent(person, provider) {
         const now = Date.now();
         const meetings = Google.held.concat(Calendar.meetings).filter(meeting => meeting.end
             <= now && Google.withThem(meeting, person.emails))
-            .map(meeting => ({ at: meeting.end, row: Calendar.row(meeting, provider) }));
+            .map(meeting => ({ at: meeting.end, row: Calendar.row(meeting, provider),
+                kind: "met", one: alone(meeting) }));
         const mail = Google.lately.filter(one => Google.mailedWith(one, person.emails))
-            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing) }));
+            .map(one => ({ at: one.at, row: Mail.row(one, provider.thing), kind: "wrote",
+                mine: one.sent === true }));
         return meetings.concat(mail);
+    }
+
+    // Whether a meeting was Joel's with one other: who holds it, unless he
+    // does, and each guest, Google naming him in neither, are one address.
+    function alone(meeting) {
+        const others = (meeting.holds ? [] : [meeting.organizer?.email])
+            .concat((meeting.guests ?? []).map(guest => guest.email))
+            .filter(Boolean).map(email => String(email).toLowerCase());
+        return new Set(others).size === 1;
     }
 }

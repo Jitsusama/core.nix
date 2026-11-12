@@ -89,26 +89,38 @@
       }
     },
     {
-      "id": "person:recent",
+      "id": "person:waiting",
       "in": "people",
-      "name": "Recent",
-      "term": "Desktop/Recent",
+      "name": "Waiting",
       "verb": "more",
-      "glyph": "recent",
-      "empty": "Nothing yet.",
+      "glyph": "unread",
       "said": {
-        "none": "none",
-        "twice": "{name}, twice",
-        "times": "{name}, {count} times"
+        "needs": "needs you \u00b7 {what} \u00b7 {when}",
+        "sent": "you wrote \u00b7 {what} \u00b7 {when}",
+        "mail": "mail"
       }
     },
     {
-      "id": "person:unread",
+      "id": "person:met",
       "in": "people",
-      "name": "Unread",
-      "term": "Programs/unread",
+      "name": "Last Met",
       "verb": "more",
-      "glyph": "unread"
+      "glyph": "meeting",
+      "said": {
+        "one": "{when} \u00b7 1:1",
+        "alone": "met \u00b7 {side}"
+      }
+    },
+    {
+      "id": "person:messages",
+      "in": "people",
+      "name": "Messages",
+      "verb": "more",
+      "glyph": "chat",
+      "said": {
+        "theirs": "they wrote \u00b7 {when}",
+        "mine": "you wrote \u00b7 {when}"
+      }
     },
     {
       "id": "people:email",

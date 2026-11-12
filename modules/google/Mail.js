@@ -79,7 +79,7 @@ function wentTo(went, said, most = NAMED) {
 // about a meeting says its answer before the time, as the google daemon's
 // rows do (rows.rs), outlasting who sent it: "accepted · 2 Nov". The
 // daemon reads the answer from the subject; this words it only until a
-// person's Recent reads the daemon's rows.
+// person's page reads the daemon's rows.
 function besideItems(mail, now, said) {
     const when = [{ said: came(mail.at, now, said), keep: 2, stays: true }];
     if (mail.invitation) {

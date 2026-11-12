@@ -1,6 +1,6 @@
 // The launcher's Transcripts: every call call-transcripts wrote down,
 // newest first, each the call's one row (Transcripts.row), so it's the
-// same here as in someone's Recent or a meeting's. It's a collection,
+// same here as in someone's Last Met or a meeting's. It's a collection,
 // since a year of calls is thousands: a search with a match adds one
 // row, found by a call's title or by who it was with, by name or
 // address, and its word, "transcripts", lists them all.

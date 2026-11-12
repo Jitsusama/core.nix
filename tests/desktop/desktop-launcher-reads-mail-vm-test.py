@@ -717,21 +717,19 @@ def test_a_persons_page_still_being_found_stands_dimmed_in_its_place_and_lights_
         lambda shown: (shown["selected"] or {}).get("is") == "person:grace@example.com"
     )
     desktop.step_in("ret")
-    # From the first rows inside her, Open in Pages stands after Write a
-    # Mail, dimmed and saying it's being looked for, rather than arriving
-    # at the end once found.
-    desktop.launcher_until(lambda shown: shown["rows"][:1] == ["Write a Mail"])
+    # From the first rows inside her, after her mail waiting on Joel, Open
+    # in Pages stands after Write a Mail, dimmed and saying it's being
+    # looked for, rather than arriving at the end once found.
+    page = ["Quarterly Numbers", "Write a Mail", "Open in Pages"]
+    desktop.launcher_until(lambda shown: shown["rows"][:2] == page[:2])
     shown = desktop.showing()
-    assert shown["rows"][:2] == ["Write a Mail", "Open in Pages"], shown["rows"]
-    standing = shown["things"][1]
+    assert shown["rows"][:3] == page, shown["rows"]
+    standing = shown["things"][2]
     assert standing["gone"], standing
     assert "looking in Pages" in standing["reads"], standing
     say("found")
     desktop.launcher_until(
-        lambda shown: (
-            shown["rows"][:2] == ["Write a Mail", "Open in Pages"]
-            and not shown["things"][1]["gone"]
-        )
+        lambda shown: shown["rows"][:3] == page and not shown["things"][2]["gone"]
     )
     desktop.as_account(f"rm -f {pages}")
     desktop.as_account("qs ipc call launcher toggle")
@@ -907,37 +905,36 @@ def test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_re
         )
     )
     # Ctrl+] on her goes into her through People, where she lives, as on
-    # any row holding parts, though People says itself at home.
+    # any row holding parts, though People says itself at home; what waits
+    # between them leads.
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["people", "Ada Lovelace"] and shown["rows"][:1] == ["Write a Mail"]
+            shown["held"] == ["people", "Ada Lovelace"] and shown["rows"][:1] == ["Lunch on Friday"]
         )
     )
     desktop.step_out()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("is") == "person:ada@example.com"
     )
-    # Return steps in, never reaching her by itself: Write a Mail first,
-    # then her next meeting drawn as a meeting, her mail waiting on Joel,
-    # her Recent, and her address to copy last.
+    # Return steps in, never reaching her by itself: her mail waiting on
+    # Joel first, alone so as itself, then Write a Mail, her next meeting
+    # drawn as a meeting, the meeting they last met at, and her address to
+    # copy last (VKCF3Z, 0cea8a93 and 17e0f150). Slack's Write in Slack
+    # stands among the ways to reach her once Slack has looked her up.
+    page = ["Lunch on Friday", "Write a Mail", "Standup", "Last Met", "ada@example.com"]
+
+    def her_page(shown: Json) -> bool:
+        """Say whether her page stands as it should, Standup drawn as a meeting."""
+        rows = shown["rows"]
+        if [row for row in rows if row != "Write in Slack"][:5] != page:
+            return False
+        return bool(shown["things"][rows.index("Standup")]["is"] == "calendar:meeting:standup")
+
     desktop.step_in("ret")
-    desktop.launcher_until(
-        lambda shown: (
-            shown["rows"][:5] == ["Write a Mail", "Standup", "Unread", "Recent", "ada@example.com"]
-            and shown["things"][1]["is"] == "calendar:meeting:standup"
-        )
-    )
+    desktop.launcher_until(her_page)
     machine.fail(f"test -s {opened}")
-    desktop.down_to("Unread")
-    desktop.follow()
-    # The mail from her, its own component's row; unread, it's never
-    # Recent, and a meeting to come isn't either.
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Lunch on Friday"])
-    desktop.step_out()
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Unread")
-    desktop.previous_row()
-    desktop.previous_row()
+    desktop.down_to("Write a Mail")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Write a Mail")
     machine.send_key("ret")
     writing = "https://mail.google.com/mail/u/0/?view=cm&fs=1&to=ada%40example.com"
