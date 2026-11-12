@@ -1775,6 +1775,13 @@ in
       // {
         # Read by Words.qml as it's written, so a name is said once.
         "quickshell/launcher/words.json".text = builtins.toJSON launcher.words;
+        # Which places the launcher has on, by the names they're turned on
+        # under, for cadence to read its journal by (80ECO2, 2026-11-11):
+        # written as the shell's places are, from the same list, so it can't
+        # say other than what the shell loads, and nothing runs to write it.
+        "quickshell/launcher/places-on.json".text = builtins.toJSON {
+          on = lib.sort lib.lessThan (map (provider: provider.name) providers);
+        };
         "quickshell/Providers.qml".text = ''
           pragma Singleton
           import Quickshell

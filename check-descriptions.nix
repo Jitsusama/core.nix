@@ -694,6 +694,10 @@
     on a machine holding every module and all each reads, every launcher place is on, so a
     place turned on by a unit, option or package that was renamed is caught
   '';
+  the-places-on-file-names-each-place-on = ''
+    the launcher's places-on.json, which cadence reads its journal by, names each place on, by
+    the name it's turned on under, sorted, and no other
+  '';
   every-program-wears-its-own-mark = ''
     every program the launcher lists wears a mark of its own, its logo or the theme's mark for it
   '';
