@@ -2,9 +2,10 @@
 //! (rows.rs), so the shell only draws them: each a record of its own,
 //! `drawer:eero:<kind>:<id>`, served beside the rows and named by its row's
 //! `drawer`, so a watch is told one only once it reads differently, and its
-//! row isn't made again for it. A profile's drawer comes first; the
-//! internet's, a node's and a device's are still worked out in the shell
-//! (HomeNetworkDrawers.js) until they're made here too.
+//! row isn't made again for it. A profile's drawer and a node's
+//! (drawers/node.rs) are made here; the internet's and a device's are
+//! still worked out in the shell (HomeNetworkDrawers.js) until they're
+//! made here too.
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
@@ -13,6 +14,10 @@ use crate::called;
 use crate::model::{Filters, HomeNetwork, Profile, Usage};
 use crate::place::KIND as DRAWER;
 use crate::rows::{Words, fill, node_name};
+
+mod node;
+
+pub use node::{NAMES as NODE_NAMES, key as node_key};
 
 /// The parts the drawers name, each by its thing in the vocabulary.
 pub const NAMES: [&str; 8] = [
@@ -52,6 +57,7 @@ pub fn records(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Val
                 "drawer": profile_drawer(model, profile, words, numbers),
             })
         })
+        .chain(node::records(model, words, numbers))
         .collect()
 }
 
@@ -110,7 +116,7 @@ fn profile_drawer(
         profile
             .usage
             .as_ref()
-            .map(|usage| traffic(usage, words, numbers)),
+            .map(|usage| traffic(usage, "eero:profile:traffic", words, numbers)),
         fact(
             "eero:profile:devices",
             joined([Some(listed), on].into_iter().flatten()),
@@ -211,7 +217,7 @@ fn blocks(filters: &Filters, words: &Words) -> String {
 }
 
 /// The day's traffic, "150 MB down · 3.10 MB up", sparked by the hour.
-fn traffic(usage: &Usage, words: &Words, numbers: &Numbers) -> Value {
+fn traffic(usage: &Usage, id: &'static str, words: &Words, numbers: &Numbers) -> Value {
     let way = |bytes, word| {
         fill(
             words.say("eero", word),
@@ -222,7 +228,7 @@ fn traffic(usage: &Usage, words: &Words, numbers: &Numbers) -> Value {
         way(usage.download.total_bytes, "down"),
         way(usage.upload.total_bytes, "up"),
     ]);
-    let mut fact = named(words, "eero:profile:traffic", &said);
+    let mut fact = named(words, id, &said);
     let hours: Vec<f64> = usage
         .download
         .hours
@@ -247,11 +253,16 @@ fn spark(values: &[f64]) -> Option<Value> {
         return None;
     }
     let most = recent.iter().copied().fold(0.0, f64::max);
-    let drawn: Vec<f64> = recent
+    let drawn: Vec<Value> = recent
         .iter()
-        .map(|value| if most > 0.0 { value / most } else { 0.0 })
+        .map(|value| Value::from(if most > 0.0 { value / most } else { 0.0 }))
         .collect();
-    Some(json!({"shape": "spark", "values": drawn, "warn": false}))
+    Some(spark_of(&drawn))
+}
+
+/// Places already scaled, a gap as null, as Graph's spark.
+fn spark_of(places: &[Value]) -> Value {
+    json!({"shape": "spark", "values": places, "warn": false})
 }
 
 /// A count of bytes in whichever unit says it in three digits: "0 B",

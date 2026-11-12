@@ -1,5 +1,5 @@
 // What the Home Network place's drawers say: every figure the eero
-// contract places in the internet's, a node's and a device's drawer
+// contract places in the internet's and a device's drawer
 // (modules/eero/contract/README.md, Where Each Figure Shows), as a
 // fact keyed by its part's id, which HomeNetwork.qml names through the
 // launcher's vocabulary, so a name is said once, in words.json. A fact is
@@ -9,8 +9,9 @@
 // the daemon keeps of the last hour and day is drawn by
 // HomeNetworkHistory.js, which holds the pieces a fact is made of too,
 // and how the network has and hands out addresses by
-// HomeNetworkAddresses.js. A profile's drawer is the eero daemon's
-// (modules/eero's drawers.rs), served ready, as these will be in turn.
+// HomeNetworkAddresses.js. A profile's drawer and a node's are the eero
+// daemon's (modules/eero's drawers.rs), served ready, as these will be in
+// turn.
 // Plain reading of the record, held in Qt's own engine
 // (tests/home-network.qml).
 .pragma library
@@ -19,7 +20,6 @@
 .import "HomeNetworkHistory.js" as History
 .import "Interfaces.js" as Interfaces
 .import "Machine.js" as Machine
-.import "Order.js" as Order
 
 // A graph holds twenty readings, the newest last.
 const GRAPHED = 20;
@@ -178,156 +178,9 @@ function optimized(on) {
     return on ? "optimized" : "not optimized";
 }
 
-// A node's drawer: when it was last heard from, how it reaches the one
-// before it and how many devices are on it, first, as a narrow drawer has
-// room for those before its more; then which node it is, each radio and
-// port, its firmware, uptime and addresses, its light, and the day's
-// traffic through it. Its state is said only where it isn't online, which
-// its row says too, as the first fact. Its eyebrow is what it is, then
-// its kind, "on home \u00b7 node", as every drawer's here is where the
-// thing is; its model is Model's (VKCF3Z, 2026-11-08).
-function node(model, one, now, settings) {
-    const devices = one.devices ?? {};
-    const state = Home.stateOf(one);
-    return {
-        eyebrow: joined([known(model?.name) ? `on ${model.name}` : "",
-            one.gateway ? "gateway node" : "node"]),
-        names: true,
-        title: Home.nodeName(one),
-        facts: kept([
-            fact("state", state !== "online" ? state : null),
-            fact("heard", heartbeat(one, now)),
-            fact("backhaul", joined([Home.backhaulOf(one), known(one.backhaul?.bars)
-                ? `${one.backhaul.bars} of 5 bars` : ""]), {
-                // Its bars over the last hour, else a stroke of now; Ethernet
-                // has none.
-                figure: Home.backhaulLevel(one) === null ? null
-                    : History.barsSpark(one) ?? stroke(Home.backhaulLevel(one)),
-            }),
-            fact("devices", devicesCount(devices)),
-            fact("model", joined([one.model, one.model_number])),
-            fact("serial", one.serial),
-        ]).concat(radios(one), ports(one, settings), kept([
-            { heading: "about" },
-            fact("firmware", joined([one.firmware, updateWords(one.update_available)])),
-            fact("support", one.support_ends ? History.when(one.support_ends, now) : null),
-            fact("up", joined([known(one.up_s) ? Interfaces.lasted(one.up_s) : "",
-                one.last_reboot ? `since ${History.when(one.last_reboot, now)}` : ""])),
-            fact("cloud", known(one.cloud_s) ? Interfaces.lasted(one.cloud_s) : null),
-            fact("added", one.joined ? History.when(one.joined, now) : null),
-            fact("address", one.address),
-            fact("ipv6", (one.ipv6 ?? []).join(DOT)),
-            fact("mac", one.mac),
-            fact("light", one.light ? joined([onOff(one.light.on), known(one.light.brightness)
-                ? `${one.light.brightness}%` : ""]) : null),
-            fact("power", one.power),
-            trafficFact(one.usage, settings),
-        ]), onIt(model, one, settings), History.devicesOff(model, now, one),
-            History.joinsAndLeaves(model, now, one)),
-    };
-}
-
-// The devices on a node, as eero lists them, strongest first: each by
-// name, with its signal, band and channel, or its port over Ethernet.
-function onIt(model, one, settings) {
-    const listed = (model?.devices ?? []).filter((each) => each.node === one.id);
-    if (listed.length === 0) {
-        return [];
-    }
-    return [{ heading: "on-it" }].concat(listed.map((each) => ({
-        label: Home.nameOf(each),
-        value: each.ethernet
-            ? joined(["Ethernet", each.port ? each.port.name : "", linkSpeed(each.port?.mbps,
-                settings)])
-            : joined([Home.signalOf(each), Home.bandOf(each)]),
-    })));
-}
-
-// Whether a node's firmware has an update, as words.
-function updateWords(available) {
-    if (!known(available)) {
-        return "";
-    }
-    return available ? "update available" : "up to date";
-}
-
-// When a node was last heard from, "2 h 15 min ago", and late where eero
-// says it is.
-function heartbeat(one, now) {
-    if (!one.last_heartbeat) {
-        return one.heartbeat_ok === false ? "never" : "";
-    }
-    return joined([Home.ago(one.last_heartbeat, now), one.heartbeat_ok === false ? "late" : ""]);
-}
-
-// How a node's devices are on, a part that's none giving way: "all on
-// Wi-Fi", or "6 on Wi-Fi \u00b7 3 on Ethernet". How many is its row's side,
-// so this doesn't say it again (VKCF3Z, 2026-11-08).
-function devicesCount(devices) {
-    if (!known(devices.all) || devices.all === 0) {
-        return "";
-    }
-    const wifi = devices.wifi ?? 0;
-    const ethernet = devices.ethernet ?? 0;
-    if (wifi === devices.all || ethernet === devices.all) {
-        return wifi === devices.all ? "all on Wi-Fi" : "all on Ethernet";
-    }
-    return joined([wifi > 0 ? `${wifi} on Wi-Fi` : "", ethernet > 0 ? `${ethernet} on Ethernet` : ""]);
-}
-
-// Each radio by band: its channel, width and devices; then how busy each
-// is and how strongly it sends, each beside its last hour; then each
-// radio's hardware address.
-function radios(one) {
-    const list = Order.sorted(one.radios, Order.byName(radio => radio.band));
-    if (list.length === 0) {
-        return [];
-    }
-    const lines = list.map((radio) => ({
-        label: radio.band,
-        value: joined([known(radio.channel) ? `channel ${radio.channel}` : "",
-            known(radio.width_mhz) ? `${radio.width_mhz} MHz` : "",
-            known(radio.devices) ? Home.counted(radio.devices, "device") : ""]),
-    }));
-    const addresses = list.filter((radio) => radio.bssid).map((radio) => ({
-        label: radio.band,
-        value: radio.bssid,
-    }));
-    return [{ heading: "radios" }].concat(lines, History.radioFigures(list),
-        addresses.length > 0 ? [{ heading: "bssids" }].concat(addresses) : []);
-}
-
 // A link speed in Mb/s as the machine says one: "1 Gb/s", "100 Mb/s".
 function linkSpeed(value, settings) {
     return known(value) ? Home.rate(value, settings) : "";
-}
-
-// Each port: linked at what speed of its best, whether it's the internet's
-// or the backhaul's, and what's gone through it each way.
-function ports(one, settings) {
-    const list = one.ports ?? [];
-    if (list.length === 0) {
-        return [];
-    }
-    return [{ heading: "ports" }].concat(list.map((port) => ({
-        id: "port",
-        fill: { n: port.name },
-        value: joined([portLink(port, settings),
-            port.wan ? "internet" : "", port.upstream ? "backhaul" : "",
-            known(port.rx_bytes) ? `${Home.bytes(port.rx_bytes, settings)} in` : "",
-            known(port.tx_bytes) ? `${Home.bytes(port.tx_bytes, settings)} out` : ""]),
-    })));
-}
-
-// How a port is linked: "1.00 Gb/s of 1.00 Gb/s", or "not linked \u00b7 up
-// to 1.00 Gb/s".
-function portLink(port, settings) {
-    const best = known(port.best_mbps) ? linkSpeed(port.best_mbps, settings) : "";
-    if (!port.linked) {
-        return best === "" ? "not linked" : `not linked${DOT}up to ${best}`;
-    }
-    const now = linkSpeed(port.mbps, settings);
-    return best === "" ? now : `${now} of ${best}`;
 }
 
 // A rate and how the radio makes it: "1.20 Gb/s · MCS 11 · 2 streams ·

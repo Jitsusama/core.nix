@@ -371,6 +371,12 @@ fn the_rows_the_desktops_tests_serve_are_the_daemons() {
                 file.display()
             )
         });
+    // Read back as the file holds them, since a share such as 0.38 may not
+    // read back as the very float it was written from.
+    let rows: Value = serde_json::to_string(&rows)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .expect("rows are JSON");
     assert!(
         golden == rows,
         "tests/rows.json isn't what the daemon makes of home-network.json; write it afresh with \

@@ -78,7 +78,31 @@
         "5.8GHz": "5 GHz high",
         "5GHz": "5 GHz",
         "6GHz": "6 GHz",
-        "ghz": "{n} GHz"
+        "ghz": "{n} GHz",
+        "onNetwork": "on {name}",
+        "node": "node",
+        "allWifi": "all on Wi-Fi",
+        "allEthernet": "all on Ethernet",
+        "onWifi": "{count} on Wi-Fi",
+        "onEthernet": "{count} on Ethernet",
+        "mhz": "{n} MHz",
+        "updateAvailable": "update available",
+        "upToDate": "up to date",
+        "on": "on",
+        "off": "off",
+        "percent": "{n}%",
+        "internet": "internet",
+        "backhaul": "backhaul",
+        "in": "{bytes} in",
+        "out": "{bytes} out",
+        "notLinked": "not linked",
+        "upTo": "up to {rate}",
+        "of": "{rate} of {best}",
+        "late": "late",
+        "never": "never",
+        "ago": "{time} ago",
+        "joined": "{name} joined",
+        "left": "{name} left"
       }
     },
     {
@@ -175,6 +199,150 @@
       "in": "eero:profile",
       "name": "Traffic",
       "term": "Network/traffic"
+    },
+    {
+      "id": "eero:node:devices-off",
+      "in": "eero:node",
+      "name": "Not on Now"
+    },
+    {
+      "id": "eero:node:joins-and-leaves",
+      "in": "eero:node",
+      "name": "Joined and Left in the Last Day"
+    },
+    {
+      "id": "eero:node:model",
+      "in": "eero:node",
+      "name": "Model",
+      "term": "Machine/model"
+    },
+    {
+      "id": "eero:node:serial",
+      "in": "eero:node",
+      "name": "Serial Number"
+    },
+    {
+      "id": "eero:node:state",
+      "in": "eero:node",
+      "name": "State"
+    },
+    {
+      "id": "eero:node:heard",
+      "in": "eero:node",
+      "name": "Last Heard"
+    },
+    {
+      "id": "eero:node:backhaul",
+      "in": "eero:node",
+      "name": "Backhaul",
+      "term": "Network/backhaul"
+    },
+    {
+      "id": "eero:node:devices",
+      "in": "eero:node",
+      "name": "Devices",
+      "term": "Network/device"
+    },
+    {
+      "id": "eero:node:radios",
+      "in": "eero:node",
+      "name": "Radios",
+      "term": "Network/radio"
+    },
+    {
+      "id": "eero:node:bssids",
+      "in": "eero:node",
+      "name": "Radios' Hardware Addresses"
+    },
+    {
+      "id": "eero:node:ports",
+      "in": "eero:node",
+      "name": "Ports"
+    },
+    {
+      "id": "eero:node:port",
+      "in": "eero:node",
+      "name": "Port {n}"
+    },
+    {
+      "id": "eero:node:on-it",
+      "in": "eero:node",
+      "name": "Devices on It"
+    },
+    {
+      "id": "eero:node:about",
+      "in": "eero:node",
+      "name": "This Node"
+    },
+    {
+      "id": "eero:node:firmware",
+      "in": "eero:node",
+      "name": "Firmware",
+      "term": "Machine/firmware"
+    },
+    {
+      "id": "eero:node:support",
+      "in": "eero:node",
+      "name": "Support Ends"
+    },
+    {
+      "id": "eero:node:up",
+      "in": "eero:node",
+      "name": "Up For"
+    },
+    {
+      "id": "eero:node:cloud",
+      "in": "eero:node",
+      "name": "On the Cloud For"
+    },
+    {
+      "id": "eero:node:added",
+      "in": "eero:node",
+      "name": "Added"
+    },
+    {
+      "id": "eero:node:address",
+      "in": "eero:node",
+      "name": "Address",
+      "term": "Network/address"
+    },
+    {
+      "id": "eero:node:ipv6",
+      "in": "eero:node",
+      "name": "IPv6"
+    },
+    {
+      "id": "eero:node:mac",
+      "in": "eero:node",
+      "name": "Hardware Address",
+      "term": "Network/hardware address"
+    },
+    {
+      "id": "eero:node:light",
+      "in": "eero:node",
+      "name": "Light",
+      "term": "Network/light"
+    },
+    {
+      "id": "eero:node:power",
+      "in": "eero:node",
+      "name": "Power"
+    },
+    {
+      "id": "eero:node:traffic",
+      "in": "eero:node",
+      "name": "Traffic",
+      "term": "Network/traffic"
+    },
+    {
+      "id": "eero:node:busy",
+      "in": "eero:node",
+      "name": "How Busy"
+    },
+    {
+      "id": "eero:node:radio-power",
+      "in": "eero:node",
+      "name": "Transmit Power"
     }
   ]
 }

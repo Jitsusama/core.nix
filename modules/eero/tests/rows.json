@@ -1,6 +1,749 @@
 [
   {
     "drawer": {
+      "eyebrow": "on home · node",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "as": "ago",
+          "at": 1794092040000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Backhaul",
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
+          "name": "Model",
+          "said": "eero Pro 6 · K010011"
+        },
+        {
+          "name": "Serial Number",
+          "said": "SERIAL0001"
+        },
+        {
+          "heading": "Radios"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "channel 6 · 20 MHz · 1 device"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "channel 149 · 80 MHz · 1 device"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "channel 52 · 80 MHz · 2 devices"
+        },
+        {
+          "heading": "How Busy"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.24, 0.17, 0.29, 0.22, 0.18, 0.2],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "20%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.41, 0.34, 0.46, 0.39, 0.35, 0.37],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "37%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.09, 0.02, 0.14, 0.07, 0.03, 0.05],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "5%"
+        },
+        {
+          "heading": "Transmit Power"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "30 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "28 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "22 dBm"
+        },
+        {
+          "heading": "Radios' Hardware Addresses"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "02:00:00:00:00:14"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "02:00:00:00:00:12"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "02:00:00:00:00:02"
+        },
+        {
+          "heading": "Ports"
+        },
+        {
+          "name": "Port 1",
+          "said": "not linked · up to 1.00 Gb/s"
+        },
+        {
+          "name": "Port 2",
+          "said": "not linked · up to 1.00 Gb/s"
+        },
+        {
+          "heading": "This Node"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036222000,
+          "name": "Up For"
+        },
+        {
+          "as": "lasted",
+          "at": 1794090124000,
+          "name": "On the Cloud For"
+        },
+        {
+          "as": "day",
+          "at": 1605304476000,
+          "name": "Added",
+          "said": "{time}"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.209"
+        },
+        {
+          "name": "IPv6",
+          "said": "fe80::d/64"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:28"
+        },
+        {
+          "name": "Light",
+          "said": "off · 100%"
+        },
+        {
+          "name": "Power",
+          "said": "USB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.002314578924556796, 0.0024303585198990492, 0.002370321485123916,
+              0.0023532577271412505, 1.0, 0.0008373725348157553, 0.0012944629582017613,
+              0.0012384136494769256, 0.0012722700856749745, 0.002035024347706998,
+              0.001319730445983786, 0.0012127466757220625, 0.0012971737558745927,
+              0.0013341404757183117, 0.001304221829823955, 0.001457574507647271,
+              0.0012191598523217351, 0.001297088151737556, 0.0013185890574899622,
+              0.0013977942852832486
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "142 MB down · 3.64 MB up"
+        },
+        {
+          "heading": "Devices on It"
+        },
+        {
+          "name": "generic 2",
+          "said": "−37 dBm · 5 GHz · channel 52"
+        },
+        {
+          "name": "laptop computer 2",
+          "said": "−38 dBm · 5 GHz · channel 149"
+        },
+        {
+          "name": "printer 1",
+          "said": "−49 dBm · 2.4 GHz · channel 6"
+        },
+        {
+          "name": "tablet 1",
+          "said": "−59 dBm · 5 GHz · channel 52"
+        },
+        {
+          "heading": "Not on Now"
+        },
+        {
+          "as": "moment",
+          "at": 1794081438000,
+          "name": "phone 1",
+          "said": "5 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794057181000,
+          "name": "02:00:00:00:00:1b",
+          "said": "5 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794054847000,
+          "name": "02:00:00:00:00:1c",
+          "said": "2.4 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794009538000,
+          "name": "phone 2",
+          "said": "2.4 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1793917553000,
+          "name": "02:00:00:00:00:1f",
+          "said": "5 GHz · {time}"
+        },
+        {
+          "heading": "Joined and Left in the Last Day"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794091783000
+          },
+          "said": "phone 1​ left · 5 GHz"
+        }
+      ],
+      "title": "Den"
+    },
+    "key": "drawer:eero:node:2001",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on home · node",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "as": "ago",
+          "at": 1794092026000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.8, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Backhaul",
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
+          "name": "Model",
+          "said": "eero Pro 6 · K010011"
+        },
+        {
+          "name": "Serial Number",
+          "said": "SERIAL0002"
+        },
+        {
+          "heading": "Radios"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "channel 6 · 20 MHz · 2 devices"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "channel 149 · 80 MHz · 4 devices"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "channel 52 · 80 MHz · 3 devices"
+        },
+        {
+          "heading": "How Busy"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.22, 0.15, 0.27, 0.2, 0.16, 0.18],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "18%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.43, 0.36, 0.48, 0.41, 0.37, 0.39],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "39%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.09, 0.02, 0.14, 0.07, 0.03, 0.05],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "5%"
+        },
+        {
+          "heading": "Transmit Power"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "30 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "28 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "22 dBm"
+        },
+        {
+          "heading": "Radios' Hardware Addresses"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "02:00:00:00:00:10"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "02:00:00:00:00:09"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "02:00:00:00:00:04"
+        },
+        {
+          "heading": "Ports"
+        },
+        {
+          "name": "Port 1",
+          "said": "not linked · up to 1.00 Gb/s"
+        },
+        {
+          "name": "Port 2",
+          "said": "not linked · up to 1.00 Gb/s"
+        },
+        {
+          "heading": "This Node"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036222000,
+          "name": "Up For"
+        },
+        {
+          "as": "lasted",
+          "at": 1794090907000,
+          "name": "On the Cloud For"
+        },
+        {
+          "as": "day",
+          "at": 1605304249000,
+          "name": "Added",
+          "said": "{time}"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.88"
+        },
+        {
+          "name": "IPv6",
+          "said": "fe80::b/64"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:25"
+        },
+        {
+          "name": "Light",
+          "said": "on · 100%"
+        },
+        {
+          "name": "Power",
+          "said": "USB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.002267272605356371, 0.002310591241814966, 0.002699602870407569,
+              0.0023194518719996788, 1.0, 0.0013259340935910984, 0.0012643234637399077,
+              0.0015274741923979689, 0.0012086627256552634, 0.0013891142392560062,
+              0.0012239369681878477, 0.0012175518924911345, 0.0019450581429630149,
+              0.0012287739305592126, 0.0013141555908254296, 0.0014473361417821253,
+              0.001433481597644676, 0.0012652723073909278, 0.001323037623498511,
+              0.0015070205476801176
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "142 MB down · 3.68 MB up"
+        },
+        {
+          "heading": "Devices on It"
+        },
+        {
+          "name": "generic 4",
+          "said": "−20 dBm · 5 GHz · channel 149"
+        },
+        {
+          "name": "audio 1",
+          "said": "−29 dBm · 2.4 GHz · channel 6"
+        },
+        {
+          "name": "media streamer 1",
+          "said": "−43 dBm · 5 GHz · channel 149"
+        },
+        {
+          "name": "unknown computer 1",
+          "said": "−57 dBm · 5 GHz · channel 149"
+        },
+        {
+          "name": "thermostat 1",
+          "said": "−65 dBm · 5 GHz · channel 149"
+        },
+        {
+          "name": "game console 1",
+          "said": "−66 dBm · 2.4 GHz · channel 6"
+        },
+        {
+          "name": "generic 1",
+          "said": "−68 dBm · 5 GHz · channel 52"
+        },
+        {
+          "name": "phone 1",
+          "said": "−69 dBm · 5 GHz · channel 52"
+        },
+        {
+          "name": "laptop computer 1",
+          "said": "−75 dBm · 5 GHz · channel 52"
+        },
+        {
+          "heading": "Not on Now"
+        },
+        {
+          "as": "moment",
+          "at": 1794087507000,
+          "name": "game console 2",
+          "said": "5 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794045852000,
+          "name": "unknown computer 2",
+          "said": "5 GHz · {time}"
+        },
+        {
+          "as": "moment",
+          "at": 1793744041000,
+          "name": "02:00:00:00:00:20",
+          "said": "2.4 GHz · {time}"
+        },
+        {
+          "heading": "Joined and Left in the Last Day"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794091183000
+          },
+          "said": "laptop computer 1​ joined · 5 GHz"
+        }
+      ],
+      "title": "Study"
+    },
+    "key": "drawer:eero:node:2002",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
+      "eyebrow": "on home · gateway node",
+      "eyebrowNames": true,
+      "facts": [
+        {
+          "as": "ago",
+          "at": 1794092031000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "name": "Backhaul",
+          "said": "Ethernet"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
+          "name": "Model",
+          "said": "eero Pro 6 · K010011"
+        },
+        {
+          "name": "Serial Number",
+          "said": "SERIAL0003"
+        },
+        {
+          "heading": "Radios"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "channel 6 · 20 MHz · 1 device"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "channel 149 · 80 MHz · 1 device"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "channel 52 · 80 MHz · 0 devices"
+        },
+        {
+          "heading": "How Busy"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.12, 0.05, 0.17, 0.1, 0.06, 0.08],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "8%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.45, 0.38, 0.5, 0.43, 0.39, 0.41],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "41%"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.09, 0.02, 0.14, 0.07, 0.03, 0.05],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "5%"
+        },
+        {
+          "heading": "Transmit Power"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "2.4 GHz",
+          "said": "30 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz high",
+          "said": "28 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "5 GHz low",
+          "said": "22 dBm"
+        },
+        {
+          "heading": "Radios' Hardware Addresses"
+        },
+        {
+          "name": "2.4 GHz",
+          "said": "02:00:00:00:00:0c"
+        },
+        {
+          "name": "5 GHz high",
+          "said": "02:00:00:00:00:06"
+        },
+        {
+          "name": "5 GHz low",
+          "said": "02:00:00:00:00:24"
+        },
+        {
+          "heading": "Ports"
+        },
+        {
+          "name": "Port 1",
+          "said": "1.00 Gb/s of 1.00 Gb/s · internet · backhaul · 0 B in · 153 MB out"
+        },
+        {
+          "name": "Port 2",
+          "said": "1.00 Gb/s of 1.00 Gb/s · 0 B in · 53.7 kB out"
+        },
+        {
+          "heading": "This Node"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036205000,
+          "name": "Up For"
+        },
+        {
+          "as": "lasted",
+          "at": 1794037670000,
+          "name": "On the Cloud For"
+        },
+        {
+          "as": "day",
+          "at": 1605304035000,
+          "name": "Added",
+          "said": "{time}"
+        },
+        {
+          "name": "Address",
+          "said": "10.0.0.1"
+        },
+        {
+          "name": "IPv6",
+          "said": "fe80::7/64 · fe80::8/64"
+        },
+        {
+          "name": "Hardware Address",
+          "said": "02:00:00:00:00:21"
+        },
+        {
+          "name": "Light",
+          "said": "on · 100%"
+        },
+        {
+          "name": "Power",
+          "said": "USB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.008758375491921159, 0.00885551714663431, 0.005308917720031364, 0.005817408992263041,
+              1.0, 0.004564104550201042, 0.004408673547833875, 0.0045279522353380555,
+              0.0044481573046808226, 0.005565888751495738, 0.0069699572739299435,
+              0.005287658910508439, 0.008850051839850166, 0.009014453784030353,
+              0.008166547363785684, 0.009237740235434675, 0.007826965280771318,
+              0.006213763491831972, 0.005632205495302827, 0.006386403315427836
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "150 MB down · 10.1 MB up"
+        },
+        {
+          "heading": "Devices on It"
+        },
+        {
+          "name": "generic 3",
+          "said": "−48 dBm · 2.4 GHz · channel 6"
+        },
+        {
+          "name": "phone 1",
+          "said": "−52 dBm · 5 GHz · channel 149"
+        },
+        {
+          "heading": "Not on Now"
+        },
+        {
+          "as": "moment",
+          "at": 1794057325000,
+          "name": "generic 5",
+          "said": "Ethernet · {time}"
+        }
+      ],
+      "title": "Hall"
+    },
+    "key": "drawer:eero:node:2003",
+    "kind": "drawer"
+  },
+  {
+    "drawer": {
       "body": "Connected to the internet, last tested at 370 Mb/s down, with 3 nodes online and 15 devices on now.",
       "eyebrow": "via eero · network",
       "facts": [
@@ -849,6 +1592,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:node:2001",
       "glyph": "accessPoint",
       "held": {
         "gateway": false,
@@ -885,6 +1629,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:node:2002",
       "glyph": "accessPoint",
       "held": {
         "gateway": false,
@@ -921,6 +1666,7 @@
     "kind": "row",
     "row": {
       "depth": 0,
+      "drawer": "drawer:eero:node:2003",
       "glyph": "accessPoint",
       "held": {
         "gateway": true,

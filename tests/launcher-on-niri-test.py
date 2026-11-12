@@ -2845,6 +2845,33 @@ def test_a_profiles_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> No
     assert headings == ["Devices in It"], str(drawer)
 
 
+def test_a_nodes_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
+    """A node's drawer says how it stands and who left it, its times worded as it's drawn.
+
+    The eero daemon makes a node's drawer (its drawers/node.rs) and serves it beside the node's
+    row, each time a moment the shell words at the minute it draws, so who left Den is named by
+    when, as a terminal is shown it.
+    """
+    den = terminal_shown_until(
+        shell,
+        lambda shown: bool(((shown.get("row") or {}).get("drawer") or {}).get("facts")),
+        "network",
+        "home network",
+        "Den",
+    )
+    drawer = den["row"]["drawer"]
+    assert drawer["title"] == "Den", str(drawer)
+    facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
+    assert facts["Backhaul"] == "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars", str(facts)
+    assert str(facts["Last Heard"]).endswith(" ago"), str(facts)
+    headings = [fact.get("heading") for fact in drawer["facts"] if fact.get("heading")]
+    assert "Joined and Left in the Last Day" in headings, str(drawer)
+    left = drawer["facts"][-1]
+    assert left["value"] == "phone\u00a01\u200b left \u00b7 5 GHz", str(left)
+    assert isinstance(left["label"], str), str(left)
+    assert left["label"], str(left)
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)
