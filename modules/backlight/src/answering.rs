@@ -9,12 +9,12 @@ use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use zbus::Connection;
 
-use crate::dbus::RelayProxy;
+use crate::dbus::{Refused, RelayProxy, set_warmth};
 use crate::evening::local_minute;
 use crate::night::Place;
 use crate::panel::Panel;
 use crate::warmth::{WHITE, Warmth};
-use crate::{Backlight, RELAY_RESTS, ask, kept_say, night, switch, wall, write_whole};
+use crate::{Backlight, PANEL_RESTS, RELAY_RESTS, ask, kept_say, night, switch, wall, write_whole};
 
 /// How often the clock is looked at for the evening's dimming: each look
 /// takes it a thirtieth of the way in, which gathers until it's worth the
@@ -234,23 +234,31 @@ impl Backlight<'_> {
             return;
         };
         let relay: &RelayProxy = relay;
-        let refused = match ask::twice(ask::MOMENT, || relay.set_temperature(kelvin)).await {
+        let refused = match ask::twice(ask::MOMENT, || set_warmth(relay, kelvin)).await {
             Some(Ok(())) => {
                 warmth.set(kelvin, now);
-                None
+                return;
             }
-            Some(Err(error)) => Some(error.to_string()),
-            None => Some("wl-gammarelay-rs didn't answer".to_owned()),
+            Some(Err(refused)) => refused,
+            None => Refused::Else("wl-gammarelay-rs didn't answer".to_owned()),
         };
         // Where the compositor can't hold gamma, every one of the night's
         // fifty steps would ask again and fail: what sets the warmth is let
         // be until it starts again by itself, or a while has passed, since
-        // nothing but a set starts it on the bus.
-        if let Some(why) = refused {
-            eprintln!("<4>can't set the screens' warmth, so it's let be a while: {why}");
-            warmth.abandon();
-            self.relay_down = Some(now + RELAY_RESTS);
-        }
+        // nothing but a set starts it on the bus. A panel that isn't showing
+        // is looked at again sooner, since it shows again unannounced.
+        let rest = match refused {
+            Refused::NoPanel => {
+                eprintln!("<5>the panel isn't showing, so its warmth waits for it");
+                PANEL_RESTS
+            }
+            Refused::Else(why) => {
+                eprintln!("<4>can't set the screens' warmth, so it's let be a while: {why}");
+                RELAY_RESTS
+            }
+        };
+        warmth.abandon();
+        self.relay_down = Some(now + rest);
     }
 
     /// Reads the keyboard's level, which its key may have changed unheard,

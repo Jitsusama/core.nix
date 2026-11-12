@@ -9,7 +9,8 @@ use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
 use zbus::fdo::DBusProxy;
 use zbus::proxy::{CacheProperties, OwnerChangedStream, PropertyStream};
-use zbus::{Connection, proxy};
+use zbus::zvariant::Value;
+use zbus::{Connection, Message, proxy};
 
 use crate::ask;
 use crate::screen::Screen;
@@ -49,8 +50,60 @@ pub(crate) trait Manager {
 pub(crate) trait Relay {
     #[zbus(property)]
     fn temperature(&self) -> zbus::Result<u16>;
-    #[zbus(property)]
-    fn set_temperature(&self, kelvin: u16) -> zbus::Result<()>;
+}
+
+/// Why the panel's warmth wasn't set.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Refused {
+    /// The relay holds no object for the panel, since niri isn't showing
+    /// it, as while its lid is shut beside another screen.
+    NoPanel,
+    /// Anything else, in the words it came in.
+    Else(String),
+}
+
+/// Sets the panel's warmth, or says why it wasn't.
+pub(crate) async fn set_warmth(relay: &RelayProxy<'_>, kelvin: u16) -> Result<(), Refused> {
+    let relay = relay.inner();
+    let reply = relay
+        .connection()
+        .call_method(
+            Some(relay.destination().clone()),
+            relay.path().clone(),
+            Some("org.freedesktop.DBus.Properties"),
+            "Set",
+            &(
+                relay.interface().clone(),
+                "Temperature",
+                Value::from(kelvin),
+            ),
+        )
+        .await
+        .map_err(|error| refusal(&error.to_string()))?;
+    answered(&reply)
+}
+
+/// What a reply to a set of the warmth says. wl-gammarelay-rs's D-Bus
+/// crate, rustbus, sends a refusal as an ordinary reply holding its reason
+/// rather than as an error, and a set's own reply holds nothing, so any
+/// words in it are the refusal. Read as a set's reply, zbus would call it
+/// a signature mismatch and lose why. Newer rustbus sends an error, which
+/// zbus gives as one, so `refusal` reads both.
+fn answered(reply: &Message) -> Result<(), Refused> {
+    match reply.body().deserialize::<&str>() {
+        Ok(reason) => Err(refusal(reason)),
+        Err(_) => Ok(()),
+    }
+}
+
+/// Why a set was refused, from the relay's words, which name the object it
+/// has none of when niri isn't showing the panel.
+fn refusal(reason: &str) -> Refused {
+    if reason.contains("are accepted for object") {
+        Refused::NoPanel
+    } else {
+        Refused::Else(reason.to_owned())
+    }
 }
 
 /// Waits for the screens' warmth to be set by a program that just started,
@@ -169,4 +222,60 @@ pub(crate) async fn relay(screen: &Screen) -> (Option<(Warmth, RelayProxy<'stati
         WHITE
     };
     (Some((Warmth::new(shown), relay)), started)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A reply to a set on the panel's object, holding what's given.
+    fn reply<B>(body: &B) -> Message
+    where
+        B: zbus::export::serde::Serialize + zbus::zvariant::DynamicType,
+    {
+        let set = Message::method_call("/outputs/eDP_1", "Set")
+            .and_then(|call| call.destination("rs.wl-gammarelay"))
+            .and_then(|call| call.build(&()))
+            .expect("a set is built");
+        Message::method_return(&set.header())
+            .and_then(|answer| answer.build(body))
+            .expect("its reply is built")
+    }
+
+    #[test]
+    fn an_empty_reply_is_the_warmth_set() {
+        assert_eq!(answered(&reply(&())), Ok(()), "a set's reply holds nothing");
+    }
+
+    #[test]
+    fn a_reply_holding_words_is_the_relay_refusing() {
+        let said = "Invalid arguments for calls to org.freedesktop.DBus.Properties.Set";
+        assert_eq!(
+            answered(&reply(&(said,))),
+            Err(Refused::Else(said.to_owned())),
+            "wl-gammarelay-rs refuses with an ordinary reply holding why"
+        );
+    }
+
+    #[test]
+    fn a_refusal_naming_no_object_is_the_panel_not_showing() {
+        let said = "No calls to org.freedesktop.DBus.Properties.Set are accepted for object \
+                    /outputs/eDP_1";
+        assert_eq!(
+            answered(&reply(&(said,))),
+            Err(Refused::NoPanel),
+            "a panel niri doesn't show has no object to set"
+        );
+    }
+
+    #[test]
+    fn an_error_naming_no_object_is_the_panel_not_showing_too() {
+        let said = "org.freedesktop.DBus.Error.UnknownMethod: No calls to \
+                    org.freedesktop.DBus.Properties.Set are accepted for object /outputs/eDP_1";
+        assert_eq!(
+            refusal(said),
+            Refused::NoPanel,
+            "a relay on a newer rustbus refuses with an error, read the same"
+        );
+    }
 }

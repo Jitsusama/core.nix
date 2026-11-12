@@ -555,6 +555,10 @@ struct Backlight<'a> {
 /// starts again by itself sooner.
 const RELAY_RESTS: Duration = Duration::from_mins(10);
 
+/// How long the warmth waits after the panel wasn't showing, short enough
+/// that it's warm again soon after the panel shows.
+const PANEL_RESTS: Duration = Duration::from_mins(1);
+
 /// The night light's white unless the command line gives another: GNOME's
 /// Night Light's, gentle enough that code's colours still read (VKCF3Z,
 /// 2026-11-08).
