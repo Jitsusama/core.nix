@@ -5,14 +5,16 @@
 //! its input, `{"meetings": [...], "held": [...], "now": <ms>}`, each
 //! meeting as the daemon tells one, and writes every record it makes, as
 //! the daemon would hold it, as one JSON array, in the launcher's words at
-//! WORDS, on the machine's clock's zone.
+//! WORDS, on the machine's clock's zone. Given a `search` too, the ask a
+//! shell sent, it writes what the daemon answers it with instead, or null
+//! where the daemon refuses it.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use google::calendar::Meeting;
-use google::ready::Ready;
+use google::ready::{self, Ready};
 use google::rows::Vocabulary;
 use google::state::State;
 use serde::Deserialize;
@@ -24,6 +26,8 @@ struct Asked {
     meetings: Vec<Meeting>,
     held: Vec<Meeting>,
     now: i64,
+    #[serde(default)]
+    search: Option<Value>,
 }
 
 fn main() -> ExitCode {
@@ -64,6 +68,9 @@ fn made(words: &Path) -> Result<Value, String> {
         held: asked.held,
         ..State::default()
     };
+    if let Some(search) = asked.search {
+        return Ok(ready::typed(&state, &vocabulary, &search, asked.now).unwrap_or(Value::Null));
+    }
     let records = Ready::default().made(&state, &vocabulary, asked.now);
     Ok(Value::Array(
         records.into_iter().map(|(_, record)| record).collect(),

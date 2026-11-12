@@ -566,11 +566,8 @@ impl Book {
     /// The records held for these keys, as the shell reads them: who an
     /// address is, as a meeting's guest whom nobody lists, asked of no
     /// source, which a step-in would send every source to look up.
-    pub fn known(&self, keys: &[String]) -> Vec<Value> {
-        keys.iter()
-            .filter_map(|key| self.record(key))
-            .map(Record::json)
-            .collect()
+    pub fn known(&self, keys: &[String]) -> Vec<&Record> {
+        keys.iter().filter_map(|key| self.record(key)).collect()
     }
 
     /// Every record held, in the order each was first heard of.

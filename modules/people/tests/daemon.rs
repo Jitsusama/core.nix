@@ -523,6 +523,19 @@ fn who_is_held_is_known_by_key_with_no_source_asked() {
         records[0]["sources"]["tuple"]["name"], "Eli Fenwick",
         "{said}"
     );
+    // Whoever is named this way is drawn as the daemon serves them, as a
+    // search's are, so the shell words no one's drawer itself.
+    assert_eq!(
+        (
+            &records[0]["drawer"]["title"],
+            &records[0]["drawer"]["facts"][0]
+        ),
+        (
+            &json!("Eli Fenwick"),
+            &json!({"name": "Email", "said": "eli@example.com"})
+        ),
+        "Eli's drawer, as a search would serve it: {said}"
+    );
     // A step-in after it is told to every source, so had knowing asked
     // Slack, its line would come before Grace's.
     client.ask(

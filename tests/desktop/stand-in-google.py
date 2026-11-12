@@ -3,8 +3,9 @@
 It speaks the program's daemon interface (modules/google/src/daemon.rs), on the socket systemd
 hands it or else the one it's named: each meeting, piece of mail and document a record, and the
 account one more, each told to a watch as it changes, and what a shell asks taken as an act, a
-line of ask.rs. The account is ready, unless a test signs it out, with three
-meetings on Meet from when the stand-in starts: Design Review five minutes on, Joel's own,
+line of ask.rs, or a time it types inside Move answered as the program answers one. The
+account is ready, unless a test signs it out, with three meetings on Meet from when the
+stand-in starts: Design Review five minutes on, Joel's own,
 reminding him a minute before, or nearer or further as a test asks; Standup half an hour on,
 Ada's in Room 4 every weekday, with Grace not going and Ada's Quarterly Plan and an agenda
 attached; and Planning two hours on, Joel's own with Grace asked. Joel may change his own, and
@@ -22,10 +23,9 @@ Quarterly Plan in Docs, and Team Budget in Sheets, on a shared drive, each also 
 Documents' ready row and drawer, as the daemon makes them, to a watch of their place. Each
 meeting is served as Calendar's ready rows and drawers too, made by the program's own code
 (src/bin/google-rows.rs, named after the socket, with the launcher's words), and made again
-each minute, as the program looks, so Return turns to joining ten minutes before. His
-sign-in grants Meet's
-scope, so a shell may ask for a new Meet meeting, which is made at once as new-abcd-efg. His
-Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
+each minute, as the program looks, so Return turns to joining ten minutes before. His sign-in
+grants Meet's scope, so a shell may ask for a new Meet meeting, made at once as new-abcd-efg.
+His Drive holds a Trips folder, with an itinerary in it, the menu and the Quarterly Plan; Team
 Budget is shared with him, and the Team shared drive is empty. A shell may ask what a folder
 holds, and for a file in one, to open or pick, kept in the cache home's google/drive as the
 program keeps it, or to save, Google's own as their office files.
@@ -545,8 +545,8 @@ class Account:
             key = str(row["drawer"])
             made[key] = {"key": key, "kind": "drawer", "drawer": document_drawer(document)}
         # Calendar's rows and drawers, made by the program's own code.
-        for record in calendar_records(state["meetings"], state["held"]):
-            made[str(record["key"])] = record
+        calendar = google_rows(state["meetings"], state["held"])
+        made |= {str(record["key"]): record for record in cast("list[dict[str, object]]", calendar)}
         account = {name: state[name] for name in ("unread", "fetched", "meet", "drive")} | {
             "standing": state["account"]
         }
@@ -599,6 +599,12 @@ class Account:
         if asked.get("ask") == "act" and isinstance(asked.get("act"), dict):
             self.act(cast("dict[str, dict[str, object]]", asked["act"]))
             return {"id": id_, "taken": True}
+        if asked.get("ask") == "search":
+            with self.lock:
+                state = copy.deepcopy(self.state())
+            found = google_rows(state["meetings"], state["held"], asked)
+            if isinstance(found, dict):
+                return found | {"id": id_}
         return {"id": id_, "error": {"code": "unknown-ask", "message": "not here"}}
 
     def act(self, said: dict[str, dict[str, object]]) -> None:
@@ -752,14 +758,18 @@ def keep(account: Account, shell: socket.socket) -> None:
         shell.close()
 
 
-def calendar_records(meetings: object, held: object) -> list[dict[str, object]]:
-    """Give Calendar's ready records as the program makes them, at this moment."""
-    asked = json.dumps({"meetings": meetings, "held": held, "now": int(time.time() * 1000)})
+def google_rows(meetings: object, held: object, search: object = None) -> object:
+    """Give Calendar's ready records, or a search's answer, as the program makes them now."""
+    asked = {"meetings": meetings, "held": held, "now": int(time.time() * 1000)}
     # The program and its words are the VM's own, from Nix (tests/desktop.nix).
     made = subprocess.run(  # noqa: S603
-        [sys.argv[2], sys.argv[3]], input=asked, capture_output=True, text=True, check=True
+        [sys.argv[2], sys.argv[3]],
+        input=json.dumps(asked | ({"search": search} if search is not None else {})),
+        capture_output=True,
+        text=True,
+        check=True,
     )
-    return cast("list[dict[str, object]]", json.loads(made.stdout))
+    return json.loads(made.stdout)
 
 
 def listening(path: Path) -> socket.socket:

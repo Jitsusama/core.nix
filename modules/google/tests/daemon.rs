@@ -2,8 +2,9 @@
 //! over its socket as the shell asks it: what a watch is told at first,
 //! then only the records a change touched and those that went; one kind
 //! watched alone; one row moving heard as that row alone; an act handed
-//! to the program's asks, as a served row's ask sent back whole is; and
-//! the program itself taking the socket systemd hands it.
+//! to the program's asks, as a served row's ask sent back whole is; a
+//! time typed inside a meeting's Move answered as its rows; and the
+//! program itself taking the socket systemd hands it.
 
 use std::env;
 use std::io::{BufRead, BufReader, Write};
@@ -13,6 +14,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use google::calendar::Meeting;
 use google::daemon::Daemon;
 use google::drive::{Document, Is, Kind};
 use google::mail::Mail;
@@ -335,6 +337,81 @@ fn an_ask_a_served_row_names_sent_back_whole_is_taken_as_its_act() {
         serde_json::from_str::<Value>(&line).unwrap(),
         json!({"archive": {"id": "m1"}}),
         "the account isn't handed the act"
+    );
+}
+
+#[test]
+fn a_time_typed_within_move_is_answered_and_any_other_search_is_refused() {
+    let socket = folder("typed").join("google.sock");
+    let (asks, _asked) = mpsc::channel();
+    let daemon = Daemon::listen(&socket, asks, NOW).unwrap();
+    let path = env::var("LAUNCHER_WORDS")
+        .expect("LAUNCHER_WORDS names no vocabulary; google-reads-the-calendar hands it one");
+    let vocabulary = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    daemon.words(Vocabulary::read(&vocabulary).0);
+    // The daemon reads the clock as it's asked, so the meeting is two
+    // days from now, and a time typed for tomorrow is one to come.
+    let start = jiff::Timestamp::now().as_millisecond() + 2 * 24 * 3_600_000;
+    let meeting = Meeting {
+        id: "e1".into(),
+        title: "Plan".into(),
+        start,
+        end: start + 1_800_000,
+        all_day: false,
+        repeats: None,
+        series: None,
+        answer: None,
+        link: None,
+        kind: None,
+        page: None,
+        place: None,
+        about: None,
+        attachments: vec![],
+        dial: None,
+        holds: true,
+        through: Some("primary".into()),
+        organizer: None,
+        guests: vec![],
+        reminders: vec![],
+        done: None,
+    };
+    daemon.say(
+        &State {
+            meetings: vec![meeting],
+            ..ready(vec![], NOW)
+        },
+        NOW,
+    );
+    let mut client = Client::to(&socket);
+    let within = "row:calendar:e1:move";
+    let search = |id: i64, words: &str| {
+        json!({"id": id, "ask": "search", "place": "calendar", "words": words,
+            "within": within})
+    };
+    let found = client.ask(&search(1, "tomorrow 10:00"));
+    let key = found["keys"][0].as_str().unwrap_or_default().to_owned();
+    assert!(
+        found["id"] == 1 && found["words"] == "tomorrow 10:00" && key.starts_with(within),
+        "a time typed in Move is answered as a row inside it: {found}"
+    );
+    assert_eq!(
+        (
+            &found["rows"][&key]["row"]["parent"],
+            &found["rows"][format!("{key}:sure")]["row"]["sure"],
+        ),
+        (&json!(within), &json!(true)),
+        "its rows come as records, the sure row inside it: {found}"
+    );
+    assert_eq!(
+        client.ask(&search(2, "someday")),
+        json!({"id": 2, "words": "someday", "keys": [], "rows": {}}),
+        "text no clock reads is answered with no time"
+    );
+    let unscoped = json!({"id": 3, "ask": "search", "place": "calendar", "words": "plan"});
+    assert_eq!(
+        client.ask(&unscoped)["error"]["code"],
+        "unknown-ask",
+        "a search not within a Move is the shell's own to match"
     );
 }
 

@@ -62,6 +62,10 @@ CHANGED_SHARE = 500
 CROWD = 30
 # Pi's session's row, its quest's title, which Lighthouse's is while it runs.
 LIGHTHOUSE = "A quest of its own & whole"
+# A window of the sessions' kitty, asked over its own socket as the shell asks.
+IN_SESSIONS = "kitten @ --to unix:$XDG_RUNTIME_DIR/pi-sessions/kitty.sock launch --type=os-window"
+# The sessions' kitty's own process, by the socket it listens on.
+SESSIONS_KITTY = "pi-sessions/kitty[.]sock"
 
 
 @pytest.fixture(scope="module")
@@ -882,7 +886,7 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
         " 'stty -echo -icanon' 'printf \"\\33[?25l\"'"
         " 'exec cat > ~/typed' > ~/.asideqa-pi && chmod +x ~/.asideqa-pi"
         " && echo Notes > $XDG_RUNTIME_DIR/asideqa-title"
-        " && niri msg action spawn -- kitty -1 --instance-group pi-sessions --class notes"
+        f" && niri msg action spawn -- {IN_SESSIONS} --os-window-class notes"
         " --title Notes ~/.asideqa-pi"
     )
     machine.wait_until_succeeds(desktop.in_session(f"test -s {owner}"), timeout=SHELL_STARTS)
@@ -901,7 +905,7 @@ def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Des
     stress = f"{stress_ng} --temp-path /tmp --cpu 1 --timeout 900"
     desktop.as_account(
         "niri msg action focus-workspace 3; for i in $(seq 30); do niri msg action spawn --"
-        f" kitty -1 --instance-group pi-sessions --class crowd --hold {stress}; done"
+        f" {IN_SESSIONS} --os-window-class crowd --hold {stress}; done"
     )
     machine.wait_until_succeeds(
         desktop.in_session("[ $(niri msg --json windows | grep -o '\"crowd\"' | wc -l) -ge 30 ]"),
@@ -1026,7 +1030,7 @@ def test_a_session_another_starts_goes_to_its_senders_workspace_from_the_session
             f"printf '%s\\n' '#!/bin/sh' 'echo \"$$ $KITTY_LISTEN_ON $KITTY_WINDOW_ID\" > {owner}'"
             " 'exec sleep infinity' > ~/.sendqa-pi && chmod +x ~/.sendqa-pi"
             " && echo Sender > $XDG_RUNTIME_DIR/sendqa-title"
-            " && niri msg action spawn -- kitty -1 --instance-group pi-sessions --title Sender"
+            f" && niri msg action spawn -- {IN_SESSIONS} --os-window-class kitty --title Sender"
             " ~/.sendqa-pi"
         )
         machine.wait_until_succeeds(desktop.in_session(f"test -s {owner}"), timeout=SHELL_STARTS)
@@ -1484,16 +1488,17 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
     # The kitty that holds the sessions, started and then held still, so the
     # first session's window waits on it and Joel's own terminal shows
     # first, as it can when that kitty is slow, as it is starting cold.
-    sessions_kitty = "pkill -{} -f 'instance-group pi-session[s]'"
+    sessions_kitty = f"pkill -{{}} -f '{SESSIONS_KITTY}'"
     # The first zsh in a fresh machine makes its completion dump, which
     # takes minutes on a loaded builder; made here, it doesn't hold each
     # session's title back past the wait below.
     desktop.as_account("zsh -lic true")
-    # Neither titled nor classed: a window kitty's instance opens for another
-    # without its own takes the instance's (kitty's boss.py add_os_window).
+    # Untitled, and classed only as kitty's own: a window asked of it with no
+    # class would take the sessions kitty's hidden one (kitty's boss.py
+    # add_os_window), which the shell never lists.
     kitties = 'niri msg --json windows | grep -o \'"app_id":"kitty"\' | wc -l'
     before = int(desktop.as_account(kitties))
-    desktop.as_account("niri msg action spawn -- kitty -1 --instance-group pi-sessions sleep 600")
+    desktop.as_account(f"niri msg action spawn -- {IN_SESSIONS} --os-window-class kitty sleep 600")
     machine.wait_until_succeeds(
         desktop.in_session(f"[ $({kitties}) -gt {before} ]"), timeout=dt.timedelta(seconds=120)
     )
@@ -1544,7 +1549,7 @@ def test_a_session_opens_in_the_agents_slice(desktop: Desktop) -> None:
     So the kitty outlives its last session's window, and the next session opens in it.
     """
     machine = desktop.machine
-    holder = "instance-group pi-session[s]"
+    holder = SESSIONS_KITTY
     sessions = 'niri msg --json windows | grep -o \'"app_id":"pi-s\' | wc -l'
     handed = {"sessions": [{"id": "01cb-sliced", "cwd": "/home/jitsusama/sliced"}]}
     desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/sliced ~/next")

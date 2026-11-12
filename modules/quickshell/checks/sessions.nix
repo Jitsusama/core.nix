@@ -38,6 +38,36 @@ in
       "The sessions' kitty draws as it pleases, so every hidden session's window is drawn too."
       (lib.any (lib.hasInfix "-o sync_to_monitor=yes") (lib.toList (service.ExecStart or [ ])));
 
+  # The sessions' kitty is asked for windows only over its own socket, in a
+  # runtime folder only Joel's login opens, never as a single instance whose
+  # name any program could take first and be handed every session's window.
+  the-sessions-kitty-answers-only-its-own-socket =
+    let
+      service = (account graphical).systemd.user.services.sessions-kitty.Service;
+      started = lib.concatStringsSep " " (lib.toList (service.ExecStart or [ ]));
+    in
+    holds "the-sessions-kitty-answers-only-its-own-socket"
+      "The sessions' kitty answers a single instance or a socket others can open, so another program could take its windows."
+      (
+        lib.hasInfix "--listen-on unix:%t/pi-sessions/kitty.sock" started
+        && lib.hasInfix "-o allow_remote_control=socket-only" started
+        && !(lib.hasInfix "--instance-group" started)
+        && !(lib.hasInfix " -1 " started)
+        && (service.RuntimeDirectory or null) == "pi-sessions"
+        && (service.RuntimeDirectoryMode or null) == "0700"
+      );
+
+  # The sessions' kitty writes its pid beside its socket, which names none,
+  # so the shell finds a session's window among those that kitty draws.
+  the-sessions-kitty-says-its-pid =
+    let
+      service = (account graphical).systemd.user.services.sessions-kitty.Service;
+      written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
+    in
+    holds "the-sessions-kitty-says-its-pid"
+      "The sessions' kitty writes no pid beside its socket, so the shell can't tell which windows it draws."
+      (lib.hasInfix "$$MAINPID" written && lib.hasInfix "%t/pi-sessions/kitty.pid" written);
+
   # The sessions' kitty keeps what it swaps out compressed in memory, so a
   # session's window Joel comes back to never draws from disk.
   the-sessions-kitty-stays-off-the-disk =

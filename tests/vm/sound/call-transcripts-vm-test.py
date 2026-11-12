@@ -274,6 +274,14 @@ def transcript(joel: Joel, call: dict[str, Any]) -> str:
     return written
 
 
+@pytest.mark.usefixtures("call")
+def test_parakeet_waits_for_a_call_with_no_npu(joel: Joel) -> None:
+    """With no NPU to compile for, the service holds no model until a call's first take."""
+    said = joel.run("journalctl --user -u call-transcripts -o cat --no-pager")
+    assert "Parakeet needs no compile ahead of a call" in said, f"it didn't say so:\n{said}"
+    assert "compiled ahead" not in said, f"Parakeet was compiled ahead with no NPU:\n{said}"
+
+
 def test_a_call_is_kept_under_its_meeting(call: dict[str, Any]) -> None:
     """The call is one record, keyed and titled by the meeting on as it started, now ended."""
     assert call["key"] == "call:e1"

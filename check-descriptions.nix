@@ -1683,13 +1683,15 @@
     a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
     with nothing; joins an opening that came straight back to a failed search or the same row,
     ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path;
-    reads pi's logs from where it stopped, counting only what Joel typed up to the call that hands
+    reads pi's logs from where it stopped, or anew when another build kept them, counting only
+    what Joel typed up to the call that hands
     his turn back, pi's queue and preparing past a second, a tool holding the session past pi's
     minute, a provider's error, a stopped turn or a message said again, and after a nudge only
     its first reply, never the model's thinking or the work he asked for, at most
     two minutes a go, and keeps nothing he typed or an agent wrote in the day file, its state or
     its line; and reads Chrome's history from its bytes in memory, asking only when each visit
-    began and how, to count reloads a minute apart and going back within seconds, keeping no page
+    began and how, to count reloads a minute apart, leaving out a page reloading itself, and
+    going back within seconds, keeping no page
   '';
   pain-points-passes-clippy = ''
     clippy finds nothing in pain-points or its tests
@@ -1831,9 +1833,9 @@
     where the harness isn't installed, and never on a Mac
   '';
   pi-notes-windows-on-sessions-elsewhere = ''
-    each minute the harness notes which windows here are joined to a session another machine holds,
-    so the next boot can offer them back, in background.slice with the store's node, skipped where
-    the harness isn't installed, and never on a Mac
+    every five minutes the harness notes which windows here are joined to a session another machine
+    holds, so the next boot can offer them back, in background.slice with the store's node, skipped
+    where the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
@@ -2652,6 +2654,15 @@
   the-sessions-kitty-keeps-niris-pace = ''
     the kitty every session's window is drawn by draws only the frames niri asks for, so the
     session windows niri doesn't show aren't drawn
+  '';
+  the-sessions-kitty-answers-only-its-own-socket = ''
+    the kitty every session's window is drawn by is asked for windows only over its own socket, in
+    a runtime folder only Joel's login opens, never as a single instance another program could
+    answer for
+  '';
+  the-sessions-kitty-says-its-pid = ''
+    the kitty every session's window is drawn by writes its pid beside its socket, which names
+    none, so the shell can find a session's window among those that kitty draws
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,

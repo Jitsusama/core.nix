@@ -6,6 +6,12 @@
 //! holds no memory between calls. A take's sound is let go once it's
 //! heard.
 //!
+//! A new OpenVINO or driver means compiling Parakeet again, about a
+//! minute on the NPU, which a call's first take used to wait for: on 12
+//! November a call's transcript started 69 s late. So when the service
+//! starts with nothing compiled for this build, which a switch or a boot
+//! does and a call never does, it's compiled then and let go.
+//!
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
 //! are never held at once. What can't be heard is said in a notice
@@ -62,6 +68,7 @@ pub fn hear(
     let mut unsummed: Vec<String> = Vec::new();
     // The calls already told they couldn't be heard, so it's said once.
     let mut told: HashSet<String> = HashSet::new();
+    compile_ahead(settings);
     loop {
         if calls.is_empty() && !unsummed.is_empty() {
             if speech.take().is_some() {
@@ -152,6 +159,20 @@ pub fn hear(
                 }
             }
         }
+    }
+}
+
+/// Compiles Parakeet and lets it go, when it's for the NPU and nothing is
+/// compiled for this build, so no call's first take waits for it. Without
+/// an NPU it compiles as a call's first take loads it, which is as quick.
+fn compile_ahead(settings: &Settings) {
+    if !settings.worth_compiling() {
+        eprintln!("call-transcripts: Parakeet needs no compile ahead of a call");
+        return;
+    }
+    match settings.load() {
+        Ok(_) => eprintln!("call-transcripts: Parakeet compiled ahead of a call, and let go"),
+        Err(why) => eprintln!("call-transcripts: Parakeet didn't compile ahead: {why}"),
     }
 }
 

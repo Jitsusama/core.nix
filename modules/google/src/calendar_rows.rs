@@ -23,7 +23,8 @@ use jiff::tz::TimeZone;
 use serde_json::{Value, json};
 
 use crate::calendar::{Answer, Guest, Meeting, Person};
-use crate::calendar_inside::{Within, inside, returns};
+use crate::calendar_inside::{self, Within, inside, returns};
+use crate::calendar_typed;
 pub use crate::calendar_words::Words;
 use crate::calendar_words::{COMMA, month, repeated, weekday};
 use crate::compose;
@@ -155,24 +156,76 @@ pub fn meetings(
 ) -> Vec<Value> {
     let mut rows = Vec::new();
     for each in listed(meetings, held, now) {
-        let row = row(&each, now, zone, words);
-        let text = |field: &str| row[field].as_str().unwrap_or_default().to_owned();
-        let (key, thing, drawn) = (text("key"), text("thing"), text("drawer"));
-        let details = drawer(&each, zone, words);
-        let within = Within {
-            key: &key,
-            thing: &thing,
-            place: each.place,
-            drawer: &drawn,
-            details: &details,
-            zone,
-            others: meetings,
-        };
         let acts = acts(each.meeting, words);
-        rows.push(row);
-        rows.extend(inside(&within, each.meeting, &acts, words));
+        rows.extend(within_row(
+            &each,
+            meetings,
+            now,
+            zone,
+            words,
+            |row, within| {
+                let mut made = vec![row];
+                made.extend(inside(within, each.meeting, &acts, words));
+                made
+            },
+        ));
     }
     rows
+}
+
+/// The rows a time typed inside a meeting's Move makes, the Move row's
+/// key being `within` (ready-rows.md's `within`): the time, and the row
+/// asking Joel to be sure inside it, keyed and worded as Move's later
+/// times are; none for text that isn't a time to come. None at all for a
+/// `within` that is no Move the daemon serves.
+pub fn typed(
+    (meetings, held): (&[Meeting], &[Meeting]),
+    now: i64,
+    zone: &TimeZone,
+    words: &Words,
+    within: &str,
+    text: &str,
+) -> Option<Vec<Value>> {
+    let listed = listed(meetings, held, now);
+    let each = listed
+        .iter()
+        .find(|each| format!("row:{}:{}:move", each.place, each.id) == within)?;
+    let acts = acts(each.meeting, words);
+    let moving = acts.iter().find(|act| act["key"] == "verb:calendar:move")?;
+    let telling = moving["telling"].as_str().unwrap_or_default();
+    let meeting = each.meeting;
+    let Some(time) = calendar_typed::typed(text, meeting.end - meeting.start, now, zone) else {
+        return Some(Vec::new());
+    };
+    Some(within_row(each, meetings, now, zone, words, |_, inside| {
+        calendar_inside::typed(inside, within, meeting, telling, time, words)
+    }))
+}
+
+/// What `then` makes of a meeting's row and the meeting it's inside, as
+/// every row inside it is made.
+fn within_row<T>(
+    each: &Listed,
+    others: &[Meeting],
+    now: i64,
+    zone: &TimeZone,
+    words: &Words,
+    then: impl FnOnce(Value, &Within) -> T,
+) -> T {
+    let row = row(each, now, zone, words);
+    let text = |field: &str| row[field].as_str().unwrap_or_default().to_owned();
+    let (key, thing, drawn) = (text("key"), text("thing"), text("drawer"));
+    let details = drawer(each, zone, words);
+    let within = Within {
+        key: &key,
+        thing: &thing,
+        place: each.place,
+        drawer: &drawn,
+        details: &details,
+        zone,
+        others,
+    };
+    then(row, &within)
 }
 
 /// Each of those rows' drawers, as records of their own the launcher

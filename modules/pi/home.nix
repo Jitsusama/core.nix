@@ -608,9 +608,13 @@ in
 
     # A session another machine holds runs on through this machine's
     # power-off, so what the boot takes away is only the window here
-    # joined to it, and only this machine knows it was here. Each minute
-    # the harness notes those windows, from kitty's and the mycelium
-    # node's answers, so the next boot's list can offer them back.
+    # joined to it, and only this machine knows it was here. Every five
+    # minutes the harness notes those windows, from kitty's and the
+    # mycelium node's answers, so the next boot's list can offer them back.
+    # Each minute it cost a node of 160 to 185 MB and 0.6 to 0.8 s of CPU,
+    # 60 runs an hour that nearly always found nothing new (80ECO2,
+    # 2026-11-12); a window joined in the five minutes before a power-off
+    # is the one it misses.
     systemd.user.services.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
       Unit = {
         Description = "Notes the windows joined to sessions other machines hold";
@@ -623,9 +627,9 @@ in
       };
     };
     systemd.user.timers.pi-windows-elsewhere = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
-      Unit.Description = "Notes each minute the windows joined to sessions other machines hold";
+      Unit.Description = "Notes every five minutes the windows joined to sessions other machines hold";
       Timer = {
-        OnCalendar = "minutely";
+        OnCalendar = "*:0/5";
         AccuracySec = "10s";
       };
       Install.WantedBy = [ "timers.target" ];
