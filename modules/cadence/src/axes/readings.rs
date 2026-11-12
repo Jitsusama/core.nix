@@ -74,7 +74,14 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         time(s),
         quality(s),
         collaboration(s),
-        axis("security", vec![counted::musts(&s.counted, s.now)]),
+        axis(
+            "security",
+            [
+                vec![counted::musts(&s.counted, s.now)],
+                counted::asks(&s.counted),
+            ]
+            .concat(),
+        ),
         organization(s),
         scale(s),
         axis(
