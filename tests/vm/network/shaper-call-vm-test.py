@@ -58,6 +58,12 @@ FULL_BYTES = 50_000_000
 # How long the client may take to boot to its first queues, and the loads to take that in.
 COMING_UP = dt.timedelta(seconds=30)
 FILLING = dt.timedelta(seconds=60)
+# How long a call alone runs to show which tin it goes in, and how long the shaper may take to
+# hear that a call started, which it asks every 2 s.
+ALONE_SECONDS = 5
+HEARING = dt.timedelta(seconds=10)
+# The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
+CALL_FLAG = "/run/call-is-on"
 
 
 @dataclass
@@ -99,19 +105,20 @@ class Rig:
         for unit in units:
             self.client.succeed(f"systemctl -M alice@ --user stop {unit}.service")
 
-    def calls(self) -> dict[str, Json]:
-        """Hold both calls at once from an app, and give what iperf3 made of each."""
+    def calls(self, names: list[str] | None = None, seconds: int = CALL_SECONDS) -> dict[str, Json]:
+        """Hold calls at once from an app, both unless named, and give what iperf3 made of each."""
+        held = names or list(CALLS)
         each = " ".join(
-            f"{BIN}/iperf3 --client {FAR} --port {port} --udp --bidir --bitrate {CALL_RATE}"
-            f" --length {CALL_LENGTH} --time {CALL_SECONDS} --json > /tmp/call-{name}.json &"
-            for name, port in CALLS.items()
+            f"{BIN}/iperf3 --client {FAR} --port {CALLS[name]} --udp --bidir --bitrate {CALL_RATE}"
+            f" --length {CALL_LENGTH} --time {seconds} --json > /tmp/call-{name}.json &"
+            for name in held
         )
         self.client.succeed(
             "systemd-run -M alice@ --user --wait --collect --slice=app.slice"
             f" {BIN}/bash -c '{each} wait'"
         )
         return {
-            name: json.loads(self.client.succeed(f"cat /tmp/call-{name}.json")) for name in CALLS
+            name: json.loads(self.client.succeed(f"cat /tmp/call-{name}.json")) for name in held
         }
 
     def seconds(self) -> str:
@@ -218,6 +225,34 @@ def under_load(rig: Rig, *, shaped: bool) -> dict[str, dict[str, int]]:
             lost[name][way] = int(summary["lost_packets"])
     print(f"lost by call and way: {lost}")
     return lost
+
+
+def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
+    """While a call is on, the call an app sends to 443 goes in the video tin, seen as a call.
+
+    Meet sends calls to Google's front ends on 443 too, where only a call being on tells one
+    from a page's QUIC: on 12 November one went as best effort while the jobs filled the
+    upload, and its picture went blocky.
+    """
+    rig.client.succeed(f"touch {CALL_FLAG}")
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat | grep -q 'a call is on'", timeout=HEARING
+    )
+    before = rig.counts("eth1", "sent_packets")
+    result = rig.calls(["page"], seconds=ALONE_SECONDS)["page"]
+    after = rig.counts("eth1", "sent_packets")
+    rig.client.succeed(f"rm {CALL_FLAG}")
+    sent = dict(zip(TINS, (a - b for a, b in zip(after, before, strict=True)), strict=True))
+    call = int(received(result, "up").get("packets", 0))
+    assert call > 0, f"the call sent nothing up: {result}"
+    assert sent["video"] >= call, (
+        f"the call sent {call} datagrams up, but the video tin only {sent['video']}: {sent}"
+    )
+    journal = rig.client.succeed("journalctl -u shaper -o cat --no-pager")
+    assert "real-time traffic flows" in journal, f"the call wasn't seen as one:\n{journal}"
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat | grep -q 'no call is on'", timeout=HEARING
+    )
 
 
 def test_a_call_loses_little(rig: Rig) -> None:

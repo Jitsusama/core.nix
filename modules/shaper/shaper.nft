@@ -31,6 +31,8 @@ set meet6 {
   type ipv6_addr; flags interval;
   elements = { 2001:4860:4864:4:8000::/128, 2001:4860:4864:5::/64, 2001:4860:4864:6::/64 }
 }
+# Holds udp while a call is on, as a-call-is-on says, and nothing else.
+set calling { type inet_proto; }
 set local4 { type ipv4_addr; flags interval; }
 set local6 { type ipv6_addr; flags interval; }
 set uplinks { type ifname; }
@@ -78,6 +80,12 @@ chain classify {
   udp dport != 443 socket cgroupv2 level 4 @app4 goto video
   ip daddr @meet4 socket cgroupv2 level 4 @app4 goto video
   ip6 daddr @meet6 socket cgroupv2 level 4 @app4 goto video
+  # Meet also sends a call to Google's front ends on 443, outside those
+  # servers, where only a call being on tells it from a page. On 12
+  # November one went that way as best effort, never seen as a call,
+  # while agents filled the upload, and Joel's picture went blocky. So
+  # while a call is on, everything an app sends by UDP goes as video.
+  meta l4proto @calling socket cgroupv2 level 4 @app4 goto video
 
   # A program that marks its own socket as bulk (CS1) is sending what no
   # person waits on, as pi does for a turn nobody typed: about 30 sessions

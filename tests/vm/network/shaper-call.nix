@@ -4,9 +4,10 @@
 # without end, and an app downloads beside them, as a page does. Meanwhile
 # an app holds two calls both ways, one to a media server's port, which the
 # shaper puts in the video tin, and one to 443, which it takes for a page's
-# QUIC and sends best effort. Each call loses at most a hundredth of its
-# datagrams coming down, where with the shaper stopped the router loses
-# none. The tests are shaper-call-vm-test.py, run through pytest.
+# QUIC and sends best effort. While a call is on, the call to 443 goes in
+# the video tin too. Each call loses at most a hundredth of its datagrams
+# coming down, where with the shaper stopped the router loses none. The
+# tests are shaper-call-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -28,6 +29,9 @@ let
   };
   # One iperf3 server per call, as each serves one test at a time.
   call = port: serve "exec ${lib.getExe pkgs.iperf3} --server --port ${toString port}";
+  # Stands in for a-call-is-on, which reads PipeWire, which the client
+  # hasn't got: a call is on while /run/call-is-on is there.
+  callIsOn = pkgs.writeShellScriptBin "a-call-is-on" "test -e /run/call-is-on";
 in
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-call";
@@ -49,6 +53,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     jitsusama.shaper.controller = "one-way";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
+    systemd.services.shaper.path = lib.mkBefore [ callIsOn ];
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     # The module leaves it off until it beats the router alone; the test runs it.
     systemd.services.shaper.wantedBy = [ "multi-user.target" ];
