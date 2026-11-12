@@ -1313,18 +1313,19 @@ fn each_message_wanting_joel_is_held_until_he_reads_it_in_slack() {
     });
     shell.answer(&watch);
     // Joel reads Ada's messages in Slack: both are said done, read in
-    // Slack, with her conversation's mark, and nothing goes.
+    // Slack, with her conversation's mark, by key, and nothing goes,
+    // which a change says by naming nothing gone.
     ADA_READ.store(true, std::sync::atomic::Ordering::SeqCst);
     let changed = shell.heard(|said| said["id"] == "read" && said.get("changed").is_some());
     assert_eq!(
-        (keys(&changed["changed"]), &changed["gone"]),
+        (keys(&changed["changed"]), changed.get("gone")),
         (
             vec![
-                "slack-message:D1:1730100002.000100",
                 "slack-message:D1:1730100001.000100",
+                "slack-message:D1:1730100002.000100",
                 "slack-read:D1"
             ],
-            &serde_json::json!([])
+            None
         )
     );
     let done = &changed["changed"][0]["slack-message"]["done"];
