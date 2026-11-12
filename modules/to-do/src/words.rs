@@ -4,8 +4,9 @@
 //! words none of it (Joel, 2026-11-10: "the daemons need to be the data
 //! layer, and they need to serve the launcher"). For You's own words are
 //! `on:waiting`'s: its phrases (`said`) and its sentences (`tells`); each
-//! fact a to-do's drawer names is `on:waiting:<id>`, and each act on one
-//! `verb:on:waiting:<id>`.
+//! fact a to-do's drawer names is `on:waiting:<id>`. An act on one is
+//! served by its verb's key, `verb:on:waiting:<id>`, which the shell words
+//! as it words every served act (ready-rows.md), so none is read here.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -17,24 +18,12 @@ pub const FACTS: [&str; 10] = [
     "due", "set-for", "takes", "since", "checked", "clears", "machine", "address", "check", "item",
 ];
 
-/// The acts on a to-do this daemon answers, by their ids.
-pub const ACTS: [&str; 2] = ["done", "notNow"];
-
-/// An act as the launcher names it.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Act {
-    pub name: String,
-    pub verb: String,
-    pub glyph: String,
-}
-
 /// For You's words, as far as a to-do needs them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Words {
     said: Map<String, Value>,
     tells: Map<String, Value>,
     facts: HashMap<String, String>,
-    acts: HashMap<String, Act>,
 }
 
 impl Words {
@@ -78,17 +67,6 @@ impl Words {
             let named = thing(&format!("on:waiting:{fact}"))?;
             words.facts.insert(fact.to_owned(), text(named, "name")?);
         }
-        for act in ACTS {
-            let named = thing(&format!("verb:on:waiting:{act}"))?;
-            words.acts.insert(
-                act.to_owned(),
-                Act {
-                    name: text(named, "name")?,
-                    verb: text(named, "verb")?,
-                    glyph: text(named, "glyph")?,
-                },
-            );
-        }
         Ok(words)
     }
 
@@ -117,11 +95,6 @@ impl Words {
     /// A fact's name, by its id in `FACTS`.
     pub fn fact(&self, id: &str) -> &str {
         self.facts.get(id).map_or("", String::as_str)
-    }
-
-    /// An act's names, by its id in `ACTS`.
-    pub fn act(&self, id: &str) -> Act {
-        self.acts.get(id).cloned().unwrap_or_default()
     }
 }
 
@@ -162,15 +135,6 @@ mod tests {
             words.tells("known", &[("how", "once its check passes")]),
             "Known done once its check passes.",
             "a sentence"
-        );
-        assert_eq!(
-            words.act("notNow"),
-            Act {
-                name: "Put It Off".into(),
-                verb: "later".into(),
-                glyph: "queued".into()
-            },
-            "an act's names"
         );
     }
 
