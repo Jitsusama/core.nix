@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, FRAME, Model, RATE};
 use crate::loudness;
+use crate::score::Marks;
 
 /// The record's key and kind.
 const KEY: &str = "trial:now";
@@ -176,6 +177,8 @@ pub struct Trial {
     /// Each letter's way, kept past a pick for the reveal.
     ways: Vec<Way>,
     costs: BTreeMap<&'static str, f64>,
+    /// Each way's marks by the scorer, once it's heard them.
+    marks: BTreeMap<&'static str, Marks>,
     picked: Option<(usize, Way)>,
     playing: Option<(usize, Child)>,
     /// Counts each recording and discard, so a thread whose recording has
@@ -210,6 +213,7 @@ impl Trial {
                 clips: Vec::new(),
                 ways: Vec::new(),
                 costs: BTreeMap::new(),
+                marks: BTreeMap::new(),
                 picked: None,
                 playing: None,
                 generation: 0,
@@ -424,6 +428,11 @@ impl Trial {
         self.picked = Some((letter, way));
         self.stage = Stage::Picked;
         Ok(())
+    }
+
+    /// Takes the scorer's marks for the recording `generation` counted.
+    pub fn scored(&mut self, generation: u64, marks: BTreeMap<&'static str, Marks>) {
+        let _ = (generation, marks);
     }
 
     /// Lets go of clips nobody has acted on for a while.

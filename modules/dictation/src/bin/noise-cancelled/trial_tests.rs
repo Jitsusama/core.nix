@@ -249,3 +249,118 @@ fn every_shuffle_offers_each_way_once() {
     }
     assert!(seen.len() > 12, "only {} orders came", seen.len());
 }
+
+/// Every way's marks, as the scorer gives them, each way scoring `step`
+/// more overall than the one before.
+fn marked(step: f64) -> BTreeMap<&'static str, Marks> {
+    Way::ALL
+        .iter()
+        .zip([0.0, 1.0, 2.0, 3.0])
+        .map(|(way, rank)| {
+            (
+                way.name(),
+                Marks {
+                    voice: 3.0,
+                    background: 2.0 + rank * step,
+                    overall: 2.5 + rank * step,
+                },
+            )
+        })
+        .collect()
+}
+
+/// The lines kept in `file`, each read as JSON.
+fn kept(file: &Path) -> Vec<Value> {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line kept is JSON"))
+        .collect()
+}
+
+#[test]
+fn the_marks_are_revealed_only_after_a_pick() {
+    let trial = trial(Vec::new());
+    ready(&trial);
+    let generation = trial.lock().generation;
+    trial.lock().scored(generation, marked(0.5));
+    assert_eq!(
+        trial.lock().record()["marks"],
+        Value::Null,
+        "the marks could sway his ear before he picks"
+    );
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"D"}"#);
+    let record = trial.lock().record();
+    assert_eq!(
+        record["marks"]["rnnoise"],
+        json!({"voice": 3.0, "background": 3.5, "overall": 4.0})
+    );
+    assert_eq!(record["marks"]["raw"]["overall"], 2.5);
+}
+
+#[test]
+fn marks_for_a_recording_let_go_are_dropped() {
+    let trial = trial(Vec::new());
+    ready(&trial);
+    let generation = trial.lock().generation;
+    ask(&trial, r#"{"id":4,"ask":"act","act":"discard"}"#);
+    trial.lock().scored(generation, marked(0.5));
+    ready(&trial);
+    ask(&trial, r#"{"id":5,"ask":"act","act":"pick","clip":"A"}"#);
+    assert_eq!(trial.lock().record()["marks"], Value::Null);
+}
+
+#[test]
+fn a_pick_keeps_its_marks_beside_it_and_never_the_sound() {
+    let folder = std::env::temp_dir().join(format!("trial-marks-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    ready(&trial);
+    trial.lock().output = Some("Pebble V3".to_owned());
+    let generation = trial.lock().generation;
+    trial.lock().scored(generation, marked(0.5));
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"B"}"#);
+    let lines = kept(&folder.join("scored"));
+    assert_eq!(lines.len(), 1, "one pick keeps one line: {lines:?}");
+    let line = &lines[0];
+    assert_eq!(line["picked"], "raw");
+    assert_eq!(line["microphone"], "Shure MV7");
+    assert_eq!(line["output"], "Pebble V3");
+    assert_eq!(line["marks"]["deepfilternet"]["overall"], 3.0);
+    assert_eq!(line["costs"]["rnnoise"], 0.1);
+    assert!(line["at"].is_u64(), "when it was picked: {line}");
+    let mut said: Vec<&str> = line
+        .as_object()
+        .expect("a line is an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    said.sort_unstable();
+    assert_eq!(
+        said,
+        ["at", "costs", "marks", "microphone", "output", "picked"],
+        "a line keeps only numbers and names"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn marks_that_land_after_the_pick_are_kept_then_and_once() {
+    let folder = std::env::temp_dir().join(format!("trial-late-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let trial = keeping(Vec::new(), Some(folder.join("cleaner")));
+    ready(&trial);
+    let generation = trial.lock().generation;
+    ask(&trial, r#"{"id":4,"ask":"act","act":"pick","clip":"C"}"#);
+    assert!(
+        kept(&folder.join("scored")).is_empty(),
+        "kept before it was scored"
+    );
+    trial.lock().scored(generation, marked(0.5));
+    trial.lock().scored(generation, marked(0.5));
+    let lines = kept(&folder.join("scored"));
+    assert_eq!(lines.len(), 1, "the late marks were kept {} times", lines.len());
+    assert_eq!(lines[0]["picked"], "rnnoise");
+    assert_eq!(trial.lock().record()["marks"]["raw"]["voice"], 3.0);
+    let _ = std::fs::remove_dir_all(&folder);
+}
