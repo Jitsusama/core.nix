@@ -118,11 +118,11 @@ impl Chosen {
         let Some(file) = self.beside("spots") else {
             return Ok(named);
         };
-        let mut names = self.names();
-        names.retain(|(key, _)| *key != spot.key);
-        names.push((spot.key.clone(), named.name.clone()));
+        let mut kept = self.names();
+        kept.retain(|(key, _)| *key != spot.key);
+        kept.push((spot.key.clone(), named.name.clone()));
         let mut said = String::new();
-        for (key, name) in &names {
+        for (key, name) in &kept {
             said.push_str(key);
             said.push(' ');
             said.push_str(name);
