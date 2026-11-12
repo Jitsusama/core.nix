@@ -44,7 +44,11 @@
 # beside the picks, and each taken or put off is kept in offered. Each pick
 # keeps how loud the room it was recorded in sat between words, in rooms, a
 # level alone (room.rs); a call whose room sits 10 dB louder or quieter than
-# its pick's offers Choose by Ear again, once a pick.
+# its pick's offers Choose by Ear again, once a pick. After a call of a
+# minute or more, its first ten seconds of speech, held in memory alone, are
+# cleaned every way and scored in the shadow (shadow.rs): what the scorer
+# would have chosen goes in judged, numbers and names, and nothing changes
+# what calls hear.
 {
   config,
   lib,

@@ -27,8 +27,9 @@ use rtrb::{Consumer, Producer};
 
 use crate::chosen::Chosen;
 use crate::denoise::{Cleaner, Denoiser, FRAME, Model};
-use crate::offer::Offers;
+use crate::offer::{CALL, Offers};
 use crate::room::Room;
+use crate::shadow::{self, Call, Speech};
 use crate::spot::Spot;
 
 /// How long the model stays loaded once nothing records from a source.
@@ -120,6 +121,8 @@ struct Microphone {
     began: Option<(Instant, Spot)>,
     /// The room it's heard in since it began, as it sounds raw.
     room: Room,
+    /// Its first speech since it began, raw, to judge in the shadow.
+    speech: Speech,
 }
 
 /// The model, loaded only while it's wanted.
@@ -146,6 +149,7 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
                             denoiser: None,
                             began: None,
                             room: Room::default(),
+                            speech: Speech::default(),
                         },
                     );
                 }
@@ -156,7 +160,11 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
                 Err(TryRecvError::Disconnected) => return,
             }
         }
-        let wanted = settled(&mut microphones, chosen, offers);
+        let mut calls = Vec::new();
+        let wanted = settled(&mut microphones, chosen, offers, &mut calls);
+        for call in calls {
+            shadow::judge(models.to_owned(), chosen.beside("judged"), call);
+        }
         if wanted.is_empty() {
             offers.stand(chosen);
         } else {
@@ -189,20 +197,34 @@ fn run(models: &Path, chosen: &Chosen, offers: &mut Offers, asks: &Receiver<Ask>
 /// Settles what each microphone cleans with: as `chosen` says for it at
 /// the spot the machine is at when it starts being recorded, kept until it
 /// stops, and nothing once it has, telling `offers` how long it was
-/// recorded from and where. The spot is read only then, once a pass.
-/// Answers every cleaner wanted now, each once.
+/// recorded from and where, and adding a call with speech enough to
+/// `calls`, to be judged in the shadow. The spot is read only then, once a
+/// pass. Answers every cleaner wanted now, each once.
 fn settled(
     microphones: &mut HashMap<u32, Microphone>,
     chosen: &Chosen,
     offers: &mut Offers,
+    calls: &mut Vec<Call>,
 ) -> Vec<Cleaner> {
     let mut wanted = Vec::new();
     let mut spot = None;
     for microphone in microphones.values_mut() {
         if !microphone.ends.shared.wanted.load(Ordering::Acquire) {
-            microphone.cleaner = None;
+            let running = microphone.cleaner.take();
             if let Some((began, at)) = microphone.began.take() {
                 let ends = &microphone.ends;
+                if let Some(running) = running
+                    && began.elapsed() >= CALL
+                    && microphone.speech.enough()
+                {
+                    calls.push(Call {
+                        node: ends.microphone.clone(),
+                        microphone: ends.description.clone(),
+                        spot: at.name.clone(),
+                        running,
+                        speech: microphone.speech.taken(),
+                    });
+                }
                 let floor = microphone.room.floor();
                 if let Some(floor) = floor {
                     eprintln!(
@@ -223,10 +245,12 @@ fn settled(
         }
         let began = &mut microphone.began;
         let room = &mut microphone.room;
+        let speech = &mut microphone.speech;
         let cleaner = *microphone.cleaner.get_or_insert_with(|| {
             let spot = spot.get_or_insert_with(|| chosen.spot());
             *began = Some((Instant::now(), spot.clone()));
             *room = Room::default();
+            *speech = Speech::default();
             let cleaner = chosen.cleaner(Some(&microphone.ends.microphone), Some(spot));
             eprintln!(
                 "noise-cancelled: {} cleans with {cleaner} at {}",
@@ -326,6 +350,7 @@ fn clean(microphone: &mut Microphone, model: Option<&Loaded>) {
     let mut frame = [0.0; FRAME];
     while ends.heard.pop_entire_slice(&mut frame).is_ok() {
         microphone.room.heard(&frame);
+        microphone.speech.heard(&frame, microphone.room.floor());
         let cleaned = match microphone
             .denoiser
             .as_mut()
