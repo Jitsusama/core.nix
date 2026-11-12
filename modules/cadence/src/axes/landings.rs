@@ -324,13 +324,22 @@ fn day(name: &str, today: Date) -> Option<Date> {
     }
 }
 
-/// The readings: the bill per change that stayed on the newest settled
-/// day, and the changes that stayed yesterday, each against the seven days
-/// before; and the share of the last seven days' changes that were undone.
+/// The readings: the bill per core or harness change that stayed on the
+/// newest settled day, since the bill pays for both, and core's changes
+/// that stayed yesterday, each against the seven days before; and the
+/// share of the last seven days' core changes that were undone.
 #[must_use]
-pub fn readings(s: &Sources, now: i64, tz: &TimeZone) -> (Reading, Reading, Reading) {
+pub fn readings(
+    s: &Sources,
+    harness: &Sources,
+    now: i64,
+    tz: &TimeZone,
+) -> (Reading, Reading, Reading) {
     let today = Timestamp::from_second(now).map_or(Date::MIN, |t| t.to_zoned(tz.clone()).date());
     let days = reached(s, tz);
+    let harness_days = reached(harness, tz);
+    let core_kept = |d: Date| days.get(&d).map_or(0, |r| r.kept);
+    let harness_kept = |d: Date| harness_days.get(&d).map_or(0, |r| r.kept);
     let bills = bills(&s.bills, today);
     // The day the looks begin, perhaps late in it, is no whole day, so
     // counts start the day after.
@@ -342,7 +351,7 @@ pub fn readings(s: &Sources, now: i64, tz: &TimeZone) -> (Reading, Reading, Read
         .and_then(|at| Timestamp::from_second(at).ok())
         .and_then(|t| t.to_zoned(tz.clone()).date().tomorrow().ok());
     let whole = |d: Date| from.is_some_and(|f| f <= d);
-    let kept = |d: Date| days.get(&d).map_or(0, |r| r.kept);
+    let kept = |d: Date| core_kept(d) + harness_kept(d);
     let each = |d: Date| {
         let kept = kept(d);
         bills
@@ -363,19 +372,22 @@ pub fn readings(s: &Sources, now: i64, tz: &TimeZone) -> (Reading, Reading, Read
         .copied()
         .find(|d| *d < today && each(*d).is_some());
     let mut bill = Reading::new(
-        "the bill per core change that reached you and stayed {}",
+        "the bill per core or harness change that reached you and stayed {}",
         settled.and_then(each),
         "$",
         "QCXZEB",
     )
-    .from("spend-watch's settled bill, core's main and update-to-main's journal");
+    .from("spend-watch's settled bill, core's and the harness's mains and their installs");
     if let Some(d) = settled {
         let before = week_before(d, &each);
         bill = bill.detail(Some(format!(
-            "{}: {} for {} changes{}; the bill pays for all the AI work, core's and the rest",
+            "{}: {} for {} changes, {} core and {} harness{}; a ceiling, since the bill \
+             also pays for work neither counts",
             d.strftime("%a %-d %b"),
             shown(bills[&d], "$"),
             kept(d),
+            core_kept(d),
+            harness_kept(d),
             before.map_or_else(String::new, |b| format!(
                 ", the week before {} each",
                 shown(b, "$")
@@ -628,7 +640,7 @@ mod tests {
                 .to_owned(),
             ..Sources::default()
         };
-        let (bill, changes, undone) = readings(&s, noon(11), &tz());
+        let (bill, changes, undone) = readings(&s, &Sources::default(), noon(11), &tz());
         assert_eq!(
             bill.now,
             Some(200.0),
@@ -636,6 +648,22 @@ mod tests {
         );
         assert_eq!(changes.now, Some(2.0), "two reached yesterday");
         assert_eq!(undone.now, Some(0.0), "none undone");
+        let harness = Sources {
+            main: main(&[PR; 2]),
+            looks: vec![look(noon(8), 0), look(noon(10), 2)],
+            ..Sources::default()
+        };
+        let (bill, changes, _) = readings(&s, &harness, noon(11), &tz());
+        assert_eq!(
+            bill.now,
+            Some(100.0),
+            "$400 for the 10th's two core and two harness changes"
+        );
+        assert_eq!(
+            changes.now,
+            Some(2.0),
+            "core's count leaves the harness out"
+        );
     }
 
     #[test]
