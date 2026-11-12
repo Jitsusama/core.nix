@@ -603,13 +603,14 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", CLOSING])
     assert "Copy What to Try" in shell.showing()["rows"], shell.showing()
     # What Joel makes of it goes to whoever landed it, its session here, as his finding, and
-    # is kept a line each for the loop that reads how landings were taken.
+    # is kept a line each for the loop that reads how landings were taken. The foot names
+    # where it went as Joel reads it, by its quest's title, never an address (VKCF3Z).
     shell.down_to("Say What You Make of It")
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["asking"])
     shell.send_chars("too dim")
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: "sent to PAUSED" in shown["footer"])
+    shell.launcher_until(lambda shown: "sent to Paused Quest" in shown["footer"])
     kept = json.loads((STATE / "agents/feedback.jsonl").read_text())
     assert (kept["ref"], kept["address"], kept["line"], kept["words"]) == (
         "core.nix#2138",
