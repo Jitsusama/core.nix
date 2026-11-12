@@ -145,7 +145,7 @@ in
   pi-hosts-refuse-an-unproven-runtime =
     let
       runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
-      pi = "${runtime}/lib/node_modules/pi-monorepo";
+      pi = "${runtime}/lib/node_modules/pi";
       node = "${pkgs.emptyDirectory}/node";
       realm = proof: { inherit pi node proof; };
       refusals = lib.concatMapStrings (check: check.message + "\n") (
