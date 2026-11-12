@@ -32,13 +32,14 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::entries::{self, Entries};
 
-/// The daemon as the shell knows it: a record for each notice, and its
-/// rows.
+/// The daemon as the shell knows it: a record for each notice, its rows,
+/// and beside the mixed place's page the count it has rows for, sent
+/// only to a watch that names it, as the launcher's does.
 const DOMAIN: Domain = Domain {
     name: "notices",
-    kinds: &["notice", "row"],
+    kinds: &["notice", "row", "summary"],
     sole: &[],
-    named_only: &[],
+    named_only: &["summary"],
 };
 
 const USAGE: &str = "usage: notices --socket SOCKET --state FOLDER --levels LEVELS \
@@ -331,4 +332,19 @@ fn main() -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DOMAIN;
+    use daemon_serve::asks::Ask;
+
+    #[test]
+    fn the_launcher_watches_the_notices_rows_with_their_summary() {
+        let ask = DOMAIN.ask(r#"{"id":1,"ask":"watch","kind":["row","summary"]}"#);
+        assert!(
+            matches!(&ask, Ask::Watch { kinds, .. } if kinds == &["row", "summary"]),
+            "the watch ReadyRows.qml sends was answered {ask:?}"
+        );
+    }
 }
