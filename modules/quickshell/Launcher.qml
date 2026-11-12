@@ -7030,12 +7030,14 @@ Scope {
             parser: SplitParser {
                 onRead: line => {
                     caller.connected = false;
-                    root.askedToOpen();
                     const said = line.trim().split(/\s+/);
                     // launcher-say ends its line with when the chord ran it
                     // (chordAt), which a line from anything else may leave out.
                     const chord = /^@[0-9.]+$/.test(said[said.length - 1] ?? "") ? said.pop()
                         : "";
+                    if (root.waitedOut(chord))
+                        return;
+                    root.askedToOpen();
                     root.chordHeard(chord);
                     const words = said;
                     if (words[0] === "toggle")
@@ -8879,6 +8881,20 @@ Scope {
     // usable). -1 for an ask that didn't say, as qs ipc's don't.
     property real chordAt: -1
     property real chordHeardAfter: -1
+
+    // A chord pressed while the shell restarts waits in launcher-say until
+    // this one listens, and Joel, seeing nothing open, presses it again, so
+    // several arrive at once (launcher-say/src/main.rs). Once the first has
+    // opened the launcher, one said before this shell started never shuts
+    // it, since he can't have seen what it would shut.
+    readonly property real startedAt: Date.now()
+    function waitedOut(chord) {
+        if (chord === "" || !(open || opening) || Number(chord.slice(1)) * 1000 >= startedAt)
+            return false;
+        console.info("launcher: a chord said before the shell started came after one that"
+            + " opened it, so it shuts nothing");
+        return true;
+    }
     function chordHeard(word) {
         if (word !== "")
             chordLate(Number(word.slice(1)) * 1000);

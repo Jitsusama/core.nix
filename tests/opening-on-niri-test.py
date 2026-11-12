@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import subprocess
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -122,6 +123,14 @@ WARMED = timedelta(seconds=20)
 ANSWERED = timedelta(seconds=6)
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
+
+# How long after his first chord into a restart Joel, seeing nothing open, presses it again.
+PRESSED_AGAIN = timedelta(milliseconds=300)
+
+# How long chords said into a restart are given to open the launcher once the new shell starts,
+# and how long it's then watched staying open.
+RESTARTED = timedelta(seconds=30)
+STAYS = timedelta(seconds=1)
 
 
 @pytest.fixture(scope="module")
@@ -372,6 +381,45 @@ def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_starte
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     assert opening.get("kept"), f"the first chord into On since the start was made whole: {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
+
+
+def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell) -> None:
+    """Chords said while the shell restarts open the launcher once the new one listens, and stay.
+
+    launcher-say fell to qs ipc as soon as the socket refused it, and that fails too until the
+    new shell has loaded, so Joel's chords through a switch's restart went unanswered for over
+    a minute (2026-11-12, 17:08). He presses again when nothing opens, so two are said, the
+    second shutting nothing the first opened.
+    """
+    assert shell.process is not None, "the shell was never started"
+    shell.process.terminate()
+    shell.process.wait(timeout=10)
+    said = [subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"])]  # noqa: S603
+    time.sleep(PRESSED_AGAIN.total_seconds())
+    said.append(subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"]))  # noqa: S603
+    # Started as Shell.launch does, but not waited on to answer closed, as these chords open it.
+    with shell.log.open("ab") as log:
+        shell.process = subprocess.Popen(  # noqa: S603
+            ["qs", "-p", str(shell.folder)],  # noqa: S607
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+    exits = [each.wait(timeout=RESTARTED.total_seconds()) for each in said]
+    deadline = time.monotonic() + RESTARTED.total_seconds()
+    while (answered := shell.execute(shell.ipc("showing")))[0] != 0:
+        assert time.monotonic() < deadline, f"the shell never answered:\n{shell.tail()}"
+        time.sleep(launcher_on_niri.POLL)
+    # As Shell.restart does, so the next word wtype types is read by its own keymap.
+    subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+    assert exits == [0, 0], f"launcher-say gave up on the restarting shell, exiting {exits}"
+    shell.launcher_until(lambda shown: shown["open"], RESTARTED)
+    time.sleep(STAYS.total_seconds())
+    assert shell.showing()["open"], (
+        f"the second chord shut what the first opened, first showing {answered[1]}:\n{shell.tail()}"
+    )
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_closed()
 
 
 def test_an_opening_as_the_shell_starts_puts_off_keeping_its_places(shell: Shell) -> None:

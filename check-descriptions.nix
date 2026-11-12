@@ -2872,7 +2872,8 @@
     no row made before its frame; left with a word typed, home is kept all the same, and its rows
     stand where they stood once it settles; moved down as it opens, the cursor stays on that row;
     no frame from the first to the settled one empties a row and fills it again or puts a shown
-    value back as being read; and keys typed the moment it holds them are all found
+    value back as being read; keys typed the moment it holds them are all found; and chords said
+    as the shell restarts open it once the new one listens, a second never shutting it
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
