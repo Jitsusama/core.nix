@@ -71,19 +71,42 @@ impl Where {
 
     /// The spot the machine is at now.
     pub fn spot(&self) -> Spot {
-        // A stand-in, so the cases fail on what they check: every spot
-        // is one, as before picks kept their spot.
-        let _ = (
-            self.node(),
-            self.networks(),
-            self.screens(),
-            self.docks(),
-            away(&[]),
-        );
-        Spot {
-            key: "network=none".to_owned(),
-            name: "away".to_owned(),
+        let (mut key, mut name) = match self.node() {
+            Some((node, location)) => (
+                format!("home={}", keyed(&node)),
+                location.unwrap_or_else(|| "home".to_owned()),
+            ),
+            None => {
+                let networks = self.networks();
+                let joined = if networks.is_empty() {
+                    "none".to_owned()
+                } else {
+                    let parts: Vec<String> =
+                        networks.iter().map(|network| keyed(network)).collect();
+                    parts.join(",")
+                };
+                (format!("network={joined}"), away(&networks))
+            }
+        };
+        let screens = self.screens();
+        for (identity, _) in &screens {
+            key.push_str(&format!("+screen={identity}"));
         }
+        let docks = self.docks();
+        for identity in &docks {
+            key.push_str(&format!("+dock={}", keyed(identity)));
+        }
+        let named: Vec<String> = screens
+            .iter()
+            .map(|(_, screen)| format!("the {screen}"))
+            .collect();
+        if !named.is_empty() {
+            name.push_str(&format!(", with {}", named.join(" and ")));
+        }
+        if named.is_empty() && !docks.is_empty() {
+            name.push_str(", docked");
+        }
+        Spot { key, name }
     }
 
     /// The home network's node this machine is on, and where the node is
@@ -224,6 +247,25 @@ fn edid_said(edid: &[u8]) -> Option<(String, String)> {
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "screen".to_owned());
     Some((identity, name))
+}
+
+/// `said` as a part of a spot's key: a space, and each mark the key is
+/// put together with, written as a percent sign and its hex, so a Wi-Fi
+/// named "Roadside Inn" keeps its line of the picks' file whole.
+fn keyed(said: &str) -> String {
+    said.chars()
+        .map(|mark| {
+            if mark.is_whitespace() || "%+,=".contains(mark) {
+                let mut bytes = [0; 4];
+                mark.encode_utf8(&mut bytes)
+                    .bytes()
+                    .map(|byte| format!("%{byte:02X}"))
+                    .collect()
+            } else {
+                mark.to_string()
+            }
+        })
+        .collect()
 }
 
 /// What a folder holds, or nothing when it isn't there.

@@ -406,7 +406,15 @@ fn a_pick_keeps_its_marks_beside_it_and_never_the_sound() {
     said.sort_unstable();
     assert_eq!(
         said,
-        ["at", "costs", "marks", "microphone", "output", "picked"],
+        [
+            "at",
+            "costs",
+            "marks",
+            "microphone",
+            "output",
+            "picked",
+            "spot"
+        ],
         "a line keeps only numbers and names"
     );
     let _ = std::fs::remove_dir_all(&folder);
