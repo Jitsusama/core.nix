@@ -381,10 +381,14 @@ in
     # so no display, bus or password socket. Nothing runs under either
     # until a session asks for a fence. pi-spawner starts the agent's
     # commands for the harness, from a process small enough that starting
-    # one doesn't stall pi (spawner/src/main.rs).
+    # one doesn't stall pi (spawner/src/main.rs). a-call-is-on tells the
+    # harness's cache warms to wait out a call, since each sends a whole
+    # conversation up the line the call needs; it goes on the account's
+    # PATH, which terminal sessions and the pi hosts both search.
     home.packages =
       lib.optional (!onClaude) piClaude
       ++ [ (pkgs.callPackage ./spawner/package.nix { }) ]
+      ++ [ (pkgs.callPackage ../calls/package.nix { }) ]
       ++ [
         (import ./ask.nix {
           inherit pkgs lib piClaude;
