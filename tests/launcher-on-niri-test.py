@@ -2195,6 +2195,22 @@ def test_the_home_network_is_found_by_eeros_name_and_by_whats_on_it(shell: Shell
         shell.close_launcher()
 
 
+def test_the_home_network_draws_the_rows_the_eero_daemon_serves(shell: Shell) -> None:
+    """The Home Network watches the eero daemon's rows in the launcher's words, and draws them.
+
+    The place made every row itself from eero's whole record, again on each change, where the
+    daemons are the launcher's data layer (QEST-20261111-PN2VZC). The stand-in serves the rows
+    the daemon makes (modules/eero/tests/rows.json) and says each watch of them in its log, so
+    the place is seen to ask for them in words from the store, and a node is found among them.
+    """
+    log = shell.log.parent / "eero.log"
+    watched = "watched eero's rows in /nix/store/"
+    shell.launcher_until(lambda _: watched in log.read_text(errors="replace"))
+    shell.answer("study")
+    shell.launcher_until(functools.partial(selecting, "Study"))
+    shell.close_launcher()
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)

@@ -193,6 +193,17 @@ fn again(was: &Trial, next: &Trial) -> bool {
 pub enum Signs {
     Launcher(LauncherSigns),
     Pi(PiSigns),
+    Chrome(ChromeSigns),
+}
+
+/// What a go in Chrome showed: which profile, by its place among the
+/// profiles and never its name, and how many reloads and visits back or
+/// forward it held.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct ChromeSigns {
+    pub profile: u32,
+    pub reloads: u32,
+    pub backs: u32,
 }
 
 /// What a go at the launcher showed.

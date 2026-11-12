@@ -22,16 +22,22 @@
 // started through niri as every program the shell starts is. A speed test
 // fills the internet for most of a minute, so Return puts :speedtest on
 // the command line and a second Return runs it; :set sqm and :set nosqm
-// turn the switch, which is an option, as every switch is. What each says and in what order is
-// worked out in HomeNetwork.js and HomeNetworkDrawers.js, held in Qt's
-// own engine (tests/home-network.qml); this only makes rows of it.
+// turn the switch, which is an option, as every switch is.
+//
+// The rows are the eero daemon's (modules/eero's rows.rs), served ready
+// in the launcher's words (ReadyRows.qml), so nothing here words a row or
+// orders one, and a row is made again only once the daemon says it
+// changed. Each row's drawer and what's a step into it are still worked
+// out in HomeNetworkDrawers.js, held in Qt's own engine
+// (tests/home-network.qml), from the record Eero.qml keeps, found by what
+// the row holds, until the daemon serves them too.
 pragma ComponentBehavior: Bound
 import qs
+import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "HomeNetwork.js" as Home
 import "HomeNetworkDrawers.js" as Drawers
-import "HomeNetworkHistory.js" as History
 import "Order.js" as Order
 
 Provider {
@@ -113,26 +119,70 @@ Provider {
         return rows;
     }
 
-    // The internet, the place's head. Each row here says no note on the
-    // cursor's row while its drawer is out, as the drawer says every part
-    // of it, so the row's side reads as its neighbours' do (VKCF3Z,
-    // 2026-11-08).
-    function internetRow() {
-        const said = Home.internetRow(model, now(), settings, History.dayOn);
-        return thingRow({
+    // The place's rows as the eero daemon serves them, in the launcher's
+    // words and number settings, each a file in the store, since the
+    // daemon reads nothing else.
+    ReadyRows {
+        id: ready
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/eero/socket`
+        place: "eero"
+        watching: ({
+                words: provider.settings.words ?? "",
+                numbers: provider.settings.numbers ?? ""
+            })
+        make: (row, key) => provider.madeFrom(row, key)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+
+    // A served row as the place draws it: a thing, its drawer and what's
+    // a step in it worked out from the record as they're asked. Each says
+    // no note on the cursor's row while its drawer is out, as the drawer
+    // says every part of it, so the row's side reads as its neighbours'
+    // do (VKCF3Z, 2026-11-08).
+    function madeFrom(row, key) {
+        const kind = row.kind ?? "";
+        const held = row.held ?? {};
+        const said = () => provider.drawerSaid(kind, held);
+        const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
-            what: "internet",
-            key: "eero:internet",
-            name: Words.name("eero:internet"),
-            side: said.side,
-            note: said.note,
-            glyph: Words.glyph("eero:internet"),
-            drawer: () => provider.plate("internet",
-                Drawers.internet(provider.model, provider.now(), provider.settings))
-        }, () => provider.acts().concat(provider.parts("internet", "eero:internet",
-            provider.withoutSwitch(Drawers.internet(provider.model, provider.now(),
-                provider.settings)))));
+            what: kind === "device" ? "eero device" : kind,
+            // Drawn as a figure, as a copied value is, and copying what
+            // it says at its side.
+            figure: true,
+            plain: true,
+            copies: () => typeof made?.side === "string" ? made.side : "",
+            // The first node and the first profile each start a group.
+            gap: (kind === "node" || kind === "profile")
+                && ready.keys.find(one => ready.held[one]?.row?.kind === kind) === key,
+            drawer: () => provider.plate(kind, said())
+        });
+        if (made === null)
+            return null;
+        return entering(made, kind === "internet"
+            ? () => provider.acts().concat(provider.parts(kind, made.key,
+                provider.withoutSwitch(said())))
+            : () => provider.parts(kind, made.key, said()));
+    }
+
+    // What a row's drawer says, of the record's internet, node, device or
+    // profile the row holds; nothing while the record doesn't hold it.
+    function drawerSaid(kind, held) {
+        const nothing = { facts: [] };
+        if (kind === "internet")
+            return Drawers.internet(model, now(), settings);
+        if (kind === "node") {
+            const node = (model?.nodes ?? []).find(one => one.id === held.id);
+            return node ? Drawers.node(model, node, now(), settings) : nothing;
+        }
+        if (kind === "device") {
+            const device = (model?.devices ?? []).find(one => one.mac === held.mac);
+            return device ? deviceDrawer(device) : nothing;
+        }
+        const profile = (model?.profiles ?? []).find(one => one.id === held.id);
+        return profile ? Drawers.profile(model, profile, settings) : nothing;
     }
 
     // The internet's figures less how conferencing and gaming stands, which
@@ -206,44 +256,6 @@ Provider {
         }
     })
 
-    function nodeRow(node, first) {
-        const said = Home.nodeRow(node);
-        return thingRow({
-            thing: true,
-            noteInDrawer: true,
-            what: "node",
-            key: `eero:node:${node.id}`,
-            name: said.name,
-            side: said.side,
-            note: said.note,
-            keywords: [node.model ?? "", node.serial ?? ""].join(" "),
-            glyph: Words.glyph(node.gateway ? "eero:gateway" : "eero:node"),
-            gap: first,
-            drawer: () => provider.plate("node", Drawers.node(provider.model, node,
-                provider.now(), provider.settings))
-        }, () => provider.parts("node", `eero:node:${node.id}`, Drawers.node(provider.model,
-            node, provider.now(), provider.settings)));
-    }
-
-    function deviceRow(device) {
-        const said = Home.deviceRow(device, settings, model?.profiles ?? []);
-        return thingRow({
-            thing: true,
-            noteInDrawer: true,
-            what: "eero device",
-            key: `eero:device:${device.mac}`,
-            name: said.name,
-            side: said.side,
-            note: said.note,
-            keywords: [device.mac, device.hostname ?? "", device.address ?? "",
-                Home.worded(device.kind)].join(" "),
-            glyph: Theme.glyph[said.mark] ?? "",
-            depth: 1,
-            drawer: () => provider.plate("device", provider.deviceDrawer(device))
-        }, () => provider.parts("device", `eero:device:${device.mac}`,
-            provider.deviceDrawer(device)));
-    }
-
     // A device's drawer, with its readings since the shell started.
     function deviceDrawer(device) {
         return Drawers.device(model, device, now(), {
@@ -252,41 +264,11 @@ Provider {
         });
     }
 
-    function profileRow(profile, first) {
-        const said = Home.profileRow(model, profile);
-        return thingRow({
-            thing: true,
-            noteInDrawer: true,
-            what: "profile",
-            key: `eero:profile:${profile.id}`,
-            name: said.name,
-            side: said.side,
-            note: said.note,
-            glyph: Words.glyph("eero:profile"),
-            gap: first,
-            drawer: () => provider.plate("profile", Drawers.profile(provider.model, profile,
-                provider.settings))
-        }, () => provider.parts("profile", `eero:profile:${profile.id}`,
-            Drawers.profile(provider.model, profile, provider.settings)));
-    }
-
-    // Every row, made again as the record changes: the internet, then
-    // each node with its devices under it, then the profiles.
-    readonly property var all: {
-        // The record itself is asked, not `present`, which follows it a
-        // binding later, so a record let go makes no rows from nothing.
-        if (model === null || model === undefined)
-            return [];
-        const rows = [internetRow()];
-        Home.grouped(model).forEach((group, at) => {
-            if (group.node !== null)
-                rows.push(nodeRow(group.node, at === 0));
-            for (const device of group.devices)
-                rows.push(deviceRow(device));
-        });
-        (model?.profiles ?? []).forEach((profile, at) => rows.push(profileRow(profile, at === 0)));
-        return rows;
-    }
+    // Every row as the daemon serves them, in its order: the internet,
+    // then each node with its devices under it, then the profiles. The
+    // record itself is asked, not `present`, which follows it a binding
+    // later, so a record let go draws no row whose drawer says nothing.
+    readonly property var all: model === null || model === undefined ? [] : ready.rows()
     onAllChanged: changedTo(all)
 
     function everything() {
@@ -297,15 +279,19 @@ Provider {
         return present ? Home.holding(model) : "";
     }
 
+    // A row is found by its name, then by the words the daemon serves it
+    // with (a node's model and serial, a device's address), as Launcher's
+    // `within` finds one: a served row's words hold only those, not its
+    // name, so a node was found by its model and never by where it is.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
+        const matched = prepared => prepared && (prepared.mask & need) === need
+            ? Fuzzy.match(prepared, words, false) : { score: -1 };
         for (const row of everything()) {
-            const prepared = row.keywords ?? row.prepared;
-            if ((prepared.mask & need) !== need)
-                continue;
-            const m = Fuzzy.match(prepared, words, false);
+            const byName = matched(row.prepared);
+            const m = byName.score >= 0 ? byName : matched(row.keywords);
             if (m.score >= 0)
                 found.push({ score: m.score, grade: m.grade, row: row });
         }
