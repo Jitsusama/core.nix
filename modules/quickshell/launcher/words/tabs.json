@@ -5,7 +5,37 @@
       "in": "tabs",
       "name": "Tab",
       "verb": "go to",
-      "glyph": "windows"
+      "glyph": "windows",
+      "said": {
+        "in": "in {program}",
+        "kind": "tab",
+        "silent": "{program} isn't answering"
+      }
+    },
+    {
+      "id": "tabs:site",
+      "in": "tabs",
+      "name": "Site"
+    },
+    {
+      "id": "tabs:address",
+      "in": "tabs",
+      "name": "Address"
+    },
+    {
+      "id": "tabs:folder",
+      "in": "tabs",
+      "name": "Folder"
+    },
+    {
+      "id": "tabs:program:google-chrome",
+      "in": "tabs",
+      "name": "Chrome"
+    },
+    {
+      "id": "tabs:program:kitty",
+      "in": "tabs",
+      "name": "Kitty"
     },
     {
       "id": "verb:tabs:go",
@@ -28,10 +58,20 @@
     {
       "id": "verb:tabs:title",
       "command": "yank",
+      "argument": "title",
       "in": "tabs:tab",
       "name": "Copy the Title",
       "verb": "copy",
       "glyph": "copy"
+    },
+    {
+      "id": "verb:tabs:link",
+      "command": "yank",
+      "argument": "link",
+      "in": "tabs:tab",
+      "name": "Copy the Link",
+      "verb": "copy",
+      "glyph": "link"
     }
   ]
 }

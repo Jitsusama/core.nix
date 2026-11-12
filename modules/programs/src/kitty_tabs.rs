@@ -19,6 +19,8 @@ use std::collections::BTreeMap;
 use chrome_session::one_line;
 use serde_json::{Value, json};
 
+use crate::tab_rows::Words;
+
 /// The place these rows are of, Chrome's tabs' too.
 const PLACE: &str = "tabs";
 
@@ -39,7 +41,7 @@ pub struct Kitty<'a> {
 /// records of its windows, each with when it was last used, in
 /// milliseconds since 1970.
 #[must_use]
-pub fn rows(kitty: &Kitty, windows: &[&Value]) -> Vec<(u64, Value)> {
+pub fn rows(kitty: &Kitty, windows: &[&Value], words: &Words) -> Vec<(u64, Value)> {
     let mut rows = Vec::new();
     for line in &kitty.lines {
         let Some((pid, oses)) = heard(line) else {
@@ -49,7 +51,7 @@ pub fn rows(kitty: &Kitty, windows: &[&Value]) -> Vec<(u64, Value)> {
             let looked = wall(window["order"].as_u64().unwrap_or(0), kitty.clock);
             let tabs: Vec<&Value> = os["tabs"].as_array().into_iter().flatten().collect();
             for (before, tab) in (0..).zip(by_use(&tabs, &os["active_tab_history"])) {
-                let row = row(kitty, pid, window, tab);
+                let row = row(kitty, pid, window, tab, words);
                 rows.push((looked.saturating_sub(before), row));
             }
         }
@@ -138,8 +140,9 @@ fn by_use<'a>(items: &[&'a Value], history: &Value) -> Vec<&'a Value> {
 /// it through kitty; Close the Tab closes it; and Copy the Title copies
 /// its title, as a tab has no link. Each of the first two is an ask of
 /// this daemon (tabs.rs), Go with the token his press gave, so niri moves
-/// focus only on it, and Close shutting the launcher as it's asked.
-fn row(kitty: &Kitty, pid: u64, window: &Value, tab: &Value) -> Value {
+/// focus only on it, and Close shutting the launcher as it's asked. Its
+/// drawer says its folder.
+fn row(kitty: &Kitty, pid: u64, window: &Value, tab: &Value, words: &Words) -> Value {
     let id = tab["id"].as_u64().unwrap_or(0);
     let title = one_line(tab["title"].as_str().unwrap_or(""));
     let folder = shown(&folder_of(tab), kitty.home);
@@ -172,9 +175,12 @@ fn row(kitty: &Kitty, pid: u64, window: &Value, tab: &Value) -> Value {
             {"key": "verb:tabs:title", "copy": name},
         ],
     });
+    let mut facts = Vec::new();
     if !folder.is_empty() {
         row["side"] = json!([{"said": folder, "keep": 1}]);
+        facts.push(json!({"label": words.folder, "value": folder}));
     }
+    row["drawer"] = words.drawer(app, name, json!(facts), json!([]));
     row
 }
 
@@ -248,7 +254,7 @@ mod tests {
     }
 
     fn rows((kitty, windows): &(Kitty, Vec<&Value>)) -> Vec<(u64, Value)> {
-        super::rows(kitty, windows)
+        super::rows(kitty, windows, &crate::tab_rows::tests::words())
     }
 
     fn keys(rows: &[(u64, Value)]) -> Vec<&str> {
@@ -319,6 +325,16 @@ mod tests {
         );
         assert_eq!(row["keywords"], "core.nix ~/src/core.nix");
         assert_eq!(row["thing"], "tab:kitty:40:5");
+        assert_eq!(
+            row["drawer"],
+            json!({
+                "eyebrow": [{"said": "in Kitty", "keep": 2}, {"said": "tab", "keep": 1}],
+                "title": "core.nix",
+                "body": "",
+                "facts": [{"label": "Folder", "value": "~/src/core.nix"}],
+            }),
+            "a tab's drawer isn't a tab in Kitty, by its folder: {row}"
+        );
     }
 
     #[test]

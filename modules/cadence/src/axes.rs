@@ -17,6 +17,7 @@
 
 mod counted;
 mod landings;
+mod launcher;
 mod measure;
 mod network;
 mod open;

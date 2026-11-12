@@ -2,7 +2,8 @@
 //! kitty's from its told open list, with the windows a stand-in windows
 //! daemon says are open: one list by when each was used, a program with
 //! no window left out, and kitty's Go to the Tab and Close the Tab done
-//! through stand-ins for niri and kitten as each is asked.
+//! through stand-ins for niri and kitten as each is asked. Tabs' head
+//! names a program whose tabs can't be read while its window is open.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -116,6 +117,11 @@ fn chromes_and_kittys_tabs_are_one_list_by_when_each_was_used() {
         rows[0]["row"]["in"], "chrome",
         "Chrome's page isn't said in Chrome"
     );
+    assert_eq!(
+        rows[0]["row"]["drawer"]["eyebrow"],
+        json!([{"said": "in chrome", "keep": 2}, {"said": "tab", "keep": 1}]),
+        "Chrome's page's drawer isn't said in its program"
+    );
     let said = client.ask(&json!({"id": 2, "ask": "search", "place": "tabs", "words": "core"}));
     assert_eq!(
         said["keys"],
@@ -153,6 +159,27 @@ fn a_program_with_no_window_open_leaves_its_tabs_out() {
         [json!(NOTES), json!(KITTY)],
         "kitty's tabs weren't left out once its window shut: {gone_now:?}"
     );
+}
+
+#[test]
+fn tabs_head_says_a_program_isnt_answering_while_its_window_is_open() {
+    let running = Running::new("tabs-silent");
+    // kitty's list has no file, so reading it fails.
+    std::fs::remove_file(running.path("lists/open")).unwrap();
+    sessioned(&running);
+    let mut client = running.client();
+    let watch = json!({"id": 1, "ask": "watch", "kind": ["row", "head"], "place": "tabs"});
+    client.ask(&watch);
+    let windows = windows(&running);
+    tell(&windows, &open());
+    let head = served(&mut client, &["head:tabs"]);
+    assert_eq!(
+        head[0]["head"],
+        json!({"key": "head:tabs", "place": "tabs", "said": "terminal isn't answering",
+               "silent": [{"in": "terminal", "said": "terminal isn't answering"}]}),
+        "Tabs' head didn't say kitty's tabs can't be read"
+    );
+    served(&mut client, &[LATER, EARLIER]);
 }
 
 #[test]

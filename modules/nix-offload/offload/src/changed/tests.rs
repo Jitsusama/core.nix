@@ -37,6 +37,86 @@ fn a_builder_is_asked_for_the_file_changed_checks_keeps_a_base_in() {
     );
 }
 
+/// Runs `command` in `sh` with `home` as its home and `given` on its
+/// standard input, as the builder's shell would, ending as it ends.
+fn run_in(home: &Path, command: &str, given: &str) -> bool {
+    use std::io::Write;
+    let mut running = std::process::Command::new("sh")
+        .args(["-c", command])
+        .env("HOME", home)
+        .env_remove("XDG_CACHE_HOME")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("sh didn't start");
+    if let Some(mut input) = running.stdin.take() {
+        input.write_all(given.as_bytes()).expect("sh took no input");
+    }
+    running.wait().expect("sh didn't end").success()
+}
+
+#[test]
+fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
+    let home = tempfile::tempdir().expect("no folder for a home");
+    let (read, take) =
+        sharing_kept("abc123", "x86_64-linux", "json").expect("a plain base refused");
+    let kept = home
+        .path()
+        .join(".cache/changed-checks/abc123-x86_64-linux.json");
+    assert!(
+        !run_in(home.path(), &take, ""),
+        "an empty copy, as from a builder keeping nothing, was taken in"
+    );
+    assert!(!kept.exists(), "an empty copy was kept");
+    let copying = || {
+        fs::read_dir(home.path().join(".cache/changed-checks"))
+            .expect("no folder for kept checks")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_name().to_string_lossy().contains("copying"))
+            .count()
+    };
+    assert_eq!(copying(), 0, "a copy that failed was left half taken in");
+    assert!(
+        run_in(home.path(), &take, "{\"one\":1}"),
+        "a copy wasn't taken in"
+    );
+    assert_eq!(
+        fs::read_to_string(&kept).ok().as_deref(),
+        Some("{\"one\":1}"),
+        "the copy isn't what was kept"
+    );
+    assert!(
+        run_in(home.path(), &take, "{\"two\":2}"),
+        "a second copy failed"
+    );
+    assert_eq!(
+        fs::read_to_string(&kept).ok().as_deref(),
+        Some("{\"one\":1}"),
+        "a copy went over what was kept"
+    );
+    assert_eq!(copying(), 0, "a copy was left half taken in");
+    assert!(
+        take.contains(".copying.$$"),
+        "two gates copying one base at once would write into one file"
+    );
+    assert_eq!(
+        read, "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.json\"",
+        "not the file changed-checks keeps a base's checks in"
+    );
+    let (read, _) = sharing_kept("abc123", "x86_64-linux", "reads.json")
+        .expect("what the VM tests read isn't shared");
+    assert_eq!(
+        read,
+        "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.reads.json\"",
+        "not the file changed-checks keeps what a base's VM tests read in"
+    );
+    assert_eq!(
+        sharing_kept("abc123", "x86_64-linux", "lock"),
+        None,
+        "a file changed-checks keeps no record in is shared"
+    );
+}
+
 #[test]
 fn a_base_or_system_the_shell_would_read_as_more_is_never_asked() {
     assert_eq!(
@@ -45,6 +125,11 @@ fn a_base_or_system_the_shell_would_read_as_more_is_never_asked() {
         "a base with a ;"
     );
     assert_eq!(keeps_base("", "x86_64-linux"), None, "no base");
+    assert_eq!(
+        sharing_kept("abc; rm", "x86_64-linux", "json"),
+        None,
+        "a base with a ; is shared"
+    );
     assert_eq!(
         keeps_base("abc", "x86_64-linux$(id)"),
         None,

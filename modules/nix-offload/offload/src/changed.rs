@@ -459,6 +459,42 @@ pub fn keeps_base(base: &str, system: &str) -> Option<String> {
     })
 }
 
+/// What the lent builder that ran a run is asked to print the checks it
+/// keeps evaluated at `base` for `system` by, and what the other is asked
+/// to take them in by, from its standard input. keep-main keeps each head
+/// on one builder, and a run's evaluated base stays on the builder that
+/// ran it, so from 11:00 to 15:00 on 12 November 78 runs evaluated a base
+/// of only 46: 32 were the other builder evaluating, at about 280 s each,
+/// what one had kept. Kept derivations name the same paths on either. The
+/// file is only ever whole, since changed-checks renames it into place,
+/// and it's taken in the same way, under a name of the writer's own so it
+/// never meets changed-checks' writing or another gate's copy of the same
+/// base, removed when it fails, and left alone where one is kept.
+/// `record` is one of [`KEPT_AS`]. None for a base or system the shell
+/// could read as more than a word, or a record changed-checks keeps none
+/// of.
+pub fn sharing_kept(base: &str, system: &str, record: &str) -> Option<(String, String)> {
+    keeps_base(base, system)?;
+    if !KEPT_AS.contains(&record) {
+        return None;
+    }
+    let folder = "${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks";
+    let kept = format!("{folder}/{base}-{system}");
+    let read = format!("cat \"{kept}.{record}\"");
+    let take = format!(
+        "test -e \"{kept}.{record}\" || {{ mkdir -p \"{folder}\" && \
+         t=\"{kept}.{record}.copying.$$\" && {{ cat > \"$t\" && test -s \"$t\" && \
+         mv \"$t\" \"{kept}.{record}\" || {{ rm -f \"$t\"; false; }}; }}; }}"
+    );
+    Some((read, take))
+}
+
+/// What changed-checks keeps of an evaluated base, each file named after
+/// it and its system: the checks' derivations, then what its VM tests
+/// read, which a gate uses only beside the derivations. A record a
+/// builder hasn't kept, as when tracing failed, isn't copied.
+pub const KEPT_AS: [&str; 2] = ["json", "reads.json"];
+
 /// Waits for `host`'s turn to evaluate, had while what this gives is
 /// held, so an evaluator takes one run at a time and the rest wait here:
 /// on 8 November six runs at once sat on one for up to three hours, its

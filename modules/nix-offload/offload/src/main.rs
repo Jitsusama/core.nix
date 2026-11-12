@@ -1667,11 +1667,100 @@ impl Sent<'_> {
                 Some(finished) if moving.moves && finished.status == there::BUSY => {
                     busy = busy.or_else(|| store.clone());
                 }
-                Some(finished) => return Some(finished),
+                Some(finished) => {
+                    self.share_kept(arguments, store.as_deref(), &stores);
+                    return Some(finished);
+                }
                 None => {}
             }
         }
-        busy.and_then(|store| self.lent_to(arguments, vm_apart, Some(store)))
+        let finished = busy
+            .as_ref()
+            .and_then(|store| self.lent_to(arguments, vm_apart, Some(store.clone())));
+        if finished.is_some() {
+            self.share_kept(arguments, busy.as_deref(), &stores);
+        }
+        finished
+    }
+
+    /// Copy what the run's base keeps evaluated on `ran`, the lent builder
+    /// it ran on, to the other lent builder of the first two `stores`, so
+    /// a run sent there next evaluates its own tree alone
+    /// ([`changed::sharing_kept`]): its checks, then what its VM tests
+    /// read, which is no use without them. A copy that fails costs the
+    /// other an evaluation and nothing more, so it's said and the run goes
+    /// on.
+    fn share_kept(&self, arguments: &[String], ran: Option<&str>, stores: &[Option<String>]) {
+        let lent = |store: Option<&str>| {
+            store.and_then(|store| there::builder(store.lines().next()?.trim()))
+        };
+        let other = match stores {
+            [first, second, ..] if first.as_deref() == ran => second.as_deref(),
+            [first, second, ..] if second.as_deref() == ran => first.as_deref(),
+            _ => return,
+        };
+        let (Some(from), Some(to)) = (lent(ran), lent(other)) else {
+            return;
+        };
+        let (there::Source::Pushed { commit, .. } | there::Source::Bundled { commit, .. }) =
+            self.source;
+        let (Some(base), Some(system)) = (
+            changed::base_of(arguments, self.folder, commit),
+            changed::wanted(arguments).system,
+        ) else {
+            return;
+        };
+        for record in changed::KEPT_AS {
+            if !self.copy_kept(&from, &to, &base, &system, record) {
+                return;
+            }
+        }
+    }
+
+    /// Copy one `record` of what `base` keeps for `system` from `from` to
+    /// `to`, saying so when it fails, and whether `from` kept it to copy.
+    fn copy_kept(
+        &self,
+        from: &there::Builder,
+        to: &there::Builder,
+        base: &str,
+        system: &str,
+        record: &str,
+    ) -> bool {
+        let Some((read, take)) = changed::sharing_kept(base, system, record) else {
+            return false;
+        };
+        let short = base.get(..12).unwrap_or(base);
+        let reading = there::Sending {
+            command: read,
+            bundle: None,
+        };
+        // A run that ended before its base was evaluated keeps nothing.
+        let kept = match there::printed_on(from, &reading, self.scratch, "ssh") {
+            Ok((ran, kept)) if ran.status == 0 && !kept.is_empty() => kept,
+            _ => return false,
+        };
+        let copy = self
+            .scratch
+            .join(format!("kept-{}-{short}.{record}", std::process::id()));
+        if let Err(error) = fs::write(&copy, kept) {
+            eprintln!("nix-offload: couldn't hold {short}'s kept {record} to copy: {error}");
+            return true;
+        }
+        let taking = there::Sending {
+            command: take,
+            bundle: Some(copy.clone()),
+        };
+        match there::printed_on(to, &taking, self.scratch, "ssh") {
+            Ok((ran, _)) if ran.status == 0 => {}
+            Ok((ran, _)) => eprintln!(
+                "nix-offload: {} didn't take {short}'s kept {record}: it ended {}",
+                to.host, ran.status
+            ),
+            Err(why) => eprintln!("nix-offload: couldn't copy {short}'s kept {record}: {why}"),
+        }
+        let _ = fs::remove_file(&copy);
+        true
     }
 
     /// Where `there --changed` runs, in its order, or none when nowhere

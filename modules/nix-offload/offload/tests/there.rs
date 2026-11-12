@@ -27,6 +27,10 @@ use std::time::Duration;
 /// build prints the `plans` file, when there is one, and nothing else.
 /// What it's asked to fetch goes in the `fetched` file, and it says it
 /// fetched each but those the `refuses-fetch` file names, a line each.
+/// Asked for a base's kept checks, it prints the `kept-checks-<host>` file,
+/// and for what its VM tests read, `kept-reads-<host>`, or ends 1 without
+/// one, and given either to keep, it adds it to `took-kept-<host>`; none
+/// of these counts as a run.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -46,6 +50,22 @@ case "$2" in
       *) [ -e "$here/far-runs" ] || exit 0
         from=${2##*tail -c +}; tail -c "+${from%% *}" "$here/far-runs" ;;
     esac
+    exit 0 ;;
+  # A base's kept checks, read from the builder a run went to and given
+  # to the other. Asked after a run, so it's kept apart from it.
+  *changed-checks/*.copying*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    cat >> "$here/took-kept-$1"
+    exit 0 ;;
+  *"cat \""*/changed-checks/*.reads.json\"*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    [ -f "$here/kept-reads-$1" ] || exit 1
+    cat "$here/kept-reads-$1"
+    exit 0 ;;
+  *"cat \""*/changed-checks/*.json\"*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    [ -f "$here/kept-checks-$1" ] || exit 1
+    cat "$here/kept-checks-$1"
     exit 0 ;;
   # Whether changed-checks keeps a base evaluated there: the base
   # kept-<host> names. Asked before a run, so it's kept apart from it.
@@ -2531,6 +2551,40 @@ fn a_changed_run_whose_keeping_builder_is_busy_goes_to_the_other() {
         ],
         "didn't ask the keeper first and then the other: {asked:?}"
     );
+}
+
+#[test]
+fn a_changed_run_gives_the_other_lent_builder_the_checks_its_base_kept() {
+    // From 11:00 to 15:00 on 12 November 78 runs evaluated a base, of only
+    // 46 bases: 32 were the other builder evaluating one again.
+    let changed = Changed::new();
+    let more = changed.second();
+    fs::write(changed.bin.join("kept-nix-offload-more"), &changed.head).unwrap();
+    fs::write(
+        changed.bin.join("kept-checks-nix-offload-more"),
+        "{\"a\":\"x\"}",
+    )
+    .unwrap();
+    fs::write(
+        changed.bin.join("kept-reads-nix-offload-more"),
+        "{\"read\":[]}",
+    )
+    .unwrap();
+    let (ran, _) = changed.run_beside(&["--name-only", "--system", "x86_64-linux"], &more);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(
+        fs::read_to_string(changed.bin.join("took-kept-nix-offload"))
+            .ok()
+            .as_deref(),
+        Some("{\"a\":\"x\"}{\"read\":[]}"),
+        "the other builder wasn't given what the keeper kept, checks first"
+    );
+    assert!(
+        !changed.bin.join("took-kept-nix-offload-more").exists(),
+        "the keeper was given its own checks back"
+    );
+    let asked = changed.asked();
+    assert_eq!(asked.len(), 1, "the copy was sent as a run: {asked:?}");
 }
 
 #[test]

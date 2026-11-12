@@ -200,6 +200,85 @@ impl Rows<'_> {
         self.say.holder(made, "disk", inside)
     }
 
+    /// A row's drawer saying what Linux keeps behind it, by its names.
+    fn linux<N: Into<String>>(
+        &self,
+        made: Made,
+        from: &str,
+        kept: impl IntoIterator<Item = (N, String)>,
+    ) -> Made {
+        let kept = kept.into_iter().map(|(name, said)| (name.into(), said));
+        self.say.as_linux_keeps(made, "disk", from, kept.collect())
+    }
+
+    /// A value as its keeper said it: a count whole, a list by commas.
+    fn kept(&self, value: &Value) -> String {
+        match value {
+            Value::Number(n) => n
+                .as_f64()
+                .map_or_else(String::new, |n| self.say.words.number(n, 0)),
+            Value::String(said) => said.clone(),
+            Value::Bool(said) => u8::from(*said).to_string(),
+            Value::Array(each) => {
+                let each: Vec<String> = each.iter().map(|one| self.kept(one)).collect();
+                each.join(", ")
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Where the kernel keeps the disk's files.
+    fn folder(&self) -> String {
+        format!("/sys/block/{}", self.d["name"].as_str().unwrap_or_default())
+    }
+
+    /// A row measured from the stat file, saying its fields.
+    fn stat(&self, made: Made, names: &[&str]) -> Made {
+        let kept = names
+            .iter()
+            .map(|name| (*name, self.kept(&self.d["stat"][*name])));
+        self.linux(made, &format!("{}/stat", self.folder()), kept)
+    }
+
+    /// A row of the disk's own files, each by its path under the folder.
+    fn files(&self, made: Made, kept: &[(&str, String)]) -> Made {
+        self.linux(made, &self.folder(), kept.iter().cloned())
+    }
+
+    /// A health row saying what its controller told `UDisks`.
+    fn smart(&self, made: Made, names: &[&str]) -> Made {
+        let smart = &self.d["health"];
+        let kept = names.iter().map(|name| (*name, self.kept(&smart[*name])));
+        self.linux(made, "UDisks2 SmartGetAttributes", kept)
+    }
+
+    /// A file system's row saying where it's mounted from and its room,
+    /// in blocks, as statvfs counts them.
+    fn mounted(&self, made: Made, fs: &Value) -> Made {
+        let block = fs["block_b"].as_u64().filter(|block| *block > 0);
+        let blocks = |field: &str| {
+            block
+                .zip(fs[field].as_u64())
+                .map_or_else(String::new, |(block, bytes)| {
+                    self.kept(&Value::from(bytes / block))
+                })
+        };
+        let kept = [
+            ("device", self.kept(&fs["device"])),
+            ("type", self.kept(&fs["type"])),
+            (
+                "f_frsize",
+                block.map_or_else(String::new, |b| self.kept(&Value::from(b))),
+            ),
+            ("f_blocks", blocks("size_b")),
+            ("f_bfree", blocks("free_b")),
+            ("f_bavail", blocks("available_b")),
+            ("f_files", self.kept(&fs["files"])),
+            ("f_ffree", self.kept(&fs["files_free"])),
+        ];
+        self.linux(made, "/proc/self/mountinfo \u{b7} statvfs(2)", kept)
+    }
+
     fn rate(&self, field: &str) -> f64 {
         number(&self.d[field])
     }
@@ -257,17 +336,20 @@ impl Rows<'_> {
                 None,
             ),
         };
+        let name = words.name("machine:disk", &[]);
+        let inside = ordered(words, "machine:disk", self.parts(room));
         Made {
             id: "disk".to_owned(),
             kind: "disk",
-            name: words.name("machine:disk", &[]),
             glyph: words.glyph("machine:disk"),
             hue: "machine",
             side: vec![item(&said)],
             copies: said,
             graph,
             note: self.since(),
-            inside: ordered(words, "machine:disk", self.parts(room)),
+            drawer: Some(self.say.holding("disk", &name, &inside)),
+            name,
+            inside,
             ..Made::default()
         }
     }
@@ -277,12 +359,13 @@ impl Rows<'_> {
         rows.extend(room.map(|fs| self.space(fs)));
         rows.push(self.speed());
         if let Some(busy) = self.d["busy_ratio"].as_f64() {
-            rows.push(self.figure(
+            let made = self.figure(
                 "disk:busy",
                 percent(busy),
                 Some(bar(busy, false)),
                 self.since(),
-            ));
+            );
+            rows.push(self.stat(made, &["io_ticks"]));
         }
         rows.push(self.latency());
         rows.extend(self.queue());
@@ -306,7 +389,8 @@ impl Rows<'_> {
         let mount = fs["mount"].as_str().unwrap_or_default();
         let note = self.says("disk:space", "on", &[("mount", mount), ("size", &size)]);
         let share = free / number(&fs["size_b"]);
-        self.figure("disk:space", said, Some(bar(1.0 - share, false)), note)
+        let made = self.figure("disk:space", said, Some(bar(1.0 - share, false)), note);
+        self.mounted(made, fs)
     }
 
     /// Each kind's requests and those merged into others, each a second,
@@ -327,29 +411,41 @@ impl Rows<'_> {
     fn speed(&self) -> Made {
         let spark = |values: &[f64]| Some(shares(values, FLOOR));
         let inside = vec![
-            self.figure(
-                "disk:reading",
-                self.say.rate(self.rate("read_b_per_s")),
-                spark(&self.sparks.read),
-                self.requests(self.rate("reads_per_s"), self.rate("read_merges_per_s")),
+            self.stat(
+                self.figure(
+                    "disk:reading",
+                    self.say.rate(self.rate("read_b_per_s")),
+                    spark(&self.sparks.read),
+                    self.requests(self.rate("reads_per_s"), self.rate("read_merges_per_s")),
+                ),
+                &["read I/Os", "read merges", "read sectors"],
             ),
-            self.figure(
-                "disk:writing",
-                self.say.rate(self.rate("written_b_per_s")),
-                spark(&self.sparks.written),
-                self.requests(self.rate("writes_per_s"), self.rate("write_merges_per_s")),
+            self.stat(
+                self.figure(
+                    "disk:writing",
+                    self.say.rate(self.rate("written_b_per_s")),
+                    spark(&self.sparks.written),
+                    self.requests(self.rate("writes_per_s"), self.rate("write_merges_per_s")),
+                ),
+                &["write I/Os", "write merges", "write sectors"],
             ),
-            self.figure(
-                "disk:discarding",
-                self.say.rate(self.rate("discarded_b_per_s")),
-                None,
-                self.requests(self.rate("discards_per_s"), 0.0),
+            self.stat(
+                self.figure(
+                    "disk:discarding",
+                    self.say.rate(self.rate("discarded_b_per_s")),
+                    None,
+                    self.requests(self.rate("discards_per_s"), 0.0),
+                ),
+                &["discard I/Os", "discard sectors"],
             ),
-            self.figure(
-                "disk:flushing",
-                self.say.often(self.rate("flushes_per_s")),
-                None,
-                self.says("disk:flushing", "note", &[]),
+            self.stat(
+                self.figure(
+                    "disk:flushing",
+                    self.say.often(self.rate("flushes_per_s")),
+                    None,
+                    self.says("disk:flushing", "note", &[]),
+                ),
+                &["flush I/Os"],
             ),
         ];
         let moved = self.rate("read_b_per_s") + self.rate("written_b_per_s");
@@ -375,7 +471,16 @@ impl Rows<'_> {
                     None => self.says("disk:latency", "idle", &[]),
                 };
                 let said = value.map_or_else(idle, |value| self.ms(value));
-                self.figure(&format!("disk:latency-{id}"), said, None, note)
+                let made = self.figure(&format!("disk:latency-{id}"), said, None, note);
+                // Each kind's requests and the milliseconds they took.
+                let kind = match *id {
+                    "reading" => "read",
+                    "writing" => "write",
+                    "discarding" => "discard",
+                    _ => "flush",
+                };
+                let (done, took) = (format!("{kind} I/Os"), format!("{kind} ticks"));
+                self.stat(made, &[done.as_str(), took.as_str()])
             })
             .collect();
         let overall = self.d["latency_ms"].as_f64();
@@ -405,7 +510,8 @@ impl Rows<'_> {
                 self.says("disk:queue", "depth", &[("depth", &depth)])
             }),
         ]);
-        Some(self.figure("disk:queue", in_flight, None, note))
+        let made = self.figure("disk:queue", in_flight, None, note);
+        Some(self.stat(made, &["in_flight", "time_in_queue"]))
     }
 
     /// How hot it is, by its composite sensor or its first, drawn as Heat
@@ -427,12 +533,23 @@ impl Rows<'_> {
             let degrees = self.degrees(most);
             self.says("disk:temperature", "most", &[("degrees", &degrees)])
         });
-        Some(self.figure(
+        let made = self.figure(
             "disk:temperature",
             self.degrees(value),
             Some(bar(level.value, level.warn)),
             note,
-        ))
+        );
+        // In thousandths of a degree, as hwmon writes them.
+        let milli = |value: Option<f64>| {
+            value.map_or_else(String::new, |v| self.say.words.number(v * 1000.0, 0))
+        };
+        let kept = [
+            ("label", self.kept(&composite["label"])),
+            ("temp_input", milli(Some(value))),
+            ("temp_max", milli(high)),
+            ("temp_crit", milli(critical)),
+        ];
+        Some(self.linux(made, "/sys/class/hwmon/*/temp*_input", kept))
     }
 
     /// How worn it is, as its controller tells `UDisks`, with when it
@@ -466,64 +583,84 @@ impl Rows<'_> {
         let field = |name: &str| number(&smart[name]);
         let (spare, threshold) = (field("avail_spare"), field("spare_thresh"));
         let mut rows = vec![
-            self.figure(
-                "disk:spare",
-                self.says("disk:spare", "side", &[("n", &raw(&smart["avail_spare"]))]),
-                Some(bar(spare / 100.0, spare < threshold)),
-                self.says("disk:spare", "note", &[("n", &raw(&smart["spare_thresh"]))]),
+            self.smart(
+                self.figure(
+                    "disk:spare",
+                    self.says("disk:spare", "side", &[("n", &raw(&smart["avail_spare"]))]),
+                    Some(bar(spare / 100.0, spare < threshold)),
+                    self.says("disk:spare", "note", &[("n", &raw(&smart["spare_thresh"]))]),
+                ),
+                &["avail_spare", "spare_thresh"],
             ),
-            self.figure(
-                "disk:written",
-                self.say.bytes(field("total_data_written")),
-                None,
-                String::new(),
+            self.smart(
+                self.figure(
+                    "disk:written",
+                    self.say.bytes(field("total_data_written")),
+                    None,
+                    String::new(),
+                ),
+                &["total_data_written"],
             ),
-            self.figure(
-                "disk:read",
-                self.say.bytes(field("total_data_read")),
-                None,
-                String::new(),
+            self.smart(
+                self.figure(
+                    "disk:read",
+                    self.say.bytes(field("total_data_read")),
+                    None,
+                    String::new(),
+                ),
+                &["total_data_read"],
             ),
         ];
         let cycles = raw(&smart["power_cycles"]);
         if let Some(hours) = smart["power_on_hours"].as_f64() {
             let cycles = if cycles.is_empty() { "0" } else { &cycles };
-            rows.push(self.figure(
+            let made = self.figure(
                 "disk:powered",
                 lasted(hours * 3600.0),
                 None,
                 self.says("disk:powered", "note", &[("cycles", cycles)]),
-            ));
+            );
+            rows.push(self.smart(made, &["power_on_hours", "power_cycles"]));
         }
         if let Some(minutes) = smart["ctrl_busy_time"].as_f64() {
-            rows.push(self.figure(
+            let made = self.figure(
                 "disk:busy-for",
                 lasted(minutes * 60.0),
                 None,
                 self.says("disk:busy-for", "note", &[]),
-            ));
+            );
+            rows.push(self.smart(made, &["ctrl_busy_time"]));
         }
-        rows.push(self.figure(
+        let made = self.figure(
             "disk:errors",
             raw(&smart["media_errors"]),
             None,
             self.says("disk:errors", "note", &[]),
-        ));
+        );
+        rows.push(self.smart(made, &["media_errors"]));
         if smart["num_err_log_entries"].is_number() {
-            rows.push(self.figure(
+            let made = self.figure(
                 "disk:error-log",
                 raw(&smart["num_err_log_entries"]),
                 None,
                 self.says("disk:error-log", "note", &[]),
-            ));
+            );
+            rows.push(self.smart(made, &["num_err_log_entries"]));
         }
-        rows.push(self.figure(
+        let made = self.figure(
             "disk:shutdowns",
             raw(&smart["unsafe_shutdowns"]),
             None,
             self.says("disk:shutdowns", "note", &[("cycles", &cycles)]),
-        ));
+        );
+        rows.push(self.smart(made, &["unsafe_shutdowns", "power_cycles"]));
         rows.extend(self.too_hot(smart));
+        rows.push(self.warned(smart));
+        rows
+    }
+
+    /// What its controller warns of, or that it warns of nothing.
+    fn warned(&self, smart: &Value) -> Made {
         let warned = warnings(&smart["critical_warning"]);
         let said = if warned.is_empty() {
             self.says("disk:warnings", "none", &[])
@@ -537,13 +674,24 @@ impl Rows<'_> {
                 .collect();
             items(&each)
         };
-        rows.push(self.figure(
+        let made = self.figure(
             "disk:warnings",
             said,
             None,
             self.says("disk:warnings", "note", &[]),
-        ));
-        rows
+        );
+        // None warned of is still what it said, so the drawer says so.
+        let warned = self.kept(&smart["critical_warning"]);
+        let warned = if warned.is_empty() {
+            "0".to_owned()
+        } else {
+            warned
+        };
+        self.linux(
+            made,
+            "UDisks2 SmartCriticalWarning",
+            [("critical_warning", warned)],
+        )
     }
 
     /// How long it ran past where it warns of heat, and past where it's
@@ -568,11 +716,20 @@ impl Rows<'_> {
                 String::new()
             },
         ]);
-        Some(self.figure(
+        let made = self.figure(
             "disk:too-hot",
             lasted((warning + critical) * 60.0),
             None,
             note,
+        );
+        Some(self.smart(
+            made,
+            &[
+                "warning_temp_time",
+                "critical_temp_time",
+                "wctemp",
+                "cctemp",
+            ],
         ))
     }
 
@@ -621,10 +778,11 @@ impl Rows<'_> {
                     fs["device"].as_str().unwrap_or_default().to_owned(),
                 ]);
                 let graph = (size > 0.0).then(|| bar(1.0 - available / size, false));
-                Made {
+                let made = Made {
                     name: mount.to_owned(),
                     ..self.figure(&format!("disk:file-system:{mount}"), said, graph, note)
-                }
+                };
+                self.mounted(made, fs)
             })
             .collect();
         let mounts: Vec<String> = systems
@@ -646,12 +804,16 @@ impl Rows<'_> {
         let d = self.d;
         let model = text(d, "model")?;
         let leaf = |id: &str, said: String, note: String| self.figure(id, said, None, note);
-        let mut inside = vec![leaf("disk:model-name", model.to_owned(), String::new())];
+        let mut inside = vec![self.files(
+            leaf("disk:model-name", model.to_owned(), String::new()),
+            &[("device/model", model.to_owned())],
+        )];
         if let Some(firmware) = text(d, "firmware") {
             let note = text(&d["health"], "nvme_revision").map_or_else(String::new, |revision| {
                 self.says("disk:firmware", "nvme", &[("revision", revision)])
             });
-            inside.push(leaf("disk:firmware", firmware.to_owned(), note));
+            let made = leaf("disk:firmware", firmware.to_owned(), note);
+            inside.push(self.files(made, &[("device/firmware_rev", firmware.to_owned())]));
         }
         if let Some(rotational) = d["rotational"].as_bool() {
             let kind = if rotational { "spinning" } else { "solid" };
@@ -664,11 +826,22 @@ impl Rows<'_> {
                 text(d, "transport").unwrap_or_default().to_owned(),
                 self.says("disk:kind", fixed, &[]),
             ]);
-            inside.push(leaf("disk:kind", self.says("disk:kind", kind, &[]), note));
+            let made = leaf("disk:kind", self.says("disk:kind", kind, &[]), note);
+            let kept = [
+                ("queue/rotational", self.kept(&d["rotational"])),
+                ("removable", self.kept(&d["removable"])),
+                ("device/transport", self.kept(&d["transport"])),
+            ];
+            inside.push(self.files(made, &kept));
         }
         inside.extend(self.link());
         if let Some(size) = d["size_b"].as_f64().filter(|size| *size > 0.0) {
-            inside.push(leaf("disk:capacity", self.say.bytes(size), String::new()));
+            let made = leaf("disk:capacity", self.say.bytes(size), String::new());
+            // In 512-byte sectors, whatever its blocks, as the kernel counts.
+            let sectors = d["size_b"]
+                .as_u64()
+                .map_or(Value::Null, |b| Value::from(b / 512));
+            inside.push(self.files(made, &[("size", self.kept(&sectors))]));
         }
         if let Some(logical) = d["logical_block_b"].as_u64().filter(|b| *b > 0) {
             let (one, physical) = (logical.to_string(), raw(&d["physical_block_b"]));
@@ -678,7 +851,12 @@ impl Rows<'_> {
             } else {
                 self.says("disk:block", "one", &[("n", &one)])
             };
-            inside.push(leaf("disk:block", said, String::new()));
+            let made = leaf("disk:block", said, String::new());
+            let kept = [
+                ("queue/logical_block_size", one),
+                ("queue/physical_block_size", physical),
+            ];
+            inside.push(self.files(made, &kept));
         }
         if let Some(scheduler) = text(d, "scheduler") {
             let others: Vec<String> = d["schedulers"]
@@ -696,7 +874,22 @@ impl Rows<'_> {
             } else {
                 self.says("disk:scheduler", "also", &[("all", &items(&others))])
             };
-            inside.push(leaf("disk:scheduler", scheduler.to_owned(), note));
+            let made = leaf("disk:scheduler", scheduler.to_owned(), note);
+            // The file's own line, the one in use in brackets.
+            let line: Vec<String> = d["schedulers"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|one| {
+                    if one == scheduler {
+                        format!("[{one}]")
+                    } else {
+                        one.to_owned()
+                    }
+                })
+                .collect();
+            inside.push(self.files(made, &[("queue/scheduler", line.join(" "))]));
         }
         let made = self.figure("disk:model", model.to_owned(), None, String::new());
         Some(self.holder(made, inside))
@@ -722,7 +915,14 @@ impl Rows<'_> {
             }
             _ => self.says("disk:link", "full", &[]),
         };
-        Some(self.figure("disk:link", said, None, note))
+        let made = self.figure("disk:link", said, None, note);
+        let kept = [
+            ("current_link_speed", speed.to_owned()),
+            ("current_link_width", width),
+            ("max_link_speed", most.unwrap_or_default().to_owned()),
+            ("max_link_width", most_width),
+        ];
+        Some(self.linux(made, &format!("{}/device/device", self.folder()), kept))
     }
 }
 
@@ -882,5 +1082,89 @@ mod tests {
         let said = rows(&[small, disk()]);
         assert_eq!(side(row(&said, "disk")), json!("300 GB free on /"));
         assert!(rows(&[]).is_empty(), "no disk should make no rows");
+    }
+
+    /// Every row the Disk serves has a drawer giving a little more than
+    /// its line (Joel, 2026-11-11 22:00): a row holding more, what each a
+    /// step in says; any other, what Linux keeps behind it.
+    #[test]
+    fn every_disk_row_has_a_drawer_saying_more() {
+        let mut d = disk();
+        d["stat"] = json!({ "read I/Os": 1234, "read merges": 56, "read sectors": 789_000,
+            "read ticks": 400, "write I/Os": 321, "write merges": 7, "write sectors": 9_000,
+            "write ticks": 90, "in_flight": 1, "io_ticks": 600, "time_in_queue": 500,
+            "discard I/Os": 2, "discard merges": 0, "discard sectors": 4_096,
+            "discard ticks": 3, "flush I/Os": 40, "flush ticks": 8 });
+        d["file_systems"][0]["block_b"] = json!(4096);
+        d["health"]["total_data_written"] = json!(5_000_000_000_u64);
+        d["health"]["total_data_read"] = json!(9_000_000_000_u64);
+        d["health"]["power_on_hours"] = json!(1200);
+        let said = rows(&[d]);
+        let bare: Vec<&str> = said
+            .iter()
+            .filter(|each| {
+                let drawer = &each["drawer"];
+                let facts = drawer["facts"].as_array().is_some_and(|f| !f.is_empty());
+                !(drawer["title"].is_string() && (facts || drawer["body"].is_string()))
+            })
+            .filter_map(|each| each["key"].as_str())
+            .collect();
+        assert!(
+            bare.is_empty(),
+            "rows whose drawer says nothing more: {bare:?}"
+        );
+        let facts = |id: &str| -> Vec<String> {
+            row(&said, id)["drawer"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| {
+                    let name = fact["name"].as_str().unwrap_or_default();
+                    format!("{name}={}", fact["said"].as_str().unwrap_or_default())
+                })
+                .collect()
+        };
+        assert_eq!(
+            facts("disk:reading"),
+            [
+                "read I/Os=1,234",
+                "read merges=56",
+                "read sectors=789,000",
+                "Read From=/sys/block/nvme0n1/stat"
+            ],
+            "a rate says the counts it's measured from, by the kernel's names"
+        );
+        assert_eq!(
+            facts("disk:scheduler"),
+            [
+                "queue/scheduler=[none] mq-deadline",
+                "Read From=/sys/block/nvme0n1"
+            ],
+            "what it is says the file that says it, as it says it"
+        );
+        assert_eq!(
+            facts("disk:spare"),
+            [
+                "avail_spare=100",
+                "spare_thresh=10",
+                "Read From=UDisks2 SmartGetAttributes"
+            ],
+            "its health says what its controller told UDisks"
+        );
+        assert_eq!(
+            facts("disk:file-system:/"),
+            [
+                "device=/dev/nvme0n1p2",
+                "type=btrfs",
+                "f_frsize=4,096",
+                "f_blocks=219,726,562",
+                "f_bfree=73,242,187",
+                "f_bavail=73,242,187",
+                "f_files=0",
+                "f_ffree=0",
+                "Read From=/proc/self/mountinfo \u{b7} statvfs(2)"
+            ],
+            "a file system says its mount and its room as statvfs counts it"
+        );
     }
 }

@@ -28,7 +28,8 @@ pragma Singleton
 // record says them (`questInfo` and `cwd`, which the harness publishes),
 // or for a record from before it did, as its window's label cuts them;
 // no README is read for them. Nothing is asked of pi;
-// a want sounds, and For You and the margin say it (onWantingChanged).
+// For You and the margin say a want, and one stopped on Joel's keys
+// sounds and is noticed (onStoppedChanged).
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -2297,23 +2298,35 @@ Singleton {
             .filter(part => part !== "").join(" ");
     }
 
-    // A want new to this shell sounds once, softly, and is said nowhere
-    // else: For You lists it as a thing to do (launcher/Now.qml's
-    // wantRow) and the margin's mark says it while it stands, so a notice
-    // as well said one ask three times (Joel said yes to For You,
-    // 2026-11-08). It sounds unless Joel is in that window already, and not
-    // for one that stood before the shell began. Each is known by its
-    // session and its want's own id or start (Waiting.wantKey), never by
-    // its words, so one rewording itself doesn't sound again. It's kept
-    // known: a presence file replaced by rename leaves its folder for a
-    // moment, which would otherwise make a want that never ended look new.
+    // A session stopped on Joel's keys, a question or a yes (Waiting.js's
+    // rings), is new to this shell once: it sounds, softly, and its notice
+    // says it with Go To its window first (pieces/Pi.qml, said by
+    // Arrivals.qml), so Super+N and Return take him to it. The bell means
+    // something needs him now, so a run that ended blocked and an item of
+    // a session's own, which For You lists, never ring (WCJQSG's pivot,
+    // 2026-11-12, on Joel's "my computer constantly dinging instead of
+    // being brought to what i need to interact with"), and the notice
+    // goes once he's in that window or the want ends, so it never takes
+    // him to a session that has moved on. Neither comes while he's in that
+    // window already, nor for one that stood before the shell began. Each
+    // is known by its session and its want's own id or start
+    // (Waiting.wantKey), never by its words, so one rewording itself
+    // doesn't sound again. It's kept known: a presence file replaced by
+    // rename leaves its folder for a moment, which would otherwise make a
+    // want that never ended look new. Each ring is said in the journal,
+    // so the sounds can be counted by where they came from.
     readonly property real began: Date.now()
     property var told: ({})
+    // The newest want the bell rang for, by its key, while it stands and
+    // Joel hasn't gone to its window.
+    property string rung: ""
+    readonly property var stopped: wanting.filter(session => Waiting.rings(session.presence.wants))
+    readonly property var ringing: stopped.find(session => key(session) === rung) ?? null
     function key(session) {
         return Waiting.wantKey(session.address, session.presence.wants);
     }
-    onWantingChanged: {
-        for (const session of wanting) {
+    onStoppedChanged: {
+        for (const session of stopped) {
             const known = key(session);
             if (told[known])
                 continue;
@@ -2322,9 +2335,22 @@ Singleton {
             const window = session.window ? String(session.window.id) : "";
             if (window === String(Niri.current) || (since < began))
                 continue;
-            // Never while notices are held.
-            if (Options.sounds.wants !== "" && !Quiet.on)
+            rung = known;
+            // Never while notices are held, and Arrivals holds its card.
+            if (Options.sounds.wants !== "" && !Quiet.on) {
                 Niri.spawn([Options.sounds.player, "--volume=0.5", Options.sounds.wants]);
+                console.info(`sessions: rang the want bell for ${session.address} `
+                    + `(${session.presence.wants.kind})`);
+            }
+        }
+    }
+    // Once Joel is in the window of what rang, he's been brought to it.
+    Connections {
+        target: Niri
+        function onCurrentChanged() {
+            const window = root.ringing?.window;
+            if (window && String(window.id) === String(Niri.current))
+                root.rung = "";
         }
     }
 

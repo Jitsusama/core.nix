@@ -8298,7 +8298,7 @@ Scope {
         } finally {
             keeping = false;
         }
-        homeHeld = false;
+        unhold(`${name} opened from what was kept`);
         openChord = name;
         openInto = name;
         beginOpening();
@@ -8667,7 +8667,7 @@ Scope {
                 restart("");
                 homeKept = matches;
             }
-            homeHeld = false;
+            unhold("an opening found home");
             lap("finding");
             // Nothing to rest from as it opens, so the drawer is out at once
             // when the first row has details.
@@ -8836,10 +8836,30 @@ Scope {
             unopened();
         else if (open)
             open = false;
-        else if (homeHeld)
+        else if (homeHeld || homeRescued())
             beginOpening();
         else
             wakeOpen();
+    }
+
+    // Home is held again once a closed card is clear, so every chord but
+    // the first since a start draws from what's kept. Joel's chords at
+    // 15:05 and 15:06 opened whole, in 199 and 160 ms, after one that had
+    // made home and closed at 15:00, though no way of closing tried on a
+    // nested niri left it unheld (2026-11-12). One found unheld says why,
+    // and is held there and then from home as last kept, since that draws
+    // as a kept opening does and is filled in after its frame all the same.
+    property string homeUnheld: "the shell started"
+    function unhold(why) {
+        homeHeld = false;
+        homeUnheld = why;
+    }
+    function homeRescued() {
+        if (homeKept.length === 0)
+            return false;
+        console.warn(`launcher: home wasn't held as its chord came: ${homeUnheld}`);
+        keepHome();
+        return homeHeld;
     }
 
     // An opening not kept opens with every source asleep (Provider.qml),
@@ -8941,7 +8961,7 @@ Scope {
         warmingOn.stop();
         // Home is found with no place held, as the last place kept left
         // its step held.
-        homeHeld = false;
+        unhold("warming was finding home");
         keeping = true;
         try {
             held = [];
@@ -8978,7 +8998,7 @@ Scope {
             return;
         // The card holds the place now, not home, until the pass ends by
         // keeping home again, so an opening meanwhile finds home first.
-        homeHeld = false;
+        unhold(`warming was keeping ${name}`);
         keeping = true;
         try {
             held = [placeStep(source)];
@@ -9297,12 +9317,19 @@ Scope {
     }
 
     function keepHome() {
-        if (open || opening || parting !== "")
+        const unkept = open ? "it was open as home was to be kept"
+            : opening ? "it was opening as home was to be kept"
+            : parting !== "" ? `it was saying "${parting}" as home was to be kept` : "";
+        if (unkept !== "") {
+            homeUnheld = homeHeld ? homeUnheld : unkept;
             return;
+        }
         const home = held.length === 0 && typed === "" && matches.length > 0 ? matches
             : homeKept;
-        if (home.length === 0)
+        if (home.length === 0) {
+            homeUnheld = homeHeld ? homeUnheld : "there was no home to keep";
             return;
+        }
         // Home found while shut, as the shell starts (warmNext), is kept as
         // an opening's find is, so the first chord after a restart goes into
         // its place alone rather than finding home again on its way.

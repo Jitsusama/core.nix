@@ -9,6 +9,9 @@
 //! trip any program may time. The lookup is a DNS query of its own, over
 //! UDP to the gateway node, which resolves for the home network, so it
 //! times the home network's resolving rather than this machine's cache.
+//! Each is tried up to three times and timed by the middle try, as one
+//! try alone reads a lone late packet as a slow internet (2026-11-12:
+//! 14 of a day's 214 looks, each alone, made its 95th percentile).
 //!
 //! What this machine sees is the home network's internet only while it's
 //! on the home network, so the gateway is timed, and the history told of
@@ -38,6 +41,10 @@ pub const TIMEOUT: Duration = Duration::from_secs(2);
 
 /// The gateway node's DNS port, which it answers for the home network.
 const DNS_PORT: u16 = 53;
+
+/// How many times a look times each target, keeping the middle time, so
+/// one packet late on the way isn't read as a slow line.
+const TRIES: usize = 3;
 
 /// What one look found.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,12 +89,15 @@ pub fn look(targets: &Targets, timeout: Duration) -> Reading {
         .gateway
         .map(|ip| SocketAddr::new(ip, targets.dns_port));
     thread::scope(|scope| {
-        let gateway_ms = scope.spawn(|| gateway.and_then(|at| connect_ms(at, timeout, true)));
-        let dns_ms = scope.spawn(|| gateway.and_then(|at| lookup_ms(at, &targets.name, timeout)));
+        let gateway_ms = scope
+            .spawn(|| gateway.and_then(|at| timed(timeout, |left| connect_ms(at, left, true))));
+        let dns_ms = scope.spawn(|| {
+            gateway.and_then(|at| timed(timeout, |left| lookup_ms(at, &targets.name, left)))
+        });
         let internet: Vec<_> = targets
             .internet
             .iter()
-            .map(|at| scope.spawn(move || connect_ms(*at, timeout, false)))
+            .map(|at| scope.spawn(move || timed(timeout, |left| connect_ms(*at, left, false))))
             .collect();
         let internet_ms = internet
             .into_iter()
@@ -101,6 +111,34 @@ pub fn look(targets: &Targets, timeout: Duration) -> Reading {
             reachable: internet_ms.is_some(),
         }
     })
+}
+
+/// The middle of up to `TRIES` times `once` gives, each given what's
+/// left of `timeout`, so every try together lasts one `timeout` at most.
+/// A try that isn't answered ends the tries, so a target that's out costs
+/// one timeout, and is out only when no try was answered.
+fn timed(timeout: Duration, mut once: impl FnMut(Duration) -> Option<f64>) -> Option<f64> {
+    let start = Instant::now();
+    let mut times = Vec::with_capacity(TRIES);
+    while times.len() < TRIES {
+        let Some(left) = timeout
+            .checked_sub(start.elapsed())
+            .filter(|left| !left.is_zero())
+        else {
+            break;
+        };
+        let Some(time) = once(left) else {
+            break;
+        };
+        times.push(time);
+    }
+    times.sort_by(f64::total_cmp);
+    let middle = times.len() / 2;
+    match times.len() {
+        0 => None,
+        even if even % 2 == 0 => Some(((times[middle - 1] + times[middle]) * 5.0).round() / 10.0),
+        _ => Some(times[middle]),
+    }
 }
 
 /// How long a TCP connect to `at` takes. A refusal is a round trip too,
@@ -320,6 +358,44 @@ mod tests {
             name: NAME.into(),
             dns_port,
         }
+    }
+
+    /// What `timed` keeps of tries that take `times` in turn, `None` for
+    /// one not answered, and how many it tried.
+    fn kept(times: &[Option<f64>]) -> (Option<f64>, usize) {
+        let mut tried = 0;
+        let kept = timed(QUICK, |_| {
+            tried += 1;
+            times.get(tried - 1).copied().flatten()
+        });
+        (kept, tried)
+    }
+
+    #[test]
+    fn a_target_is_timed_by_the_middle_of_three_tries() {
+        assert_eq!(
+            kept(&[Some(30.4), Some(210.0), Some(32.6)]),
+            (Some(32.6), TRIES),
+            "one late packet isn't the time"
+        );
+    }
+
+    #[test]
+    fn two_tries_answered_are_timed_by_the_middle_of_the_two() {
+        assert_eq!(
+            kept(&[Some(30.0), Some(40.5), None]),
+            (Some(35.3), TRIES),
+            "halfway, to a tenth"
+        );
+    }
+
+    #[test]
+    fn a_target_not_answering_is_tried_once() {
+        assert_eq!(
+            kept(&[None, Some(30.0)]),
+            (None, 1),
+            "out costs one timeout"
+        );
     }
 
     #[test]
