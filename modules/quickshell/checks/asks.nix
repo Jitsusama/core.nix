@@ -16,8 +16,9 @@
   # Asks lists what the secret-asks daemon serves, run here over its own
   # folder with stand-ins for op and loginctl, and two asks put up as an
   # agent puts one (tests/asks-stand-ins.sh): For You holds each waiting
-  # one, Return releases it, a yes while locked is refused in the daemon's
-  # words, and Refuse It refuses the other (tests/asks-served.qml).
+  # one, Return releases it once a first Return has armed it, r refuses,
+  # a yes while locked is refused in the daemon's words, and Refuse It
+  # refuses the other (tests/asks-served.qml).
   the-asks-place-releases-through-its-daemon =
     let
       asks = lib.getExe (pkgs.callPackage ../../secret-asks/package.nix { });
