@@ -2530,7 +2530,19 @@ in
         # locked (2026-10-31). With no timeout a late callback changes nothing;
         # a frame drawn while one is owed still waits for it, a tenth of a
         # second at most.
-        Environment = [ "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0" ];
+        #
+        # Quickshell allocates through jemalloc, which gives each of its 20 to
+        # 30 threads an arena of its own (four for each CPU), and each arena
+        # keeps the pages its thread freed for seconds before handing them
+        # back. Held to four, the threads share what's freed: in the lab, on
+        # Joel's records scrambled, the shell's memory outside its JavaScript
+        # heap and its files sat 30 to 60 MB lower through every place opened
+        # and every search, at 114 to 141 MB against 159 to 202, and its
+        # openings and keys took as long as before (2026-11-12).
+        Environment = [
+          "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
+          "MALLOC_CONF=narenas:4"
+        ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
         # its tenfold CPU weight and behind its memory floor (modules/slices),

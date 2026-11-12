@@ -40,6 +40,18 @@
       "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
       (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
 
+  # The shell's allocator keeps four arenas rather than one for each of its
+  # threads, since each arena holds freed memory of its own that it hands
+  # back only slowly (the unit's Environment says how much it saves).
+  quickshell-allocates-from-four-arenas =
+    let
+      home = account graphical;
+      environment = home.systemd.user.services.quickshell.Service.Environment or [ ];
+    in
+    holds "quickshell-allocates-from-four-arenas"
+      "Quickshell's unit doesn't hold jemalloc to four arenas, so each thread keeps freed memory of its own."
+      (lib.elem "MALLOC_CONF=narenas:4" (lib.toList environment));
+
   # Qt's own compiler takes every file of the shell as the account gets it,
   # the greeter's included, on the Qt the shell runs on
   # (modules/quickshell/tests/qml-compiles.sh).
