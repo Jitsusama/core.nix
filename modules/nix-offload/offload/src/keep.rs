@@ -57,8 +57,14 @@ const IDLE: Duration = Duration::from_mins(1);
 const HEARD_WITHIN: Duration = Duration::from_secs(5);
 
 /// Whether this machine runs the keeper.
+/// `NIX_OFFLOAD_KEEP_UNIT` names another unit in its place, so a test run
+/// on a machine with a keeper keeps its records apart: on 12 November
+/// tests run in a dev shell put three made-up commits in the real
+/// record, which read as zero-minute gates.
 pub fn stands() -> bool {
-    Path::new(UNIT).exists()
+    std::env::var_os("NIX_OFFLOAD_KEEP_UNIT")
+        .map_or_else(|| Path::new(UNIT).to_owned(), std::path::PathBuf::from)
+        .exists()
 }
 
 /// What the keeper is asked.

@@ -158,6 +158,9 @@ const NO_SECOND_VM: &str = "/nonexistent/nix-offload-vm-more";
 /// between the real ones from 6 November.
 const NO_MORE_VMS: &str = "/nonexistent/nix-offload-vm-3";
 
+/// And a keeper's unit, as this machine's own may run one.
+const NO_KEEPER: &str = "/nonexistent/nix-offload-keep.socket";
+
 const STORE: &str = "ssh-ng://nix-offload?ssh-key=/key&\
                      base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n";
 
@@ -169,48 +172,48 @@ fn stand_ins(folder: &Path, status: u8) {
     fs::write(folder.join("status"), status.to_string()).unwrap();
 }
 
+/// `nix-offload there` among its stand-ins: the programs in `bin` first
+/// on its path, `offload` as its lender's folder, `state` as its runtime,
+/// state and config folders, and no second lender or VM lender, whatever
+/// this machine's own hold, since a run no lent builder takes goes to one
+/// that does. Nor does it keep its passes with this machine's keeper,
+/// whose record gates read. A test adds its arguments, and whatever it
+/// sets besides goes over what this sets.
+fn there_command(bin: &Path, offload: &Path, state: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_nix-offload"));
+    command
+        .arg("there")
+        .env(
+            "PATH",
+            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("NIX_OFFLOAD_DIR", offload)
+        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        .env("NIX_OFFLOAD_KEEP_UNIT", NO_KEEPER)
+        .envs(no_vm_builders(state))
+        .env("XDG_RUNTIME_DIR", state)
+        .env("XDG_STATE_HOME", state)
+        .env("XDG_CONFIG_HOME", state);
+    command
+}
+
 fn there(folder: &Path, offload: &Path) -> Output {
     there_with(folder, offload, &[])
 }
 
 /// `there` given `extra` arguments besides.
 fn there_with(folder: &Path, offload: &Path, extra: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args([
-            "there",
-            "-L",
-            "github:o/r/abc",
-            "checks.x.a",
-            "--keep-going",
-        ])
+    there_command(folder, offload, folder)
+        .args(["-L", "github:o/r/abc", "checks.x.a", "--keep-going"])
         .args(extra)
-        .env(
-            "PATH",
-            format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder)
-        .env("XDG_STATE_HOME", folder)
-        .env("XDG_CONFIG_HOME", folder)
         .output()
         .unwrap()
 }
 
 /// `there` given these arguments alone.
 fn there_asked(folder: &Path, offload: &Path, arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("there")
+    there_command(folder, offload, folder)
         .args(arguments)
-        .env(
-            "PATH",
-            format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder)
-        .env("XDG_STATE_HOME", folder)
-        .env("XDG_CONFIG_HOME", folder)
         .output()
         .unwrap()
 }
@@ -433,23 +436,9 @@ fn sent_up_while_the_uplink_is_taken(before: &[&str], held_for: Duration) -> (Ou
         drop(held);
     });
     let began = std::time::Instant::now();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("there")
+    let ran = there_command(folder.path(), &offload, folder.path())
         .args(before)
         .args(["-L", "/nix/store/aaaa-x.drv"])
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     let took = began.elapsed();
@@ -503,21 +492,8 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
         format!("{} near x86_64-linux *\n", listening.local_addr().unwrap()),
     )
     .unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", "/nix/store/aaaa-x.drv"])
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -553,21 +529,8 @@ fn derivations_go_up_to_the_lent_builder_alone_and_build_there() {
     // One that can't be copied up isn't built anywhere unasked.
     fs::write(folder.path().join("nix-status"), "1").unwrap();
     fs::remove_file(folder.path().join("ssh-was-given")).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "/nix/store/aaaa-x.drv"])
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["/nix/store/aaaa-x.drv"])
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
@@ -605,21 +568,9 @@ fn there_given(folder: &Path, offload: &Path, arguments: &[&str]) -> Output {
 
 /// `there` given `arguments`, with `vm` as the VM builder's lender folder.
 fn there_beside(folder: &Path, offload: &Path, vm: &Path, arguments: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("there")
+    there_command(folder, offload, folder)
         .env("NIX_OFFLOAD_VM_DIR", vm)
-        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
         .args(arguments)
-        .env(
-            "PATH",
-            format!("{}:{}", folder.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder)
-        .env("XDG_STATE_HOME", folder)
-        .env("XDG_CONFIG_HOME", folder)
         .output()
         .unwrap()
 }
@@ -659,26 +610,10 @@ fn a_send_that_falls_behind_stops_and_the_builder_builds_the_rest() {
     .unwrap();
     fs::write(folder.path().join("copy-takes"), "30").unwrap();
     let began = std::time::Instant::now();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("there")
+    let ran = there_command(folder.path(), &offload, folder.path())
         .arg("/nix/store/aaaa-system.drv")
         .env("NIX_OFFLOAD_SEND_WITHIN", "1")
         .env("NIX_OFFLOAD_VM_DIR", "/nonexistent/nix-offload-vm")
-        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -1055,25 +990,10 @@ fn what_a_stopped_send_leaves_the_builder_to_build_goes_up_from_what_its_built_f
     .unwrap();
     // Asked after, the builder says it lacks the modules still.
     fs::write(folder.path().join("says"), "/nix/store/bbbb-modules\n").unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "/nix/store/aaaa-test.drv"])
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["/nix/store/aaaa-test.drv"])
         .env("NIX_OFFLOAD_SEND_WITHIN", "1")
         .env("NIX_OFFLOAD_VM_DIR", "/nonexistent/nix-offload-vm")
-        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -1171,28 +1091,9 @@ fn a_checked_copy_back_that_fails_waits_for_the_builder_to_sign() {
     stand_ins(folder.path(), 0);
     fs::write(folder.path().join("says"), "/nix/store/aaaa-a\n").unwrap();
     fs::write(folder.path().join("nix-fails"), "1").unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args([
-            "there",
-            "-L",
-            "github:o/r/abc",
-            "checks.x.a",
-            "--print-out-paths",
-        ])
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "github:o/r/abc", "checks.x.a", "--print-out-paths"])
         .env("NIX_OFFLOAD_SIGNED_WITHIN", "1")
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -1324,22 +1225,8 @@ fn a_folder_no_commit_names_goes_as_a_tarball_and_builds_there() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args([
-            "there",
-            "-L",
-            &format!("path:{}", copy.display()),
-            "checks.x.a",
-        ])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", &format!("path:{}", copy.display()), "checks.x.a"])
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -1410,17 +1297,8 @@ fn a_folders_ignored_files_stay_here_and_its_size_is_said() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", &format!("path:{}", tree.display()), "checks.x.a"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([&format!("path:{}", tree.display()), "checks.x.a"])
         .env("GIT_CONFIG_GLOBAL", &config)
         .output()
         .unwrap();
@@ -1478,19 +1356,10 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     let flake = format!("path:{}", copy.display());
     // Its inputs can't go anywhere, so it builds here once the builder
     // reads one, only when asked to.
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", "--here", "--out"])
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", "--here", "--out"])
         .arg(&out)
         .args([flake.as_str(), "packages.x.guide"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -1507,17 +1376,8 @@ fn a_folder_with_inputs_only_here_builds_here_and_shows_its_log() {
     // With nothing kept, a 65 is the build's own, and nothing is made here.
     fs::remove_file(copy.join("flake.lock")).unwrap();
     fs::remove_file(bin.join("nix-was-given")).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", "--here", flake.as_str(), "packages.x.guide"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", "--here", flake.as_str(), "packages.x.guide"])
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(65), "{ran:?}");
@@ -1555,17 +1415,9 @@ fn a_folder_whose_evaluation_reads_inputs_only_here_says_how_to_send_it_and_not_
     fs::write(offload.join("store"), STORE).unwrap();
     fs::write(bin.join("status"), "65").unwrap();
     let flake = format!("path:{}", copy.display());
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", flake.as_str(), "packages.x.guide"])
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", flake.as_str(), "packages.x.guide"])
         .env("NIX_OFFLOAD_MORE_DIR", folder.path().join("no-second"))
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&ran.stderr);
@@ -1612,17 +1464,8 @@ fn a_folder_taking_a_store_path_sends_it_first_and_never_its_secrets() {
     fs::create_dir(&offload).unwrap();
     fs::write(offload.join("store"), STORE).unwrap();
     let flake = format!("path:{}", copy.display());
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", flake.as_str(), "packages.x.guide"])
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["-L", flake.as_str(), "packages.x.guide"])
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&ran.stderr);
@@ -1730,23 +1573,14 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     let flake = format!("path:{}", zone.display());
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+    let ran = there_command(&bin, &offload, folder.path())
         .args([
-            "there",
             "-L",
             "--here",
             &flake,
             "checks.aarch64-darwin.a",
             "checks.x86_64-linux.b",
         ])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
         .output()
         .unwrap();
@@ -1833,22 +1667,13 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     .unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+    let ran = there_command(&bin, &offload, folder.path())
         .args([
-            "there",
             "--here",
             "github:owner/repo/abc",
             "checks.aarch64-darwin.a",
             "checks.x86_64-linux.b",
         ])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
         .output()
         .unwrap();
@@ -1903,18 +1728,10 @@ fn a_part_for_a_nearby_machine_ssh_cant_reach_goes_with_the_rest() {
     fs::create_dir(&offload).unwrap();
     let flake = format!("path:{}", zone.display());
     let asked = |extra: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L"])
+        there_command(&bin, &offload, folder.path())
+            .args(["-L"])
             .args(extra)
             .args([&flake, "checks.aarch64-darwin.a", "checks.x86_64-linux.b"])
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
             .env("XDG_CONFIG_HOME", folder.path().join("config"))
             .output()
             .unwrap()
@@ -1974,20 +1791,11 @@ fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     .unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
+    let ran = there_command(&bin, &offload, folder.path())
         .args([
-            "there",
             &format!("path:{}", tree.display()),
             "checks.aarch64-darwin.a",
         ])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
         .env("GIT_CONFIG_GLOBAL", &config)
         .output()
@@ -2047,19 +1855,10 @@ fn a_nearby_machine_builds_nothing_of_a_tree_that_moved_since_the_run_began() {
     .unwrap();
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .arg("there")
+    let ran = there_command(&bin, &offload, folder.path())
         .arg(&tree)
         .args(["checks.aarch64-darwin.a", "checks.x86_64-darwin.a"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
         .env("MOVES", tree.join("flake.nix"))
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
         .env("XDG_CONFIG_HOME", folder.path().join("config"))
         .env("GIT_CONFIG_GLOBAL", &config)
         .output()
@@ -2159,17 +1958,8 @@ impl Unpushed {
     /// Runs `there` on the tree, and answers with what ssh was told to run.
     fn there(&self) -> String {
         let _ = fs::remove_file(self.bin.join("ssh-was-given"));
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", &self.tree.to_string_lossy(), "checks.x.a"])
-            .env(
-                "PATH",
-                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &self.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("XDG_RUNTIME_DIR", self.folder.path())
-            .env("XDG_STATE_HOME", self.folder.path())
-            .env("XDG_CONFIG_HOME", self.folder.path())
+        let ran = there_command(&self.bin, &self.offload, self.folder.path())
+            .args(["-L", &self.tree.to_string_lossy(), "checks.x.a"])
             .env("GIT_CONFIG_GLOBAL", &self.config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
@@ -2307,17 +2097,8 @@ fn a_tree_is_built_at_the_commit_it_was_at_when_asked_however_long_it_waits() {
     fs::write(offload.join("lender"), std::process::id().to_string()).unwrap();
     fs::write(offload.join("lending"), "").unwrap();
     let said = folder.path().join("said");
-    let mut run = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", &tree.to_string_lossy(), "checks.x.a"])
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
+    let mut run = there_command(bin, offload, folder.path())
+        .args(["-L", &tree.to_string_lossy(), "checks.x.a"])
         .env("GIT_CONFIG_GLOBAL", config)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .stderr(fs::File::create(&said).unwrap())
@@ -2446,22 +2227,10 @@ fn changed_checks_run_on_the_lent_builder_else_an_evaluator_else_nowhere() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     let run = || {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--changed", "--build", "--no-vm"])
+        there_command(&bin, &offload, folder.path())
+            .args(["--changed", "--build", "--no-vm"])
             .args(["--system", "x86_64-linux"])
             .current_dir(&tree)
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            // No VM builder stands, whatever this machine's own lenders hold,
-            // since a run no lent builder takes now goes to one that does.
-            .envs(no_vm_builders(folder.path()))
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .env("GIT_CONFIG_GLOBAL", &config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
@@ -2627,25 +2396,13 @@ impl Changed {
     ) -> (Output, Option<String>) {
         let given = self.bin.join("ssh-was-given");
         let _ = fs::remove_file(&given);
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .arg("there")
+        let ran = there_command(&self.bin, &self.offload, self.folder.path())
             .args(before)
             .arg("--changed")
             .args(arguments)
             .env("NIX_OFFLOAD_EVALUATING_LONGEST", "5")
             .current_dir(&self.tree)
-            .env(
-                "PATH",
-                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &self.offload)
             .env("NIX_OFFLOAD_MORE_DIR", more)
-            .env("NIX_OFFLOAD_VM_DIR", self.folder.path().join("offload-vm"))
-            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-            .env("XDG_RUNTIME_DIR", self.folder.path())
-            .env("XDG_STATE_HOME", self.folder.path())
-            .env("XDG_CONFIG_HOME", self.folder.path())
             .env("GIT_CONFIG_GLOBAL", &self.config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
@@ -3085,8 +2842,8 @@ fn subtests_that_passed_at_a_commit_arent_run_again_and_their_pictures_come_from
     let nowhere = changed.folder.path().join("nowhere");
     fs::create_dir(&nowhere).unwrap();
     let subtests = |words: &str, out: &str| {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--here", "--out"])
+        there_command(&changed.bin, &nowhere, changed.folder.path())
+            .args(["--here", "--out"])
             .arg(changed.folder.path().join(out))
             .args([
                 "--apply",
@@ -3094,19 +2851,6 @@ fn subtests_that_passed_at_a_commit_arent_run_again_and_their_pictures_come_from
             ])
             .arg(&changed.tree)
             .arg("legacyPackages.x.subtests")
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    changed.bin.display(),
-                    std::env::var("PATH").unwrap()
-                ),
-            )
-            .env("NIX_OFFLOAD_DIR", &nowhere)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("XDG_RUNTIME_DIR", changed.folder.path())
-            .env("XDG_STATE_HOME", changed.folder.path())
-            .env("XDG_CONFIG_HOME", changed.folder.path())
             .output()
             .unwrap()
     };
@@ -3190,8 +2934,8 @@ fn a_folder_an_output_was_unpacked_into_takes_the_next() {
     }
     let out = changed.folder.path().join("out");
     let subtests = |words: &str| {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--out"])
+        there_command(&changed.bin, &changed.offload, changed.folder.path())
+            .args(["--out"])
             .arg(&out)
             .args([
                 "--apply",
@@ -3199,19 +2943,6 @@ fn a_folder_an_output_was_unpacked_into_takes_the_next() {
             ])
             .arg(&changed.tree)
             .arg("legacyPackages.x.subtests")
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    changed.bin.display(),
-                    std::env::var("PATH").unwrap()
-                ),
-            )
-            .env("NIX_OFFLOAD_DIR", &changed.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("XDG_RUNTIME_DIR", changed.folder.path())
-            .env("XDG_STATE_HOME", changed.folder.path())
-            .env("XDG_CONFIG_HOME", changed.folder.path())
             .output()
             .unwrap()
     };
@@ -3244,25 +2975,12 @@ fn a_run_whose_output_cant_be_unpacked_fails_and_isnt_kept_as_passed() {
     // The lent builder's build passes, and sends back no tarball.
     let changed = Changed::new();
     let subtests = |out: &str| {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--out"])
+        there_command(&changed.bin, &changed.offload, changed.folder.path())
+            .args(["--out"])
             .arg(changed.folder.path().join(out))
             .args(["--apply", "subtests: subtests { words = [ \"a\" ]; }"])
             .arg(&changed.tree)
             .arg("legacyPackages.x.subtests")
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    changed.bin.display(),
-                    std::env::var("PATH").unwrap()
-                ),
-            )
-            .env("NIX_OFFLOAD_DIR", &changed.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .env("XDG_RUNTIME_DIR", changed.folder.path())
-            .env("XDG_STATE_HOME", changed.folder.path())
-            .env("XDG_CONFIG_HOME", changed.folder.path())
             .output()
             .unwrap()
     };
@@ -3330,21 +3048,10 @@ fn changed_checks_on_the_lent_builder_send_their_vm_tests_to_a_builder_of_their_
     .unwrap();
     fs::write(bin.join("says"), "changed  a\nadded    vm-b\nremoved  c\n").unwrap();
 
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "--changed", "--build", "--system", "x86_64-linux"])
+    let ran = there_command(&bin, &offload, folder.path())
+        .args(["--changed", "--build", "--system", "x86_64-linux"])
         .current_dir(&tree)
-        .env(
-            "PATH",
-            format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
-        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .env("GIT_CONFIG_GLOBAL", &config)
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
@@ -3445,25 +3152,10 @@ fn a_vm_test_waits_for_its_own_builder_and_never_goes_the_lent_way() {
     stand_ins(folder.path(), 0);
     let (offload, vm) = vm_lender_restarting(folder.path());
     let back = vm_lender_back(&vm);
-    let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-        .args(["there", "-L", "github:o/r/abc"])
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "github:o/r/abc"])
         .args(["checks.x.vm-a", "checks.x.a"])
-        .env(
-            "PATH",
-            format!(
-                "{}:{}",
-                folder.path().display(),
-                std::env::var("PATH").unwrap()
-            ),
-        )
-        .env("NIX_OFFLOAD_DIR", &offload)
-        .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_VM_DIR", &vm)
-        .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-        .env("XDG_RUNTIME_DIR", folder.path())
-        .env("XDG_STATE_HOME", folder.path())
-        .env("XDG_CONFIG_HOME", folder.path())
         .output()
         .unwrap();
     back.join().unwrap();
@@ -3566,22 +3258,11 @@ fn changed_checks_send_their_vm_tests_apart_while_the_vm_lender_restarts() {
     let run = |arguments: &[&str]| {
         let _ = fs::remove_file(bin.join("ssh-hosts"));
         let _ = fs::remove_file(bin.join("ssh-commands"));
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "--changed", "--build"])
+        there_command(&bin, &offload, folder.path())
+            .args(["--changed", "--build"])
             .args(arguments)
             .current_dir(&tree)
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &vm)
-            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .env("GIT_CONFIG_GLOBAL", &config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
@@ -3666,21 +3347,9 @@ fn a_build_goes_to_a_second_builder_while_the_first_is_full() {
         fs::write(folder.path().join("pressure-nix-offload"), pressure(first)).unwrap();
         let _ = fs::remove_file(folder.path().join("ssh-hosts"));
         let _ = fs::remove_file(folder.path().join("ssh-commands"));
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    folder.path().display(),
-                    std::env::var("PATH").unwrap()
-                ),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
+        let ran = there_command(folder.path(), &offload, folder.path())
+            .args(["-L", "github:o/r/abc", "checks.x.a"])
             .env("NIX_OFFLOAD_MORE_DIR", &more)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .output()
             .unwrap();
         assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -3787,30 +3456,11 @@ fn asked_to_build_here_when_idle_it_builds_here_only_while_this_machine_is_idle(
         .unwrap();
         let _ = fs::remove_file(&given);
         let _ = fs::remove_file(&commands);
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args([
-                "there",
-                "--here-when-idle",
-                "-L",
-                "github:o/r/abc",
-                attribute,
-            ])
-            .env(
-                "PATH",
-                format!(
-                    "{}:{}",
-                    folder.path().display(),
-                    std::env::var("PATH").unwrap()
-                ),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        let ran = there_command(folder.path(), &offload, folder.path())
+            .args(["--here-when-idle", "-L", "github:o/r/abc", attribute])
             .env("NIX_OFFLOAD_CPU_PRESSURE", &pressure)
             // No VM lender has run, so a VM test goes the lent way.
             .env("NIX_OFFLOAD_VM_DIR", folder.path().join("no-vm"))
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .output()
             .unwrap();
         assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -3875,20 +3525,10 @@ fn a_vm_test_sent_apart_that_passed_at_a_commit_isnt_built_again() {
     .unwrap();
     let flake = format!("github:o/r/{}", "a".repeat(40));
     let sent = || {
-        let ran = Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", &flake, "checks.x.a", "checks.x.vm-a"])
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
+        let ran = there_command(&bin, &offload, folder.path())
+            .args(["-L", &flake, "checks.x.a", "checks.x.vm-a"])
             .env("NIX_OFFLOAD_VM_DIR", &vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND)
-            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .output()
             .unwrap();
         assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -4123,21 +3763,9 @@ fn one_after_another_with(
     .unwrap();
     fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
     let run = |args: &[String], said: &Path| {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .arg("there")
+        there_command(&bin, &offload, folder.path())
             .args(args)
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &vm)
-            .env("NIX_OFFLOAD_VM_MORE_DIR", NO_SECOND_VM)
-            .env("NIX_OFFLOAD_VM_EXTRA_DIRS", NO_MORE_VMS)
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .envs(told.iter().copied())
             .stdout(std::process::Stdio::null())
             .stderr(fs::File::create(said).unwrap())
@@ -4262,21 +3890,12 @@ impl TwoVm {
     fn start(&self, tests: usize) -> std::process::Child {
         let _ = fs::remove_file(self.bin.join("ssh-sent"));
         let said = self.folder.path().join("said");
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args(["there", "-L", "github:o/r/abc", "checks.x.a"])
+        there_command(&self.bin, &self.offload, self.folder.path())
+            .args(["-L", "github:o/r/abc", "checks.x.a"])
             .args((0..tests).map(|test| format!("checks.x.vm-{test}")))
-            .env(
-                "PATH",
-                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &self.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
             .env("NIX_OFFLOAD_VM_DIR", &self.vm)
             .env("NIX_OFFLOAD_VM_MORE_DIR", &self.more)
             .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &self.third)
-            .env("XDG_RUNTIME_DIR", self.folder.path())
-            .env("XDG_STATE_HOME", self.folder.path())
-            .env("XDG_CONFIG_HOME", self.folder.path())
             .stdout(std::process::Stdio::null())
             .stderr(fs::File::create(&said).unwrap())
             .spawn()
@@ -4549,26 +4168,10 @@ fn a_command_runs_on_the_lent_builder_with_its_paths_sent_first_or_nowhere() {
     let offload = folder.path().join("offload");
     fs::create_dir(&offload).unwrap();
     let run = || {
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .args([
-                "there",
-                "--never-ask",
-                "--run",
-                "--copy",
-                "/nix/store/a-runtime",
-            ])
+        there_command(&bin, &offload, folder.path())
+            .args(["--never-ask", "--run", "--copy", "/nix/store/a-runtime"])
             .args(["--longest", "60", "--", "pnpm", "test", "--reporter", "dot"])
             .current_dir(&tree)
-            .env(
-                "PATH",
-                format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .envs(no_vm_builders(folder.path()))
-            .env("XDG_RUNTIME_DIR", folder.path())
-            .env("XDG_STATE_HOME", folder.path())
-            .env("XDG_CONFIG_HOME", folder.path())
             .env("GIT_CONFIG_GLOBAL", &config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
@@ -4694,20 +4297,9 @@ impl RunTree {
     /// `there` asked `words` from the tree, with `vars` set too.
     fn there(&self, words: &[&str], vars: &[(&str, &Path)]) -> Output {
         let _ = fs::remove_file(self.bin.join("ssh-was-given"));
-        Command::new(env!("CARGO_BIN_EXE_nix-offload"))
-            .arg("there")
+        there_command(&self.bin, &self.offload, self.folder.path())
             .args(words)
             .current_dir(&self.tree)
-            .env(
-                "PATH",
-                format!("{}:{}", self.bin.display(), std::env::var("PATH").unwrap()),
-            )
-            .env("NIX_OFFLOAD_DIR", &self.offload)
-            .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
-            .envs(no_vm_builders(self.folder.path()))
-            .env("XDG_RUNTIME_DIR", self.folder.path())
-            .env("XDG_STATE_HOME", self.folder.path())
-            .env("XDG_CONFIG_HOME", self.folder.path())
             .env("GIT_CONFIG_GLOBAL", &self.config)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .envs(vars.iter().copied())
