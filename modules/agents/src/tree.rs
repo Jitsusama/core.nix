@@ -22,6 +22,8 @@ pub struct Member<'a> {
     /// The address of the session orchestrating it, or "".
     pub under: &'a str,
     pub stands: Stands,
+    /// Whether it stands at Agents' top by name, as the void does.
+    pub at_top: bool,
 }
 
 /// One entry of the laid-out list.
@@ -243,9 +245,27 @@ mod tests {
                     address,
                     under,
                     stands,
+                    at_top: false,
                 }
             })
             .collect()
+    }
+
+    #[test]
+    fn one_standing_at_the_top_follows_those_needing_joel_and_leads_the_rest() {
+        let mut list = sessions("A:working B:needs V:listening C:working>A D:paused");
+        list[2].at_top = true;
+        assert_eq!(
+            read(&list, &tree(&list, false)),
+            "B V A .C D",
+            "the void keeps one place, however it and the rest stand"
+        );
+        list[2].stands = Stands::Needs;
+        assert_eq!(
+            read(&list, &tree(&list, false)),
+            "B V A .C D",
+            "needing Joel itself, it stands among those that do, in its order"
+        );
     }
 
     /// The laid-out list as it reads: each address, a dot for each step

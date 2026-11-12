@@ -353,6 +353,7 @@ pub fn rows(sessions: &[Session], known: &Known, words: &Words) -> Vec<Shown> {
             address: session.address(),
             under: session.under(),
             stands: session.stands(known.joel_can, known.jobs),
+            at_top: session.at_top().is_some(),
         })
         .collect();
     shown(&tree::tree(&members, true), sessions, known, words)
