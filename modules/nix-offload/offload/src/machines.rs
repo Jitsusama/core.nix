@@ -334,6 +334,15 @@ fn kept_beside(
     keeper.health.left_out() || state == State::Unproven
 }
 
+/// Where root's prover says how the builders beside stand. A unit test
+/// reads none unless it names its own: on 12 November six read this
+/// machine's, which named none of their builders, and failed outside the
+/// build's sandbox.
+#[cfg(not(test))]
+const STANDING: &str = proof::STANDING;
+#[cfg(test)]
+const STANDING: &str = "/nonexistent/nix-offload-standing/health.json";
+
 fn seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -549,7 +558,7 @@ impl Machines {
             kept: Vec::new(),
             earlier: Vec::new(),
             nix: "nix".to_owned(),
-            root: PathBuf::from(proof::STANDING),
+            root: PathBuf::from(STANDING),
             freeing_from: None,
             freeing: Vec::new(),
             cloud: None,
