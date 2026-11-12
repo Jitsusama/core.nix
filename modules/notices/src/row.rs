@@ -15,6 +15,10 @@
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).
 //! - `notices-history`, For You's History, the read, its age alone.
+//!
+//! Long because a row, its side and its drawer are one notice's one
+//! reading, which change together, and its cases, nearly half of it, show
+//! each list's rows beside the code making them.
 
 use std::collections::{BTreeMap, BTreeSet};
 
