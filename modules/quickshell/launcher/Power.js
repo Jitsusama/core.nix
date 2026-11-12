@@ -61,6 +61,71 @@ function profileRefusal(wanted, heard, told) {
         : filled(told.said.kept, { profile });
 }
 
+// A power profile's own drawer, under its row among Power Profile's
+// choices, as facts by their words' ids: which profile is on instead,
+// while this one isn't; which programs hold this one, as the power
+// profile's drawer says them; why Full Performance is held back, on its
+// own drawer alone; and while it's the one on, what it set, the firmware's
+// profile and the processor's preference as power-profiles-daemon wrote
+// them. `known` holds `on`, whether it's on, `current`, the name of the
+// one on, `holds`, each { profile, app, reason } by the daemon's names,
+// `slowed`, a said key or "", and `firmware` and `processor` as read, or
+// none before they are.
+function choiceFacts(daemon, known, said) {
+    const held = (known.holds ?? []).filter(hold => hold.profile === daemon)
+        .map(hold => hold.reason === "" ? hold.app : filled(said.held, hold)).join(" \u00b7 ");
+    return [
+        { id: "session:profile:now", value: known.on ? "" : known.current ?? "" },
+        { id: "session:profile:held", value: held },
+        { id: "session:profile:slowed", value: daemon !== "performance" || !known.slowed ? ""
+            : said[known.slowed] ?? "" },
+        { id: "session:profile:firmware", value: known.on ? known.firmware ?? "" : "" },
+        { id: "session:profile:processor", value: known.on ? known.processor ?? "" : "" }
+    ].filter(fact => fact.value !== "");
+}
+
+// The programs whose windows are open, the most windows first, then by
+// name, each { name, count }, from niri's windows (Niri.qml's, by id),
+// each named by `named` from its app_id, and how many windows in all, a
+// window with no app_id counted there alone.
+function byProgram(windows, named) {
+    const counted = Object.create(null);
+    let open = 0;
+    for (const window of Object.values(windows ?? {})) {
+        open += 1;
+        const id = String(window?.app_id ?? "");
+        if (id !== "") {
+            const name = named(id);
+            counted[name] = (counted[name] ?? 0) + 1;
+        }
+    }
+    const programs = Object.keys(counted).map(name => ({ name, count: counted[name] }))
+        .sort((one, other) => other.count - one.count || one.name.localeCompare(other.name));
+    return { open, programs };
+}
+
+// How many programs a drawer names before saying how many more.
+const PROGRAMS_NAMED = 4;
+
+// What's open, as Lock's drawer says it stays running behind the lock:
+// how many windows, "14 windows", and whose, the most first, "kitty 5 \u00b7
+// Chrome 4 \u00b7 Slack 2 \u00b7 3 more", in the words `said` gives; each ""
+// when none is open.
+function openSaid(open, said) {
+    if (open.open === 0) {
+        return { windows: "", programs: "" };
+    }
+    const named = open.programs.slice(0, PROGRAMS_NAMED).map(each => `${each.name} ${each.count}`);
+    const more = open.programs.length - PROGRAMS_NAMED;
+    if (more > 0) {
+        named.push(filled(said.more, { count: more }));
+    }
+    return {
+        windows: open.open === 1 ? said.window : filled(said.windows, { count: open.open }),
+        programs: named.join(" \u00b7 ")
+    };
+}
+
 // The steps a sleep goes through, in the order Linux takes them, each as
 // its suspend_stats names it.
 const SLEEP_STEPS = ["freeze", "prepare", "suspend", "suspend_late", "suspend_noirq",
