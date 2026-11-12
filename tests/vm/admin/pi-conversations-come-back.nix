@@ -33,7 +33,7 @@ let
     rev = commit;
     deepClone = true;
     leaveDotGit = true;
-    hash = lib.fakeHash;
+    hash = "sha256-ql7ajCuiO76agBdzbln+ouB9U2D1syQlr89fY8Ah7DI=";
   };
   harness = pkgs.runCommand "agentic-harness-${lib.substring 0 12 commit}" { } ''
     cp -r ${source} $out
