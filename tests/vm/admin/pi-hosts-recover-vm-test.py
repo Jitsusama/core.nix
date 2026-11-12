@@ -148,7 +148,7 @@ def test_a_host_outlives_a_command_the_kernel_kills_for_memory(host: Host) -> No
         host.run(f"touch {FOLDER}/hog")
         host.machine.wait_until_succeeds(
             f"journalctl --no-pager _UID=1000 USER_UNIT={UNIT}"
-            " | grep -qF 'killed by the OOM killer'",
+            " | grep -qF 'OOM killer killed some processes'",
             timeout=COMING_BACK,
         )
         # Nothing more is to happen, so the test waits out the time a restart would come in.
