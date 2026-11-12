@@ -386,6 +386,10 @@
     the clips heard blind, Return playing one and Pick a step in, every cleaner and its cost once
     one's picked, a refusal said plainly, and leaving discarding anything but idle
   '';
+  chrome-leaves-vimium-out-unasked = ''
+    an account whose machine doesn't ask for Vimium gets no Vimium settings and no launcher row
+    that needs Vimium, so a managed Chrome's launcher lists no keys it can't take
+  '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
   '';

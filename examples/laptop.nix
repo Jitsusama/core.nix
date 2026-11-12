@@ -44,6 +44,9 @@ nixpkgs.lib.nixosSystem {
       users.users.joel.isNormalUser = true;
       home-manager.users.joel = {
         home.stateVersion = "26.05";
+        # This laptop's Chrome is its own, unmanaged, so it takes Vimium, and
+        # its keys are held against Google's pages' own (modules/keys).
+        jitsusama.chrome.vimium = true;
         imports = [
           core.homeModules.cadence
           core.homeModules.chrome
