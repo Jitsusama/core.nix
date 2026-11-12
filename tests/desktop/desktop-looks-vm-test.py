@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import shlex
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
@@ -968,8 +968,12 @@ def landed_lists_what_sessions_landed(desktop: Desktop, shot: str) -> None:
     how many landed today at its side; what's to read is For You's alone to count. The one
     saying what to try lands afresh at each scale, so each finds it unread.
     """
-    # A second for the scale's figures, 11:19:15 at 1.5 and 11:19:02 at 2.
-    fresh = {**LANDINGS[2], "at": f"2026-11-07T11:19:{int(shot.replace('-', '')):02}Z"}
+    # What to try waits a day from when it landed by the machine's clock, so a landing dated
+    # once goes stale the next day. This one lands in the last minute of yesterday, in the
+    # machine's time zone, UTC: within a day, yet not today, so Landed still has none today.
+    # Only from 23:59 is it a day old. A second for the scale's figures, :15 at 1.5, :02 at 2.
+    yesterday = (datetime.now(UTC) - timedelta(days=1)).date().isoformat()
+    fresh = {**LANDINGS[2], "at": f"{yesterday}T23:59:{int(shot.replace('-', '')):02}Z"}
     landings = [*LANDINGS[:2], fresh]
     desktop.presence_says(record_of("TESTQC", "TESTQA", "listening", landings), "TESTQC")
     desktop.close_launcher()
