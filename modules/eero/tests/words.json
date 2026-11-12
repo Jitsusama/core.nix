@@ -5,7 +5,7 @@
       "name": "Home Network",
       "term": "Network/home network",
       "noun": "nodes",
-      "words": ["eero"],
+      "words": ["eero", "wifi"],
       "what": "node",
       "glyph": "accessPoint",
       "ask": "which node or device?",
