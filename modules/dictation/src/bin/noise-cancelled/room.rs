@@ -100,7 +100,7 @@ impl Room {
 /// The floor of a whole recording, as the trial hears its own.
 pub fn of(samples: &[f32]) -> Option<i32> {
     let mut room = Room::default();
-    for frame in samples.chunks_exact(FRAME) {
+    for frame in samples.as_chunks::<FRAME>().0 {
         room.heard(frame);
     }
     room.floor()
