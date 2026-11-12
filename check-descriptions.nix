@@ -4170,6 +4170,13 @@
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why
   '';
+  vm-pi-conversations-come-back = ''
+    a realm's attended pi host, its unit as the module renders it on the harness's own host
+    program and a pi with the host's patches, holding a parked and an idle conversation, is
+    started again after a kill -9 holding both with their records unchanged, and after a reboot
+    starts with the account's manager, ready and holding both, and a viewer attaching then is
+    drawn each one's screen
+  '';
   vm-plugging-in-wakes-it = ''
     every USB 2 and 1.1 root hub may wake the machine, so a cable plugged into a sleeping laptop
     wakes it, and the SuperSpeed ones may not, so a USB 3 device pulled out doesn't
