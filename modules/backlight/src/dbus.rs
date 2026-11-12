@@ -9,6 +9,7 @@ use tokio::sync::watch;
 use zbus::export::futures_core::Stream;
 use zbus::fdo::DBusProxy;
 use zbus::proxy::{CacheProperties, OwnerChangedStream, PropertyStream};
+use zbus::zvariant::Value;
 use zbus::{Connection, Message, proxy};
 
 use crate::ask;
@@ -49,8 +50,6 @@ pub(crate) trait Manager {
 pub(crate) trait Relay {
     #[zbus(property)]
     fn temperature(&self) -> zbus::Result<u16>;
-    #[zbus(property)]
-    fn set_temperature(&self, kelvin: u16) -> zbus::Result<()>;
 }
 
 /// Why the panel's warmth wasn't set.
@@ -63,9 +62,48 @@ pub(crate) enum Refused {
     Else(String),
 }
 
-/// What a reply to a set of the warmth says.
-fn answered(_reply: &Message) -> Result<(), Refused> {
-    Ok(())
+/// Sets the panel's warmth, or says why it wasn't.
+pub(crate) async fn set_warmth(relay: &RelayProxy<'_>, kelvin: u16) -> Result<(), Refused> {
+    let relay = relay.inner();
+    let reply = relay
+        .connection()
+        .call_method(
+            Some(relay.destination().clone()),
+            relay.path().clone(),
+            Some("org.freedesktop.DBus.Properties"),
+            "Set",
+            &(
+                relay.interface().clone(),
+                "Temperature",
+                Value::from(kelvin),
+            ),
+        )
+        .await
+        .map_err(|error| refusal(&error.to_string()))?;
+    answered(&reply)
+}
+
+/// What a reply to a set of the warmth says. wl-gammarelay-rs's D-Bus
+/// crate, rustbus, sends a refusal as an ordinary reply holding its reason
+/// rather than as an error, and a set's own reply holds nothing, so any
+/// words in it are the refusal. Read as a set's reply, zbus would call it
+/// a signature mismatch and lose why. Newer rustbus sends an error, which
+/// zbus gives as one, so `refusal` reads both.
+fn answered(reply: &Message) -> Result<(), Refused> {
+    match reply.body().deserialize::<&str>() {
+        Ok(reason) => Err(refusal(reason)),
+        Err(_) => Ok(()),
+    }
+}
+
+/// Why a set was refused, from the relay's words, which name the object it
+/// has none of when niri isn't showing the panel.
+fn refusal(reason: &str) -> Refused {
+    if reason.contains("are accepted for object") {
+        Refused::NoPanel
+    } else {
+        Refused::Else(reason.to_owned())
+    }
 }
 
 /// Waits for the screens' warmth to be set by a program that just started,
@@ -227,6 +265,17 @@ mod tests {
             answered(&reply(&(said,))),
             Err(Refused::NoPanel),
             "a panel niri doesn't show has no object to set"
+        );
+    }
+
+    #[test]
+    fn an_error_naming_no_object_is_the_panel_not_showing_too() {
+        let said = "org.freedesktop.DBus.Error.UnknownMethod: No calls to \
+                    org.freedesktop.DBus.Properties.Set are accepted for object /outputs/eDP_1";
+        assert_eq!(
+            refusal(said),
+            Refused::NoPanel,
+            "a relay on a newer rustbus refuses with an error, read the same"
         );
     }
 }
