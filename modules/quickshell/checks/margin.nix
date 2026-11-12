@@ -231,6 +231,9 @@
   the-margin-cat-follows-the-keys-on-niri = launcherOnNiri {
     name = "the-margin-cat-follows-the-keys-on-niri";
     tests = ../../../tests/margin-cat-on-niri-test.py;
+    # Its doze in 45 s rather than the laptop's ten minutes, so a case
+    # sees it fall asleep; the tests wake it with a key before each case.
+    shell.cat.dozes = 45;
     given = [
       "QT_QUICK_BACKEND=rhi"
       "QSG_RHI_BACKEND=opengl"
