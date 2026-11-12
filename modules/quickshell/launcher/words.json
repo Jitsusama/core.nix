@@ -7272,21 +7272,6 @@
       "name": "On the Page"
     },
     {
-      "id": "shortcuts:chrome:scrolling",
-      "in": "shortcuts",
-      "name": "Scrolling"
-    },
-    {
-      "id": "shortcuts:chrome:finding",
-      "in": "shortcuts",
-      "name": "Finding Words"
-    },
-    {
-      "id": "shortcuts:chrome:links",
-      "in": "shortcuts",
-      "name": "Links"
-    },
-    {
       "id": "shortcuts:slack:conversations",
       "in": "shortcuts",
       "name": "Conversations"
@@ -14330,19 +14315,10 @@
     {
       "word": "scrolling",
       "things": [
-        "shortcuts:chrome:scrolling",
         "shortcuts:reader:scrolling",
         "shortcuts:zathura:scrolling"
       ],
-      "why": "The reader, the PDF viewer and the browser all scroll a page, and each group says which program's it is beside it."
-    },
-    {
-      "word": "finding words",
-      "things": [
-        "shortcuts:zathura:finding",
-        "shortcuts:chrome:finding"
-      ],
-      "why": "The PDF viewer and the browser both find words on a page, and each group says which program's it is beside it."
+      "why": "The reader and the PDF viewer both scroll a page, and each group says which program's it is beside it."
     },
     {
       "word": "command line",
