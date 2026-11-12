@@ -5,9 +5,9 @@
 
 use serde_json::{Value, json};
 
-use super::meetings;
 use super::tests::{HOUR, MINUTE, MONDAY, one, planned, words, zone};
-use crate::calendar::Answer;
+use super::{meetings, typed};
+use crate::calendar::{Answer, Meeting};
 
 fn within<'a>(rows: &'a [Value], parent: &str) -> Vec<&'a Value> {
     rows.iter().filter(|row| row["parent"] == parent).collect()
@@ -30,6 +30,73 @@ fn among() -> Vec<Value> {
         &zone(),
         &words(),
     )
+}
+
+/// What typing `text` inside `within` answers, among `among`'s meetings.
+fn typed_in(within: &str, text: &str) -> Option<Vec<Value>> {
+    let clashing = one("e2", MONDAY + 20 * HOUR);
+    let listed: [Meeting; 2] = [planned(), clashing];
+    typed((&listed, &[]), MONDAY, &zone(), &words(), within, text)
+}
+
+#[test]
+fn a_time_typed_in_move_is_made_as_a_later_time_is_and_named_by_when() {
+    let rows = typed_in("row:calendar:e1:move", "tomorrow 10:00").expect("Move is served");
+    let times = within(&rows, "row:calendar:e1:move");
+    assert_eq!(times.len(), 1, "one time typed: {times:?}");
+    assert_eq!(
+        (
+            times[0]["key"].clone(),
+            times[0]["name"].clone(),
+            times[0]["note"].clone(),
+            times[0]["side"].clone(),
+        ),
+        (
+            json!("row:calendar:e1:move:2026-10-27T14:00:00Z"),
+            json!("Tuesday 27 October \u{b7} 10:00 to 10:30"),
+            json!(""),
+            json!([{"said": "clashes with Meeting e2"}]),
+        ),
+        "keyed as a later time, named by its day and times, saying what it clashes with"
+    );
+    let sure = within(&rows, "row:calendar:e1:move:2026-10-27T14:00:00Z");
+    let start = MONDAY + 20 * HOUR;
+    assert_eq!(
+        (sure.len(), sure[0]["acts"].clone()),
+        (
+            1,
+            json!([{"key": "verb:calendar:move",
+                "ask": {"ask": "act", "act": {"move":
+                    {"id": "e1", "start": start, "end": start + 30 * MINUTE}}}}])
+        ),
+        "one row asks Joel to be sure, and moves it: {sure:?}"
+    );
+    let again = typed_in("row:calendar:e1:move", "tue 10am").expect("Move is served");
+    assert_eq!(
+        within(&again, "row:calendar:e1:move")[0]["key"],
+        times[0]["key"],
+        "the same time typed another way is the same row, so none moves under the cursor"
+    );
+}
+
+#[test]
+fn only_a_served_move_answers_and_text_no_clock_reads_makes_no_time() {
+    assert_eq!(
+        typed_in("row:calendar:e1:move", "someday"),
+        Some(Vec::new()),
+        "no time to come is an answer with no rows"
+    );
+    for within in [
+        "row:calendar:e1",
+        "row:calendar:e1:guests",
+        "row:calendar:nobody:move",
+    ] {
+        assert_eq!(
+            typed_in(within, "tomorrow 10:00"),
+            None,
+            "{within} is no Move the daemon serves"
+        );
+    }
 }
 
 #[test]

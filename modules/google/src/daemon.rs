@@ -50,13 +50,14 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
+use jiff::Timestamp;
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::ask;
 use crate::drive::Drive;
 use crate::files::Fetched;
-use crate::ready::Ready;
+use crate::ready::{self, Ready};
 use crate::rows::Vocabulary;
 use crate::state::{Meet, Standing, State};
 
@@ -442,6 +443,28 @@ impl Daemon {
                 drop(held);
                 act(&id, &said, asks)
             }
+            // Only inside a meeting's Move, a time typed there; any other
+            // the shell matches among its rows itself (ready-rows.md).
+            "search" => held
+                .state
+                .as_ref()
+                .zip(held.words.as_ref())
+                .and_then(|(state, words)| {
+                    ready::typed(state, words, &said, Timestamp::now().as_millisecond())
+                })
+                .map_or_else(
+                    || {
+                        error(
+                            &id,
+                            "unknown-ask",
+                            "this daemon searches only within a Move",
+                        )
+                    },
+                    |mut found| {
+                        found["id"] = id.clone();
+                        found
+                    },
+                ),
             _ => error(&id, "unknown-ask", &format!("no ask {asked:?}")),
         }
     }

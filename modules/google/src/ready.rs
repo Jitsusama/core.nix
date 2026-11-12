@@ -60,6 +60,39 @@ impl Ready {
     }
 }
 
+/// The answer to a search inside one step (ready-rows.md's `within`,
+/// Y2YBTS's bf11aae8): a time typed inside a meeting's Move, its rows
+/// keyed as Move's later times are, so the same time typed on is the same
+/// row, `keys` naming the time and `rows` holding it and the row asking
+/// Joel to be sure inside it, as records. None for any other search, which
+/// this daemon doesn't answer, so the shell matches its rows itself.
+#[must_use]
+pub fn typed(state: &State, words: &Vocabulary, said: &Value, now: i64) -> Option<Value> {
+    let calendar = words.calendar.as_ref()?;
+    let within = said.get("within")?.as_str()?;
+    let typed = said.get("words")?.as_str()?;
+    if said.get("place").and_then(Value::as_str) != Some("calendar") {
+        return None;
+    }
+    let lists = (state.meetings.as_slice(), state.held.as_slice());
+    let zone = TimeZone::system();
+    let made = calendar_rows::typed(lists, now, &zone, calendar, within, typed)?;
+    let keys: Vec<&Value> = made
+        .iter()
+        .filter(|row| row["parent"] == within)
+        .map(|row| &row["key"])
+        .collect();
+    let rows: serde_json::Map<String, Value> = made
+        .iter()
+        .map(|row| {
+            let key = row["key"].as_str().unwrap_or_default().to_owned();
+            let record = json!({"key": &key, "kind": "row", "row": row});
+            (key, record)
+        })
+        .collect();
+    Some(json!({"words": typed, "keys": keys, "rows": rows}))
+}
+
 /// The rows, each place's in the order shown and without an `order`,
 /// and the drawers, each by its key.
 fn made(state: &State, words: &Vocabulary, now: i64) -> (Vec<Value>, Vec<(String, Value)>) {
