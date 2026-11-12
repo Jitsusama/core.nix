@@ -696,7 +696,12 @@ mod tests {
     fn a_landings_drawer_names_who_landed_it_and_folds_its_identifiers() {
         let here = session("s-here", "HERE01", &json!([]));
         let sessions = [Session(&here)];
-        let mut bare = kept("s-gone", "PLAN-1#4", "2026-11-10T09:00:00Z", "");
+        let mut bare = kept(
+            "s-gone",
+            "PLAN-20261106-2ZPAI5#4",
+            "2026-11-10T09:00:00Z",
+            "",
+        );
         bare["quest"] = json!("QEST-UNKNOWN");
         bare["repo"] = json!("");
         let landings = [
