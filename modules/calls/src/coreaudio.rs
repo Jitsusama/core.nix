@@ -1,4 +1,4 @@
-//! Whether a call is on, on a Mac: CoreAudio keeps an object for each
+//! Whether a call is on, on a Mac: Core Audio keeps an object for each
 //! process that uses sound, saying whether it records from a microphone
 //! right now, and coreaudiod answers for every account, so root asks once.
 //! A process recording counts once it still records two seconds later, as
@@ -8,10 +8,10 @@ use calls::{MacRecording, STARTS_AFTER};
 use std::ffi::{CStr, c_char, c_void};
 use std::thread;
 
-/// An object of CoreAudio's, such as a process using sound.
+/// An object of Core Audio's, such as a process using sound.
 type Object = u32;
 
-/// Which of an object's properties is asked for, as CoreAudio's
+/// Which of an object's properties is asked for, as Core Audio's
 /// `AudioObjectPropertyAddress` is laid out.
 #[repr(C)]
 struct Address {
@@ -20,7 +20,7 @@ struct Address {
     element: u32,
 }
 
-/// CoreAudio's own object, which lists the processes.
+/// Core Audio's own object, which lists the processes.
 const SYSTEM: Object = 1;
 /// The scope and element every property here is asked in.
 const GLOBAL: u32 = u32::from_be_bytes(*b"glob");
@@ -100,7 +100,7 @@ fn address(selector: u32) -> Address {
     }
 }
 
-/// The processes CoreAudio keeps an object for.
+/// The processes Core Audio keeps an object for.
 fn processes() -> Result<Vec<Object>, String> {
     let address = address(PROCESSES);
     let mut size = 0;

@@ -7,7 +7,7 @@
 //!
 //! It exits 0 while a call is on, 1 while none is, and 2 when it can't
 //! tell. On Linux it reads each account's PipeWire under RUNTIMES,
-//! /run/user unless named (src/pipewire.rs); on a Mac it asks CoreAudio,
+//! /run/user unless named (src/pipewire.rs); on a Mac it asks Core Audio,
 //! which answers for every account (src/coreaudio.rs).
 
 #[cfg(target_os = "macos")]

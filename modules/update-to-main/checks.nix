@@ -113,7 +113,7 @@ in
       (
         follows.Label == "org.jitsusama.update-to-main-follows"
         && follows.RunAtLoad
-        && follows.KeepAlive == { SuccessfulExit = false; }
+        && !follows.KeepAlive.SuccessfulExit
         && !(lib.hasInfix "/nix/store" (builtins.toJSON follows.ProgramArguments))
         && lib.hasSuffix "/run/current-system/sw/bin/update-to-main follow; exit 75" (
           lib.last follows.ProgramArguments

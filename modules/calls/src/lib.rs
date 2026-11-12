@@ -6,7 +6,7 @@
 //!
 //! pause-for-calls and call-transcripts follow calls as they come and go
 //! with this ([`Call`]), and a-call-is-on (src/main.rs) asks once, for
-//! whatever mustn't cut one. On a Mac it asks CoreAudio which processes
+//! whatever mustn't cut one. On a Mac it asks Core Audio which processes
 //! record ([`MacRecording`]), and counts them the same way.
 
 use serde_json::Value;
@@ -193,7 +193,7 @@ pub const NOT_CALLS_ON_A_MAC: [&str; 4] = [
     "com.apple.accessibility.heard",
 ];
 
-/// The processes recording from a microphone on a Mac, as CoreAudio lists
+/// The processes recording from a microphone on a Mac, as Core Audio lists
 /// them: each one's process id and bundle id. One with no bundle id is a
 /// command-line recorder, which, as a program unnamed is on Linux, is no
 /// call.
@@ -203,7 +203,7 @@ pub struct MacRecording {
 }
 
 impl MacRecording {
-    /// Takes in a process CoreAudio says records from a microphone.
+    /// Takes in a process Core Audio says records from a microphone.
     pub fn hears(&mut self, pid: i32, bundle: &str) {
         if !bundle.is_empty() && !NOT_CALLS_ON_A_MAC.contains(&bundle) {
             self.calling.insert((pid, bundle.to_owned()));
@@ -404,7 +404,10 @@ mod tests {
 
     #[test]
     fn a_call_app_recording_on_a_mac_is_a_call() {
-        assert!(on_a_mac(&[(53_522, "us.zoom.xos")]).any());
+        assert!(
+            on_a_mac(&[(53_522, "us.zoom.xos")]).any(),
+            "Zoom recording is a call"
+        );
         assert!(!on_a_mac(&[]).any(), "nothing recording is no call");
     }
 
@@ -426,7 +429,10 @@ mod tests {
     #[test]
     fn only_the_same_process_recording_later_goes_on_on_a_mac() {
         let first = on_a_mac(&[(53_703, "com.google.Chrome.helper")]);
-        assert!(first.goes_on_in(&on_a_mac(&[(53_703, "com.google.Chrome.helper")])));
+        assert!(
+            first.goes_on_in(&on_a_mac(&[(53_703, "com.google.Chrome.helper")])),
+            "the same process still recording goes on"
+        );
         assert!(
             !first.goes_on_in(&on_a_mac(&[(53_704, "com.google.Chrome.helper")])),
             "another process is another moment of recording"
