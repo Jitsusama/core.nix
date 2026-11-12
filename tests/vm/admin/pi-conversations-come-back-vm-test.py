@@ -123,7 +123,7 @@ class Host:
         started = self.show("MainPID")
         self.machine.wait_until_succeeds(
             f"journalctl --no-pager _PID={started} | grep -qF {shlex.quote(SERVING_BOTH)}",
-            timeout=int(COMING_BACK.total_seconds()),
+            timeout=COMING_BACK,
         )
 
     def record(self, name: str) -> bytes:
@@ -208,7 +208,7 @@ def held(machine: BaseMachine, values: dict[str, Any]) -> Host:
 def rebooted(held: Host) -> Host:
     """Reboot the machine with the host holding both, and wait for the host to say it's ready."""
     held.machine.reboot()
-    held.machine.wait_for_unit("multi-user.target", timeout=int(REBOOTING.total_seconds()))
+    held.machine.wait_for_unit("multi-user.target", timeout=REBOOTING)
     held.machine.wait_for_unit("user@1000.service")
     held.until_serving_both(REBOOTING)
     return held
