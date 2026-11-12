@@ -92,10 +92,28 @@ ShellRoot {
         onChanged: told += 1
     }
 
+    // A place holding a row it serves for someone People doesn't list
+    // yet, as Calendar holds a guest before the people daemon has heard
+    // from google, and how often it was told its rows changed.
+    QtObject {
+        id: guesting
+
+        signal changed
+        property int told: 0
+
+        onChanged: told += 1
+    }
+
     // Tuple's next presence, which the stand-in waits for.
     Process {
         id: touching
         command: ["touch", `${root.runtime}/next`]
+    }
+
+    // Tuple's presence after that, bringing Gil, whom nobody listed.
+    Process {
+        id: naming
+        command: ["touch", `${root.runtime}/again`]
     }
 
     // The people daemon stopped, as when it fails, and started again.
@@ -546,6 +564,27 @@ ShellRoot {
             check: () => {
                 expect("home counts again", people.homeSays() !== "not answering",
                     people.homeSays());
+            }
+        },
+        {
+            // Gil, served as a guest before anyone lists him, whose row
+            // People can lend only once a source lists him: Guests held
+            // while google's people came stayed served rows until the
+            // launcher shut (RTOIMQ, 2026-11-12), since only a lent row
+            // shown was told of a change.
+            what: "one newly listed while a place holds them unlent",
+            run: () => {
+                launcher.held = [{ row: { key: "calendar:meeting:standup", from: guesting },
+                    rows: [{ key: "calendar:meeting:standup:guest:gil@example.com",
+                        lends: "person:gil@example.com", name: "gil@example.com" }] }];
+                guesting.told = 0;
+                naming.running = true;
+            },
+            holds: () => names(people.all).includes("Gil Hart"),
+            check: () => {
+                launcher.held = [];
+                expect("tells the place holding them, to ask for them again",
+                    guesting.told > 0, `told ${guesting.told} times`);
             }
         }
     ]

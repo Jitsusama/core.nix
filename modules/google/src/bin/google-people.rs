@@ -90,9 +90,19 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
         }
-        appearing = waited(appearing, wait);
-        wait = (wait * 2).min(LOOKS);
+        let made;
+        (appearing, made) = waited(appearing, wait);
+        wait = next_wait(wait, made);
     }
+}
+
+/// How long to wait after this look: twice as long up to LOOKS, or FIRST
+/// again where the socket was just made. systemd makes the file before
+/// google's daemon listens on it, so the look it wakes is often refused,
+/// and doubling then left people 15 s late, after a meeting's guests
+/// were shown (RTOIMQ, 2026-11-12).
+fn next_wait(wait: Duration, made: bool) -> Duration {
+    if made { FIRST } else { (wait * 2).min(LOOKS) }
 }
 
 /// Tells each time a file of the socket's name is made in its folder, so
@@ -132,24 +142,25 @@ fn appearing(socket: &Path) -> Option<Receiver<()>> {
 }
 
 /// Waits `wait`, or less where the socket is made meanwhile, and gives
-/// back what tells of that while it still can.
-fn waited(appearing: Option<Receiver<()>>, wait: Duration) -> Option<Receiver<()>> {
+/// back what tells of that while it still can, and whether it was made.
+fn waited(appearing: Option<Receiver<()>>, wait: Duration) -> (Option<Receiver<()>>, bool) {
     let Some(appeared) = appearing else {
         std::thread::sleep(wait);
-        return None;
+        return (None, false);
     };
     match appeared.recv_timeout(wait) {
-        Ok(()) | Err(RecvTimeoutError::Timeout) => {
+        Ok(()) => {
             // A burst of events is one making.
             while appeared.try_recv().is_ok() {}
-            Some(appeared)
+            (Some(appeared), true)
         }
+        Err(RecvTimeoutError::Timeout) => (Some(appeared), false),
         Err(RecvTimeoutError::Disconnected) => {
             eprintln!(
                 "<4>google-people stopped hearing its socket's folder, so it looks after a wait"
             );
             std::thread::sleep(wait);
-            None
+            (None, false)
         }
     }
 }
@@ -204,4 +215,20 @@ fn took(said: &Value, records: &mut BTreeMap<String, Value>) -> bool {
         records.remove(key);
     }
     changed.is_some() || gone.is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_look_that_found_nothing_waits_twice_as_long_up_to_looks() {
+        assert_eq!(next_wait(FIRST, false), FIRST * 2);
+        assert_eq!(next_wait(LOOKS, false), LOOKS);
+    }
+
+    #[test]
+    fn a_socket_just_made_is_looked_at_again_soon() {
+        assert_eq!(next_wait(Duration::from_secs(8), true), FIRST);
+    }
 }

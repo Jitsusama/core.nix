@@ -46,9 +46,10 @@
       };
       # Strangers between those Tuple knows, so their order is the search's.
       # Fay comes only once Ada goes into a call, a stranger nobody lists,
-      # whom only the daemon's search finds.
+      # whom only the daemon's search finds. Gil comes last, met lately,
+      # with nobody's stand changed.
       snapshot =
-        ada:
+        ada: gil:
         pkgs.writeText "contacts.json" (
           builtins.toJSON (
             [
@@ -64,20 +65,23 @@
             ++ lib.optional (ada == "busy") (
               contact 109 "Fay Gale" null "fay@example.com" "unknown" false false
             )
+            ++ lib.optional gil (contact 110 "Gil Hart" null "gil@example.com" "unknown" false true)
           )
           + "\n"
         );
       # Tuple's follow says everyone, then again once Ada goes into a call,
-      # and goes on following. Anything else asked of it is written down,
+      # and once more when Gil comes, and goes on following. Anything else asked of it is written down,
       # since the shell asks Tuple through niri alone.
       tuple = pkgs.writeShellScriptBin "tuple" ''
         if [ "$*" != "--format json contacts follow" ]; then
           echo "$*" >> "$XDG_RUNTIME_DIR/asked"
           exit 0
         fi
-        cat ${snapshot "online"}
+        cat ${snapshot "online" false}
         while [ ! -e "$XDG_RUNTIME_DIR/next" ]; do sleep 0.1; done
-        cat ${snapshot "busy"}
+        cat ${snapshot "busy" false}
+        while [ ! -e "$XDG_RUNTIME_DIR/again" ]; do sleep 0.1; done
+        cat ${snapshot "busy" true}
         while :; do sleep 1; done
       '';
     in
@@ -125,7 +129,11 @@
       echo $! > $XDG_RUNTIME_DIR/people.pid
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      # A binding loop only warns, and People's on `all` passed here while
+      # it warned (Y2YBTS, 2026-11-12), so one warned of fails the check.
+      if grep -a 'Binding loop' said; then exit 1; fi
       if [ -e $XDG_RUNTIME_DIR/asked ]; then
         echo "the shell asked Tuple itself:"; cat $XDG_RUNTIME_DIR/asked; exit 1
       fi
