@@ -73,3 +73,19 @@ function steps(from, to, ratio) {
     }
     return strides;
 }
+
+function level(heard) {
+    return "typing";
+}
+
+function rest(at, chance) {
+    return 0;
+}
+
+function scene(at, chance) {
+    return [];
+}
+
+function gutter(at) {
+    return null;
+}
