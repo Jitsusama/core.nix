@@ -2891,14 +2891,14 @@ Scope {
             keys.push([keyOf("copy"), (Words.field.hints ?? {}).copy ?? ""]);
         // Each act with a key of its own says it by its name, "e until it's
         // ended" (VKCF3Z, 2026-11-12).
-        for (const act of keyedActs(choice, actions))
+        for (const act of actsWithKeys(choice, actions))
             keys.push([act.actKey, String(act.name ?? "").toLowerCase()]);
         return keys;
     }
 
     // A row's acts that take a key of their own in normal mode (Words.actKey),
     // never Return's, which is the row's.
-    function keyedActs(choice, actions) {
+    function actsWithKeys(choice, actions) {
         return actions.filter(one => one !== choice && typeof one.actKey === "string"
             && one.actKey !== "");
     }
@@ -2908,7 +2908,7 @@ Scope {
     function doKeyed(key) {
         if (selectedActions.row !== selected || selected === null)
             return false;
-        const act = keyedActs(selected, selectedActions.actions)
+        const act = actsWithKeys(selected, selectedActions.actions)
             .find(one => one.actKey === key);
         if (act === undefined)
             return false;
