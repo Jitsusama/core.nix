@@ -35,7 +35,9 @@ use agents::landed::Reading;
 use agents::reopen::Kept;
 use agents::row::Words;
 use agents::served::Served;
+use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
+use agents::tell::{self, Routes};
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::{Value, json};
@@ -109,8 +111,9 @@ fn args() -> Option<Args> {
 
 /// What the daemon answers of its own, beside its records: what the shell
 /// says, handed `told` to the daemon's loop, and a row's act, done by
-/// asking the node at `node`, refused where there's none.
-fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>) -> Own {
+/// asking the node at `node`, refused where there's none, and a line Joel
+/// tells whoever `routes` says hears it.
+fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>, routes: Routes) -> Own {
     Box::new(move |said| {
         // The shell says whether the screen is shared, as Quiet.qml knows
         // it from niri's casts, so no amount is served while it is.
@@ -181,6 +184,9 @@ fn own(told: mpsc::Sender<Heard>, node: Option<PathBuf>) -> Own {
             let _ = told.send(Heard::Opened(address.to_owned(), now));
             return Some(json!({"heard": address}));
         }
+        if said["ask"] == "tell" {
+            return Some(tell::answer(said, &routes, node.as_deref(), now));
+        }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
             None => json!({"error": {"code": "unsteered",
@@ -208,7 +214,8 @@ fn main() -> ExitCode {
         }
     };
     let (to, heard) = mpsc::channel();
-    let shared = Shared::new(DOMAIN, own(to.clone(), args.node.clone()));
+    let routes = Routes::default();
+    let shared = Shared::new(DOMAIN, own(to.clone(), args.node.clone(), routes.clone()));
     match serve::listen(&args.socket) {
         Ok(listener) => serve::accept(Arc::clone(&shared), listener),
         Err(why) => {
@@ -259,6 +266,12 @@ fn main() -> ExitCode {
         if !served.take(inputs.made()).is_empty() {
             shared.change(served.all().cloned().collect(), json!({}));
         }
+        // A quest can change whom a line reaches with no row moving.
+        routes.hold(
+            inputs.sessions.records().map(|(_, one)| Session(one)),
+            inputs.quests.records().map(|(_, one)| one),
+            served.all(),
+        );
     }
     ExitCode::SUCCESS
 }
