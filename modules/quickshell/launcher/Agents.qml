@@ -560,7 +560,7 @@ Provider {
                     (session.presence?.addresses ?? [session.address]).join(", "))],
             // Its drawer reads the session as it stands, since its row is
             // kept while only its step moves.
-            drawer: () => provider.drawerOf(session.address)
+            drawer: () => provider.actsNamed(provider.drawerOf(session.address), session)
         });
         // Itself as it reads ranked flat: at no depth, whom it's under
         // leading its note and what it says at its right (15J7N3,
@@ -621,6 +621,23 @@ Provider {
         return made === null ? null : SessionDrawer.shown(made, {
             clock: at => started(at),
             since: word("since")
+        });
+    }
+
+    // A session's drawer with its acts by name, Return's by ↵, read from
+    // which its state holds rather than made: the drawer's own list of a
+    // row's acts makes its verbs, and a session's are its facts and talks
+    // besides, about nine rows for each arrow resting on one, 891 in a
+    // held arrow's turns (keeps-up, 2026-11-12), each fact named an act.
+    function actsNamed(drawer, session) {
+        if (drawer === null)
+            return null;
+        const ids = SessionRow.acts(stateOf(session), windowedOf(session), session.here);
+        return Object.assign({}, drawer, {
+            acts: ids.map((id, at) => ({
+                name: Words.name(`verb:agent:${id}`),
+                key: at === 0 ? "\u21b5" : ""
+            }))
         });
     }
 
