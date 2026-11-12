@@ -66,7 +66,7 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
-use dictation::openvino::{self, Priority};
+use dictation::openvino::Priority;
 use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
 use dictation::transcript::{Line, Side, markdown};
@@ -142,7 +142,7 @@ impl Settings {
             &self.model,
             &self.device,
             self.cache.as_deref(),
-            openvino::npu(),
+            dictation::npu(),
         )
     }
 

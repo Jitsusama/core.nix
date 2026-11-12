@@ -44,7 +44,7 @@ use std::time::{Duration, Instant};
 
 use dictation::mel::{RATE, SAMPLES};
 use dictation::microphone;
-use dictation::openvino::{self, Priority};
+use dictation::openvino::Priority;
 use dictation::speech::Speech;
 
 use crate::mode;
@@ -149,7 +149,7 @@ pub fn serve(
 ) -> Result<(), String> {
     let listener = listener()?;
     let (events, heard) = mpsc::channel();
-    let prime = device != "CPU" && openvino::npu();
+    let prime = device != "CPU" && dictation::npu();
     let jobs = worker(model.to_owned(), device, cache, words, events.clone());
     if prime {
         let _ = jobs.send(Job::Prime);
