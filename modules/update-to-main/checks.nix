@@ -31,6 +31,15 @@ let
     ]).config;
   service = nixos.systemd.services.update-to-main;
   daemon = darwin.launchd.daemons.update-to-main.serviceConfig;
+  followed =
+    (bareDarwin [
+      self.darwinModules.update-to-main
+      settings
+      { jitsusama.update-to-main.follower = "someone"; }
+    ]).config;
+  follows = followed.launchd.user.agents.update-to-main-follows.serviceConfig;
+  refusesOnAMac =
+    why: lib.filter (refusal: refusal.why == why) followed.jitsusama.update-to-main.refuseWhile;
 in
 {
   # update-to-main's tests run as it builds: a signed main is built and
@@ -92,5 +101,28 @@ in
           && refusal.why == "the launcher is open"
           && refusal.followerWaitsAtMost == null
         ) nixos.jitsusama.update-to-main.refuseWhile
+      );
+  # A Mac's follower is its primary user's launchd agent, started again
+  # whenever follow ends, as it does for a newer update-to-main, and
+  # naming no store path, so a switch never reloads it under its own ask.
+  # Every Mac refuses an update during a call, and the follower's switch
+  # waits while someone is at the Mac, for 45 minutes at most.
+  update-to-main-follows-on-a-mac =
+    holds "update-to-main-follows-on-a-mac"
+      "A Mac's follower wouldn't start again after follow ends, names a store path a switch would reload it for, or a Mac would switch during a call or under someone at it."
+      (
+        follows.Label == "org.jitsusama.update-to-main-follows"
+        && follows.RunAtLoad
+        && follows.KeepAlive == { SuccessfulExit = false; }
+        && !(lib.hasInfix "/nix/store" (builtins.toJSON follows.ProgramArguments))
+        && lib.hasSuffix "/run/current-system/sw/bin/update-to-main follow; exit 75" (
+          lib.last follows.ProgramArguments
+        )
+        && !(darwin.launchd.user.agents ? update-to-main-follows)
+        && lib.all (refusal: !refusal.followerWaits) (refusesOnAMac "a call is on")
+        && refusesOnAMac "a call is on" != [ ]
+        && lib.any (refusal: refusal.followerWaits && refusal.followerWaitsAtMost == 45 * 60) (
+          refusesOnAMac "someone is at the machine"
+        )
       );
 }
