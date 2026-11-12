@@ -6763,22 +6763,43 @@ Scope {
     // asked by name can say otherwise than the row it stands on. Worked
     // out only for the rows drawn, as each is drawn or what's typed
     // changes, and kept by nothing but the row drawing it, so a list of
-    // matches holds no more.
+    // matches holds no more; only the name's preparing is kept a while
+    // (namePrepared).
     function matchedIn(choice) {
         if (choice.byWord || choice.answered)
             return [];
         const drawn = choice.prepared?.text === choice.name ? choice.prepared
-            : Fuzzy.prepare(choice.name);
+            : namePrepared(choice.name);
         return Fuzzy.match(drawn, washedBy, true).positions ?? [];
+    }
+
+    // Names drawn lately, prepared to match, since a row found at home
+    // carries none of its own, and each row drawn prepared its name again
+    // at every key: 594 times over 25 keys typed into home, 34 ms (the
+    // keys lab's profile, 2026-11-12). At most 512 are kept, all let go
+    // at once past that, so a long session holds no more.
+    property var preparedNames: new Map()
+    function namePrepared(name) {
+        const kept = preparedNames.get(name);
+        if (kept !== undefined)
+            return kept;
+        if (preparedNames.size >= 512)
+            preparedNames.clear();
+        const made = Fuzzy.prepare(name);
+        preparedNames.set(name, made);
+        return made;
     }
 
     // A name with the letters that matched in Search's ink, as styled
     // text, their ground drawn behind them (Wash.qml).
     function marked(choice, at) {
-        const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        // Each letter is looked up rather than run through two patterns,
+        // which were 11,394 calls and 53 ms over 25 keys typed into home
+        // (the keys lab's profile, 2026-11-12).
+        const escaped = { "&": "&amp;", "<": "&lt;" };
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
-            const letter = escape(choice.name[i]);
+            const letter = escaped[choice.name[i]] ?? choice.name[i];
             out += at.includes(i)
                 ? `<font color="${Theme.wash.ink}">${letter}</font>`
                 : letter;
@@ -12281,11 +12302,27 @@ Scope {
                                 font.weight: Theme.level.name.weight
                             }
 
+                            // How many facts it has drawn, which only grows:
+                            // the keys beside them take another room at
+                            // nearly every key, so the facts kept are a new
+                            // list each time, and a Repeater given one made
+                            // each fact's Text again, 68 ms over 25 keys
+                            // typed into home (the keys lab's profile,
+                            // 2026-11-12). So each Text drawn is kept,
+                            // reading its fact by its place, and one past
+                            // the facts is hidden, which a Row leaves out.
+                            property int made: 0
+                            onKeptChanged: made = Math.max(made, kept.length)
+                            Component.onCompleted: made = Math.max(made, kept.length)
+
                             Repeater {
-                                model: standing.kept
+                                model: standing.made
 
                                 Text {
-                                    required property var modelData
+                                    required property int index
+                                    visible: index < standing.kept.length
+                                    readonly property var modelData: standing.kept[index]
+                                        ?? ({ entry: { name: "" }, way: "", said: "" })
 
                                     // The room it has needed since the launcher
                                     // opened, so one reading shorter moves
