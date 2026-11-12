@@ -6,7 +6,8 @@
 //!
 //! pause-for-calls and call-transcripts follow calls as they come and go
 //! with this ([`Call`]), and a-call-is-on (src/main.rs) asks once, for
-//! whatever mustn't cut one.
+//! whatever mustn't cut one. On a Mac it asks CoreAudio which processes
+//! record ([`MacRecording`]), and counts them the same way.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -203,7 +204,11 @@ pub struct MacRecording {
 
 impl MacRecording {
     /// Takes in a process CoreAudio says records from a microphone.
-    pub fn hears(&mut self, _pid: i32, _bundle: &str) {}
+    pub fn hears(&mut self, pid: i32, bundle: &str) {
+        if !bundle.is_empty() && !NOT_CALLS_ON_A_MAC.contains(&bundle) {
+            self.calling.insert((pid, bundle.to_owned()));
+        }
+    }
 
     /// Whether anything that calls records.
     pub fn any(&self) -> bool {
