@@ -99,9 +99,9 @@
         "wifi:sign-in",
         "ethernet",
         "eero",
+        "warp",
         "networks",
-        "traffic",
-        "warp"
+        "traffic"
       ],
       "commands": [
         "command:ip",
@@ -2081,13 +2081,15 @@
     },
     {
       "id": "warp",
-      "name": "WARP",
-      "term": "Network/WARP",
+      "name": "Work Network",
+      "term": "Network/work network",
       "question": "warp",
       "glyph": "tunnel",
       "answers": [
         "warp",
-        "vpn"
+        "vpn",
+        "work",
+        "tunnel"
       ],
       "said": {
         "notAnswering": "not answering",
@@ -2147,7 +2149,8 @@
         "mode:dot": "DNS over TLS alone",
         "mode:warp+dot": "the tunnel with DNS over TLS",
         "mode:proxy": "the tunnel as a SOCKS5 proxy",
-        "mode:tunnel_only": "the tunnel alone"
+        "mode:tunnel_only": "the tunnel alone",
+        "through": "WARP"
       }
     },
     {
@@ -2164,6 +2167,11 @@
       "id": "warp:error",
       "in": "warp",
       "name": "Error"
+    },
+    {
+      "id": "warp:through",
+      "in": "warp",
+      "name": "Through"
     },
     {
       "id": "warp:settings",

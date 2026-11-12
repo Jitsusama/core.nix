@@ -1792,7 +1792,8 @@ works the same way everywhere.
   (what the cards carry In and Out now, the Connection as the shaper last
   measured it and how full it is, the Round Trip while it's quiet, each
   server a step in, what's Dropped, and each of the Connections, VPNs
-  too), "warp" or "vpn" (its switch first, Disconnect WARP or Connect
+  too), "work", "warp", "vpn" or "tunnel" (the Work Network, Joel's
+  link to work through WARP: its switch first, Disconnect WARP or Connect
   WARP, which :disconnect and :connect name and which leave a switch the
   organisation holds as it is, saying who holds it, and say when WARP
   always on comes back; then WARP's State and why, an Emergency Disconnect
@@ -1807,8 +1808,9 @@ works the same way everywhere.
   Handshake, its Traffic each way ("1.52 GB in · 312 MB out"), Round
   Trip, Loss and Traffic sparked while shown, each with a drawer whose
   eyebrow says once whose figures they are ("via WARP · tunnel"), its TLS a
-  step in, and what its DNS proxy answered, each count a step in, listed
-  in Network after Speed where the system runs WARP) and "uptime". The
+  step in, what its DNS proxy answered, each count a step in, and
+  Through, WARP, named once, listed in Network after the Home Network
+  where the system runs WARP) and "uptime". The
   queue is Agents', beside the sessions whose heavy work it holds, and
   "queue" finds it: each job named in words, its time against its last
   run or what it waits for, and its quest and memory below. The devices hold as much: "heat"
