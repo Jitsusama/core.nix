@@ -86,6 +86,24 @@
       "name": "Supply"
     },
     {
+      "id": "power:status",
+      "in": "power",
+      "name": "Status"
+    },
+    {
+      "id": "power:until",
+      "in": "power",
+      "name": "Full",
+      "states": {
+        "empty": {
+          "name": "Empty"
+        }
+      },
+      "said": {
+        "at": "{time}, in {span}"
+      }
+    },
+    {
       "id": "power:charge",
       "in": "power",
       "name": "Charge",
