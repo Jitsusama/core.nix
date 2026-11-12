@@ -87,12 +87,6 @@ ShellRoot {
         Expect.expect("the others aren't told any such thing",
             ["s-saved", "s-broken", "s-slow"].every(id => !spawned(id)[0].includes("STAYED")),
             Niri.spawns.join("\n"));
-        const slowAt = Object.entries(root.opened).find(([classed]) => Niri.spawns.some(
-            command => command.includes(` --class ${classed} `)
-                && command.includes(" pi --session-id s-slow")))?.[1] ?? 0;
-        Expect.expect("the one its decider says nothing of waits three seconds, no more",
-            slowAt - root.handedAt >= 3000 && slowAt - root.handedAt < 8000,
-            `${slowAt - root.handedAt} ms`);
         stage = "settled";
         decided.reload();
     }
@@ -100,8 +94,13 @@ ShellRoot {
     // What the decider was asked, and that the slow one was ended.
     function settled() {
         const lines = decided.text().split("\n").filter(line => line !== "");
-        if (!lines.includes("ended s-slow"))
+        const ended = lines.find(line => line.startsWith("ended s-slow at "));
+        if (!ended)
             return;
+        // Ended as it's given up on, which the walk's pace doesn't touch.
+        const waited = Number(ended.split(" ").pop()) - root.handedAt;
+        Expect.expect("the one its decider says nothing of is ended at three seconds",
+            waited >= 3000 && waited < 4500, `${waited} ms`);
         const asked = id => `asked ${id} in ${root.folder} quest=QEST-1-KELP model=m-1`;
         Expect.expect("each fresh one is asked in its folder, with its quest and model",
             ["s-hosted", "s-stayed", "s-broken", "s-slow"].every(id => lines.includes(asked(id))),
