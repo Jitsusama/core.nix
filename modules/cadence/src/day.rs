@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::machine;
+
 /// One day's figures, kept as `day/<date>.json` in cadence's folder so the
 /// next days are held against it.
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -15,7 +17,7 @@ pub struct Day {
     /// The day's span, in seconds since the epoch.
     pub from: i64,
     pub to: i64,
-    /// Each measure's figure, by its key in `MEASURES`.
+    /// Each measure's figure, by its key in `measures()`.
     pub figures: BTreeMap<String, f64>,
     /// Each kind of thing that went wrong, by its key in `KINDS`, and how
     /// many times each one did: a program's crashes, a unit's failures.
@@ -90,8 +92,15 @@ impl Measure {
     }
 }
 
-/// Every figure the day reads. The bars are docs/delivery.md's targets.
-pub const MEASURES: &[Measure] = &[
+/// Every figure the day reads: the delivery cycle's and the code's here,
+/// the machine's own from health in machine.rs.
+pub fn measures() -> impl Iterator<Item = &'static Measure> {
+    MEASURES.iter().chain(machine::MEASURES)
+}
+
+/// The delivery cycle's figures and the code's. The bars are
+/// docs/delivery.md's targets.
+const MEASURES: &[Measure] = &[
     Measure {
         key: "oom.machine",
         axis: "resources",
@@ -328,8 +337,7 @@ pub const KINDS: &[Kind] = &[
 #[must_use]
 pub fn about(key: &str) -> Option<(&'static str, &'static str)> {
     let kind = key.split_once(':').map_or(key, |(kind, _)| kind);
-    MEASURES
-        .iter()
+    measures()
         .find(|m| m.holds(key))
         .map(|m| (m.axis, m.evidence))
         .or_else(|| {

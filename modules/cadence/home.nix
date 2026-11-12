@@ -19,8 +19,10 @@
 # finished its piece doesn't wait the night for its next.
 #
 # Each evening at 18:00, `cadence day` reads the day just ended (crashes,
-# failed units, out-of-memory kills, pressure, switches, and each
-# repository's figures that modules/code-health wrote) against the seven
+# failed units, out-of-memory kills, pressure, switches, each
+# repository's figures that modules/code-health wrote, and the machine's
+# that modules/health wrote: boots, errors by kind, memory, agents that
+# died and the worst moments) against the seven
 # before it, keeps it in day/ beside them, and sends the orchestrator a
 # note of what got worse and better, so a regression is named the day it
 # appears.

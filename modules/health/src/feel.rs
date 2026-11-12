@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub struct Pain {
     /// When it started, in seconds since the epoch.
     pub at: i64,
-    /// Where: the launcher, so far.
+    /// Where: the launcher, or pi.
     pub place: String,
     /// What Joel was after, as `program:slack`, `on:look` or `sound`.
     pub trying: String,
@@ -32,9 +32,11 @@ pub struct Pain {
     /// Which part was at fault: opening, search and drawing are the
     /// shell's speed, finding the launcher's ranking and names.
     pub part: String,
-    /// How many times he opened the place for it.
+    /// How many times he opened the place for it; in pi, the messages
+    /// he sent in the go.
     pub openings: u32,
-    /// What his keys did meanwhile.
+    /// What his keys did meanwhile, in the launcher; pi's signs are its
+    /// own, and left out.
     pub signs: Signs,
 }
 
@@ -66,21 +68,24 @@ pub fn read(folder: &Path, date: &str) -> Vec<Pain> {
 /// again (18 letters typed, 13 erased)".
 #[must_use]
 pub fn said(pain: &Pain) -> String {
+    let in_pi = pain.place == "pi";
     let doing = match pain.part.as_str() {
-        "opening" => "opening the launcher for",
-        "search" => "searching for",
-        "drawing" => "waiting on the launcher to draw",
-        _ => "finding",
+        _ if in_pi => "a pi session".to_owned(),
+        "opening" => format!("opening the launcher for {}", named(&pain.trying)),
+        "search" => format!("searching for {}", named(&pain.trying)),
+        "drawing" => format!("waiting on the launcher to draw {}", named(&pain.trying)),
+        _ => format!("finding {}", named(&pain.trying)),
     };
-    let mut line = format!(
-        "{doing} {} took {} s",
-        named(&pain.trying),
-        whole(pain.seconds)
-    );
+    let mut line = format!("{doing} took {} s", whole(pain.seconds));
     if pain.openings > 1 {
-        let _ = write!(line, " over {} openings", pain.openings);
+        let over = if in_pi { "messages" } else { "openings" };
+        let _ = write!(line, " over {} {over}", pain.openings);
     }
-    if pain.lost_seconds > 0.0 {
+    // The detector counts two minutes at most a go, so past that it
+    // can't say how much.
+    if pain.lost_seconds >= LOST_AT_MOST {
+        let _ = write!(line, ", 2 min or more lost to {}", slowed(&pain.slowed));
+    } else if pain.lost_seconds > 0.0 {
         let _ = write!(
             line,
             ", {} s lost to {}",
@@ -119,9 +124,13 @@ fn slowed(slowed: &str) -> &str {
     match slowed {
         "tried again" => "trying again",
         "gave up" => "giving up",
+        "stopped it" => "stopping it",
         other => other,
     }
 }
+
+/// The most the detector counts lost in one go, its give-up mark.
+const LOST_AT_MOST: f64 = 120.0;
 
 /// Seconds to the nearest whole one, as the detector's are tenths.
 fn whole(seconds: f64) -> String {
@@ -185,6 +194,19 @@ mod tests {
         assert_eq!(
             said(&waited),
             "opening the launcher for the session awake took 4 s"
+        );
+    }
+
+    #[test]
+    fn a_pi_go_is_said_as_pi_and_its_cap_as_a_floor() {
+        let line = r#"{"at":3,"place":"pi","trying":"a session","seconds":300.0,
+            "lost_seconds":120.0,"slowed":"waiting","part":"reply","openings":3,
+            "signs":{"waited_ms":200000,"errors":0,"status":"ok"}}"#;
+        let pain: Pain = serde_json::from_str(line).expect("a pi line isn't read");
+        assert_eq!(
+            said(&pain),
+            "a pi session took 300 s over 3 messages, 2 min or more lost to waiting",
+            "a pi go reads as the launcher's, or its two-minute cap as exact"
         );
     }
 }

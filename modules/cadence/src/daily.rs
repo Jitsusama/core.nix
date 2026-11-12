@@ -17,6 +17,7 @@ use crate::day::{self, Day};
 use crate::findings::{self, Entry};
 use crate::health;
 use crate::judge;
+use crate::machine;
 use crate::mesh::Mesh;
 use crate::speed;
 use crate::{DAY, command, message, write_whole};
@@ -194,7 +195,7 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
         lines.push_str(&fs::read_to_string(path).unwrap_or_default());
     }
     for (key, value) in day::pressure(&lines, from, to) {
-        if day::MEASURES.iter().any(|m| m.key == key) {
+        if day::measures().any(|m| m.key == key) {
             day.figures.insert(key, value);
         }
     }
@@ -234,6 +235,11 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
     let health = state_home.join(format!("code-health/{}.json", day.date));
     day.figures.extend(health::figures(
         &fs::read_to_string(health).unwrap_or_default(),
+    ));
+    // health writes its day as it goes, so it's read as far as it's got.
+    let machine = state_home.join(format!("health/{}.json", day.date));
+    day.figures.extend(machine::figures(
+        &fs::read_to_string(machine).unwrap_or_default(),
     ));
     day
 }

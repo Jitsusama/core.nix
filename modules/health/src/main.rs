@@ -22,7 +22,10 @@
 //! in memory and swap, by how long each has run, so one that grows as it
 //! ages shows, and counts the agents that died: a session whose presence
 //! says busy or listening though its process is gone.
-//! It keeps the day in `~/.local/state/health/<date>.json`.
+//! It keeps the day in `~/.local/state/health/<date>.json`, with the
+//! figures cadence day holds it to beside the tally: the slowest boot and
+//! shutdown, each kind's errors, the minutes lost, the most each watched
+//! program held and the agents that died.
 //!
 //! `health` reads that file: the day's three most painful interactions,
 //! then one line a kind, the worst first, naming its worst thing. `health services` lists a kind's worst things, and `health
@@ -34,6 +37,7 @@
 mod agents;
 mod day;
 mod feel;
+mod figures;
 mod follow;
 mod journal;
 mod lid;

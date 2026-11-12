@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::day::{Day, KINDS, MEASURES, median};
+use crate::day::{Day, KINDS, measures, median};
 
 /// How many days before are held against a day.
 pub const BEFORE: usize = 7;
@@ -42,7 +42,7 @@ pub struct Judged {
 #[must_use]
 pub fn judge(day: &Day, before: &[Day]) -> Judged {
     let mut judged = Judged::default();
-    for (measure, key, whose, now) in MEASURES.iter().flat_map(|measure| {
+    for (measure, key, whose, now) in measures().flat_map(|measure| {
         measure
             .read(&day.figures)
             .into_iter()

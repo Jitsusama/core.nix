@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::day::MEASURES;
+use crate::day::measures;
 
 /// The figures in code-health's `{repo: {measure: figure}}`, as
 /// `code.<repo>.<measure>`, those of a measure the day holds; a file
@@ -22,9 +22,7 @@ pub fn figures(json: &str) -> BTreeMap<String, f64> {
     }
     figures.retain(|key, _| {
         let one = BTreeMap::from([(key.clone(), 0.0)]);
-        MEASURES
-            .iter()
-            .any(|measure| !measure.read(&one).is_empty())
+        measures().any(|measure| !measure.read(&one).is_empty())
     });
     figures
 }
