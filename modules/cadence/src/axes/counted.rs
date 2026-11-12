@@ -1,8 +1,9 @@
 //! Readings another program already counts, read from what it writes
 //! rather than counted again: code-health's regressions, which cadence
-//! day judges into its findings ledger under keys starting `code.`, and
-//! the lines where Joel sounded pained, which health counts in its day
-//! file. Either stays unread until its program has written a day.
+//! day judges into its findings ledger under keys starting `code.`; the
+//! lines where Joel sounded pained, which health counts in its day file;
+//! and the turns making one tool call, which the daily measure counts.
+//! Each stays unread until its program has written a day.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -11,7 +12,7 @@ use std::path::Path;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
-use super::{Bar, Reading, open};
+use super::{Bar, Reading, open, shown};
 use crate::findings::Entry;
 
 /// Everything these readings are read from.
@@ -57,6 +58,45 @@ pub fn pained(s: &Sources) -> Reading {
     .bar(Bar::AtMost(0.0))
     .from("health's day file")
     .his()
+}
+
+/// The share of the last day's turns that made exactly one tool call, from
+/// the newest measure's "Turns Doing One Thing" table, whose first row is
+/// the last day: `| ending | turns | one | none | several |`.
+#[must_use]
+pub fn one_call(measure: Option<&str>) -> Reading {
+    let latest = measure.and_then(|text| {
+        let (_, section) = text.split_once("## Turns Doing One Thing")?;
+        let section = section.split("\n## ").next().unwrap_or_default();
+        section
+            .lines()
+            .filter(|line| line.starts_with("| 20"))
+            .find_map(|row| {
+                let cells: Vec<f64> = row
+                    .split('|')
+                    .map(str::trim)
+                    .skip(2)
+                    .filter_map(|cell| cell.replace(',', "").parse().ok())
+                    .collect();
+                match cells.as_slice() {
+                    [turns, one, ..] if *turns > 0.0 => Some((*one, *turns)),
+                    _ => None,
+                }
+            })
+    });
+    Reading::new(
+        "turns making one tool call {}",
+        latest.map(|(one, turns)| one / turns * 100.0),
+        "%",
+        "QCXZEB",
+    )
+    .bar(Bar::AtMost(60.0))
+    .detail(
+        latest.map(|(one, turns)| {
+            format!("{} of {} in the last day", shown(one, ""), shown(turns, ""))
+        }),
+    )
+    .from("the measure's turns doing one thing")
 }
 
 fn count(n: usize) -> f64 {
@@ -134,6 +174,22 @@ mod tests {
             health: None,
         };
         assert_eq!(regressions(&no_ledger).figure(), None);
+    }
+
+    #[test]
+    fn one_call_turns_are_the_last_days_share() {
+        let measure = "# Measure\n\n## Turns Doing One Thing\n\n79 of 100 turns made one.\n\n\
+            | Day ending | Turns | One call | None | Two or more |\n|---|---|---|---|---|\n\
+            | 2026-11-12 | 1000 | 800 | 50 | 150 |\n| 2026-11-11 | 900 | 600 | 0 | 300 |\n\n\
+            | Tool | One-call turns | Right after its own |\n|---|---|---|\n| bash | 400 | 200 |\n\n\
+            ## Next\n";
+        let reading = one_call(Some(measure));
+        assert_eq!(
+            reading.words(),
+            "turns making one tool call 80%, at most 60%"
+        );
+        assert_eq!(one_call(Some("# Measure\n")).figure(), None);
+        assert_eq!(one_call(None).figure(), None);
     }
 
     #[test]
