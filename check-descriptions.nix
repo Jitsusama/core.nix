@@ -1565,6 +1565,15 @@
   open-with-passes-clippy = ''
     clippy finds nothing in the portal's chooser or its tests
   '';
+  pain-points-names-what-slowed-him = ''
+    pain-points counts what each launcher opening lost Joel, waiting past 400 ms to usable or past
+    a frame's 100 ms, typing his way to a pick past his own median for it, or leaving a search
+    with nothing; joins an opening that came straight back to a failed search or the same row,
+    ranks the day's worst, and keeps a pick's kind without what was copied, named or opened by path
+  '';
+  pain-points-passes-clippy = ''
+    clippy finds nothing in pain-points or its tests
+  '';
   passwords-completes-in-zsh = ''
     passwords completes in zsh with its commands, audit among them, each entry the daemon holds by
     its title, a held entry's details by their labels, each password manager and --json, and no

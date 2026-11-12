@@ -20,7 +20,8 @@
 # network before the work he started, and a write a program makes behind an
 # upload goes out soon after; lag-watch keeps a standing watch on whether
 # they wait, and load-proof proves on demand that they don't under full load;
-# pi-keys samples four times a day what a key typed into pi waits on.
+# pi-keys samples four times a day what a key typed into pi waits on, and
+# pain-points names the launcher's openings that slowed Joel most each day.
 # Where fwupd runs, each firmware update it offers is said once, as a notice.
 # Where the system installs WARP's warp-cli, warp says how its link stands,
 # and the launcher's Network shows it. On a machine in a mycelium realm,
@@ -83,6 +84,7 @@
     homeModules.notices
     homeModules.onepassword
     homeModules.open-with
+    homeModules.pain-points
     homeModules.pi-keys
     homeModules.mpv
     homeModules.qt

@@ -215,6 +215,7 @@
         open-with = ./modules/open-with/home.nix;
         opencode = ./modules/opencode/home.nix;
         openssl = ./modules/openssl/home.nix;
+        pain-points = ./modules/pain-points/home.nix;
         passwords = moduleFrom ./modules/passwords/home.nix { inherit (self.homeModules) quickshell; };
         pi = ./modules/pi/home.nix;
         people = moduleFrom ./modules/people/home.nix { inherit (self.homeModules) quickshell; };

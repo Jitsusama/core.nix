@@ -647,6 +647,7 @@ gather (
     ./modules/onepassword/checks.nix
     ./modules/open-with/checks.nix
     ./modules/openssh/checks.nix
+    ./modules/pain-points/checks.nix
     ./modules/panel/checks.nix
     ./modules/passwords/checks.nix
     ./modules/people/checks.nix
