@@ -4,6 +4,7 @@
   "ForYouHolds.qml"
   "Quiet.qml"
   "launcher/NowGroups.js"
+  "launcher/Choices.js"
   "launcher/ForYou.js"
   "launcher/ForYouFilter.js"
   "launcher/Looks.js"
