@@ -3,6 +3,7 @@
   programs.opencode = {
     enable = true;
     settings.autoupdate = false;
-    tui.theme = "gruvbox";
+    # OpenCode 2 reads its terminal's settings from cli.json, not tui.json.
+    cli.theme.name = "gruvbox";
   };
 }

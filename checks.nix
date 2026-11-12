@@ -64,13 +64,21 @@ let
       ++ modules;
     };
 
-  # A check that passes when the machine evaluates. Writing out the path of
-  # its derivation forces the whole configuration while building none of it.
+  # A check that passes when the machine evaluates, and warns of nothing.
+  # Writing out the path of its derivation forces the whole configuration
+  # while building none of it. A warning is a setting doing nothing, or
+  # soon to, printed in every evaluation's log until someone reads it.
   evaluates =
     name: machine:
-    pkgs.writeText name (
-      builtins.unsafeDiscardStringContext machine.config.system.build.toplevel.drvPath
-    );
+    let
+      warned = machine.config.warnings;
+    in
+    if warned != [ ] then
+      failure name "${name} warns: ${lib.concatStringsSep "; " warned}"
+    else
+      pkgs.writeText name (
+        builtins.unsafeDiscardStringContext machine.config.system.build.toplevel.drvPath
+      );
 
   # A check that passes when two machines evaluate to the same derivation.
   same =
