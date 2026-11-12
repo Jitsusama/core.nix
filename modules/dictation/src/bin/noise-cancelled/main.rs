@@ -46,6 +46,7 @@ mod pipe;
 mod refusals;
 mod room;
 mod score;
+mod shadow;
 mod spot;
 mod trial;
 mod ways;

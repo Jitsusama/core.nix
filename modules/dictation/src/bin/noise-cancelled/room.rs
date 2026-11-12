@@ -52,19 +52,9 @@ impl Default for Room {
 impl Room {
     /// Counts one frame's level.
     pub fn heard(&mut self, frame: &[f32]) {
-        if frame.is_empty() {
+        let Some(level) = level(frame) else {
             return;
-        }
-        let energy: f32 = frame.iter().map(|sample| sample * sample).sum();
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "a frame is far under 2^23 samples"
-        )]
-        let level = 10.0 * (energy / frame.len() as f32).log10();
-        // Not a number, or under the silent one, as nothing at all gives.
-        if level.is_nan() || level < SILENT {
-            return;
-        }
+        };
         #[expect(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
@@ -95,6 +85,22 @@ impl Room {
         )]
         Some(floor.round() as i32)
     }
+}
+
+/// A frame's level in dB below full scale, or none for an empty frame or
+/// one under [`SILENT`], as a microphone gone quiet gives.
+pub fn level(frame: &[f32]) -> Option<f32> {
+    if frame.is_empty() {
+        return None;
+    }
+    let energy: f32 = frame.iter().map(|sample| sample * sample).sum();
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a frame is far under 2^23 samples"
+    )]
+    let level = 10.0 * (energy / frame.len() as f32).log10();
+    // Not a number, or under the silent one, as nothing at all gives.
+    (!level.is_nan() && level >= SILENT).then_some(level)
 }
 
 /// The floor of a whole recording, as the trial hears its own.

@@ -29,6 +29,7 @@ fn named(name: &str) -> (Microphone, Producer<f32>, Consumer<f32>) {
         denoiser: None,
         began: None,
         room: Room::default(),
+        speech: Speech::default(),
     };
     (microphone, microphone_side, out)
 }
@@ -131,7 +132,12 @@ fn a_model_that_wont_load_is_refused() {
 /// Settles what each microphone cleans with, as the worker does, with no
 /// offer kept anywhere.
 fn settle(microphones: &mut HashMap<u32, Microphone>, chosen: &Chosen) -> Vec<Cleaner> {
-    settled(microphones, chosen, &mut Offers::new(chosen, Vec::new()))
+    settled(
+        microphones,
+        chosen,
+        &mut Offers::new(chosen, Vec::new()),
+        &mut Vec::new(),
+    )
 }
 
 /// Picks kept in a file of the test's own, as the trial writes them, on a
@@ -213,7 +219,7 @@ fn a_call_that_ends_offers_choose_by_ear() {
     let offer = chosen.beside("offer").expect("picks are kept");
     let mut offers = Offers::new(&chosen, Vec::new());
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
-    settled(&mut microphones, &chosen, &mut offers);
+    settled(&mut microphones, &chosen, &mut offers, &mut Vec::new());
     let call = Instant::now().checked_sub(Duration::from_mins(2));
     let microphone = microphones.get_mut(&1).expect("the MV7 is there");
     let began = microphone.began.as_mut().expect("its recording began");
@@ -223,7 +229,7 @@ fn a_call_that_ends_offers_choose_by_ear() {
         .shared
         .wanted
         .store(false, Ordering::Release);
-    settled(&mut microphones, &chosen, &mut offers);
+    settled(&mut microphones, &chosen, &mut offers, &mut Vec::new());
     offers.stand(&chosen);
     let said = std::fs::read_to_string(&offer).unwrap_or_default();
     assert!(
@@ -267,7 +273,7 @@ fn a_call_in_a_room_far_from_its_picks_offers_choose_by_ear_again() {
     let offer = chosen.beside("offer").expect("picks are kept");
     let mut offers = Offers::new(&chosen, Vec::new());
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
-    settled(&mut microphones, &chosen, &mut offers);
+    settled(&mut microphones, &chosen, &mut offers, &mut Vec::new());
     let call = Instant::now().checked_sub(Duration::from_mins(2));
     let microphone = microphones.get_mut(&1).expect("the MV7 is there");
     let began = microphone.began.as_mut().expect("its recording began");
@@ -280,7 +286,7 @@ fn a_call_in_a_room_far_from_its_picks_offers_choose_by_ear_again() {
         .shared
         .wanted
         .store(false, Ordering::Release);
-    settled(&mut microphones, &chosen, &mut offers);
+    settled(&mut microphones, &chosen, &mut offers, &mut Vec::new());
     offers.stand(&chosen);
     let said = std::fs::read_to_string(&offer).unwrap_or_default();
     assert!(
@@ -288,4 +294,87 @@ fn a_call_in_a_room_far_from_its_picks_offers_choose_by_ear_again() {
         "a room 30 dB louder should be offered again: {said:?}"
     );
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// The MV7 recorded from for `lasted`, speaking `frames` of speech over a
+/// quiet room after its warm-up, then let go: the calls it leaves to judge.
+fn spoke(lasted: Duration, frames: usize) -> Vec<Call> {
+    let chosen = Chosen::new(None, Cleaner::DeepFilterNet).within(Where::at(
+        &std::env::temp_dir().join("worker-spoke-nowhere"),
+    ));
+    let mut offers = Offers::new(&chosen, Vec::new());
+    let mut microphones = HashMap::from([(1, named("mv7").0)]);
+    settle(&mut microphones, &chosen);
+    let microphone = microphones.get_mut(&1).expect("the MV7 is there");
+    let began = microphone.began.as_mut().expect("its recording began");
+    began.0 = Instant::now()
+        .checked_sub(lasted)
+        .expect("the clock goes back");
+    for _ in 0..200 {
+        microphone.room.heard(&hum(0.001));
+        microphone
+            .speech
+            .heard(&hum(0.001), microphone.room.floor());
+    }
+    for _ in 0..frames {
+        microphone.speech.heard(&hum(0.1), microphone.room.floor());
+    }
+    microphone
+        .ends
+        .shared
+        .wanted
+        .store(false, Ordering::Release);
+    let mut calls = Vec::new();
+    settled(&mut microphones, &chosen, &mut offers, &mut calls);
+    calls
+}
+
+#[test]
+fn a_call_that_spoke_enough_is_judged_once_it_ends() {
+    let calls = spoke(Duration::from_mins(2), 400);
+    assert_eq!(calls.len(), 1, "the call wasn't left to judge");
+    let call = &calls[0];
+    assert_eq!(call.node, "mv7");
+    assert_eq!(
+        call.running,
+        Cleaner::DeepFilterNet,
+        "it ran with the default"
+    );
+    assert_eq!(
+        call.speech.len(),
+        400 * FRAME,
+        "the room was judged as speech"
+    );
+}
+
+#[test]
+fn a_moment_or_a_call_too_quiet_is_not_judged() {
+    assert!(
+        spoke(Duration::from_secs(20), 400).is_empty(),
+        "20 seconds was judged as a call"
+    );
+    assert!(
+        spoke(Duration::from_mins(2), 100).is_empty(),
+        "a second of speech was judged"
+    );
+}
+
+#[test]
+fn what_a_microphone_hears_raw_over_its_room_is_its_speech() {
+    let (mut microphone, mut hears, mut out) = recorded();
+    for at in 0..24 {
+        let amplitude = if at < 12 { 0.001 } else { 0.1 };
+        for _ in 0..10 {
+            hears
+                .push_entire_slice(&hum(amplitude))
+                .expect("the ring has room");
+        }
+        clean(&mut microphone, None);
+        drained(&mut out);
+    }
+    assert_eq!(
+        microphone.speech.taken().len(),
+        120 * FRAME,
+        "what it heard over its room wasn't held"
+    );
 }
