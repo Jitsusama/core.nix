@@ -36,6 +36,10 @@ const COMING_UP: u32 = 120;
 /// opens once it is back rather than never.
 const DOOR_TRIES: u32 = 100;
 
+/// The words on the command line of a sessions' kitty started before its
+/// unit listened, as its single instance.
+const OLD_KITTY: &[u8] = b"--instance-group\0pi-sessions";
+
 /// Looks once, starting every watched session that died, one at a time,
 /// and says what it did.
 ///
@@ -281,13 +285,12 @@ fn door(runtime: &Path, processes: &Path, proc: &Path) -> Option<Door> {
     if fs::metadata(&socket).is_ok_and(|found| found.file_type().is_socket()) {
         return Some(Door::Socket(socket));
     }
-    const OLD: &[u8] = b"--instance-group\0pi-sessions";
     let listed = fs::read_to_string(processes).ok()?;
     listed
         .split_whitespace()
         .any(|pid| {
             fs::read(proc.join(pid).join("cmdline"))
-                .is_ok_and(|line| line.windows(OLD.len()).any(|w| w == OLD))
+                .is_ok_and(|line| line.windows(OLD_KITTY.len()).any(|w| w == OLD_KITTY))
         })
         .then_some(Door::Instance)
 }
