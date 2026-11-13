@@ -648,7 +648,7 @@ fn ordinarily(
         .iter()
         .cloned()
         .partition(|name| name.starts_with("vm-"));
-    let (unreached, ordinary) = alone::unreached(root, recorded, system, &named, ordinary);
+    let (unreached, ordinary) = alone::unreached(root, recorded, system, ordinary);
     let mut after = if ordinary.is_empty() {
         Derivations::new()
     } else {

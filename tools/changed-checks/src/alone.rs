@@ -12,10 +12,9 @@
 //! a time, those 24 took 39 s on the lent builder, against 69 s untraced in
 //! one process. A check whose trace can't be read, or whose derivation
 //! from the plain path isn't git's, goes unrecorded, so every gate
-//! evaluates it. The record names each check the base has, and a gate
-//! whose tree names others evaluates them all. A keep records this only
-//! when none was recorded in the last 20 minutes, so most keep as quickly
-//! as before.
+//! evaluates it, as a gate does each check the record lacks. A keep
+//! records this only when none was recorded in the last 20 minutes, so
+//! most keep as quickly as before.
 //!
 //! A gate's base is most often a head of main past the newest recorded one:
 //! in four hours on 12 November, 80 of 183 runs evaluated their base, 50 of
@@ -26,8 +25,8 @@
 //! keeps the head's derivation, which is the same wherever nothing it read
 //! differs.
 //!
-//! Every check reads each file the flake gathers its checks from, so a
-//! change to any check's `checks.nix` still reaches every check.
+//! Every check reads each file the flake gathers its checks from, and
+//! `gathered.rs` leaves out of its record those it reads only for that.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -240,9 +239,8 @@ fn kept<'a>(
     })
 }
 
-/// A record as kept, when it was made from `tree`: the base's checks by
-/// name, and what each check recorded read.
-fn from_kept(text: &str, tree: &str) -> Option<(Vec<String>, BTreeMap<String, Reads>)> {
+/// What each check recorded read, as kept, when it was made from `tree`.
+fn from_kept(text: &str, tree: &str) -> Option<BTreeMap<String, Reads>> {
     let kept: Value = serde_json::from_str(text).ok()?;
     if kept.get("tree")?.as_str()? != tree {
         return None;
@@ -254,7 +252,6 @@ fn from_kept(text: &str, tree: &str) -> Option<(Vec<String>, BTreeMap<String, Re
             .map(|text| text.as_str().map(str::to_owned))
             .collect()
     };
-    let names = texts(kept.get("names")?)?;
     let paths = texts(kept.get("paths")?)?;
     let placed = |value: &Value| -> Option<BTreeSet<String>> {
         value
@@ -276,7 +273,7 @@ fn from_kept(text: &str, tree: &str) -> Option<(Vec<String>, BTreeMap<String, Re
             Some((name.clone(), reads))
         })
         .collect::<Option<_>>()?;
-    Some((names, each))
+    Some(each)
 }
 
 /// How many of the newest records a gate asks git about: one further back
@@ -312,23 +309,21 @@ pub fn recorded(root: &str, base: &str, system: &str) -> Option<(String, Derivat
 
 /// The checks of `ordinary` whose reads at `head` the change from it to
 /// `to`, a commit or, when none, the working tree, reaches none of, and the
-/// rest; nothing when there's no record, it was made from another tree, the
-/// checks `named` aren't the record's, or git can't say what changed.
+/// rest; nothing when there's no record, it was made from another tree, or
+/// git can't say what changed. A check the record lacks is among the rest,
+/// and one it holds that `ordinary` doesn't name is left out. That holds
+/// because the change is judged from `head` itself, not the gate's base: a
+/// check added since is one the record lacks, and one whose set of checks
+/// moved read the file that added or removed one.
 fn partitioned(
     root: &str,
     (head, known): (&str, &Derivations),
     to: Option<&str>,
     system: &str,
-    named: &[String],
     ordinary: &[String],
 ) -> Option<(Vec<String>, Vec<String>)> {
     let text = fs::read_to_string(keeping(&crate::cache(), head, system)).ok()?;
-    let (kept, each) = from_kept(&text, &reads::tree(root, head).ok()?)?;
-    let mut sorted: Vec<&String> = named.iter().collect();
-    sorted.sort();
-    if !kept.iter().eq(sorted) {
-        return None;
-    }
+    let each = from_kept(&text, &reads::tree(root, head).ok()?)?;
     let touched = reads::touched_since(root, head, to)?;
     // Each check asks of the same folders, so git is asked of each once.
     let seen: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
@@ -361,20 +356,17 @@ fn known_of<'a>(
 /// The recorded head's derivation of each of the tree's ordinary checks,
 /// `ordinary`, whose reads there the change from it reaches none of, and the
 /// checks left to evaluate: all of them when there's no record, it was made
-/// from another tree, the tree's checks, `named`, aren't the record's, or
-/// git can't say what changed.
+/// from another tree, or git can't say what changed.
 pub fn unreached(
     root: &str,
     recorded: Option<&(String, Derivations)>,
     system: &str,
-    named: &[String],
     ordinary: Vec<String>,
 ) -> (Derivations, Vec<String>) {
     let Some((head, known)) = recorded else {
         return (Derivations::new(), ordinary);
     };
-    let Some((unreached, left)) = partitioned(root, (head, known), None, system, named, &ordinary)
-    else {
+    let Some((unreached, left)) = partitioned(root, (head, known), None, system, &ordinary) else {
         return (Derivations::new(), ordinary);
     };
     if !unreached.is_empty() {
@@ -409,8 +401,7 @@ pub fn past(
         .iter()
         .cloned()
         .partition(|name| name.starts_with("vm-"));
-    let (unreached, left) =
-        partitioned(root, (head, known), Some(base), system, &named, &ordinary)?;
+    let (unreached, left) = partitioned(root, (head, known), Some(base), system, &ordinary)?;
     let vm_read = reads::keeping(&crate::cache(), head, system);
     let vm_kept = vm.iter().all(|name| known.contains_key(name))
         && reads::untouched(&vm_read, root, head, Some(base));

@@ -1112,6 +1112,8 @@ fn a_gate_whose_change_reaches_nothing_the_vm_tests_read_keeps_their_base_deriva
     );
     fs::create_dir_all(stand_in.path("repo/listed/kept")).expect("made");
     fs::write(stand_in.path("based"), "listed/kept\n").expect("written");
+    // The other checks are evaluated, so only the VM tests' record counts.
+    fs::remove_file(stand_in.path(ALONE)).expect("each check's record removed");
 
     let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
 
@@ -1560,18 +1562,69 @@ fn a_gate_on_a_base_past_a_head_recorded_off_its_main_evaluates_them_all() {
 }
 
 #[test]
-fn a_gate_whose_tree_names_other_checks_than_the_base_evaluates_them_all() {
+fn a_gate_whose_tree_adds_a_check_evaluates_it_and_judges_the_rest_by_their_reads() {
+    // Main went from 882 checks to 886 in an hour on 12 November, and a
+    // record refused for naming others served 1 of 22 gates.
     let named_anew =
         r#"{"a": "a2.drv", "b": "b2.drv", "gone": "g2.drv", "new": "n.drv", "vm-x": "v.drv"}"#;
-    let stand_in = kept_alone("alone-renamed", named_anew, "M\tdocs/notes.md\n");
+    let stand_in = kept_alone("alone-renamed", named_anew, "A\tnew.nix\n");
 
     let ran = stand_in.run(&GATING);
 
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
-        "added    new\nchanged  a\nchanged  b\nchanged  gone\n",
-        "a check kept the base's derivation though the checks named differ"
+        "added    new\n",
+        "a check whose reads the change reaches none of was evaluated again"
+    );
+    assert!(
+        text(&ran.stderr).contains("evaluates 1 of x86_64-linux's 4 other checks"),
+        "the gate didn't evaluate only the check the record lacks: {}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_whose_tree_removes_a_check_judges_the_rest_by_their_reads() {
+    let named_fewer = r#"{"a": "a2.drv", "b": "b2.drv", "vm-x": "v.drv"}"#;
+    let stand_in = kept_alone("alone-removed", named_fewer, "D\tgone.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "removed  gone\n",
+        "a check whose reads the change reaches none of was evaluated again"
+    );
+    assert!(
+        text(&ran.stderr).contains("evaluates 0 of x86_64-linux's 2 other checks"),
+        "the gate didn't judge the checks left by their reads: {}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_on_a_base_where_main_added_a_check_evaluates_there_only_it() {
+    let stand_in = kept_behind(
+        "alone-behind-added",
+        RECORDED,
+        "A\tnew.nix\n",
+        "A\tnew.nix\n",
+    );
+    let added = r#"{"a": "a.drv", "b": "b.drv", "gone": "g.drv", "new": "n.drv", "vm-x": "v.drv"}"#;
+    stand_in.checks("base", added);
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 1 of x86_64-linux's 4 other checks at the base 0123456789ab, since main \
+             from 9876543210fe reaches nothing the other 3 read"
+        ),
+        "the base was evaluated whole for a check main added: {}",
+        text(&ran.stderr)
     );
 }
 
