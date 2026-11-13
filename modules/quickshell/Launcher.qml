@@ -5134,14 +5134,15 @@ Scope {
 
     // That an act on `name` wasn't done, `why` in the daemon's words, or
     // with none, that it hasn't been yet: said now while the launcher is
-    // open, else as it next opens, as an act that shut it is told.
+    // open, else as it next opens, as an act that shut it is told. `act` is
+    // what it did, or a list to say the first words.json words of.
     function toldNot(name, act, why) {
         const words = Words.field.becoming ?? {};
         const what = (why === "" ? words.late : words.refused) ?? "";
         tellOnOpen(Becoming.told({
             mark: Theme.glyph.failed,
             what: what.replace("{object}", name)
-                .replace("{did}", (words.did ?? {})[act] ?? act),
+                .replace("{did}", Becoming.did(words.did, act, words.done ?? "")),
             why: why === "" ? words.noAnswer ?? "" : why
         }, { what: Theme.alert, why: Theme.muted }), true);
     }

@@ -703,7 +703,7 @@ Scope {
         const name = served(key)?.name ?? "";
         const refused = why => {
             console.info(`launcher: ${one.key} refused: ${why}`);
-            maker?.launcher?.toldNot(name, one.ask.act ?? verbOf(one), why);
+            maker?.launcher?.toldNot(name, [one.ask.act, verbOf(one)], why);
         };
         const words = Words.field.becoming ?? {};
         if (!link) {
@@ -734,7 +734,7 @@ Scope {
         let answered = false;
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };
-        maker?.becomes(shown, becomes, row.name ?? "", one.ask.act ?? verbOf(one), how);
+        maker?.becomes(shown, becomes, row.name ?? "", [one.ask.act, verbOf(one)], how);
         const words = Words.field.becoming ?? {};
         const send = ask => link.ask(ask, answer => {
             const why = Ready.refusal(answer, words);

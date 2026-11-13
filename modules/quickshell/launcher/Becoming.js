@@ -72,6 +72,16 @@ function nextDue(holds, now, within) {
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
+// What an act did, as words.json's `did` says it for the first of `acts`
+// it words (a daemon's own act, as "off", then the foot's verb), else
+// `done`: a protocol's word is never said to Joel (PN2VZC, 2026-11-12:
+// "Optimize for Conferencing and Gaming not sqm yet").
+function did(words, acts, done) {
+    const known = words ?? {};
+    const worded = [].concat(acts).find(one => typeof one === "string" && one in known);
+    return worded === undefined ? done : known[worded];
+}
+
 // What the foot says of a hold taken back, in the order the foot's keys are
 // given, Return's end first: why, muted, then the failed mark beside what
 // wasn't done, in the alert (VKCF3Z, 2026-11-07 [1150c969]), as "Home-5G not

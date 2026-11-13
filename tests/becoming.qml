@@ -111,6 +111,15 @@ QtObject {
             JSON.stringify([["not\u00a0connected", "", "muted"],
                 ["x", "Home-5G\u00a0not\u00a0disconnected", "alert", "alert"]]));
 
+        const did = { off: "turned off", run: "run" };
+        check(failures, "an act is said by its own word where there's one",
+            Becoming.did(did, ["off", "turn off"], "done"), "turned off");
+        check(failures, "else by the foot's verb", Becoming.did(did, ["speedtest", "run"], "done"),
+            "run");
+        check(failures, "a protocol's word is never said",
+            Becoming.did(did, ["sqm", "optimize for conferencing and gaming"], "done"), "done");
+        check(failures, "one act alone", Becoming.did(did, "off", "done"), "turned off");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
