@@ -184,6 +184,19 @@
             exits = 1;
           }
         ];
+        # An hour across two generations and every load, its last window
+        # stalled under a unit with a long name.
+        lag-watch =
+          let
+            state = built "a-busy-hour" ../../modules/lag-watch/a-busy-hour.sh;
+          in
+          [
+            { inherit state; }
+            {
+              args = [ "report" ];
+              inherit state;
+            }
+          ];
         # A machine with logs still to send, and logs sent with no row.
         session-backup = [
           {

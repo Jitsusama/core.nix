@@ -10,16 +10,10 @@ set -euo pipefail
 out=$1
 root=$out/root
 
-# A device in the stand-in sysfs, in the power state given.
-device() {
-  mkdir -p "$root/sys/devices/$1/power"
-  echo "$2" > "$root/sys/devices/$1/power/runtime_status"
-}
-
-device pci/0000:00:05.0 error
-mkdir -p "$root/sys/bus/pci/drivers/intel-ipu7"
-ln -s ../../../bus/pci/drivers/intel-ipu7 "$root/sys/devices/pci/0000:00:05.0/driver"
-device pci/0000:00:14.0 active
+camera=$root/sys/devices/pci/0000:00:05.0
+mkdir -p "$camera/power" "$root/sys/bus/pci/drivers/intel-ipu7"
+echo error > "$camera/power/runtime_status"
+ln -s ../../../bus/pci/drivers/intel-ipu7 "$camera/driver"
 mkdir -p "$root/sys/class/ieee80211/phy0" "$root/run/device-check/disks"
 printf '/dev/nvme0\tDevice: /dev/nvme0, Critical Warning (0x04): Reliability\n' \
   > "$root/run/device-check/disks/nvme0"
