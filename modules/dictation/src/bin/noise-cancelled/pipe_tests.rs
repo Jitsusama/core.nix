@@ -46,6 +46,34 @@ fn a_twin_ranks_just_above_its_microphone_once_a_cleaned_pick_is_kept() {
 }
 
 #[test]
+fn an_unknown_resource_said_on_the_core_leaves_the_twins_serving() {
+    // What PipeWire said on the core as the dock's cards went, on
+    // 2026-11-12 at 20:11: "unknown resource 5 op:3", for a stream
+    // whose node it had already taken away.
+    assert!(
+        !ends(pw::core::PW_ID_CORE, -2),
+        "an error about an object already gone ended every twin"
+    );
+}
+
+#[test]
+fn a_broken_connection_said_on_the_core_ends_serving() {
+    assert!(
+        ends(pw::core::PW_ID_CORE, -32),
+        "PipeWire's connection breaking left the twins serving nothing"
+    );
+    assert!(
+        ends(pw::core::PW_ID_CORE, -104),
+        "PipeWire's connection reset left the twins serving nothing"
+    );
+}
+
+#[test]
+fn an_error_on_another_object_leaves_the_twins_serving() {
+    assert!(!ends(5, -32), "one stream's error ended every twin");
+}
+
+#[test]
 fn a_microphone_of_no_rank_gives_its_twin_none() {
     let chosen = picks("rankless");
     picked(&chosen);

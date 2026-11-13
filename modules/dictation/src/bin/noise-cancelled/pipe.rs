@@ -86,7 +86,22 @@ fn rank(priority: Option<&str>, chosen: &Chosen) -> Option<i64> {
     priority?.parse::<i64>().ok()?.checked_add(1)
 }
 
-/// Serves until PipeWire goes away.
+/// What PipeWire says on the core, as `-ENOENT`, when it's asked of an
+/// object it has already taken away: a stream whose microphone's card went
+/// with the dock, before this hears the node's going.
+const UNKNOWN: i32 = -2;
+
+/// Whether an error PipeWire says ends serving: one said on the core, as a
+/// broken connection is, but not one about an object already gone. Taken
+/// as PipeWire going, that ended every twin as a dock was unplugged
+/// (2026-11-12), and none came back until it was started again by hand.
+fn ends(id: u32, res: i32) -> bool {
+    id == pw::core::PW_ID_CORE && res != UNKNOWN
+}
+
+/// Serves until PipeWire goes away, which is an error, so the service
+/// is started again on its own (modules/noise-cancelled/home.nix).
+/// Errors about one object are said and served past.
 pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String> {
     pw::init();
     let main_loop = MainLoopRc::new(None).map_err(|why| format!("PipeWire's loop: {why}"))?;
@@ -107,11 +122,17 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     let links: Rc<RefCell<HashMap<u32, u32>>> = Rc::default();
 
     let quit = main_loop.downgrade();
+    let went: Rc<RefCell<Option<String>>> = Rc::default();
     let _core_listener = core
         .add_listener_local()
-        .error(move |id, _, _, message| {
-            if id == pw::core::PW_ID_CORE {
-                eprintln!("noise-cancelled: PipeWire went away: {message}");
+        .error({
+            let went = Rc::clone(&went);
+            move |id, _, res, message| {
+                if !ends(id, res) {
+                    eprintln!("noise-cancelled: PipeWire said of object {id}: {message}");
+                    return;
+                }
+                *went.borrow_mut() = Some(message.to_owned());
                 if let Some(main_loop) = quit.upgrade() {
                     main_loop.quit();
                 }
@@ -174,7 +195,11 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
         .register();
 
     main_loop.run();
-    Ok(())
+    let went = went.borrow_mut().take();
+    Err(format!(
+        "PipeWire went away: {}",
+        went.as_deref().unwrap_or("its loop ended")
+    ))
 }
 
 /// One microphone's capture and source, and what listens to them.
