@@ -207,8 +207,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
 
     # It comes to want Joel, its presence replaced by rename as pi's
     # is: For You's tray lights in the margin at once, and goes once
-    # answered. From another window, where a notice once said it too;
-    # now For You lists it, so none comes.
+    # answered. From another window, since none comes while he's in its
+    # own; there a session stopped on his keys is a notice too, so Super+N
+    # reaches it, and a run ended blocked, which For You lists, isn't
+    # (WCJQSG's pivot, 2026-11-12).
     desktop.as_account(
         f"niri msg action focus-window --id {desktop.window_titled('Elsewhere')['id']}"
     )
@@ -218,8 +220,8 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
         """Give the machine's time now, as pi writes when a want began."""
         return machine.succeed("date -u +%Y-%m-%dT%H:%M:%SZ").strip()
 
-    # Each kind of want is the tray alone, and ended, the tray goes; none
-    # is a card.
+    # Each kind of want is the tray, and ended, the tray goes; a question
+    # and a yes are a card each, taken back as the want ends.
     for at, wants in enumerate(
         (
             {"kind": "question", "since": begun(), "said": "Which <way> & why?"},
@@ -237,9 +239,19 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
         desktop.reported("holds margin ", lambda rest: "forYou" not in rest.split(), since)
     cards = desktop.as_account(
         "journalctl --user --unit=quickshell --no-pager --output=cat"
-        " | grep -c 'report\\[shows card A quest of its own' || true"
+        " | grep -o 'report\\[shows card A quest of its own[^]]*]' || true"
+    ).splitlines()
+    assert cards == [
+        "report[shows card A quest of its own & whole needs you]",
+        "report[shows card A quest of its own & whole needs your yes]",
+    ], f"a session's asks weren't each a card, or a blocked run was: {cards}"
+    machine.wait_until_succeeds(
+        desktop.in_session(
+            'jq -e \'[.notices[] | select(.summary | startswith("A quest of its own"))'
+            f" | select(.withdrawn | not)] == []' {desktop.NOTICES_KEPT}"
+        ),
+        timeout=dt.timedelta(seconds=10),
     )
-    assert cards.strip() == "0", "a session's want was said as a notice"
 
 
 def an_orchestrator(desktop: Desktop) -> None:
