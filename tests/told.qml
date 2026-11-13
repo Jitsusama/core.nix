@@ -40,7 +40,8 @@ QtObject {
             Expect.same("taken back, it says so where sent was said, what was filed kept",
                 Told.command(taken).filter(word => !word.startsWith("--print")
                     && !word.startsWith("--app") && !word.startsWith("--urgency")),
-                ["--replace-id=41", "--hint=string:x-from:The Void", "--hint=string:x-said:taken",
+                ["notify-send", "--replace-id=41", "--hint=string:x-from:The Void",
+                    "--hint=string:x-said:taken",
                     "--action=default=read it in Agents", "--", "is the beacon lit?", "→ Delta"]);
             const refused = Object.assign({}, taken, { said: "told", told: "nothing filed then" });
             Expect.same("any other answer is what it says, never a silent card",
