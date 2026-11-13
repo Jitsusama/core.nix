@@ -222,12 +222,72 @@ cells across and lines down:
 
 ### Width and What Gives Way
 
-Into a terminal, the answer fits its width: the terminal's own, then
-`COLUMNS`. As room runs short, it gives way in an order the command
-writes down, least needed first, as the prompt does: a row's words after
-its name, then its side, each by whole items from its end, and then its
-name, cut only at a whole word and ending in the theme's `more` mark. What
-identifies a record is never cut. Into a pipe nothing gives way.
+Into a terminal, an answer fits its width, and no line of it runs past
+the edge for the terminal to fold. These choices come from setting
+27 commands of 15 well-regarded tools at 60, 80, 100 and 140 columns
+(git, ripgrep, gh, jj, cargo, uv, eza, ls, fd, systemd, glow, gum, dust,
+duf and bat) and from what they and their guides say:
+
+- **The width is `COLUMNS`, then the terminal's, then 80**, rather than
+  the terminal's first as `ls` reads it, because neither zsh nor bash
+  exports `COLUMNS`: it's in a command's environment only when someone
+  asked for that width, which is how [git][git-width] and
+  [man][man-width] read it. It's read once, as the command starts, as git
+  does, rather than again on each resize, since an answer already printed
+  can't be set again; only a program that redraws the screen, like
+  `less`, follows a resize.
+- **Into a pipe nothing gives way.** Each record stays whole on its line
+  at any length, rather than fitting 80 as git's `--stat` does, because
+  whoever reads a pipe wants a record a line ([clig][clig]), as gh's
+  tables turn tab-separated and `ls` lists one name a line
+  ([gh][gh-table], [ls][ls-width]). The width only lays out the text
+  form; the JSON forms never change with it.
+- **Prose is set at a measure** of at most 80 cells, however wide the
+  terminal, rather than across its whole width as jj, uv and cargo set
+  their help (lines of up to 140 cells at 140 columns), because a line
+  past about 90 characters tires the eye ([Butterick][measure]). clap's
+  next version caps help at 100 and glamour wraps at 80 for the same
+  reason ([clap][clap-width], [glamour][glamour]). At 140
+  columns an answer reads as it does at 80, with the room past it left
+  empty rather than stretched into.
+- **Prose wraps rather than being cut**, at whole words, and each line
+  keeps the inset of the line it continues rather than starting back at
+  column 0 as the terminal's own fold does, because the inset says which
+  thing a line belongs to ([the ladder][ladder]). Words set once for 80
+  and left to fold are the worst case: ripgrep's help, set at 79, folds
+  787 of its lines at 60 columns, and glow, wrapping lines already broken
+  at 80, leaves a long line and a short one in turn.
+- **A word too long for its line is shortened in its middle**, rather
+  than broken over two lines, where glow leaves a path whole on none, or
+  left for the terminal to fold. It's shortened to the room left on its
+  line where that's 24 cells or more, rather than taking a line of its
+  own and leaving the word before it alone. The whole word is in the JSON
+  form. A path keeps its first part and as many of its last as fit, parted at
+  slashes (`~/.cache/…/tmp/build-state-48`), rather than losing its start
+  as git's `--stat` and starship's prompt do, because our paths share no
+  root: the head says where a thing lives and the tail names it. git can
+  drop the start because every path in a diffstat starts at the same
+  repository. systemd and macOS shorten in the middle too
+  ([systemd][systemd-ellipsize], [macOS][apple-middle]). Any other word
+  is cut in the middle by letters, `…` between its halves.
+- **A table gives way by whole columns**, in an order the command writes
+  down, least needed first, rather than cutting every column a little as
+  gh does, because a cut cell says nothing: at 60 columns each row of
+  `gh pr list` reads "Move disk-guar...", "jitsusama/dis..." and "about
+  18 minu...". What identifies a record is never dropped, and the last
+  column left is cut only at a whole word, ending in the theme's `more`
+  mark. A list gives way the same way, as the prompt does: a row's words
+  after its name, then its side, each by whole items from its end, and
+  then its name.
+- **A label goes above its value when room is short.** Facts keep each
+  label beside its value while the labels take less than half the room,
+  and stack each over its value past that, rather than squeezing values
+  into a column too narrow for a phrase. Help does the same: a flag's
+  words go under its name when fewer than 24 cells are left beside it, as
+  clap moves them once the names take 40 per cent of the width and the
+  words no longer fit beside them, which uv and cargo do at 60. Beside
+  is the better form wherever it fits, since a pair reads at a glance in
+  half the lines; above is how it collapses on purpose.
 
 Widths are counted in cells, by Unicode's width, never in bytes or
 characters, and a mark and its space are two.
@@ -464,3 +524,12 @@ it off, and a new command keeps every point from its first commit.
 [ladder]: design.md#the-ladder
 [typesetting]: design.md#typesetting
 [reads]: #how-it-reads
+[git-width]: https://github.com/git/git/blob/master/pager.c
+[man-width]: https://man7.org/linux/man-pages/man1/man.1.html#ENVIRONMENT
+[gh-table]: https://github.com/cli/go-gh/blob/trunk/pkg/tableprinter/table.go
+[ls-width]: https://www.gnu.org/software/coreutils/manual/html_node/General-output-formatting.html
+[measure]: https://practicaltypography.com/line-length.html
+[clap-width]: https://docs.rs/clap/latest/clap/struct.Command.html#method.max_term_width
+[glamour]: https://github.com/charmbracelet/glamour
+[systemd-ellipsize]: https://github.com/systemd/systemd/blob/main/src/basic/string-util.c
+[apple-middle]: https://developer.apple.com/documentation/uikit/nslinebreakmode/bytruncatingmiddle
