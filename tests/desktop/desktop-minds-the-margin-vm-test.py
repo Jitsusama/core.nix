@@ -115,9 +115,7 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     # Keeping it awake changes something, so the launcher stays.
     desktop.follow()
     desktop.launcher_until(
-        lambda shown: (
-            shown["held"] != [] and (shown["selected"] or {}).get("name") == "Keep Awake"
-        )
+        lambda shown: shown["held"] != [] and (shown["selected"] or {}).get("name") == "Keep Awake"
     )
     machine.send_key("ret")
     desktop.close_launcher()

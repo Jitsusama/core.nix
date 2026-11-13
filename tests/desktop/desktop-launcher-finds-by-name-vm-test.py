@@ -473,10 +473,13 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     desktop.launcher_ready()
     desktop.type_in("tada", selecting="Party popper")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
-    desktop.follow()
+    held = desktop.showing()["held"]
+    desktop.normal()
+    machine.send_key("ctrl-bracket_right")
     desktop.launcher_until(
         lambda shown: (
-            "Party popper" in shown["rows"]
+            shown["held"] == held
+            and "Party popper" in shown["rows"]
             and (shown["selected"] or {}).get("verb") == "paste"
         )
     )
