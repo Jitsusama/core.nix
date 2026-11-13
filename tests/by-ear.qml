@@ -208,6 +208,11 @@ QtObject {
             [["sound:by-ear:down", "", "not answering", "its socket starts it on the next ask"]]);
         same("starting row", says(ByEar.rows(said, null, "starting", 0)),
             [["sound:by-ear:down", "", "starting", ""]]);
+        // Its Return starts the daemon, since asking its socket does, and
+        // asks the daemon nothing, there being none to ask.
+        same("down starts it", ["not answering", "starting"].map(state => ((row) =>
+            [row.starts, ByEar.asked(row)])(ByEar.rows(said, null, state, 0)[0])),
+            [[true, null], [true, null]]);
 
         // Where Joel is, once the daemon says, second at every step: the
         // laptop's name for it until he gives it his own, Return asking him
