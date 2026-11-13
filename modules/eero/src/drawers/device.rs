@@ -1,7 +1,7 @@
-//! A device's drawer, made ready here as its row is: how well it hears and
-//! is heard, its band, each way's rate and how the radio makes it, and its
-//! speed now, first, as a narrow drawer has room for those before its
-//! more; then what it is and which node it's on, what had to be sent
+//! A device's drawer, made ready here as its row is, every fact as the
+//! step into it lists them (its drawer holds a glance of six, drawers.rs's
+//! GLANCE): how well it hears and is heard, its band, each way's rate and
+//! how the radio makes it, and its speed now, first; then what it is and which node it's on, what had to be sent
 //! again, its network and addresses, when it was seen, its profile, where
 //! it moved over the last day, and what eero said and the daemon told of
 //! it. What moves sparks its last hour, as the history keeps it. Every

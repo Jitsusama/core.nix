@@ -66,6 +66,9 @@ DRAWING_SPLIT = re.compile(
     r" (?P<heard>\d+) before the shell heard it swapped\)"
 )
 ROUNDED = 2
+# The most facts a home network thing's drawer holds, the rest its step in's (modules/eero's
+# drawers.rs GLANCE).
+GLANCE = 6
 
 
 @pytest.fixture(scope="module")
@@ -3041,11 +3044,12 @@ def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shel
 
 
 def test_a_profiles_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
-    """A profile's drawer says what it blocks and each device in it, as the daemon serves it.
+    """A profile's drawer says what it blocks and how many devices it lists, as served.
 
     The daemons are the launcher's data layer (QEST-20261111-PN2VZC), so the eero daemon makes
     a profile's drawer (its drawers.rs) and serves it beside the row that names it, which the
-    stand-in serves as the daemon does (modules/eero/tests/rows.json).
+    stand-in serves as the daemon does (modules/eero/tests/rows.json). It holds a glance, at
+    most six facts, each device in it being the step in's (Y2YBTS, 2026-11-13).
     """
     profile = terminal_shown_until(
         shell,
@@ -3059,16 +3063,16 @@ def test_a_profiles_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> No
     facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
     assert facts["Blocks"] == "nothing", str(facts)
     assert facts["Devices"] == "3 listed", str(facts)
-    headings = [fact.get("heading") for fact in drawer["facts"] if fact.get("heading")]
-    assert headings == ["Devices in It"], str(drawer)
+    assert len(drawer["facts"]) <= GLANCE, str(drawer)
+    assert not any(fact.get("heading") for fact in drawer["facts"]), str(drawer)
 
 
 def test_a_nodes_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
-    """A node's drawer says how it stands and who left it, its times worded as it's drawn.
+    """A node's drawer says how it stands and when it was heard, worded as it's drawn.
 
     The eero daemon makes a node's drawer (its drawers/node.rs) and serves it beside the node's
-    row, each time a moment the shell words at the minute it draws, so who left Den is named by
-    when, as a terminal is shown it.
+    row, a glance of at most six facts, each time one the shell words at the minute it draws,
+    as a terminal is shown it.
     """
     den = terminal_shown_until(
         shell,
@@ -3082,19 +3086,14 @@ def test_a_nodes_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
     facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
     assert facts["Backhaul"] == "Wi-Fi from Hall over 5 GHz high \u00b7 5 of 5 bars", str(facts)
     assert str(facts["Last Heard"]).endswith(" ago"), str(facts)
-    headings = [fact.get("heading") for fact in drawer["facts"] if fact.get("heading")]
-    assert "Joined and Left in the Last Day" in headings, str(drawer)
-    left = drawer["facts"][-1]
-    assert left["value"] == "phone\u00a01\u200b left \u00b7 5 GHz", str(left)
-    assert isinstance(left["label"], str), str(left)
-    assert left["label"], str(left)
+    assert len(drawer["facts"]) <= GLANCE, str(drawer)
 
 
 def test_a_devices_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
-    """A device's drawer says where it is, how it moved and what happened to it.
+    """A device's drawer says how well it's heard, what it is and where, as served.
 
     The eero daemon makes a device's drawer (its drawers/device.rs) and serves it beside the
-    device's row, its moves and events named by a moment the shell words as it draws them.
+    device's row, a glance of at most six facts, its moves and events the step in's.
     """
     tablet = terminal_shown_until(
         shell,
@@ -3108,19 +3107,17 @@ def test_a_devices_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> Non
     assert drawer["eyebrow"] == "on Den \u00b7 Wi-Fi", str(drawer)
     facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
     assert str(facts["Signal"]).endswith(" dBm"), str(facts)
-    values = [fact.get("value") for fact in drawer["facts"]]
-    assert "Study to Den \u00b7 2.4 GHz to 5 GHz" in values, str(drawer)
-    last = drawer["facts"][-1]
-    assert last["value"] == "tablet\u00a01\u200b disconnected from Study eero Pro 6.", str(last)
-    assert isinstance(last["label"], str), str(last)
-    assert last["label"], str(last)
+    assert facts["Node"] == "Den \u00b7 eero Pro 6", str(facts)
+    assert len(drawer["facts"]) <= GLANCE, str(drawer)
 
 
 def test_the_internets_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) -> None:
-    """The internet's drawer says who carries it, its last look and what happened to it.
+    """The internet's drawer says how fast and near it is and the last thing that happened.
 
     The eero daemon makes the internet's drawer (its drawers/internet.rs) and serves it beside
-    the internet's row, its times sent for the shell to word as it draws them.
+    the internet's row, its times sent for the shell to word as it draws them. It holds six
+    facts: its 57 took up to 77 ms making on Joel's machine (2026-11-12), past the launcher's
+    50, so the rest are the step in's (Y2YBTS, 2026-11-13).
     """
     internet = terminal_shown_until(
         shell,
@@ -3133,13 +3130,12 @@ def test_the_internets_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) ->
     assert drawer["title"] == "Internet", str(drawer)
     assert drawer["eyebrow"] == "via eero \u00b7 internet", str(drawer)
     facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
-    assert facts["Provider"] == "Example ISP \u00b7 AS64496", str(facts)
-    assert str(facts["Last Look"]).endswith(" \u00b7 from home"), str(facts)
-    assert not str(facts["Last Look"]).startswith("{"), str(facts)
+    assert facts["Public Address"] == "203.0.113.1", str(facts)
+    assert len(drawer["facts"]) == GLANCE, str(drawer)
     last = drawer["facts"][-1]
-    assert last["value"] == (
-        "The internet is out. Nothing past the home network answers this machine."
-    ), str(last)
+    assert last["value"] == "The nodes updated to v7.17.4-5. They were on v7.17.3-9.", str(last)
+    assert isinstance(last["label"], str), str(last)
+    assert last["label"], str(last)
 
 
 def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
@@ -3157,6 +3153,8 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
     shell.step_in()
     acts = ["Run a Speed Test", "Optimize for Conferencing and Gaming"]
     shell.launcher_until(lambda shown: shown["rows"][:2] == acts)
+    # Its step lists every figure, Provider among them, past the six its drawer holds.
+    shell.launcher_until(lambda shown: "Provider" in shown["rows"])
     for row, line, acted, reads in [
         (acts[0], "speedtest", "acted speedtest", "Run a Speed Test · testing"),
         (acts[1], "set nosqm", "acted sqm off", "Optimize for Conferencing and Gaming · off"),

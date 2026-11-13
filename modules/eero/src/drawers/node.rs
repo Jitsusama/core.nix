@@ -1,6 +1,7 @@
-//! A node's drawer, made ready here as its row is: when it was last heard
-//! from, how it reaches the one before it and how its devices are on,
-//! first, as a narrow drawer has room for those before its more; then
+//! A node's drawer, made ready here as its row is, every fact as the step
+//! into it lists them (its drawer holds a glance of six, drawers.rs's
+//! GLANCE): when it was last heard from, how it reaches the one before it
+//! and how its devices are on, first; then
 //! which node it is, each radio and port, its firmware, how long it's been
 //! up, its addresses, its light and the day's traffic through it; then the
 //! devices on it, those that were and aren't now, and who joined or left

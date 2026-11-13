@@ -14,9 +14,9 @@
 // After them come the profiles, each saying how it stands and how many of
 // its devices are on now.
 //
-// Each is a thing with a drawer of every figure the eero contract places
-// there (modules/eero/contract/README.md), and stepping into one lists
-// those figures as rows, each copied by Return. The internet holds what
+// Each is a thing whose drawer holds a glance, at most six, of every
+// figure the eero contract places there (modules/eero/contract/README.md),
+// and stepping into one lists every figure as rows, each copied by Return. The internet holds what
 // can be done to the home network too: Run a Speed Test and Optimize for
 // Conferencing and Gaming, rows the daemon serves inside it whose acts it
 // does itself, answering once eero has, so a refusal is said in eero's
@@ -30,7 +30,7 @@
 // orders one, and a row is made again only once the daemon says it
 // changed. Every row's drawer is served beside it, ready too
 // (modules/eero's drawers.rs), its times worded as it's drawn, and what's
-// a step into it is its facts as rows.
+// a step into it is every fact the drawer serves inside it, as rows.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -116,7 +116,7 @@ Provider {
         // words' state, as the command line does.
         if ((row.parent ?? "") !== "")
             return ready.thing(row, key, { wordState: row.held?.on === true ? "on" : "" });
-        const said = () => ready.drawerOf(row) ?? { facts: [] };
+        const said = () => provider.inside(row);
         const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
@@ -137,6 +137,18 @@ Provider {
             ? () => ready.rows(key).concat(provider.parts(made.key,
                 provider.withoutSwitch(said())))
             : () => provider.parts(made.key, said()));
+    }
+
+    // Every figure a row's drawer says, which its step in lists: the drawer
+    // holds a glance of them, at most six, and serves them all as `inside`,
+    // worded here as its facts are. The internet's 57 facts took up to 77 ms
+    // making on Joel's machine (2026-11-12), past the launcher's 50.
+    function inside(row) {
+        const served = typeof row.drawer === "string" ? ready.held[row.drawer]?.drawer
+            : row.drawer;
+        const every = served?.inside;
+        return (Array.isArray(every) ? ready.drawerOf({ drawer: { facts: every } })
+            : ready.drawerOf(row)) ?? { facts: [] };
     }
 
     // The internet's figures less how conferencing and gaming stands, which

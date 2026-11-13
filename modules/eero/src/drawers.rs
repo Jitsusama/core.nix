@@ -4,7 +4,9 @@
 //! `drawer`, so a watch is told one only once it reads differently, and its
 //! row isn't made again for it. A profile's drawer, a node's
 //! (drawers/node.rs), a device's (drawers/device.rs) and the internet's
-//! (drawers/internet.rs) are made here.
+//! (drawers/internet.rs) are made here. Each holds a glance, at most six
+//! of its facts, as `facts`, and every one as `inside`, which the step
+//! into its row lists.
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
@@ -32,6 +34,70 @@ pub const NAMES: [&str; 8] = [
     "eero:profile:traffic",
     "eero:profile:devices",
     "eero:profile:listed",
+];
+
+/// The most facts a drawer holds: what its row couldn't fit and a look
+/// would want next, never the place itself, whose every figure is the step
+/// in's (docs/design.md's "Every row says a little more beside it"). The
+/// internet's held 57 and took up to 77 ms making on Joel's machine
+/// (2026-11-12), past the launcher's 50 (Y2YBTS, 2026-11-13).
+const GLANCE: usize = 6;
+
+/// A part a drawer holds a glance of: its own fact, or the newest under
+/// its heading.
+enum Glanced {
+    Part(&'static str),
+    Newest(&'static str),
+}
+
+use Glanced::{Newest, Part};
+
+/// What the internet's drawer holds: how fast and how near it is, what's
+/// off, the address it's known by, then the last thing that happened.
+const INTERNET_GLANCE: &[Glanced] = &[
+    Part("eero:internet:speed-test"),
+    Part("eero:internet:to-internet"),
+    Part("eero:internet:nodes"),
+    Part("eero:internet:outages"),
+    Part("eero:internet:public"),
+    Newest("eero:internet:events"),
+];
+
+/// A node's: whether it's on and when it was heard, how it reaches the
+/// rest, what's on it and how much it carries, its firmware and how long
+/// it's been up.
+const NODE_GLANCE: &[Glanced] = &[
+    Part("eero:node:state"),
+    Part("eero:node:heard"),
+    Part("eero:node:backhaul"),
+    Part("eero:node:devices"),
+    Part("eero:node:traffic"),
+    Part("eero:node:firmware"),
+    Part("eero:node:up"),
+];
+
+/// A device's: how well it's heard, or the port it's on, how much it moves,
+/// what it is, the node it's on and since when.
+const DEVICE_GLANCE: &[Glanced] = &[
+    Part("eero:device:signal"),
+    Part("eero:device:snr"),
+    Part("eero:device:port"),
+    Part("eero:device:speed"),
+    Part("eero:device:kind"),
+    Part("eero:device:node"),
+    Part("eero:device:on-since"),
+    Part("eero:device:last-active"),
+];
+
+/// A profile's: what it blocks and holds to, when, its traffic and how
+/// many devices it lists.
+const PROFILE_GLANCE: &[Glanced] = &[
+    Part("eero:profile:blocks"),
+    Part("eero:profile:enforces"),
+    Part("eero:profile:allows"),
+    Part("eero:profile:schedule"),
+    Part("eero:profile:traffic"),
+    Part("eero:profile:devices"),
 ];
 
 /// A spark's places, the newest twenty, as every spark the drawers draw.
@@ -63,10 +129,52 @@ pub fn records(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Val
         .chain(node::records(model, words, numbers))
         .chain(device::records(model, words, numbers))
         .chain([internet::record(model, words, numbers)])
+        .map(|record| glanced(record, words))
         .collect()
 }
 
-/// A profile's drawer: what it blocks and holds search to, its schedules
+/// A drawer's record holding, of every fact its drawer says, only the
+/// glance its kind names, those present in that order and at most six, and
+/// every one as `inside`, which the step into its row lists as rows.
+fn glanced(mut record: Value, words: &Words) -> Value {
+    let key = record["key"].as_str().unwrap_or("");
+    let parts = if key == INTERNET_KEY {
+        INTERNET_GLANCE
+    } else if key.starts_with("drawer:eero:node:") {
+        NODE_GLANCE
+    } else if key.starts_with("drawer:eero:device:") {
+        DEVICE_GLANCE
+    } else {
+        PROFILE_GLANCE
+    };
+    let drawer = &mut record["drawer"];
+    let every = drawer["facts"].as_array().cloned().unwrap_or_default();
+    let glance: Vec<Value> = parts
+        .iter()
+        .filter_map(|part| glance_of(&every, part, words))
+        .take(GLANCE)
+        .collect();
+    drawer["facts"] = Value::Array(glance);
+    drawer["inside"] = Value::Array(every);
+    record
+}
+
+/// A part's fact among a drawer's, by the name the vocabulary gives it, or
+/// the first fact under its heading, which is the newest; none where it
+/// says nothing.
+fn glance_of(every: &[Value], part: &Glanced, words: &Words) -> Option<Value> {
+    match *part {
+        Part(id) => every.iter().find(|fact| fact["name"] == words.name(id)),
+        Newest(id) => every
+            .iter()
+            .skip_while(|fact| fact["heading"] != words.name(id))
+            .nth(1)
+            .filter(|fact| fact.get("heading").is_none()),
+    }
+    .cloned()
+}
+
+/// Every fact of a profile's drawer, as its step lists them: what it blocks and holds search to, its schedules
 /// and its traffic over the last day, sparked by the hour, then how many
 /// devices it lists, and each of them, saying which node it's on now or
 /// that it isn't on, one not on named as the profile names it. How it
@@ -295,7 +403,6 @@ fn to_f64(count: u64) -> f64 {
     count as f64
 }
 
-/// Parts said together, a dot between each, those saying nothing left out.
 /// What happened over the last 30 days, newest first, each by when in
 /// seconds: eero's activity in its own words, and each change the daemon
 /// told as a notice, its summary then what it said, a sentence as eero's
@@ -320,6 +427,7 @@ fn timeline(model: &HomeNetwork) -> Vec<(i64, String)> {
     timeline
 }
 
+/// Parts said together, a dot between each, those saying nothing left out.
 fn joined(parts: impl IntoIterator<Item = String>) -> String {
     parts
         .into_iter()
