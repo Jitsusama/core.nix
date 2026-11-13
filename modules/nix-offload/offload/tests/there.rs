@@ -129,6 +129,9 @@ case "$2" in
       mkdir -p "$here/building-$1"
       : > "$here/building-$1/$$"
       ls "$here/building-$1" | wc -l >> "$here/at-once-$1"
+      # Held while gated, so a build can't end before the runs after
+      # it have come, however slowly a loaded machine starts them.
+      while [ -f "$here/gated-$1" ]; do sleep 0.05; done
       sleep "$(cat "$here/holds-$1")"
       rm -f "$here/building-$1/$$"
     fi ;;
@@ -1580,6 +1583,9 @@ done
 printf '%s\n%s\n' "$1" "$2" >> "$here/ssh-was-given"
 cat >> "$here/received"
 echo "Transferred: sent 3812, received 9 bytes, in 1.0 seconds" > "$log"
+case "$2" in
+  *"nix build"*) cat "$here/prints" 2>/dev/null ;;
+esac
 exit "$(cat "$here/status")"
 "#;
 
@@ -1744,6 +1750,103 @@ fn a_nearby_machine_that_cant_fetch_the_flake_builds_none_of_it() {
     assert!(
         said.contains("couldn't fetch github:owner/repo/abc"),
         "{said}"
+    );
+}
+
+/// nix as it runs here beside a nearby machine that signs: it adds its
+/// arguments to a record, says the paths there are as `info` holds, and
+/// trusts the key named `mac-1`.
+const SIGNING_NIX: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+echo "$@" >> "$here/nix-was-given"
+case "$1" in
+  path-info) cat "$here/info" ;;
+  config) echo "cache.nixos.org-1:AAAA= mac-1:BBBB=" ;;
+esac
+"#;
+
+/// Builds `checks.aarch64-darwin.a` on a nearby machine, printing its
+/// output paths, where that path there carries `signatures`, and gives
+/// what it said and what this machine's nix was given.
+fn printed_from_nearby(signatures: &str) -> (std::process::Output, String) {
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", SIGNING_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("status"), "0").unwrap();
+    fs::write(bin.join("prints"), "/nix/store/aaaa-a\n").unwrap();
+    fs::write(
+        bin.join("info"),
+        format!(r#"{{"/nix/store/aaaa-a": {{"narSize": 1, "signatures": {signatures}}}}}"#),
+    )
+    .unwrap();
+    let listening = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{} mac aarch64-darwin\n", listening.local_addr().unwrap()),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            "--print-out-paths",
+            "--here",
+            "github:owner/repo/abc",
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let given = fs::read_to_string(bin.join("nix-was-given")).unwrap_or_default();
+    (ran, given)
+}
+
+// Once Nix here trusts no account (ISXEG8's N5), nothing comes into this
+// store unchecked: what a nearby machine built comes back only signed by a
+// key Nix here trusts.
+#[test]
+fn what_a_nearby_machine_signed_with_a_trusted_key_comes_back_checked() {
+    let (ran, given) = printed_from_nearby(r#"["mac-1:c2ln"]"#);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "/nix/store/aaaa-a\n");
+    assert!(
+        given
+            .lines()
+            .any(|call| call == "copy --from ssh-ng://mac /nix/store/aaaa-a"),
+        "what the nearby machine signed didn't come back checked: {given}"
+    );
+    assert!(
+        !given.contains("--no-check-sigs --from"),
+        "something came back unchecked: {given}"
+    );
+}
+
+#[test]
+fn what_a_nearby_machine_signed_with_no_trusted_key_goes_the_other_way() {
+    let (ran, given) = printed_from_nearby(r#"["mac-2:c2ln"]"#);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        !given.contains("--from ssh-ng://mac"),
+        "what no trusted key signed came back all the same: {given}"
+    );
+    assert!(
+        given
+            .lines()
+            .any(|call| call.starts_with("build ") && call.contains("#checks.aarch64-darwin.a")),
+        "what it took wasn't built the other way: {given}"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "mac signed what it built with no key Nix here trusts, so it isn't taken \
+             unchecked, so what it takes goes the other way"
+        ),
+        "it didn't say why it built it again: {said}"
     );
 }
 
@@ -3950,7 +4053,8 @@ fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
 
 /// `there` runs with `runs`' arguments, each started once the one before
 /// it builds on the VM builder or waits for room there, beside a VM
-/// builder at a room of 4, each build there lasting 2 seconds: how many
+/// builder at a room of 4, each build there held until every run has
+/// come, then lasting 2 seconds: how many
 /// it built at once as each began, the VM builds it was sent in the order
 /// they were, and what every run said.
 fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
@@ -3975,6 +4079,12 @@ fn one_after_another_with(
     )
     .unwrap();
     fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
+    // Every VM build is held until the last run has built or waited, so
+    // the order they're sent in never hangs on how fast each starts: on
+    // a loaded builder a run behind took longer to come than one ahead
+    // took to build, and room freed before it waited.
+    let gate = bin.join("gated-nix-offload-vm");
+    fs::write(&gate, "").unwrap();
     let run = |args: &[String], said: &Path| {
         there_command(&bin, &offload, folder.path())
             .args(args)
@@ -4017,6 +4127,7 @@ fn one_after_another_with(
         }
         started.push(child);
     }
+    fs::remove_file(&gate).unwrap();
     let mut said = String::new();
     for (index, mut child) in started.into_iter().enumerate() {
         let status = child.wait().unwrap();

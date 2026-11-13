@@ -35,9 +35,7 @@ QtObject {
 
     readonly property var say: ({
         mail: { readInGmail: "read in Gmail" },
-        slack: {},
-        notice: { read: "read", readInSlack: "read in Slack", withdrawn: "taken back",
-            earlier: "read once" }
+        slack: {}
     })
 
     function summaries(rows) {
@@ -97,40 +95,30 @@ QtObject {
             Lately.members([message("Ada"), message("Bo"), message("Ada"), message("")],
                 one => one.who), ["Ada", "Bo"]);
 
-        const taken = notice("Call ended", { read: true, left: "withdrawn", leftAt: 4000 });
-        const stale = notice("Arrived at Home", { read: true, withdrawn: true, readAt: 4500,
-            left: "dismissed" });
         const finished = [{ id: "m2", subject: "Invoice",
             done: { how: "readInGmail", at: 6000 } }];
-        const history = Lately.done({ notices: [slackNotice, seen, stale, taken, asked],
-            messages: [unread, read], finished: finished }, say);
+        const history = Lately.done({ messages: [unread, read], finished: finished }, say);
         check(failures, "what's done is newest first across sources, each how its source says",
             history.map(one => [one.source, one.title, one.how, one.at]), [
                 ["mail", "Invoice", "read in Gmail", 6000],
-                ["slack", "Grace", "read in Slack", 5000],
-                ["desktop", "Arrived at Home", "taken back", 4500],
-                ["desktop", "Call ended", "taken back", 4000],
-                ["desktop", "Deploy log", "read once", 2000]
+                ["slack", "Grace", "read in Slack", 5000]
             ]);
 
-        const readSlack = notice("from Lin", { app: "Slack", read: true, at: 7000 });
         check(failures, "Slack's read notices are its history only while its daemon is away",
-            [Lately.done({ notices: [readSlack], messages: [] }, say).length,
-                Lately.done({ notices: [readSlack], messages: null }, say)
-                    .map(one => [one.source, one.title])],
-            [0, [["slack", "from Lin"]]]);
+            [Lately.pastSources([]), Lately.pastSources(null)],
+            [["desktop"], ["desktop", "slack"]]);
+        const kept = { count: 7, sources: { desktop: 5, slack: 2 } };
+        check(failures, "History counts what the daemon keeps of each source it holds",
+            [Lately.pastCount(kept, ["desktop"]), Lately.pastCount(kept, ["desktop", "slack"]),
+                Lately.pastCount(kept, ["slack"])], [5, 7, 2]);
+        check(failures, "and none while the daemon hasn't said",
+            [Lately.pastCount(null, ["desktop"]), Lately.pastCount({ count: 3 }, ["desktop"])],
+            [0, 0]);
 
         const readThere = notice("from Lin", { app: "Slack", read: true, readAt: 7500,
             readHow: "readInSlack" });
-        check(failures, "one read in Slack says so, not that it was read here",
-            Lately.done({ notices: [readThere], messages: null }, say)
-                .map(one => [one.how, one.at]), [["read in Slack", 7500]]);
-        check(failures, "and goes at once, as Joel didn't read it here",
+        check(failures, "one read in Slack goes at once, as Joel didn't read it here",
             Lately.holdingStill([readThere], 7000).map(one => one.read), [true]);
-
-        const readLate = notice("Backup done", { read: true, at: 1000, readAt: 8000 });
-        check(failures, "a notice read is done when it was read, not when it came",
-            Lately.done({ notices: [readLate], messages: null }, say).map(one => one.at), [8000]);
 
         check(failures, "an ISO time reads as one",
             Lately.done({ messages: [message("Kai", { done: { how: "gone",

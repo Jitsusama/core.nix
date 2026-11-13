@@ -121,19 +121,14 @@ function readHow(notice) {
     return when(notice.readAt) === null ? "earlier" : "read";
 }
 
-// What's been done with, for History, each { title, how, at, source, of },
-// newest first: `of` is what it was, `how` its source's word for how it
-// went, worded by `say` ({ mail, slack, notice }, words.json's, each keyed
-// by the source's own id for it), or as the source said it where `say`
-// has no word. `given` is { notices, messages, finished }: Notices'
-// history, the messages Slack's daemon holds or null while it can't say,
-// and the mail done with (Google's). A notice read is done; one withdrawn,
-// by its sender or by the shell once what it said no longer stands, is
-// read too (Notices.qml's left and mark), and says so; one read before
-// the history kept when says only that it was read. Each is when it was
-// read, else when it left, else when it came. While Slack's daemon
-// answers, its read messages are Slack's history and its notices aren't,
-// so none is told twice.
+// The mail and Slack messages done with, for History, each { title, how,
+// at, source, of }, newest first: `of` is what it was, `how` its source's
+// word for how it went, worded by `say` ({ mail, slack }, words.json's,
+// each keyed by the source's own id for it), or as the source said it
+// where `say` has no word. `given` is { messages, finished }: the
+// messages Slack's daemon holds or null while it can't say, and the mail
+// done with (Google's). The notices done with are the notices daemon's
+// to say (row.rs's notices-history), of the sources pastSources names.
 function done(given, say) {
     const worded = (words, how) => words?.[how] ?? how;
     const messages = Array.isArray(given.messages) ? given.messages : null;
@@ -144,13 +139,24 @@ function done(given, say) {
     const slack = (messages ?? []).filter(one => doneOf(one) !== null)
         .map(one => ({ title: String(one.who ?? ""), how: worded(say.slack, one.done.how),
             at: when(one.done.at), source: "slack", of: one }));
-    const notices = (given.notices ?? [])
-        .filter(notice => ours(notice) && notice.read === true
-            && (messages === null || sourceOf(notice) !== "slack"))
-        .map(notice => ({ title: String(notice.summary ?? ""),
-            how: worded(say.notice, readHow(notice)),
-            at: when(notice.readAt) ?? when(notice.leftAt) ?? when(notice.at),
-            source: sourceOf(notice),
-            of: notice }));
-    return Order.sorted(mail.concat(slack, notices), Order.stream(one => one.at));
+    return Order.sorted(mail.concat(slack), Order.stream(one => one.at));
+}
+
+// Whose notices History holds, of those the notices daemon keeps there:
+// the desktop's always, and Slack's only while Slack's daemon can't say
+// what's read (`messages` null), since while it answers, its read
+// messages are Slack's history and its notices aren't, so none is told
+// twice.
+function pastSources(messages) {
+    return Array.isArray(messages) ? ["desktop"] : ["desktop", "slack"];
+}
+
+// How many notices History keeps of `sources`, as the notices daemon
+// counts them by source beside its rows (summary:notices-history), so
+// what's past the page it serves is counted too; none while it hasn't
+// said.
+function pastCount(summary, sources) {
+    const by = summary?.sources ?? {};
+    return sources.reduce((count, source) => count
+        + (Number.isFinite(by[source]) ? by[source] : 0), 0);
 }

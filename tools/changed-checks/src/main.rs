@@ -204,7 +204,7 @@ impl Options {
 fn say_vm_tests(targets: &[String]) {
     let vm = targets
         .iter()
-        .filter(|name| name.starts_with("vm-"))
+        .filter(|name| checks::is_vm_test(name))
         .count();
     if vm > 0 {
         let tests = if vm == 1 { "test" } else { "tests" };
@@ -645,7 +645,7 @@ fn ordinarily(
     let (vm, ordinary): (Vec<String>, Vec<String>) = named
         .iter()
         .cloned()
-        .partition(|name| name.starts_with("vm-"));
+        .partition(|name| checks::is_vm_test(name));
     let (unreached, ordinary) =
         alone::unreached(root, recorded, system, (ordinary, "other checks"));
     let mut after = if ordinary.is_empty() {

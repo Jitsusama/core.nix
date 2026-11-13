@@ -314,8 +314,9 @@ ShellRoot {
         const held = now.leadsTo("notices")[1].verbs();
         return { held: held, history: held[held.length - 1].verbs() };
     }
-    function served(id, read) {
-        return pastNotices.rowsOf([id], "history")[0]?.unread === !read;
+    // Whether History holds notice `id`, as it holds only the read.
+    function inHistory(id) {
+        return pastNotices.pastRows(["desktop", "slack"]).some(row => row.notice === id);
     }
     function noticesServed() {
         const told = [];
@@ -332,10 +333,10 @@ ShellRoot {
     }
     function heardNotices() {
         if (waiting === "the notices served" && pastNotices.desktopHolds(1)
-            && served(30, true))
+            && inHistory(30))
             firstNotices();
-        else if (waiting === "one read" && pastNotices.rowsOf([2], "desktop").length === 0
-            && served(2, true))
+        else if (waiting === "one read" && pastNotices.desktopRows([2]).length === 0
+            && inHistory(2))
             oneRead();
     }
     // The daemon's answer to a search come, the words it answered.
@@ -419,6 +420,9 @@ ShellRoot {
         const held = { every: {} };
         for (const row of pastNotices.all())
             held.every[row.notice] = row;
+        held.history = {};
+        for (const row of pastNotices.pastRows(["desktop", "slack"]))
+            held.history[row.notice] = row;
         return held;
     }
     function remadeSince(before, after) {
@@ -442,8 +446,10 @@ ShellRoot {
             stepIn();
             const made = since(madeBefore);
             const after = heldMade();
-            expect("one notice read, stepping in again makes only its row again",
-                made[0] === 1,
+            // Its row in the mixed place reads otherwise, and History,
+            // served as a place of its own, gains it: two, and none more.
+            expect("one notice read, stepping in again makes only its rows again",
+                made[0] === 2,
                 `${JSON.stringify(made)}, made again: `
                     + JSON.stringify(remadeSince(steppedBefore, after)));
             expect("a search answered before the notices changed waits for its answer again",
@@ -471,8 +477,9 @@ ShellRoot {
             historyPastPage();
     }
     // For You's History lists a notice past the place's page with the row
-    // the daemon's `rows` answer brought, asked once as History was first
-    // stepped into, and let go as the launcher closes.
+    // the daemon's `rows` answer brought, asked as History was first
+    // stepped into and again as a read joined it, and let go as the
+    // launcher closes.
     function historyPastPage() {
         const parcel = noticesDaemon.unserved[0];
         Notices.history = noticesDaemon.notices.concat([parcel]);
@@ -482,8 +489,10 @@ ShellRoot {
             expect("History lists a notice past the page as its notice's row",
                 row !== null && row.key === "notice:31" && row.notice === 31,
                 JSON.stringify(history.map(one => [one.key, one.name])));
-            expect("the rows past the page were asked for once",
-                noticesDaemon.rowsAsked === 1, `${noticesDaemon.rowsAsked} asks`);
+            // Once as History was first stepped into, and once more as the
+            // notice read joined it, which what was kept didn't list.
+            expect("the rows past the page were asked for once, and again for the read",
+                noticesDaemon.rowsAsked === 2, `${noticesDaemon.rowsAsked} asks`);
             theLauncher.open = false;
             expect("and they go as the launcher closes",
                 pastNotices.whole.kept === null, JSON.stringify(pastNotices.whole.kept?.keys));
