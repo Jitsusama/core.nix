@@ -54,6 +54,12 @@
 //! keys are pressed, or refused as `unpasted` once they couldn't be.
 //! `"clear"` forgets everything.
 //!
+//! The selection a middle click pastes, the text highlighted now, is never
+//! kept, but a get of `selection:primary` reads it as it's asked, so the
+//! launcher spawns nothing to act on it: `{"key", "kind": "selection",
+//! "text", "at"}`, its text cut at `SELECTED` bytes, and empty with
+//! nothing highlighted or a secret, `at` when it was highlighted, in ms.
+//!
 //! A copy outlives the program that made it: when the clipboard empties
 //! because that program let go of it, as one does when it closes, this one
 //! offers the same copy in its place, if it kept it. A secret, or anything
@@ -87,7 +93,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, process, thread};
 
 use daemon_serve::asks::Domain;
-use daemon_serve::serve::{self, Own, Shared};
+use daemon_serve::serve::{self, Own, Read as Reading, Shared};
 use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 use rows::Words;
@@ -131,6 +137,13 @@ const OURS: &str = "application/x-clipboard-history-kept";
 
 /// How long a program has to hand over what it copied before it's skipped.
 const PATIENCE: Duration = Duration::from_secs(2);
+
+/// The key the highlighted text is got by.
+const PRIMARY: &str = "selection:primary";
+
+/// The most of the highlighted text a get gives, in bytes, as the
+/// launcher's AI asks of it.
+const SELECTED: usize = 64 << 10;
 
 /// The layer the launcher draws on, as it names itself to niri, which
 /// holds the keys while it's open.
@@ -222,6 +235,7 @@ enum Asked {
     Wanted(Wanted, Reply),
     Press(Keys, Duration, Instant, Reply),
     Unpasted(Reply),
+    Selection(Reply),
 }
 
 /// How long an ask waits on the Wayland side before it's answered as
@@ -244,6 +258,27 @@ fn pasted(letting_go: Duration, pressing: Duration) -> String {
         ms(letting_go),
         ms(pressing)
     )
+}
+
+/// The highlighted text as a get is answered it.
+fn selection(text: &str, at: u128) -> Value {
+    json!({ "key": PRIMARY, "kind": "selection", "text": text, "at": at })
+}
+
+/// The highlighted text read, cut at `SELECTED` bytes: a character cut
+/// there is left out, and text that isn't UTF-8 read as near as it can be.
+fn selected(mut bytes: Vec<u8>) -> String {
+    bytes.truncate(SELECTED);
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(e) if e.utf8_error().error_len().is_none() => {
+            let whole = e.utf8_error().valid_up_to();
+            let mut bytes = e.into_bytes();
+            bytes.truncate(whole);
+            String::from_utf8(bytes).unwrap_or_default()
+        }
+        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    }
 }
 
 /// What one of the shell's own asks wants, or none for one it doesn't
@@ -838,8 +873,12 @@ fn prepared(dir: &Path) -> io::Result<()> {
 /// arrives, the largest copies it reads, while a copy is offered in its
 /// program's place, that offer, the keyboard a paste's keys are pressed
 /// through, and how a paste waiting on the launcher to let go of the keys
-/// says it may press them.
+/// says it may press them, and the highlighted text's offer, read only as
+/// a get asks for it, and since when.
 struct State {
+    connection: Connection,
+    primary: Option<(ExtDataControlOfferV1, Vec<String>)>,
+    primary_at: u128,
     history: History,
     served: Served,
     offers: HashMap<ObjectId, Vec<String>>,
@@ -974,7 +1013,28 @@ impl State {
             Asked::Unpasted(reply) => {
                 let _ = reply.send(self.unpasted());
             }
+            Asked::Selection(reply) => self.selection(reply),
         }
+    }
+
+    /// Reads the highlighted text from its program, away from the Wayland
+    /// side, and answers it: empty with none, or none as text, or a secret.
+    fn selection(&self, reply: Reply) {
+        let at = self.primary_at;
+        let asked = self.primary.as_ref().and_then(|(offer, types)| {
+            let Some(Readable::Text(kind)) = readable(types, false) else {
+                return None;
+            };
+            asked_for(&self.connection, offer, kind)
+        });
+        let Some(reader) = asked else {
+            let _ = reply.send(selection("", at));
+            return;
+        };
+        thread::spawn(move || {
+            let text = read_in_time(reader, SELECTED).map_or_else(String::new, selected);
+            let _ = reply.send(selection(&text, at));
+        });
     }
 
     /// The answer to a paste that never landed.
@@ -1180,10 +1240,17 @@ impl Dispatch<ExtDataControlDeviceV1, ()> for State {
             ext_data_control_device_v1::Event::Selection { id: None } => {
                 state.emptied = true;
             }
-            // The selection a middle click pastes isn't kept.
-            ext_data_control_device_v1::Event::PrimarySelection { id: Some(offer) } => {
-                state.offers.remove(&offer.id());
-                offer.destroy();
+            // The selection a middle click pastes isn't kept, only held to
+            // be read as a get asks for it.
+            ext_data_control_device_v1::Event::PrimarySelection { id } => {
+                let held = id.map(|offer| {
+                    let types = state.offers.remove(&offer.id()).unwrap_or_default();
+                    (offer, types)
+                });
+                if let Some((before, _)) = std::mem::replace(&mut state.primary, held) {
+                    before.destroy();
+                }
+                state.primary_at = now();
             }
             ext_data_control_device_v1::Event::Finished => {
                 eprintln!("The compositor took the clipboard away.");
@@ -1206,20 +1273,35 @@ fn receive(
     kind: &str,
     largest: usize,
 ) -> Option<Vec<u8>> {
+    let bytes = read_in_time(asked_for(connection, offer, kind)?, largest)?;
+    (bytes.len() <= largest).then_some(bytes)
+}
+
+/// Asks an offer's program for it as a type, and gives where it's read.
+fn asked_for(
+    connection: &Connection,
+    offer: &ExtDataControlOfferV1,
+    kind: &str,
+) -> Option<PipeReader> {
     let (reader, writer) = io::pipe().ok()?;
     offer.receive(kind.to_string(), writer.as_fd());
     connection.flush().ok()?;
     // The program writes into its own copy of the pipe; once it closes that,
     // the read ends.
     drop(writer);
+    Some(reader)
+}
+
+/// What a program hands over, up to a byte past `largest`, or nothing when
+/// it doesn't in time.
+fn read_in_time(reader: PipeReader, largest: usize) -> Option<Vec<u8>> {
     let (sent, heard) = mpsc::channel();
     thread::spawn(move || {
         let mut bytes = Vec::new();
         let read = reader.take(largest as u64 + 1).read_to_end(&mut bytes);
         let _ = sent.send(read.map(|_| bytes));
     });
-    let bytes = heard.recv_timeout(PATIENCE).ok()?.ok()?;
-    (bytes.len() <= largest).then_some(bytes)
+    heard.recv_timeout(PATIENCE).ok()?.ok()
 }
 
 fn now() -> u128 {
@@ -1231,10 +1313,30 @@ fn now() -> u128 {
 /// What the interface names this daemon, and the kinds of record it holds.
 const DOMAIN: Domain = Domain {
     name: "clipboard",
-    kinds: &["row", "summary", "now"],
+    kinds: &["row", "summary", "now", "selection"],
     sole: &[],
-    named_only: &[],
+    named_only: &["selection"],
 };
+
+/// The highlighted text, read on the Wayland side as a get asks for it,
+/// and answered as it answers, on the asking connection's thread.
+fn read(asked: mpsc::Sender<Asked>, wake: PipeWriter) -> Reading {
+    let wake = Mutex::new(wake);
+    Box::new(move |key| {
+        if key != PRIMARY {
+            return None;
+        }
+        let (reply, answer) = mpsc::channel();
+        let handed = asked.send(Asked::Selection(reply)).is_ok()
+            && wake
+                .lock()
+                .is_ok_and(|mut wake| wake.write_all(b"!").is_ok());
+        if !handed {
+            return None;
+        }
+        answer.recv_timeout(ANSWERING).ok()
+    })
+}
 
 /// The shell's own asks, handed to the Wayland side, which is woken to do
 /// them, and answered as it answers, on the asking connection's thread.
@@ -1369,7 +1471,12 @@ fn run() -> Result<(), String> {
         asked.clone(),
         wake.try_clone().map_err(|e| format!("no pipe: {e}"))?,
     );
+    let (selecting, waking_to_read) = (
+        asked.clone(),
+        wake.try_clone().map_err(|e| format!("no pipe: {e}"))?,
+    );
     let shared = Shared::new(DOMAIN, own(asked, wake));
+    shared.read_on_get(&["selection"], read(selecting, waking_to_read));
     let mut served = Served {
         shared: Arc::clone(&shared),
         kept: Kept::default(),
@@ -1382,6 +1489,9 @@ fn run() -> Result<(), String> {
     serve::accept(shared, listener);
 
     let mut state = State {
+        connection: connection.clone(),
+        primary: None,
+        primary_at: 0,
         history,
         served,
         offers: HashMap::new(),
@@ -1501,6 +1611,34 @@ mod tests {
     #[test]
     fn a_picture_is_not_read_when_pictures_arent_kept() {
         assert_eq!(readable(&types(&["image/png"]), false), None);
+    }
+
+    #[test]
+    fn highlighted_text_is_given_whole_up_to_its_limit() {
+        assert_eq!(selected(b"highlighted words".to_vec()), "highlighted words");
+        let long = "a".repeat(SELECTED + 10);
+        assert_eq!(selected(long.into_bytes()).len(), SELECTED);
+    }
+
+    #[test]
+    fn a_character_cut_at_the_limit_is_left_out() {
+        let mut text = "a".repeat(SELECTED - 1);
+        text.push('é');
+        let given = selected(text.into_bytes());
+        assert_eq!(given, "a".repeat(SELECTED - 1), "no half of a character");
+    }
+
+    #[test]
+    fn highlighted_text_not_utf8_is_read_as_near_as_it_can_be() {
+        assert_eq!(selected(vec![b'o', 0xff, b'k']), "o\u{fffd}k");
+    }
+
+    #[test]
+    fn highlighted_text_is_answered_as_a_selection_record() {
+        assert_eq!(
+            selection("words", 7),
+            json!({"key": "selection:primary", "kind": "selection", "text": "words", "at": 7})
+        );
     }
 
     #[test]
