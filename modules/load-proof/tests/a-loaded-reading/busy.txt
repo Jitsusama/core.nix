@@ -1,0 +1,6 @@
+calls 1500 lost 3 p50 20.50 ms p95 33.50 ms worst 41.00 ms
+sound errors 2, speaker_sink 1, a-very-long-pipewire-node-name-for-a-headset 1
+shown 3600 missed 4 late 0 discarded 0 longest 8.3 ms refresh 8.33 ms
+keys 1000 echo p50 0.03 ms p99 2.70 ms worst 17.00 ms
+saves 120 took p50 4.00 ms p99 288.00 ms worst 310.00 ms
+typed 40 shown p50 6.00 ms p99 14.00 ms worst 20.00 ms

@@ -19,8 +19,9 @@
 //!   budget, whatever idle did, since he may type in one and not the
 //!   other; a step he typed nothing in isn't judged for it.
 
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::fmt::Write;
+use std::fmt;
 
 /// A call's p95 round trip may grow this much under load, in ms.
 const CALL_MARGIN: f64 = 10.0;
@@ -75,8 +76,56 @@ pub fn read(lines: &str) -> Reading {
     reading
 }
 
-/// What failed, in words, one line each; nothing when everything passed.
-pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
+/// A signal that didn't feel as it does idle: each figure of it that
+/// failed, or the reading that had no line of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Failed {
+    /// The signal, as its command is named.
+    pub signal: &'static str,
+    /// The reading with no line of the signal: `idle` or `loaded`.
+    pub missing: Option<&'static str>,
+    /// Each figure that failed, by the name its JSON gives it, and in
+    /// words.
+    pub figures: Vec<(&'static str, String)>,
+}
+
+impl Failed {
+    fn of(signal: &'static str) -> Failed {
+        Failed {
+            signal,
+            missing: None,
+            figures: Vec::new(),
+        }
+    }
+
+    fn says(&mut self, figure: &'static str, words: String) {
+        self.figures.push((figure, words));
+    }
+
+    /// What failed, as facts: the signal, the figures by name, and the
+    /// reading that had none of it.
+    pub fn facts(&self) -> Value {
+        let figures: Vec<&str> = self.figures.iter().map(|(figure, _)| *figure).collect();
+        json!({"signal": self.signal, "figures": figures, "missing": self.missing})
+    }
+}
+
+impl fmt::Display for Failed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(missing) = self.missing {
+            return write!(f, "{}: no reading {missing}", self.signal);
+        }
+        let words: Vec<&str> = self
+            .figures
+            .iter()
+            .map(|(_, words)| words.as_str())
+            .collect();
+        write!(f, "{}: {}", self.signal, words.join("; "))
+    }
+}
+
+/// What failed, a signal each; nothing when everything passed.
+pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<Failed> {
     let mut failed = Vec::new();
     for (word, name) in SIGNALS {
         let (Some(idle), Some(loaded)) = (idle.get(word), loaded.get(word)) else {
@@ -85,63 +134,75 @@ pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
             } else {
                 "idle"
             };
-            failed.push(format!("{name}: no reading {missing}"));
+            failed.push(Failed {
+                missing: Some(missing),
+                ..Failed::of(name)
+            });
             continue;
         };
         let figure = |figures: &BTreeMap<String, f64>, key: &str| {
             figures.get(key).copied().unwrap_or(f64::NAN)
         };
-        let mut says = String::new();
+        let mut says = Failed::of(name);
         match word {
             "calls" => {
                 let (was, now) = (figure(idle, "p95"), figure(loaded, "p95"));
                 // Each figure is said once: against idle, or else against
                 // what a call bears, which a poor idle may have passed.
                 if !within(now, was + CALL_MARGIN) {
-                    let _ = write!(says, "p95 {now:.1} ms against {was:.1} ms idle; ");
+                    says.says(
+                        "p95_ms",
+                        format!("p95 {now:.1} ms against {was:.1} ms idle"),
+                    );
                 } else if !within(now, CALL_WORST) {
-                    let _ = write!(says, "p95 {now:.1} ms, past {CALL_WORST} ms; ");
+                    says.says("p95_ms", format!("p95 {now:.1} ms, past {CALL_WORST} ms"));
                 }
                 let (was, now) = (figure(idle, "lost"), figure(loaded, "lost"));
                 let calls = figure(loaded, "calls");
                 if !within(now, was) {
-                    let _ = write!(says, "{now} lost against {was} idle; ");
+                    says.says("lost", format!("{now} lost against {was} idle"));
                 } else if !within(now, calls * CALL_LOSS) {
                     let share = CALL_LOSS * 100.0;
-                    let _ = write!(says, "{now} lost of {calls}, past {share}%; ");
+                    says.says("lost", format!("{now} lost of {calls}, past {share}%"));
                 }
             }
             "sound" => {
                 let now = figure(loaded, "errors");
                 if !within(now, 0.0) {
-                    let _ = write!(says, "{now} missed turns; ");
+                    says.says("errors", format!("{now} missed turns"));
                 }
             }
             "shown" => {
                 let (was, now) = (figure(idle, "missed"), figure(loaded, "missed"));
                 if !within(now, was) {
-                    let _ = write!(says, "{now} frames missed against {was} idle; ");
+                    says.says("missed", format!("{now} frames missed against {was} idle"));
                 }
             }
             "keys" => {
                 let (was, now) = (figure(idle, "p99"), figure(loaded, "p99"));
                 if !within(now, was + KEYS_MARGIN) {
-                    let _ = write!(says, "p99 {now:.2} ms against {was:.2} ms idle; ");
+                    says.says(
+                        "p99_ms",
+                        format!("p99 {now:.2} ms against {was:.2} ms idle"),
+                    );
                 }
                 let worst = figure(loaded, "worst");
                 if !within(worst, KEYS_WORST) {
-                    let _ = write!(says, "worst {worst:.1} ms; ");
+                    says.says("worst_ms", format!("worst {worst:.1} ms"));
                 }
             }
             _ => {
                 let (was, now) = (figure(idle, "p99"), figure(loaded, "p99"));
                 if !within(now, was + SAVE_MARGIN) {
-                    let _ = write!(says, "p99 {now:.1} ms against {was:.1} ms idle; ");
+                    says.says(
+                        "p99_ms",
+                        format!("p99 {now:.1} ms against {was:.1} ms idle"),
+                    );
                 }
             }
         }
-        if !says.is_empty() {
-            failed.push(format!("{name}: {}", says.trim_end_matches("; ")));
+        if !says.figures.is_empty() {
+            failed.push(says);
         }
     }
     if let Some(typed) = loaded
@@ -149,16 +210,19 @@ pub fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
         .filter(|typed| typed.get("typed") > Some(&0.0))
     {
         let figure = |key: &str| typed.get(key).copied().unwrap_or(f64::NAN);
-        let mut says = String::new();
+        let mut says = Failed::of("typed");
         let (middle, most) = (figure("p50"), figure("p99"));
         if !within(middle, TYPED_MIDDLE) {
-            let _ = write!(says, "p50 {middle:.1} ms, past {TYPED_MIDDLE} ms; ");
+            says.says(
+                "p50_ms",
+                format!("p50 {middle:.1} ms, past {TYPED_MIDDLE} ms"),
+            );
         }
         if !within(most, TYPED_MOST) {
-            let _ = write!(says, "p99 {most:.1} ms, past {TYPED_MOST} ms; ");
+            says.says("p99_ms", format!("p99 {most:.1} ms, past {TYPED_MOST} ms"));
         }
-        if !says.is_empty() {
-            failed.push(format!("typed: {}", says.trim_end_matches("; ")));
+        if !says.figures.is_empty() {
+            failed.push(says);
         }
     }
     failed
@@ -181,6 +245,14 @@ shown 3600 missed 0 late 0 discarded 0 longest 8.3 ms refresh 8.33 ms
 keys 1000 echo p50 0.03 ms p99 0.60 ms worst 1.20 ms
 saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
 ";
+
+    /// What failed, in the words each failure is said in.
+    fn judge(idle: &Reading, loaded: &Reading) -> Vec<String> {
+        super::judge(idle, loaded)
+            .iter()
+            .map(ToString::to_string)
+            .collect()
+    }
 
     fn loaded(change: &[(&str, &str)]) -> Reading {
         let mut lines = IDLE.to_owned();
@@ -244,6 +316,28 @@ saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
                 "frames: 4 frames missed against 0 idle",
                 "keys: p99 2.70 ms against 0.60 ms idle; worst 17.0 ms",
                 "save: p99 288.0 ms against 9.0 ms idle",
+            ]
+        );
+    }
+
+    #[test]
+    fn what_failed_names_its_figures_as_its_json_does() {
+        let loaded = loaded(&[("p99 0.60", "p99 2.70"), ("worst 1.20", "worst 17.00")]);
+        let without_sound: String = IDLE
+            .lines()
+            .filter(|l| !l.starts_with("sound"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let facts: Vec<Value> = super::judge(&read(IDLE), &loaded)
+            .into_iter()
+            .chain(super::judge(&read(IDLE), &read(&without_sound)))
+            .map(|failed| failed.facts())
+            .collect();
+        assert_eq!(
+            facts,
+            [
+                json!({"signal": "keys", "figures": ["p99_ms", "worst_ms"], "missing": null}),
+                json!({"signal": "sound", "figures": [], "missing": "loaded"}),
             ]
         );
     }

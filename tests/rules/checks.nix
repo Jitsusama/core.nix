@@ -169,6 +169,7 @@
         github-broker = pkgs.callPackage ../../modules/github-broker/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+        load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
@@ -227,6 +228,19 @@
               inherit state;
             }
           ];
+        # A loaded reading that fell short of idle in five signals, which
+        # judge names and exits 1 for.
+        load-proof = [
+          {
+            args = [
+              "judge"
+              "@HERE@/idle.txt"
+              "@HERE@/busy.txt"
+            ];
+            state = ../../modules/load-proof/tests/a-loaded-reading;
+            exits = 1;
+          }
+        ];
         # A machine with logs still to send, and logs sent with no row.
         session-backup = [
           {

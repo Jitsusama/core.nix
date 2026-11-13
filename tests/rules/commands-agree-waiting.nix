@@ -182,11 +182,6 @@
     "helps"
   ];
   lid-held = [ "helps" ];
-  load-proof = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   loader-first-in-boot-order = [ "helps" ];
   location = [
     "kit"

@@ -1,4 +1,6 @@
-# load-proof, built from this directory, its tests run as it builds.
+# load-proof, built from this directory, its tests run as it builds. It
+# takes its shape from the terminal kit (../terminal-kit), so the source is
+# cut from the folder holding both.
 {
   cargo,
   curl,
@@ -12,11 +14,13 @@
 }:
 let
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   cargoDeps = rustPlatform.importCargoLock { lockFile = ./Cargo.lock; };
@@ -37,12 +41,14 @@ rustPlatform.buildRustPackage {
   pname = "load-proof";
   version = "0.1.0";
   inherit src cargoDeps;
+  sourceRoot = "${src.name}/load-proof";
   env = {
     # The sound signal plays silence and reads the graph's errors with
     # PipeWire's own tools, found here rather than on the path.
     PIPEWIRE_BIN = "${lib.getBin pipewire}/bin";
     # A run's load builds this source, kept beside the program, offline
-    # from the crates it was built with.
+    # from the crates it was built with: load-proof's folder in it, beside
+    # the kit's.
     LOAD_PROOF_SOURCE = "${placeholder "out"}/share/load-proof/source";
     LOAD_PROOF_VENDOR = "${cargoDeps}";
     LOAD_PROOF_TOOLS = "${tools}/bin";
