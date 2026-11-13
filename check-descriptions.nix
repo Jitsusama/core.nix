@@ -66,7 +66,9 @@
   a-low-device-is-its-own-notice = ''
     each connected Bluetooth device reporting a battery stands by its own charge, and each running
     low is a thing of its own, keyed by its address, signed by its name and drawn by its kind's
-    glyph, wanting Joel now only at the critical mark
+    glyph, wanting Joel now only at the critical mark; an adapter bluetooth-links says stopped
+    answering is a thing too, the Adapter's row in Bluetooth, its notice giving the line that
+    unbinds its driver and binds it back, made only from a device and driver sysfs could name
   '';
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
@@ -315,8 +317,11 @@
     counts, writes each HCI command as the controller takes it and picks its answer out of the
     events, reads the signal, link quality, power, channel map and the adapter's version and maker
     from reply bytes, leaves a failed one null, keeps each link's last twenty reads and each
-    adapter's traffic, asks the version once, writes nothing new while nothing is connected, and
-    replaces its file whole, readable by everyone
+    adapter's traffic, asks the version once and then an idle adapter every thirty seconds, writes
+    nothing new while nothing is connected, and replaces its file whole, readable by everyone; says
+    an adapter that's up has stopped after three looks of answering nothing, not one down or gone,
+    asks one stopped only every thirty seconds until it answers again, and reads what it sits on
+    from sysfs
   '';
   bluetooth-pairs-before-it-connects = ''
     the launcher trusts a Bluetooth device before pairing it, follows it past its link coming up
@@ -326,8 +331,9 @@
     facts held by how it's carried, whether it reconnects by itself and wakes the machine as
     settings whose choices set them, and its address to copy; lists the adapter's radio,
     visibility and pairing as settings, its traffic as a spark and what it is; answers how the
-    links are doing; says a device running low at its row's side; lists only devices paired,
-    then Nearby, which has the radio look only while it's open and lists the named devices heard,
+    links are doing; says a device running low at its row's side, and an adapter stopped
+    answering at its own, holding first the line to copy that starts it again; lists only devices
+    paired, then Nearby, which has the radio look only while it's open and lists the named devices heard,
     strongest first, each with its signal in dBm and as a bar, then counts those without a name,
     which it lists by address when stepped into; and says what BlueZ answered a pairing or
     connecting that failed, in the launcher's words

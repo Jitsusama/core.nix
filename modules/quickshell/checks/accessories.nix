@@ -22,9 +22,10 @@
   # and version, as bluetooth-links would write it: the headphones'
   # skipping channels 22 to 39, where a Wi-Fi network on its channel 6 sits.
   # A stand-in Facts says the headphones are running low, as the devices
-  # piece would. A stand-in adapter and launcher hold Nearby to looking
-  # only while it's open, with devices heard as the shell's patch to
-  # Quickshell says them (bluetooth-rssi-and-failures.patch).
+  # piece would, and for a while that the adapter stopped answering. A
+  # stand-in adapter and launcher hold Nearby to looking only while it's
+  # open, with devices heard as the shell's patch to Quickshell says them
+  # (bluetooth-rssi-and-failures.patch).
   bluetooth-pairs-before-it-connects =
     pkgs.runCommandLocal "bluetooth-pairs-before-it-connects" { }
       ''
@@ -73,7 +74,7 @@
           import Quickshell
           import QtQuick
           Singleton {
-            readonly property var all: [
+            property var all: [
               { entry: { mark: "bluetooth:00:1B:66:AA:BB:CC" }, piece: { place: "bluetooth" } }
             ]
           }

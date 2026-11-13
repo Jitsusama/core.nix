@@ -31,7 +31,23 @@
 //! While a link is up the file is written every look; while none is, only
 //! when it would say something new, so once the adapters' traffic has
 //! settled it's written no more, and the controller is asked nothing but
-//! its version, once. Nothing is spawned.
+//! its version, every thirty seconds. Nothing is spawned.
+//!
+//! A controller can stop answering while the kernel still says its adapter
+//! is up, as one wedged in its firmware does, and then nothing it carries
+//! works. One that's up and answers nothing it's asked for three looks in
+//! a row is said to have stopped, in `stopped.json` beside the file,
+//! written only when what it says changes, with what it sits on so the
+//! shell can give the line that starts it again:
+//!
+//! ```json
+//! {"adapters": [{"name": "hci0", "device": "0000:00:14.7",
+//!   "driver": "/sys/bus/pci/drivers/btintel_pcie"}]}
+//! ```
+//!
+//! Once stopped it's asked only every thirty seconds, since each command
+//! it can't answer is a second waited and a line in the kernel's log, and
+//! it's taken off the list the first time it answers again.
 //!
 //! Usage: bluetooth-links [FILE]   (/run/bluetooth-links/links.json unless
 //! given)
@@ -54,6 +70,15 @@ const TICK: Duration = Duration::from_secs(5);
 const FILE: &str = "/run/bluetooth-links/links.json";
 /// How many looks a history keeps: as many as the launcher's graphs draw.
 const KEPT: usize = 20;
+/// How many looks in a row an adapter that's up is asked something and
+/// answers nothing before it's said to have stopped: one could fall in a
+/// busy moment, three in a row can't.
+const SILENT: u32 = 3;
+/// How often, in looks, an adapter that's asked nothing else is asked its
+/// version to hear that it still answers: every thirty seconds, so an idle
+/// controller isn't woken each look. One that's stopped is asked as often,
+/// to hear it come back.
+const HEARD_EVERY: u64 = 6;
 
 /// What one look at the links found.
 #[derive(Debug, Serialize, PartialEq)]
@@ -212,15 +237,73 @@ struct Counted {
     traffic: Vec<u64>,
 }
 
+/// Whether an adapter that's up answers: how many looks in a row it was
+/// asked something and answered nothing, and the look it was last asked
+/// anything at.
+#[derive(Clone, Copy)]
+struct Hearing {
+    unanswered: u32,
+    asked: u64,
+}
+
+impl Hearing {
+    const fn stopped(self) -> bool {
+        self.unanswered >= SILENT
+    }
+
+    /// Whether it's been long enough since it was last asked anything to
+    /// ask it again.
+    const fn due(self, look: u64) -> bool {
+        look.saturating_sub(self.asked) >= HEARD_EVERY
+    }
+
+    /// Whether it's left unasked this look: one that's stopped is asked
+    /// only now and then, to hear it come back, since each command it
+    /// can't answer is a second waited and a line in the kernel's log.
+    const fn hushed(self, look: u64) -> bool {
+        self.stopped() && !self.due(look)
+    }
+}
+
+/// The controller as asked within one look, noting of each adapter
+/// whether it answered anything it was asked: true once it has, false
+/// while all it was asked went unanswered. A socket that failed says
+/// nothing of the controller, so it notes nothing.
+struct Heeding<'a, C> {
+    controller: &'a mut C,
+    heard: HashMap<u16, bool>,
+}
+
+impl<C: Controller> Heeding<'_, C> {
+    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
+        let said = self.controller.ask(adapter, opcode, handle);
+        match said {
+            Ok(_) | Err(Unanswered::Refused(_)) => {
+                self.heard.insert(adapter, true);
+            }
+            Err(Unanswered::Silent) => {
+                self.heard.entry(adapter).or_insert(false);
+            }
+            Err(Unanswered::Broken(_)) => {}
+        }
+        said.ok()
+    }
+}
+
 /// What's kept between looks: the adapters as last written with nothing
 /// connected, so they're written once, each link's history, each adapter's
-/// counters, and each adapter's version, which never changes.
+/// counters, each adapter's version, which never changes, and whether each
+/// adapter that's up answers, with how many looks there have been and the
+/// names of those that stopped.
 #[derive(Default)]
 struct Watch {
     quiet: Option<Vec<Told>>,
     histories: HashMap<String, History>,
     counted: HashMap<u16, Counted>,
     versions: HashMap<u16, Version>,
+    hearings: HashMap<u16, Hearing>,
+    looks: u64,
+    stopped: Vec<String>,
 }
 
 /// Bytes a second between two reads of a counter. A counter that went
@@ -233,9 +316,65 @@ fn per_second(now: u32, before: u32, over: Duration) -> u64 {
 }
 
 impl Watch {
-    /// The adapters that have stopped answering, by name.
+    /// The adapters that are up but have stopped answering, by name, as
+    /// of the last look.
     fn stopped(&self) -> Vec<String> {
-        vec![]
+        self.stopped.clone()
+    }
+
+    /// Whether an adapter is left unasked this look.
+    fn hushed(&self, adapter: u16) -> bool {
+        self.hearings
+            .get(&adapter)
+            .is_some_and(|hearing| hearing.hushed(self.looks))
+    }
+
+    /// Hears from what each adapter that's up was asked this look whether
+    /// it answers, first asking its version of one that was asked nothing
+    /// while it's due, or while it's yet to be heard to stop or answer
+    /// again. An adapter down or gone starts afresh, since bringing it up
+    /// again starts its controller again.
+    fn hear(&mut self, heeding: &mut Heeding<'_, impl Controller>, adapters: &[Adapter]) {
+        let look = self.looks;
+        self.hearings.retain(|id, _| {
+            adapters
+                .iter()
+                .any(|adapter| adapter.id == *id && adapter.up)
+        });
+        for adapter in adapters.iter().filter(|adapter| adapter.up) {
+            let hearing = *self.hearings.entry(adapter.id).or_insert(Hearing {
+                unanswered: 0,
+                asked: look,
+            });
+            let doubted = hearing.unanswered > 0 && !hearing.stopped();
+            if !heeding.heard.contains_key(&adapter.id) && (doubted || hearing.due(look)) {
+                let said = heeding.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
+                if let Some(version) = said.as_deref().and_then(reply::version) {
+                    self.versions.insert(adapter.id, version);
+                }
+            }
+            let unanswered = match heeding.heard.get(&adapter.id) {
+                Some(true) => 0,
+                Some(false) => hearing.unanswered.saturating_add(1),
+                None => continue,
+            };
+            self.hearings.insert(
+                adapter.id,
+                Hearing {
+                    unanswered,
+                    asked: look,
+                },
+            );
+        }
+        self.stopped = adapters
+            .iter()
+            .filter(|adapter| {
+                self.hearings
+                    .get(&adapter.id)
+                    .is_some_and(|hearing| hearing.stopped())
+            })
+            .map(|adapter| adapter.name.clone())
+            .collect();
     }
 
     /// One look, at `at` seconds since 1970 and `clock` on a clock that
@@ -248,18 +387,27 @@ impl Watch {
         clock: Duration,
     ) -> Option<Report> {
         let seen = controller.look();
+        self.looks += 1;
+        let mut heeding = Heeding {
+            controller,
+            heard: HashMap::new(),
+        };
         let adapters: Vec<Told> = seen
             .adapters
             .iter()
-            .map(|adapter| self.adapter(controller, adapter, clock))
+            .map(|adapter| self.adapter(&mut heeding, adapter, clock))
             .collect();
         let listed: Vec<u16> = seen.adapters.iter().map(|adapter| adapter.id).collect();
         self.counted.retain(|id, _| listed.contains(id));
         let links: Vec<Link> = seen
             .connections
             .iter()
-            .map(|(adapter, connection)| link(controller, *adapter, connection))
+            .map(|(adapter, connection)| {
+                let hushed = self.hushed(*adapter);
+                link(&mut heeding, *adapter, connection, hushed)
+            })
             .collect();
+        self.hear(&mut heeding, &seen.adapters);
         let linked: Vec<&str> = links.iter().map(|link| link.address.as_str()).collect();
         self.histories
             .retain(|address, _| linked.contains(&address.as_str()));
@@ -294,15 +442,16 @@ impl Watch {
     }
 
     /// What's said of an adapter, asking its version the first time it's
-    /// up, and working out its traffic since the look before.
+    /// up, unless it's hushed, and working out its traffic since the look
+    /// before.
     fn adapter(
         &mut self,
-        controller: &mut impl Controller,
+        heeding: &mut Heeding<'_, impl Controller>,
         adapter: &Adapter,
         clock: Duration,
     ) -> Told {
-        if adapter.up && !self.versions.contains_key(&adapter.id) {
-            let said = controller.ask(adapter.id, reply::READ_LOCAL_VERSION, 0).ok();
+        if adapter.up && !self.versions.contains_key(&adapter.id) && !self.hushed(adapter.id) {
+            let said = heeding.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
             if let Some(version) = said.as_deref().and_then(reply::version) {
                 self.versions.insert(adapter.id, version);
             }
@@ -347,12 +496,24 @@ impl Watch {
     }
 }
 
-/// Asks a link all it's asked. Link quality and the channel map are the
-/// classic radio's, so a Low Energy link isn't asked them. Its history is
-/// filled in by `Watch`.
-fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection) -> Link {
+/// Asks a link all it's asked, unless its adapter is `hushed`, when it's
+/// asked nothing. Link quality and the channel map are the classic
+/// radio's, so a Low Energy link isn't asked them. Its history is filled
+/// in by `Watch`.
+fn link(
+    heeding: &mut Heeding<'_, impl Controller>,
+    adapter: u16,
+    connection: &Connection,
+    hushed: bool,
+) -> Link {
     let handle = connection.handle;
-    let mut asked = |opcode| controller.ask(adapter, opcode, handle).ok();
+    let mut asked = |opcode| {
+        if hushed {
+            None
+        } else {
+            heeding.ask(adapter, opcode, handle)
+        }
+    };
     let rssi = asked(reply::READ_RSSI).and_then(|said| reply::rssi(&said, handle));
     let power = asked(reply::READ_TRANSMIT_POWER).and_then(|said| reply::power(&said, handle));
     let (quality, map) = if connection.le {
@@ -380,8 +541,17 @@ fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection)
     }
 }
 
-const HEARD_EVERY: u64 = 6;
+/// The adapters that have stopped answering, as `stopped.json` says them.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct Stopped {
+    adapters: Vec<Halted>,
+}
 
+/// An adapter that stopped answering: its name, and the kernel's names
+/// for the device it sits on and for that device's driver's folder in
+/// sysfs, by which the driver is let go of the device and given it back,
+/// starting the controller again; null where sysfs doesn't say, as of a
+/// virtual adapter.
 #[derive(Debug, Serialize, PartialEq, Eq)]
 struct Halted {
     name: String,
@@ -389,17 +559,28 @@ struct Halted {
     driver: Option<String>,
 }
 
-fn sits_on(_sysfs: &Path, name: &str) -> Halted {
+/// What an adapter sits on, from sysfs under `sysfs`: its `device` links
+/// to the device by its name, as `0000:00:14.7` for a PCI chip or
+/// `1-10:1.0` for a USB one's interface, and that device's `driver` to
+/// its driver's folder, as `/sys/bus/pci/drivers/btintel_pcie`.
+fn sits_on(sysfs: &Path, name: &str) -> Halted {
+    let device = sysfs.join("class/bluetooth").join(name).join("device");
+    let named = |path: PathBuf| path.to_str().map(String::from);
     Halted {
         name: name.into(),
-        device: None,
-        driver: None,
+        device: fs::read_link(&device)
+            .ok()
+            .and_then(|link| link.file_name().map(PathBuf::from))
+            .and_then(named),
+        driver: fs::canonicalize(device.join("driver"))
+            .ok()
+            .and_then(named),
     }
 }
 
-/// Writes the report beside the file and renames it into place, so a
+/// Writes what's said beside the file and renames it into place, so a
 /// reader never sees it half written, readable by everyone.
-fn write(file: &Path, report: &Report) -> io::Result<()> {
+fn write(file: &Path, report: &impl Serialize) -> io::Result<()> {
     let name = file
         .file_name()
         .and_then(|name| name.to_str())
@@ -432,16 +613,31 @@ fn main() {
         radio: Radio::default(),
         said: HashSet::new(),
     };
+    let stopped = file.with_file_name("stopped.json");
     let mut watch = Watch::default();
+    let mut said: Option<Vec<String>> = None;
     let started = Instant::now();
     loop {
-        let _ = watch.stopped();
         if let Some(report) = watch.tick(&mut asked, now(), started.elapsed())
             && let Err(error) = write(&file, &report)
         {
             asked.complain(format!("Couldn't write {}: {error}", file.display()));
             // Written again next time, though it says nothing new.
             watch.quiet = None;
+        }
+        let names = watch.stopped();
+        if said.as_ref() != Some(&names) {
+            let adapters = names
+                .iter()
+                .map(|name| sits_on(Path::new("/sys"), name))
+                .collect();
+            match write(&stopped, &Stopped { adapters }) {
+                Ok(()) => said = Some(names),
+                // Left unsaid, so it's written again next time.
+                Err(error) => {
+                    asked.complain(format!("Couldn't write {}: {error}", stopped.display()));
+                }
+            }
         }
         thread::sleep(TICK);
     }
