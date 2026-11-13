@@ -232,7 +232,8 @@
     "owner_pr": 3956,
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
-      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent"
+      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent",
+      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
     ],
     "test": "vm-desktop-looks"
   }
