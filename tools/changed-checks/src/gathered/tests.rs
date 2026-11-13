@@ -56,19 +56,26 @@ fn a_path_resolves_from_its_folder_and_never_above_the_root() {
 }
 
 #[test]
-fn the_whole_source_is_used_as_a_path_not_for_its_outputs() {
+fn the_whole_source_is_used_as_a_path_or_for_the_outputs_holding_every_check() {
     for text in [
         "\"${self}/x\"",
         "src = self;",
         "core + \"/x\"",
         "toString self",
         "self.outPath",
+        "lib.attrNames self.checks.x86_64-linux",
+        "core.legacyPackages.x",
+        "self.${system}",
     ] {
-        assert!(takes_whole(&code(text)), "{text} uses the source as a path");
+        assert!(
+            takes_whole(&code(text)),
+            "{text} uses the source or every check"
+        );
     }
     for text in [
         "core = self;",
         "self.nixosModules.x",
+        "self.checksum",
         "{ self, ... }:",
         "itself",
         "inherit core;",
@@ -173,10 +180,21 @@ fn a_check_whose_files_use_the_whole_source_or_cant_be_read_keeps_them_all() {
             ("flake.nix", "{ }"),
             ("checks.nix", "folders = [ ./x/checks.nix ];"),
             ("x/checks.nix", "{ core }: { a = \"${core}/y\"; }"),
+            (
+                "y/checks.nix",
+                "{ self }: { c = attrNames self.checks.x86_64-linux; }",
+            ),
         ],
     );
 
-    let each = narrowed(&at, &[("a", "x/checks.nix"), ("b", "z/checks.nix")]);
+    let each = narrowed(
+        &at,
+        &[
+            ("a", "x/checks.nix"),
+            ("b", "z/checks.nix"),
+            ("c", "y/checks.nix"),
+        ],
+    );
 
     let _ = fs::remove_dir_all(&at);
     let all = ["checks.nix", "flake.nix", "x/checks.nix", "y/checks.nix"];
@@ -187,5 +205,9 @@ fn a_check_whose_files_use_the_whole_source_or_cant_be_read_keeps_them_all() {
     assert_eq!(
         each["b"], all,
         "a check whose own file can't be read lost a gathered file"
+    );
+    assert_eq!(
+        each["c"], all,
+        "a check of which checks exist lost a gathered file"
     );
 }

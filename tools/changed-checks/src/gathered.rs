@@ -9,8 +9,12 @@
 //! the gathered files, its own and those a file it read names by path: a
 //! folder names each gathered file under it, as `${../..}` or a fileset of
 //! `../.` copies them, while a fileset's `root` copies nothing of its own.
-//! A file using the flake's whole source as a path, and a check
-//! `checks.nix` gives itself, keep them all.
+//! A file using the flake's whole source as a path or the outputs holding
+//! every check, and a check `checks.nix` gives itself, keep them all.
+//!
+//! Only the names `self` and `core` are seen: a file handed the flake as a
+//! function's argument of another name, which used its checks, would lose
+//! the gathered files it truly depends on. None does on 13 November.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
@@ -107,7 +111,9 @@ fn names(source: &Path, file: &str, gathered: &BTreeSet<&str>) -> BTreeSet<Strin
 }
 
 /// Whether `code` uses the flake's own source, `self` or the `core` it's
-/// given as, as a path rather than for its outputs.
+/// given as, as a path, or the outputs that hold every check: its checks,
+/// its legacy packages or any it names by a variable, as a check of which
+/// checks exist does. Its modules, library and packages gather none.
 fn takes_whole(code: &str) -> bool {
     ["self", "core"].iter().any(|name| {
         code.match_indices(name).any(|(at, _)| {
@@ -119,7 +125,13 @@ fn takes_whole(code: &str) -> bool {
             alone
                 && (before.ends_with("${")
                     || rest.starts_with('+')
-                    || rest.starts_with(".outPath")
+                    || [".outPath", ".checks", ".legacyPackages"]
+                        .iter()
+                        .any(|output| {
+                            rest.strip_prefix(output)
+                                .is_some_and(|it| !it.starts_with(is_word))
+                        })
+                    || rest.starts_with(".${")
                     || ["src =", "path =", "toString"]
                         .iter()
                         .any(|word| lead.ends_with(word)))
