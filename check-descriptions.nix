@@ -1920,12 +1920,11 @@
     its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
     still known by the link, whether the copy it first loaded is gone or still there
   '';
-  pi-hosted-shares-extensions-across-folders = ''
-    pi built with the host's patches, applied exactly, keeps one factory for each extension file
-    whichever folder loads it, even once every conversation has parked and memory was collected,
-    so folders share it, a folder's own extension stays its own, a moved link loads its new copy
-    and drops the one it left, a missing file fails as a load, a reload loads afresh, and a load
-    begun before a reload caches nothing after
+  pi-hosted-keeps-each-folders-extensions = ''
+    pi built with the host's patches, applied exactly, keeps the extensions it loaded for each of
+    the sixteen folders loaded most recently, two loading at once included, while a conversation
+    there holds them, so another opening there reuses its modules, no two folders share one, a
+    folder whose last conversation ended loads afresh and holds no place, and a reload loads afresh
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
