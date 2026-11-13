@@ -307,7 +307,8 @@ impl Inputs {
         served
     }
 
-    /// What the sessions landed, each a whole record with its drawer, with
+    /// What the sessions landed, each a whole record with its drawer apart
+    /// and, where For You holds it, its `try`, with
     /// how many landed each day, and the keys of every landing held
     /// (landed.rs). A session ended is named by its quest's title, as the
     /// node's quest records give it.

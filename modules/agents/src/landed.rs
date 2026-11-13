@@ -19,9 +19,21 @@
 //!   other's record: two thousand of them were the realm's on 2026-11-11.
 //! - How many landed each day, by Joel's own clock, is served beside them,
 //!   so Landed's row says today's without the shell counting them all.
+//! - Each landing's drawer is a record of its own (`DRAWER`), the landing
+//!   naming it by its key, told only to a watch naming it, as the shell
+//!   does for the drawers it's about to draw. The drawers were 1.3 MB of
+//!   the shell's 3.1 MB of landings, held for 2,290 rows of which Joel
+//!   reads a few (BXNMUC's heap study, 2026-11-13).
+//! - Those waiting in For You's To Try, and those read since, for its
+//!   History, are served as `TRY` records naming their landings, so For
+//!   You reads the few rather than sifting all of them at each change.
 //!
 //! Times go out as the harness wrote them, and the shell words them
 //! (clock.rs).
+//!
+//! Long because its cases are most of it: each of what a landing, its
+//! drawer and its try say is held to one, and the making is one pass
+//! over the landings that splitting would make two files reading alike.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -35,6 +47,12 @@ use crate::clock;
 use crate::row::Words;
 use crate::served::PLACE;
 use crate::session::Session;
+
+/// The kind of a landing's drawer, served apart from it.
+pub const DRAWER: &str = "landed-drawer";
+
+/// The kind of a landing For You holds, in To Try or in its History.
+pub const TRY: &str = "try";
 
 /// The key of the record saying how many landed each day.
 pub fn days_key() -> String {
@@ -246,6 +264,15 @@ fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Valu
     (key, at, said)
 }
 
+/// A landing's `try` record, where it waits in To Try or was read since.
+fn tried(record: &Value) -> Option<Value> {
+    let said = &record["landed"];
+    (said["tries"] == true && !said["read"].is_boolean()).then(|| {
+        json!({"key": format!("{TRY}:{PLACE}:{}", text(said, "key")), "kind": TRY,
+            "order": record["order"], "try": {"landing": record["key"], "read": said["read"]}})
+    })
+}
+
 /// Gives each landing in `records` its drawer, the same in Landed and in
 /// For You, as the shell once worked out for itself (Landed.js): who
 /// landed it and that it's a landing as its eyebrow; what landed as its
@@ -257,15 +284,21 @@ fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Valu
 /// address; its ref and its quest's id are nerdy bits, folded away
 /// where y copies them, since no identifier stands among what Joel
 /// reads (VKCF3Z, 2026-11-12). Its time goes out for the shell to word.
+/// Each drawer is a record of its own, `landed-drawer:agents:<key>`, its
+/// landing naming it by that key in `drawer`.
 pub fn drawn<S: BuildHasher>(
-    records: &mut [Value],
+    records: &mut Vec<Value>,
     words: &Words,
     titles: &HashMap<&str, &str, S>,
 ) {
+    let mut apart = Vec::new();
     for record in records.iter_mut().filter(|one| one["kind"] == "landed") {
+        let key = format!("{DRAWER}:{PLACE}:{}", text(&record["landed"], "key"));
         let drawer = drawer(&record["landed"], words, titles);
-        record["landed"]["drawer"] = drawer;
+        record["landed"]["drawer"] = json!(key);
+        apart.push(json!({"key": key, "kind": DRAWER, "drawer": drawer}));
     }
+    records.extend(apart);
 }
 
 fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &str, S>) -> Value {
@@ -319,7 +352,9 @@ fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &st
 /// Joel read it (`read`), with the record of how many landed each day.
 /// Answers the keys held too, which Joel's reading is kept of. Those
 /// asking him to try something wait in To Try a day from `now`, in
-/// milliseconds since 1970.
+/// milliseconds since 1970, each with a `try` record naming it: `read`
+/// null while it waits, and when he read it once he has, for History.
+/// One read before when was kept has no time to say, so it's neither's.
 pub fn landed<'a>(
     kept: impl Iterator<Item = &'a Value>,
     sessions: &[Session<'a>],
@@ -376,6 +411,8 @@ pub fn landed<'a>(
         })
         .collect();
     records.sort_by_key(|record| record["order"].as_i64());
+    let tries: Vec<Value> = records.iter().filter_map(tried).collect();
+    records.extend(tries);
     records.push(json!({"key": days_key(), "kind": "landed-days", "days": days}));
     (records, held)
 }
@@ -712,7 +749,8 @@ mod tests {
         let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
         drawn(&mut records, &words(), &titles);
         assert_eq!(
-            records[0]["landed"]["drawer"]["eyebrow"][0]["said"], "The Lighthouse Quest",
+            drawer_of(&records, 0)["eyebrow"][0]["said"],
+            "The Lighthouse Quest",
             "a session named only by its address is named by the quest it landed for"
         );
     }
@@ -744,8 +782,8 @@ mod tests {
         drawn(&mut records, &words(), &titles);
         let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
         assert_eq!(
-            records[0]["landed"]["drawer"],
-            json!({
+            drawer_of(&records, 0),
+            &json!({
                 "title": "Land core.nix#2140",
                 "eyebrow": [{"said": "The s-here Quest", "keep": 2},
                     {"said": "landing", "keep": 1}],
@@ -761,10 +799,11 @@ mod tests {
             "who landed it by its session's title, when as a time the shell words, its ids folded"
         );
         assert_eq!(
-            records[1]["landed"]["drawer"]["eyebrow"][0]["said"], "The Lighthouse Quest",
+            drawer_of(&records, 1)["eyebrow"][0]["said"],
+            "The Lighthouse Quest",
             "a session ended named by the quest it landed for, never its address"
         );
-        let unknown = &records[2]["landed"]["drawer"];
+        let unknown = drawer_of(&records, 2);
         assert_eq!(
             (&unknown["eyebrow"][0]["said"], &unknown["nerd"][0]["label"]),
             (&json!(""), &json!("Item")),
@@ -778,9 +817,65 @@ mod tests {
         assert!(
             records
                 .iter()
-                .filter(|one| one["kind"] != "landed")
+                .filter(|one| one["kind"] != "landed" && one["kind"] != DRAWER)
                 .all(|one| one.get("drawer").is_none()),
             "the days' count is drawn no drawer"
+        );
+        assert_eq!(
+            records.iter().filter(|one| one["kind"] == DRAWER).count(),
+            3,
+            "each landing's drawer is a record of its own"
+        );
+    }
+
+    /// The drawer the `at`th landing names, served apart from it.
+    fn drawer_of(records: &[Value], at: usize) -> &Value {
+        let key = &records[at]["landed"]["drawer"];
+        assert!(
+            key.is_string(),
+            "a landing names its drawer by its key, not {key}"
+        );
+        &records
+            .iter()
+            .find(|one| one["key"] == *key && one["kind"] == DRAWER)
+            .expect("the drawer a landing names is served")["drawer"]
+    }
+
+    #[test]
+    fn each_landing_for_you_holds_is_a_try_naming_it_and_when_it_was_read() {
+        let try_it = "After the next switch, open Agents.";
+        let landings = [
+            kept("s", "o#1", "2026-11-11T11:00:00Z", try_it),
+            kept("s", "o#2", "2026-11-11T10:00:00Z", try_it),
+            kept("s", "o#3", "2026-11-11T09:00:00Z", try_it),
+            kept("s", "o#4", "2026-11-11T08:00:00Z", "Nothing to try."),
+        ];
+        let read = Reading {
+            at: BTreeMap::from([
+                ("s o#2 2026-11-11T10:00:00Z".to_owned(), Some(1000)),
+                ("s o#3 2026-11-11T09:00:00Z".to_owned(), None),
+            ]),
+        };
+        let (records, _) = landed(landings.iter(), &[], &read, now());
+        let tries: Vec<(&Value, &Value)> = records
+            .iter()
+            .filter(|one| one["kind"] == TRY)
+            .map(|one| (&one["try"]["landing"], &one["try"]["read"]))
+            .collect();
+        assert_eq!(
+            tries,
+            [
+                (
+                    &json!("landed:agents:s o#1 2026-11-11T11:00:00Z"),
+                    &Value::Null
+                ),
+                (
+                    &json!("landed:agents:s o#2 2026-11-11T10:00:00Z"),
+                    &json!(1000)
+                ),
+            ],
+            "the one waiting, then the one read with when; none read before when was kept, \
+             none asking nothing"
         );
     }
 }

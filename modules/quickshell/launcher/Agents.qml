@@ -280,11 +280,14 @@ Provider {
             id: agentsRows
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-            kind: ["row", "summary", "recent", "landed", "landed-days", "closed", "want"]
+            kind: ["row", "summary", "recent", "landed", "landed-days", "try", "closed",
+                "want"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             paced: provider.launcher
-            ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
+            ahead: provider.drawerWanted !== ""
+                ? [provider.drawerWanted].concat(provider.landingDrawersAhead)
+                : provider.landingDrawersAhead
             answersWhole: true
             onHeard: (changed, gone) => provider.placed(changed, gone)
             // Told as it answers, and again as sharing changes, whether the
@@ -342,8 +345,12 @@ Provider {
             moved.push(gone[at]);
         if (moved.some(key => String(key).startsWith("recent:")))
             recentMoves += 1;
-        if (moved.some(key => String(key).startsWith("landed")))
+        // A landing's drawer told apart moves no landing, so it makes none
+        // of Landed's rows again: its drawer, drawn, reads it as it comes.
+        if (moved.some(key => /^landed(?:-days)?:/u.test(String(key))))
             landedMoves += 1;
+        if (moved.some(key => String(key).startsWith("try:")))
+            triesMoves += 1;
         if (moved.some(key => String(key).startsWith("closed:")))
             closedMoves += 1;
         if (!moved.some(rowKey))
@@ -1333,6 +1340,44 @@ Provider {
             .filter(one => one?.kind === "landed" && one.landed);
         return Order.sorted(held, Order.smaller(one => one.order)).map(one => one.landed);
     }
+    // Where each landing stands among them, by its key, so its drawer drawn
+    // finds those beside it.
+    readonly property var landingAt: {
+        const at = new Map();
+        landings.forEach((one, index) => at.set(one.key, index));
+        return at;
+    }
+    // What For You holds of them, as the daemon serves it (landed.rs's
+    // `try`): each waiting in To Try, `read` null, and each read since,
+    // for its History, with when, its landing beside it. For You had sifted
+    // all two thousand for the few at each change.
+    property int triesMoves: 0
+    readonly property var tries: {
+        void triesMoves;
+        void landedMoves;
+        const held = rowsKind?.held ?? {};
+        const served = Object.values(held).filter(one => one?.kind === "try" && one.try);
+        return Order.sorted(served, Order.smaller(one => one.order))
+            .map(one => ({ one: held[one.try.landing]?.landed ?? null, read: one.try.read }))
+            .filter(tried => tried.one !== null);
+    }
+    // The keys of the drawers watched ahead, each landing's served apart
+    // and told only to a watch naming it (landed.rs): the one drawn and
+    // those beside it, so an arrow to the next finds its drawer held.
+    property var landingDrawersAhead: []
+    function landingDrawerOf(one) {
+        const at = landingAt.get(one.key) ?? -1;
+        const near = [landings[at - 1], one, landings[at + 1]]
+            .filter(beside => typeof beside?.drawer === "string")
+            .map(beside => beside.drawer);
+        if (near.join("\n") !== landingDrawersAhead.join("\n"))
+            Qt.callLater(() => {
+                provider.landingDrawersAhead = near;
+            });
+        // Read by what draws it, so it's drawn again as the daemon tells it.
+        void rowsKind?.revision;
+        return rowsKind?.held?.[one.drawer]?.drawer ?? null;
+    }
     // How many landed each day, by date, as the daemon counts them by
     // Joel's clock, which Landed's row says of today.
     readonly property var landedDays: {
@@ -1429,11 +1474,16 @@ Provider {
         };
         return {
             side: Landed.landedSide(landedSides, one.at, String(Calendars.today ?? ""), when),
-            drawer: () => SessionDrawer.shown(one.drawer ?? {}, {
-                clock: clock,
-                since: word("since"),
-                dated: at => `${Moment.day(new Date(at), Date.now())}, ${clock(at)}`
-            })
+            // None until the daemon tells it, a moment after it's first
+            // drawn, as a session's drawer comes.
+            drawer: () => {
+                const made = provider.landingDrawerOf(one);
+                return made === null ? null : SessionDrawer.shown(made, {
+                    clock: clock,
+                    since: word("since"),
+                    dated: at => `${Moment.day(new Date(at), Date.now())}, ${clock(at)}`
+                });
+            }
         };
     }
     // Each landing's row kept while the landing, where its Return goes and
@@ -1582,16 +1632,16 @@ Provider {
         const kept = (one, fields) => provider.keptOr(forYouKeeping, fields.key,
             JSON.stringify([one, fields.hue, today]), () => row(one, fields));
         provider.keepingBegun(forYouKeeping);
-        const given = Landed.toTry(landings).map(one => ({
+        const given = tries.filter(tried => tried.read === null).map(tried => tried.one).map(one => ({
             row: kept(one, {
                 key: `on:waiting:try:${one.key}`,
                 hue: "action",
                 forYou: { kind: "try", source: "sessions" }
             }),
             thing: { kind: "try", ready: true, since: one.at }
-        })).concat(Landed.triedRead(landings).map(tried => ({
+        })).concat(tries.filter(tried => typeof tried.read === "number").map(tried => ({
             row: kept(tried.one, { key: `on:waiting:tried:${tried.one.key}`, hue: "muted" }),
-            done: { how: String(said.read ?? ""), at: tried.at }
+            done: { how: String(said.read ?? ""), at: tried.read }
         })));
         provider.keptOnly(forYouKeeping);
         return given;
