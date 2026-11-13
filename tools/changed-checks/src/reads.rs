@@ -602,6 +602,12 @@ fn traced(
         said.extend(derivations);
         reads.join(read);
     }
+    let whole = checks::taking_whole(&source, &said)?;
+    if let Some(name) = vm.iter().find(|name| whole.contains(name.as_str())) {
+        return Err(format!(
+            "{name} takes the whole source in, so it may read any file"
+        ));
+    }
     Ok((said, reads, tree, evaluation))
 }
 

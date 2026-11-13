@@ -159,6 +159,14 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
   >> "$XDG_STATE_HOME/nix-offload/there.jsonl"
 "#;
 
+/// nix-store as changed-checks asks it what takes the flake's source in:
+/// what `referrers` lists, once a test writes it, and else nothing.
+const NIX_STORE: &str = r#"#!/bin/sh
+[ "$1 $2" = "--query --referrers-closure" ] || exit 1
+cat "$STAND_IN/referrers" 2>/dev/null
+exit 0
+"#;
+
 /// strace as changed-checks asks it: the trace it writes is `trace`, each
 /// SOURCE in it the flake's source, and it runs what it traces, leaving
 /// `traced` to say it began. A check evaluated alone, NAME, is traced as
@@ -218,6 +226,7 @@ impl StandIn {
             ("git", GIT),
             ("nix", NIX),
             ("nix-offload", NIX_OFFLOAD),
+            ("nix-store", NIX_STORE),
             ("strace", STRACE),
         ];
         for (name, script) in stand_ins {
@@ -1276,6 +1285,46 @@ fn a_keep_traces_each_check_alone_once_the_newest_record_is_old() {
         "a keep traced no check though the newest record was 21 minutes old"
     );
     assert_eq!(evaluated(&run), ["base", "reads", "alone"], "{run}");
+}
+
+#[test]
+fn a_check_whose_derivation_takes_the_whole_source_is_evaluated_by_every_gate() {
+    let stand_in = traced_alone("alone-whole");
+    fs::write(stand_in.path("referrers"), "SOURCE\nb.drv\n").expect("written");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        stand_in.path(ALONE).exists(),
+        "the other checks' reads weren't recorded: {}",
+        text(&ran.stderr)
+    );
+    stand_in.checks("working", MOVED);
+    fs::write(stand_in.path("diff"), "M\tdocs/notes.md\n").expect("written");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  b\n",
+        "a check whose build may read any file kept the base's derivation"
+    );
+}
+
+#[test]
+fn a_vm_test_whose_derivation_takes_the_whole_source_leaves_no_record() {
+    let stand_in = StandIn::new("vm-whole");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    fs::write(stand_in.path("referrers"), "SOURCE\nv.drv\n").expect("written");
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        !stand_in.path(READS).exists(),
+        "what the VM tests read was kept though one's build may read any file"
+    );
 }
 
 /// A gate, as merge-net runs one.
