@@ -515,17 +515,31 @@ QtObject {
     // opening's sources woke, each behind another source's refresh a few
     // milliseconds dear, for the rest of a quarter second (2026-11-12,
     // 10:16 and 10:17); one that came alone took 13. The wait after a
-    // refresh is five times what it cost, so the shell spends at most a
-    // fifth of its time refreshing, and never more than the pace.
+    // refresh is three times what the last three cost, their median, so
+    // the shell spends about a third of its time refreshing at most, and
+    // never more than the pace. Sound's changes, which come from no key,
+    // waited 58 ms after 12 ms refreshes and 255 after one dear one
+    // (2026-11-12, 17:30 and 17:50).
     function costing(failures) {
         const every = 250;
         const cheap = Pacing.costed(Pacing.took(1000, Pacing.rested()), 8);
-        const soon = Pacing.heard(cheap, 1030, every);
-        check(failures, "a change after a cheap refresh waits five times its cost",
-            soon.pace.due, 1040);
+        const soon = Pacing.heard(cheap, 1020, every);
+        check(failures, "a change after a cheap refresh waits three times its cost",
+            soon.pace.due, 1024);
         check(failures, "and one past that is taken at once",
-            Pacing.heard(cheap, 1045, every).now, true);
-        const dear = Pacing.costed(Pacing.took(1000, Pacing.rested()), 80);
+            Pacing.heard(cheap, 1025, every).now, true);
+        const costs = ms => ms.reduce((pace, cost, at) =>
+            Pacing.costed(Pacing.took(1000 + at * 300, pace), cost), Pacing.rested());
+        const stalled = costs([8, 8, 80]);
+        check(failures, "one dear refresh among cheap ones doesn't hold the next change long",
+            Pacing.heard(stalled, stalled.at + 10, every).pace.due, stalled.at + 24);
+        const dearer = costs([8, 80, 80]);
+        check(failures, "but two of the last three dear do",
+            Pacing.heard(dearer, dearer.at + 10, every).pace.due, dearer.at + 240);
+        const past = costs([80, 80, 8, 8]);
+        check(failures, "and only the last three count",
+            Pacing.heard(past, past.at + 10, every).pace.due, past.at + 24);
+        const dear = Pacing.costed(Pacing.took(1000, Pacing.rested()), 100);
         check(failures, "one after a dear refresh waits no more than the pace",
             Pacing.heard(dear, 1100, every).pace.due, 1250);
         const tiny = Pacing.costed(Pacing.took(1000, Pacing.rested()), 1);
@@ -566,8 +580,8 @@ QtObject {
             return { share: spent / 3000, each: 3000 / refreshes };
         };
         const cheapStorm = storm(10);
-        check(failures, "a storm of cheap changes spends at most a fifth refreshing",
-            cheapStorm.share <= 0.2, true);
+        check(failures, "a storm of cheap changes spends at most a third refreshing",
+            cheapStorm.share <= 1 / 3 + 0.01, true);
         check(failures, "and shows them many times a second", cheapStorm.each <= 60, true);
         check(failures, "a storm of dear ones refreshes at most four times a second",
             storm(100).each >= every, true);

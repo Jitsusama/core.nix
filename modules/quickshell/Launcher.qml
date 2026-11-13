@@ -4853,9 +4853,9 @@ Scope {
         if (refreshing.includes(source))
             return;
         refreshing = refreshing.concat([source]);
-        // The first change is taken at once, and those after it within five
-        // times the last refresh's cost, a quarter second at most, together
-        // (launcher/Pacing.js).
+        // The first change is taken at once, and those after it within three
+        // times the last three refreshes' median cost, a quarter second at
+        // most, together (launcher/Pacing.js).
         if (!open) {
             Qt.callLater(refreshDue);
             return;

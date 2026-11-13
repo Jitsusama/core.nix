@@ -7,24 +7,40 @@
 // what's shown: 86 of Slack's answers, one a tenth of a second just after a
 // restart, held the open launcher for a minute (2026-10-30, 19:14).
 //
-// How long a change waits is sized by what the last refresh cost: five
-// times it, so the shell spends at most a fifth of its time refreshing,
-// and never more than the pace, `every`. A quarter second after every
-// refresh held Joel's windows changes up to 190 ms behind other sources'
-// refreshes of a few milliseconds while his opening woke them (2026-11-12,
-// 10:16); a dear refresh, as Slack's answers were, still waits the pace.
+// How long a change waits is sized by what the last refreshes cost: three
+// times the median of the last three, so the shell spends about a third
+// of its time refreshing at most, and never more than the pace, `every`.
+// A quarter second after every refresh held Joel's windows changes up to
+// 190 ms behind other sources' refreshes of a few milliseconds while his
+// opening woke them (2026-11-12, 10:16); a dear refresh, as Slack's
+// answers were, still waits the pace. Five times the last one alone held
+// sound's changes, which come from no key, 58 ms after refreshes of 12,
+// and 255 after a single dear one (Y2YBTS, 2026-11-12, c1591663), so one
+// stall no longer holds the next change, though two of three do.
 //
-// A pace is when the last refresh began, `at`, what the last one cost,
-// `cost`, undefined until one is known, and when a paced one is due,
-// `due`, or null when none waits. The launcher's timer rings at `due`.
+// A pace is when the last refresh began, `at`, what the last three cost,
+// `costs`, oldest first, their median `cost`, undefined until one is
+// known, and when a paced one is due, `due`, or null when none waits. The
+// launcher's timer rings at `due`.
 
-const share = 5;
+const share = 3;
+const costsKept = 3;
 // Two refreshes within one frame would draw only the second.
 const aFrame = 16;
 
 // A launcher that hasn't refreshed yet.
 function rested() {
-    return { at: 0, due: null, cost: undefined };
+    return { at: 0, due: null, cost: undefined, costs: [] };
+}
+
+// The median of these costs, undefined while there are none.
+function median(costs) {
+    if (costs.length === 0) {
+        return undefined;
+    }
+    const sorted = costs.slice().sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 // How long after the last refresh began the next may, by its cost.
@@ -42,22 +58,24 @@ function heard(pace, now, every) {
     if (due <= now) {
         return { pace, now: true };
     }
-    return { pace: { at: pace.at, due, cost: pace.cost }, now: false };
+    return { pace: { at: pace.at, due, cost: pace.cost, costs: pace.costs }, now: false };
 }
 
 // A refresh began at `now`, however it was asked for, so it takes the one
 // that waited with it: a key's own change or a daemon's answer refreshed
 // at once, or the timer rang late and another change past the pace came
 // beside it, and a refresh left due would follow within the pace. It keeps
-// the last `pace`'s cost until its own is known, as a source may change
+// the last `pace`'s costs until its own is known, as a source may change
 // from within it.
 function took(now, pace) {
-    return { at: now, due: null, cost: pace === undefined ? undefined : pace.cost };
+    return pace === undefined ? { at: now, due: null, cost: undefined, costs: [] }
+        : { at: now, due: null, cost: pace.cost, costs: pace.costs };
 }
 
 // The refresh that began at the pace's `at` cost `ms` of the shell's work.
 function costed(pace, ms) {
-    return { at: pace.at, due: pace.due, cost: ms };
+    const costs = pace.costs.concat([ms]).slice(-costsKept);
+    return { at: pace.at, due: pace.due, cost: median(costs), costs };
 }
 
 // Whether a change heard `ago` ms after the last key is that key's own,
@@ -87,7 +105,7 @@ function sinceKey(now, taken, done) {
 
 // The timer rang: the refresh it waited for is taken.
 function rang(pace) {
-    return { at: pace.at, due: null, cost: pace.cost };
+    return { at: pace.at, due: null, cost: pace.cost, costs: pace.costs };
 }
 
 // A key's acts on their way to the screen, each shown by the first frame
@@ -141,11 +159,7 @@ function drawerJoinsKey(makings, kind, held) {
     if (held || made.length === 0) {
         return false;
     }
-    const sorted = made.slice().sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 1 ? sorted[middle]
-        : (sorted[middle - 1] + sorted[middle]) / 2;
-    return median < drawerJoinsUnder;
+    return median(made) < drawerJoinsUnder;
 }
 
 // Which frame a drawer came in, as its journal line says it, so the lines

@@ -353,7 +353,8 @@ class Turns:
         )
         assert self.keyed == 0, f"{at}, {self.keyed} refreshes were taken on a key's path"
         # The pace lets one refresh at once and each after it once the last one's wait is out,
-        # five times its cost and a quarter second at most, so a turn's span holds every wait
+        # three times the median of the last three costs and a quarter second at most, so a
+        # turn's span holds every wait
         # but its last. A coarse timer, Qt's own, may ring up to 5% early.
         most = 1000 * self.window / 0.95 + PACE * self.turns
         assert self.paced <= most, (
