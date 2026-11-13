@@ -627,3 +627,33 @@ fn joels_word_is_kept_as_he_asks_and_each_to_do_is_worded() {
         "an act on no to-do held is refused"
     );
 }
+
+#[test]
+fn a_look_joel_clears_is_kept_in_its_file_and_told_as_it_now_stands() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    fs::create_dir_all(dir.join("waiting")).unwrap();
+    let look = json!({"v": 1, "id": "a1", "kind": "pr", "title": "Fix", "state": "waiting"});
+    written(&dir.join("looks/a1.json"), &look.to_string());
+    let daemon = served(dir);
+    let mut client = daemon.client();
+    let mut held = BTreeMap::new();
+    take(
+        &mut held,
+        &client.ask(&json!({"id": 1, "ask": "watch", "kind": "look"})),
+    );
+    told(&mut client, &mut held, |held| held.contains_key("look:a1"));
+    let cleared = client.ask(&json!({"id": 2, "ask": "settle-look", "look": "a1",
+        "state": "cleared", "how": "cleared from For You"}));
+    assert_eq!(cleared, json!({"id": 2, "done": true}), "cleared as asked");
+    told(&mut client, &mut held, |held| {
+        held["look:a1"]["look"]["state"] == "cleared"
+    });
+    assert_eq!(
+        (
+            &held["look:a1"]["look"]["how"],
+            &held["look:a1"]["look"]["title"]
+        ),
+        (&json!("cleared from For You"), &json!("Fix")),
+        "told whole, with how Joel cleared it"
+    );
+}

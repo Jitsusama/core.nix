@@ -1,7 +1,7 @@
 //! What the to-do daemon serves in version 1 of the shell's daemon
 //! interface (RSCH-20261029-0E8050, "Daemons: One Interface"), which
-//! daemon-serve speaks for every daemon: its kinds, and its one ask of its
-//! own, Joel's word on a to-do (acts.rs answers it).
+//! daemon-serve speaks for every daemon: its kinds, and its two asks of its
+//! own, Joel's word on a to-do and on a look (acts.rs answers them).
 
 use daemon_serve::asks::Domain;
 use serde_json::Value;
@@ -33,6 +33,27 @@ pub fn act_of(said: &Value) -> Option<Act> {
         Act {
             act: field("act"),
             item: field("item"),
+        }
+    })
+}
+
+/// Joel's word on a look: opened or cleared, and how, in his words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LookSettled {
+    pub look: String,
+    pub state: String,
+    pub how: Value,
+}
+
+/// The look settled an ask says, if it's one:
+/// `{"ask": "settle-look", "look", "state", "how"}`.
+pub fn look_settled_of(said: &Value) -> Option<LookSettled> {
+    (said["ask"] == "settle-look").then(|| {
+        let field = |name: &str| said[name].as_str().unwrap_or("").to_owned();
+        LookSettled {
+            look: field("look"),
+            state: field("state"),
+            how: said["how"].clone(),
         }
     })
 }
@@ -81,6 +102,25 @@ mod tests {
             act_of(&json!({"id": 5, "ask": "settle"})),
             None,
             "an ask that isn't an act"
+        );
+    }
+
+    #[test]
+    fn a_look_settled_names_the_look_what_joel_made_it_and_how() {
+        assert_eq!(
+            look_settled_of(&json!({"id": 6, "ask": "settle-look", "look": "a1",
+                "state": "cleared", "how": "cleared from For You"})),
+            Some(LookSettled {
+                look: "a1".into(),
+                state: "cleared".into(),
+                how: json!("cleared from For You")
+            }),
+            "a look cleared"
+        );
+        assert_eq!(
+            look_settled_of(&json!({"id": 7, "ask": "act", "act": "done"})),
+            None,
+            "an act on a to-do"
         );
     }
 }
