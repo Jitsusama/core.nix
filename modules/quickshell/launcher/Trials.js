@@ -122,6 +122,22 @@ function madeOfKinds(took) {
     return each.length > 0 ? ` (${each.map(([kind, ms]) => `${kind} ${ms}`).join(", ")})` : "";
 }
 
+// What a drawer's making spent on, in parentheses: working out which
+// drawer its row has, filling in its acts, and showing it, so a slow first
+// making says which to cut (Google Calendar's first took 134 ms making on
+// Joel's machine against 7 to 12 on repeats, 2026-11-13). `split` is the
+// acts' and the showing's ms; working out which is the rest. Nothing for a
+// drawer that came with no making of its own, or untold.
+function makingSplit(making, split) {
+    if (!split || !(making > 0)) {
+        return "";
+    }
+    const acted = Math.round(split.acted);
+    const shown = Math.round(split.shown);
+    const which = Math.max(0, making - acted - shown);
+    return ` (${which} working out which, ${acted} its acts, ${shown} showing it)`;
+}
+
 // The trial with one more key of this kind, or as it was for a kind not
 // counted.
 function counted(trial, kind) {

@@ -7768,6 +7768,7 @@ Scope {
         const began = KeyTimes.now();
         const was = drawerShows;
         const out = drawerOut;
+        drawerSplit = null;
         drawerRow = selected;
         drawerAsked = Math.round(KeyTimes.now() - began);
         // A row with none keeps no key for a drawer its row brings later,
@@ -7826,6 +7827,8 @@ Scope {
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested);
         drawerRested = 0;
+        const split = drawerSplit;
+        drawerSplit = null;
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
@@ -7851,7 +7854,7 @@ Scope {
                 key, took, making, waiting, drawing, came,
                 count: root.drawerTimedLast.count + 1
             };
-            trials.drawerTimed(key, took, { making, waiting, drawing, came });
+            trials.drawerTimed(key, took, { making, split, waiting, drawing, came });
         });
     }
     property bool drawerOut: false
@@ -7876,9 +7879,7 @@ Scope {
             drawerResting.stop();
         } else if (drawerOut && drawerWanted !== null) {
             drawerResting.stop();
-            const acted = drawerActed(drawerWanted);
-            if (!root.sameMoment(drawerShows, acted))
-                drawerShows = acted;
+            drawerShown(false);
             if (drawerAwaited) {
                 drawerAwaited = false;
                 drawerMade(KeyTimes.now(), 0, "a round trip after its row");
@@ -7912,11 +7913,27 @@ Scope {
         if (!drawerOut)
             return;
         trials.drawer(true);
-        drawerShows = drawerActed(drawerWanted);
+        drawerShown(true);
         // Timed with what working out its row's drawer took as it was
         // followed, but not the rest between, which is the drawer's pace.
         drawerMade(began - drawerAsked, Math.round(KeyTimes.now() - began) + drawerAsked);
     }
+    // Shows the drawer wanted with its acts filled in, timing each, so its
+    // making's line says what went on which (Trials.makingSplit): Joel's
+    // first Google Calendar drawer took 134 ms making against 7 to 12 on
+    // repeats (2026-11-13), and only the split says which part to cut.
+    // One the same moment's plate is kept unless `anew`.
+    function drawerShown(anew) {
+        const began = KeyTimes.now();
+        const acted = drawerActed(drawerWanted);
+        const actedAt = KeyTimes.now();
+        if (anew || !root.sameMoment(drawerShows, acted))
+            drawerShows = acted;
+        drawerSplit = { acted: actedAt - began, shown: KeyTimes.now() - actedAt };
+    }
+    // The acts' and the showing's ms of the drawer shown last, said with its
+    // making, then let go.
+    property var drawerSplit: null
     // How long the selection rests before the drawer comes or goes.
     Timer {
         id: drawerResting
