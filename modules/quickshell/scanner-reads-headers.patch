@@ -1,0 +1,26 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] core: read a QML file past its header only for its blocks
+
+The scanner read every line of every QML file at each start, building
+the file's text again line by line, though past the header it looks
+only for the preprocessor's blocks. A file with no "//@ if" now stops
+at its header. Under callgrind, the scan was 12 percent of a shell's
+start on its main thread, before anything loaded.
+
+diff --git a/src/core/scan.cpp b/src/core/scan.cpp
+index 9f33302..b908b92 100644
+--- a/src/core/scan.cpp
++++ b/src/core/scan.cpp
+@@ -151,7 +151,12 @@ bool QmlScanner::scanQmlFile(const QString& path, bool& singleton, bool& interna
+ 		this->scanErrors.append({.file = path, .message = std::move(error), .line = lineNum});
+ 	};
+ 
++	// Past its header, a file is read only for its preprocessor blocks, so one
++	// with none is read no further than its header.
++	const bool preprocessed = fileData.contains("//@ if");
++
+ 	while (!stream.atEnd()) {
++		if (!inHeader && !preprocessed) break;
+ 		++lineNum;
+ 		bool hideMask = false;
+ 		auto rawLine = stream.readLine();

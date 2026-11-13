@@ -41,8 +41,12 @@
 # frame's presentation feedback and says when it was shown: the launcher
 # times Joel's every opening to it (Launcher.qml). It times each frame's
 # sync, render and swap on the render thread too, since the GUI thread
-# hears a swap only once it's free. All eleven are laid over the
-# machine's packages, so the shell, the greeter and the lock all run them.
+# hears a swap only once it's free. Each start read every line of every
+# QML file, 12 percent of the start's main thread under callgrind
+# (2026-11-13), though past a file's header only a preprocessor block
+# matters, so scanner-reads-headers.patch stops at the header of a file
+# that has none. All twelve are laid over the machine's packages, so the
+# shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
 # compositor's linux-dmabuf at version 4 whatever it offered, a protocol
@@ -154,6 +158,7 @@ in
             ./frame-presentation.patch
             ./ipc-replies-whole.patch
             ./pipewire-node-state-and-format.patch
+            ./scanner-reads-headers.patch
           ];
           qtWrapperArgs = (old.qtWrapperArgs or [ ]) ++ [
             "--prefix"
