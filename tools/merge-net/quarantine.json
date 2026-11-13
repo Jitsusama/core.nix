@@ -244,5 +244,12 @@
       "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
     ],
     "test": "vm-desktop-looks"
+  },
+  {
+    "at": 1794580528,
+    "commit": "b7a81d60bf2144b8873172e83bd4aa19fb38414d",
+    "owner_pr": 4014,
+    "reason": "failed, then passed, at b7a81d60bf21",
+    "test": "vm-guide-installs"
   }
 ]
