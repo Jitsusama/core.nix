@@ -36,3 +36,23 @@ function made(defaults, fields, prepare) {
     }
     return row;
 }
+
+// `row` made again over `fields`, each of its own fields standing over
+// theirs and its getters copied unread, as a search makes what it found
+// (Launcher.qml). Object.assign read every getter a row has, so making "m"
+// read what each of 96 programs holds and every act it has, 17 ms of a key
+// for the nine rows drawn (2026-11-12), and froze what's meant to be read
+// as the row is. Its names come from its descriptors, since Qt's
+// Object.keys reads each value it names (qv4objectproto.cpp's method_keys),
+// and it's all laid on a fresh row at once, so no field the row has is
+// turned into a getter.
+function copied(row, fields) {
+    const laid = Object.getOwnPropertyDescriptors(fields);
+    const own = Object.getOwnPropertyDescriptors(row);
+    for (const name of Object.keys(own)) {
+        if (own[name].enumerable) {
+            laid[name] = own[name];
+        }
+    }
+    return Object.defineProperties({}, laid);
+}

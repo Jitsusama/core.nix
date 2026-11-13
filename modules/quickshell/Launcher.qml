@@ -70,6 +70,7 @@ import "Reading.js" as Reading
 import "SetWords.js" as SetWords
 import "CommandBinding.js" as CommandBinding
 import "launcher/Catalogue.js" as Catalogue
+import "launcher/Member.js" as Member
 import "launcher/Rank.js" as Rank
 import "launcher/Showing.js" as Showing
 import "launcher/Spots.js" as Spots
@@ -5883,15 +5884,17 @@ Scope {
             });
             const orderedAll = Date.now();
             // Made a kind at a time, so a slow key's line says whose rows
-            // its making spent on; an answer's rows say no kind.
+            // its making spent on; an answer's rows say no kind. Each
+            // choice's getters are copied unread (Member.js's copied), so
+            // what a row holds is read only for the rows drawn.
             const making = Rank.madeByKind(ordered, f => f.choice.what || "answer",
-                f => Object.assign({
+                f => Member.copied(f.choice, {
                     byWord: f.byWord === true,
                     times: (learned[f.choice.key] ?? { times: 0 }).times,
                     grade: f.grade,
                     tier: f.tier,
                     kept: !!learned[f.choice.key]
-                }, f.choice), () => Date.now());
+                }), () => Date.now());
             const made = making.made;
             const madeAll = Date.now();
             const spots = spotted(letters);
