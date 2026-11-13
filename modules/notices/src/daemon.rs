@@ -117,18 +117,20 @@ impl State {
     }
 
     /// The keys of a paged place's rows in its order, the `notices`
-    /// place's or History's, which has the read alone: every notice's
-    /// there or those of `only`, with beside them, by key, each row its
-    /// watch isn't served.
-    fn rows(&self, place: &str, only: Option<&[u32]>) -> Value {
+    /// place's or History's, which has the read alone but the shell's own:
+    /// every notice's there or those of `only`, and of `source` alone where
+    /// it's named, Desktop's or Slack's, with beside them, by key, each row
+    /// its watch isn't served.
+    fn rows(&self, place: &str, only: Option<&[u32]>, source: Option<&str>) -> Value {
         let only: Option<BTreeSet<u32>> = only.map(|ids| ids.iter().copied().collect());
         let history = place == row::HISTORY;
         let mut notices: Vec<&Notice> = self
             .holding
             .notices()
             .iter()
-            .filter(|notice| !notice.transient && (notice.read || !history))
+            .filter(|notice| (history && notice.in_history()) || (!history && !notice.transient))
             .filter(|notice| only.as_ref().is_none_or(|ids| ids.contains(&notice.id)))
+            .filter(|notice| source.is_none_or(|source| notice.source() == source))
             .collect();
         // History's are in its rows' order, newest done with first.
         if history {
@@ -320,7 +322,7 @@ impl State {
             "rows" => match said["place"].as_str().unwrap_or(row::PLACE) {
                 place @ (row::PLACE | row::HISTORY) => {
                     let only = said["notices"].is_array().then_some(many.as_slice());
-                    (self.rows(place, only), false)
+                    (self.rows(place, only, said["source"].as_str()), false)
                 }
                 other => {
                     let why = format!("no paged place {other}");

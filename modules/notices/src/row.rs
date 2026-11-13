@@ -16,9 +16,11 @@
 //!   2026-11-09).
 //! - `notices-history`, For You's History, the read, newest done with
 //!   first, each saying how and when it was, "read here 14:02", as Now's
-//!   History says it, and holding the two, `readAt` and `how`;
-//!   served a page at a time as `notices` is, with its count beside, since
-//!   History keeps about a thousand (KP0L6A, 2026-11-13).
+//!   History says it, and holding the two, `readAt` and `how`, and its
+//!   `source`, Desktop's or Slack's; never the shell's own, which For You
+//!   lists as what they ask; served a page at a time as `notices` is, with
+//!   its count beside, of each source too, since History keeps about a
+//!   thousand (KP0L6A, 2026-11-13).
 //!
 //! Long because a row, its side and its drawer are one notice's one
 //! reading, which change together, and its cases, nearly half of it, show
@@ -373,6 +375,7 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
     if history {
         held["readAt"] = json!(notice.done_at());
         held["how"] = json!(notice.done_how());
+        held["source"] = json!(notice.source());
     }
     json!({
         "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
@@ -393,8 +396,9 @@ struct Made {
 }
 
 /// A notice's rows in each place: in the mixed place always, Desktop's
-/// while unread or while it's `looked` at there, and History's once read.
-/// One passing unkept is in none, since the history never holds it.
+/// while unread or while it's `looked` at there, and History's once read,
+/// but for the shell's own (see [`Notice::in_history`]). One passing
+/// unkept is in none, since the history never holds it.
 fn placed(notice: &Notice, sender: &Sender, words: &Words, looked: bool) -> [Option<Value>; 3] {
     if notice.transient {
         return [None, None, None];
@@ -409,7 +413,9 @@ fn placed(notice: &Notice, sender: &Sender, words: &Words, looked: bool) -> [Opt
     [
         Some(row(notice, sender, words, PLACE, standing)),
         desktop,
-        notice.read.then(|| row(notice, sender, words, HISTORY, "")),
+        notice
+            .in_history()
+            .then(|| row(notice, sender, words, HISTORY, "")),
     ]
 }
 
@@ -500,18 +506,30 @@ pub fn shown(desktop: &[Value]) -> BTreeSet<u32> {
 
 /// What each place serves of its rows as made, and the records beside
 /// them: the mixed place and History a page each (see [`paged`]) with the
-/// count it has rows for, and Desktop every row, since it holds only the
-/// unread and those read while Joel looks at it.
+/// count it has rows for, History's of each source too, and Desktop every
+/// row, since it holds only the unread and those read while Joel looks at
+/// it.
 pub fn served(made: [Vec<Value>; 3]) -> [(Vec<Value>, Vec<Value>); 3] {
     let [mixed, desktop, history] = made;
     let page = |key: &str, rows: Vec<Value>| {
         let count = json!({ "key": key, "kind": "summary", "summary": { "count": rows.len() } });
         (paged(rows), vec![count])
     };
+    // History says how many it keeps of each of For You's sources, which
+    // a page can't count past its hundred (KP0L6A, 2026-11-13).
+    let of = |source: &str| {
+        history
+            .iter()
+            .filter(|row| row["held"]["source"] == source)
+            .count()
+    };
+    let sources = json!({ "desktop": of("desktop"), "slack": of("slack") });
+    let (rows, mut counted) = page(HISTORY_SUMMARY, history);
+    counted[0]["summary"]["sources"] = sources;
     [
         page(SUMMARY, mixed),
         (desktop, Vec::new()),
-        page(HISTORY_SUMMARY, history),
+        (rows, counted),
     ]
 }
 
