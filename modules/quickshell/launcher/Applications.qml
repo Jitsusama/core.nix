@@ -47,6 +47,7 @@ import Quickshell
 import Quickshell.Io
 import qs
 import QtQuick
+import KeyTimes
 import "../FileFacts.js" as FileFacts
 import "../Fuzzy.js" as Fuzzy
 import "HeldWindows.js" as HeldWindows
@@ -571,31 +572,75 @@ Provider {
     // categories, and its command and id last; its comment is its words.
     // What its entry says that Quickshell's doesn't hold, the kinds of
     // file it opens, its keywords and its package, is the programs
-    // daemon's record of it (`entryOf`).
+    // daemon's record of it (`entryOf`). A slow one says in the journal
+    // what each part spent (timedMaking).
     function programDrawer(entry) {
         if (entry.id === undefined || entry.name === undefined)
             return null;
+        return timedMaking(`${entry.id}'s drawer`, () => programDrawerMade(entry));
+    }
+
+    function programDrawerMade(entry) {
+        const part = (name, work) => Program.timed(making.parts, name, provider.now, work);
         const looked = {};
-        const player = playerOf(given => provider.names(entry, given, looked));
+        const player = part("the player",
+            () => playerOf(given => provider.names(entry, given, looked)));
         // Each process once, as two windows are often one process's.
         const pids = Array.from(new Set((running[entry.id] ?? []).map(window => window.pid)
             .filter(pid => Number.isInteger(pid) && pid > 0))).sort((a, b) => a - b);
-        return Program.drawer({
+        const trees = part("its processes", () => treesOf(pids));
+        const given = hooked("programFacts", entry.id);
+        const record = part("its entry", () => entryOf(entry.id));
+        return part("its facts", () => Program.drawer({
             name: entry.name,
-            usage: Program.usage(treesOf(pids)),
+            usage: Program.usage(trees),
             asking: pids.length > 0,
             places: (running[entry.id] ?? [])
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),
             playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",
-            given: hooked("programFacts", entry.id),
-            record: entryOf(entry.id),
+            given,
+            record,
             categories: entry.categories,
             command: entry.command,
             id: entry.id,
             comment: entry.comment,
             marks: { group: settings.group, point: settings.point }
-        }, id => Words.name(`applications:${id}`), Words.of("applications").said);
+        }, id => Words.name(`applications:${id}`), Words.of("applications").said));
+    }
+
+    // The parts of a program's drawer or acts being made, { name, ms }
+    // each, while one is timed, and null otherwise: each other provider's
+    // answer to a hook is kept by its name then (hooked). Five of 26
+    // drawers took 43 to 134 ms making in Joel's journal, against 4 to 17
+    // for the rest, with nothing saying which part (2026-11-13). A plain
+    // field in an object, as Provider's tally, so timing notifies nothing
+    // while a drawer's binding is being worked out.
+    readonly property var making: ({ parts: null })
+
+    // The answer of `work`, a making of `what` timed by its parts, and
+    // said in the journal by them when it's slow (Program.makingSaid).
+    // One made inside another's is timed as part of it.
+    function timedMaking(what, work) {
+        if (making.parts !== null)
+            return work();
+        const parts = [];
+        const began = KeyTimes.now();
+        making.parts = parts;
+        try {
+            const answer = work();
+            const said = Program.makingSaid(what, KeyTimes.now() - began, parts);
+            if (said !== "")
+                console.info(`applications: ${said}`);
+            return answer;
+        } finally {
+            making.parts = null;
+        }
+    }
+
+    // The clock a making is timed by, the one keys and drawers are.
+    function now() {
+        return KeyTimes.now();
     }
 
     // A program's entry as the programs daemon holds it (modules/programs),
@@ -1265,11 +1310,13 @@ Provider {
     readonly property var noting: (provider.launcher?.sources ?? [])
         .filter(other => other !== provider && typeof other.programNote === "function")
 
-    // What every other provider with the hook `hook` gives `program`.
+    // What every other provider with the hook `hook` gives `program`, each
+    // provider's answer timed by its name while a making is (`making`).
     function hooked(hook, program) {
         return (provider.launcher?.sources ?? [])
             .filter(other => other !== provider && typeof other[hook] === "function")
-            .reduce((rows, other) => rows.concat(other[hook](program)), []);
+            .reduce((rows, other) => rows.concat(Program.timed(making.parts,
+                other.settings?.name ?? hook, provider.now, () => other[hook](program))), []);
     }
 
     // One path a program had open lately, as Recent's row, made as every
@@ -1566,6 +1613,10 @@ Provider {
         // it offers nothing until the step is drawn from the new one.
         if (entry.id === undefined || entry.name === undefined)
             return [];
+        return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
+    }
+
+    function controlsMade(entry, start, below) {
         const looked = {};
         const same = given => provider.names(entry, given, looked);
         const given = givenActs(entry.id);
