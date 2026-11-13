@@ -205,6 +205,9 @@
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
     "owner_pr": 3919,
     "reason": "failed, then passed, at b2be6ae26c8f",
+    "subtests": [
+      "test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing"
+    ],
     "test": "vm-desktop-reopens-under-orchestrators"
   },
   {
