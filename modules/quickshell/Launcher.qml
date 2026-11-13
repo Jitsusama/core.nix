@@ -7568,7 +7568,13 @@ Scope {
         return typeof row?.drawerUnread === "function" && row.drawerUnread();
     }
     onSelectedChanged: {
-        drawerKeyAt = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
+        // A row its daemon tells again while its drawer is still to follow,
+        // or still to come, is selected anew with no key being handled, and
+        // keeps the key that reached it: Every Count, told each second, lost
+        // 2 of 131 drawers' times in the lab (2026-11-12).
+        const keyed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
+        if (keyed > 0 || !(drawerFollowDue || drawerAwaited))
+            drawerKeyAt = keyed;
         // Once the event that selected it has run, since a step selects
         // its first row and again the row its arriving rows put first, and
         // the first read was thrown away: 4 to 7 ms a step into Desktop in
