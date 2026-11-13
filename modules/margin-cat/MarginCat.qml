@@ -194,6 +194,9 @@ Scope {
             property var shown: []
             property var costs: []
             property int unseen: 0
+            // How many frames had begun as it set off, so it can say how
+            // many it drew.
+            property int begunAt: 0
             // What it's drawn as: a pose of its walk, turned the way it
             // goes, or the scope's, sitting, asleep or stretching.
             readonly property var drawn: pose
@@ -257,6 +260,7 @@ Scope {
                     shown = [];
                     costs = [];
                     unseen = 0;
+                    begunAt = window.FramePresentation.framesBegun;
                 }
                 going = plan;
                 walker.restart();
@@ -269,7 +273,8 @@ Scope {
             function tell(): void {
                 if (!window.FramePresentation.available)
                     return;
-                const told = MarginCat.walked(shown, costs, unseen);
+                const told = MarginCat.walked(shown, costs, unseen,
+                    window.FramePresentation.framesBegun - begunAt);
                 console.info(told.line);
                 if (Options.reports)
                     Report.say(`walked cat ${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);

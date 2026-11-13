@@ -53,6 +53,8 @@ DRAWS = 4.0
 WALKED = "walked cat "
 # The fewest steps a second its walk may take, the nested screen drawing at 60.
 SMOOTH = 50
+# The frames of a walk niri may not yet have said it showed as the cat sits.
+ON_THEIR_WAY = 3
 # How long niri may take to say its layers have changed.
 LAYERED = 10.0
 POLL = 0.05
@@ -221,6 +223,13 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     (shown,) = told
     assert shown["frames"] > 0, f"niri showed none of the walk's frames: {shown}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+    # Each frame it draws asks niri when it's shown, so a frame asked after the next had begun
+    # can't halve what the journal says of Joel's screen; the last few are still on their way
+    # as it sits.
+    answered = shown["frames"] + shown["unseen"]
+    assert answered >= shown["begun"] - ON_THEIR_WAY, (
+        f"niri was asked of {answered} of the {shown['begun']} frames it drew: {shown}"
+    )
     assert shown["drawn"] <= DRAWS, f"a frame took the shell {shown['drawn']} ms: {shown}"
     # Each stride stepped by its ground is MarginCat.js's, proven frame by frame in Qt's engine
     # (margin-cat.qml); here a frame can come late enough to skip a stride, so this asks only

@@ -144,14 +144,16 @@ QtObject {
         const near = MarginCat.walk(0, 20, { cell: 2, ratio: 1, pause: 0 });
         expect("near, it ambles, its stride half its body", near.stride, 8);
 
-        const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1);
+        const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
+            7);
         expect("a walk's frames as niri showed them, the gaps between them sorted",
-            shown.said, { frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1 });
-        expect("as the journal says them", shown.line, "cat: a walk presented 5 frames a median "
-            + "16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
+            shown.said,
+            { frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7 });
+        expect("as the journal says them", shown.line, "cat: a walk presented 5 of its 7 frames "
+            + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
             + "1 never shown");
-        expect("a walk nothing showed says so", MarginCat.walked([], [], 0).said,
-            { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0 });
+        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, 0).said,
+            { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0 });
 
         expect("facing right, a profile is drawn mirrored",
             MarginCat.turned(["#..", ".##"], 1), ["..#", "##."]);
