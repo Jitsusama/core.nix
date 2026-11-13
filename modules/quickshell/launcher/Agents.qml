@@ -45,7 +45,6 @@ import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
-import "Recent.js" as Recent
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
@@ -1388,8 +1387,9 @@ Provider {
         const listed = Order.sorted(held, Order.smaller(one => one.order))
             .map(one => ({ row: one.recent }));
         const words = Words.of("agents:recent");
-        const stands = Recent.said(listed.map(one => String(one.row.title || one.row.address
-            || one.row.id)), false, words.said ?? {});
+        // What its place says of them comes worded by the agents daemon
+        // (recent.rs's place): how many, and their names once each.
+        const place = rowsKind?.held?.["recent:agents"]?.place ?? {};
         const said = Words.of("agents").said ?? {};
         const now = new Date();
         const home = Sessions.home;
@@ -1405,7 +1405,7 @@ Provider {
         const row = one => thing({
             thing: true,
             key: `agents:recent:${one.id}`,
-            name: String(one.title || one.address || one.id),
+            name: String(one.name ?? ""),
             also: Fuzzy.prepare(`${one.address ?? ""} ${one.folder ?? ""} ${one.quest ?? ""}`),
             side: SessionRow.closedAt(one.ended, now, said,
                 date => Qt.formatDate(date, "ddd")),
@@ -1421,8 +1421,8 @@ Provider {
             name: Words.name("agents:recent"),
             glyph: Words.glyph("agents:recent"),
             hue: "program",
-            side: stands.side,
-            heldNames: stands.held,
+            side: String(place.side ?? ""),
+            heldNames: place.held ?? [],
             ask: "which?",
             empty: words.empty
         }, () => listed.map(one => row(one.row))), {

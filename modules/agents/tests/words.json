@@ -186,6 +186,20 @@
       "term": "Agents/Working on"
     },
     {
+      "id": "agents:recent",
+      "in": "agents",
+      "name": "Recent",
+      "term": "Desktop/Recent",
+      "verb": "more",
+      "glyph": "recent",
+      "empty": "Nothing yet.",
+      "said": {
+        "none": "none",
+        "twice": "{name}, twice",
+        "times": "{name}, {count} times"
+      }
+    },
+    {
       "id": "agents:to-reopen",
       "in": "agents",
       "name": "Sessions to Reopen",
