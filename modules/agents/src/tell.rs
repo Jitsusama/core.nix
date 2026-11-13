@@ -4,10 +4,11 @@
 //! none, as every Super+S line is, to the session standing at Agents'
 //! top, the void, never the focused window's session. One door means one
 //! model (Joel, 2026-11-13 04:33): the void routes a line about a window
-//! from its own Attached rows. The shell asks before he sends, without
-//! words, to say who will hear it, and again with them; the line goes as
-//! a talk does, through the node's steer, so it reaches a session on any
-//! machine.
+//! itself, so the answer names the focused window's session beside it
+//! (`in`), which the shell carries to the void as one of its Attached
+//! rows. The shell asks before he sends, without words, to say who will
+//! hear it, and again with them; the line goes as a talk does, through
+//! the node's steer, so it reaches a session on any machine.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -17,6 +18,7 @@ use serde_json::{Value, json};
 
 use crate::acts;
 use crate::session::{Lives, Session};
+use crate::windows;
 
 /// How far up its quest's parents a line looks for one to hear it, past
 /// which a quest's family is taken to loop.
@@ -29,6 +31,8 @@ pub struct Routes(Arc<Mutex<Map>>);
 
 #[derive(Default)]
 struct Map {
+    /// The session each window is, by the windows daemon's key.
+    windows: HashMap<String, String>,
     /// Every session running or parked on a machine that can be reached.
     sessions: Vec<Hears>,
     /// Every quest, by its id.
@@ -49,7 +53,8 @@ struct Quest {
     orchestrator: String,
 }
 
-/// Whom a line goes to, and why: `quest`, `orchestrator` or `top`.
+/// Whom a line goes to, and why: `quest`, `orchestrator` or `top`; or
+/// the session in a window, `window`.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Heard {
     pub to: String,
@@ -58,14 +63,26 @@ pub struct Heard {
 }
 
 impl Routes {
-    /// Holds who may hear a line now: the sessions and the node's quests.
+    /// Holds who may hear a line now: the sessions, the node's quests and
+    /// the agent-window records served.
     pub fn hold<'a>(
         &self,
         sessions: impl Iterator<Item = Session<'a>>,
         quests: impl Iterator<Item = &'a Value>,
+        served: impl Iterator<Item = &'a Value>,
     ) {
         let text = |value: &Value| value.as_str().unwrap_or("").to_owned();
         let map = Map {
+            windows: served
+                .filter(|record| record["kind"] == windows::KIND)
+                .filter_map(|record| {
+                    Some((
+                        text(&record["window"]),
+                        record["address"].as_str()?.to_owned(),
+                    ))
+                })
+                .filter(|(window, _)| !window.is_empty())
+                .collect(),
             sessions: sessions
                 .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
                 .filter(|one| one.reachable() && !one.address().is_empty())
@@ -113,6 +130,18 @@ impl Routes {
         } else {
             map.on_quest(quest)
         }
+    }
+
+    /// The session in `window`, named by its key or niri's id for it.
+    pub fn in_window(&self, window: &Value) -> Option<Heard> {
+        let map = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let key = match window {
+            Value::Number(id) => format!("window:{id}"),
+            Value::String(key) if key.starts_with("window:") => key.clone(),
+            Value::String(id) if !id.is_empty() => format!("window:{id}"),
+            _ => return None,
+        };
+        map.by_address(map.windows.get(&key)?, "window")
     }
 }
 
@@ -191,6 +220,9 @@ pub fn answer(said: &Value, routes: &Routes, node: Option<&Path>, now_ms: u128) 
             "message": "no session is on that quest, nor at Agents' top"}});
     };
     let mut answer = json!({"to": heard.to, "name": heard.name, "why": heard.why});
+    if let Some(within) = routes.in_window(&said["window"]) {
+        answer["in"] = json!({"to": within.to, "name": within.name});
+    }
     let words = said["words"].as_str().unwrap_or("");
     if words.trim().is_empty() {
         return answer;
@@ -213,9 +245,9 @@ mod tests {
             "questInfo": {"title": format!("{} Quest", addresses[0])}}})
     }
 
-    fn routes(sessions: &[Value], quests: &[Value]) -> Routes {
+    fn routes(sessions: &[Value], quests: &[Value], served: &[Value]) -> Routes {
         let routes = Routes::default();
-        routes.hold(sessions.iter().map(Session), quests.iter());
+        routes.hold(sessions.iter().map(Session), quests.iter(), served.iter());
         routes
     }
 
@@ -241,6 +273,7 @@ mod tests {
                     "standsAtTop": {"name": "Nameless"}}}),
             ],
             &[],
+            &[],
         );
         let routes = routes(
             &[
@@ -249,6 +282,7 @@ mod tests {
                 session(&["BUOY"], "QEST-1-BUOY", "parked"),
             ],
             &[],
+            &[json!({"kind": "agent-window", "address": "SKIFF", "window": "window:17"})],
         );
         let void = Some(Heard {
             to: "VOID".to_owned(),
@@ -257,8 +291,19 @@ mod tests {
         });
         assert_eq!(
             answer(&json!({"ask": "tell", "window": 17}), &routes, None, 7),
+            json!({"to": "VOID", "name": "The Void", "why": "top",
+                "in": {"to": "SKIFF", "name": "SKIFF Quest"}}),
+            "the void hears it, never the focused window's session, which it names as `in`"
+        );
+        assert_eq!(
+            answer(
+                &json!({"ask": "tell", "window": "window:18"}),
+                &routes,
+                None,
+                7
+            ),
             json!({"to": "VOID", "name": "The Void", "why": "top"}),
-            "the focused window's session doesn't hear it; the void does"
+            "a window that's no session's names none"
         );
         assert_eq!(routes.heard(""), void, "nothing named, the void");
         assert_eq!(
@@ -286,7 +331,7 @@ mod tests {
             session(&["P9R1KI", "HARBOUR"], "QEST-1-HARBOUR", "running"),
             session(&["ANCHOR"], "QEST-1-ANCHOR", "closed"),
         ];
-        let routes = routes(&sessions, &quests);
+        let routes = routes(&sessions, &quests, &[]);
         assert_eq!(
             routes.heard("QEST-1-KELP"),
             Some(Heard {
@@ -306,7 +351,7 @@ mod tests {
 
     #[test]
     fn a_tell_says_who_hears_it_and_sends_only_words() {
-        let routes = routes(&[session(&["SKIFF"], "QEST-1-SKIFF", "running")], &[]);
+        let routes = routes(&[session(&["SKIFF"], "QEST-1-SKIFF", "running")], &[], &[]);
         assert_eq!(
             answer(
                 &json!({"ask": "tell", "quest": "QEST-1-SKIFF"}),

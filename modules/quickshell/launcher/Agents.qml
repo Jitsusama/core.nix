@@ -813,20 +813,19 @@ Provider {
     // What the foot says once words have gone to a session.
     property string told: ""
 
-    // Who a line said from anywhere goes to (TalkLine.qml), `{ to, name }`: the one standing at
-    // Agents' top, the void, as the daemon's tell answers without words
-    // (modules/agents/src/tell.rs), never the focused window's session; null where none
-    // stands there. Held here too, so the line names it with no daemon to ask.
-    function hears(then) {
+    // Who a line said from anywhere goes to (TalkLine.qml), `{ to, name }`: the session in
+    // `window`, as the daemon's tell answers without words (modules/agents/src/tell.rs), else
+    // the one standing at Agents' top, the void; null where neither is.
+    function hears(window, then) {
         const top = Sessions.running.concat(Sessions.parked)
             .find(one => !!one.presence?.standsAtTop?.name);
         const atTop = top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
             : null;
-        if (!rowsKind) {
+        if (!rowsKind || window === null || window === undefined) {
             then(atTop);
             return;
         }
-        rowsKind.ask({ ask: "tell" }, answer => then(typeof answer?.to === "string"
+        rowsKind.ask({ ask: "tell", window }, answer => then(typeof answer?.to === "string"
             && answer.to !== "" ? { to: answer.to, name: String(answer.name || answer.to) }
             : atTop));
     }
