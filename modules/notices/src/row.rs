@@ -544,7 +544,33 @@ mod tests {
         let [mixed, _, history] = making(&[folded], &[]);
         let side = json!([{ "said": "3 in all" }, { "at": 4_000, "as": "came" }]);
         assert_eq!(mixed[0]["side"], side, "the two it took over and itself");
-        assert_eq!(history[0]["side"], side, "and so in History");
+        let done = json!([{ "said": "read {time}", "at": 4_000, "as": "moment" }]);
+        assert_eq!(history[0]["side"], done, "History, how it went alone");
+    }
+
+    #[test]
+    fn history_says_how_and_when_each_was_done_with_newest_done_first() {
+        // Newest come first, but the oldest was read last, in Slack.
+        let notices = [
+            notice(3, &json!({ "read": true, "readAt": 5_000 })),
+            notice(2, &json!({ "read": true, "withdrawn": true, "readAt": 4_000 })),
+            notice(1, &json!({ "read": true, "readHow": "readInSlack", "readAt": 9_000 })),
+        ];
+        let [_, _, history] = making(&notices, &[]);
+        let order = keys(&history);
+        let wanted = [
+            "row:notices-history:1",
+            "row:notices-history:3",
+            "row:notices-history:2",
+        ];
+        assert_eq!(order, wanted, "newest done first");
+        let side = |at: i64, said: &str| json!([{ "said": said, "at": at, "as": "moment" }]);
+        assert_eq!(history[0]["side"], side(9_000, "read in Slack {time}"));
+        assert_eq!(history[1]["side"], side(5_000, "read here {time}"));
+        assert_eq!(history[2]["side"], side(4_000, "withdrawn {time}"));
+        let held = &history[0]["held"];
+        let told = json!([held["readAt"], held["how"]]);
+        assert_eq!(told, json!([9_000, "readInSlack"]), "and held says so");
     }
 
     #[test]

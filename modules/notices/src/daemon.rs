@@ -557,6 +557,21 @@ mod tests {
     }
 
     #[test]
+    fn historys_rows_come_the_last_read_first() {
+        let mut state = state("history-order");
+        let first = state.notify(sent("First", &[]), 10);
+        let second = state.notify(sent("Second", &[]), 11);
+        let second_read = state.holding.mark(&[second], true, None, 12);
+        let first_read = state.holding.mark(&[first], true, None, 13);
+        assert!(second_read && first_read, "both were read");
+        let asked = json!({ "ask": "rows", "place": "notices-history" });
+        let (history, _) = state.ask(&asked, 14);
+        let key = |id: u32| format!("row:notices-history:{id}");
+        let wanted = json!([key(first), key(second)]);
+        assert_eq!(history["keys"], wanted, "the last read first");
+    }
+
+    #[test]
     fn historys_rows_are_answered_of_the_read_alone() {
         let mut state = state("history-rows");
         let old = state.notify(sent("Old and read", &[]), 10);
