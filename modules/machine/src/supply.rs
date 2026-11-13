@@ -40,6 +40,11 @@ impl Settings {
     /// What the battery in `folder` is set to, read again once it's been
     /// kept `SETTINGS_KEPT` by `now`.
     fn of(&mut self, root: &Root, folder: &str, now: Instant) -> Set {
+        if let Some((at, set)) = self.read.get(folder)
+            && now.saturating_duration_since(*at) < SETTINGS_KEPT
+        {
+            return set.clone();
+        }
         let set = Set {
             types: root.said(&format!("{folder}/charge_types")),
             start: root.number(&format!("{folder}/{START}")),
