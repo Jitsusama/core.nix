@@ -88,12 +88,20 @@ struct Range {
 
 /// `jobs-sorter swap-in PID` as root, or `jobs-sorter swap-in --owned PID`
 /// as the pid's account; what it did, or why it did nothing.
+///
+/// Only being asked wrongly fails. Anything it can't find or ask, the
+/// process gone, niri's socket or its manager not answering, only means
+/// nothing is read back, since it only hints: a failed unit fails the
+/// switch it lands in, and on 13 November one asked while a switch
+/// reloaded the account's manager found no socket of niri's, and the
+/// switch went back.
 pub fn main(args: &[String]) -> Result<String, String> {
-    match args {
+    let done = match args {
         [pid] => become_owner(parse(pid)?),
         [owned, pid] if owned == "--owned" => read_back(parse(pid)?),
-        _ => Err("usage: jobs-sorter swap-in [--owned] PID".to_owned()),
-    }
+        _ => return Err("usage: jobs-sorter swap-in [--owned] PID".to_owned()),
+    };
+    Ok(done.unwrap_or_else(|error| format!("Read nothing back: {error}.")))
 }
 
 fn parse(pid: &str) -> Result<u32, String> {
@@ -714,6 +722,24 @@ mod tests {
             owner("Name:\tpi\nUid:\t1000\t1000\t1000\t1000\n", "Uid:"),
             Some(1000),
             "the real uid"
+        );
+    }
+
+    #[test]
+    fn what_it_cant_find_reads_nothing_back_and_fails_nothing() {
+        // Past any pid_max, so no process is ever there to be read.
+        let gone = main(&["4194305".to_owned()]);
+        assert!(
+            gone.as_ref().is_ok_and(|said| said.starts_with("Read nothing back: ")),
+            "a window it couldn't find failed its unit, and with it a switch: {gone:?}"
+        );
+        assert!(
+            main(&["1".to_owned()]).is_err(),
+            "asked for no process, it said nothing was wrong"
+        );
+        assert!(
+            main(&["--other".to_owned(), "7".to_owned()]).is_err(),
+            "asked wrongly, it said nothing was wrong"
         );
     }
 }
