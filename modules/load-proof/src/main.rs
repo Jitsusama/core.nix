@@ -428,7 +428,9 @@ mod tests {
             "a line ran past 40 cells:\n{said}"
         );
         assert!(
-            said.lines().skip(1).all(|line| line.starts_with("        ")),
+            said.lines()
+                .skip(1)
+                .all(|line| line.starts_with("        ")),
             "a wrapped line didn't sit under the figures:\n{said}"
         );
     }
