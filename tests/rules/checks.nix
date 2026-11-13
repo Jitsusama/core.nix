@@ -109,4 +109,19 @@
     home = exampleLaptop.config.home-manager.users.joel;
     waiting = import ./daemons-agree-waiting.nix;
   };
+
+  # Every command keeps docs/commands.md's convention, so learning one teaches
+  # them all and an agent reads each the same way. Each on the terminal kit is
+  # run for its help, and lag-watch, the first, builds only on Linux. Those
+  # that broke a point before the rule wait in
+  # tests/rules/commands-agree-waiting.nix, with the points each still
+  # breaks, and the check fails once one keeps a point it waits on, so the
+  # list only shrinks.
+  commands-agree = self.lib.commandsAgree pkgs {
+    src = ../..;
+    commands = {
+      lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+    };
+    waiting = import ./commands-agree-waiting.nix;
+  };
 }

@@ -17,7 +17,10 @@ says why.
 
 ## The Convention
 
-Every command keeps these points, which the `commands-agree` check holds:
+Every command keeps these points. The terminal kit's tests hold them for
+every command built on it, and the `commands-agree` check holds every
+command to the kit, as [When a Command Doesn't Agree Yet](#when-a-command-doesnt-agree-yet)
+says:
 
 - **Answers:** stdout carries the answer and nothing else: the records, the
   value asked for, or the JSON. Everything said to a person on the way,
@@ -391,19 +394,34 @@ It gives:
   type;
 - the wait line and its meter, drawn only into a terminal.
 
-A command that isn't Rust keeps the convention by hand, and the check
-holds it to the same points.
+A command that isn't Rust keeps the convention by hand, which the check
+doesn't read yet: it reads the programs the crates build.
 
 ## When a Command Doesn't Agree Yet
 
-Commands written before this page wait in the `commands-agree` check's
-list, each with the points it still breaks. The list only shrinks: a
-command that keeps a point takes it off, and a new command keeps every
-point from its first commit.
+The `commands-agree` check ([`tests/rules/commands-agree.py`][check])
+reads every program a crate builds, and holds it to four points:
+
+- **kit:** its crate builds on the terminal kit;
+- **exits:** its own code never ends the process, with `process::exit`
+  or an `ExitCode` made from a number, so its codes are the table's;
+- **inks:** its own code spells no escape sequence and takes no colour
+  crate, so its colour is the kit's decision;
+- **helps:** run with `--help --format json`, it answers `help/1` under
+  its own name, says nothing on stderr and exits 0 within ten seconds, and
+  `--version` answers one line. The check is given each command on the kit
+  built, to run it.
+
+Commands written before this page wait in
+[`tests/rules/commands-agree-waiting.nix`][waiting], each with the points
+it still breaks. The list only shrinks: a command that keeps a point takes
+it off, and a new command keeps every point from its first commit.
 
 [design]: design.md
 [taste]: ../modules/theme/SKILL.md
 [kit]: ../modules/terminal-kit/Cargo.toml
+[check]: ../tests/rules/commands-agree.py
+[waiting]: ../tests/rules/commands-agree-waiting.nix
 [clig]: https://clig.dev/
 [nocolor]: https://no-color.org/
 [force]: https://force-color.org/
