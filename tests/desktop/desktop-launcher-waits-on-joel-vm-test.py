@@ -45,6 +45,8 @@ JOELS_SCALES = ("1.5", "2")
 # How long a shot waits for a selected row that reads on to settle: twice through, a few
 # seconds each, and then the screen's own settling (docs/design.md, A long name reads on).
 READ_ON_TWICE = dt.timedelta(seconds=30)
+# How many times a selected row reads on before it rests (Choice.qml's readings).
+READ_THROUGH = 2
 
 
 @pytest.fixture(scope="module")
@@ -408,15 +410,22 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
             desktop.launcher_until(served)
 
         def its_row(says: str) -> Json | None:
-            """Give the long session's row as it's drawn, once its right says this."""
+            """Give the long session's row as it's drawn at rest, once its right says this.
+
+            Selected, its title reads on and back before it rests, and while it reads on its
+            room is the box it reads on inside, not the whole-word cut it rests at: read once
+            at each, the room went from 411 to 381 with nothing moved (2026-11-13).
+            """
             laid = laid_out(desktop)
             row = next((row for row in laid["rows"] if "Bootstrap" in row["reads"]), None)
-            return row if row and says in row["reads"] else None
+            if row is None or says not in row["reads"]:
+                return None
+            return row if not row["selected"] or row.get("readsDone", 0) >= READ_THROUGH else None
 
         def name_of(row: Json) -> Json:
             return max(row["words"], key=lambda word: len(word["text"]))
 
-        retry(lambda _: its_row("needs you") is not None, timeout=dt.timedelta(seconds=20))
+        retry(lambda _: its_row("needs you") is not None, timeout=READ_ON_TWICE)
         before = name_of(cast("Json", its_row("needs you")))
         assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
         # It goes back to work: "needs you" becomes the shorter "working", and
@@ -424,7 +433,7 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
         # its room holds, whether it's cut by an ellipsis or, selected, reads
         # on inside it.
         desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
-        retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
+        retry(lambda _: its_row("working") is not None, timeout=READ_ON_TWICE)
         after = name_of(cast("Json", its_row("working")))
         assert after["room"] == before["room"], (
             f"the title's room went from {before['room']} to {after['room']}:"

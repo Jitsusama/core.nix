@@ -224,16 +224,6 @@
     "test": "vm-joel-comes-first"
   },
   {
-    "at": 1794545381,
-    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
-    "owner_pr": 3884,
-    "reason": "a cut title's room shrinks by 30 px as its session goes from needs you to working since Agents is served; Y2YBTS fixes it by Sat 14 and takes it off",
-    "subtests": [
-      "test_where_an_agents_title_is_cut_holds_still_as_its_side_changes"
-    ],
-    "test": "vm-desktop-launcher-waits-on-joel"
-  },
-  {
     "at": 1794557415,
     "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
     "owner_pr": 3956,
