@@ -1360,6 +1360,9 @@ SHELL_STARTS = timedelta(seconds=120)
 INBOX = f"{HARNESS}/steer/TESTQA"
 # Where each session's window sat, by boot, which the agents daemon keeps and follows.
 ARRANGED = "~/.local/state/agents/arrangement.json"
+# Where the windows of sessions moving onto pi's host sat, which the agents daemon keeps and
+# follows too.
+KEPT_PLACES = "~/.local/state/agents/kept-places.json"
 
 
 def lighthouse_listed(desktop: Desktop) -> None:

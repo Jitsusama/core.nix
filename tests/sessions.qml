@@ -90,6 +90,9 @@ ShellRoot {
         function onToReopenChanged() {
             Qt.callLater(root.check);
         }
+        function onKeptPlacesChanged() {
+            Qt.callLater(root.check);
+        }
     }
 
     Connections {
@@ -185,7 +188,7 @@ ShellRoot {
     function listed() {
         const other = find("OTHER2");
         if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window
-            || Sessions.toReopen.length === 0)
+            || Sessions.toReopen.length === 0 || Sessions.keptPlaces["s-moving"] === undefined)
             return;
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
@@ -207,13 +210,16 @@ ShellRoot {
         expect("working, as each record says", Sessions.working === 3, Sessions.working);
         expect("a session is its window", Sessions.isOf(other) === "window:21", Sessions.isOf(other));
         // Asked to keep where a session's window is, as the move onto pi's
-        // host asks before it closes it, the shell says whether it could.
+        // host asks before it closes it, the shell says whether it could,
+        // beside the place the daemon kept from before it started, and
+        // the daemon is told them all to keep.
         expect("a session's window kept", Sessions.keepPlace("s-OTHER2") === "kept"
             && JSON.stringify(Sessions.keptPlaces["s-OTHER2"] ?? null).startsWith(
                 '{"workspace":3,"column":2,'), JSON.stringify(Sessions.keptPlaces));
         const keptNot = ["s-NOWIN6", "r-far", "s-nobody"].map(id => Sessions.keepPlace(id));
         expect("one with no window, or not here, keeps nothing", keptNot.every(answer =>
-            answer === "no window to keep") && Object.keys(Sessions.keptPlaces).length === 1,
+            answer === "no window to keep")
+            && Object.keys(Sessions.keptPlaces).sort().join(" ") === "s-OTHER2 s-moving",
             keptNot.join(", "));
         Sessions.keepPlaces({});
 
@@ -526,6 +532,11 @@ ShellRoot {
             expect("forgetting asks the daemon, naming the session",
                 asked[0].session === "s-ferried" && asked[0].id.startsWith("ask-"),
                 JSON.stringify(asked[0]));
+            // Asked before it, on the same socket, so heard by now; a
+            // viewer reopened since may have kept another after them.
+            const told = placesAsked.slice(0, 2).map(one => Object.keys(one.places ?? {}).sort().join(" "));
+            expect("the daemon is told the places kept, the one from before too, then none",
+                JSON.stringify(told) === '["s-OTHER2 s-moving",""]', JSON.stringify(placesAsked));
             Sessions.putOffLastBoot();
         } else if (asked.length === 2 && ids === "s-ferry s-freed") {
             expect("Not Now asks the daemon to put the last boot off",
@@ -759,6 +770,9 @@ ShellRoot {
     // What the shell asked of the agents daemon, past its hello and watch,
     // each ask whole.
     property var agentsAsked: []
+    // What the shell told the daemon of the places kept, apart from what
+    // Joel says of the sessions to reopen.
+    property var placesAsked: []
 
     // What the agents daemon serves of the sessions to reopen, as its
     // reopen.rs works them out of what the harness's restore.json kept
@@ -793,7 +807,9 @@ ShellRoot {
             { key: "arrangement:agents", kind: "arrangement", arrangement: { v: 1,
                 boots: { "an-earlier-boot": { "s-elsewhere": { output: "DP-4", workspace: 2,
                     column: 1, tile: 1 } } },
-                others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } }]);
+                others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } },
+            { key: "kept-places:agents", kind: "kept-places", places: {
+                "s-moving": { workspace: 6, column: 1, at: Date.now() } } }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -821,9 +837,15 @@ ShellRoot {
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
                         if (watched
-                            !== '[["reopen","restoring","to-reopen","arrangement"],"agents"]')
+                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places"],'
+                                + '"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);
+                        return;
+                    }
+                    if (ask.ask === "keep-places") {
+                        root.placesAsked = root.placesAsked.concat([ask]);
+                        said([{ id: ask.id, kept: Object.keys(ask.places ?? {}).length }]);
                         return;
                     }
                     root.agentsAsked = root.agentsAsked.concat([ask]);

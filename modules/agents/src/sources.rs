@@ -16,6 +16,7 @@ use crate::answered;
 use crate::arrangement::Arrangement;
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
+use crate::kept_places::KeptPlaces;
 
 /// Something a source said.
 #[derive(Debug)]
@@ -52,6 +53,9 @@ pub enum Heard {
     /// Joel opened a session's drawer, by its address, at this moment in
     /// milliseconds, as the shell says, so he's read what it answered.
     Opened(String, i64),
+    /// Where the windows of sessions moving onto pi's host sat, all of
+    /// them, as the shell says each time one's kept or let go.
+    KeepPlaces(KeptPlaces),
 }
 
 /// Where the files the rows are made from are kept.
@@ -81,6 +85,9 @@ pub struct Paths {
     /// Where each session's window sat, which the daemon writes and
     /// follows, so a hand that writes it is heard.
     pub arrangement: PathBuf,
+    /// Where the windows of sessions moving onto pi's host sat, which the
+    /// daemon writes and follows too.
+    pub kept_places: PathBuf,
 }
 
 impl Heard {
@@ -103,6 +110,7 @@ impl Paths {
             self.orchestrators.clone(),
             self.restore.clone(),
             self.arrangement.clone(),
+            self.kept_places.clone(),
         ]
     }
 }
@@ -188,6 +196,12 @@ impl Inputs {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
             }
+            Heard::KeepPlaces(kept) => {
+                if let Err(why) = kept.write(&paths.kept_places) {
+                    eprintln!("agents: can't keep {}: {why}", paths.kept_places.display());
+                }
+                self.kept_places = kept;
+            }
         }
     }
 
@@ -214,6 +228,10 @@ impl Inputs {
             if let Some(kept) = Arrangement::read(path) {
                 self.arrangement = kept;
             }
+        } else if path == paths.kept_places
+            && let Some(kept) = KeptPlaces::read(path)
+        {
+            self.kept_places = kept;
         }
     }
 }
@@ -239,6 +257,7 @@ mod tests {
             steer: folder.join("steer"),
             shells: folder.join("by-shell"),
             arrangement: folder.join("agents").join("arrangement.json"),
+            kept_places: folder.join("agents").join("kept-places.json"),
         }
     }
 
@@ -319,6 +338,37 @@ mod tests {
             Some(inputs.read.clone()),
             "written for the next start"
         );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn where_the_shell_says_the_moving_sessions_sat_is_kept_and_served() {
+        let folder = std::env::temp_dir().join(format!("agents-places-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let paths = paths_in(&folder);
+        let said = KeptPlaces::said(&json!({"01-a": {"workspace": 3, "column": 2, "at": 7}}))
+            .expect("places");
+        let mut inputs = Inputs::default();
+        inputs.hear(Heard::KeepPlaces(said.clone()), &paths);
+        assert_eq!(inputs.kept_places, said, "held");
+        assert_eq!(
+            KeptPlaces::read(&paths.kept_places),
+            Some(said.clone()),
+            "written for the next start"
+        );
+        let mut served = crate::served::Served::default();
+        served.take(inputs.made());
+        assert_eq!(
+            served.get("kept-places:agents"),
+            Some(&said.record()),
+            "served with the sessions to reopen"
+        );
+        // Written by another hand, as a test does with the shell stopped.
+        let elsewhere = KeptPlaces::default();
+        elsewhere.write(&paths.kept_places).expect("written");
+        inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
+        assert_eq!(inputs.kept_places, elsewhere, "heard as it lands");
         let _ = fs::remove_dir_all(&folder);
     }
 

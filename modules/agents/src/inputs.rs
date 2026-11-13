@@ -21,6 +21,7 @@ use crate::arrangement::{self, Arrangement, Desk};
 use crate::clock;
 use crate::closed;
 use crate::drawer;
+use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
 use crate::recent;
 use crate::reopen::{self, Kept};
@@ -77,6 +78,9 @@ pub struct Inputs {
     pub screens: Held,
     /// Where each session's window sat, as kept.
     pub arrangement: Arrangement,
+    /// Where the windows of sessions moving onto pi's host sat, as the
+    /// shell said last.
+    pub kept_places: KeptPlaces,
 }
 
 impl Inputs {
@@ -387,6 +391,16 @@ impl Inputs {
             .unwrap_or("")
     }
 
+    /// The boot the sessions to reopen are of, and where the sessions'
+    /// windows sat, kept for the shell to put them back by.
+    fn placed(&self) -> [Value; 3] {
+        [
+            reopen::restoring(self.restore.as_ref()),
+            self.arrangement.record(),
+            self.kept_places.record(),
+        ]
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -406,10 +420,8 @@ impl Inputs {
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
-        // With them, the boot they're of, and the places kept of every
-        // boot's sessions, which the shell puts them back by.
-        reopens.push(reopen::restoring(self.restore.as_ref()));
-        reopens.push(self.arrangement.record());
+        // With them, the boot they're of, and the places kept.
+        reopens.extend(self.placed());
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(
