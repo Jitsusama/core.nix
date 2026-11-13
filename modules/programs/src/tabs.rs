@@ -19,7 +19,7 @@ use programs::tab_rows::{self, PLACE};
 use programs::{command, now_ms};
 use serde_json::{Value, json};
 
-use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, start};
+use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
 /// Whether a watch wants the tabs' rows, as a whole place.
 pub fn watched(daemon: &Daemon) -> bool {
@@ -97,11 +97,27 @@ pub fn heard(shared: &Shared, daemon: &mut Daemon, at: usize, what: Run) {
     }
 }
 
+/// A folder of entries changed, so a program may be named anew: the tabs
+/// are made again while a watch wants them, each said in its new name.
+pub fn renamed(shared: &Shared, daemon: &mut Daemon) {
+    if watched(daemon) {
+        make(shared, daemon);
+    }
+}
+
 /// Makes the rows again from what's held open, keeping what changed and
 /// telling each watch only the rows that read differently and those gone.
 /// kitty's are of niri's windows but the agents', whose panes its list
 /// leaves out. The head names each program whose last read was refused.
+/// Each program is named as its desktop entry names it, so as its
+/// Programs row is, the entries read once as Programs' are.
 pub fn make(shared: &Shared, daemon: &mut Daemon) {
+    if daemon.catalogue.is_none() {
+        daemon.catalogue = Some(programs(shared, daemon, None));
+    }
+    let words = shared
+        .tab_words
+        .naming(daemon.catalogue.as_deref().unwrap_or_default());
     let theirs = agents::windows(daemon);
     let windows: Option<Vec<&Value>> = daemon.windows.as_ref().map(|windows| {
         windows
@@ -136,7 +152,7 @@ pub fn make(shared: &Shared, daemon: &mut Daemon) {
             }),
         tabs.as_ref(),
         windows.as_deref(),
-        &shared.tab_words,
+        &words,
     );
     let kitty = kitty(shared);
     let silent = shared
@@ -154,7 +170,7 @@ pub fn make(shared: &Shared, daemon: &mut Daemon) {
             let refused = daemon.commands.get(&key)?["state"] == "refused";
             refused.then_some(source.app.as_deref()?)
         });
-    let head = tab_rows::head(silent, windows.as_deref(), &shared.tab_words);
+    let head = tab_rows::head(silent, windows.as_deref(), &words);
     let moved = daemon.tabs.take(rows, head.into_iter().collect());
     keep(daemon, moved.changed, &moved.gone);
 }
