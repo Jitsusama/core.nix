@@ -3298,6 +3298,24 @@ def changed(before: bytes, after: bytes) -> float:
     return differ / len(stretches)
 
 
+def still_screen() -> bytes:
+    """Give niri's screen once two pictures in a row agree, so what moves next is what's asked.
+
+    The launcher holds the keys before its opening is drawn whole, and on a loaded builder a
+    picture taken then caught the card still coming in: its next frame was read as the key's, 325
+    ms before the key's own frame began (198c91f70d3c, 2026-11-12). Still is judged as a change
+    is, by CARD_SHARE, and given up on at WAITING with the last picture.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    was = screen()
+    while time.monotonic() < deadline:
+        now = screen()
+        if changed(was, now) <= CARD_SHARE:
+            return now
+        was = now
+    return was
+
+
 def first_changed(before: bytes, deadline: float) -> tuple[float, float]:
     """Give when niri's screen first differed from `before`, and when it last didn't.
 
@@ -3341,7 +3359,7 @@ def test_an_opening_is_presented_when_niri_first_shows_the_card(shell: Shell) ->
     than the frame before the time said (COPIED_BEFORE_PRESENTED), and no picture after it lacks
     the card.
     """
-    before = screen()
+    before = still_screen()
     chord = time.time()
     chord_at = time.monotonic() * 1000
     with socket.socket(socket.AF_UNIX) as said:
@@ -3381,7 +3399,7 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = screen()
+    before = still_screen()
     since = shell.mark()
     shell.as_account("wtype w")
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
@@ -3394,8 +3412,14 @@ def test_a_key_is_presented_as_niri_first_shows_what_it_found(shell: Shell) -> N
     assert presented, "the key was never said presented"
     key = presented[-1]
     lead = COPIED_BEFORE_PRESENTED.total_seconds() * 1000
+
+    def keys_lines() -> list[str]:
+        """Give the shell's lines of the key, read only should it fail, to say what it took."""
+        said = shell.log.read_bytes()[since:].decode(errors="replace")
+        return [line for line in said.splitlines() if 'launcher: "w"' in line]
+
     assert key["from"] <= key["at"] <= seen + lead, (
-        f"said {key}; niri's screen showed it at {seen:.0f}"
+        f"said {key}; niri's screen changed at {seen:.0f}; its line: {keys_lines()}"
     )
     presented_after_unchanged(key["at"], unchanged, "the key")
     # Its frame's sync and swap are read on the render thread as they happen, never when the
@@ -3761,7 +3785,7 @@ def test_a_daemons_change_is_presented_as_niri_first_shows_it(
     after it lacks it.
     """
     after = quests_shown(shell)
-    before = screen()
+    before = still_screen()
     written = quests.told(added(), [])
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     seen, unchanged = first_changed(before, deadline)

@@ -106,7 +106,6 @@
     "reason": "failed, then passed, at 461743399d56",
     "subtests": [
       "test_a_charge_told_in_batterys_step_is_said_there",
-      "test_a_key_is_presented_as_niri_first_shows_what_it_found",
       "test_a_row_holding_only_a_copy_copies_on_return",
       "test_no_answer_raised_an_error_and_quickshell_warned_of_nothing",
       "test_the_shut_shell_sleeps_as_a_window_is_resized"
