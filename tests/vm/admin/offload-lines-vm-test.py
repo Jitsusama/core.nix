@@ -177,10 +177,9 @@ def test_the_lenders_account_reaches_the_standing_builders_untrusted(
         f"grep -qxF {shlex.quote(standing)} {ROOTS}/machines-with-standing", timeout=COPYING
     )
     lending.wait_for_unit("nix-offload-standing.socket")
-    info = lending.succeed(
-        f"runuser -u someone -- nix --extra-experimental-features nix-command "
-        f"store info --store unix://{DOOR}"
-    )
+    # Nix says what it found on its standard error.
+    asked = f"nix --extra-experimental-features nix-command store info --store unix://{DOOR} 2>&1"
+    info = lending.succeed(f"runuser -u someone -- sh -c {shlex.quote(asked)}")
     assert "Trusted: 0" in info.splitlines(), info
 
     def built(name: str, store: str) -> str:
