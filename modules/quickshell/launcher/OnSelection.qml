@@ -98,10 +98,17 @@ Provider {
     property var listed: OnSelection.served(order, verbs.held)
     property var kept: []
 
+    // The served list takes its own order as it comes, Ask last, rather
+    // than the order its rows were first shown in: a fresh shell shows Ask
+    // alone until pi-verbs answers, and the launcher keeps a held place's
+    // rows where they stood (Launcher.qml's reshow, as Programs does).
     function took() {
         listed = OnSelection.served(order, verbs.held);
         keep();
         changed();
+        const step = launcher?.held[launcher.held.length - 1];
+        if (here && step?.row.from === provider)
+            launcher.reshow(launcher.held.length, true);
     }
 
     // What each row's Return asked, by its key: the message Ask was given
