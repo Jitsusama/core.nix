@@ -390,7 +390,7 @@ Scope {
                 const told = MarginCat.walked(shown, costs, unseen);
                 console.info(told.line);
                 if (Options.reports)
-                    Report.say(`walked cat ${modelData.name} ${JSON.stringify(told.said)}`);
+                    Report.say(`walked cat ${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
             }
 
             // Each frame of a walk, as niri showed it or didn't, asking after
@@ -449,7 +449,8 @@ Scope {
                     }
                     return;
                 }
-                if (place === null || going !== null || resting.running || wanted !== sat)
+                if (place === null || column === null || going !== null || resting.running
+                    || wanted !== sat)
                     return;
                 if (to === "column") {
                     if (strolled === null)
@@ -538,8 +539,13 @@ Scope {
             }
 
             // A window's tile, as niri says it will come to rest, where it's on
-            // this screen's shown workspace; null where it isn't.
+            // this screen's shown workspace; null where it isn't, and while
+            // the screen itself is null, as Variants leaves it a moment as
+            // screens come and go (Joel's shell, 2026-11-12 20:11, "Cannot
+            // read property 'name' of null"), so nothing reads its width.
             function tile(id: var): var {
+                if (modelData === null)
+                    return null;
                 const shown = id === null ? undefined : Niri.windows[id];
                 const at = shown?.layout?.tile_pos_in_workspace_view;
                 const workspace = shown ? Niri.workspaces[shown.workspace_id] : null;
@@ -612,7 +618,7 @@ Scope {
                         to: going.to
                     }
                 });
-                Report.say(`sits cat ${modelData.name} ${at} over ${JSON.stringify(column)}`);
+                Report.say(`sits cat ${modelData?.name ?? ""} ${at} over ${JSON.stringify(column)}`);
             }
             onPlaceChanged: say()
             onColumnChanged: say()
