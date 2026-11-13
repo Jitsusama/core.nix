@@ -220,7 +220,10 @@ fn a_keeper_whose_socket_is_away_a_moment_is_waited_for() {
     let keeper = thread::spawn(move || {
         thread::sleep(Duration::from_millis(1500));
         let listener = UnixListener::bind(&path).unwrap();
-        serve(&listener, &kept, Duration::from_millis(500));
+        // The asker tries again only each REACH_AGAIN, later still on a
+        // loaded builder, so a keeper idle as briefly could drop its
+        // listener with the asking still queued, which resets it.
+        serve(&listener, &kept, Duration::from_secs(5));
     });
     let asked = serde_json::json!({ "keep": COMMIT, "lines": [{ "check": "a" }] });
     assert_eq!(
