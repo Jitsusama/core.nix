@@ -2,14 +2,19 @@
 //! lists of rows, a mark's two cells, a name and its words, the side flush
 //! right at the widest row; facts, a label in one column and its value
 //! beside it; tables aligned by space under muted labels; and words
-//! wrapped at whole words. Into a terminal it fits the width, giving way
-//! least needed first; into a pipe nothing gives way. The launcher in a
-//! terminal set these first (modules/quickshell/in-a-terminal/src/layout.rs).
+//! wrapped at whole words, which `words` sets. Into a terminal it fits the
+//! width, giving way least needed first; into a pipe nothing gives way. The
+//! launcher in a terminal set these first
+//! (modules/quickshell/in-a-terminal/src/layout.rs).
 
 use unicode_width::UnicodeWidthStr;
 
 use crate::environment::Environment;
 use crate::ink::Pen;
+
+mod words;
+
+pub use words::{cut, hung, paragraph, shortened, wrapped};
 
 /// How a run of items is joined on one line.
 pub const ITEMS: &str = " \u{b7} ";
@@ -36,8 +41,10 @@ pub enum Room {
 }
 
 impl Room {
-    /// Stdout's width: its terminal's, then `COLUMNS`, then eighty; into a
-    /// pipe, unbounded.
+    /// Stdout's width: `COLUMNS`, then its terminal's, then eighty; into a
+    /// pipe, unbounded. `COLUMNS` comes first because neither zsh nor bash
+    /// exports it, so it's in a command's environment only when someone
+    /// asked for that width, as git and man read it.
     pub fn of_stdout(environment: &Environment) -> Self {
         Self::of(1, environment.stdout, environment)
     }
@@ -53,13 +60,9 @@ impl Room {
         }
         let columns = environment
             .var("COLUMNS")
-            .and_then(|columns| columns.parse().ok());
-        Self::Cells(
-            terminal_width(fd)
-                .or(columns)
-                .filter(|width| *width > 0)
-                .unwrap_or(80),
-        )
+            .and_then(|columns| columns.parse().ok())
+            .filter(|width: &usize| *width > 0);
+        Self::Cells(columns.or_else(|| terminal_width(fd)).unwrap_or(80))
     }
 
     /// The cells there are, where they're counted.
@@ -74,6 +77,25 @@ impl Room {
     /// into a pipe, since help is read by a person wherever it goes.
     pub fn measure(self) -> usize {
         self.cells().map_or(MEASURE, |cells| cells.min(MEASURE))
+    }
+
+    /// The room prose is set in: a terminal's at most the measure, and a
+    /// pipe's unbounded, so a line read by `grep` is never parted.
+    #[must_use]
+    pub fn for_prose(self) -> Self {
+        match self {
+            Self::Cells(cells) => Self::Cells(cells.min(MEASURE)),
+            Self::Unbounded => Self::Unbounded,
+        }
+    }
+
+    /// The room left inside an inset of `cells`, as a nested block has.
+    #[must_use]
+    pub fn less(self, cells: usize) -> Self {
+        match self {
+            Self::Cells(room) => Self::Cells(room.saturating_sub(cells).max(1)),
+            Self::Unbounded => Self::Unbounded,
+        }
     }
 }
 
@@ -123,106 +145,6 @@ pub fn fewer(items: &str) -> String {
         .rsplit_once(ITEMS)
         .map(|(kept, _)| kept.to_owned())
         .unwrap_or_default()
-}
-
-/// A name cut to `room` cells at a whole word, ending in an ellipsis. Its
-/// first word is kept whole however long, since a name is never cut
-/// inside a word.
-pub fn cut(name: &str, room: usize) -> String {
-    if width(name) <= room {
-        return name.to_owned();
-    }
-    let mut kept = String::new();
-    for word in name.split(' ') {
-        let longer = if kept.is_empty() {
-            word.to_owned()
-        } else {
-            format!("{kept} {word}")
-        };
-        if !kept.is_empty() && width(&longer) + width(CUT) > room {
-            break;
-        }
-        kept = longer;
-    }
-    format!("{kept}{CUT}")
-}
-
-/// Words set after something `lead` cells wide: wrapped at whole words
-/// to the room, each further line under the first's words. Into a pipe
-/// they stay one line.
-pub fn hung(words: &str, lead: usize, room: Room) -> String {
-    match room.cells() {
-        None => words.to_owned(),
-        Some(cells) => wrapped(words, cells.saturating_sub(lead).max(1))
-            .join(&format!("\n{}", " ".repeat(lead))),
-    }
-}
-
-/// Words wrapped to `measure` cells: a run gives way at its items first,
-/// the dot going with the break, so no line ends or starts on one, and
-/// only an item too long for a line of its own breaks between its words,
-/// never parting what `held` keeps together. A piece longer than the
-/// measure stands on its own line, never broken.
-pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    for item in words.split(ITEMS).map(str::trim) {
-        if width(&parted(&line, item, ITEMS)) <= measure {
-            line = parted(&line, item, ITEMS);
-        } else if width(item) <= measure {
-            lines.push(std::mem::replace(&mut line, item.to_owned()));
-        } else {
-            // An item's first piece is still parted from the line by its
-            // dot; the rest of its pieces by spaces.
-            let mut between = ITEMS;
-            for piece in held(item) {
-                if !line.is_empty() && width(&parted(&line, &piece, between)) > measure {
-                    lines.push(std::mem::take(&mut line));
-                }
-                line = parted(&line, &piece, between);
-                between = " ";
-            }
-        }
-    }
-    if !line.is_empty() || lines.is_empty() {
-        lines.push(line);
-    }
-    lines
-}
-
-/// `line` with `more` after it, `between` them where both say something.
-fn parted(line: &str, more: &str, between: &str) -> String {
-    match (line.is_empty(), more.is_empty()) {
-        (true, _) => more.to_owned(),
-        (false, true) => line.to_owned(),
-        (false, false) => format!("{line}{between}{more}"),
-    }
-}
-
-/// The longest a unit after a figure is, as `GB` and `ms` are, so a word
-/// after a figure that isn't its unit can part from it.
-const UNIT: usize = 3;
-
-/// What a break mustn't part: a figure and its unit (`412 GB`), and
-/// `\u{d7}` and what it joins (`1272 \u{d7} 768`), each as one piece.
-fn held(words: &str) -> Vec<String> {
-    let figure = |word: &str| word.starts_with(|first: char| first.is_ascii_digit());
-    let unit = |word: &str| !figure(word) && width(word) <= UNIT;
-    let mut pieces: Vec<String> = Vec::new();
-    let mut was: Option<&str> = None;
-    for word in words.split_whitespace() {
-        let joins = word == "\u{d7}"
-            || was.is_some_and(|was| was == "\u{d7}" || (figure(was) && unit(word)));
-        match pieces.last_mut() {
-            Some(last) if joins => {
-                last.push(' ');
-                last.push_str(word);
-            }
-            _ => pieces.push(word.to_owned()),
-        }
-        was = Some(word);
-    }
-    pieces
 }
 
 /// One row of a list: the mark it wears and in what role, its name, the
@@ -374,7 +296,10 @@ pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Roo
         if beside {
             lines.push(padded(label, pen.role("muted", label), column, false) + &first);
         } else {
-            lines.push(pen.role("muted", label));
+            let label = room
+                .cells()
+                .map_or_else(|| (*label).to_owned(), |cells| shortened(label, cells));
+            lines.push(pen.role("muted", &label));
             lines.push(format!("{inset}{first}"));
         }
         lines.extend(values.map(|line| format!("{inset}{line}")));
@@ -397,6 +322,65 @@ pub enum Align {
 /// stands alone; into a pipe the labels still head it, and nothing is
 /// cut.
 pub fn table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<String> {
+    table_in(columns, rows, pen, Room::Unbounded, &[])
+}
+
+/// A table fitted to the room: where it's too wide, its columns go in
+/// the order `gives_way` names them by place, least useful first, and
+/// what's still too wide has its last column's words cut at a whole word.
+/// The first column names each record, so it never goes. Into a pipe
+/// nothing goes.
+pub fn table_in(
+    columns: &[(&str, Align)],
+    rows: &[Vec<String>],
+    pen: &Pen,
+    room: Room,
+    gives_way: &[usize],
+) -> Vec<String> {
+    let Some(cells) = room.cells() else {
+        return set_table(columns, rows, pen);
+    };
+    let mut kept: Vec<usize> = (0..columns.len()).collect();
+    let across = |kept: &[usize]| {
+        kept.iter()
+            .map(|at| {
+                rows.iter()
+                    .filter_map(|row| row.get(*at))
+                    .map(|cell| width(cell))
+                    .chain([width(columns[*at].0)])
+                    .max()
+                    .unwrap_or(0)
+            })
+            .sum::<usize>()
+            + GAP * kept.len().saturating_sub(1)
+    };
+    for going in gives_way.iter().filter(|at| **at > 0) {
+        if across(&kept) <= cells {
+            break;
+        }
+        kept.retain(|at| at != going);
+    }
+    let columns_kept: Vec<(&str, Align)> = kept.iter().map(|at| columns[*at]).collect();
+    let mut rows_kept: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            kept.iter()
+                .map(|at| row.get(*at).cloned().unwrap_or_default())
+                .collect()
+        })
+        .collect();
+    let over = across(&kept).saturating_sub(cells);
+    if over > 0 && kept.len() > 1 {
+        let last = kept.len() - 1;
+        let before = across(&kept[..last]) + GAP;
+        for row in &mut rows_kept {
+            row[last] = cut(&row[last], cells.saturating_sub(before).max(1));
+        }
+    }
+    set_table(&columns_kept, &rows_kept, pen)
+}
+
+fn set_table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<String> {
     let widths: Vec<usize> = columns
         .iter()
         .enumerate()
@@ -516,12 +500,37 @@ mod tests {
     }
 
     #[test]
-    fn a_name_gives_way_at_a_whole_word_and_says_so() {
-        // A word past the room keeps its first word whole, since what
-        // names a record is never cut mid-word.
-        assert_eq!(cut("switch the system now", 12), "switch the\u{2026}");
-        assert_eq!(cut("switch the system now", 3), "switch\u{2026}");
-        assert_eq!(cut("status", 6), "status");
+    fn a_narrow_table_gives_way_by_column_least_useful_first() {
+        let columns = [
+            ("Machine", Align::Left),
+            ("Builds", Align::Right),
+            ("State", Align::Left),
+        ];
+        let rows = [vec![
+            "second-one".to_owned(),
+            "120".to_owned(),
+            "building now".to_owned(),
+        ]];
+        let pen = Pen::plain();
+        assert_eq!(
+            table_in(&columns, &rows, &pen, Room::Cells(80), &[1]),
+            [
+                "MACHINE     BUILDS  STATE",
+                "second-one     120  building now"
+            ]
+        );
+        assert_eq!(
+            table_in(&columns, &rows, &pen, Room::Cells(24), &[1]),
+            ["MACHINE     STATE", "second-one  building now"]
+        );
+        assert_eq!(
+            table_in(&columns, &rows, &pen, Room::Cells(22), &[1]),
+            ["MACHINE     STATE", "second-one  building\u{2026}"]
+        );
+        assert_eq!(
+            table_in(&columns, &rows, &pen, Room::Unbounded, &[1]),
+            table(&columns, &rows, &pen)
+        );
     }
 
     #[test]
@@ -568,18 +577,6 @@ mod tests {
                 "first            3  idle",
                 "second-one     120  building",
             ]
-        );
-    }
-
-    #[test]
-    fn words_wrap_at_items_first_and_hold_a_figure_to_its_unit() {
-        assert_eq!(
-            wrapped("412 GB free \u{b7} nvme0n1 \u{b7} Samsung", 22),
-            ["412 GB free \u{b7} nvme0n1", "Samsung"]
-        );
-        assert_eq!(
-            wrapped("a screen 1272 \u{d7} 768 wide", 12),
-            ["a screen", "1272 \u{d7} 768", "wide"]
         );
     }
 

@@ -38,6 +38,10 @@ const NAMES: usize = 30;
 /// The inset of a group's entries under its label.
 const INSET: usize = 2;
 
+/// The fewest cells an entry's words are set in beside its name; fewer,
+/// and they go under it.
+const FEWEST_WORDS: usize = 24;
+
 fn entry(name: &str, words: &str) -> Entry {
     Entry {
         name: name.to_owned(),
@@ -139,12 +143,18 @@ impl Help {
     }
 
     /// Its first line: the name as the title, what it's for in muted.
-    fn head(&self, pen: &Pen) -> String {
-        format!(
-            "{}  {}",
-            pen.title(&self.name),
-            pen.role("muted", &self.about)
-        )
+    fn head(&self, pen: &Pen, measure: usize) -> String {
+        let lead = layout::width(&self.name) + GAP;
+        let about = layout::hung(&self.about, lead, Room::Cells(measure));
+        let about: Vec<String> = about
+            .split('\n')
+            .map(|line| {
+                let words = line.trim_start();
+                let pad = &line[..line.len() - words.len()];
+                format!("{pad}{}", pen.role("muted", words))
+            })
+            .collect();
+        format!("{}  {}", pen.title(&self.name), about.join("\n"))
     }
 
     /// As a person reads it: set at the reading measure, whatever the
@@ -165,7 +175,7 @@ impl Help {
             .max()
             .unwrap_or(0)
             + GAP;
-        let mut blocks = vec![vec![self.head(pen)]];
+        let mut blocks = vec![vec![self.head(pen, measure)]];
         for (label, entries) in groups {
             if entries.is_empty() {
                 continue;
@@ -203,7 +213,7 @@ impl Help {
             .max()
             .unwrap_or(0)
             + GAP;
-        let mut blocks = vec![vec![self.head(pen)]];
+        let mut blocks = vec![vec![self.head(pen, room.measure())]];
         if !self.examples.is_empty() {
             let mut block = vec![pen.label("Examples")];
             block.extend(
@@ -252,24 +262,37 @@ impl Help {
 
 /// One entry's lines: its name, then its words in muted at the column,
 /// wrapped under themselves; a name past the column puts its words on
-/// the line under it.
+/// the line under it. Where the column would leave the words fewer than
+/// `FEWEST_WORDS` cells, as in a narrow terminal, every entry's words go
+/// under its name, two cells in, rather than down a sliver beside it.
 fn entered(entry: &Entry, column: usize, measure: usize, pen: &Pen) -> Vec<String> {
     let inset = " ".repeat(INSET);
+    let column = if measure.saturating_sub(INSET + column) < FEWEST_WORDS {
+        GAP
+    } else {
+        column
+    };
     let at = INSET + column;
     let words = layout::wrapped(&entry.words, measure.saturating_sub(at).max(1));
-    let name = pen.role("text", &entry.name);
     let name_width = layout::width(&entry.name);
     let under = " ".repeat(at);
     let mut lines = Vec::new();
     let mut words = words.iter().filter(|line| !line.is_empty());
     if name_width + GAP <= column {
+        let name = pen.role("text", &entry.name);
         let pad = " ".repeat(column - name_width);
         match words.next() {
             Some(first) => lines.push(format!("{inset}{name}{pad}{}", pen.role("muted", first))),
             None => lines.push(format!("{inset}{name}")),
         }
     } else {
-        lines.push(format!("{inset}{name}"));
+        // A name too long for a line of its own wraps at its words, each
+        // further line under its first, as an example's command does.
+        let named = layout::wrapped(&entry.name, measure.saturating_sub(INSET).max(1));
+        lines.extend(named.iter().enumerate().map(|(at, line)| {
+            let lead = if at == 0 { INSET } else { INSET + GAP };
+            format!("{}{}", " ".repeat(lead), pen.role("text", line))
+        }));
     }
     lines.extend(words.map(|line| format!("{under}{}", pen.role("muted", line))));
     lines
@@ -325,7 +348,7 @@ mod tests {
     #[test]
     fn words_too_long_for_the_measure_wrap_under_themselves() {
         let help = Help::new("x", "y").command("go", "one two three four five six");
-        let text = help.text(&Pen::plain(), Room::Cells(48));
+        let text = help.text(&Pen::plain(), Room::Cells(54));
         assert!(
             text.contains("  go                         one two three four\n"),
             "{text}"
@@ -334,6 +357,34 @@ mod tests {
             text.contains("\n                             five six\n"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn a_narrow_terminal_puts_words_under_their_names() {
+        let help = Help::new("launcher", "any place, row or drawer the launcher holds")
+            .example(
+                "launcher show machine disk --drawers",
+                "the disk and its drawers",
+            )
+            .command("go", "one two three four five six");
+        let text = help.text(&Pen::plain(), Room::Cells(30));
+        assert!(
+            text.starts_with(
+                "launcher  any place, row or\n          drawer the\n          launcher holds\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "\n  launcher show machine\n    disk --drawers\n    the disk and its drawers\n"
+            ),
+            "{text}"
+        );
+        assert!(
+            text.contains("\n  go\n    one two three four\n    five six\n"),
+            "{text}"
+        );
+        assert!(text.lines().all(|line| layout::width(line) <= 30), "{text}");
     }
 
     #[test]

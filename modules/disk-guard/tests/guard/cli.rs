@@ -11,7 +11,7 @@ use disk_guard::units::{Size, Span};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use terminal_kit::{Context, Environment, Exit};
+use terminal_kit::{Context, Environment, Exit, Room, layout};
 
 fn words(line: &str) -> Vec<String> {
     line.split_whitespace().map(String::from).collect()
@@ -140,8 +140,14 @@ impl Machine {
     /// Runs a command line as the kit would, into a pipe: its exit, its
     /// answer, and its notes with the failure's words after them.
     fn run(&self, line: &str) -> (i32, String, String) {
+        self.run_in(line, Room::Unbounded)
+    }
+
+    /// Runs a command line as `run` does, laid out for `room`.
+    fn run_in(&self, line: &str, room: Room) -> (i32, String, String) {
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let context = Context::new(Environment::of([false; 3], &[]), words(line), &[]).unwrap();
+        let mut context = Context::new(Environment::of([false; 3], &[]), words(line), &[]).unwrap();
+        context.room = room;
         let command = parse(&context.args).unwrap();
         let ended = run(command, &self.env, &context, &mut out, &mut err);
         let mut err = String::from_utf8(err).unwrap();
@@ -271,7 +277,7 @@ fn status_says_what_a_second_version_guard_says_in_words() {
         "{out}"
     );
     assert!(
-        out.contains("  5 s ago: Cleared a Rust build, ~/src/a/target (4.0 GiB)."),
+        out.contains("  5 s ago  Cleared a Rust build, ~/src/a/target (4.0 GiB)."),
         "{out}"
     );
     assert!(out.contains("Cleared a log, ~/c.log"), "{out}");
@@ -299,15 +305,59 @@ fn status_says_what_holds_the_most_in_words() {
     let (code, out, _) = machine.run("status");
     assert_eq!(code, 0);
     let said = [
-        "  holds the most:",
-        "    The worktree a holds 40.0 GiB; a build is using it (process 7).",
-        "    ~/b holds 20.0 GiB, of which 2.0 GiB can be cleared now.",
-        "    ~/c holds 10.0 GiB.",
-        "",
+        "  HOLDS THE MOST",
+        "  The worktree a holds 40.0 GiB; a build is using it (process 7).",
+        "  ~/b holds 20.0 GiB, of which 2.0 GiB can be cleared now.",
+        "  ~/c holds 10.0 GiB.",
     ]
     .join("\n");
     assert!(out.contains(&said), "{out}");
     assert!(!out.contains("~/d"), "three at most: {out}");
+}
+
+// Its sentences ran to 200 characters and its paths to 120, so in a
+// narrow terminal every line folded back to column 0 and the guards'
+// blocks no longer read as theirs.
+#[test]
+fn status_fits_a_narrow_terminal_without_folding() {
+    let machine = Machine::new();
+    let at = wall() - 5.0;
+    let path = "~/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261029-6QB521/tmp/\
+                aquiferadm-tx-state-4074137-48";
+    let says = "The disk is filling, with 150.0 GiB free, and at this rate it's nearly full \
+                in 2 h; the guard cleared 4.2 GiB of caches and builds nobody is using, \
+                and the rest is held by worktrees.";
+    let held = format!(
+        "The worktree {path} holds 40.0 GiB; you keep it: a hold on it says the run is \
+         still being read."
+    );
+    let status = serde_json::json!({
+        "version": 2, "heartbeat": at, "says": says,
+        "filesystems": [{ "path": "/home", "band": "filling", "free": 161_061_273_600_u64,
+                          "total": 1_073_741_824_000_u64, "forecast": 7200.0 }],
+        "cleared": [{ "at": at, "says": format!("Cleared {path} (16.0 KiB of files).") }],
+        "holders_at": at, "holders": [{ "bytes": 1, "says": held }],
+    });
+    write_file(&machine.env.status, &status.to_string());
+    for cells in [60, 100] {
+        let (code, out, _) = machine.run_in("status", Room::Cells(cells));
+        assert_eq!(code, 0);
+        for line in out.lines() {
+            assert!(
+                layout::width(line) <= cells,
+                "at {cells} columns, {line:?} runs past the width in\n{out}"
+            );
+            assert!(
+                line.is_empty() || line.starts_with("  ") || line.starts_with("user guard"),
+                "at {cells} columns, {line:?} lost its inset in\n{out}"
+            );
+        }
+        assert!(out.contains("150.0 GiB free of 1000.0 GiB"), "{out}");
+        assert!(
+            out.contains("aquiferadm-tx-state-4074137-48"),
+            "the path's end names it: {out}"
+        );
+    }
 }
 
 #[test]
