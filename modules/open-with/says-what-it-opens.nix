@@ -1,8 +1,9 @@
 # A program that runs no scripts of its own, wrapped so its command says
 # what it was given to the desktop's list of files opened lately
 # (recent-files, where the desktop has it) before the program starts. It
-# hands on everything it was given, and recent-files keeps only the files,
-# so the program's options and a web address pass over. A file opened from
+# hands on everything it was given, after `--` so none of it is taken for
+# recent-files' own flags, and recent-files keeps only the files, so the
+# program's options and a web address pass over. A file opened from
 # inside the program goes unsaid; a program that can, says those itself, as
 # Neovim and mpv do.
 {
@@ -29,6 +30,6 @@ symlinkJoin {
   meta = package.meta or { };
   postBuild = ''
     wrapProgram $out/bin/${command} \
-      --run 'if command -v recent-files >/dev/null; then recent-files add ${program} "$@" || true; fi'
+      --run 'if command -v recent-files >/dev/null; then recent-files add ${program} -- "$@" || true; fi'
   '';
 }

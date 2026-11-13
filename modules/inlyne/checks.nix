@@ -201,7 +201,7 @@ onLinux {
         inlyne --version view one.md > version 2>&1 || { cat version; exit 1; }
         grep -q -i inlyne version || { echo "inlyne didn't run: $(cat version)"; exit 1; }
         told=$(if [ -e said ]; then cat said; else echo 'nothing said'; fi)
-        [ "$told" = "add inlyne --version view one.md" ] || { echo "inlyne said: $told"; exit 1; }
+        [ "$told" = "add inlyne -- --version view one.md" ] || { echo "inlyne said: $told"; exit 1; }
         touch $out
       '';
 }

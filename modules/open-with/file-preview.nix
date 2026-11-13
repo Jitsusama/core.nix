@@ -2,7 +2,8 @@
 # chooser of files to ask what a file shows of itself (src/bin/
 # file-preview.rs says how), with poppler's and FFmpeg's programs it draws
 # a PDF's first page and a video's frame with on its path. Its tests are
-# package.nix's, which builds the whole crate.
+# package.nix's, which builds the whole crate. The source is cut from the
+# folder holding the terminal kit too, as package.nix's is.
 {
   lib,
   rustPlatform,
@@ -12,17 +13,20 @@
   poppler-utils,
   ffmpeg-headless,
 }:
-rustPlatform.buildRustPackage (_finalAttrs: {
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "file-preview";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${finalAttrs.src.name}/open-with";
   cargoLock.lockFile = ./Cargo.lock;
   cargoBuildFlags = [
     "--bin"

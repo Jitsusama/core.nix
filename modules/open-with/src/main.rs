@@ -32,6 +32,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use terminal_kit::{Exit, Failure, Help};
 use tokio::net::UnixListener;
 use tokio::sync::oneshot;
 use zbus::object_server::ObjectServer;
@@ -326,26 +327,56 @@ impl Chooser {
     }
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let [qs] = args.as_slice() else {
-        eprintln!("usage: open-with <the qs command>");
-        return ExitCode::from(2);
-    };
-    let Some(runtime) = env::var_os("XDG_RUNTIME_DIR") else {
-        eprintln!("<3>open-with: there's no runtime folder to listen in");
-        return ExitCode::FAILURE;
-    };
+fn help() -> Help {
+    Help::new(
+        "open-with",
+        "the portal's choosers of an app and of files, in the launcher",
+    )
+    .example(
+        "open-with qs",
+        "serves the portal, asking the shell through qs",
+    )
+    .exit(Exit::Failed, "the folder for its sockets couldn't be made")
+    .exit(
+        Exit::Unavailable,
+        "the portal couldn't be served on the session bus",
+    )
+    .exit(Exit::Config, "there's no runtime folder to listen in")
+}
+
+/// It runs as long as its unit does, so it only ends by failing.
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [qs] = context.args.as_slice() else {
+            return Err(
+                Failure::new(Exit::Usage, "open-with takes the qs command alone")
+                    .try_this("open-with --help"),
+            );
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                Failure::new(Exit::Failed, "it couldn't start").because(error.to_string())
+            })?;
+        runtime.block_on(serve(qs))
+    })
+}
+
+async fn serve(qs: &str) -> Result<(), Failure> {
+    let runtime = env::var_os("XDG_RUNTIME_DIR").ok_or_else(|| {
+        Failure::new(Exit::Config, "there's no runtime folder to listen in")
+            .because("XDG_RUNTIME_DIR isn't set")
+    })?;
     let sockets = PathBuf::from(runtime).join("open-with");
-    if let Err(error) = std::fs::DirBuilder::new()
+    std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(&sockets)
-    {
-        eprintln!("<3>open-with: can't make {}: {error}", sockets.display());
-        return ExitCode::FAILURE;
-    }
+        .map_err(|error| {
+            Failure::new(Exit::Failed, format!("{} can't be made", sockets.display()))
+                .because(error.to_string())
+        })?;
     let shell = Arc::new(Shell {
         qs: PathBuf::from(qs),
         sockets,
@@ -363,15 +394,13 @@ async fn main() -> ExitCode {
         Ok(builder) => builder.build().await,
         Err(error) => Err(error),
     };
-    let _connection = match served {
-        Ok(connection) => connection,
-        Err(error) => {
-            eprintln!("<3>open-with: can't serve the portal: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let _connection = served.map_err(|error| {
+        Failure::new(Exit::Unavailable, "the portal can't be served")
+            .because(error.to_string())
+            .try_this("systemctl --user status dbus")
+    })?;
     std::future::pending::<()>().await;
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 #[cfg(test)]

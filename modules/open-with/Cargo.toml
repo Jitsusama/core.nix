@@ -15,5 +15,7 @@ glib = { version = "0.22", features = ["v2_76"] }
 # A picture's width and height, read from its header alone (file-preview).
 imagesize = "0.15"
 serde_json = "1.0"
+# The shape every command of ours takes (docs/commands.md).
+terminal-kit = { path = "../terminal-kit" }
 tokio = { version = "1.53", features = ["macros", "net", "rt", "sync", "time"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }

@@ -30,6 +30,11 @@
 //! they pass 128 MB in all the longest unshown go first. The programs that
 //! make them, poppler's `pdfinfo` and `pdftoppm` and `FFmpeg`'s `ffprobe`
 //! and `ffmpeg`, are found on the path.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit, save that its text is already a line of JSON,
+//! since that's what the chooser reads; `--json` gives `show` and `items`
+//! the schema an answer names, and `serve` keeps its lines as they are.
 
 use std::env;
 use std::fs;
@@ -39,6 +44,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::UNIX_EPOCH;
 
 use serde_json::{Map, Value, json};
+use terminal_kit::{Context, Exit, Failure, Help};
 
 const USAGE: &str =
     "usage: file-preview show PATH | file-preview items FOLDER | file-preview serve";
@@ -62,41 +68,83 @@ const LINE_WIDE: usize = 160;
 const PICTURES: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 const VIDEOS: &[&str] = &["mp4", "m4v", "mkv", "webm", "mov", "avi"];
 
+fn help() -> Help {
+    Help::new("file-preview", "what a file shows of itself in the chooser")
+        .command("show PATH", "a line of JSON: its facts and preview")
+        .command("items FOLDER", "how many items each folder inside shows")
+        .command("serve", "answers show and items, asked a line each")
+        .example("file-preview show notes.md", "its size, change and lines")
+        .example("file-preview items ~", "each folder in home, counted")
+        .exit(Exit::Failed, "it couldn't be read, or its answer said")
+        .exit(Exit::NotFound, "there's nothing at PATH")
+}
+
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let said = match arguments.as_slice() {
-        [verb] if verb == "serve" => return serve(io::stdin().lock(), &mut io::stdout().lock()),
-        [verb, path] if verb == "show" => shown(Path::new(path)),
-        [verb, folder] if verb == "items" => Ok(items_inside(Path::new(folder))),
-        _ => Err(USAGE.to_owned()),
-    };
-    match said {
-        Ok(said) => {
-            let mut out = io::stdout().lock();
-            match writeln!(out, "{said}") {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(_) => ExitCode::FAILURE,
+    terminal_kit::main(
+        &help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.as_slice() {
+            [verb] if verb == "serve" => serve(io::stdin().lock(), &mut io::stdout().lock()),
+            [verb, path] if verb == "show" => {
+                let path = Path::new(path);
+                let said = shown(path).map_err(|error| {
+                    let exit = if path.symlink_metadata().is_err() {
+                        Exit::NotFound
+                    } else {
+                        Exit::Failed
+                    };
+                    Failure::new(exit, format!("{} can't be shown", path.display())).because(error)
+                })?;
+                said_as(context, said, "file-preview.show/1")
             }
-        }
-        Err(error) => {
-            eprintln!("file-preview: {error}");
-            ExitCode::FAILURE
-        }
+            [verb, folder] if verb == "items" => said_as(
+                context,
+                items_inside(Path::new(folder)),
+                "file-preview.items/1",
+            ),
+            [verb, ..] if ["serve", "show", "items"].contains(&verb.as_str()) => Err(
+                asked_wrongly("show takes a PATH, items a FOLDER and serve nothing"),
+            ),
+            [verb, ..] => Err(terminal_kit::flags::unknown(
+                "command",
+                verb,
+                &["show", "items", "serve"],
+            )),
+            [] => Err(asked_wrongly(
+                "file-preview needs a command: show, items or serve",
+            )),
+        },
+    )
+}
+
+fn asked_wrongly(what: &str) -> Failure {
+    Failure::new(Exit::Usage, what).try_this("file-preview --help")
+}
+
+/// Says `said` as its line of JSON, with its `schema` when JSON was asked.
+fn said_as(context: &Context, mut said: Value, schema: &str) -> Result<(), Failure> {
+    let unsaid = |error: io::Error| {
+        Failure::new(Exit::Failed, "it couldn't be said").because(error.to_string())
+    };
+    if context.format().is_json() {
+        said["schema"] = json!(schema);
+        return context.answer(&said).map_err(unsaid);
     }
+    writeln!(io::stdout().lock(), "{said}").map_err(unsaid)
 }
 
 /// Answers each line asked with one of JSON, until what's asked ends.
-fn serve(asked: impl io::BufRead, out: &mut impl Write) -> ExitCode {
+fn serve(asked: impl io::BufRead, out: &mut impl Write) -> Result<(), Failure> {
+    let broke = |error: io::Error| {
+        Failure::new(Exit::Failed, "serving broke off").because(error.to_string())
+    };
     for line in asked.lines() {
-        let Ok(line) = line else {
-            return ExitCode::FAILURE;
-        };
-        let said = answer(&line);
-        if writeln!(out, "{said}").and_then(|()| out.flush()).is_err() {
-            return ExitCode::FAILURE;
-        }
+        let said = answer(&line.map_err(broke)?);
+        writeln!(out, "{said}")
+            .and_then(|()| out.flush())
+            .map_err(broke)?;
     }
-    ExitCode::SUCCESS
+    Ok(())
 }
 
 fn answer(line: &str) -> Value {
@@ -544,7 +592,7 @@ mod tests {
             folder.display()
         );
         let mut out = Vec::new();
-        assert_eq!(serve(asked.as_bytes(), &mut out), ExitCode::SUCCESS);
+        assert!(serve(asked.as_bytes(), &mut out).is_ok());
         let said: Vec<Value> = String::from_utf8(out)
             .unwrap()
             .lines()
