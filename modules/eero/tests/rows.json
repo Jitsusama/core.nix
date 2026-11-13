@@ -3356,7 +3356,7 @@
           "said": "10.0.0.29"
         }
       ],
-      "order": 9216,
+      "order": 11264,
       "place": "eero",
       "side": [
         {
@@ -3396,7 +3396,7 @@
           "said": "10.0.0.40"
         }
       ],
-      "order": 19456,
+      "order": 21504,
       "place": "eero",
       "side": [
         {
@@ -3436,7 +3436,7 @@
           "said": "10.0.0.23"
         }
       ],
-      "order": 4096,
+      "order": 6144,
       "place": "eero",
       "side": [
         {
@@ -3476,7 +3476,7 @@
           "said": "10.0.0.28"
         }
       ],
-      "order": 18432,
+      "order": 20480,
       "place": "eero",
       "side": [
         {
@@ -3516,7 +3516,7 @@
           "said": "10.0.0.20"
         }
       ],
-      "order": 15360,
+      "order": 17408,
       "place": "eero",
       "side": [
         {
@@ -3556,7 +3556,7 @@
           "said": "10.0.0.45"
         }
       ],
-      "order": 6144,
+      "order": 8192,
       "place": "eero",
       "side": [
         {
@@ -3596,7 +3596,7 @@
           "said": "10.0.0.99"
         }
       ],
-      "order": 3072,
+      "order": 5120,
       "place": "eero",
       "side": [
         {
@@ -3636,7 +3636,7 @@
           "said": "10.0.0.30"
         }
       ],
-      "order": 16384,
+      "order": 18432,
       "place": "eero",
       "side": [
         {
@@ -3676,7 +3676,7 @@
           "said": "10.0.0.26"
         }
       ],
-      "order": 11264,
+      "order": 13312,
       "place": "eero",
       "side": [
         {
@@ -3719,7 +3719,7 @@
           "said": "10.0.0.47"
         }
       ],
-      "order": 17408,
+      "order": 19456,
       "place": "eero",
       "side": [
         {
@@ -3759,7 +3759,7 @@
           "said": "10.0.0.24"
         }
       ],
-      "order": 7168,
+      "order": 9216,
       "place": "eero",
       "side": [
         {
@@ -3799,7 +3799,7 @@
           "said": "10.0.0.31"
         }
       ],
-      "order": 8192,
+      "order": 10240,
       "place": "eero",
       "side": [
         {
@@ -3839,7 +3839,7 @@
           "said": "10.0.0.25"
         }
       ],
-      "order": 12288,
+      "order": 14336,
       "place": "eero",
       "side": [
         {
@@ -3879,7 +3879,7 @@
           "said": "10.0.0.33"
         }
       ],
-      "order": 14336,
+      "order": 16384,
       "place": "eero",
       "side": [
         {
@@ -3919,7 +3919,7 @@
           "said": "10.0.0.112"
         }
       ],
-      "order": 13312,
+      "order": 15360,
       "place": "eero",
       "side": [
         {
@@ -4001,7 +4001,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 5120,
+      "order": 7168,
       "place": "eero",
       "side": [
         {
@@ -4038,7 +4038,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 10240,
+      "order": 12288,
       "place": "eero",
       "side": [
         {
@@ -4078,7 +4078,7 @@
           "said": "v7.17.4-5"
         }
       ],
-      "order": 2048,
+      "order": 4096,
       "place": "eero",
       "side": [
         {
@@ -4110,7 +4110,7 @@
           "said": "none on now"
         }
       ],
-      "order": 20480,
+      "order": 22528,
       "place": "eero",
       "side": [
         {
@@ -4142,7 +4142,7 @@
           "said": "none on now"
         }
       ],
-      "order": 21504,
+      "order": 23552,
       "place": "eero",
       "side": [
         {
@@ -4174,7 +4174,7 @@
           "said": "none on now"
         }
       ],
-      "order": 22528,
+      "order": 24576,
       "place": "eero",
       "side": [
         {
@@ -4182,6 +4182,100 @@
         }
       ],
       "thing": "eero:profile:3003"
+    }
+  },
+  {
+    "key": "row:eero:speedtest",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "ask": {
+            "act": "speedtest",
+            "ask": "act"
+          },
+          "key": "verb:eero:speedtest"
+        }
+      ],
+      "depth": 1,
+      "glyph": "traffic",
+      "hue": "action",
+      "key": "row:eero:speedtest",
+      "kind": "act",
+      "name": "Run a Speed Test",
+      "note": [
+        {
+          "said": "eero measures the internet from the gateway node"
+        }
+      ],
+      "order": 2048,
+      "parent": "row:eero:internet",
+      "place": "eero",
+      "side": [],
+      "thing": "verb:eero:speedtest"
+    }
+  },
+  {
+    "key": "row:eero:sqm",
+    "kind": "row",
+    "row": {
+      "acts": [
+        {
+          "ask": {
+            "act": "sqm",
+            "ask": "act",
+            "on": false
+          },
+          "becomes": {
+            "depth": 1,
+            "glyph": "traffic",
+            "held": {
+              "on": false
+            },
+            "hue": "machine",
+            "key": "row:eero:sqm",
+            "kind": "switch",
+            "name": "Optimize for Conferencing and Gaming",
+            "note": [
+              {
+                "said": "what the internet carries, queued so a call stays quick"
+              }
+            ],
+            "parent": "row:eero:internet",
+            "place": "eero",
+            "side": [
+              {
+                "said": "off"
+              }
+            ],
+            "thing": "eero:sqm"
+          },
+          "key": "verb:eero:sqm-off"
+        }
+      ],
+      "depth": 1,
+      "glyph": "traffic",
+      "held": {
+        "on": true
+      },
+      "hue": "machine",
+      "key": "row:eero:sqm",
+      "kind": "switch",
+      "name": "Optimize for Conferencing and Gaming",
+      "note": [
+        {
+          "said": "what the internet carries, queued so a call stays quick"
+        }
+      ],
+      "order": 3072,
+      "parent": "row:eero:internet",
+      "place": "eero",
+      "side": [
+        {
+          "said": "on"
+        }
+      ],
+      "thing": "eero:sqm"
     }
   }
 ]

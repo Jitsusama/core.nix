@@ -29,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
+use crate::acts::{self, Act};
 use crate::api;
 use crate::cloud::{self, Failure};
 use crate::day;
@@ -68,6 +69,11 @@ pub fn run() -> Result<(), String> {
         }
         match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
             Ok(Call::Read) => daemon.schedule.ask(),
+            // Done before the next cycle, which reads what it changed.
+            Ok(Call::Act(asked)) => {
+                let done = daemon.act(asked.act);
+                listeners.answer_act(&asked, done);
+            }
             Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
         }
@@ -332,19 +338,25 @@ impl Daemon {
         }
     }
 
+    /// Does an act the shell asked for, and has the network read at once
+    /// after, so the row it changed is served as eero now says it. A
+    /// session eero refuses is let go, as a read's is.
+    fn act(&mut self, act: Act) -> Result<(), String> {
+        let done = session(&mut self.cloud, &mut self.network)
+            .and_then(|(cloud, network)| acts::done(cloud, &network, act));
+        self.schedule.ask();
+        done.map_err(|failure| {
+            let said = failure.to_string();
+            if matches!(failure, Failure::SignedOut(_)) {
+                self.cloud = None;
+            }
+            eprintln!("eero: {act:?} wasn't done: {said}");
+            said
+        })
+    }
+
     fn read(&mut self, read: Read) -> Result<(), Failure> {
-        let opened = match self.cloud.take() {
-            Some(cloud) => cloud,
-            None => cloud::Cloud::signed_in()?,
-        };
-        let cloud = self.cloud.insert(opened);
-        if self.network.is_none() {
-            self.network = api::networks(&cloud.get(api::ACCOUNT)?).into_iter().next();
-        }
-        let network = self
-            .network
-            .clone()
-            .ok_or_else(|| Failure::Refused("eero names no network on the account".into()))?;
+        let (cloud, network) = session(&mut self.cloud, &mut self.network)?;
         let answers = &mut self.answers;
         let nodes = read::node_ids(&answers.network);
         let profiles = read::profile_ids(&answers.profiles);
@@ -391,6 +403,26 @@ impl Daemon {
         }
         Ok(())
     }
+}
+
+/// The session eero's asked under, opened once, and the home network's
+/// path, such as `/2.2/networks/1001`, asked of the account once.
+fn session<'a>(
+    kept: &'a mut Option<cloud::Cloud>,
+    network: &mut Option<String>,
+) -> Result<(&'a mut cloud::Cloud, String), Failure> {
+    let opened = match kept.take() {
+        Some(cloud) => cloud,
+        None => cloud::Cloud::signed_in()?,
+    };
+    let cloud = kept.insert(opened);
+    if network.is_none() {
+        *network = api::networks(&cloud.get(api::ACCOUNT)?).into_iter().next();
+    }
+    let path = network
+        .clone()
+        .ok_or_else(|| Failure::Refused("eero names no network on the account".into()))?;
+    Ok((cloud, path))
 }
 
 /// A look at the internet from this machine, at the gateway node of the

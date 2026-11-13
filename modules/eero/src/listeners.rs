@@ -8,7 +8,9 @@
 //! `home-network`, the model whole under `network`. A watch is answered
 //! with it and told each change; a watch ahead of that key is someone
 //! looking, so while one holds, the daemon reads at its fast pace; an ask
-//! `read` asks for the network to be read now.
+//! `read` asks for the network to be read now, and an ask `act` for
+//! something done to it (acts.rs), which the daemon answers once eero has
+//! done it, so a refusal is said in its place.
 //!
 //! It also serves the Home Network's rows ready to draw, as every daemon
 //! serves its place's (served.rs): a get, list or watch of kind `row` or
@@ -31,11 +33,12 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::acts::Act;
 use crate::model::HomeNetwork;
 use crate::served::{self, Said, Vocabularies};
 
 /// What a listener did, which wakes the daemon.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Call {
     Joined,
     Left,
@@ -43,6 +46,18 @@ pub enum Call {
     Looked,
     /// It asked for the network to be read now.
     Read,
+    /// It asked for something done to the network, which the daemon
+    /// answers (`Listeners::answer_act`) once eero has done it.
+    Act(Asked),
+}
+
+/// An act a listener asked for: who asked, the ask's id its answer is
+/// said under, and the act.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Asked {
+    pub listener: u64,
+    pub id: Value,
+    pub act: Act,
 }
 
 /// The kind of the one record, and its key.
@@ -205,6 +220,27 @@ impl Listeners {
         });
     }
 
+    /// Answers an act a listener asked for, done (`Ok`) or refused with
+    /// why, as every daemon answers one: `done`, or an error the shell
+    /// says in its own words. One gone since it asked hears nothing.
+    pub fn answer_act(&self, asked: &Asked, done: Result<(), String>) {
+        let answer = match done {
+            Ok(()) => json!({"id": asked.id, "done": true}),
+            Err(why) => json!({"id": asked.id, "error": {"code": "refused", "message": why}}),
+        };
+        let mut hub = self.hub();
+        let Some(listener) = hub
+            .listeners
+            .iter_mut()
+            .find(|listener| listener.id == asked.listener)
+        else {
+            return;
+        };
+        if write_line(&mut listener.stream, &answer.to_string()).is_err() {
+            let _ = listener.stream.shutdown(Shutdown::Both);
+        }
+    }
+
     /// Takes a new connection and answers what it asks until it goes.
     fn join(&self, stream: UnixStream, wake: Sender<Call>) {
         if stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
@@ -304,6 +340,20 @@ impl Listeners {
                 }
             }
             Some("read") => (json!({"id": said}), Some(Call::Read)),
+            // Answered once it's done, by the daemon, rather than here.
+            Some("act") => match Act::asked(&asked) {
+                Ok(act) => {
+                    return Some(Call::Act(Asked {
+                        listener: id,
+                        id: said,
+                        act,
+                    }));
+                }
+                Err(why) => (
+                    json!({"id": said, "error": {"code": "bad-act", "message": why}}),
+                    None,
+                ),
+            },
             _ => (
                 json!({"id": said, "error": "the eero daemon doesn't know that ask"}),
                 None,
@@ -541,6 +591,68 @@ mod tests {
         drop((stream, reader));
         assert_eq!(woken.recv(), Ok(Call::Left), "leaving wakes the daemon");
         assert!(!listeners.listening(), "nobody looks once it's gone");
+    }
+
+    #[test]
+    fn an_act_is_answered_once_the_daemon_has_done_it() {
+        let (listeners, woken, path) = listening("acts");
+        let (mut stream, mut reader) = connected(&path);
+        assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+        ask(
+            &mut stream,
+            &json!({"id": "act-1", "ask": "act", "act": "sqm", "on": true}),
+        );
+        let Ok(Call::Act(asked)) = woken.recv() else {
+            panic!("the act wakes the daemon to do it");
+        };
+        assert_eq!(
+            asked.act,
+            Act::Conferencing(true),
+            "the act is the one asked"
+        );
+        listeners.answer_act(&asked, Err("eero is busy".into()));
+
+        assert_eq!(
+            read(&mut reader),
+            json!({"id": "act-1", "error": {"code": "refused", "message": "eero is busy"}}),
+            "the act is answered with what the daemon heard"
+        );
+        ask(
+            &mut stream,
+            &json!({"id": "act-2", "ask": "act", "act": "speedtest"}),
+        );
+        let Ok(Call::Act(asked)) = woken.recv() else {
+            panic!("the act wakes the daemon to do it");
+        };
+        listeners.answer_act(&asked, Ok(()));
+        assert_eq!(
+            read(&mut reader),
+            json!({"id": "act-2", "done": true}),
+            "an act done is answered done"
+        );
+    }
+
+    #[test]
+    fn an_act_eero_has_none_of_is_answered_at_once() {
+        let (_listeners, woken, path) = listening("bad-acts");
+        let (mut stream, mut reader) = connected(&path);
+        assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+        ask(
+            &mut stream,
+            &json!({"id": "act-1", "ask": "act", "act": "reboot"}),
+        );
+
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "bad-act",
+            "an act eero hasn't is refused by the daemon itself"
+        );
+        assert!(
+            woken.try_recv().is_err(),
+            "an act refused doesn't wake the daemon"
+        );
     }
 
     #[test]
