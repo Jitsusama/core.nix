@@ -49,9 +49,10 @@ use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 
 use crate::parts::{self, Look};
-use crate::rows::{self, Words};
+use crate::rows;
 use crate::service::{Ask, Watching};
 use crate::state::State;
+use crate::words::Words;
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
@@ -647,7 +648,7 @@ mod tests {
             "wifi:join",
             "wifi:refused",
         ];
-        let mut things: Vec<Value> = crate::rows::launchers_words()["things"]
+        let mut things: Vec<Value> = crate::words::launchers_words()["things"]
             .as_array()
             .into_iter()
             .flatten()

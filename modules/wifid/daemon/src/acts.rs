@@ -22,8 +22,8 @@ use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::face::error;
-use crate::rows::Words;
 use crate::service::{Account, Ask, Refused, Stage, stopping};
+use crate::words::Words;
 
 /// How far ahead of the shell reading them a join's steps may get.
 const STEPS: usize = 8;
@@ -333,7 +333,7 @@ mod tests {
     }
 
     fn words() -> Words {
-        Words::read(&crate::rows::launchers_words()).expect("Wi-Fi's words")
+        Words::read(&crate::words::launchers_words()).expect("Wi-Fi's words")
     }
 
     /// Joins Lantern, the main loop telling `told` back.

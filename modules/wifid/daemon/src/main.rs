@@ -46,6 +46,7 @@ mod store;
 mod supplicant;
 mod syntax;
 mod vault;
+mod words;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};

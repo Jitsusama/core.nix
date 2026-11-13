@@ -1542,7 +1542,7 @@ pub(crate) mod tests {
     /// One word as the launcher's vocabulary says it: a thing's name, or
     /// one of its said words.
     fn launchers(id: &str, word: &str) -> String {
-        let vocabulary = crate::rows::launchers_words();
+        let vocabulary = crate::words::launchers_words();
         let thing = vocabulary["things"]
             .as_array()
             .and_then(|things| {
@@ -2040,7 +2040,7 @@ pub(crate) mod tests {
     /// part.
     #[test]
     fn the_launchers_vocabulary_has_every_parts_words() {
-        let words = Words::read(&crate::rows::launchers_words()).expect("every word is there");
+        let words = Words::read(&crate::words::launchers_words()).expect("every word is there");
         let detail = lantern();
         let mut look = Look::default();
         look.follow(&detail, NOW);
