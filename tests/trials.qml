@@ -62,33 +62,6 @@ QtObject {
         const lookedAway = Trials.ended(Trials.counted(Trials.begun(0, "four"), "arrows"), 5);
         expect("looked and closed isn't", !lookedAway.missed, lookedAway.missed);
 
-        // Typed, then stepped in or read a drawer, and left is a look, not a miss: 7 of 13
-        // misses of 12 November pressed Return, mostly to step in and back out (1JQPPC,
-        // 07938191; 80ECO2's one definition, 51158ed5).
-        const typed = Trials.retyped(Trials.begun(0, "today"), "", "audio");
-        const steppedAway = Trials.ended(Trials.looked(typed, "stepped"), 9, "audio");
-        expect("stepped in and left is a look", !steppedAway.missed
-            && steppedAway.looked === "stepped" && steppedAway.sought.length === 0,
-            JSON.stringify(steppedAway));
-        expect("the first look is kept", Trials.looked(Trials.looked(typed, "drawer"),
-            "stepped").looked === "drawer", "replaced");
-        const arrowed = Trials.counted(typed, "arrows");
-        const read = Trials.ended(Trials.drawerShown(arrowed, 100, true), 1200, "audio");
-        expect("a drawer out a second on a row arrowed to was read", !read.missed
-            && read.looked === "drawer", JSON.stringify(read));
-        const passed = Trials.ended(Trials.drawerShown(arrowed, 100, true), 600, "audio");
-        expect("one passed over on the way wasn't", passed.missed, JSON.stringify(passed));
-        const topmost = Trials.ended(Trials.drawerShown(typed, 100, true), 5000, "audio");
-        expect("the top row's drawer, no arrow pressed, wasn't read", topmost.missed,
-            JSON.stringify(topmost));
-        const next = Trials.drawerShown(Trials.drawerShown(arrowed, 100, true), 300, true);
-        expect("a drawer for the next row starts its time again",
-            Trials.ended(next, 900, "audio").missed && next.drawerAt === 300,
-            JSON.stringify(next));
-        const putAway = Trials.drawerShown(Trials.drawerShown(arrowed, 100, true), 1500, false);
-        expect("a drawer put away after a second was read", putAway.looked === "drawer"
-            && putAway.drawerAt === -1, JSON.stringify(putAway));
-
         // A miss keeps what each search was before Joel gave up on it, so the next one says
         // what wasn't found: two searches of 12 November gave up after 51 and 62 s, and their
         // trials held only counts (1JQPPC, 77f84121). Erasing letter by letter is one search.

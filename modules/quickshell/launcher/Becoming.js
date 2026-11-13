@@ -72,16 +72,6 @@ function nextDue(holds, now, within) {
     return ats.length === 0 ? -1 : Math.max(0, Math.min(...ats));
 }
 
-// What `act` did, as words.json's `did` says it, else `done`: a daemon's
-// own word for an act is never said to Joel (PN2VZC, 2026-11-12: "Optimize
-// for Conferencing and Gaming not sqm yet", and Power's "not
-// charge-limit yet").
-function did(words, act, done) {
-    const known = words ?? {};
-    // Its own words alone, as Qt's engine has no Object.hasOwn.
-    return Object.keys(known).includes(act) ? known[act] : done;
-}
-
 // What the foot says of a hold taken back, in the order the foot's keys are
 // given, Return's end first: why, muted, then the failed mark beside what
 // wasn't done, in the alert (VKCF3Z, 2026-11-07 [1150c969]), as "Home-5G not

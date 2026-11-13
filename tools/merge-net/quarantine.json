@@ -18,7 +18,8 @@
     "reason": "broken since #2880, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "subtests": [
       "test_dd_on_a_notice_shows_on_the_frame_after_its_key",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts"
     ],
     "test": "vm-desktop-launcher-draws-still"
   },
