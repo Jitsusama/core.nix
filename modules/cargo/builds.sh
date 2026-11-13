@@ -81,6 +81,12 @@ attach() {
     resize2fs "$loop" >/dev/null 2>&1 || true
   else
     mount -o remount,noatime,discard "$folder"
+    # A loop device keeps the size its file had when attached, so an image
+    # grown while mounted, as at a switch, is read again and its
+    # filesystem grown online; otherwise the room came only at a reboot.
+    loop=$(findmnt -n -o SOURCE --target "$folder")
+    losetup -c "$loop"
+    resize2fs "$loop" >/dev/null 2>&1 || true
   fi
   # One trim hands back what was freed before discard was on, as in an
   # image made with every byte reserved, which older machines hold.
