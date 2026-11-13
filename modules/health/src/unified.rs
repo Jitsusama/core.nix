@@ -29,6 +29,13 @@ const LEVELS: [(&str, u8); 5] = [
     ("Debug", 7),
 ];
 
+/// The subsystem the system's name lookup, libinfo, logs under from inside
+/// whichever program asked it. sshd, sshd-session and sshd-auth each ask it
+/// of every connection's address, and its probe failing as it sorts them,
+/// "send failed: Invalid argument", would otherwise count as theirs, under
+/// security, hundreds of times an hour on a Mac other machines reach.
+const NAME_LOOKUP: &str = "com.apple.network.libinfo";
+
 /// How `log` writes a moment: local time, to the microsecond, with its
 /// offset.
 const WRITTEN: &str = "%Y-%m-%d %H:%M:%S%.f%z";
@@ -56,8 +63,11 @@ pub fn parse(line: &str) -> Option<Entry> {
         .map_or(6, |(_, priority)| *priority);
     let image = text("processImagePath").unwrap_or_default();
     let kernel = image == "/kernel";
+    let lookup = text("subsystem") == Some(NAME_LOOKUP);
     let thing = if kernel {
         "kernel".to_owned()
+    } else if lookup {
+        "libinfo".to_owned()
     } else {
         Path::new(image).file_name().map_or_else(
             || "unnamed".to_owned(),
@@ -69,7 +79,7 @@ pub fn parse(line: &str) -> Option<Entry> {
         priority,
         thing,
         message: text("eventMessage").unwrap_or_default().to_owned(),
-        ran_in: app_of(image),
+        ran_in: if lookup { None } else { app_of(image) },
         crashed: None,
         whose: None,
         restart: false,
@@ -150,6 +160,15 @@ mod tests {
         "bootUUID":"F9D442DF-CC61-4F75-952B-4A09E737DE13","machTimestamp":6907965479034,
         "userID":501,"eventMessage":"Error loading IDESimulatorFoundation (99)"}"#;
 
+    /// A line the system's name lookup wrote at error from inside sshd,
+    /// as it sorted a connection's addresses.
+    const LOOKUP: &str = r#"{"timestamp":"2026-11-13 15:57:02.114210-0500","messageType":"Error",
+        "eventType":"logEvent","processImagePath":"/usr/sbin/sshd","processID":18567,
+        "senderImagePath":"/usr/lib/system/libsystem_info.dylib",
+        "subsystem":"com.apple.network.libinfo","category":"si_destination_compare",
+        "bootUUID":"F9D442DF-CC61-4F75-952B-4A09E737DE13","machTimestamp":6907965479034,
+        "userID":0,"eventMessage":"send failed: Invalid argument"}"#;
+
     fn entry(line: &str) -> Entry {
         parse(&line.replace('\n', "")).expect("a unified log line is an entry")
     }
@@ -198,6 +217,34 @@ mod tests {
             entry.ran_in.as_deref(),
             Some("/Applications/Xcode.app"),
             "the bundle it ran from"
+        );
+    }
+
+    #[test]
+    fn the_name_lookups_line_is_the_name_lookups_wherever_it_ran() {
+        let own = LOOKUP
+            .replace("/usr/lib/system/libsystem_info.dylib", "/usr/sbin/sshd")
+            .replace("com.apple.network.libinfo", "")
+            .replace("si_destination_compare", "")
+            .replace(
+                "send failed: Invalid argument",
+                "error: kex_exchange_identification",
+            );
+        let mut day = Day::new("2026-11-13");
+        for line in [LOOKUP, &own] {
+            day.take(&entry(line));
+        }
+        let thing = |name: &str| day.things.get(name).map(|thing| (thing.kind, thing.errors));
+        assert_eq!(
+            thing("libinfo"),
+            Some((Some(Kind::Services), 1)),
+            "the name lookup failing a probe is a service's, not sshd's: {:?}",
+            day.things.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            thing("sshd"),
+            Some((Some(Kind::Security), 1)),
+            "sshd's own line is still security's"
         );
     }
 
