@@ -384,28 +384,6 @@ ShellRoot {
                 && pacer.queued.length === 0
         },
         {
-            what: "a watch paced as a shut launcher's is asks for its pace",
-            holds: () => root.repacedSaid() === 10000
-        },
-        {
-            // Asked at once, its answer would land before the opening's
-            // frame, which draws from what's held.
-            what: "its pace lifted, as the launcher opens, it's asked again after the frame",
-            run: () => {
-                root.repacedShut = false;
-            },
-            holds: () => root.left <= 195 && pacer.queued.length === 1
-                && root.repacedSaid() === 10000
-        },
-        {
-            // Agents' top level stayed paced, told at most every ten
-            // seconds with the launcher open, so a parked orchestrator
-            // woken read as closed for seconds (2026-11-13).
-            what: "and once that frame is drawn it's told unpaced",
-            run: () => pacer.drawn(),
-            holds: () => root.repacedSaid() === null && pacer.queued.length === 0
-        },
-        {
             what: "a search's answer is given to it and never held",
             run: () => {
                 root.answered = undefined;
@@ -508,6 +486,28 @@ ShellRoot {
         {
             what: "a kind with no records is known to hold none once answered",
             holds: () => none.answered && Object.keys(none.held).length === 0
+        },
+        {
+            what: "a watch paced as a shut launcher's is asks for its pace",
+            holds: () => root.repacedSaid() === 10000
+        },
+        {
+            // Asked at once, its answer would land before the opening's
+            // frame, which draws from what's held.
+            what: "its pace lifted, as the launcher opens, it's asked again after the frame",
+            run: () => {
+                root.repacedShut = false;
+            },
+            holds: () => root.left <= 195 && pacer.queued.length === 1
+                && root.repacedSaid() === 10000
+        },
+        {
+            // Agents' top level stayed paced, told at most every ten
+            // seconds with the launcher open, so a parked orchestrator
+            // woken read as closed for seconds (2026-11-13).
+            what: "and once that frame is drawn it's told unpaced",
+            run: () => pacer.drawn(),
+            holds: () => root.repacedSaid() === null && pacer.queued.length === 0
         },
         {
             what: "an ask answered in steps is given each, until one says it's done",
