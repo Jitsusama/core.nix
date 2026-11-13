@@ -427,12 +427,17 @@ fn away(
 /// Whether a build on the builders failed because its builder went away
 /// rather than because a piece did: what Nix says when a builder's
 /// connection breaks, and when none is left to take a piece. A piece no
-/// builder takes says the last too, and is only tried once more.
+/// builder takes says the last too, and is only tried once more. Nix says
+/// a write to a stream that went away as so many "bytes: Broken pipe":
+/// on 12 November a switch Joel waited on failed twice so when Google's
+/// tunnel to the lent builder dropped, and wasn't tried again. A piece's
+/// own log saying "Broken pipe" names no bytes, so it doesn't count.
 fn lost_its_builder(failed: &Failure) -> bool {
-    const SAID: [&str; 3] = [
+    const SAID: [&str; 4] = [
         "connection corrupted",
         "cannot build on",
         "local builds are disabled",
+        "bytes: broken pipe",
     ];
     std::iter::once(&failed.why)
         .chain(&failed.lines)
@@ -1257,14 +1262,19 @@ mod tests {
             "Connection to ::1 port 31122: Connection corrupted",
             "error: cannot build on 'ssh-ng://hook@nix-offload': error: ...",
             "       Reason: local builds are disabled (max-jobs = 0)",
+            "error: write of 22872 bytes: Broken pipe",
         ] {
             assert!(lost_its_builder(&failed(lost)), "not seen as lost: {lost}");
         }
-        let broke = "error: builder for '/nix/store/x-a.drv' failed with exit code 1";
-        assert!(
-            !lost_its_builder(&failed(broke)),
-            "a piece that broke was taken for a lost builder"
-        );
+        for broke in [
+            "error: builder for '/nix/store/x-a.drv' failed with exit code 1",
+            "x-a> yes: standard output: Broken pipe",
+        ] {
+            assert!(
+                !lost_its_builder(&failed(broke)),
+                "a piece that broke was taken for a lost builder: {broke}"
+            );
+        }
     }
 
     #[test]
