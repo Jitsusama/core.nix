@@ -123,12 +123,19 @@ impl State {
     fn rows(&self, place: &str, only: Option<&[u32]>) -> Value {
         let only: Option<BTreeSet<u32>> = only.map(|ids| ids.iter().copied().collect());
         let history = place == row::HISTORY;
-        let keys: Vec<String> = self
+        let mut notices: Vec<&Notice> = self
             .holding
             .notices()
             .iter()
             .filter(|notice| !notice.transient && (notice.read || !history))
             .filter(|notice| only.as_ref().is_none_or(|ids| ids.contains(&notice.id)))
+            .collect();
+        // History's are in its rows' order, newest done with first.
+        if history {
+            notices.sort_by_key(|notice| std::cmp::Reverse(notice.done_at()));
+        }
+        let keys: Vec<String> = notices
+            .iter()
             .map(|notice| format!("row:{place}:{}", notice.id))
             .collect();
         let rows: Map<String, Value> = keys
