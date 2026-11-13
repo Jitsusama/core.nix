@@ -386,10 +386,7 @@ pub struct Stay {
 /// network's pool starting the next: `step` is handed the stay being read
 /// after each of its samples, and once more, `ended`, when nothing more can
 /// join it.
-fn read_stays(
-    samples: impl IntoIterator<Item = Sample>,
-    mut step: impl FnMut(&mut Reading, bool),
-) {
+fn read_stays(samples: impl IntoIterator<Item = Sample>, mut step: impl FnMut(&mut Reading, bool)) {
     let mut reading: Option<Reading> = None;
     for sample in samples {
         if let Sample::Pool {
@@ -1203,7 +1200,10 @@ mod tests {
             .flat_map(|stay| stay.seconds.into_iter().map(move |s| (stay.began_ms, s)))
             .collect();
         assert_eq!(handed.len(), 180, "every second of both stays");
-        assert_eq!(handed, held, "the seconds the stays hold, with their stays' starts");
+        assert_eq!(
+            handed, held,
+            "the seconds the stays hold, with their stays' starts"
+        );
     }
 
     #[test]

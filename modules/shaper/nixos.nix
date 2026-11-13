@@ -286,6 +286,11 @@ in
       Type = "oneshot";
       ExecStart = "${shaper}/bin/shaper day";
       Slice = "background.slice";
+      # journalctl's reads of the journal's files are charged to the unit as
+      # page cache: 350 MB cold on 13 November, though the day itself takes
+      # 6 MB. That cache is clean, so held to this the kernel takes it back
+      # as the reads go, for a second more of running.
+      MemoryHigh = "64M";
     };
   };
   config.systemd.user.timers.shaper-day = {

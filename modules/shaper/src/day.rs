@@ -650,7 +650,11 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["system.journal", "system@a-1-2.journal", "system@c-5.journal~"],
+            [
+                "system.journal",
+                "system@a-1-2.journal",
+                "system@c-5.journal~"
+            ],
             "the system's files changed within the hour before since or after"
         );
     }
