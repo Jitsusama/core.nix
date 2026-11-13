@@ -410,9 +410,9 @@ terminal-kit = { git = "https://github.com/Jitsusama/core.nix", rev = "<commit>"
 
 Its Nix package then names the kit's hash beside its lock, in
 `cargoLock.outputHashes."terminal-kit-0.1.0"`: set to `lib.fakeHash`
-first, a build refuses it and prints the real one. It holds its commands to this page with `core.lib.commandsAgree`,
-as core does, given the commands it builds on the kit and a waiting list
-of its own.
+first, a build refuses it and prints the real one. It holds its commands
+to this page with `core.lib.commandsAgree`, as core does, given the
+commands it builds on the kit and a waiting list of its own.
 
 ## When a Command Doesn't Agree Yet
 
