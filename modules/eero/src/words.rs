@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::drawers;
 use crate::place;
-use crate::rows::DOT;
+use crate::rows::{self, DOT};
 
 /// A rate's units from Mb/s, as eero gives one, each a thousand of the
 /// one before, by the word that says it.
@@ -209,10 +209,19 @@ const SAID: &[(&str, &[&str])] = &[
             "notOnNow",
         ],
     ),
+    ("verb:eero:speedtest", &["note"]),
+    ("eero:sqm", &["note"]),
 ];
 
 /// The things whose glyph a row wears.
-const GLYPHS: [&str; 4] = ["eero:internet", "eero:node", "eero:gateway", "eero:profile"];
+const GLYPHS: [&str; 6] = [
+    "eero:internet",
+    "eero:node",
+    "eero:gateway",
+    "eero:profile",
+    rows::SPEED_TEST,
+    rows::SQM,
+];
 
 /// The words the Home Network's rows are said in, from the launcher's
 /// vocabulary.
@@ -257,6 +266,7 @@ impl Words {
             .chain(drawers::NODE_NAMES)
             .chain(drawers::DEVICE_NAMES)
             .chain(drawers::INTERNET_NAMES)
+            .chain([rows::SPEED_TEST, rows::SQM])
         {
             words.names.insert(id, word(id, &["name"])?);
         }

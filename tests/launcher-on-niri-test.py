@@ -3067,6 +3067,34 @@ def test_the_internets_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) ->
     ), str(last)
 
 
+def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
+    """A step into the internet runs a speed test and turns its switch by asking the daemon.
+
+    The shell ran the eero program for each, through niri, and heard nothing when eero refused
+    (QEST-20261111-PN2VZC). The daemon now serves them as rows inside the internet and does
+    them itself; its stand-in says each act asked of it in its log.
+    """
+    log = shell.log.parent / "eero.log"
+    shell.answer("internet")
+    shell.launcher_until(functools.partial(selecting, "Internet"))
+    shell.step_in()
+    acts = ["Run a Speed Test", "Optimize for Conferencing and Gaming"]
+    shell.launcher_until(lambda shown: shown["rows"][:2] == acts)
+    for row, line, acted in [
+        (acts[0], "speedtest", "acted speedtest"),
+        (acts[1], "set nosqm", "acted sqm off"),
+    ]:
+        shell.down_to(row)
+        shell.normal()
+        shell.send_chars(f":{line}")
+        shell.launcher_until(
+            lambda shown: (shown["command"] or {}).get("line") == line  # noqa: B023
+        )
+        shell.send_key("ret")
+        shell.launcher_until(lambda _: acted in log.read_text(errors="replace"))  # noqa: B023
+    shell.close_launcher()
+
+
 def selecting(name: str, shown: Json) -> bool:
     """Say whether the launcher has the row so named selected."""
     return bool((shown["selected"] or {}).get("name") == name)

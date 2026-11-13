@@ -188,7 +188,13 @@ fn every_row_names_the_drawer_served_beside_it() {
     let rows = crate::rows::rows(&model, &words, &numbers);
     let drawers = records(&model, &words, &numbers);
 
-    let mut named: Vec<&Value> = rows.iter().map(|row| &row["drawer"]).collect();
+    // A row inside another is something to do to it, as the internet's
+    // speed test is, said in that row's drawer rather than one of its own.
+    let mut named: Vec<&Value> = rows
+        .iter()
+        .filter(|row| row.get("parent").is_none())
+        .map(|row| &row["drawer"])
+        .collect();
     let mut served: Vec<&Value> = drawers.iter().map(|record| &record["key"]).collect();
     named.sort_by_key(|key| key.as_str());
     served.sort_by_key(|key| key.as_str());

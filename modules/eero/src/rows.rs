@@ -25,6 +25,14 @@ pub(crate) use crate::words::fill;
 /// The launcher's place the Home Network's rows are in.
 pub const PLACE: &str = "eero";
 
+/// What the internet holds to be done, each a thing of the launcher's
+/// words: a speed test, and conferencing and gaming's switch, whose act
+/// is turning it on or off.
+pub(crate) const SPEED_TEST: &str = "verb:eero:speedtest";
+pub(crate) const SQM: &str = "eero:sqm";
+const SQM_ON: &str = "verb:eero:sqm-on";
+const SQM_OFF: &str = "verb:eero:sqm-off";
+
 /// How the items a row's side or note gives way whole are joined, where
 /// one item holds several.
 pub(crate) const DOT: &str = " \u{b7} ";
@@ -68,6 +76,7 @@ pub fn key(id: &str) -> String {
 /// `order`, which ready-rows' `Kept` gives it.
 pub fn rows(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Value> {
     let mut rows = vec![internet_row(model, words, numbers)];
+    rows.extend(acts_inside(model, words));
     for (node, devices) in grouped(model) {
         if let Some(node) = node {
             rows.push(node_row(node, words));
@@ -226,6 +235,44 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
         "depth": 0, "drawer": drawers::INTERNET_KEY,
         "side": items([item(state), item(if answering { tested } else { String::new() })]),
         "note": items(note),
+    })
+}
+
+/// What can be done to the home network, rows a step into the internet:
+/// run a speed test, and conferencing and gaming's switch while eero says
+/// how it stands. Each act is asked of this daemon (acts.rs), which
+/// answers once eero has done it, so a refusal is said in eero's words.
+/// The switch says what it becomes, so the shell draws it turned at once
+/// and takes it back if eero refuses (launcher/ReadyRows.qml's asked).
+fn acts_inside(model: &HomeNetwork, words: &Words) -> Vec<Value> {
+    let mut rows = vec![json!({
+        "key": key("speedtest"), "thing": SPEED_TEST, "place": PLACE,
+        "parent": key("internet"), "kind": "act", "depth": 1,
+        "name": words.name(SPEED_TEST), "glyph": words.glyph(SPEED_TEST), "hue": "action",
+        "side": [], "note": items([item(words.say(SPEED_TEST, "note"))]),
+        "acts": [{"key": SPEED_TEST, "ask": {"ask": "act", "act": "speedtest"}}],
+    })];
+    if let Some(on) = model.internet.sqm {
+        let mut switch = switch_row(on, words);
+        switch["acts"] = json!([{
+            "key": if on { SQM_OFF } else { SQM_ON },
+            "ask": {"ask": "act", "act": "sqm", "on": !on},
+            "becomes": switch_row(!on, words),
+        }]);
+        rows.push(switch);
+    }
+    rows
+}
+
+/// Conferencing and gaming's switch, saying how it stands, without its
+/// act, which is what it becomes once turned.
+fn switch_row(on: bool, words: &Words) -> Value {
+    let side = words.say("eero:internet", if on { "on" } else { "off" });
+    json!({
+        "key": key("sqm"), "thing": SQM, "place": PLACE, "parent": key("internet"),
+        "kind": "switch", "depth": 1, "name": words.name(SQM), "glyph": words.glyph(SQM),
+        "hue": "machine", "side": items([item(side)]),
+        "note": items([item(words.say(SQM, "note"))]), "held": {"on": on},
     })
 }
 

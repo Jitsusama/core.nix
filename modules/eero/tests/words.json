@@ -35,6 +35,53 @@
       }
     },
     {
+      "id": "eero:sqm",
+      "in": "eero",
+      "command": "set",
+      "argument": "sqm",
+      "name": "Optimize for Conferencing and Gaming",
+      "verb": "on",
+      "glyph": "traffic",
+      "states": {
+        "on": {
+          "verb": "off",
+          "argument": "nosqm"
+        }
+      },
+      "said": {
+        "note": "what the internet carries, queued so a call stays quick"
+      }
+    },
+    {
+      "id": "verb:eero:sqm-on",
+      "in": "eero",
+      "command": "set",
+      "argument": "sqm",
+      "name": "Turn It On",
+      "verb": "on",
+      "glyph": "traffic"
+    },
+    {
+      "id": "verb:eero:sqm-off",
+      "in": "eero",
+      "command": "set",
+      "argument": "nosqm",
+      "name": "Turn It Off",
+      "verb": "off",
+      "glyph": "traffic"
+    },
+    {
+      "id": "verb:eero:speedtest",
+      "command": "speedtest",
+      "in": "eero",
+      "name": "Run a Speed Test",
+      "verb": "run",
+      "glyph": "traffic",
+      "said": {
+        "note": "eero measures the internet from the gateway node"
+      }
+    },
+    {
       "id": "eero:internet",
       "in": "eero",
       "name": "Internet",

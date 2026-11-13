@@ -594,6 +594,68 @@ mod tests {
     }
 
     #[test]
+    fn an_act_is_answered_once_the_daemon_has_done_it() {
+        let (listeners, woken, path) = listening("acts");
+        let (mut stream, mut reader) = connected(&path);
+        assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+        ask(
+            &mut stream,
+            &json!({"id": "act-1", "ask": "act", "act": "sqm", "on": true}),
+        );
+        let Ok(Call::Act(asked)) = woken.recv() else {
+            panic!("the act wakes the daemon to do it");
+        };
+        assert_eq!(
+            asked.act,
+            Act::Conferencing(true),
+            "the act is the one asked"
+        );
+        listeners.answer_act(&asked, Err("eero is busy".into()));
+
+        assert_eq!(
+            read(&mut reader),
+            json!({"id": "act-1", "error": {"code": "refused", "message": "eero is busy"}}),
+            "the act is answered with what the daemon heard"
+        );
+        ask(
+            &mut stream,
+            &json!({"id": "act-2", "ask": "act", "act": "speedtest"}),
+        );
+        let Ok(Call::Act(asked)) = woken.recv() else {
+            panic!("the act wakes the daemon to do it");
+        };
+        listeners.answer_act(&asked, Ok(()));
+        assert_eq!(
+            read(&mut reader),
+            json!({"id": "act-2", "done": true}),
+            "an act done is answered done"
+        );
+    }
+
+    #[test]
+    fn an_act_eero_has_none_of_is_answered_at_once() {
+        let (_listeners, woken, path) = listening("bad-acts");
+        let (mut stream, mut reader) = connected(&path);
+        assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+        ask(
+            &mut stream,
+            &json!({"id": "act-1", "ask": "act", "act": "reboot"}),
+        );
+
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            "bad-act",
+            "an act eero hasn't is refused by the daemon itself"
+        );
+        assert!(
+            woken.try_recv().is_err(),
+            "an act refused doesn't wake the daemon"
+        );
+    }
+
+    #[test]
     fn a_row_watch_is_answered_ready_and_told_only_the_rows_that_changed() {
         let (listeners, words, mut stream, mut reader) = serving("rows");
         listeners.send(&home());
