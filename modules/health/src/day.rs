@@ -127,6 +127,11 @@ pub struct Day {
     /// Whose work kept the processors busy, by the hour.
     #[serde(default)]
     pub busy: Busy,
+    /// When the kernel said its last line, in microseconds, so a report's
+    /// later lines are known by following it closely. It isn't kept, since
+    /// each start reads the day's kernel lines again.
+    #[serde(skip)]
+    pub kernel_said: i64,
 }
 
 /// How one boot started and stopped, as far as the day saw it, each in
@@ -254,6 +259,13 @@ impl Day {
         let event = entry.priority > 4 && !entry.restart;
         if event && !(entry.kernel && kernel::is_device_event(&entry.message)) {
             return;
+        }
+        if entry.kernel {
+            let follows = entry.at - self.kernel_said <= kernel::REPORT_GAP;
+            self.kernel_said = entry.at;
+            if follows && kernel::continues(&entry.message) {
+                return;
+            }
         }
         let (name, kind) = named(entry);
         let thing = self.things.entry(name).or_default();

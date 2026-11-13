@@ -19,6 +19,35 @@ const DEVICE_EVENTS: [&[&str]; 6] = [
     &["failed to load firmware"],
 ];
 
+/// How closely a report's lines follow the line before them, in
+/// microseconds: Linux's kernel writes a report all at once, its eighty
+/// lines within a few milliseconds.
+pub const REPORT_GAP: i64 = 1_000_000;
+
+/// How the lines of a Linux kernel's report open after the line that
+/// opened it: who was running, the call trace, the registers' preamble,
+/// and the memory's state when an allocation failed.
+const REPORT_LINES: [&str; 18] = [
+    "CPU: ",
+    "Tainted: ",
+    "Hardware name: ",
+    "Workqueue: ",
+    "Call Trace:",
+    "<TASK>",
+    "</TASK>",
+    "<IRQ>",
+    "</IRQ>",
+    "? ",
+    "Code: ",
+    "Modules linked in:",
+    "---[ end trace",
+    "Mem-Info:",
+    "active_anon:",
+    "lowmem_reserve[]:",
+    "Free swap ",
+    "Total swap ",
+];
+
 /// How a Mac's kernel says a line came again, before the line itself.
 const FOLDED: [&str; 2] = [" duplicate report for ", " duplicate reports for "];
 
@@ -27,6 +56,41 @@ pub fn is_device_event(message: &str) -> bool {
     DEVICE_EVENTS
         .iter()
         .any(|words| words.iter().all(|word| message.contains(word)))
+}
+
+/// Whether a kernel line is one a report goes on with, once it opened:
+/// one of its openings, a call's frame, `dump_stack_lvl+0x61/0x90`, a
+/// register's value, `RIP: 0033:0x7977f7ca8472`, a memory node's state,
+/// `Node 0 DMA free:11132kB`, or a count of pages, `0 pages hwpoisoned`.
+pub fn continues(message: &str) -> bool {
+    let line = message.trim_start();
+    let mut words = line.split_whitespace();
+    let first = words.next().unwrap_or_default();
+    REPORT_LINES.iter().any(|opening| line.starts_with(opening))
+        || (first.contains("+0x") && first.contains("/0x"))
+        || is_register(first, words.next().unwrap_or_default())
+        || line
+            .strip_prefix("Node ")
+            .is_some_and(|node| node.starts_with(|c: char| c.is_ascii_digit()))
+        || (!first.is_empty()
+            && first.chars().all(|c| c.is_ascii_digit())
+            && line.contains(" pages"))
+}
+
+/// Whether a line's first two words are a register and its value, as a
+/// report gives them: `RAX: ffffffffffffffda`, `CS:  0010`, `RIP: 0033:0x7977`.
+/// A short capital name alone, `PM:`, isn't enough, since other lines open
+/// with one; its value has to be in hexadecimal too.
+fn is_register(name: &str, value: &str) -> bool {
+    name.strip_suffix(':').is_some_and(|name| {
+        (2..=4).contains(&name.len())
+            && name
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    }) && !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == ':' || c == 'x')
 }
 
 /// Who a kernel line is from, and its kind. Linux's kernel refuses through
@@ -86,4 +150,85 @@ fn without_instance(name: &str) -> &str {
         .and_then(|name| name.rsplit_once('['))
         .filter(|(_, index)| !index.is_empty() && index.chars().all(|c| c.is_ascii_digit()))
         .map_or(name, |(name, _)| name)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::day::Day;
+    use crate::day::tests::entry;
+    use crate::journal::Entry;
+
+    /// A warning from the kernel, said at `at`.
+    fn kernel(at: i64, message: &str) -> Entry {
+        Entry {
+            kernel: true,
+            at,
+            ..entry("kernel", 4, message)
+        }
+    }
+
+    #[test]
+    fn a_reports_lines_are_one_line_of_the_line_that_opened_it() {
+        let mut day = Day::new("2026-11-13");
+        let report = [
+            "machine: page allocation failure: order:4, mode:0x40cc0(GFP_KERNEL|__GFP_COMP)",
+            "CPU: 9 UID: 1000 PID: 1652571 Comm: machine Tainted: G     U  WC O 7.3.3 #1-NixOS",
+            "Tainted: [U]=USER, [W]=WARN, [C]=CRAP, [O]=OOT_MODULE",
+            "Hardware name: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 1.16.3",
+            "Call Trace:",
+            " <TASK>",
+            " dump_stack_lvl+0x61/0x90",
+            " ? __alloc_pages_direct_compact+0x104/0x220",
+            " wmidev_invoke_method+0x1cf/0x270 [wmi]",
+            "RIP: 0033:0x7977f7ca8472",
+            "RAX: ffffffffffffffda RBX: 00007977e800ee60 RCX: 00007977e800ee60",
+            "R10: 0000000000000000 R11: 00007977b65f29c8 R12: 0000000000001000",
+            " </TASK>",
+            "Mem-Info:",
+            "active_anon:4632126 inactive_anon:3176151 isolated_anon:112",
+            "Node 0 DMA free:11132kB boost:0kB min:12kB low:48kB high:84kB",
+            "lowmem_reserve[]: 0 1604 63784 63784 63784",
+            "Node 0 DMA: 1*4kB (U) 1*8kB (U) 1*16kB (U) 1*32kB (U)",
+            "8016927 total pagecache pages",
+            "Free swap  = 99299892kB",
+            "16648237 pages RAM",
+            "0 pages hwpoisoned",
+        ];
+        for (at, line) in (1_000..).step_by(20).zip(report) {
+            day.take(&kernel(at, line));
+        }
+        assert_eq!(
+            day.things.keys().collect::<Vec<_>>(),
+            ["machine"],
+            "a report's later lines are its opener's, not devices of their own"
+        );
+        assert_eq!(day.things["machine"].lines, 1, "a report is counted once");
+    }
+
+    #[test]
+    fn a_line_shaped_like_a_reports_with_none_before_it_is_its_own() {
+        let mut day = Day::new("2026-11-13");
+        day.take(&kernel(
+            1_000,
+            "htb: cake qdisc 8001: is non-work-conserving?",
+        ));
+        day.take(&kernel(
+            9_000_000,
+            "CPU: 3 PID: 12 at drivers/gpu/drm/drm_vblank.c:1307",
+        ));
+        day.take(&kernel(
+            9_000_500,
+            "htb: cake qdisc 8002: is non-work-conserving?",
+        ));
+        assert_eq!(
+            day.things.keys().collect::<Vec<_>>(),
+            ["CPU", "htb"],
+            "a line far from any before it opens nothing, and a line a report \
+             never says isn't folded into one"
+        );
+        assert_eq!(
+            day.things["htb"].lines, 2,
+            "both of htb's lines are counted"
+        );
+    }
 }
