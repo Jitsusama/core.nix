@@ -339,3 +339,47 @@ fn nothing_a_warm_started_outlives_it() {
     }
     assert!(!running(child), "a child the warm started outlived it");
 }
+
+#[test]
+fn a_pi_whose_process_ended_is_not_warmed() {
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    let old = fs::canonicalize(place.current()).expect("current resolves");
+    let pi = FakePi::new(&place, 0, "");
+    // As a warm stopped at its longest leaves its record: the process
+    // is killed, and nothing takes the file back.
+    drop(saying(&place, &old, &pi.said));
+
+    let outcome = fixture.advance("second");
+
+    assert_eq!(pi.saw("args"), None, "a pi whose process ended was warmed");
+    assert_eq!(outcome.unwarmed, Vec::<String>::new(), "{outcome:?}");
+}
+
+#[test]
+fn a_pi_whose_pid_was_given_again_is_not_warmed() {
+    let fixture = Fixture::new();
+    let place = fixture.place();
+    fixture.update();
+    let old = fs::canonicalize(place.current()).expect("current resolves");
+    let pi = FakePi::new(&place, 0, "");
+    let live = saying(&place, &old, &pi.said);
+    // Written before the process now holding its pid started, as when the
+    // system gives a dead warm's pid to another program.
+    let hour_ago = SystemTime::now() - Duration::from_secs(3_600);
+    File::options()
+        .write(true)
+        .open(place.loaded().join(live.0.id().to_string()))
+        .and_then(|open| open.set_modified(hour_ago))
+        .expect("written an hour ago");
+
+    let outcome = fixture.advance("second");
+
+    assert_eq!(
+        pi.saw("args"),
+        None,
+        "a pi whose pid was given again was warmed"
+    );
+    assert_eq!(outcome.unwarmed, Vec::<String>::new(), "{outcome:?}");
+}
