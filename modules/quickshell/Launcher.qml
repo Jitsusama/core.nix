@@ -3750,6 +3750,12 @@ Scope {
             run(row, false);
             return true;
         }
+        // One whose acts all lie on its row holds nothing to go into, so
+        // Ctrl+] goes where it lives, as a row holding nothing does, and
+        // never into a step of its acts (Joel, 2026-11-11: "if they have
+        // nothing under them, we shouldn't open a submenu for them").
+        if (row.actsOnly === true)
+            return false;
         return enter(row);
     }
     function toLastPlace() {
