@@ -10,7 +10,8 @@
 # them all away. Inside a WireGuard VPN
 # to the server, named as a machine names its VPN, the same classes reach
 # the VPN's own CAKEs, sending and receiving, and the VPN's own packets go
-# as best effort on the connection, even carrying only bulk. Bulk that sets no
+# as best effort on the connection, even carrying only bulk, and make room
+# for bulk beside them that waits behind them. Bulk that sets no
 # DSCP of its own leaves marked CS1, which Wi-Fi sends as background. The
 # tests are shaper-vm-test.py, run through pytest.
 { self, pkgs }:

@@ -236,9 +236,11 @@ pub fn turned(json: &str) -> bool {
 }
 
 /// One tin's counts, from CAKE's statistics.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Tin {
     pub packets: u64,
+    pub bytes: u64,
+    pub backlog: u64,
     pub drops: u64,
     pub marks: u64,
     pub average_us: u64,
@@ -260,6 +262,8 @@ pub fn tins(json: &str) -> Vec<Tin> {
             tins.iter()
                 .map(|t| Tin {
                     packets: n(t, "sent_packets"),
+                    bytes: n(t, "sent_bytes"),
+                    backlog: n(t, "backlog_bytes"),
                     drops: n(t, "drops"),
                     marks: n(t, "ecn_mark"),
                     average_us: n(t, "avg_delay_us"),
@@ -273,6 +277,12 @@ pub fn tins(json: &str) -> Vec<Tin> {
 /// Where real-time traffic goes: an app's calls and everything Tuple's
 /// daemon sends, in CAKE's tin order (bulk, best effort, video, voice).
 const VIDEO: usize = 2;
+
+/// The bulk tin of the CAKE in `tc -s -j qdisc show dev`, the first in
+/// its order.
+pub fn bulk(json: &str) -> Option<Tin> {
+    tins(json).into_iter().next()
+}
 /// Packets a second in the video tins, both ways together, that say a call
 /// or a screen share runs: a call's audio alone is about 50 a second each
 /// way, where nothing else is classed there.
@@ -646,11 +656,14 @@ mod tests {
     #[test]
     fn cakes_tins_are_read_in_order() {
         let json = r#"[{"kind":"htb"},{"kind":"cake","tins":[
-            {"sent_packets":5,"drops":1,"ecn_mark":0,"avg_delay_us":300,"peak_delay_us":900},
+            {"sent_packets":5,"sent_bytes":900,"backlog_bytes":40,"drops":1,"ecn_mark":0,
+             "avg_delay_us":300,"peak_delay_us":900},
             {"sent_packets":7,"drops":0,"ecn_mark":2,"avg_delay_us":100,"peak_delay_us":400}]}]"#;
         let t = tins(json);
         assert_eq!(t.len(), 2);
         assert_eq!(t[0].packets, 5);
+        assert_eq!((t[0].bytes, t[0].backlog), (900, 40));
+        assert_eq!(bulk(json), Some(t[0].clone()));
         assert_eq!(t[1].marks, 2);
     }
 }
