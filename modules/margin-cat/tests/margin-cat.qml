@@ -1,8 +1,9 @@
 // Where the margin's cat sits and how big it's drawn, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
-// modules/margin-cat/MarginCat.js, MarginCatPaths.js and MarginCatPlays.js
-// beside this file and runs
+// modules/margin-cat/MarginCat.js, MarginCatRoutes.js, MarginCatWays.js,
+// MarginCatFalls.js, MarginCatPaths.js and MarginCatPlays.js beside this
+// file and runs
 // `qml -platform offscreen margin-cat.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat
@@ -66,11 +67,172 @@ QtObject {
 
         walks(expect);
         ways(expect);
+        journeys(expect);
         plays(expect, at, column);
 
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Journeys thrown at it, the same each run: layouts of one to four
+    // columns of one to three windows, scrolled or not, at Joel's laptop's
+    // size and scale, and the keys shifting to any window of them, on the
+    // same workspace or the one above or below. Every one must end on the
+    // window's seat, never jump between two frames at 120 Hz, never go
+    // into a window, the marks' ink or off the screen's sides (Joel,
+    // 2026-11-13, by WCJQSG bd480983: "the cat should always be moving
+    // from where it is to where my focus shifts, in a believable and
+    // adorable way. the windows are the walls and roofs it is climbing or
+    // jumping off of").
+    function journeys(expect) {
+        let state = 20261113;
+        const random = () => {
+            state = (state * 1103515245 + 12345) % 2147483648;
+            return state / 2147483648;
+        };
+        const cell = 4 / 3;
+        const at = { cell, ratio: 1.5, wide: 8 * cell, tall: 8 * cell, air: cell, across: 1276,
+            height: 773, step: 789, facing: 1, pause: 0, marks: Paths.marks(3, 1276, 16),
+            spring: { damping: 1, stiffness: 1600, epsilon: 0.001 } };
+        const layout = () => {
+            const tiles = [];
+            let left = 16 - (random() < 0.3 ? Math.floor(random() * 500) : 0);
+            const count = 1 + Math.floor(random() * 4);
+            for (let c = 0; c < count; c++) {
+                const width = 200 + Math.floor(random() * 700);
+                const rows = 1 + Math.floor(random() * 3);
+                const shares = [];
+                for (let r = 0; r < rows; r++)
+                    shares.push(random());
+                const spare = 741 - 16 * (rows - 1) - 100 * rows;
+                const all = shares.reduce((sum, share) => sum + share, 0);
+                let top = 16;
+                for (let r = 0; r < rows; r++) {
+                    const height = r === rows - 1 ? 757 - top
+                        : 100 + Math.floor((spare * shares[r]) / all);
+                    tiles.push({ left, top, width, height, column: c, id: tiles.length });
+                    top += height + 16;
+                }
+                left += width + 16;
+            }
+            return tiles;
+        };
+        const seatOn = tiles => {
+            const tile = tiles[Math.floor(random() * tiles.length)];
+            return MarginCat.sits({ column: tile, across: at.across, marks: 3, cell: 16,
+                wide: at.wide, tall: at.tall, air: at.air });
+        };
+        const inside = (x, y, box) => x < box.left + box.width - 0.5
+            && x + at.wide > box.left + 0.5 && y < box.top + box.height - 0.5
+            && y + at.tall > box.top + 0.5;
+        const lit = at.marks;
+        const ink = { left: lit.from + 4, top: 4, width: lit.to - lit.from - 8, height: 8 };
+        const wrong = [];
+        // Every frame of `journey` a cat's, in none of `solid`'s windows
+        // but where a window shoved it, and ending on `to`.
+        const check = (journey, solid, said, to) => {
+            const last = Paths.frame(journey, journey.ends);
+            if (Math.abs(last.x - to.x) > 0.01 || Math.abs(last.y - to.y) > 0.01)
+                wrong.push(`${said} ends at ${last.x},${last.y}`);
+            let before = null;
+            for (let t = 0; t <= journey.ends && wrong.length < 5; t += 1000 / 120) {
+                const one = Paths.frame(journey, t);
+                const shown = one.y + at.tall > 0 && one.y < at.height;
+                if (one.beat !== "rides" && one.beat !== "shoved"
+                    && solid.some(tile => inside(one.x, one.y, tile)))
+                    wrong.push(`${said} is inside a window at ${t} ms, ${one.beat}`);
+                else if (shown && one.beat !== "hops" && one.beat !== "perches"
+                    && one.beat !== "shoved" && inside(one.x, one.y, ink))
+                    wrong.push(`${said} is in the marks at ${t} ms, ${one.beat}`);
+                else if (shown && (one.x < -0.01 || one.x + at.wide > at.across + 0.01))
+                    wrong.push(`${said} is off the screen's side at ${t} ms, ${one.beat}`);
+                else if (shown && before !== null && before.beat !== "rides"
+                    && Math.hypot(one.x - before.x, one.y - before.y) > at.tall / 2)
+                    wrong.push(`${said} jumps at ${t} ms, ${before.beat} to ${one.beat}`);
+                before = shown ? one : null;
+            }
+        };
+        let made = 0;
+        for (let n = 0; n < 400 && made < 150; n++) {
+            const way = [0, 1, -1][Math.floor(random() * 3)];
+            const was = layout();
+            const now = way === 0 ? was : layout();
+            const from = seatOn(was);
+            const to = seatOn(now);
+            if (from === null || to === null)
+                continue;
+            const journey = way === 0
+                ? Paths.walk(from, to, Object.assign({ cols: Paths.columns(now, 0) }, at))
+                : Paths.moves(from, to, Object.assign({ way, was, now }, at));
+            if (journey === null)
+                continue;
+            made += 1;
+            const solid = now.concat(was.map(tile => Object.assign({}, tile,
+                { top: tile.top - way * at.step })));
+            const said = `${n} (${way}, ${JSON.stringify(from)} to ${JSON.stringify(to)})`;
+            check(journey, solid, said, to);
+            // And the windows changed under it somewhere on its way past
+            // the slide, its way found again from where it's got to.
+            const t = journey.beats[0].ends + random() * (journey.ends - journey.beats[0].ends);
+            const here = Paths.frame(journey, t);
+            const changed = changes(now, random);
+            const then = seatOn(changed);
+            const again = then === null ? null : Paths.walk({ x: here.x, y: here.y }, then,
+                Object.assign({ cols: Paths.columns(changed, 0), hurried: true,
+                    before: Paths.columns(now, 0) }, at));
+            const starts = again === null ? here : Paths.frame(again, 0);
+            if (Math.hypot(starts.x - here.x, starts.y - here.y) > 0.01)
+                wrong.push(`${said} changed jumps from ${here.x},${here.y}`);
+            if (again !== null)
+                check(again, changed, `${said} changed at ${Math.round(t)} ms`, then);
+        }
+        expect("150 journeys thrown at it", made, 150);
+        expect("each ends on its seat, every frame of it a cat's", wrong.slice(0, 5), []);
+    }
+
+    // `tiles` changed as niri changes them: a column grown or shrunk, a
+    // split between two windows moved, a window closed or opened, or
+    // the columns scrolled.
+    function changes(tiles, random) {
+        const moved = tiles.map(tile => Object.assign({}, tile));
+        const by = span => Math.floor((random() - 0.5) * 2 * span);
+        const pick = list => list[Math.floor(random() * list.length)];
+        const tile = pick(moved);
+        const own = moved.filter(one => one.column === tile.column);
+        const right = (shift, column) => moved.filter(one => one.column > column)
+            .forEach(one => { one.left += shift; });
+        const kind = Math.floor(random() * 5);
+        if (kind === 0) {
+            const width = Math.max(100, tile.width + by(300));
+            right(width - tile.width, tile.column);
+            own.forEach(one => { one.width = width; });
+        } else if (kind === 1 && own.length > 1) {
+            const r = own.indexOf(tile) > 0 ? own.indexOf(tile) : 1;
+            const shift = Math.min(Math.max(by(150), 60 - own[r - 1].height),
+                own[r].height - 60);
+            own[r - 1].height += shift;
+            own[r].top += shift;
+            own[r].height -= shift;
+        } else if (kind === 2 && moved.length > 1) {
+            const gone = own.indexOf(tile);
+            moved.splice(moved.indexOf(tile), 1);
+            if (own.length === 1)
+                right(-tile.width - 16, tile.column);
+            else if (gone > 0)
+                own[gone - 1].height += tile.height + 16;
+            else
+                Object.assign(own[1], { top: tile.top, height: own[1].height + tile.height + 16 });
+        } else if (kind === 3 && tile.height >= 216) {
+            const half = Math.floor((tile.height - 16) / 2);
+            moved.push(Object.assign({}, tile, { top: tile.top + half + 16,
+                height: tile.height - half - 16, id: 1000 + moved.length }));
+            tile.height = half;
+            moved.sort((one, other) => one.column - other.column || one.top - other.top);
+        } else {
+            right(by(400), -1);
+        }
+        return moved;
     }
 
     // How lively the cat is, from how engaged Joel is, and what it plays
@@ -451,32 +613,42 @@ QtObject {
             Paths.walk(seat(100), seat(400), world({ pause: 0 })).beats
                 .some(beat => beat.name === "leaps"), false);
 
-        // Three marks of 16 centred on 624, from 600 to 648, and the cat
-        // stops half a mark's cell off them either side.
+        // Three marks of 16 centred on 624, from 600 to 648, each inked
+        // from 4 to 12 down, and the cat stops half a mark's cell before
+        // them (VKCF3Z 3d799798).
         const lit = Paths.marks(3, 1248, 16);
         expect("the marks, centred", [lit.from, lit.to], [600, 648]);
         const one = [{ left: 16, top: 16, width: 1216, height: 768, column: 0 }];
-        const behind = Paths.walk(seat(300), seat(900),
+        const hopping = Paths.walk(seat(300), seat(900),
             world({ pause: 0, cols: Paths.columns(one, 0), marks: lit }));
-        const creep = behind.beats.filter(beat => ["stops", "creeps", "stands"]
-            .includes(beat.name));
-        expect("past the marks it stops crouched, creeps behind them and stands up",
-            creep.map(beat => [beat.name, Math.round(beat.from.x), Math.round(beat.to.x)]),
-            [["stops", 584, 584], ["creeps", 584, 656], ["stands", 656, 656]]);
-        const creeping = seen(behind).filter(at => at.beat === "creeps");
-        expect("low, in its creeping strides",
-            Array.from(new Set(creeping.map(at => at.pose))).sort(), ["creepingA", "creepingB"]);
-        const pace = beat => Math.abs(beat.to.x - beat.from.x) / (beat.ends - beat.begins);
-        expect("slower than it walks", pace(creep[1]) < pace(behind.beats
-            .find(beat => beat.name === "goes")), true);
-        expect("a walk that doesn't pass them creeps nowhere",
+        const crossing = hopping.beats.slice(hopping.beats.findIndex(beat => beat.name === "bats"));
+        expect("past the marks it bats the first, then hops onto each, perching, and off",
+            crossing.slice(0, 10).map(beat => beat.name), ["bats", "crouches", "hops", "perches",
+                "hops", "perches", "hops", "perches", "hops", "lands"]);
+        expect("batting from half a mark's cell before them",
+            [crossing[0].from.x, crossing[0].pose], [584, "batting"]);
+        const perched = crossing.filter(beat => beat.name === "perches");
+        expect("one mark a hop, on the middle of each",
+            perched.map(beat => beat.to.x + 4), [608, 624, 640]);
+        expect("its paws on a mark's ink, only its head off the screen",
+            perched.every(beat => beat.to.y + 8 > 4 && beat.to.y + 8 <= 12 && beat.to.y >= -4),
+            true);
+        const perching = perched.map(beat => beat.ends - beat.begins);
+        expect("crouched there about 300 ms, never the same twice running",
+            perching.every((ms, i) => ms >= 225 && ms <= 375 && (i === 0
+                || Math.abs(ms - perching[i - 1]) > 1)), true);
+        expect("crouched as it perches",
+            Array.from(new Set(perched.map(beat => beat.pose))), ["pouncing"]);
+        const off = crossing[9];
+        expect("and off past them onto the top, crouched",
+            [off.from.x, off.from.y, off.pose], [656, 7, "pouncing"]);
+        const pace = (from, to) => Math.abs(to.to.x - from.from.x) / (to.ends - from.begins);
+        const walked = hopping.beats.find(beat => beat.name === "goes");
+        expect("across them no quicker than it walks, never a dash",
+            pace(crossing[0], off) <= pace(walked, walked), true);
+        expect("a walk that doesn't pass them hops onto none",
             Paths.walk(seat(100), seat(400), world({ pause: 0, marks: lit })).beats
-                .some(beat => beat.name === "creeps"), false);
-        expect("behind a mark only its gaps show it",
-            Paths.behind(["########", "########"], Paths.veil(606, 8, 2, lit)),
-            ["...####.", "...####."]);
-        expect("away from them nothing's veiled", Paths.veil(100, 2, 2, lit), "");
-        expect("unveiled it's drawn whole", Paths.behind(["##"], ""), ["##"]);
+                .some(beat => beat.name === "perches" || beat.name === "bats"), false);
 
         const down = Paths.moves(seat(100), seat(900), world({ way: 1 }));
         const ride = down.beats[0];
@@ -500,7 +672,7 @@ QtObject {
         expect("it falls in from the screen's top", falls[0].y < 0, true);
         expect("falling ever faster", falls.every((at, i) => i < 2
             || at.y - falls[i - 1].y >= falls[i - 1].y - falls[i - 2].y - 1e-9), true);
-        const landed = down.beats[down.beats.findIndex(beat => beat.name === "drops") + 2];
+        const landed = down.beats[down.beats.map(beat => beat.name).lastIndexOf("drops") + 1];
         expect("lands crouched on the column below", [landed.name, landed.from.y], ["lands", 7]);
         expect("then walks to its seat and sits there",
             Paths.frame(down, down.ends), { x: 900, y: 7, pose: null, turn: 0, facing: 1,
@@ -516,8 +688,12 @@ QtObject {
         expect("up the screen", climbs.every(beat => beat.to.y < beat.from.y), true);
         const mantles = up.beats.find(beat => beat.name === "mantles");
         expect("and over its top onto it", [mantles.to.x, mantles.to.y, mantles.turn], [608, 7, 0]);
-        expect("up its whole height in three seconds at most",
-            climbs.reduce((all, beat) => all + beat.ends - beat.begins, 0) <= 3000, true);
+        expect("up its whole height in two and a half seconds at most, a cat's not a lift's",
+            climbs.reduce((all, beat) => all + beat.ends - beat.begins, 0) <= 2500, true);
+        const bounding = seen(up).filter(at => at.beat === "climbs").map((at, i, all) =>
+            i === 0 ? 0 : Math.abs(at.y - all[i - 1].y)).slice(2);
+        expect("in bounds, surging and gripping, never at a lift's even pace",
+            Math.max(...bounding) > 1.5 * Math.min(...bounding), true);
         expect("and sits on its seat", [Paths.frame(up, up.ends).x, Paths.frame(up, up.ends).done],
             [100, true]);
         expect("all it shows is smooth", smooth(seen(up)), true);
@@ -526,6 +702,87 @@ QtObject {
         expect("up from below onto a side, and up a column of two windows across the gap",
             between.map(beat => [Math.round(beat.from.y), Math.round(beat.to.y)]),
             [[887, 801], [801, 776], [408, 384]]);
+
+        // Three columns: one window, two stacked with a gap at 300, and
+        // two with one at 500 (Joel, 2026-11-13, by WCJQSG fbb80ff0: "i
+        // might be on a window in the second row and it needs to travel
+        // to it. or I am in a column on the left and change workspaces
+        // where the last focused window is on the right").
+        const three = [
+            { left: 16, top: 16, width: 400, height: 768, column: 0 },
+            { left: 432, top: 16, width: 400, height: 284, column: 1 },
+            { left: 432, top: 316, width: 400, height: 468, column: 1 },
+            { left: 848, top: 16, width: 384, height: 484, column: 2 },
+            { left: 848, top: 516, width: 384, height: 268, column: 2 }
+        ];
+        const among = more => world(Object.assign({ pause: 0, was: three, now: three,
+            cols: Paths.columns(three, 0) }, more));
+        // Never gliding: each walk level, each climb straight up or down,
+        // and every beat begun where the last one ended.
+        const glides = way => way.beats.some((beat, i) =>
+            (beat.name === "goes" && beat.from.y !== beat.to.y)
+            || (beat.name === "climbs" && beat.from.x !== beat.to.x)
+            || (i > 0 && Math.hypot(beat.from.x - way.beats[i - 1].to.x,
+                beat.from.y - way.beats[i - 1].to.y) > 0.01));
+        const gapsLeapt = way => way.beats.filter(beat => beat.name === "leaps"
+            && Math.abs(beat.to.x - beat.from.x) >= 16).length;
+        const ends = way => [Paths.frame(way, way.ends).x, Paths.frame(way, way.ends).y];
+        const route = Paths.moves(seat(100), seat(1000), among({ way: -1 }));
+        const sides = route.beats.filter(beat => beat.name === "climbs")
+            .map(beat => beat.from.x);
+        expect("up, it finds its way across more than one window",
+            Array.from(new Set(sides)).length > 1, true);
+        expect("leaping a gap between windows mid-climb",
+            route.beats.some(beat => beat.name === "leaps" && Math.abs(beat.to.x - beat.from.x)
+                >= 16 && beat.from.y > 100 && beat.from.y < 700), true);
+        expect("and gets to its seat, never gliding", [ends(route), glides(route)],
+            [[1000, 7], false]);
+        expect("all of that smooth", smooth(seen(route)), true);
+        const lower = { x: 532, y: 307 };
+        const downTo = Paths.walk(seat(100), lower, among({}));
+        expect("to a window under another it goes down a side and leaps the gap to it",
+            [downTo.beats.some(beat => beat.name === "climbs" && beat.to.y > beat.from.y),
+                gapsLeapt(downTo) > 0, ends(downTo), glides(downTo)],
+            [true, true, [532, 307], false]);
+        const under = Paths.walk(seat(532), lower, among({}));
+        expect("from the top of its own column too, down past the window over it",
+            [under !== null, under ? ends(under) : null, under ? glides(under) : null],
+            [true, [532, 307], false]);
+        const outOf = Paths.walk(lower, { x: 948, y: 507 }, among({}));
+        expect("and from one to another", [ends(outOf), glides(outOf), gapsLeapt(outOf) > 0],
+            [[948, 507], false, true]);
+        expect("all of it smooth", [downTo, under, outOf].every(way => smooth(seen(way))), true);
+        for (const [way, name] of [[1, "down"], [-1, "up"]]) {
+            const sideways = Paths.moves(seat(100), seat(1100), among({ way }));
+            expect(`${name} a workspace from the left to the right, it leaps each gap it meets`,
+                [gapsLeapt(sideways) >= 2, ends(sideways), glides(sideways), smooth(seen(sideways))],
+                [true, [1100, 7], false, true]);
+        }
+        const deep = Paths.moves(seat(100), { x: 948, y: 507 }, among({ way: 1 }));
+        expect("down a workspace to a window under another, never gliding",
+            [ends(deep), glides(deep), smooth(seen(deep))], [[948, 507], false, true]);
+
+        // The window over its own resized, as niri does: it rides the top
+        // it stands on, on niri's own spring, as the window's edge goes,
+        // never across or through a window (Joel, 2026-11-13, by WCJQSG
+        // 2bd7c7c6: "the kitten also needs to handle resizing windows").
+        const ided = three.map((tile, i) => Object.assign({ id: i + 1 }, tile));
+        const split = top => ided.map(tile => tile.column !== 2 ? tile : Object.assign({},
+            tile, tile.id === 4 ? { height: top - 32 } : { top, height: 784 - top }));
+        const resized = (now, to) => Paths.walk({ x: 948, y: 507 }, to, among({ hurried: true,
+            cols: Paths.columns(now, 0), before: Paths.columns(ided, 0) }));
+        for (const [top, name] of [[316, "shrunk, it rides up"], [616, "grown, it rides down"]]) {
+            const rode = resized(split(top), { x: 948, y: top - 9 });
+            expect(`the window over its own ${name} with its own window's top`,
+                [rode.beats[0].name, rode.beats[0].to.y, Paths.frame(rode, 40).y,
+                    seen(rode).every(one => one.x === 948)],
+                ["rides", top - 9, 507 + (top - 516) * MarginCat.slid(40, spring), true]);
+        }
+        const narrowed = ided.map(tile => tile.column !== 2 ? tile
+            : Object.assign({}, tile, { width: 60 }));
+        const left = resized(narrowed, { x: 874, y: 507 });
+        expect("its column narrowed out from under it, it falls",
+            [left.beats[0].name, left.beats.some(beat => beat.name === "rides")], ["falls", false]);
 
         expect("with nothing on the new workspace it only rides",
             Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
