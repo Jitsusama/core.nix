@@ -5607,6 +5607,12 @@ Scope {
         id: talkDrafts
     }
 
+    // Super+S's line, said to whoever the focused window's session is, from over it.
+    TalkLine {
+        id: talkLine
+        launcher: root
+    }
+
     // What was picked for what was typed, which the ranking leans on.
     Picks {
         id: picks
@@ -7072,6 +7078,14 @@ Scope {
                     // (chordAt), which a line from anything else may leave out.
                     const chord = /^@[0-9.]+$/.test(said[said.length - 1] ?? "") ? said.pop()
                         : "";
+                    // The talk line is its own surface, not an opening of the launcher's.
+                    if (said[0] === "line") {
+                        const at = chord === "" ? -1 : Number(chord.slice(1)) * 1000;
+                        if (at > 0)
+                            root.chordLate(at);
+                        talkLine.toggle(at);
+                        return;
+                    }
                     if (root.waitedOut(chord))
                         return;
                     root.askedToOpen();
@@ -7108,6 +7122,11 @@ Scope {
         }
 
         // Opens the launcher into a collection by its provider's name.
+        // Puts Super+S's talk line up, or away, its words kept.
+        function line(): void {
+            talkLine.toggle(-1);
+        }
+
         function collection(name: string): void {
             root.askedToOpen();
             root.chordInto(name);
@@ -7858,6 +7877,8 @@ Scope {
         return JSON.stringify({
             open: root.open,
             keys: root.open && prompt.Window.active,
+            // Super+S's talk line (TalkLine.qml).
+            line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
             // How many times a key listed a list shown lately again.

@@ -35,6 +35,7 @@ which cost more than all the cases, so splitting it would start them twice.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shlex
@@ -1391,3 +1392,68 @@ def made_settled(shell: Shell) -> None:
         now = made_by_agents(shell)
         if now != made:
             made, still_since = now, time.monotonic()
+
+
+def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shell: Shell) -> None:
+    """Super+S's line names who hears it, keeps its words through being put away, and says them.
+
+    Talking to the void took over Joel's screen and lost his words to a switch (2026-11-12
+    16:00): the line is one band a step inside the top of the screen, over his window. No
+    window's session has the focus here, so the session standing at Agents' top hears it, as
+    tell answers without one (modules/agents/src/tell.rs proves the window's way).
+    """
+    lay("VOID", "Void Quest", {"state": "listening", "standsAtTop": {"name": "The Void"}})
+    # Only that Agents has heard of the void, whatever else earlier cases laid beside it.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: "The Void" in shown["rows"])
+    shell.close_launcher()
+    line = shell.ipc("line")
+    words = "is the tide in"
+    since = shell.mark()
+    shell.as_account(line)
+    shell.launcher_until(
+        lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "The Void"
+    )
+    # It says how long it took to reach the screen, held to Joel's 50 ms (VKCF3Z, e8b4139e).
+    deadline = time.monotonic() + 10
+    while not (
+        up := re.search(
+            r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
+        )
+    ):
+        assert time.monotonic() < deadline, shell.tail()
+        time.sleep(0.1)
+    logging.getLogger(__name__).info("the line was up %s ms after it was asked", up[1])
+    shown = shell.showing()
+    assert not shown["open"], shown
+    assert shown["line"]["mode"] == "insert", shown["line"]
+    # A step inside the top, as niri lays an overlay: the window under it keeps the rest.
+    assert 0 < shown["line"]["top"] < 100, shown["line"]  # noqa: PLR2004
+    shell.send_chars(words)
+    shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
+    # Escape gives normal, as the launcher's line does, and never puts it away.
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    assert shell.showing()["line"]["up"], shell.showing()["line"]
+    # The chord again does, and once more gives his words back.
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    inbox = STEER / "VOID"
+    deadline = time.monotonic() + 10
+    while not any(json.loads(one.read_text()).get("text") == words for one in inbox.glob("*.json")):
+        assert time.monotonic() < deadline, "the line never reached the void's inbox"
+        time.sleep(0.1)
+    # Said, the line opens empty, its words kept by whom they went to until delivered.
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == "")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    times = re.findall(
+        r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
+    )
+    logging.getLogger(__name__).info("the line was up after %s ms each time", times)

@@ -94,6 +94,17 @@
       }
     },
     {
+      "id": "agents:line",
+      "in": "agents",
+      "name": "Say to the Focused Session",
+      "glyph": "reply",
+      "ask": "what to say?",
+      "said": {
+        "nobody": "nobody to hear it",
+        "asking": "finding who hears it"
+      }
+    },
+    {
       "id": "agents:repo",
       "in": "agents",
       "name": "Repository"
