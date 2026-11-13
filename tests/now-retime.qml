@@ -79,6 +79,11 @@ ShellRoot {
             theLauncher.placed = 0;
             theLauncher.open = true;
             Expect.same("opened into a place, it places no time", theLauncher.placed, 0);
+            // The clock's turn to this minute heard only now, late, as a
+            // loaded builder hears it.
+            now.minuteTurned();
+            Expect.same("a turn heard after the time was placed leaves it fresh",
+                now.timeStale, false);
             theLauncher.wanting = true;
             cameToNow.start();
         } catch (error) {
@@ -93,8 +98,9 @@ ShellRoot {
         interval: 50
         onTriggered: {
             try {
-                Expect.same("come to Now's rows within the minute, it places no time",
-                    theLauncher.placed, 0);
+                Expect.expect("come to Now's rows within the minute, it places no time",
+                    theLauncher.placed === 0, `placed ${theLauncher.placed}, stale `
+                        + `${now.timeStale}, minute ${now.timedMinute} of ${now.minuteNow()}`);
                 theLauncher.wanting = false;
                 theLauncher.open = false;
                 theLauncher.open = true;
@@ -125,6 +131,13 @@ ShellRoot {
                 theLauncher.open = false;
                 // As if it were placed in the minute before this one.
                 now.timedMinute -= 1;
+                // A turn heard while it isn't wanted, placed in the minute
+                // before, leaves it stale.
+                theLauncher.wanting = false;
+                now.minuteTurned();
+                Expect.same("a turn heard after the minute it was placed in leaves it stale",
+                    now.timeStale, true);
+                theLauncher.wanting = true;
                 theLauncher.open = true;
                 Expect.same("opened onto Now's rows a minute on, it places the time once",
                     theLauncher.placed, 1);
