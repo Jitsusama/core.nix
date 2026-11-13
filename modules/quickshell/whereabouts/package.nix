@@ -1,9 +1,10 @@
 # The daemon that holds where the laptop is and the clock's zone, for the
 # launcher, built from this directory, its tests run as it builds: its
 # socket's among them (tests/daemon.rs). Those tests start it and ask it
-# with a crate every daemon's tests share (../../daemon-client), and its
-# rows take the form every daemon's do (../../ready-rows), so the source
-# is cut from the modules folder holding them, and built from this one.
+# with a crate every daemon's tests share (../../daemon-client), it speaks
+# the interface every daemon does (../../daemon-serve), and its rows take
+# the form every daemon's do (../../ready-rows), so the source is cut from
+# the modules folder holding them, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "whereabouts";
@@ -17,6 +18,8 @@ rustPlatform.buildRustPackage rec {
       ./tests
       ../../daemon-client/Cargo.toml
       ../../daemon-client/src
+      ../../daemon-serve/Cargo.toml
+      ../../daemon-serve/src
       ../../ready-rows/Cargo.toml
       ../../ready-rows/src
     ];

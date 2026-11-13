@@ -16,6 +16,9 @@ name = "location"
 path = "src/main.rs"
 
 [dependencies]
+# The shell's daemon interface, spoken as every daemon's is: its socket,
+# its asks and its watches (serve.rs, docs/daemons.md).
+daemon-serve = { path = "../../daemon-serve" }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # inotify, for the clock's zone, its move and the pin (notify.rs).
 libc = "0.2"

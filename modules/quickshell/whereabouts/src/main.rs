@@ -3,10 +3,11 @@
 //! and the clock's zone can follow it too (clock-follows/).
 //!
 //! It answers over SOCKET, which systemd holds, in the shell's daemon
-//! interface (serve.rs): one record, `here:laptop`, with the zone the clock
-//! keeps, read from the link ROOT's `etc/localtime` is, and its last move,
-//! as clock-follows writes it to MOVED. Both are read again as inotify says
-//! they changed (notify.rs), and nothing is asked on a clock.
+//! interface, which daemon-serve speaks for it (serve.rs): one record,
+//! `here:laptop`, with the zone the clock keeps, read from the link ROOT's
+//! `etc/localtime` is, and its last move, as clock-follows writes it to
+//! MOVED. Both are read again as inotify says they changed (notify.rs),
+//! and nothing is asked on a clock.
 //!
 //! Given KEPT, PIN and MOVED, as a machine that follows the laptop is, it
 //! asks GeoClue, the system's location service, over D-Bus (geoclue.rs),
@@ -198,7 +199,7 @@ async fn serve(
         pin: files.as_ref().map(|files| files.pin.clone()),
         moved: files.as_ref().map(|files| files.moved.clone()),
     });
-    let listener = match serve::listen(socket) {
+    let listener = match daemon_serve::serve::listen(socket) {
         Ok(listener) => listener,
         Err(why) => {
             eprintln!("<3>couldn't listen on {}: {why}", socket.display());
@@ -216,8 +217,8 @@ async fn serve(
     let pin = files.as_ref().map(|files| files.pin.clone());
     let shared = Shared::new(known, words, pin);
     {
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || serve::accept(&shared, &listener));
+        let served = shared.served();
+        std::thread::spawn(move || daemon_serve::serve::accept(served, listener));
     }
     {
         let shared = Arc::clone(&shared);
