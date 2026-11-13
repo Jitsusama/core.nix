@@ -391,6 +391,16 @@ impl Inputs {
             .unwrap_or("")
     }
 
+    /// The boot the sessions to reopen are of, and where the sessions'
+    /// windows sat, kept for the shell to put them back by.
+    fn placed(&self) -> [Value; 3] {
+        [
+            reopen::restoring(self.restore.as_ref()),
+            self.arrangement.record(),
+            self.kept_places.record(),
+        ]
+    }
+
     /// Every record served, made from what each source last said.
     pub fn made(&self) -> served::Made {
         let joel_can = JoelCan::from_to_dos(self.to_dos.records().map(|(_, record)| record));
@@ -410,11 +420,8 @@ impl Inputs {
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
-        // With them, the boot they're of, and the places kept of every
-        // boot's sessions, which the shell puts them back by.
-        reopens.push(reopen::restoring(self.restore.as_ref()));
-        reopens.push(self.arrangement.record());
-        reopens.push(self.kept_places.record());
+        // With them, the boot they're of, and the places kept.
+        reopens.extend(self.placed());
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(

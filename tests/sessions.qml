@@ -221,10 +221,6 @@ ShellRoot {
             answer === "no window to keep")
             && Object.keys(Sessions.keptPlaces).sort().join(" ") === "s-OTHER2 s-moving",
             keptNot.join(", "));
-        const told = agentsAsked.filter(one => one.ask === "keep-places").pop();
-        expect("the daemon keeps them, the one from before too",
-            Object.keys(told?.places ?? {}).sort().join(" ") === "s-OTHER2 s-moving"
-            && told.places["s-moving"].workspace === 6, JSON.stringify(told));
         Sessions.keepPlaces({});
 
         Sessions.goTo(other);
@@ -536,6 +532,11 @@ ShellRoot {
             expect("forgetting asks the daemon, naming the session",
                 asked[0].session === "s-ferried" && asked[0].id.startsWith("ask-"),
                 JSON.stringify(asked[0]));
+            // Asked before it, on the same socket, so heard by now; a
+            // viewer reopened since may have kept another after them.
+            const told = placesAsked.slice(0, 2).map(one => Object.keys(one.places ?? {}).sort().join(" "));
+            expect("the daemon is told the places kept, the one from before too, then none",
+                JSON.stringify(told) === '["s-OTHER2 s-moving",""]', JSON.stringify(placesAsked));
             Sessions.putOffLastBoot();
         } else if (asked.length === 2 && ids === "s-ferry s-freed") {
             expect("Not Now asks the daemon to put the last boot off",
@@ -769,6 +770,9 @@ ShellRoot {
     // What the shell asked of the agents daemon, past its hello and watch,
     // each ask whole.
     property var agentsAsked: []
+    // What the shell told the daemon of the places kept, apart from what
+    // Joel says of the sessions to reopen.
+    property var placesAsked: []
 
     // What the agents daemon serves of the sessions to reopen, as its
     // reopen.rs works them out of what the harness's restore.json kept
@@ -839,6 +843,11 @@ ShellRoot {
                         said([{ id: ask.id, records: root.reopenRecords() }]);
                         return;
                     }
+                    if (ask.ask === "keep-places") {
+                        root.placesAsked = root.placesAsked.concat([ask]);
+                        said([{ id: ask.id, kept: Object.keys(ask.places ?? {}).length }]);
+                        return;
+                    }
                     root.agentsAsked = root.agentsAsked.concat([ask]);
                     const boot = root.reopenRecords().filter(one => one.way === "boot")
                         .map(one => one.key);
@@ -848,8 +857,6 @@ ShellRoot {
                     else if (ask.ask === "put-off")
                         said([{ id: ask.id, "put-off": true },
                             { id: "all", changed: [], gone: boot }]);
-                    else if (ask.ask === "keep-places")
-                        said([{ id: ask.id, kept: Object.keys(ask.places ?? {}).length }]);
                     else
                         root.fail(`an ask of the agents daemon the shell has no need of: ${line}`);
                     Qt.callLater(root.check);
