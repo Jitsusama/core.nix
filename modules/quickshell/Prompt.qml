@@ -22,7 +22,7 @@
 // keys are on the rows.
 // Its type ranks it (docs/design.md, Type): where Joel is at Title, the
 // largest thing on the line, its capitals centred on the field; what's
-// typed at Figure, his letters rather than a name; the hint in the voice;
+// typed at Figure, his letters rather than a name; the hint as typed, muted;
 // and the aside and the field's keys at Note, a step under the rest.
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -1037,18 +1037,17 @@ Item {
     // How far what's typed stands after the path.
     readonly property int pathGap: Theme.space.rung.apart
 
-    // The hint as it's drawn, in the voice's face, since it's the shell
-    // speaking to Joel: a face's metrics leave out the voice's axes, which
-    // measured it narrow.
+    // The hint as it's drawn, in the typed letters' own face (hintText).
     Text {
         id: hintWide
         visible: false
         text: prompt.hint
         textFormat: Text.PlainText
-        font.family: Theme.level.voice.family
-        font.italic: Theme.level.voice.italic
-        font.pointSize: Theme.level.voice.pointSize
-        font.variableAxes: Theme.level.voice.variableAxes
+        font.family: Theme.level.figure.family
+        font.pointSize: Theme.level.figure.pointSize
+        font.weight: Theme.level.figure.weight
+        font.features: Theme.level.figure.features
+        font.letterSpacing: Theme.level.figure.letterSpacing
     }
 
     // The room kept for typing: the hint's, or what's typed at its widest
@@ -1059,7 +1058,7 @@ Item {
     // path says "\u2026/more", so Joel sees which folder he's in). A
     // question asked once is read whole, so the path gives way to it.
     readonly property real typingRoom: Math.max(
-        (caretShown ? caretWidth + Theme.space.rung.mark : 0) + Math.ceil(hintWide.implicitWidth),
+        Math.ceil(hintWide.implicitWidth) + caretWidth,
         typedWidest + caretWidth,
         asking === "" ? 0 : Math.ceil(figureFace.advanceWidth(asking)) + 1)
 
@@ -1401,10 +1400,12 @@ Item {
         // (the launcher audit's finding 35, Joel's yes on 2026-10-26: it
         // stood a step right of it). A ghost runs on from what's typed as
         // one word, and ends in an ellipsis where the field does.
-        // The hint is the shell's voice, in every field, sized by capitals
-        // and sat on the typed letters' baseline, since the two faces' line
-        // boxes differ; the ghost is letters typed,
-        // in the field's own face (look 3's piece 1).
+        // The hint is set as typed letters are, muted, the caret at its
+        // start, so it reads as words he could have typed (Joel, 2026-11-13
+        // 07:48: "the cursor also needs to line up with the text hint ... it
+        // needs to feel like it is something one could have typed"); it was
+        // the voice's italic, a mark past the caret. The ghost is letters
+        // typed too, in the field's own face (look 3's piece 1).
         // y over an answer copies what the ghost says, so the ghost flashes
         // as a row y copies does (Choice.qml's flashed): the accent's ground
         // under its own ink, fill and colour only. Like a find's wash
@@ -1443,11 +1444,10 @@ Item {
         // (keeps-pace's step probe, 2026-11-10).
         Text {
             id: hintText
-            // With nothing typed, past the caret where one is drawn, a mark
-            // after it, so the caret never covers the hint's first letter
-            // (VKCF3Z's space audit of the picker, fault 11).
-            x: prompt.caretShown ? prompt.caretWidth + Theme.space.rung.mark : 0
-            width: Math.max(0, input.width - x)
+            // Where the first typed letter stands, inside the field's own
+            // padding, so the caret is at its start as at a typed word's.
+            x: input.leftPadding
+            width: Math.max(0, input.width - x - input.rightPadding)
             elide: Text.ElideRight
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
@@ -1456,10 +1456,12 @@ Item {
             // the head keeps to two levels.
             visible: input.text === "" && text !== "" && prompt.placeStands === ""
             color: Theme.muted
-            font.family: Theme.level.voice.family
-            font.italic: Theme.level.voice.italic
-            font.pointSize: Theme.level.voice.pointSize
-            font.variableAxes: Theme.level.voice.variableAxes
+            // The typed letters' face, but never a secret's dot spacing.
+            font.family: Theme.level.figure.family
+            font.pointSize: Theme.level.figure.pointSize
+            font.weight: Theme.level.figure.weight
+            font.features: Theme.level.figure.features
+            font.letterSpacing: Theme.level.figure.letterSpacing
         }
 
         Text {
