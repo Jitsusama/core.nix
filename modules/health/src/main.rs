@@ -60,6 +60,7 @@ mod launcher;
 mod launches;
 mod lid;
 mod memory;
+mod reports;
 mod sessions;
 mod show;
 mod sign;

@@ -16,6 +16,7 @@ use jiff::tz::TimeZone;
 
 use crate::follow;
 use crate::journal::{self, Entry};
+use crate::reports;
 use crate::unified;
 
 /// What the day's lines are read from.
@@ -115,6 +116,16 @@ impl Source {
         match self {
             Self::Journal => Some(Path::new("/sys/fs/cgroup")),
             Self::UnifiedLog => None,
+        }
+    }
+
+    /// Where crash reports are written, under the account's `home`, which
+    /// only a Mac has: Linux's core dumps are said in the journal.
+    #[must_use]
+    pub fn reports(self, home: Option<&Path>) -> Vec<PathBuf> {
+        match self {
+            Self::Journal => Vec::new(),
+            Self::UnifiedLog => reports::folders(home),
         }
     }
 

@@ -4,7 +4,7 @@
 //! anything that runs. Each half minute it also looks at the lid, which no
 //! journal tells of when it's wrong.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -23,6 +23,7 @@ use crate::figures;
 use crate::journal::Mark;
 use crate::lid::{self, Looked};
 use crate::memory;
+use crate::reports;
 use crate::sessions;
 use crate::source::Source;
 use crate::trials;
@@ -52,6 +53,8 @@ pub struct Follower {
     cgroups: Option<(PathBuf, String)>,
     guards: Vec<PathBuf>,
     guards_stopped: Vec<PathBuf>,
+    reports: Vec<PathBuf>,
+    reported: BTreeSet<PathBuf>,
 }
 
 /// How much of the sessions' logs is read a tick, so a first start on a
@@ -92,6 +95,8 @@ impl Follower {
             cgroups: None,
             guards: Vec::new(),
             guards_stopped: Vec::new(),
+            reports: Vec::new(),
+            reported: BTreeSet::new(),
         }
     }
 
@@ -252,6 +257,26 @@ impl Follower {
         });
         day.read = read;
         self.changed |= any;
+    }
+
+    /// Count the crashes a Mac reports in `folders`.
+    #[must_use]
+    pub fn reporting(self, folders: Vec<PathBuf>) -> Self {
+        Self {
+            reports: folders,
+            ..self
+        }
+    }
+
+    /// Count each new report's crash that's of the day. Each run reads
+    /// the day's reports again, as it reads the day's lines again.
+    pub fn read_reports(&mut self) {
+        for crash in reports::look(&self.reports, &mut self.reported) {
+            if date_of(crash.at, &self.zone) == self.day.date {
+                self.day.take(&crash);
+                self.changed = true;
+            }
+        }
     }
 
     /// Read how using the machine felt from the pain-points detector's
@@ -471,8 +496,9 @@ pub fn follow(into: &Path) -> io::Result<()> {
     if let Some(processes) = source.processes() {
         follower = follower.minding(processes);
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    follower = follower.reporting(source.reports(home.as_deref()));
+    if let Some(home) = home {
         follower = follower
             .hearing(&home.join(".pi/agent/sessions"))
             .counting_the_dead(&home.join(PRESENCES));
@@ -526,6 +552,7 @@ fn run(
             follower.count_the_dead(wall);
             follower.weigh(wall);
             follower.guard(wall);
+            follower.read_reports();
             follower.feel();
             follower.time_typing();
             follower.pool_keys();
