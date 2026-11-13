@@ -1922,9 +1922,10 @@
   '';
   pi-hosted-shares-extensions-across-folders = ''
     pi built with the host's patches, applied exactly, keeps one factory for each extension file
-    whichever folder loads it, while any conversation holds its extensions, so folders share it, a
-    folder's own extension stays its own, a moved link loads its new copy, the last conversation
-    ending lets it go, a reload loads afresh, and a load begun before a reload caches nothing after
+    whichever folder loads it, even once every conversation has parked and memory was collected,
+    so folders share it, a folder's own extension stays its own, a moved link loads its new copy
+    and drops the one it left, a missing file fails as a load, a reload loads afresh, and a load
+    begun before a reload caches nothing after
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
