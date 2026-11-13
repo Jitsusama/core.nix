@@ -8762,7 +8762,8 @@ Scope {
             if (closing !== null)
                 closing.no();
             screenHere = focusedScreen;
-            trials.closed();
+            // Words typed for an ask, a talk's or a password, are never kept.
+            trials.closed(asking || closing !== null ? "" : prompt.text);
             spotsLater.restart();
             if (unlooked.length > 0 || unready.length > 0)
                 readying.start();
@@ -10468,7 +10469,8 @@ Scope {
                             // From what the field read before this key, a
                             // key held for answers included (Awaited.js).
                             trials.retyped(Awaited.before({ due: root.keysDue,
-                                held: root.answersAwaited }, root.typed), text);
+                                held: root.answersAwaited }, root.typed), text,
+                                !!root.asking);
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }
