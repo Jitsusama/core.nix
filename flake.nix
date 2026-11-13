@@ -619,6 +619,14 @@
       # doesn't wait on, and on one waiting on a point it keeps.
       lib.daemonsAgree = pkgs: pkgs.callPackage ./tests/rules/daemons-agree.nix { };
 
+      # How a repository built on core holds its commands to docs/commands.md's
+      # convention, as core does: `core.lib.commandsAgree pkgs { src = ./.;
+      # commands = { ... }; waiting = { ... }; }` is a check that fails on a
+      # command the repository's crates build breaking a point of it it doesn't
+      # wait on, and on one waiting on a point it keeps; each command on the
+      # terminal kit is given built, to be run for its help.
+      lib.commandsAgree = pkgs: pkgs.callPackage ./tests/rules/commands-agree.nix { };
+
       # How a repository built on core holds its names to core's glossary:
       # `core.lib.namesSayTheGlossary pkgs { names = ...; otherSenses = ...;
       # waiting = ...; }` is a check that no name says a name the glossary
