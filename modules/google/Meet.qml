@@ -146,13 +146,14 @@ Provider {
 
     // A call's meeting's acts, as the Calendar place's row of it holds
     // them, with Guests, Attachments and Move the daemon serves inside it
-    // (Meetings.qml's lent), or Calendar.acts' where it serves none.
+    // (Meetings.qml's lent), or where it serves none, only joining or
+    // opening it (Calendar.qml's opening).
     function meetingActs(meeting) {
         const calendar = (provider.launcher?.sources ?? [])
             .find(one => one.settings?.name === "calendar") ?? null;
         const served = calendar?.lent?.(`calendar:meeting:${meeting.id}`) ?? null;
         return typeof served?.verbs === "function" ? served.verbs()
-            : Calendar.acts(meeting, provider);
+            : Calendar.opening(meeting, provider);
     }
 
     function copying() {
