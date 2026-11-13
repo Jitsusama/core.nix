@@ -94,7 +94,7 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
         )
 
     def watches(on: str = jobs) -> int:
-        """The shell's inotify watches on `on`, the queue's folder unless named."""
+        """Count the shell's inotify watches on `on`, the queue's folder unless named."""
         return int(
             desktop.as_account(
                 "p=$(systemctl --user show quickshell -p MainPID --value);"
