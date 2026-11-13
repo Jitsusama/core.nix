@@ -47,16 +47,16 @@ use crate::runs::{Evaluation, Run};
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Reads {
     /// Files and folders opened, looked up or followed, which were there.
-    read: BTreeSet<String>,
+    pub(crate) read: BTreeSet<String>,
     /// Paths looked up and not found.
-    missing: BTreeSet<String>,
+    pub(crate) missing: BTreeSet<String>,
     /// Folders whose entries were listed.
-    listed: BTreeSet<String>,
+    pub(crate) listed: BTreeSet<String>,
 }
 
 /// The calls strace is asked to trace: each that opens, looks up, follows
 /// or lists a path, and each that moves where a relative path starts.
-const TRACED: &str = "trace=openat,open,newfstatat,stat,lstat,statx,access,faccessat,\
+pub const TRACED: &str = "trace=openat,open,newfstatat,stat,lstat,statx,access,faccessat,\
                       faccessat2,readlink,readlinkat,getdents64,chdir,fchdir";
 
 /// Where strace is named, when it's run: a stand-in's, in the tests.
@@ -478,7 +478,7 @@ pub fn unread(
 }
 
 /// The tree a commit holds, which a record is made from and used for.
-fn tree(root: &str, commit: &str) -> Result<String, String> {
+pub fn tree(root: &str, commit: &str) -> Result<String, String> {
     crate::run(
         "git",
         &["-C", root, "rev-parse", &format!("{commit}^{{tree}}")],
@@ -542,19 +542,10 @@ fn traced(
     at: &Path,
     at_once: usize,
 ) -> Result<(Derivations, Reads, String, Evaluation), String> {
-    let tree = tree(root, base)?;
-    let flake = format!("git+file://{root}?rev={base}");
-    let expression = format!("(builtins.getFlake \"{flake}\").outPath");
-    let asked = ["eval", "--raw", "--expr", &expression, evaluating::UNCACHED];
-    let source = crate::run("nix", &evaluating::pure(&asked))?;
-    if let Some(input) = local_input(&Path::new(&source).join("flake.lock"))? {
-        return Err(format!(
-            "{input}, a flake input, is a local path, which a trace of the source wouldn't follow"
-        ));
-    }
+    let (tree, source) = source(root, base)?;
     let checks = format!("path:{source}#checks.{system}");
     let chunks: Vec<(usize, &[String])> = checks::chunks(vm).into_iter().enumerate().collect();
-    let strace = std::env::var(STRACE).unwrap_or_else(|_| STRACE_BUILT.to_owned());
+    let strace = strace();
     let mut evaluation = Run::evaluating("reads");
     // Nix keeps what it copied of a source in its fetcher cache, and a copy
     // it finds there it reads nothing for: evaluated again on 12 November,
@@ -656,8 +647,30 @@ fn write(at: &Path, reads: &Reads, tree: &str) -> Result<(), String> {
     fs::rename(&writing, at).map_err(failed)
 }
 
+/// The tree `base` holds, and its source as a plain path, which a trace is
+/// made from, refused when a flake input is a local path, which a trace of
+/// the source wouldn't follow.
+pub fn source(root: &str, base: &str) -> Result<(String, String), String> {
+    let tree = tree(root, base)?;
+    let flake = format!("git+file://{root}?rev={base}");
+    let expression = format!("(builtins.getFlake \"{flake}\").outPath");
+    let asked = ["eval", "--raw", "--expr", &expression, evaluating::UNCACHED];
+    let source = crate::run("nix", &evaluating::pure(&asked))?;
+    if let Some(input) = local_input(&Path::new(&source).join("flake.lock"))? {
+        return Err(format!(
+            "{input}, a flake input, is a local path, which a trace of the source wouldn't follow"
+        ));
+    }
+    Ok((tree, source))
+}
+
+/// The strace a trace is made with.
+pub fn strace() -> String {
+    std::env::var(STRACE).unwrap_or_else(|_| STRACE_BUILT.to_owned())
+}
+
 /// Run a program as [`crate::run`] does, with the cache folder at `fresh`.
-fn uncached(fresh: &Path, program: &str, arguments: &[&str]) -> Result<String, String> {
+pub fn uncached(fresh: &Path, program: &str, arguments: &[&str]) -> Result<String, String> {
     let ran = std::process::Command::new(program)
         .args(arguments)
         .env("XDG_CACHE_HOME", fresh)
@@ -716,21 +729,27 @@ pub fn untouched(at: &Path, root: &str, base: &str) -> bool {
     else {
         return false;
     };
-    // A folder came or went when it's at the base or in the tree, not both.
-    let came_or_went = |folder: &str| {
-        let at_base = format!("{base}:{folder}");
-        let was = crate::run("git", &["-C", root, "cat-file", "-e", &at_base]).is_ok();
-        was != Path::new(root).join(folder).is_dir()
-    };
-    let asked = ["-C", root, "diff", "--name-status", "--no-renames", base];
-    let Ok(said) = crate::run("git", &asked) else {
-        return false;
-    };
-    touched(&said).is_some_and(|touched| {
+    let moved = |folder: &str| came_or_went(root, base, folder);
+    touched_since(root, base).is_some_and(|touched| {
         touched
             .iter()
-            .all(|(file, how)| !reads.reached_by(file, *how, &came_or_went))
+            .all(|(file, how)| !reads.reached_by(file, *how, &moved))
     })
+}
+
+/// Whether `folder` came or went in the change from `base` to the working
+/// tree at `root`: it's at the base or in the tree, not both.
+pub fn came_or_went(root: &str, base: &str, folder: &str) -> bool {
+    let at_base = format!("{base}:{folder}");
+    let was = crate::run("git", &["-C", root, "cat-file", "-e", &at_base]).is_ok();
+    was != Path::new(root).join(folder).is_dir()
+}
+
+/// Each file the change from `base` to the working tree at `root` touched,
+/// and how; nothing when git can't say.
+pub fn touched_since(root: &str, base: &str) -> Option<Vec<(String, Touched)>> {
+    let asked = ["-C", root, "diff", "--name-status", "--no-renames", base];
+    touched(&crate::run("git", &asked).ok()?)
 }
 
 /// Each file `git diff --name-status` names, and how; nothing when a line
