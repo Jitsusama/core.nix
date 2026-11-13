@@ -30,6 +30,7 @@ use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
 
+use crate::addressed::Asked;
 use crate::held::{Closed, Holding};
 use crate::judged::{Judge, kept_quiet};
 use crate::notice::{Action, Notice, Urgency};
@@ -80,6 +81,10 @@ pub struct State {
     pub pictures: PathBuf,
     /// Signals owed to senders, oldest first.
     pub owed: Vec<Signal>,
+    /// What's to be asked of senders' daemons, by each notice's id and
+    /// when it came, oldest first, which the daemon's loop asks on threads
+    /// of their own so no arrival waits on one.
+    pub asking: Vec<(u32, Asked, i64)>,
     /// Every notice's texts made ready for the launcher's searches.
     searched: Searched,
     /// The notices place's rows its watch doesn't serve, by key, as last
@@ -96,6 +101,7 @@ impl State {
             sharing: false,
             pictures,
             owed: Vec::new(),
+            asking: Vec::new(),
             searched: Searched::default(),
             unserved: BTreeMap::new(),
         }
@@ -205,6 +211,9 @@ impl State {
         } else {
             let quiet = self.sharing || kept_quiet(&self.quiet, now);
             self.judge.judge(&mut notice, quiet);
+            if let Some(asked) = self.judge.asks(&notice) {
+                self.asking.push((id, asked, now));
+            }
         }
         let passing = notice.picture.clone();
         if let Some(why) = self.holding.arrive(notice) {
@@ -215,6 +224,16 @@ impl State {
             picture::forget(&gone, &self.pictures);
         }
         id
+    }
+
+    /// Its sender's daemon said one batched wasn't a post, or couldn't say:
+    /// it's to Joel, judged so again and raised, while it's still open and
+    /// unread. Answers whether it changed.
+    pub fn replied(&mut self, id: u32, now: i64) -> bool {
+        let quiet = self.sharing || kept_quiet(&self.quiet, now);
+        let judge = &self.judge;
+        self.holding
+            .judged_again(id, now, |notice| judge.to_him(notice, quiet))
     }
 
     /// Its sender withdrew one, `CloseNotification`.
@@ -431,6 +450,32 @@ mod tests {
     fn with_hint(mut sent: Sent, name: &str, value: Value) -> Sent {
         sent.hints.insert(name.into(), value);
         sent
+    }
+
+    #[test]
+    fn a_busy_channels_notice_is_asked_of_and_one_said_a_reply_chimes() {
+        let mut state = state("asked");
+        let addressed = r#"{"slack": {"everyMessage": ["busy"], "posted": "chat.sock"}}"#;
+        state.judge = Judge::default().addressing(addressed).expect("it reads");
+        let busy = |body: &str| Sent {
+            app: "Slack".into(),
+            body: body.into(),
+            ..sent("[work] in #busy", &[])
+        };
+        let id = state.notify(busy("Grace: on it"), 10);
+        let (whose, asked, at) = &state.asking[0];
+        let asking = (*whose, asked.words.as_str(), *at);
+        assert_eq!(asking, (id, "on it", 10), "not asked of");
+        let held = state.holding.get(id).expect("held");
+        let early = held.chimes || held.raised_at.is_some();
+        assert!(!early, "chimed before it was heard");
+        assert!(state.replied(id, 20), "a reply changed nothing");
+        let heard = state.holding.get(id).expect("held");
+        let judged = (heard.level.as_str(), heard.chimes, heard.raised_at);
+        assert_eq!(judged, ("card", true, Some(20)), "a reply wasn't to him");
+        // One gone or read by then is left as it is.
+        state.holding.mark(&[id], true, None, 21);
+        assert!(!state.replied(id, 22), "one read was raised");
     }
 
     #[test]

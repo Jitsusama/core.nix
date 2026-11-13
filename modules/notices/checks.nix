@@ -19,7 +19,9 @@ onLinux {
   # specification says, the token first; the name is never taken from
   # another server; and the history, its pictures and its ids outlive a
   # restart. Each notice's rows are its card's, in three places worded
-  # each for its list, signed as the desktop knows the sender.
+  # each for its list, signed as the desktop knows the sender. A busy
+  # channel's notice is asked of its program's daemon, and one that
+  # wasn't a post, or wasn't answered for, is to Joel.
   notices-holds-what-the-bus-says = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the notices daemon, its tests included.
   notices-passes-clippy = passesClippy "notices-passes-clippy" (pkgs.callPackage ./package.nix { });

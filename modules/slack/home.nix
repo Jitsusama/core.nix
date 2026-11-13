@@ -49,6 +49,10 @@ in
     "quickshell/SlackUnreads.js".source = ./SlackUnreads.js;
   };
 
+  # Slack's daemon tells a busy channel's post from a reply in a thread
+  # Joel follows, which its notices say alike, over its socket below.
+  jitsusama.quickshell.notices.senders.Slack.posted = "daemons/slack-unreads.sock";
+
   # What in Slack wants Joel, wearing the chat mark; right after the mail,
   # as VKCF3Z placed it, since both keep.
   jitsusama.quickshell.margin.pieces.slack = {

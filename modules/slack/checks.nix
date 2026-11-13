@@ -31,7 +31,8 @@ onLinux {
   # said only as it changes and gone once read, each message wanting Joel
   # held until it's said done, read in Slack, its history read once, and a
   # search says each message found and what's around one, Slack too busy
-  # told apart. A stand-in on the machine answers for Slack.
+  # told apart, and a channel's notice is said a post or a thread's reply
+  # by the channel's history. A stand-in on the machine answers for Slack.
   slack-finds-who-it-knows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
