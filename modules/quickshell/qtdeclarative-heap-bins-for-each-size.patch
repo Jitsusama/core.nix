@@ -1,0 +1,51 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Give the block allocator a bin for each size up to 2 KB
+
+Qt 6.12.0's block allocator keeps freed runs in eight bins by their
+size in 32-byte slots, the last holding every run of seven slots or
+more. A request of seven or more walks that list from its head for a
+run large enough, passing each too small, and walks it again whenever
+the run it split runs out. The shell's last bin held 10,000 to 84,000
+runs as it started, and perf put 84% of a 4 s stall at its start in
+that walk. Requests under 63 slots now have a bin of their own size,
+so the last holds only runs that fit nearly anything; a request for it
+passes at most 32 runs too small before taking a new chunk, which the
+next sweep sorts back into the bins.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -448,9 +448,14 @@ HeapItem *BlockAllocator::allocate(size_t size, bool forceAllocation) {
+         goto done;
+     }
+ 
+-    // search last bin for a large enough item
++    // search last bin for a large enough item, passing at most a few too small, since each pass
++    // of a long list is paid again by every request that follows it
+     last = &freeBins[NumBins - 1];
+-    while ((m = *last)) {
++    for (size_t tries = 0; (m = *last); ++tries) {
++        if (tries == LargeBinTries) {
++            m = nullptr;
++            break;
++        }
+         if (m->freeData.availableSlots >= slotsRequired) {
+             *last = m->freeData.next; // take it out of the list
+ 
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -178,7 +178,13 @@ struct BlockAllocator {
+         memset(freeBins, 0, sizeof(freeBins));
+     }
+ 
+-    enum { NumBins = 8 };
++    // A bin for each size up to 2 KB, so the last one holds only runs that fit nearly anything
++    // asked of it. With eight, every request of 224 bytes or more walked one list of every free
++    // run that size or larger, passing each too small for it.
++    enum { NumBins = 64 };
++
++    // How many runs too small a request for the last bin passes before it takes a new chunk.
++    enum { LargeBinTries = 32 };
+ 
+     static inline size_t binForSlots(size_t nSlots) {
+         return nSlots >= NumBins ? NumBins - 1 : nSlots;

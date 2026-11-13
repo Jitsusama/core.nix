@@ -103,7 +103,10 @@ let
   # checked by its content (qtdeclarative-caches-what-is-served.patch),
   # and written without waiting for the disk, since a restart onto changed
   # files writes hundreds of units and syncing each made it slower than
-  # compiling (qtdeclarative-caches-without-syncing.patch).
+  # compiling (qtdeclarative-caches-without-syncing.patch). Its heap keeps
+  # a free list for each size up to 2 KB, since with eight the last held
+  # tens of thousands of runs as the shell started, walked again by each
+  # row it made (qtdeclarative-heap-bins-for-each-size.patch).
   # Only the shell and the
   # modules it loads are built with it, so nothing else on the machine is
   # rebuilt for it.
@@ -122,6 +125,7 @@ let
             ./qtdeclarative-maps-find-keys-by-hash.patch
             ./qtdeclarative-caches-what-is-served.patch
             ./qtdeclarative-caches-without-syncing.patch
+            ./qtdeclarative-heap-bins-for-each-size.patch
           ];
         });
       }
