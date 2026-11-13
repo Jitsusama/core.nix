@@ -44,10 +44,21 @@ Image {
         });
     }
 
-    sourceSize: Qt.size(pixels.width, pixels.height)
-    // From the size as it's set, not from what it's worked out from, so the
-    // source is never set while the size still holds the one before.
-    source: file !== "" && sourceSize.width > 0 ? "file://" + file : ""
+    // The size and then the source, set together as the pixels change, so
+    // a read never starts while the size still holds the one before. Bound
+    // apart, the source read the size, which Qt says is the picture's own
+    // while none is set, so a screen going away looped, twice a run in
+    // vm-screens-keep-the-launcher (2026-11-12).
+    function show(): void {
+        if (file === "" || pixels.width <= 0) {
+            source = "";
+            return;
+        }
+        sourceSize = Qt.size(pixels.width, pixels.height);
+        source = "file://" + file;
+    }
+    onPixelsChanged: show()
+
     fillMode: Image.PreserveAspectCrop
     asynchronous: true
     // Read once for each window, so nothing is kept after.

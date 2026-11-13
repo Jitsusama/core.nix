@@ -25,7 +25,10 @@
 //! preview only once it's got, is handed what each get, list or watch
 //! names before it's answered (`fresh`), and hands what it read to
 //! `change` like anything else, so every watch hears it and no answer
-//! says what a watch wasn't told.
+//! says what a watch wasn't told. A record nothing should hold, as the
+//! clipboard's history serves the text highlighted now, is read instead
+//! as a get names its key (`read_on_get`), and never held, listed or
+//! told to a watch.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
@@ -45,7 +48,7 @@ use crate::asks::{Ask, Domain, VERSION, error, place_of, tells, trimmed};
 mod demand;
 
 use demand::joined;
-pub use demand::{Fresh, HealthToo, Wanted};
+pub use demand::{Fresh, HealthToo, Read, Wanted};
 
 /// How many lines a connection may have waiting to be written before
 /// it's taken as no longer reading and hung up on.
@@ -198,6 +201,8 @@ pub struct Shared {
     fresh: OnceLock<Fresh>,
     /// What else health says, once the daemon says.
     health_too: OnceLock<HealthToo>,
+    /// The kinds read as a get names them, and what reads them.
+    read: OnceLock<(&'static [&'static str], Read)>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -234,6 +239,7 @@ impl Shared {
             peered: OnceLock::new(),
             fresh: OnceLock::new(),
             health_too: OnceLock::new(),
+            read: OnceLock::new(),
         })
     }
 
@@ -506,9 +512,14 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             _ => None,
         };
         // Read on demand outside the lock too, so what's read is handed
-        // to change as anything else is.
+        // to change as anything else is, and records read as a get names
+        // them, never held, may wait on what the daemon reads them from.
         shared.read_for(&asked);
         let too = shared.said_too(&asked);
+        let read = match &asked {
+            Ask::Get { keys, .. } => shared.read_now(keys),
+            _ => BTreeMap::new(),
+        };
         let hello = matches!(asked, Ask::Hello { .. });
         let watch = match &asked {
             Ask::Watch { id, .. } => Some(id.clone()),
@@ -517,7 +528,10 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
         let mut held = lock(shared);
         let mut answer = match own {
             Some(own) => Some(own),
-            None => answer(shared, &mut held, asked, connection, &told, &hangup),
+            None => match asked {
+                Ask::Get { id, keys } => Some(got(&held, &id, &keys, &read)),
+                asked => answer(shared, &mut held, asked, connection, &told, &hangup),
+            },
         };
         if let (Some(answer), Some(too)) = (answer.as_mut(), too) {
             joined(answer, too);
@@ -609,6 +623,16 @@ fn owned(shared: &Shared, id: &Value, said: &Value, stream: &UnixStream) -> Valu
     answer
 }
 
+/// What a get is answered: the records of these keys, in the order asked,
+/// each read as it was asked or as it's held.
+fn got(held: &Held, id: &Value, keys: &[String], read: &BTreeMap<String, Value>) -> Value {
+    let records: Vec<&Value> = keys
+        .iter()
+        .filter_map(|key| read.get(key).or_else(|| held.records.get(key)))
+        .collect();
+    json!({"id": id, "records": records})
+}
+
 /// The records held of these kinds, those of them in these places, or
 /// these keys, in the daemon's order: by kind as the domain lists them,
 /// then as the daemon gave them; keys as asked.
@@ -693,9 +717,7 @@ fn answer(
             "id": id, "version": VERSION, "domain": domain.name, "state": "answering",
             "since": held.since, "sources": words(&held.sources),
         }),
-        Ask::Get { id, keys } => {
-            json!({"id": id, "records": records_of(domain, held, &[], Some(&keys), None)})
-        }
+        Ask::Get { id, keys } => got(held, &id, &keys, &BTreeMap::new()),
         Ask::List { id, kinds, places } => {
             let records = records_of(domain, held, &kinds, None, places.as_deref());
             json!({"id": id, "records": records})

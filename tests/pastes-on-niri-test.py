@@ -16,7 +16,9 @@ shared with other builds, where the whole paste took from 0.3 to 0.6 s as its lo
 paste lands while the shell is stopped, and the keys are pressed within 20 ms of the launcher
 letting go, as the daemon tells its journal each paste. The shell's journal holds the rest: the
 paste is asked, and the keys given back, before the closing's work runs, which took a paste's
-keys 91 ms on Joel's machine while it ran first (2026-11-10).
+keys 91 ms on Joel's machine while it ran first (2026-11-10). The history also reads the text
+highlighted, the selection a middle click pastes, as a get asks for it, for Super+X's On the
+Selection, and never keeps it.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import json
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -208,3 +211,36 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
     assert pressing < PRESSING, took
     in_order(shell, returned)
     shell.as_account("niri msg action close-window")
+
+
+def history_answer(asked: dict[str, object]) -> list[dict[str, object]]:
+    """Give the records the clipboard's history answers an ask, over its socket."""
+    with socket.socket(socket.AF_UNIX) as history:
+        history.settimeout(10)
+        history.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"))
+        history.sendall(json.dumps({"id": 1, **asked}).encode() + b"\n")
+        answer = json.loads(history.makefile().readline())
+    return list(answer["records"])
+
+
+def test_the_highlighted_text_is_read_as_a_get_asks_and_never_kept(shell: Shell) -> None:
+    """Super+X's On the Selection gets the highlighted text from the history, spawning nothing."""
+    highlighted = "highlighted words"
+    shell.as_account(f"printf %s '{highlighted}' | wl-copy --primary > /dev/null 2>&1")
+    asked: dict[str, object] = {"ask": "get", "keys": ["selection:primary"]}
+    got: list[dict[str, object]] = []
+
+    def read() -> bool:
+        got[:] = history_answer(asked)
+        return bool(got) and got[0].get("text") == highlighted
+
+    until(read, f"read {highlighted!r} as highlighted")
+    (selected,) = got
+    assert {key: selected[key] for key in ("key", "kind", "text")} == {
+        "key": "selection:primary",
+        "kind": "selection",
+        "text": highlighted,
+    }
+    assert isinstance(selected["at"], int), f"when it was highlighted, in ms: {selected}"
+    listed = json.dumps(history_answer({"ask": "list"}))
+    assert highlighted not in listed, "the highlighted text is never kept as a copy"
