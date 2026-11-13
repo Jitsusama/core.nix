@@ -126,6 +126,26 @@ fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
 }
 
 #[test]
+fn what_each_check_read_alone_is_shared_after_the_rest() {
+    assert_eq!(
+        KEPT_AS.last(),
+        Some(&"alone.reads.json"),
+        "a builder keeps what each check read alone at most once in 20 minutes, so lacking it \
+         mustn't stop the base's checks and reads, copied before it, from being shared"
+    );
+    let (read, _) = sharing_kept("abc123", "x86_64-linux", "alone.reads.json")
+        .expect("what each check read alone isn't shared");
+    assert_eq!(
+        read,
+        concat!(
+            "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/",
+            "abc123-x86_64-linux.alone.reads.json\""
+        ),
+        "not the file changed-checks keeps what each check read alone in"
+    );
+}
+
+#[test]
 fn a_base_or_system_the_shell_would_read_as_more_is_never_asked() {
     assert_eq!(
         keeps_base("abc; rm", "x86_64-linux"),
