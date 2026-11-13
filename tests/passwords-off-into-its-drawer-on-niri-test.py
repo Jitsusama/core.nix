@@ -1,8 +1,8 @@
 """The Passwords place while it's off, with no password manager set up, on niri.
 
-modules/quickshell/checks/passwords.nix runs this through pytest inside tests/nested-niri.sh. Off, the
-place holds one row saying so. With no manager, nothing can open from it, so its Return goes
-into its drawer, which says why and what would, rather than doing nothing, since every row's
+modules/quickshell/checks/passwords.nix runs this through pytest inside tests/nested-niri.sh.
+Off, the place holds one row saying so. With no manager, nothing can open from it, so its Return
+goes into its drawer, which says why and what would, rather than doing nothing, since every row's
 Return does something.
 """
 
