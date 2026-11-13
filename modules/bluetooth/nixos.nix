@@ -119,5 +119,16 @@ in
     };
   };
 
+  # A healthy BlueZ stops in under half a second. One whose controller has
+  # died waits out a timeout for each command it sends it as it powers the
+  # radio off: on 13 November Intel's controller had wedged the evening
+  # before (btintel_pcie's "Failed to get mac access", then no device), and
+  # bluetoothd took 10.4 s to stop, the longest wait of that reboot. On 11
+  # November it exited in 0.3 s, yet its unit took 28 s more to stop.
+  # bluetoothd writes each pairing as it's made, a file at a time by rename,
+  # and the disk prompt's pairing seal, where a machine has it, runs before
+  # it stops, so killing it at 3 s loses nothing.
+  systemd.services.bluetooth.serviceConfig.TimeoutStopSec = "3s";
+
   environment.systemPackages = [ pkgs.bluetui ];
 }
