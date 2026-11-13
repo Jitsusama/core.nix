@@ -159,6 +159,7 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
+        collector = pkgs.callPackage ../../modules/collector/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };

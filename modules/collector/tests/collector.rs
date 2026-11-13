@@ -46,6 +46,14 @@ fn within<T>(seconds: u64, what: &str, mut ready: impl FnMut() -> Option<T>) -> 
     }
 }
 
+/// The kind of each line a `jsonl` answer gives, in order.
+fn kinds(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter_map(|line| line["type"].as_str().map(str::to_owned))
+        .collect()
+}
+
 fn pressure(some: u64) -> String {
     format!(
         "some avg10=0.00 avg60=0.00 avg300=0.00 total={some}\n\
@@ -83,7 +91,10 @@ fn a_wait_the_kernel_counts_is_kept_as_its_span() {
 
     // Its three quiet seconds come after the waiting one.
     let line = within(30, "the wait kept", || {
-        let out = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+        let out = ask(
+            &store,
+            &["at", "now", "--around", "10m", "--format", "jsonl"],
+        );
         let text = String::from_utf8(out.stdout).ok()?;
         text.lines()
             .find(|line| line.contains("memory waits in the machine"))
@@ -127,7 +138,10 @@ fn what_a_floored_slice_holds_is_kept_as_its_span() {
     );
 
     let line = within(30, "what app.slice holds", || {
-        let out = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+        let out = ask(
+            &store,
+            &["at", "now", "--around", "10m", "--format", "jsonl"],
+        );
         let text = String::from_utf8(out.stdout).ok()?;
         text.lines()
             .find(|line| line.contains("memory held by app.slice"))
@@ -183,12 +197,38 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
     drop(sender);
 
     let lines = until("both spans kept", || {
-        let out = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+        let out = ask(
+            &store,
+            &["at", "now", "--around", "10m", "--format", "jsonl"],
+        );
         let text = String::from_utf8(out.stdout).ok()?;
-        (text.lines().count() == 2).then_some(text)
+        // The kernel's own spans are kept beside them, and on a machine
+        // with slices to read there are some, so only the sender's count.
+        let sent = text
+            .lines()
+            .filter(|line| line.contains(r#""service":"launcher""#));
+        (sent.count() == 2).then_some(text)
     });
     assert!(lines.contains(r#""name":"launcher.open""#), "{lines}");
     assert!(lines.contains(r#""first_y":0"#), "{lines}");
+    assert_eq!(
+        kinds(&lines).last().map(String::as_str),
+        Some("end"),
+        "the stream says it ended"
+    );
+
+    // As JSON the spans are one object, each one's times in RFC 3339.
+    let whole = ask(&store, &["at", "now", "--around", "10m", "--json"]);
+    let whole: serde_json::Value = serde_json::from_slice(&whole.stdout).expect("one object");
+    assert_eq!(whole["schema"], "collector.spans/1");
+    let first = &whole["spans"][0];
+    assert!(
+        first["started_at"]
+            .as_str()
+            .is_some_and(|at| at.ends_with('Z')),
+        "a time in RFC 3339: {first}"
+    );
+    assert!(first["took_ms"].is_number(), "{first}");
 
     let tree = ask(&store, &["trace", TRACE]);
     assert!(tree.status.success());
@@ -208,5 +248,15 @@ fn a_span_sent_is_read_back_at_its_moment_and_in_its_trace() {
         "No span was open then.\n"
     );
     let missing = ask(&store, &["trace", "0123456789abcdef0123456789abcdef"]);
-    assert!(!missing.status.success());
+    assert_eq!(
+        missing.status.code(),
+        Some(66),
+        "a trace not kept isn't found"
+    );
+    let mistyped = ask(&store, &["tarce", TRACE]);
+    assert_eq!(
+        mistyped.status.code(),
+        Some(64),
+        "a mistyped command is asked wrongly"
+    );
 }

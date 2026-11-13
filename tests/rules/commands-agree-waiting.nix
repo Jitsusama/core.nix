@@ -85,10 +85,6 @@
     "helps"
   ];
   collect = [ "helps" ];
-  collector = [
-    "kit"
-    "helps"
-  ];
   console-font = [
     "kit"
     "helps"
