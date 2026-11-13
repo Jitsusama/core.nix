@@ -45,7 +45,6 @@
     "exits"
     "helps"
   ];
-  camera = [ "helps" ];
   cargo-builds = [ "helps" ];
   changed-checks = [
     "kit"
@@ -112,9 +111,7 @@
     "helps"
   ];
   disk-guard-merged-on-github = [ "helps" ];
-  disk-order = [ "helps" ];
   eero = [ "inks" ];
-  ergodox = [ "helps" ];
   git-engine = [
     "kit"
     "exits"
@@ -126,7 +123,6 @@
     "exits"
     "helps"
   ];
-  google-opens = [ "helps" ];
   google-people = [
     "kit"
     "exits"
@@ -197,8 +193,6 @@
     "exits"
     "helps"
   ];
-  lock-for-sleep = [ "helps" ];
-  lock-screen = [ "helps" ];
   loopback-holders = [
     "kit"
     "exits"
@@ -232,7 +226,6 @@
     "exits"
     "helps"
   ];
-  niri-deadline = [ "helps" ];
   niri-off-cpu = [ "helps" ];
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
@@ -344,7 +337,6 @@
     "exits"
     "helps"
   ];
-  se-keys = [ "helps" ];
   secret-asks = [
     "kit"
     "exits"
@@ -365,13 +357,11 @@
     "kit"
     "helps"
   ];
-  shots-changed = [ "helps" ];
   shutdown-status = [
     "kit"
     "exits"
     "helps"
   ];
-  sign = [ "helps" ];
   slack-people = [
     "kit"
     "exits"
@@ -397,13 +387,11 @@
     "exits"
     "helps"
   ];
-  ssh-askpass = [ "helps" ];
   surface-clock = [
     "kit"
     "helps"
   ];
   swap-file-grows = [ "helps" ];
-  swayidle-away = [ "helps" ];
   swayimg-command = [ "helps" ];
   switch-system = [ "helps" ];
   switch-system-as-root = [ "helps" ];
@@ -470,7 +458,6 @@
     "helps"
   ];
   xdg-open = [ "helps" ];
-  yubikey-keys = [ "helps" ];
   yubikey-once-in = [ "helps" ];
   zathura-command = [
     "kit"
