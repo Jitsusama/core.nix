@@ -110,11 +110,17 @@ def test_the_launcher_keeps_the_machine_awake_lid_shut_too_then_lets_it_sleep(
     desktop.launcher_ready()
     desktop.type_in("keep awake")
     desktop.shoot("launcher-keep-awake")
-    # Keeping it awake changes something, so Return would stay; Ctrl+]
-    # then Return does it and closes.
+    # Its one act is its row's, so Ctrl+] goes to where it lives rather
+    # than into a list of it (Joel, 2026-11-11), and Return there does it.
+    # Keeping it awake changes something, so the launcher stays.
     desktop.follow()
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] != [] and (shown["selected"] or {}).get("name") == "Keep Awake"
+        )
+    )
     machine.send_key("ret")
-    machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=timedelta(seconds=10))
+    desktop.close_launcher()
     machine.wait_until_succeeds(f"{HELD} | grep -qw idle", timeout=timedelta(seconds=10))
     machine.wait_until_succeeds(LID_HELD, timeout=timedelta(seconds=10))
     # Kept awake, a suspend asked for by the power key or the launcher

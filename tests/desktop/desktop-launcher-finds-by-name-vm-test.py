@@ -458,7 +458,9 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     machine.wait_until_fails(closed, timeout=dt.timedelta(seconds=10))
     assert desktop.as_account("wl-paste --no-newline") == "🐱"
     # Over a window, Return pastes the emoji into it as well as copying
-    # it, as Super+V's copies do, and a step in are Paste and Copy.
+    # it, as Super+V's copies do. Its acts are its row's, so Ctrl+] steps into
+    # no list of Paste and Copy (Joel, 2026-11-11: "if they have nothing under
+    # them, we shouldn't open a submenu for them").
     desktop.as_account(
         "niri msg action spawn -- kitty --title emoji-here "
         "sh -c 'stty -icanon -echo; cat > /tmp/emoji-pasted'"
@@ -472,7 +474,12 @@ def test_the_launcher_finds_emoji_in_their_own_place_and_only_there(desktop: Des
     desktop.type_in("tada", selecting="Party popper")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("verb") == "paste")
     desktop.follow()
-    desktop.launcher_until(lambda shown: shown["rows"] == ["Paste", "Copy"])
+    desktop.launcher_until(
+        lambda shown: (
+            "Party popper" in shown["rows"]
+            and (shown["selected"] or {}).get("verb") == "paste"
+        )
+    )
     with desktop.told("pastes into kitty"):
         machine.send_key("ret")
     machine.wait_until_succeeds(

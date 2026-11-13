@@ -1712,6 +1712,14 @@ Scope {
             || !!row.from || (partsOfRows[row.key] ?? []).length > 0;
     }
 
+    // Whether a row holds its acts alone: its daemon says all of them lie on
+    // its row (ReadyRows.qml's actsOnly), and the shell gives it no parts,
+    // since a daemon's row knows its acts but not the parts laid in beside
+    // them, as a screen's Brightness and Warmth.
+    function actsAlone(row) {
+        return row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+    }
+
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
         return (partsOfRows[row.key] ?? []).map(part => Object.assign({}, part, {
@@ -2402,7 +2410,7 @@ Scope {
         // step in would show but a list of one verb (ReadyRows.qml's
         // actsOnly; Joel, 2026-11-11: "if they have nothing under them, we
         // shouldn't open a submenu for them").
-        if (choice.actsOnly === true)
+        if (actsAlone(choice))
             return false;
         // One that keeps the launcher holds its own act, which closes it.
         // A copy never keeps it, and asking would ask copiesOnly, which
@@ -3754,7 +3762,7 @@ Scope {
         // Ctrl+] goes where it lives, as a row holding nothing does, and
         // never into a step of its acts (Joel, 2026-11-11: "if they have
         // nothing under them, we shouldn't open a submenu for them").
-        if (row.actsOnly === true)
+        if (actsAlone(row))
             return false;
         return enter(row);
     }
