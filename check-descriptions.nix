@@ -1563,7 +1563,10 @@
     and ends once its far side has answered no caller for long enough, never while idle; and
     `lines` copies into root's files only the lender's lines whose URI, whole, key and host key
     a standing builder's settings give, or a lent builder's instance does, named by prefix and
-    zone and its host key asked of the cloud once, each line of eight fields and the rest plain
+    zone and its host key asked of the cloud once, each line of eight fields and the rest plain;
+    and a test main quarantines is built alone, its failure blocking nothing unless its entry
+    names subtests and the failed tests its log names aren't all among them, none named
+    included
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
