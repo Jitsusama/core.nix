@@ -299,6 +299,45 @@ fn the_daemons_own_asks_are_its_to_answer() {
 }
 
 #[test]
+fn a_record_read_on_get_is_read_as_asked_and_never_held() {
+    let (shared, mut client, _folder) = served("read", Box::new(|_| None));
+    let reads = Arc::new(Mutex::new(0));
+    let counted = Arc::clone(&reads);
+    shared.read_on_get(
+        &["summary"],
+        Box::new(move |key| {
+            let mut read = counted.lock().expect("the count is held");
+            *read += 1;
+            Some(json!({"key": key, "kind": "summary", "read": *read}))
+        }),
+    );
+    shared.change(vec![row("agents", "O", "kelp")], json!({}));
+    let got = client.ask(&json!({"id": 1, "ask": "get",
+        "keys": ["summary:agents", "row:agents:O"]}));
+    assert_eq!(
+        got["records"],
+        json!([
+            {"key": "summary:agents", "kind": "summary", "read": 1},
+            row("agents", "O", "kelp"),
+        ]),
+        "read as asked beside what's held, in the order asked"
+    );
+    let again = client.ask(&json!({"id": 2, "ask": "get", "keys": ["summary:agents"]}));
+    assert_eq!(again["records"][0]["read"], 2, "read afresh each get");
+    let listed = client.ask(&json!({"id": 3, "ask": "list"}));
+    assert_eq!(
+        listed["records"],
+        json!([row("agents", "O", "kelp")]),
+        "and never held, so never listed"
+    );
+    assert_eq!(
+        *reads.lock().expect("the count is held"),
+        2,
+        "read only on a get"
+    );
+}
+
+#[test]
 fn a_peered_ask_is_answered_knowing_who_asked() {
     let own: Own = Box::new(|said| (said["ask"] == "who").then(|| json!({"who": "unknown"})));
     let (shared, mut client, _folder) = served("peered", own);
