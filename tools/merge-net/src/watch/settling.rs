@@ -1,5 +1,6 @@
 //! What a round found, settled beside the rounds after it: the search for
-//! the merge that broke a test, and the PR that lists a flaky one.
+//! the merge that broke a test, the PR that lists a flaky one, and the run
+//! of a held test at main's newest head that may clear its hold.
 //!
 //! A round once waited for both before it ended, and every merge since
 //! waited for the next round to begin. Since 9 November rounds spent 30 to
@@ -20,10 +21,10 @@ use std::thread::Scope;
 use serde_json::{Value, json};
 
 use super::{
-    AT_ONCE, SEARCHES, SPLITS, World, fixed_forward, list_flaky, listed_on_main, lock, search,
-    settle,
+    AT_ONCE, Outcome, SEARCHES, SPLITS, World, attempt, clear_hold_of, fixed_forward, list_flaky,
+    listed_on_main, lock, same_drv, search, settle,
 };
-use crate::state::State;
+use crate::state::{State, short};
 
 /// Something a round found that takes longer than its tests to settle.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,23 +42,31 @@ pub enum Job {
         test: String,
         owner: Option<u64>,
     },
+    /// Run `test`, held with no revert, at main's newest head `newest`,
+    /// and clear the hold if it passes there. `head` is the round's, at
+    /// which a held test that changed has run already.
+    Forward {
+        head: String,
+        newest: String,
+        test: String,
+    },
 }
 
 impl Job {
     fn test(&self) -> &str {
         match self {
-            Self::Search { test, .. } | Self::Flaky { test, .. } => test,
+            Self::Search { test, .. } | Self::Flaky { test, .. } | Self::Forward { test, .. } => {
+                test
+            }
         }
     }
 
     fn head(&self) -> &str {
         match self {
-            Self::Search { head, .. } | Self::Flaky { head, .. } => head,
+            Self::Search { head, .. } | Self::Flaky { head, .. } | Self::Forward { head, .. } => {
+                head
+            }
         }
-    }
-
-    fn is_search(&self) -> bool {
-        matches!(self, Self::Search { .. })
     }
 
     fn to_json(&self) -> Value {
@@ -67,6 +76,9 @@ impl Job {
             }
             Self::Flaky { head, test, owner } => {
                 json!({ "kind": "flaky", "head": head, "test": test, "owner": owner })
+            }
+            Self::Forward { head, newest, test } => {
+                json!({ "kind": "forward", "head": head, "newest": newest, "test": test })
             }
         }
     }
@@ -83,6 +95,11 @@ impl Job {
                 head: text("head")?,
                 test: text("test")?,
                 owner: kept["owner"].as_u64(),
+            }),
+            "forward" => Some(Self::Forward {
+                head: text("head")?,
+                newest: text("newest")?,
+                test: text("test")?,
             }),
             _ => None,
         }
@@ -101,6 +118,7 @@ enum Lane {
     /// searches have no room for it.
     Ask,
     List,
+    Forward,
 }
 
 /// The jobs waiting and under way.
@@ -114,22 +132,24 @@ struct Queue {
     searching: usize,
     asking: usize,
     listing: bool,
+    forwarding: bool,
     closing: bool,
 }
 
 impl Queue {
     /// The first job waiting that may start: up to `SEARCHES` searches,
-    /// `ASKS` asks for searches left without room, and one list at a time,
-    /// since two lists' PRs change one file.
+    /// `ASKS` asks for searches left without room, one list at a time,
+    /// since two lists' PRs change one file, and one held test's run at a
+    /// time, since only one test is held.
     fn next(&mut self) -> Option<(Job, Lane)> {
         let (index, lane) = self.waiting.iter().enumerate().find_map(|(index, job)| {
-            let lane = if !job.is_search() {
-                (!self.listing).then_some(Lane::List)
-            } else if self.searching < SEARCHES {
-                Some(Lane::Search)
-            } else {
-                (self.asking < ASKS && !self.asked.iter().any(|test| test == job.test()))
-                    .then_some(Lane::Ask)
+            let lane = match job {
+                Job::Flaky { .. } => (!self.listing).then_some(Lane::List),
+                Job::Forward { .. } => (!self.forwarding).then_some(Lane::Forward),
+                Job::Search { .. } if self.searching < SEARCHES => Some(Lane::Search),
+                Job::Search { test, .. } => (self.asking < ASKS
+                    && !self.asked.iter().any(|asked| asked == test))
+                .then_some(Lane::Ask),
             };
             lane.map(|lane| (index, lane))
         })?;
@@ -145,6 +165,7 @@ impl Queue {
             (Lane::Ask, true) => self.asking += 1,
             (Lane::Ask, false) => self.asking -= 1,
             (Lane::List, _) => self.listing = starts,
+            (Lane::Forward, _) => self.forwarding = starts,
         }
     }
 }
@@ -172,10 +193,11 @@ impl<'a> Settler<'a> {
         }
     }
 
-    /// Start the workers, one for each search and ask that may run and one
-    /// for lists, in `scope`, which ends once `close` lets them finish.
+    /// Start the workers, one for each search and ask that may run, one for
+    /// lists and one for held tests' runs, in `scope`, which ends once
+    /// `close` lets them finish.
     pub fn start<'scope>(&'scope self, scope: &'scope Scope<'scope, '_>) {
-        for _ in 0..=SEARCHES + ASKS {
+        for _ in 0..=SEARCHES + ASKS + 1 {
             scope.spawn(|| self.work());
         }
     }
@@ -330,6 +352,9 @@ impl<'a> Settler<'a> {
     /// behind other searches, each decided to be searched as it failed.
     fn run(&self, job: &Job) -> Result<(), String> {
         let (world, state) = (self.world, self.state);
+        if let Job::Forward { head, newest, test } = job {
+            return self.forward(head, newest, test);
+        }
         if listed_on_main(world, job.head(), job.test()) || self.held_for(job.test()) {
             return Ok(());
         }
@@ -341,6 +366,7 @@ impl<'a> Settler<'a> {
                     None => Ok(()),
                 })
             }
+            Job::Forward { .. } => Ok(()),
             Job::Flaky { head, test, owner } => {
                 if state.found("flaky", test, head)
                     || world.quarantined(head).iter().any(|kept| kept == test)
@@ -350,6 +376,24 @@ impl<'a> Settler<'a> {
                 list_flaky(world, state, head, test, *owner)
             }
         }
+    }
+
+    /// Run `test` at `newest` and clear the hold if it passes there, unless
+    /// the hold no longer names it with no revert, or `newest` builds the
+    /// very derivation the round's `head` did, which ran it already.
+    fn forward(&self, head: &str, newest: &str, test: &str) -> Result<(), String> {
+        let (world, state) = (self.world, self.state);
+        let unreverted = state
+            .hold()
+            .is_some_and(|hold| hold["test"] == test && !hold["revert_commit"].is_string());
+        if !unreverted
+            || same_drv(world, newest, head, test)
+            || attempt(world, state, newest, test) != Outcome::Passed
+        {
+            return Ok(());
+        }
+        let passes = format!("passes at main's newest head {}", short(newest));
+        self.write(|| clear_hold_of(state, test, &passes))
     }
 
     /// Whether main's newest head fixed `job`'s test. An error here is
