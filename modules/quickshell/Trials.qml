@@ -28,9 +28,27 @@ Scope {
     property bool piped: false
     property var waiting: []
 
-    function opened() {
+    // When the opening under way began on KeyTimes's clock, so a step in by
+    // a key pressed since is told from the steps an opening makes itself.
+    property real openedAt: 0
+
+    function opened(at) {
         trial = Trials.begun(Date.now(), home);
         pace = Trials.unpaced();
+        openedAt = at ?? 0;
+    }
+
+    // A step in by the key pressed at `pressed` on KeyTimes's clock is a
+    // look, where it was pressed since the opening began; a place opened
+    // straight into steps by no key of his.
+    function wentIn(pressed) {
+        if (pressed > openedAt)
+            trial = Trials.looked(trial, "stepped");
+    }
+
+    // The drawer come out for a row (`out`), or put away.
+    function drawer(out) {
+        trial = Trials.drawerShown(trial, Date.now(), out);
     }
 
     // The frames of the opening under way, counted as each is drawn. Nothing
