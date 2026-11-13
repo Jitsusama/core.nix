@@ -635,6 +635,39 @@ mod tests {
         assert_eq!(kept, json!(52.0), "the slow one read once kept a while");
     }
 
+    /// A chip found slow stays slow though a later pass is quick, as
+    /// `dell_ddv`'s driver answers some from its cache in under a
+    /// millisecond: counted quick, it was read each second again.
+    #[test]
+    fn a_chip_found_slow_stays_slow_though_one_pass_is_quick() {
+        let folder = std::env::temp_dir().join(format!("machine-sticky-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let temperature = |says: &str| {
+            std::fs::write(chip.join("temp1_input"), says).expect("the file is written");
+        };
+        std::fs::write(chip.join("name"), "dell_ddv").expect("the name is written");
+        temperature("47000");
+        let root = Root::new(&folder);
+        let degrees = |kept: &mut Kept, at: Instant| {
+            sensors(&root, kept, at)[0]["temperatures"][0]["temperature_c"].clone()
+        };
+        let first = Instant::now();
+        let mut kept = Kept {
+            slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        degrees(&mut kept, first);
+        kept.slow_from = Duration::MAX;
+        temperature("52000");
+        let quick = degrees(&mut kept, first + SLOW_KEPT);
+        temperature("57000");
+        let after = degrees(&mut kept, first + SLOW_KEPT + Duration::from_secs(1));
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(quick, json!(52.0), "read again once kept a while");
+        assert_eq!(after, json!(52.0), "still kept after a quick pass");
+    }
+
     #[test]
     fn a_reading_out_of_reach_is_none() {
         assert_eq!(thousandths(Some("65261850".into()), DEGREES), None);
