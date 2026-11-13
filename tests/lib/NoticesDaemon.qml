@@ -17,7 +17,9 @@
 // while there are any, `notices` says beside its rows how many it has rows
 // for, as the daemon's summary does, and a `rows` ask is answered as a
 // search is, every notice's key in order with the unserved rows beside
-// them, each counted in `rowsAsked`. A watch gets only the kinds it
+// them, each counted in `rowsAsked`; History's count holds its unserved
+// too, and its `rows` ask answers every one it keeps, those of the unserved
+// with their rows. A watch gets only the kinds it
 // names, and is refused, as daemon-serve refuses it, when it names one
 // the daemon doesn't keep, so a launcher asking for a kind the daemon
 // lacks fails here rather than only against the daemon itself.
@@ -58,10 +60,10 @@ Scope {
         return slack(notice.app) || slack(notice.entry) ? "slack" : "desktop";
     }
 
-    // The notices History keeps, newest done with first, of `source` where
-    // it's given.
-    function history(source) {
-        return notices.filter(notice => notice.read && !listed.includes(notice.app))
+    // The notices History keeps of `from`, newest done with first, of
+    // `source` where it's given.
+    function history(source, from = notices) {
+        return from.filter(notice => notice.read && !listed.includes(notice.app))
             .filter(notice => source === undefined || sourceOf(notice) === source)
             .sort((one, other) => (other.readAt ?? other.at) - (one.readAt ?? one.at));
     }
@@ -149,9 +151,12 @@ Scope {
         if (place === "notices-history") {
             for (const notice of history())
                 rows[`row:${place}:${notice.id}`] = row(notice, place, "");
+            // Counted with those past the page, as `unserved` stands for.
+            const every = notices.concat(unserved);
             rows["summary:notices-history"] = { key: "summary:notices-history",
-                kind: "summary", summary: { count: history().length, sources: {
-                    desktop: history("desktop").length, slack: history("slack").length } } };
+                kind: "summary", summary: { count: history(undefined, every).length, sources: {
+                    desktop: history("desktop", every).length,
+                    slack: history("slack", every).length } } };
         }
         if (place === "notices" && unserved.length > 0) {
             rows["summary:notices"] = { key: "summary:notices", kind: "summary",
@@ -217,11 +222,16 @@ Scope {
                             grade: keys.length > 0 ? 0 : 3, words: ask.words };
                         served.searches = served.searches.concat([ask.words]);
                     } else if (ask.ask === "rows" && ask.place === "notices-history") {
-                        // History serves every one it keeps here, so an
-                        // ask has no rows beyond the keys.
-                        const keys = served.history(ask.source)
-                            .map(notice => `row:notices-history:${notice.id}`);
-                        answer = { id: ask.id, keys: keys, rows: {} };
+                        // Every one History keeps, with the rows of those
+                        // past the page beside.
+                        const place = "notices-history";
+                        const keys = served.history(ask.source,
+                            served.notices.concat(served.unserved))
+                            .map(notice => `row:${place}:${notice.id}`);
+                        const rows = {};
+                        for (const notice of served.history(ask.source, served.unserved))
+                            rows[`row:${place}:${notice.id}`] = served.row(notice, place, "").row;
+                        answer = { id: ask.id, keys: keys, rows: rows };
                         served.rowsAsked += 1;
                     } else if (ask.ask === "rows") {
                         const keys = served.notices.concat(served.unserved)
