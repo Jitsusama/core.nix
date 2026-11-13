@@ -186,13 +186,22 @@ pub fn chunks(names: &[String]) -> Vec<&[String]> {
     chunks
 }
 
+/// The order to begin these chunks in: those holding the most VM tests
+/// first, the rest in their order. A chunk of ten VM tests took 105 to
+/// 218 s to evaluate against 20 to 90 s for one of forty other checks
+/// (13 November), yet the VM tests' names, and so their chunks, come last,
+/// so each side waited on them after everything else. Begun first, a
+/// side's median over that day's runs would have been 237 s, not 261.
+/// Their weight can't tell them apart: ten VM tests weigh as forty checks.
+pub fn begin_order(chunks: &[&[String]]) -> Vec<usize> {
+    let vm_tests = |chunk: &[String]| chunk.iter().filter(|name| name.starts_with("vm-")).count();
+    let mut order: Vec<usize> = (0..chunks.len()).collect();
+    order.sort_by_key(|&at| std::cmp::Reverse(vm_tests(chunks[at])));
+    order
+}
+
 /// Do `work` on each item, up to `at_once` at a time, answering in the
-/// items' order. Once one fails, no item not yet begun is begun, since the
-/// first failure in order is what the run reports.
-///
-/// Only one item at a time is sure to go: each further one begins only
-/// while `may_begin` says so, and otherwise waits and asks again. So a run
-/// always makes progress, one item at a time while memory stalls.
+/// items' order, as [`each_at_once_in`] does beginning them in it.
 pub fn each_at_once<T, R, E>(
     items: &[T],
     at_once: usize,
@@ -204,6 +213,31 @@ where
     R: Send,
     E: Send,
 {
+    let begin: Vec<usize> = (0..items.len()).collect();
+    each_at_once_in(items, &begin, at_once, may_begin, work)
+}
+
+/// Do `work` on each item, up to `at_once` at a time, beginning them in
+/// `begin`'s order, which names each item's place once, and answering in
+/// the items' order. Once one fails, no item not yet begun is begun, and
+/// the first failure in the items' order is what the run reports.
+///
+/// Only one item at a time is sure to go: each further one begins only
+/// while `may_begin` says so, and otherwise waits and asks again. So a run
+/// always makes progress, one item at a time while memory stalls.
+pub fn each_at_once_in<T, R, E>(
+    items: &[T],
+    begin: &[usize],
+    at_once: usize,
+    may_begin: impl Fn() -> bool + Sync,
+    work: impl Fn(&T) -> Result<R, E> + Sync,
+) -> Result<Vec<R>, E>
+where
+    T: Sync,
+    R: Send,
+    E: Send,
+{
+    debug_assert_eq!(begin.len(), items.len(), "begin names each item once");
     let next = AtomicUsize::new(0);
     let failed = AtomicBool::new(false);
     let done: Mutex<Vec<Option<Result<R, E>>>> = Mutex::new(items.iter().map(|_| None).collect());
@@ -221,7 +255,9 @@ where
                         thread::sleep(WAIT_TO_BEGIN);
                         continue;
                     }
-                    let at = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(&at) = begin.get(next.fetch_add(1, Ordering::Relaxed)) else {
+                        break;
+                    };
                     let Some(item) = items.get(at) else {
                         break;
                     };
@@ -590,6 +626,33 @@ mod tests {
             },
         );
         assert_eq!(answered, Err(3));
+    }
+
+    #[test]
+    fn work_begun_in_another_order_is_answered_in_its_items_order() {
+        let begun = Mutex::new(Vec::new());
+        let answered = each_at_once_in(
+            &[0, 1, 2],
+            &[2, 0, 1],
+            1,
+            || true,
+            |item| {
+                begun.lock().expect("not poisoned").push(*item);
+                Ok::<_, ()>(item * 10)
+            },
+        );
+        assert_eq!(answered, Ok(vec![0, 10, 20]));
+        assert_eq!(begun.into_inner().expect("not poisoned"), [2, 0, 1]);
+    }
+
+    #[test]
+    fn chunks_holding_the_most_vm_tests_begin_first() {
+        let mut all: Vec<String> = (0..45).map(|at| format!("check-{at}")).collect();
+        all.extend((0..12).map(|at| format!("vm-{at}")));
+        let chunks = chunks(&all);
+        // Forty checks; five and eight VM tests, weighing 37; four VM tests.
+        assert_eq!(sizes(&chunks), [40, 13, 4]);
+        assert_eq!(begin_order(&chunks), [1, 2, 0]);
     }
 
     #[test]

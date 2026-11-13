@@ -602,7 +602,17 @@ mod tests {
         drop(gate);
         assert!(a_gate_runs(&lock), "the second gate ran unseen");
         drop(other);
-        assert!(!a_gate_runs(&lock), "a gate was seen after both let go");
+        // A program another test starts meanwhile holds a copy of the lock's
+        // file until it runs, and with it the lock, so it's let go once that
+        // copy is: seen held just after both let go here (13 November).
+        let let_go = (0..200).any(|_| {
+            let runs = a_gate_runs(&lock);
+            if runs {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            !runs
+        });
+        assert!(let_go, "a gate was seen a second after both let go");
     }
 
     #[test]

@@ -86,10 +86,13 @@ pub fn evaluated_by(
 ) -> Result<Derivations, String> {
     let checks = format!("{flake}#checks.{system}");
     let chunks = checks::chunks(names);
-    // A further chunk begins only while memory isn't stalling: two at once
-    // while it was full stalled Joel's launcher on 29 October.
-    let evaluated = checks::each_at_once(
+    // The VM tests' chunks begin first, as they take longest, and the answers
+    // stay in the names' order. A further chunk begins only while memory
+    // isn't stalling: two at once while it was full stalled Joel's launcher
+    // on 29 October.
+    let evaluated = checks::each_at_once_in(
         &chunks,
+        &checks::begin_order(&chunks),
         at_once,
         || !pressure::memory_stalled(),
         |chunk| {
