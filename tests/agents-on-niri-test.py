@@ -1614,3 +1614,27 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     )
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
+    shell: Shell, said_over: str
+) -> None:
+    """Return on The Void in Agents opens Super+S's line, over the window the launcher left.
+
+    The void is said to in one place, the line (QCXZEB, 2026-11-13 [ae5dfdb6], d): Talk to
+    It, The Void's Return, puts the launcher away and brings the line up, its talk kept and
+    the window under it attached, rather than asking in the launcher's own field.
+    """
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: "The Void" in shown["rows"])
+    shell.down_to("The Void")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: not shown["open"] and shown["line"]["up"] and shown["line"]["keys"]
+    )
+    # Over the window the launcher went from, which goes with what's said.
+    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
+    assert shell.showing()["line"]["standing"] == "taken back", shell.showing()["line"]
+    shell.as_account(shell.ipc("line"))
+    shell.launcher_until(lambda shown: not shown["line"]["up"])

@@ -127,6 +127,8 @@ Provider {
     function topTalk(key, one, row) {
         if (one.key !== "verb:agent:talk" || !one.ask)
             return null;
+        if (provider.isVoid(one.ask.address))
+            return provider.lineOpened(one.key);
         return thing({
             key: one.key,
             verb: Words.verb(one.key),
@@ -818,6 +820,31 @@ Provider {
             : null;
     }
 
+    // Super+S's line, which TalkLine.qml sets here, so talking to the void from its row opens
+    // that line rather than an ask of its own: one place to say anything to it (QCXZEB,
+    // 2026-11-13 [ae5dfdb6], d).
+    property var line: null
+
+    // Whether the session at `address` is the void.
+    function isVoid(address) {
+        const heard = voidOf();
+        return heard !== null && String(address ?? "").toUpperCase() === heard.to.toUpperCase();
+    }
+
+    // Talk to It on the void: the launcher goes, and the line comes up over the window it
+    // leaves, once niri has given that window back the keys, so the line attaches it.
+    function lineOpened(key) {
+        return thing({
+            key,
+            verb: Words.verb(key),
+            name: Words.name(key),
+            glyph: Words.glyph(key),
+            hue: "action",
+            later: true,
+            run: () => provider.line?.open()
+        });
+    }
+
     // The session in `window`, `{ to, name }`, as the daemon's tell answers without words
     // (modules/agents/src/tell.rs), or null where it's none's: what a line attaches of the
     // window it's said over, for the void to route it by.
@@ -987,30 +1014,30 @@ Provider {
             hue: "action"
         }, fields));
         const steered = what => () => provider.actOn(current(), what);
+        const talked = () => act("talk", {
+            ask: Words.of("verb:agent:talk").ask ?? "",
+            chip: session.title,
+            // Kept by whom it goes to until its talk is delivered.
+            draft: String(session.address).toUpperCase(),
+            state: () => provider.told,
+            given: words => {
+                const text = words.trim();
+                if (text === "")
+                    return;
+                provider.actOn(session, "talk", { text });
+                provider.told = (Words.of("orchestrators").said ?? {}).sent
+                    ?.replace("{name}", session.title) ?? "";
+            }
+        });
         const made = {
             // Going to the session is reading its answer there.
             switch: () => act("switch", { later: true, run: () => {
                 provider.heard(session.address);
                 Sessions.goTo(current());
             } }),
-            talk: () => act("talk", {
-                ask: Words.of("verb:agent:talk").ask ?? "",
-                chip: session.title,
-                // Kept by whom it goes to until its talk is delivered.
-                draft: String(session.address).toUpperCase(),
-                state: () => provider.told,
-                given: words => {
-                    const text = words.trim();
-                    if (text === "")
-                        return;
-                    provider.actOn(session, "talk", { text });
-                    const top = String(session.presence?.standsAtTop?.name ?? "");
-                    if (top !== "")
-                        toldCard.sent(session.address, top, text);
-                    provider.told = (Words.of("orchestrators").said ?? {}).sent
-                        ?.replace("{name}", session.title) ?? "";
-                }
-            }),
+            // The void is talked to on Super+S's line, its one place (lineOpened).
+            talk: () => provider.isVoid(session.address) ? lineOpened("verb:agent:talk")
+                : talked(),
             // Wake keeps the launcher, its row reading as it will be at once,
             // since the session wakes in its own window without the focus.
             wake: () => act("wake", { stays: true, run: () => provider.wakeNow(current()) }),

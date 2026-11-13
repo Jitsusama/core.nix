@@ -48,6 +48,20 @@ Scope {
         return launcher.collections.find(one => one.settings.name === "agents") ?? null;
     }
 
+    // Agents opens the line from the void's row, so it's told which line is this one.
+    Binding {
+        target: root.agents()
+        property: "line"
+        value: root
+        when: root.agents() !== null
+    }
+
+    // Brought up from a row rather than its chord, and left up where it already is.
+    function open() {
+        if (!up)
+            toggle(-1);
+    }
+
     // `chord` is when launcher-say ran for it, on the wall clock in ms, or -1 where it didn't
     // say, as qs ipc doesn't.
     function toggle(chord) {
