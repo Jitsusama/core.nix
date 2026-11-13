@@ -9,8 +9,9 @@
 # The cat lives in the shell, only on Linux, so a Mac doesn't evaluate
 # these.
 onLinux {
-  # Where the cat sits, over its column and off the margin's marks, and how
-  # big it's drawn, as tests/margin-cat.qml holds them, in Qt's own engine.
+  # Where the cat sits, over its column and off the margin's marks, how big
+  # it's drawn, how it walks and plays, as tests/margin-cat.qml holds them,
+  # in Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -18,6 +19,7 @@ onLinux {
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
       cp ${./tests/margin-cat.qml} margin-cat.qml
       cp ${./MarginCat.js} MarginCat.js
+      cp ${./Play.js} Play.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}
