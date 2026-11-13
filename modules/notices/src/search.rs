@@ -32,6 +32,13 @@ use crate::row;
 /// serves its row, as the newest hundred are.
 const FOUND_ROWS: usize = 30;
 
+/// How many of the notices an answer lists at most, first first: six
+/// screens of the launcher's list, past anything read down to. The shell
+/// makes a copy of every row listed, and every one found was listed
+/// before: Joel's "s" found 971 of his 1,000, and an opening's five short
+/// searches made 933 rows, as "s" took 747 ms to his screen (2026-11-12).
+const FOUND_LISTED: usize = 60;
+
 /// One notice's texts made ready to match, kept while what it said is the
 /// same, so a key matches and makes nothing ready.
 struct Ready {
@@ -91,8 +98,8 @@ pub struct Searched {
 
 impl Searched {
     /// The keys of the rows of `notices`, in the order they're held, that
-    /// what's `typed` finds, best first and newest first among equals,
-    /// with their grade, as the launcher's searches answer one. Every
+    /// what's `typed` finds, best first and newest first among equals, the
+    /// first `FOUND_LISTED` of them, with their grade, as the launcher's searches answer one. Every
     /// notice found is graded 0, as the launcher's matching grades every
     /// match now. Beside them, by key, the row of each found that's among
     /// `unserved`, the notices place's rows its watch doesn't serve.
@@ -118,6 +125,7 @@ impl Searched {
         found.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
         let keys: Vec<String> = found
             .iter()
+            .take(FOUND_LISTED)
             .map(|(_, _, id)| format!("row:{}:{id}", row::PLACE))
             .collect();
         let found: serde_json::Map<String, Value> = keys
@@ -215,8 +223,8 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_carries_the_rows_of_its_first_page_alone() {
-        let found = u32::try_from(FOUND_ROWS).expect("a page fits") + 10;
+    fn an_answer_lists_six_screens_with_the_rows_of_its_first_page_alone() {
+        let found = u32::try_from(FOUND_LISTED).expect("six screens fit") + 10;
         let notices: Vec<Notice> = (1..=found).map(|id| notice(id, "Standup", "")).collect();
         let unserved: BTreeMap<String, Value> = (1..=found)
             .map(|id| (format!("row:notices:{id}"), json!({ "id": id })))
@@ -224,10 +232,13 @@ mod tests {
         let mut searched = Searched::default();
         let answer = searched.answer(&notices, "s", &unserved);
         let listed = keys(&answer);
+        let newest: Vec<String> = (11..=found)
+            .rev()
+            .map(|id| format!("row:notices:{id}"))
+            .collect();
         assert_eq!(
-            listed.len(),
-            notices.len(),
-            "every one found is listed: {answer}"
+            listed, newest,
+            "six screens of those found are listed, newest first"
         );
         let rows = answer["rows"].as_object().cloned().unwrap_or_default();
         assert_eq!(
