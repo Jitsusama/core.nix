@@ -37,7 +37,9 @@ drawer, a **device**'s drawer, the **internet**'s drawer, a **profile**'s
 drawer, the CLI's views, named as `eero <view>`, and a **notice** the
 daemon raises when the figure changes while it watches
 (`src/notices.rs`). Every CLI view also answers `--json`, the daemon's
-model of it.
+model of it. A drawer holds a glance, at most six of its figures; the
+step into its row lists every one, so a figure a drawer shows is in its
+step.
 
 ### The Internet (`network.json`, `net.speedtest.json`, `net.updates.json`)
 

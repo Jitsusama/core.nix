@@ -17,6 +17,52 @@
           "said": "−59 dBm"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333326, 1.0, 0.16666666666666663, 0.6666667111874136, 0.500000044520747,
+              0.5555555703958045
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "1.22 Mb/s down · 24.0 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "tablet · Apple · iPad"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794091355000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.4666666666666667, 0.5, 0.45, 0.48333333333333334, 0.5333333333333333,
+              0.5166666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−59 dBm"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -167,6 +213,49 @@
           "said": "−69 dBm"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "phone · Apple · iPhone"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794090701000,
+          "name": "On Since",
+          "said": "{time}"
+        },
+        {
+          "as": "moment",
+          "at": 1794091780000,
+          "name": "Last Active",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3, 0.3333333333333333, 0.2833333333333333, 0.31666666666666665, 0.36666666666666664,
+              0.35
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−69 dBm"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -299,6 +388,52 @@
       "eyebrow": "on Hall · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.5833333333333334, 0.6166666666666667, 0.5666666666666667, 0.6, 0.65,
+              0.6333333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−52 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "55 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "phone · Apple · iPhone"
+        },
+        {
+          "name": "Node",
+          "said": "Hall · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794082071000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -484,6 +619,52 @@
           "said": "40 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "generic"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794075730000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.31666666666666665, 0.35, 0.3, 0.3333333333333333, 0.38333333333333336,
+              0.36666666666666664
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−68 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "40 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -589,6 +770,55 @@
       "eyebrow": "on Study · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.5, 0.5333333333333333, 0.48333333333333334, 0.5166666666666667, 0.5666666666666667,
+              0.55
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−57 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "51 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3333333324646019, 1.0, 0.1666666675353982, 0.6666666675353983, 0.5,
+              0.5555555558451327
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "11.5 Mb/s down · 9.86 Mb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "unknown computer · Intel Corporate"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794065491000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -750,6 +980,52 @@
           "said": "71 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "generic"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794055386000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8333333333333334, 0.8666666666666667, 0.8166666666666667, 0.85, 0.9,
+              0.8833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−37 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "71 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -864,6 +1140,55 @@
       "eyebrow": "on Hall · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.65, 0.6833333333333333, 0.6333333333333333, 0.6666666666666666, 0.7166666666666667,
+              0.7
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−48 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "59 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.3331863285556781, 1.0, 0.16670341786108048, 0.6663726571113562, 0.4998897464167585,
+              0.555457552370452
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "98.2 b/s down · 154 b/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "generic · Espressif Inc."
+        },
+        {
+          "name": "Node",
+          "said": "Hall · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794037780000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -1012,6 +1337,55 @@
           "said": "43 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16666666666666669, 0.666899441340782, 0.5002327746741154,
+              0.555633147113594
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "132 b/s down · 106 b/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "thermostat · ecobee · ecobee inc"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036736000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.36666666666666664, 0.4, 0.35, 0.38333333333333336, 0.43333333333333335,
+              0.4166666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−65 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "43 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -1129,6 +1503,49 @@
       "eyebrow": "on Study · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.18333333333333332, 0.21666666666666667, 0.26666666666666666, 0.25],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−75 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "33 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.25, 1.0, 0.7499999999999999, 0.8333333333333333],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "130 kb/s down · 14.5 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "laptop computer · Apple · MacBook Air"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036736000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -1295,6 +1712,52 @@
           "said": "41 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "game console · Nintendo · Switch · Nintendo Co.,Ltd"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036610000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.35, 0.38333333333333336, 0.3333333333333333, 0.36666666666666664,
+              0.4166666666666667, 0.4
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−66 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "41 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -1409,6 +1872,55 @@
       "eyebrow": "on Den · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.8166666666666667, 0.85, 0.8, 0.8333333333333334, 0.8833333333333333,
+              0.8666666666666667
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−38 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "70 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16666666666666666, 0.6666668952756133, 0.5,
+              0.5555556317585377
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "145 kb/s down · 97.6 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "laptop computer · Apple · Mac"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036418000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -1570,6 +2082,52 @@
           "said": "56 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "printer · HP · Hewlett Packard"
+        },
+        {
+          "name": "Node",
+          "said": "Den · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036418000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.6333333333333333, 0.6666666666666666, 0.6166666666666667, 0.65, 0.7,
+              0.6833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−49 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "56 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -1679,6 +2237,52 @@
       "eyebrow": "on Study · Wi-Fi",
       "eyebrowNames": true,
       "facts": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−20 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "88 dB"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.33333333333333337, 1.0, 0.16667168025348694, 0.6666666666666666,
+              0.49999498641317974, 0.5555555555555556
+            ],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "2.23 kb/s down · 3.31 kb/s up"
+        },
+        {
+          "name": "Kind",
+          "said": "generic · Samsung · Samsung Electronics Co.,Ltd"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036203000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
         {
           "figure": {
             "shape": "spark",
@@ -1837,6 +2441,52 @@
           "said": "65 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "media streamer · Apple · Apple, Inc."
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036070000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.7333333333333333, 0.7666666666666667, 0.7166666666666667, 0.75, 0.8,
+              0.7833333333333333
+            ],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−43 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "65 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -1969,6 +2619,49 @@
           "said": "78 dB"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "warn": false
+          },
+          "name": "Speed",
+          "said": "idle"
+        },
+        {
+          "name": "Kind",
+          "said": "audio · Sony · Sony Corporation"
+        },
+        {
+          "name": "Node",
+          "said": "Study · eero Pro 6"
+        },
+        {
+          "as": "moment",
+          "at": 1794036070000,
+          "name": "On Since",
+          "said": "{time}"
+        }
+      ],
+      "inside": [
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [0.9666666666666667, 1.0, 0.95, 0.9833333333333333, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Signal",
+          "said": "−29 dBm"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Above the Noise",
+          "said": "78 dB"
+        },
+        {
           "name": "Score",
           "said": "5 of 5 bars"
         },
@@ -2078,6 +2771,46 @@
       "eyebrow": "via eero · internet",
       "eyebrowNames": true,
       "facts": [
+        {
+          "as": "moment",
+          "at": 1793875935000,
+          "name": "Speed Test",
+          "said": "370 Mb/s down · 11.9 Mb/s up · {time}"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.900763358778626, 0.9465648854961832, 1.0, 0.8854961832061069, 0.916030534351145,
+              0.9083969465648856
+            ],
+            "warn": false
+          },
+          "name": "To the Internet",
+          "said": "11.9 ms"
+        },
+        {
+          "name": "Nodes",
+          "said": "3 nodes online"
+        },
+        {
+          "name": "Outages",
+          "said": "1 outage in 30 days"
+        },
+        {
+          "name": "Public Address",
+          "said": "203.0.113.1"
+        },
+        {
+          "name": {
+            "as": "moment",
+            "at": 1794036253000
+          },
+          "said": "The nodes updated to v7.17.4-5. They were on v7.17.3-9.",
+          "words": true
+        }
+      ],
+      "inside": [
         {
           "as": "moment",
           "at": 1793875935000,
@@ -2395,6 +3128,53 @@
           "said": "all on Wi-Fi"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.002314578924556796, 0.0024303585198990492, 0.002370321485123916,
+              0.0023532577271412505, 1.0, 0.0008373725348157553, 0.0012944629582017613,
+              0.0012384136494769256, 0.0012722700856749745, 0.002035024347706998,
+              0.001319730445983786, 0.0012127466757220625, 0.0012971737558745927,
+              0.0013341404757183117, 0.001304221829823955, 0.001457574507647271,
+              0.0012191598523217351, 0.001297088151737556, 0.0013185890574899622,
+              0.0013977942852832486
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "142 MB down · 3.64 MB up"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036222000,
+          "name": "Up For"
+        }
+      ],
+      "inside": [
+        {
+          "as": "ago",
+          "at": 1794092040000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Backhaul",
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
           "name": "Model",
           "said": "eero Pro 6 · K010011"
         },
@@ -2636,6 +3416,53 @@
       "eyebrow": "on home · node",
       "eyebrowNames": true,
       "facts": [
+        {
+          "as": "ago",
+          "at": 1794092026000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [1.0, 0.8, 1.0, 1.0, 1.0, 1.0],
+            "warn": false
+          },
+          "name": "Backhaul",
+          "said": "Wi-Fi from Hall over 5 GHz high · 5 of 5 bars"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.002267272605356371, 0.002310591241814966, 0.002699602870407569,
+              0.0023194518719996788, 1.0, 0.0013259340935910984, 0.0012643234637399077,
+              0.0015274741923979689, 0.0012086627256552634, 0.0013891142392560062,
+              0.0012239369681878477, 0.0012175518924911345, 0.0019450581429630149,
+              0.0012287739305592126, 0.0013141555908254296, 0.0014473361417821253,
+              0.001433481597644676, 0.0012652723073909278, 0.001323037623498511,
+              0.0015070205476801176
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "142 MB down · 3.68 MB up"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036222000,
+          "name": "Up For"
+        }
+      ],
+      "inside": [
         {
           "as": "ago",
           "at": 1794092026000,
@@ -2920,6 +3747,47 @@
           "said": "all on Wi-Fi"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.008758375491921159, 0.00885551714663431, 0.005308917720031364, 0.005817408992263041,
+              1.0, 0.004564104550201042, 0.004408673547833875, 0.0045279522353380555,
+              0.0044481573046808226, 0.005565888751495738, 0.0069699572739299435,
+              0.005287658910508439, 0.008850051839850166, 0.009014453784030353,
+              0.008166547363785684, 0.009237740235434675, 0.007826965280771318,
+              0.006213763491831972, 0.005632205495302827, 0.006386403315427836
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "150 MB down · 10.1 MB up"
+        },
+        {
+          "name": "Firmware",
+          "said": "v7.17.4-5 · up to date"
+        },
+        {
+          "as": "lasted",
+          "at": 1794036205000,
+          "name": "Up For"
+        }
+      ],
+      "inside": [
+        {
+          "as": "ago",
+          "at": 1794092031000,
+          "name": "Last Heard",
+          "said": "{time} ago"
+        },
+        {
+          "name": "Backhaul",
+          "said": "Ethernet"
+        },
+        {
+          "name": "Devices",
+          "said": "all on Wi-Fi"
+        },
+        {
           "name": "Model",
           "said": "eero Pro 6 · K010011"
         },
@@ -3170,6 +4038,32 @@
           "said": "none"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "0 B down · 0 B up"
+        },
+        {
+          "name": "Devices",
+          "said": "10 listed"
+        }
+      ],
+      "inside": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
           "name": "Default",
           "said": "no"
         },
@@ -3252,6 +4146,32 @@
           "said": "none"
         },
         {
+          "figure": {
+            "shape": "spark",
+            "values": [
+              0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0
+            ],
+            "warn": false
+          },
+          "name": "Traffic",
+          "said": "0 B down · 0 B up"
+        },
+        {
+          "name": "Devices",
+          "said": "3 listed"
+        }
+      ],
+      "inside": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
           "name": "Default",
           "said": "no"
         },
@@ -3297,6 +4217,20 @@
       "eyebrow": "profile",
       "eyebrowNames": true,
       "facts": [
+        {
+          "name": "Blocks",
+          "said": "nothing"
+        },
+        {
+          "name": "Schedule",
+          "said": "none"
+        },
+        {
+          "name": "Devices",
+          "said": "1 listed"
+        }
+      ],
+      "inside": [
         {
           "name": "Blocks",
           "said": "nothing"

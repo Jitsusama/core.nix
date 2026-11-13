@@ -204,3 +204,92 @@ fn every_row_names_the_drawer_served_beside_it() {
         "each is a drawer's record"
     );
 }
+
+/// Each fact's name in a served drawer's list, `facts` or `inside`, a time
+/// for one named by when, its headings left out.
+fn names<'a>(drawer: &'a Value, list: &str) -> Vec<&'a str> {
+    drawer[list]
+        .as_array()
+        .expect("the list is a list")
+        .iter()
+        .filter(|fact| fact.get("heading").is_none())
+        .map(|fact| fact["name"].as_str().unwrap_or("a time"))
+        .collect()
+}
+
+#[test]
+fn every_drawer_holds_a_glance_and_its_step_lists_every_fact() {
+    let model = model();
+    let drawers = records(&model, &words(), &Numbers::default());
+
+    for record in &drawers {
+        let drawer = &record["drawer"];
+        let glance = drawer["facts"].as_array().expect("the facts are a list");
+        let inside = drawer["inside"]
+            .as_array()
+            .expect("what's inside is a list");
+        assert!(
+            (1..=6).contains(&glance.len()),
+            "{} holds a handful of facts, not {}",
+            record["key"],
+            glance.len()
+        );
+        assert!(
+            glance.iter().all(|fact| inside.contains(fact)),
+            "{}'s glance is of what its step lists",
+            record["key"]
+        );
+    }
+    let internet = drawers
+        .iter()
+        .find(|record| record["key"] == INTERNET_KEY)
+        .expect("the internet's drawer is served");
+    assert!(
+        names(&internet["drawer"], "inside").len() > 40,
+        "the internet's step lists every figure: {:?}",
+        names(&internet["drawer"], "inside")
+    );
+}
+
+#[test]
+fn a_glance_holds_what_its_row_couldnt_fit_and_a_look_wants_next() {
+    let model = model();
+    let drawers = records(&model, &words(), &Numbers::default());
+    let glance = |key: &str| {
+        let record = drawers
+            .iter()
+            .find(|record| record["key"] == key)
+            .unwrap_or_else(|| panic!("{key} is served"));
+        names(&record["drawer"], "facts")
+    };
+
+    assert_eq!(
+        glance(INTERNET_KEY),
+        [
+            "Speed Test",
+            "To the Internet",
+            "Nodes",
+            "Outages",
+            "Public Address",
+            "a time"
+        ],
+        "how fast, how near, what's off, the address, then the last thing that happened"
+    );
+    assert_eq!(
+        glance(&node_key("2003")),
+        [
+            "Last Heard",
+            "Backhaul",
+            "Devices",
+            "Traffic",
+            "Firmware",
+            "Up For"
+        ],
+        "a node's"
+    );
+    assert_eq!(
+        glance(&profile_key(&model.profiles[0].id)).first(),
+        Some(&"Blocks"),
+        "a profile's"
+    );
+}

@@ -137,9 +137,9 @@ def the_home_networks_own_drawer_says_how_it_stands(desktop: Desktop) -> None:
 def the_internet_paged_through(desktop: Desktop, at: str) -> None:
     """Page through the internet's drawer to its last line, a shot a page, and come back.
 
-    It holds every figure eero gives of the network, far more than one view, so each page is
-    shot for a person to judge how all of it is laid out (Joel, 2026-11-07: "every figure there
-    is, laid out to the design bar"). No page's top cuts a line, and the pages reach its end.
+    It holds a glance of six facts, every figure eero gives being the step in's (Y2YBTS,
+    2026-11-13), so each page it takes at a scale is shot for a person to judge how it's laid
+    out. No page's top cuts a line, and the pages reach its end.
     """
     machine = desktop.machine
     pressed(desktop, "ctrl-w l")

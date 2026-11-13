@@ -1,7 +1,8 @@
 //! The internet's drawer, the one its row in the Home Network shows, made
-//! ready here as every other row's is: first the last speed test, the
-//! nodes and outages, who carries it, the firmware and the day's traffic,
-//! so a narrow drawer shows those before its more; then this machine's
+//! ready here as every other row's is, every fact as the step into it lists
+//! them (its drawer holds a glance of six, drawers.rs's GLANCE): first the
+//! last speed test, the nodes and outages, who carries it, the firmware
+//! and the day's traffic; then this machine's
 //! last looks at it, each outage, every speed test, how its addresses are
 //! had, its switches and what happened to it, each under a heading. It
 //! holds only the internet: each device, its address and what happened to
@@ -103,8 +104,7 @@ fn drawer(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value {
     })
 }
 
-/// What its row says, and what a narrow drawer has room for before its
-/// more: the last speed test and its day, the nodes and outages, who
+/// What its row says, and what its step lists first: the last speed test and its day, the nodes and outages, who
 /// carries it, the nodes' network, the firmware and its updates, the day's
 /// traffic and when eero was last read.
 fn head(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Value> {
