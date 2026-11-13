@@ -46,6 +46,7 @@ pub fn named(message: &str) -> (String, Kind) {
 /// say nothing of it are passed: a Mac's kernel folds repeats into
 /// `3 duplicate reports for Sandbox: ...`, and its display drivers open
 /// with their source file and line, `[AppleDCPDPTXController.cpp::371] ...`.
+/// A speaker's instance, `SK[3]`, is dropped, so its instances are one.
 fn speaker(message: &str) -> String {
     let message = FOLDED
         .iter()
@@ -57,11 +58,32 @@ fn speaker(message: &str) -> String {
     if message.starts_with("System Policy:") {
         return "System Policy".to_owned();
     }
-    let opening = message.split_whitespace().next().unwrap_or("kernel");
+    let opening = message
+        .split_whitespace()
+        .find(|word| !says_nothing_of_who(word))
+        .unwrap_or("kernel");
     let driver = opening
         .strip_prefix('[')
         .and_then(|place| place.split_once("::"))
         .and_then(|(file, _)| file.rsplit_once('.'))
         .map(|(driver, _)| driver);
-    sign::signature(driver.unwrap_or_else(|| opening.trim_end_matches(':')))
+    let named = driver.unwrap_or_else(|| opening.trim_end_matches(':'));
+    sign::signature(without_instance(named))
+}
+
+/// Whether a line's word says nothing of who spoke: a Mac's kernel opens
+/// some lines with their level, `[ERROR]`, or a lone `:`, and its log cuts a
+/// long line into pieces, so a piece can open in a word's last part, as
+/// `troller.cpp::371]` does, a `]` with no `[` before it.
+fn says_nothing_of_who(word: &str) -> bool {
+    word == "[ERROR]" || word == ":" || (word.ends_with(']') && !word.contains('['))
+}
+
+/// A speaker's name without the instance a Mac's kernel numbers it by,
+/// `SK[3]` being `SK`.
+fn without_instance(name: &str) -> &str {
+    name.strip_suffix(']')
+        .and_then(|name| name.rsplit_once('['))
+        .filter(|(_, index)| !index.is_empty() && index.chars().all(|c| c.is_ascii_digit()))
+        .map_or(name, |(name, _)| name)
 }
