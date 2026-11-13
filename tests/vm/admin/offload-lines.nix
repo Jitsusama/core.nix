@@ -5,7 +5,8 @@
 # as its maker made it and for its host key, and passes root only the
 # lines naming a builder it trusts, in a file the lender's account can't
 # write. The account asks nix-offload's keeper to keep what passed, in a
-# folder it reads and can't remove a record from. The tests are
+# folder it reads and can't remove a record from, and reaches the standing
+# builder through root's door to it, untrusted. The tests are
 # offload-lines-vm-test.py,
 # which pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:

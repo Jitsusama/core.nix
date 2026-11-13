@@ -89,6 +89,60 @@ onLinux {
         && failing bare.config != [ ]
       );
 
+  # The door to the standing builders answers as Nix's daemon and takes its
+  # caller as untrusted, run as its unit runs it, over a store of its own,
+  # and names root's list of them; only the lender's account may open it,
+  # in a folder only root writes. A Nix that renames a flag or a feature
+  # it needs leaves the door shut, or worse, open to a trusted caller.
+  nix-offload-standing-door-trusts-no-one =
+    let
+      lined = bareNixos [
+        self.nixosModules.nix-offload
+        {
+          users.users.someone = {
+            isNormalUser = true;
+            group = "users";
+          };
+          jitsusama.nix-offload = {
+            account = "someone";
+            lines = {
+              project = "a-lab";
+              prefix = "a-builder-";
+              zones = [ "a-zone" ];
+              startupScript = pkgs.writeText "startup-script" "echo a builder\n";
+              images = [ "https://compute.example/images/a-" ];
+            };
+          };
+        }
+      ];
+      socket = lined.config.systemd.sockets.nix-offload-standing.socketConfig;
+      door = lined.config.systemd.services."nix-offload-standing@";
+      named =
+        holds "nix-offload-standing-door-is-the-accounts"
+          (
+            "the door to the standing builders isn't root's, taking one connection at a time, "
+            + "in a folder only root writes, opened by the lender's account alone, "
+            + "or it doesn't name root's list of them through the daemon."
+          )
+          (
+            socket.ListenStream == "/run/nix-offload-standing.sock"
+            && socket.Accept
+            && socket.SocketUser == "someone"
+            && socket.SocketMode == "0600"
+            && !(door.serviceConfig ? User)
+            && door.environment.NIX_REMOTE == "daemon"
+            && lib.hasInfix " --option builders @/run/nix-offload-lines/machines-with-standing " door.serviceConfig.ExecStart
+          );
+    in
+    pkgs.runCommandLocal "nix-offload-standing-door-trusts-no-one" { } ''
+      test -e ${named}
+      ${lib.getExe pkgs.bash} ${../nix-daemon/tests/the-sandboxes-door-trusts-no-one.sh} \
+        ${lib.getExe' pkgs.systemd "systemd-socket-activate"} \
+        ${lib.getExe' lined.config.nix.package "nix"} \
+        ${door.serviceConfig.ExecStart}
+      touch $out
+    '';
+
   # clippy finds nothing in nix-offload, its tests included.
   nix-offload-passes-clippy = passesClippy "nix-offload-passes-clippy" (
     pkgs.callPackage ./offload/package.nix { }

@@ -1612,6 +1612,11 @@
   nix-offload-passes-clippy = ''
     clippy finds nothing in nix-offload or its tests
   '';
+  nix-offload-standing-door-trusts-no-one = ''
+    the lender's door to the standing builders, run as its socket unit runs it, answers as the
+    Nix daemon and takes its caller as untrusted, names root's list of them through the daemon,
+    and only the lender's account may open it, in a folder only root writes
+  '';
   nixos-role-twice-is-once = ''
     importing a NixOS role twice leaves the machine unchanged
   '';

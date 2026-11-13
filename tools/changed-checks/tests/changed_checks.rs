@@ -294,7 +294,10 @@ impl StandIn {
             .env("XDG_CACHE_HOME", self.folder.join("cache"))
             .env("XDG_STATE_HOME", self.folder.join("state"))
             .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
-            .env("NIX_OFFLOAD_STANDING_DOOR", self.folder.join("standing.sock"))
+            .env(
+                "NIX_OFFLOAD_STANDING_DOOR",
+                self.folder.join("standing.sock"),
+            )
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
             .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))

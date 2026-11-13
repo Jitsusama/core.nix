@@ -24,7 +24,9 @@
 # /run/nix-offload-lines instead, which an account of their own writes
 # (src/lines.rs): it copies the lender's lines there, passing only those
 # naming a builder it can vouch for, so the lender's account needs no
-# trust to keep root safe.
+# trust to keep root safe. A build reaches the standing builders then
+# through a door of root's, /run/nix-offload-standing.sock, since Nix
+# heeds builders named by a trusted account alone.
 {
   config,
   pkgs,
@@ -45,6 +47,19 @@ let
   offload = pkgs.callPackage ./offload/package.nix { };
   # The standing builders root proves, with no lines settings none.
   proven = if lines == null then [ ] else lines.standing;
+  # The door to them: the Nix daemon's own command, taking its caller as
+  # untrusted, as the sandboxes' door does (nix-daemon/nixos.nix), but run
+  # as root and naming root's list of the standing builders, which the
+  # daemon behind it heeds from root alone.
+  standingDoor = "/run/nix-offload-standing.sock";
+  door = builtins.concatStringsSep " " [
+    "${config.nix.package}/bin/nix"
+    "--extra-experimental-features nix-command"
+    "--extra-experimental-features daemon-trust-override"
+    "--extra-experimental-features mounted-ssh-store"
+    "--option builders @${linesFolder}/machines-with-standing"
+    "daemon --stdio --force-untrusted --process-ops"
+  ];
   # What src/lines.rs reads, as JSON.
   linesSettings = {
     from = "/run/nix-offload";
@@ -408,6 +423,66 @@ in
         CapabilityBoundingSet = "";
         PrivateNetwork = true;
         RestrictAddressFamilies = "AF_UNIX";
+        SystemCallFilter = "@system-service";
+      };
+    };
+
+    # A door to the standing builders for the lender's account, which
+    # needn't be trusted to reach them. Each connection gets a daemon of
+    # its own, root's, which takes the caller as untrusted, so it names no
+    # builders and sets nothing a trusted user may, and passes each
+    # operation to the Nix daemon naming root's list of the standing
+    # builders: the builds stay the daemon's, in its slice under its
+    # settings, and only go to more builders. The socket is in root's /run,
+    # not the lender's folder, so only root could put another there, and
+    # only the lender's account may open it.
+    #
+    # What it doesn't hold: any process of the account's may send any
+    # derivation through it, whatever code it builds, and a sandbox's fence
+    # is what keeps the account's sandboxed sessions from it. That only
+    # changed-checks asks, and only for public checks (`stands-alone`), is
+    # a convention, as it was while the account was trusted and named the
+    # builders itself. And root's build hook takes what a builder sends
+    # back unchecked, so what comes back is as sound as root's trust in
+    # the builder, here as for every build root sends.
+    systemd.sockets.nix-offload-standing = lib.mkIf (lines != null) {
+      description = "The account's door to the standing builders, which trusts no one";
+      wantedBy = [ "sockets.target" ];
+      socketConfig = {
+        ListenStream = standingDoor;
+        Accept = true;
+        SocketUser = config.jitsusama.nix-offload.account;
+        SocketMode = "0600";
+      };
+    };
+
+    systemd.services."nix-offload-standing@" = lib.mkIf (lines != null) {
+      description = "The Nix daemon, for one untrusted connection to the standing builders";
+      after = [ "nix-daemon.socket" ];
+      # Through the daemon, said rather than left to Nix finding the store
+      # unwritable, since root could open the store itself and build here,
+      # outside the daemon's slice and settings.
+      environment = {
+        NIX_REMOTE = "daemon";
+        # A home it may read, since root's is hidden.
+        HOME = "/var/empty";
+      };
+      serviceConfig = {
+        ExecStart = door;
+        StandardInput = "socket";
+        StandardOutput = "socket";
+        StandardError = "journal";
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        PrivateNetwork = true;
+        RestrictAddressFamilies = "AF_UNIX";
+        NoNewPrivileges = true;
+        # It needs only the daemon's socket, and stays root so the daemon
+        # heeds the builders it names.
+        CapabilityBoundingSet = "";
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
         SystemCallFilter = "@system-service";
       };
     };
