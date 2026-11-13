@@ -15,6 +15,18 @@ const LINES = 6;
 
 const SPACES = /\s+/u;
 
+// Whether Told makes a card at all. It makes none, sent, answered or taken
+// back: Joel found notices popping up outside the line he typed in weird
+// (2026-11-13 04:33), so the void gets one place, the Super+S line, whose
+// answers are to show inside it. Until they do, his answer reads on the
+// void's row in Agents. Set it true to card them again.
+const CARDED = false;
+
+// Whether a card is made for Joel's line, as CARDED says.
+function carded() {
+    return CARDED;
+}
+
 // A reply as the card says it: whole, when it fits, else its words to the
 // card's last line and that line ending "... more in the talk", never a
 // word cut (VKCF3Z, 2026-11-12 [24c972ba]). The whole stays in the talk.
