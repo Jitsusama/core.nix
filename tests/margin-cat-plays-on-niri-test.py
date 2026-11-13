@@ -93,16 +93,31 @@ def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
     return window, seats[-1]
 
 
+def quiet(shell: Shell) -> int:
+    """Type until the cat has said nothing for a whole key's gap, and give the mark it's at.
+
+    Sitting down can outlast a pause, so a pause's pose may be up, and the column just opened
+    may still be settling: on a loaded builder either can draw after the first key, so the
+    count starts only once neither has more to draw.
+    """
+    since = shell.mark()
+    began = time.monotonic()
+    while time.monotonic() - began < TYPED:
+        shell.send_key("F24")
+        time.sleep(TYPING)
+        found, since = reports(shell, since)
+        if not found:
+            return since
+    pytest.fail(f"the cat never sat quiet in {TYPED:.0f} s of typing")
+
+
 def test_while_he_types_it_makes_one_small_move_in_place(shell: Shell) -> None:
     """A key every 0.4 s, and within the rest a single pose comes, holds a moment, and goes.
 
     It moves none while it does, and draws a frame for the pose and one for sitting again.
     """
     sitting_over(shell, "a column typed in")
-    # Sitting down can outlast a pause, so a pause's pose may be up: a key
-    # first ends it, and its frame is drawn before the count starts.
-    shell.send_key("F24")
-    time.sleep(TYPING)
+    quiet(shell)
     shell.as_account(f"qs -p {shell.folder} ipc call frames start")
     since = shell.mark()
     began, posed, sat, still = time.monotonic(), 0.0, 0.0, None
@@ -123,7 +138,7 @@ def test_while_he_types_it_makes_one_small_move_in_place(shell: Shell) -> None:
     shortest, longest = GLANCE
     assert shortest - TYPING <= sat - posed <= longest + TYPING, f"it held {sat - posed:.2f} s"
     drawn = cat_frames(shell)
-    assert drawn <= GLANCED, f"a small move drew {drawn} frames"
+    assert drawn <= GLANCED, f"a small move drew {drawn} frames: {seen}"
 
 
 def test_paused_it_plays_a_little_in_place(shell: Shell) -> None:
@@ -136,6 +151,10 @@ def test_paused_it_plays_a_little_in_place(shell: Shell) -> None:
     shell.reported(SITS, lambda said: (placed(said) or {}).get("pose") == "", since)
     lasted = time.monotonic() - began
     found, _ = reports(shell, since)
+    # The key that starts the pause is typing too, so a glance may come before the pause
+    # does; the play is judged from its first pose on.
+    first = next(i for i, at in enumerate(found) if at.get("pose") in IN_PLACE)
+    found = found[first:]
     poses = {at.get("pose") for at in found}
     assert poses <= IN_PLACE | SITTING, f"a pause's play posed {poses}"
     assert lasted <= SCENE, f"a pause's play lasted {lasted:.2f} s"
