@@ -3304,12 +3304,7 @@ mod tests {
         for test in names("vm-w1 vm-w2 vm-w3 vm-w4") {
             settler.hand(search_for(&test));
         }
-        // With no room, it asks main's newest head first, and then waits.
         settler.hand(search_for("vm-b"));
-        assert!(
-            world.built().contains(&("n".to_owned(), "vm-b".to_owned())),
-            "a test with no room to search didn't ask main's newest head first"
-        );
         std::thread::scope(|scope| {
             settler.start(scope);
             settler.close();
@@ -3323,6 +3318,48 @@ mod tests {
             "a test main listed had a merge reverted"
         );
         assert!(state.settling().is_empty(), "a job settled is still kept");
+    }
+
+    #[test]
+    fn a_test_with_no_room_to_search_is_asked_beside_the_round() {
+        // 13 November: the round at b7a81d60bf21 ran its tests to 08:02,
+        // then ran five failed tests at main's newest head one by one as
+        // it handed each on, and ended past 09:30.
+        let state = state("asked-beside");
+        let world = Stand {
+            head: "n".into(),
+            merges: names("a b h"),
+            changed: changed("vm-b"),
+            // So the four searches before it end at their turn.
+            listed_since: names("vm-w1 vm-w2 vm-w3 vm-w4"),
+            ..Stand::default()
+        }
+        .exits("n", "vm-b", &[0, 0]);
+        let settler = Settler::new(&world, &state);
+        for test in names("vm-w1 vm-w2 vm-w3 vm-w4") {
+            settler.hand(search_for(&test));
+        }
+        settler.hand(search_for("vm-b"));
+        assert!(
+            world.built().is_empty(),
+            "handing a test on ran it at main's newest head in the round's thread"
+        );
+        assert!(
+            settler.holds("vm-b"),
+            "the test with no room wasn't handed on"
+        );
+        std::thread::scope(|scope| {
+            settler.start(scope);
+            settler.close();
+        });
+        assert!(
+            world.built().contains(&("n".to_owned(), "vm-b".to_owned())),
+            "the test with no room wasn't asked at main's newest head"
+        );
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a test fixed forward had a merge reverted"
+        );
     }
 
     #[test]

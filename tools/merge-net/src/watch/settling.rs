@@ -89,47 +89,63 @@ impl Job {
     }
 }
 
+/// How many searches waiting for room may ask main's newest head at once
+/// whether it fixed their test.
+const ASKS: usize = 1;
+
+/// What a worker does with the job it takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Lane {
+    Search,
+    /// Ask whether main's newest head fixed a search's test, while the
+    /// searches have no room for it.
+    Ask,
+    List,
+}
+
 /// The jobs waiting and under way.
 #[derive(Default)]
 struct Queue {
     waiting: VecDeque<Job>,
     /// The tests of every job waiting or under way, one job a test.
     held: Vec<String>,
+    /// The tests waiting whose search asked main's newest head already.
+    asked: Vec<String>,
     searching: usize,
+    asking: usize,
     listing: bool,
     closing: bool,
 }
 
 impl Queue {
     /// The first job waiting that may start: up to `SEARCHES` searches,
-    /// and one list at a time, since two lists' PRs change one file.
-    fn next(&mut self) -> Option<Job> {
-        let index = self.waiting.iter().position(|job| {
-            if job.is_search() {
-                self.searching < SEARCHES
+    /// `ASKS` asks for searches left without room, and one list at a time,
+    /// since two lists' PRs change one file.
+    fn next(&mut self) -> Option<(Job, Lane)> {
+        let (index, lane) = self.waiting.iter().enumerate().find_map(|(index, job)| {
+            let lane = if !job.is_search() {
+                (!self.listing).then_some(Lane::List)
+            } else if self.searching < SEARCHES {
+                Some(Lane::Search)
             } else {
-                !self.listing
-            }
+                (self.asking < ASKS && !self.asked.iter().any(|test| test == job.test()))
+                    .then_some(Lane::Ask)
+            };
+            lane.map(|lane| (index, lane))
         })?;
         let job = self.waiting.remove(index)?;
-        self.turn(&job, true);
-        Some(job)
+        self.turn(lane, true);
+        Some((job, lane))
     }
 
-    fn turn(&mut self, job: &Job, starts: bool) {
-        if job.is_search() {
-            if starts {
-                self.searching += 1;
-            } else {
-                self.searching -= 1;
-            }
-        } else {
-            self.listing = starts;
+    fn turn(&mut self, lane: Lane, starts: bool) {
+        match (lane, starts) {
+            (Lane::Search, true) => self.searching += 1,
+            (Lane::Search, false) => self.searching -= 1,
+            (Lane::Ask, true) => self.asking += 1,
+            (Lane::Ask, false) => self.asking -= 1,
+            (Lane::List, _) => self.listing = starts,
         }
-    }
-
-    fn searches(&self) -> usize {
-        self.searching + self.waiting.iter().filter(|job| job.is_search()).count()
     }
 }
 
@@ -156,10 +172,10 @@ impl<'a> Settler<'a> {
         }
     }
 
-    /// Start the workers, one for each search that may run and one for
-    /// lists, in `scope`, which ends once `close` lets them finish.
+    /// Start the workers, one for each search and ask that may run and one
+    /// for lists, in `scope`, which ends once `close` lets them finish.
     pub fn start<'scope>(&'scope self, scope: &'scope Scope<'scope, '_>) {
-        for _ in 0..=SEARCHES {
+        for _ in 0..=SEARCHES + ASKS {
             scope.spawn(|| self.work());
         }
     }
@@ -221,21 +237,16 @@ impl<'a> Settler<'a> {
 
     /// Settle `job` beside the rounds, unless one for its test is held.
     ///
-    /// A failed test that finds no room asks whether main's newest head
-    /// fixed it first, rather than waiting to. On 8 November six tests
-    /// failed at once at 06fc027e, and their searches ran one after another
-    /// from 10:30 to past 15:00, though five of the six were fixed forward
-    /// and each was found so within one search step.
+    /// A failed test that finds no room to search asks whether main's
+    /// newest head fixed it first, rather than waiting to. On 8 November six
+    /// tests failed at once at 06fc027e, and their searches ran one after
+    /// another from 10:30 to past 15:00, though five of the six were fixed
+    /// forward and each was found so within one search step. It asks on a
+    /// worker here, not in the round handing it on: on 13 November the
+    /// round at b7a81d60bf21 ran its tests to 08:02, then five failed tests
+    /// at main's newest head one by one, and ended past 09:30.
     pub fn hand(&self, job: Job) {
         if self.holds(job.test()) {
-            return;
-        }
-        if let Job::Search { head, test, .. } = &job
-            && lock(&self.queue).searches() >= SEARCHES
-            // An error here is asked again beside the search's first step,
-            // so it's left to that.
-            && fixed_forward(self.world, self.state, head, test, None) == Ok(true)
-        {
             return;
         }
         if let Err(why) = self.state.keep_settling(job.test(), &job.to_json()) {
@@ -272,12 +283,26 @@ impl<'a> Settler<'a> {
     fn work(&self) {
         let mut queue = lock(&self.queue);
         loop {
-            if let Some(job) = queue.next() {
+            if let Some((job, lane)) = queue.next() {
                 drop(queue);
-                let done = self.run(&job);
+                let fixed = lane == Lane::Ask && self.ask(&job);
+                let done = if lane == Lane::Ask {
+                    Ok(())
+                } else {
+                    self.run(&job)
+                };
                 queue = lock(&self.queue);
-                queue.turn(&job, false);
+                queue.turn(lane, false);
+                if lane == Lane::Ask && !fixed {
+                    // Still broken, so it waits its turn to search, first
+                    // in line as it was.
+                    queue.asked.push(job.test().to_owned());
+                    queue.waiting.push_front(job);
+                    self.moved.notify_all();
+                    continue;
+                }
                 queue.held.retain(|held| held != job.test());
+                queue.asked.retain(|asked| asked != job.test());
                 match done {
                     Ok(()) => {
                         if let Err(why) = self.state.settled(job.test()) {
@@ -327,6 +352,15 @@ impl<'a> Settler<'a> {
         }
     }
 
+    /// Whether main's newest head fixed `job`'s test. An error here is
+    /// asked again beside the search's first step, so it's left to that.
+    fn ask(&self, job: &Job) -> bool {
+        let Job::Search { head, test, .. } = job else {
+            return false;
+        };
+        fixed_forward(self.world, self.state, head, test, None) == Ok(true)
+    }
+
     /// Whether the hold names `test` already.
     fn held_for(&self, test: &str) -> bool {
         self.state.hold().is_some_and(|hold| hold["test"] == test)
@@ -335,5 +369,46 @@ impl<'a> Settler<'a> {
     fn failed(&self, why: String) {
         self.state.say(&why);
         lock(&self.first_error).get_or_insert(why);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_search_with_no_room_is_asked_once_and_then_waits() {
+        let mut queue = Queue {
+            waiting: (0..=SEARCHES)
+                .map(|n| Job::Search {
+                    base: "s".into(),
+                    head: "h".into(),
+                    test: format!("vm-{n}"),
+                })
+                .collect(),
+            ..Queue::default()
+        };
+        for _ in 0..SEARCHES {
+            let lane = queue.next().map(|(_, lane)| lane);
+            assert_eq!(lane, Some(Lane::Search), "a search with room didn't start");
+        }
+        let (asked, lane) = queue.next().expect("a search with no room wasn't asked");
+        assert_eq!(lane, Lane::Ask, "a search with no room took another lane");
+        queue.turn(lane, false);
+        queue.asked.push(asked.test().to_owned());
+        queue.waiting.push_front(asked);
+        assert!(
+            queue.next().is_none(),
+            "a search asked already was asked again before its turn"
+        );
+        queue.turn(Lane::Search, false);
+        let lane = queue
+            .next()
+            .map(|(job, lane)| (job.test().to_owned(), lane));
+        assert_eq!(
+            lane,
+            Some((format!("vm-{SEARCHES}"), Lane::Search)),
+            "the search asked didn't search first once a search ended"
+        );
     }
 }
