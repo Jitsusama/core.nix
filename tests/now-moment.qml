@@ -420,6 +420,9 @@ ShellRoot {
         const held = { every: {} };
         for (const row of pastNotices.all())
             held.every[row.notice] = row;
+        held.history = {};
+        for (const row of pastNotices.pastRows(["desktop", "slack"]))
+            held.history[row.notice] = row;
         return held;
     }
     function remadeSince(before, after) {
@@ -443,8 +446,10 @@ ShellRoot {
             stepIn();
             const made = since(madeBefore);
             const after = heldMade();
-            expect("one notice read, stepping in again makes only its row again",
-                made[0] === 1,
+            // Its row in the mixed place reads otherwise, and History,
+            // served as a place of its own, gains it: two, and none more.
+            expect("one notice read, stepping in again makes only its rows again",
+                made[0] === 2,
                 `${JSON.stringify(made)}, made again: `
                     + JSON.stringify(remadeSince(steppedBefore, after)));
             expect("a search answered before the notices changed waits for its answer again",
