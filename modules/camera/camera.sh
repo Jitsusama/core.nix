@@ -9,14 +9,30 @@
 # removable, where a built-in camera's says fixed. CAMERA_ROOT puts /dev
 # and /sys somewhere else, for the check that tests this (checks.nix).
 #
-# Usage: camera [picture | video]
+# Its help and its failures take the shape every command of ours does
+# (docs/commands.md), by hand, since a script has no kit.
 
 mode=${1:-picture}
 case $mode in
   picture | video) ;;
+  -h | --help)
+    cat << 'EOF'
+camera  shows the camera in a window, to take a picture or a video with
+
+EXAMPLES
+  camera                     a picture
+  camera video               a video
+
+EXIT
+  0   done
+  64  asked wrongly
+EOF
+    exit 0
+    ;;
   *)
-    echo "usage: camera [picture | video]" >&2
-    exit 2
+    printf '%s\n' "no way to take called $mode" "  the ways are picture and video" \
+      "  try  camera --help" >&2
+    exit 64
     ;;
 esac
 # A camera made at boot is named by a file.

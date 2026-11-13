@@ -45,10 +45,7 @@
     "exits"
     "helps"
   ];
-  camera = [
-    "exits"
-    "helps"
-  ];
+  camera = [ "helps" ];
   cargo-builds = [ "helps" ];
   changed-checks = [
     "kit"
@@ -125,10 +122,7 @@
     "helps"
   ];
   disk-guard-merged-on-github = [ "helps" ];
-  disk-order = [
-    "exits"
-    "helps"
-  ];
+  disk-order = [ "helps" ];
   eero = [
     "kit"
     "inks"
@@ -161,10 +155,7 @@
     "exits"
     "helps"
   ];
-  google-opens = [
-    "exits"
-    "helps"
-  ];
+  google-opens = [ "helps" ];
   google-people = [
     "kit"
     "exits"
@@ -270,10 +261,7 @@
     "exits"
     "helps"
   ];
-  niri-deadline = [
-    "exits"
-    "helps"
-  ];
+  niri-deadline = [ "helps" ];
   niri-off-cpu = [ "helps" ];
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
@@ -426,19 +414,13 @@
     "kit"
     "helps"
   ];
-  shots-changed = [
-    "exits"
-    "helps"
-  ];
+  shots-changed = [ "helps" ];
   shutdown-status = [
     "kit"
     "exits"
     "helps"
   ];
-  sign = [
-    "exits"
-    "helps"
-  ];
+  sign = [ "helps" ];
   slack-people = [
     "kit"
     "exits"

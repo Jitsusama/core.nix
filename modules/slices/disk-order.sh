@@ -3,9 +3,29 @@
 # stops sharing it. Usage: disk-order on <disk> <model> <qos>, where the
 # disk is its name under /sys/class/block and the model and qos are the
 # key=value settings io.cost.model and io.cost.qos take; disk-order off
-# <disk> hands the disk back to first come, first served.
-mode=$1
-disk=$2
+# <disk> hands the disk back to first come, first served. Its help and
+# failures take the shape every command of ours does (docs/commands.md), by
+# hand.
+case ${1:-} in
+-h | --help)
+  cat << 'EOF'
+disk-order  shares a disk by the slices' io.weight, or stops sharing it
+
+EXAMPLES
+  disk-order on DISK MODEL QOS   share it, with io.cost's measured settings
+  disk-order off DISK            first come, first served again
+
+EXIT
+  0   done
+  1   the kernel refused a setting
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+mode=${1:-}
+disk=${2:-}
 # A disk that's gone took its io.cost settings with it, so there's
 # nothing to hand back.
 if [ "$mode" = off ] && [ ! -e "/sys/class/block/$disk" ]; then
@@ -33,7 +53,8 @@ off)
   echo "$number enable=0" > /sys/fs/cgroup/io.cost.qos
   ;;
 *)
-  echo "disk-order: on or off, not $mode" >&2
-  exit 2
+  printf '%s\n' "disk-order turns sharing on or off, not ${mode:-nothing}" \
+    "  try  disk-order --help" >&2
+  exit 64
   ;;
 esac

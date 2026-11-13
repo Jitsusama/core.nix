@@ -7,13 +7,29 @@
 # anything else in the default browser.
 # usage: opens.sh WINDOW OPEN URL, WINDOW opening a URL in a window of its
 # own, as jitsusama.google.window says, and OPEN in the default browser.
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
 set -euo pipefail
 
 window=$1
 open=$2
-url=$3
+url=${3:-}
 
 case "$url" in
+-h | --help)
+  cat << 'EOF'
+google-opens  opens a link from the calendar the way it's meant to be opened
+
+EXAMPLES
+  google-opens URL           a Tuple call in Tuple, Google's pages in a
+                             window of their own, the rest in the browser
+
+EXIT
+  0   done
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
 https://tuple.app/c/* | https://production.tuple.app/c/*)
   if command -v tuple > /dev/null; then
     exec tuple call join "$url"
@@ -28,7 +44,8 @@ https://* | http://*)
   exec "$open" "$url"
   ;;
 *)
-  echo "google-opens: not a link: $url" >&2
-  exit 2
+  printf '%s\n' "google-opens opens only links, not ${url:-nothing}" \
+    "  try  google-opens https://meet.google.com/..." >&2
+  exit 64
   ;;
 esac
