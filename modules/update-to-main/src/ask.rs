@@ -2,7 +2,7 @@
 //! ending at the update's ending.
 
 use crate::line::Line;
-use crate::serve::{ASK, FOLLOW, STOP, STOP_FOR_NEWER};
+use crate::serve::{ASK, AT, FOLLOW, STOP, STOP_FOR_NEWER};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
@@ -11,6 +11,17 @@ use std::path::Path;
 /// and gives the ending. A connection that ends before one is an error.
 pub fn ask(socket: &Path, hear: &mut dyn FnMut(&Line)) -> io::Result<Line> {
     asking(socket, ASK, hear)
+}
+
+/// Asks as `ask` does, with the followed input `input` at `commit` rather
+/// than its main's head.
+pub fn ask_at(
+    socket: &Path,
+    input: &str,
+    commit: &str,
+    hear: &mut dyn FnMut(&Line),
+) -> io::Result<Line> {
+    asking(socket, &format!("{ASK} {AT} {input} {commit}"), hear)
 }
 
 /// Asks as `ask` does, for the follower, whose switch waits once built

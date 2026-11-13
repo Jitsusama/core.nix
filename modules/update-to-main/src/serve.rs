@@ -18,8 +18,9 @@
 //! over the socket doesn't show in the process list.
 
 use crate::config::Config;
+use crate::follows::Followed;
 use crate::line::{Applied, Line};
-use crate::{held, run, update};
+use crate::{git, held, run, update};
 use std::ffi::CString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -34,6 +35,11 @@ use std::time::Duration;
 
 /// A person's ask.
 pub const ASK: &str = "update";
+
+/// What follows a person's ask to name a followed input's commit, as
+/// `update at INPUT COMMIT`, for main with that input there rather than at
+/// its main's head (src/follows.rs says what the commit must be).
+pub const AT: &str = "at";
 
 /// The follower's ask: an update like any other, except that once built
 /// its switch waits while someone is at the machine. A person asking
@@ -53,7 +59,7 @@ pub const STOP_FOR_NEWER: &str = "stop-for-newer";
 
 /// How long an asker has to say its ask, and the most it may send.
 const ASK_WITHIN: Duration = Duration::from_secs(5);
-const ASK_AT_MOST: u64 = 64;
+const ASK_AT_MOST: u64 = 128;
 
 /// How long a finished update waits for its askers to hear the ending
 /// before the program starts itself again.
@@ -77,6 +83,8 @@ struct Said {
     hearing: usize,
     /// Whether only the follower has asked for it.
     following: bool,
+    /// The followed inputs' commits it was asked at, none for their heads.
+    at: Followed,
     /// The thread running the update, whose commands a stop ends.
     worker: Option<thread::ThreadId>,
 }
@@ -225,25 +233,50 @@ fn answer(
         return writeln!(out, "{}", stopped.json());
     }
     let following = ask.trim() == FOLLOW;
-    if ask.trim() != ASK && !following {
-        eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
-        let refused = Line::Refused {
-            commit: update::last(config),
-            why: format!(
-                "the only asks are `{ASK}`, `{FOLLOW}`, `{STOP}`, `{STOP_FOR_NEWER}`, `{}`, \
-                 `{}`, `{} COMMIT` and `{} COMMIT`",
-                held::PAUSE,
-                held::RESUME,
-                held::HOLD,
-                held::LIFT
-            ),
-        };
-        return writeln!(out, "{}", refused.json());
-    }
-    eprintln!("uid {asker} asks for an update");
+    let at = if following {
+        Some(Ok(Followed::new()))
+    } else {
+        asked_at(ask.trim())
+    };
+    let at = match at {
+        Some(Ok(at)) => at,
+        Some(Err(why)) => {
+            eprintln!("refused an ask from uid {asker}: {why}");
+            let refused = Line::Refused {
+                commit: update::last(config),
+                why,
+            };
+            return writeln!(out, "{}", refused.json());
+        }
+        None => {
+            eprintln!("refused an ask from uid {asker}: {:?}", ask.trim());
+            let refused = Line::Refused {
+                commit: update::last(config),
+                why: format!(
+                    "the only asks are `{ASK}`, `{ASK} {AT} INPUT COMMIT`, `{FOLLOW}`, `{STOP}`, \
+                     `{STOP_FOR_NEWER}`, `{}`, `{}`, `{} COMMIT` and `{} COMMIT`",
+                    held::PAUSE,
+                    held::RESUME,
+                    held::HOLD,
+                    held::LIFT
+                ),
+            };
+            return writeln!(out, "{}", refused.json());
+        }
+    };
+    eprintln!("uid {asker} asks for an update{}", at_said(&at));
     // An asker that stops reading is let go rather than kept waiting on.
     stream.set_write_timeout(Some(HEARD_WITHIN))?;
-    let heard = join(config, current, following);
+    let heard = match join(config, current, following, &at) {
+        Ok(heard) => heard,
+        Err(why) => {
+            let refused = Line::Refused {
+                commit: update::last(config),
+                why,
+            };
+            return writeln!(out, "{}", refused.json());
+        }
+    };
     heard.state.lock().expect("the answer's lock").hearing += 1;
     let result = hear(&heard, &mut out);
     heard.state.lock().expect("the answer's lock").hearing -= 1;
@@ -328,27 +361,71 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
     }
 }
 
-/// The update running now, or a new one started for this ask.
+/// The followed inputs' commits a person's ask names: none for `update`,
+/// one for `update at INPUT COMMIT`, and why for an `at` without both;
+/// nothing when the ask is another.
+fn asked_at(ask: &str) -> Option<Result<Followed, String>> {
+    match ask.split_whitespace().collect::<Vec<_>>().as_slice() {
+        [ASK] => Some(Ok(Followed::new())),
+        [ASK, AT, name, commit] if held::is_commit(commit) => Some(Ok(Followed::from([(
+            (*name).to_owned(),
+            commit.to_ascii_lowercase(),
+        )]))),
+        [ASK, AT, ..] => Some(Err(format!(
+            "`{ASK} {AT}` takes a followed input's name and one commit's full id"
+        ))),
+        _ => None,
+    }
+}
+
+/// The commits an update was asked at, as its line in the journal ends.
+fn at_said(at: &Followed) -> String {
+    at.iter()
+        .map(|(name, commit)| format!(" with {name} at {}", git::short(commit)))
+        .collect::<Vec<_>>()
+        .concat()
+}
+
+/// The update running now, or a new one started for this ask. An ask
+/// joins only one asked at the same commits, since joining another would
+/// hear it switch to what it didn't ask for; it's refused, saying what
+/// runs.
 fn join(
     config: &Arc<Config>,
     current: &Arc<Mutex<Option<Arc<Answer>>>>,
     following: bool,
-) -> Arc<Answer> {
+    at: &Followed,
+) -> Result<Arc<Answer>, String> {
     let mut current = current.lock().expect("the current update's lock");
     if let Some(running) = current.as_ref() {
         let mut said = running.state.lock().expect("the answer's lock");
         if said.ended.is_none() {
+            if said.at != *at {
+                let runs = if said.at.is_empty() {
+                    " at its inputs' heads".to_owned()
+                } else {
+                    at_said(&said.at)
+                };
+                return Err(format!(
+                    "an update{runs} is running, and an ask joins only one asked at the \
+                     same commits; `update-to-main {STOP}` ends it"
+                ));
+            }
             said.following &= following;
-            return Arc::clone(running);
+            return Ok(Arc::clone(running));
         }
     }
     let heard = Arc::new(Answer::default());
-    heard.state.lock().expect("the answer's lock").following = following;
+    {
+        let mut said = heard.state.lock().expect("the answer's lock");
+        said.following = following;
+        said.at = at.clone();
+    }
     *current = Some(Arc::clone(&heard));
     let config = Arc::clone(config);
     let growing = Arc::clone(&heard);
     thread::spawn(move || run(&config, &growing));
-    heard
+    Ok(heard)
 }
 
 fn run(config: &Config, heard: &Answer) {
@@ -362,7 +439,8 @@ fn run(config: &Config, heard: &Answer) {
         });
     };
     let following = || heard.state.lock().expect("the answer's lock").following;
-    let ending = update::update(config, &following, &mut |line| push(line));
+    let at = heard.state.lock().expect("the answer's lock").at.clone();
+    let ending = update::update_at(config, &following, &at, &mut |line| push(line));
     run::ended();
     eprintln!("{}", ending.json());
     let _ = fs::remove_file(&config.running);
@@ -490,6 +568,33 @@ fn peer_uid(stream: &UnixStream) -> Option<libc::uid_t> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn an_ask_at_a_commit_names_one_input_and_its_full_id() {
+        let commit = "B2BE6AE26C8FCB7F68B687145BAFCBCEEC102640";
+        assert_eq!(
+            asked_at(&format!("update at core {commit}")),
+            Some(Ok(Followed::from([(
+                "core".to_owned(),
+                commit.to_ascii_lowercase()
+            )]))),
+            "an ask at core's commit wasn't read as one"
+        );
+        assert_eq!(
+            asked_at("update"),
+            Some(Ok(Followed::new())),
+            "a plain ask named a commit"
+        );
+        for ask in ["update at", "update at core", "update at core b2be6ae26c8f"] {
+            assert!(
+                asked_at(ask).is_some_and(|at| at.is_err()),
+                "{ask:?} wasn't refused"
+            );
+        }
+        for ask in ["update /nix/store/something", "follow", "stop"] {
+            assert_eq!(asked_at(ask), None, "{ask:?} was taken as an update");
+        }
+    }
 
     #[test]
     fn the_program_moves_when_the_systems_path_leads_to_another() {

@@ -15,14 +15,28 @@ use std::fs;
 /// Each followed input's commit, by its name in the flake.
 pub type Followed = BTreeMap<String, String>;
 
-/// Fetches each followed input's main and gives its head, or why one is
-/// refused. `head` is main's, whose lock says where each input was pinned.
+/// Fetches each followed input's main and gives its head, or the commit
+/// `at` names for it, or why one is refused. `head` is main's, whose lock
+/// says where each input was pinned.
+///
+/// A commit `at` names must be on its main, so an ask can step back from
+/// a head that holds a change only while that change's revert is still
+/// on its way: on 12 November a hold on one merge kept ten others off the
+/// machine for half an hour, though the main just before it was fine. It
+/// is held to the same signature and the same history as a head, so it
+/// never takes the machine back past what it last followed.
 pub fn heads(
     config: &Config,
     head: &str,
     last: &Followed,
+    at: &Followed,
 ) -> Result<Result<Followed, String>, Failure> {
     let mut followed = Followed::new();
+    if let Some(name) = at.keys().find(|name| !config.follows.contains_key(*name)) {
+        return Ok(Err(format!(
+            "{name} isn't an input this machine follows, so no ask may name a commit of it"
+        )));
+    }
     if config.follows.is_empty() {
         return Ok(Ok(followed));
     }
@@ -30,7 +44,18 @@ pub fn heads(
     for (name, follow) in &config.follows {
         let repo = Repo::followed(config, name, follow);
         git::keyring(&repo)?;
-        let commit = git::fetch(&repo)?;
+        let main = git::fetch(&repo)?;
+        let commit = match at.get(name) {
+            None => main,
+            Some(asked) if git::descends(&repo, asked, &main)? => asked.clone(),
+            Some(asked) => {
+                return Ok(Err(format!(
+                    "{name} at {} isn't on its main, at {}, so it isn't taken",
+                    git::short(asked),
+                    git::short(&main)
+                )));
+            }
+        };
         if let Err(why) = git::signed(&repo, &commit)? {
             return Ok(Err(format!("{}: {why}", repo.called)));
         }

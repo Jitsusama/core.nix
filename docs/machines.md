@@ -114,7 +114,7 @@ at it: one of its `jitsusama.update-to-main.askers` runs
 `update-to-main ask`, and root fetches the repository's main, builds the
 system only if a key in `signers` signed it and it descends from what the
 machine runs, switches, and goes back if the machine isn't whole after. The
-ask takes no arguments, so whoever asks can't choose what runs. How the
+ask names no system, so whoever asks can't choose what runs. How the
 last update ended is kept as its line, for the askers to read, in
 `/run/update-to-main/last.json` on NixOS and
 `/var/run/update-to-main.last.json` on a Mac, so it's there though the
@@ -191,7 +191,14 @@ flake's lock to move, is named in `follows` with its repository and
 signers. Root fetches that main, checks its signature and that it descends
 from the lock's commit and from what it last followed, and builds with the
 input overridden to it; an ask with main where it was builds again when a
-followed main moved. With `elsewhere = true`, the machine builds only the
+followed main moved. `update-to-main ask --at core=COMMIT` builds with that
+input at COMMIT, by its full id, instead of its main's head, so a machine
+can step back from a merge held until its revert lands and still take
+everything before it. The commit must be on that main, signed, and past
+what the machine last followed, so the ask only ever chooses how far
+forward to go, and holds judge it as they judge a head. An ask joins an
+update running only when both were asked at the same commits, and is
+refused otherwise. With `elsewhere = true`, the machine builds only the
 pieces nixpkgs marks light itself and sends every other to `builders`,
 the Nix daemon's when it names none, failing rather than build one when
 none takes it. A builder takes only pieces asking for what it must have,
