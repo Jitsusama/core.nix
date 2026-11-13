@@ -1570,6 +1570,27 @@ lid's switch: while it reads shut, the heat maps stop and any touch still
 down is lifted, and they start again when it opens. `touch_stats` says
 `lid_shut` and counts `lid_shuts`.
 
+### The Touchpad, Buttons and Lid
+
+The touchpad (`045e:09af`) is a button pad 111 by 72 mm that tracks five
+fingers and gives each contact a tool type, but reports no pressure and no
+contact size. So libinput tells a palm from a finger three ways: by the tool
+type, where the firmware marks a palm; by typing, since libinput's Microsoft
+quirks name the keyboard (`045e:09ae`) as the built-in one, which lets
+disable-while-typing pair the two; and by the pad's edges, which it watches
+on a pad wider than 70 mm. The same file's quirk for the Surface Laptop
+Studio's touchpad matches this one's ID too, but sets only pressure
+thresholds, which do nothing on a pad that reports none. Core's niri
+settings, a click by finger count, natural scrolling and disable-while-typing,
+apply here as on any laptop.
+
+libinput's Microsoft quirk marking a lid switch unreliable matches only the
+Surface 3, so it trusts this lid's. Over seven days, with logind sleeping at
+a shut lid only on battery, the lid shut 12 times. Each of the three sleeps
+that followed came back cleanly, one waking as the lid opened 39 minutes
+later. The power button is niri's: it holds logind's `handle-power-key`
+inhibitor, so logind leaves the button to it.
+
 ### The Ports and Bluetooth
 
 The firmware describes no USB-C connector to the OS: its ACPI has no
@@ -1623,6 +1644,8 @@ sealed to.
 | Firmware   | the TPM's capsule waits on whether its upgrade keeps the TPM's owner state     |
 | Touch, pen | gestures and the pen aren't checked on screen yet, nor touch across hibernate  |
 | Touch      | why the panel streams untouched on some starts and not others isn't found      |
+| Touchpad   | gestures, a resting palm and how a click and a scroll feel aren't tried yet    |
+| Buttons    | the power button under niri, and a lid shut on battery, aren't tried yet       |
 | Power      | the profiles are read on the charger only, not yet on battery                  |
 | Wi-Fi      | what dozing saves on battery, and roaming between access points, aren't read   |
 | Devices    | each watched device is named once its path goes; no driver is unbound yet      |
