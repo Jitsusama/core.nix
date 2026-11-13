@@ -239,6 +239,20 @@ QtObject {
                 beat.walk === true || beat.ms >= 125)), true);
         expect("asleep there's no scene", Plays.scene("asleep", draws(0), "").beats, []);
         expect("nor in Do Not Disturb", Plays.scene("still", draws(0), "").beats, []);
+
+        // A play asked for by name, as a test asks for the one it watches,
+        // comes next where its level has it, whatever the draw, and the
+        // draws are taken as ever, so the rest of the scene varies alike.
+        const asked = name => Plays.scene("idle", draws(0), "", name);
+        expect("a play asked for comes next",
+            [asked("hop").name, asked("wander").name, asked("grooming").name],
+            ["hop", "wander", "grooming"]);
+        expect("even just after the same one",
+            Plays.scene("idle", draws(0), "hop", "hop").name, "hop");
+        expect("but never a move while he reads",
+            inPlace.includes(Plays.scene("paused", draws(0), "", "hop").name), true);
+        expect("nor anything while he types",
+            Plays.scene("typing", draws(0), "", "wander").beats.length, 1);
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,

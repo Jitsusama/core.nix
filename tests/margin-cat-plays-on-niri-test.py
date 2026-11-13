@@ -39,8 +39,8 @@ SITTING = {"nothingHere", ""}
 TYPING, TYPED, GLANCE = 0.4, 12.0, (0.2, 0.9)
 # The frames a small move draws: one for its pose, one for sitting again.
 GLANCED = 2
-# How long a play in place may last, and how long Joel is gone before a move may come: 8 s
-# here, and as many plays as make each move all but certain.
+# How long a play in place may last, and how long Joel is gone before a move asked for comes:
+# 8 s here, the rest before it and the play under way as it's asked, with room to spare.
 SCENE, STROLLS = 2.5, timedelta(seconds=60)
 # How far a wander goes, in the cat's cells, and the cell and a half its walk overshoots.
 WANDERS = (16, 40)
@@ -74,6 +74,11 @@ def cat_frames(shell: Shell) -> int:
     """Give the frames the cat's windows drew since the count started (Frames.qml)."""
     drawn = json.loads(shell.as_account(f"qs -p {shell.folder} ipc call frames said"))
     return sum(count for name, count in drawn.items() if name.startswith("cat "))
+
+
+def ask(shell: Shell, play: str) -> None:
+    """Ask that the cat's next play be the one named, once its level has it (MarginCat.qml)."""
+    shell.as_account(f"qs -p {shell.folder} ipc call cat next {play}")
 
 
 def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
@@ -164,6 +169,7 @@ def test_paused_it_plays_a_little_in_place(shell: Shell) -> None:
 def test_away_it_hops_and_lands_where_it_sat(shell: Shell) -> None:
     """Gone from the keys, it hops: rising from a crouch and landing, never moving along."""
     _, seat = sitting_over(shell, "a column hopped over")
+    ask(shell, "hop")
     since = shell.mark()
     shell.reported(SITS, lambda said: ((placed(said) or {}).get("lift") or 0) > 0, since, STROLLS)
     risen = shell.mark()
@@ -180,6 +186,7 @@ def test_away_it_hops_and_lands_where_it_sat(shell: Shell) -> None:
 def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
     """Gone from the keys, it wanders a few cells along the margin; a key walks it back."""
     sat, seat = sitting_over(shell, "a column wandered from")
+    ask(shell, "wander")
     since = shell.mark()
     away: list[Json] = []
 
