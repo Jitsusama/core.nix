@@ -1446,8 +1446,13 @@ def test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_passwo
     desktop.step_in("ret")
     desktop.type_in("not the password")
     desktop.shoot("launcher-wifi-password")
-    with desktop.told("refused wifi Lantern", timeout=timedelta(seconds=60)):
-        machine.send_key("ret")
+    machine.send_key("ret")
+    # wifid serves the join and words its refusal, which the shell journals by its code, never
+    # the password (ReadyRows.qml's streamed, 2026-11-13), the field kept open to type again.
+    refused = "journalctl --user -u quickshell --no-pager -o cat"
+    refused += " | grep -q 'launcher: verb:wifi-join refused: WrongPassword'"
+    machine.wait_until_succeeds(desktop.in_session(refused), timeout=timedelta(seconds=60))
+    desktop.launcher_until(lambda shown: shown["asking"])
     # wifid writes its journal after it answers, so the shell can hear the
     # refusal first: a run read the journal 91 ms before wifid's line was in it.
     machine.wait_until_succeeds(
