@@ -300,8 +300,11 @@ def screen() -> Path:
     return Path(os.environ["TMPDIR"]) / "screen.png"
 
 
-def picture(shell: Shell, taken: Path) -> tuple[int, bytes]:
+def picture(shell: Shell, taken: Path, rows: int | None = None) -> tuple[int, bytes]:
     """Take the screen as niri draws it, in its own pixels, and give its width and its pixels.
+
+    Only its first `rows` where given: unfiltering a whole screen in Python takes seconds on a
+    loaded builder, which left a wait for the cat two looks at it (2026-11-12, 2 of 6 runs).
 
     niri's own screenshot rather than grim's: grim scales its picture by the output's pixels
     over its logical size, which niri rounds at 1.5 (1276 over 851), so it filters every
@@ -313,10 +316,10 @@ def picture(shell: Shell, taken: Path) -> tuple[int, bytes]:
     while not taken.exists() or taken.stat().st_size == 0:
         assert time.monotonic() < deadline, f"niri wrote no screenshot to {taken}"
         time.sleep(POLL)
-    return decoded(taken.read_bytes())
+    return decoded(taken.read_bytes(), rows)
 
 
-def decoded(png: bytes) -> tuple[int, bytes]:
+def decoded(png: bytes, upto: int | None = None) -> tuple[int, bytes]:
     """Give a PNG's width and its pixels as red, green and blue bytes, as niri writes one."""
     assert png.startswith(b"\x89PNG\r\n\x1a\n"), "niri's screenshot isn't a PNG"
     at, width, height, channels, packed = 8, 0, 0, 0, b""
@@ -332,7 +335,7 @@ def decoded(png: bytes) -> tuple[int, bytes]:
         at += 12 + length
     raw, stride = zlib.decompress(packed), width * channels
     rows: list[bytearray] = []
-    for row in range(height):
+    for row in range(height if upto is None else min(upto, height)):
         start = row * (stride + 1)
         line = bytearray(raw[start + 1 : start + 1 + stride])
         unfilter(raw[start], line, rows[-1] if rows else bytearray(stride), channels)
@@ -412,14 +415,19 @@ def drawn_as(shell: Shell, at: Json, scale: float) -> str:
 
 
 def boxed(shell: Shell, at: Json, scale: float) -> Counter[str]:
-    """Count each colour of the screen's pixels in the cat's box and a pixel around it."""
-    width, pixels = picture(shell, screen())
+    """Count each colour of the screen's pixels in the cat's box and a pixel around it.
+
+    Only those on the screen: the cat's first report at a new scale can still give its place
+    at the old one, past the screen's edge at the new, until niri lays the columns out again.
+    """
     left, top = round(at["x"] * scale) - 1, max(0, round(at["y"] * scale) - 1)
     across = round(at["size"] * scale) + 2
+    width, pixels = picture(shell, screen(), top + across)
+    tall = len(pixels) // (width * 3)
     return Counter(
         "#" + pixels[(row * width + column) * 3 : (row * width + column) * 3 + 3].hex()
-        for row in range(top, top + across)
-        for column in range(left, left + across)
+        for row in range(top, min(top + across, tall))
+        for column in range(max(0, left), min(left + across, width))
     )
 
 
@@ -460,6 +468,7 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
                 wanted = at["lit"] * at["cell"] ** 2
                 colours = boxed(shell, at, scale)
                 drawn = inked(colours, at["hue"])
+                heard.append(f"{time.monotonic() - began:.1f}s poll: {drawn} in its box")
             if drawn != wanted:
                 time.sleep(POLL)
         assert at is not None, f"the cat said nowhere at {scale}"
