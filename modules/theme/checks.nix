@@ -87,6 +87,8 @@
         "curled"
         "earFlick"
         "forYouEmpty"
+        "grooming"
+        "lookingAbout"
         "nothingFound"
         "nothingHere"
         "pouncing"

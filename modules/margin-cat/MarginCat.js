@@ -475,3 +475,11 @@ function gutter(at) {
     const x = beside.map(middle => middle - at.wide / 2).find(fits);
     return x === undefined ? null : { x, y: column.top - at.tall - at.air };
 }
+
+function wander(at) {
+    return null;
+}
+
+function hopped(t, lasts, cells) {
+    return 0;
+}

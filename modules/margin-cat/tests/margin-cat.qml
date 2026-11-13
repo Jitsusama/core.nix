@@ -62,9 +62,18 @@ QtObject {
         expect("a gap too small still draws it", MarginCat.cell(4, 1), 1);
 
         walks(expect);
+        plays(expect, at, column);
 
-        // How engaged Joel is says how lively the cat may be (Joel, 2026-11-12:
-        // "mild movements when i'm active, increeeasing as I'm less engaged").
+        for (const failure of failures)
+            console.warn(failure);
+        Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // How lively the cat is, from how engaged Joel is, and what it plays
+    // (Joel, 2026-11-12: "mild movements when i'm active, increeeasing as
+    // I'm less engaged"; 2026-11-12: "play a bit more and not wait too
+    // long. it's play should be a bit random, gentle, but playful").
+    function plays(expect, at, column) {
         const heard = more => Object.assign({
             paused: false, idle: false, asleep: false, quiet: false
         }, more ?? {});
@@ -77,60 +86,120 @@ QtObject {
             MarginCat.level(heard({ paused: true, idle: true, asleep: true })), "asleep");
         expect("in Do Not Disturb it keeps still at any level",
             MarginCat.level(heard({ paused: true, idle: true, quiet: true })), "still");
+        expect("as on a call, with a camera in use",
+            MarginCat.level(heard({ paused: true, idle: true, onCamera: true })), "still");
+        expect("as with the screen locked",
+            MarginCat.level(heard({ paused: true, locked: true })), "still");
+        expect("as where it's drawn on no screen, fullscreen or shared",
+            MarginCat.level(heard({ paused: true, unseen: true })), "still");
 
-        // The rest before each scene: about a minute while he types, half a
-        // minute when he pauses, 20 to 40 s when he's left the keys.
+        // The rest before each scene: about a minute while he types, since
+        // the keys are his; a few seconds once he pauses, and fewer once
+        // he's left them, each drawn at random.
         expect("typing rests 45 s at the least", MarginCat.rest("typing", 0), 45000);
         expect("and 75 s at the most", MarginCat.rest("typing", 1), 75000);
-        expect("a pause rests 20 to 40 s",
-            [MarginCat.rest("paused", 0), MarginCat.rest("paused", 1)], [20000, 40000]);
-        expect("as does a minute with no keys",
-            [MarginCat.rest("idle", 0), MarginCat.rest("idle", 1)], [20000, 40000]);
+        expect("a pause rests 5 to 12 s",
+            [MarginCat.rest("paused", 0), MarginCat.rest("paused", 1)], [5000, 12000]);
+        expect("a minute with no keys rests 3 to 8 s",
+            [MarginCat.rest("idle", 0), MarginCat.rest("idle", 1)], [3000, 8000]);
         expect("asleep there's no next scene", MarginCat.rest("asleep", 0.5), null);
         expect("nor in Do Not Disturb", MarginCat.rest("still", 0.5), null);
 
-        // A scene is its beats, each a pose held, and it sits again after.
+        scenes(expect);
+
+        // Where a short wander goes: along the margin from its seat, the
+        // way it was drawn, or the other where that one's off the screen or
+        // on the marks; nowhere where neither fits.
+        const seat = { x: 296, y: 3 };
+        const wanders = more => MarginCat.wander(at(column(100, 12, 400),
+            Object.assign({ seat, step: 1, cells: 20, way: 1 }, more)));
+        expect("it wanders its cells the way drawn", wanders(), { x: 316, y: 3 });
+        expect("or the other way", wanders({ way: -1 }), { x: 276, y: 3 });
+        expect("each cell its own", wanders({ step: 2 }), { x: 336, y: 3 });
+        expect("the other way where the screen ends",
+            wanders({ seat: { x: 980, y: 3 } }), { x: 960, y: 3 });
+        expect("the other way where the marks are",
+            wanders({ seat: { x: 460, y: 3 }, marks: 3 }), { x: 440, y: 3 });
+        expect("nowhere where neither way fits",
+            wanders({ seat: { x: 10, y: 3 }, across: 30 }), null);
+        expect("nor with no seat", wanders({ seat: null }), null);
+
+        // A hop's rise, in its cells: none as it leaves and lands, its
+        // height midway, as a thing thrown up falls.
+        expect("a hop leaves and lands on the ground",
+            [MarginCat.hopped(0, 400, 2), MarginCat.hopped(400, 400, 2)], [0, 0]);
+        expect("and is highest midway", MarginCat.hopped(200, 400, 2), 2);
+        expect("rising as it falls", MarginCat.hopped(100, 400, 2), MarginCat.hopped(300, 400, 2));
+        expect("and never below the ground",
+            [MarginCat.hopped(-10, 400, 2), MarginCat.hopped(410, 400, 2)], [0, 0]);
+    }
+
+    // Each scene, drawn from a run of chances (`draws`), as Math.random
+    // would give them: what it is, its beats, each a pose held, and that
+    // it sits again after.
+    function scenes(expect) {
+        const draws = (...chances) => {
+            let i = 0;
+            return () => chances[i++ % chances.length];
+        };
         const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
-        const typed = [0, 0.4, 0.9].map(chance => MarginCat.scene("typing", chance));
+        const inPlace = ["tailFlick", "batting", "stretch", "lookingAbout", "grooming"];
+        const moves = ["hop", "wander"];
+        const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
+
+        const typed = chances.map(chance => MarginCat.scene("typing", draws(chance), ""));
         expect("while he types it's one pose and back",
-            typed.map(beats => beats.length), [1, 1, 1]);
+            typed.map(played => played.beats.length), [1, 1, 1, 1, 1, 1]);
         expect("an ear flick, a tail swish or a blink",
-            typed.map(beats => beats[0].pose), ["earFlick", "tailSwish", "blinking"]);
-        expect("held a few hundred ms", typed.every(beats => long(beats) <= 500), true);
-        const paused = [0, 0.5, 0.99].map(chance => MarginCat.scene("paused", chance));
-        expect("a pause's scenes keep to the mild poses",
-            paused.every(beats => beats.every(beat =>
-                ["earFlick", "tailSwish", "blinking", "nothingHere"].includes(beat.pose))),
+            Array.from(new Set(typed.map(played => played.beats[0].pose))).sort(),
+            ["blinking", "earFlick", "tailSwish"]);
+        expect("held about 375 ms",
+            typed.every(played => played.beats[0].ms >= 281 && played.beats[0].ms <= 469), true);
+
+        const paused = chances.map(chance => MarginCat.scene("paused", draws(chance), ""));
+        expect("paused, it plays in place, each of them",
+            Array.from(new Set(paused.map(played => played.name))).sort(),
+            inPlace.slice().sort());
+        expect("never walking or hopping while he reads",
+            paused.every(played => played.beats.every(beat => typeof beat.pose === "string"
+                && beat.walk !== true && beat.hop !== true)), true);
+        expect("each play short, under two and a half seconds",
+            paused.every(played => long(played.beats) > 0 && long(played.beats) <= 2500), true);
+
+        const again = inPlace.every(name => chances.every(chance =>
+            MarginCat.scene("paused", draws(chance), name).name !== name));
+        expect("never the same play twice running", again, true);
+
+        const idle = chances.map(chance => MarginCat.scene("idle", draws(0.7, chance), ""));
+        expect("idle, three in four of its plays are in place",
+            idle.every(played => inPlace.includes(played.name)), true);
+        const moved = chances.map(chance => MarginCat.scene("idle", draws(0.8, chance), ""));
+        expect("and one in four a move",
+            Array.from(new Set(moved.map(played => played.name))).sort(), moves);
+        const hop = moved.find(played => played.name === "hop").beats;
+        expect("a hop crouches, rises and lands crouched",
+            hop.map(beat => [beat.pose, beat.hop === true]),
+            [["pouncing", false], ["pouncing", true], ["pouncing", false]]);
+        expect("a cell or two up", hop[1].cells >= 1 && hop[1].cells <= 2, true);
+        const wander = moved.find(played => played.name === "wander").beats;
+        expect("a wander walks off, sits a moment, and walks back",
+            [wander[0].to, wander[1].pose, wander[2].to], ["wander", "nothingHere", "column"]);
+        expect("16 to 40 cells, either way",
+            wander[0].cells >= 16 && wander[0].cells <= 40 && Math.abs(wander[0].way) === 1,
             true);
-        expect("and last at most a second and a half",
-            paused.every(beats => long(beats) > 0 && long(beats) <= 1500), true);
-        expect("past a minute it strolls", MarginCat.scene("idle", 0)[0].walk, true);
-        expect("or plays as when he pauses",
-            MarginCat.scene("idle", 0.99).every(beat => beat.walk !== true), true);
-        expect("asleep there's no scene", MarginCat.scene("asleep", 0), []);
-        expect("nor in Do Not Disturb", MarginCat.scene("still", 0), []);
+
+        // Each beat drawn a quarter shorter or longer than its own.
+        const low = MarginCat.scene("paused", draws(0.1, 0, 0, 0, 0, 0, 0), "").beats;
+        const high = MarginCat.scene("paused", draws(0.1, 0.999, 0.999, 0.999, 0.999, 0.999,
+            0.999), "").beats;
+        expect("its beats vary a quarter either way",
+            low.every((beat, i) => Math.abs(high[i].ms / beat.ms - 1.25 / 0.75) < 0.05), true);
         // Eight poses a second at the most: no beat under 125 ms.
         expect("no beat is quicker than an eighth of a second",
-            [...typed, ...paused].every(beats => beats.every(beat => beat.ms >= 125)), true);
-
-        // Where a stroll goes: the gutter beside its column, half niri's gap
-        // (the cell, 12) past its edge, sat as on a column's edge.
-        expect("it strolls to the gutter on its right, over the gap's middle",
-            MarginCat.gutter(at(column(100, 12, 400))), { x: 502, y: 3 });
-        expect("or its left when the right's is off the screen",
-            MarginCat.gutter(at(column(600, 12, 396))), { x: 590, y: 3 });
-        expect("never to a gutter off the screen",
-            MarginCat.gutter(at(column(2, 12, 994))), null);
-        expect("or its left when the right's is under the margin's marks",
-            MarginCat.gutter(at(column(100, 12, 394), { marks: 3 })), { x: 90, y: 3 });
-        expect("nor onto the marks on either side",
-            MarginCat.gutter(at(column(494, 12, 12), { marks: 3 })), null);
-        expect("nor where its column leaves no room above",
-            MarginCat.gutter(at(column(100, 4, 400))), null);
-
-        for (const failure of failures)
-            console.warn(failure);
-        Qt.exit(failures.length === 0 ? 0 : 1);
+            [...typed, ...paused, ...idle, ...moved].every(played => played.beats.every(beat =>
+                beat.walk === true || beat.ms >= 125)), true);
+        expect("asleep there's no scene", MarginCat.scene("asleep", draws(0), "").beats, []);
+        expect("nor in Do Not Disturb", MarginCat.scene("still", draws(0), "").beats, []);
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,
@@ -210,14 +279,18 @@ QtObject {
         expect("near, it ambles, its stride half its body", near.stride, 8);
 
         const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
-            7);
+            { begun: 7 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
             shown.said,
             { frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7 });
         expect("as the journal says them", shown.line, "cat: a walk presented 5 of its 7 frames "
             + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
             + "1 never shown");
-        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, 0).said,
+        expect("a hop's frames are said as a walk's",
+            MarginCat.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
+                .split(" of its")[0],
+            "cat: a hop presented 2");
+        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, { begun: 0 }).said,
             { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0 });
 
         // niri's own spring, as Joel's niri rides it between workspaces.
