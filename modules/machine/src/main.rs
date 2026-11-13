@@ -351,7 +351,7 @@ impl Reader {
             records.push(boot::record(&self.root, boot::asleep_s()));
         }
         if wants("sensor") {
-            records.extend(heat::sensors(&self.root, &mut self.sensors));
+            records.extend(heat::sensors(&self.root, &mut self.sensors, Instant::now()));
         }
         if wants("zone") {
             records.extend(heat::zones(&self.root));
