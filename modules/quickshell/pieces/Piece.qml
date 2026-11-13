@@ -75,6 +75,10 @@ Item {
     // `leftOn` for a mode he set and might forget. And whether it needs
     // him now, not soon (`now`): the battery about to die, a call ringing.
     property string kind: wants ? "wants" : "leftOn"
+    // Whether a want holds only the many, nothing to Joel himself, as
+    // Slack's unread channel posts do, so its mark is muted until
+    // something in it is to him (Marks.tone; VKCF3Z's ruling f94c382e).
+    property bool hushed: false
     // Which of Now's groups it's listed in (launcher/NowGroups.js): its kind,
     // but for one with a group of its own, as what's playing has.
     property string group: kind

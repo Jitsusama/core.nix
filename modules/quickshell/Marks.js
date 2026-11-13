@@ -73,14 +73,24 @@ function arranged(things) {
     return things.slice().sort((a, b) => rank(b) - rank(a) || b.order - a.order);
 }
 
+// Whether a notice to Joel from `app` (in lower case) waits, which lights a
+// hushed program's mark: one the notices daemon says chimes, unread, that
+// came since he was last in its window (`visited`, in milliseconds), since
+// a thread's reply in Slack is never said read.
+function toHim(history, app, visited) {
+    return history.some(notice => notice.chimes && !notice.read && notice.at > visited
+        && String(notice.app ?? "").toLowerCase() === app);
+}
+
 // The theme's role a piece's glyph wears, which says only how much it
-// asks: the alert for what needs Joel now, muted for what was left on,
-// and strong for the rest.
+// asks: the alert for what needs Joel now, muted for what was left on
+// and for a want of the many that holds nothing to him (`hushed`), and
+// strong for the rest.
 function tone(piece) {
     if (piece.now) {
         return "alert";
     }
-    return piece.kind === "leftOn" ? "muted" : "strong";
+    return piece.kind === "leftOn" || piece.hushed ? "muted" : "strong";
 }
 
 // What waits a moment before it's drawn, as { mark, until }: a thing whose
