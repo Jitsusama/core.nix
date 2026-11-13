@@ -177,7 +177,6 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     let (title, folder) = session.named();
     let usage = presence.and_then(|presence| presence.get("usage"));
     let mut facts = first(session, orchestrates, words, known);
-    facts.extend(helpers(session, known));
     for figure in figures::figures(usage, known.today, &words.agents, &named) {
         let mut said = json!({"label": figure.label, "value": figure.value});
         if let Some(stroke) = figure.stroke {
@@ -188,7 +187,7 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     }
     facts.extend(last(session, &title, words, known));
     let address = session.address();
-    json!({
+    let mut drawn = json!({
         "key": key(address),
         "kind": "drawer",
         "drawer": {
@@ -198,7 +197,30 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
             // What one standing at the top is for, so Joel needn't know it.
             "body": session.stands_for()
         }
-    })
+    });
+    let nerd = nerd(session, words);
+    if !nerd.is_empty() {
+        drawn["drawer"]["nerd"] = Value::Array(nerd);
+    }
+    drawn
+}
+
+/// Its wiring, folded under z a rather than in the glance (VKCF3Z,
+/// 2026-11-13): the groups it hears beside its own address, as the node
+/// says them.
+fn nerd(session: Session, words: &Words) -> Vec<Value> {
+    let hears: Vec<&str> = session
+        .presence()
+        .and_then(|presence| presence.get("groups"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if hears.is_empty() {
+        return Vec::new();
+    }
+    vec![json!({"label": words.names.word("hears"), "value": hears.join(", ")})]
 }
 
 /// What matters of it first: what it's doing, its step alone; what it
@@ -234,6 +256,14 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
                 .fill("allOf", &[("spent", text(Some(family), "/all"))])
         },
     );
+    // What went on its councils and fleets is a part of what it spent,
+    // so it shares that line rather than taking its own (VKCF3Z,
+    // 2026-11-13).
+    let spent = if spent.is_empty() {
+        spent
+    } else {
+        joined(&[&spent, &helpers(collection, id)], DOT)
+    };
     let (landed_items, landed_at) = landed(presence).unwrap_or_default();
     let landed_said = landed_items.join(DOT);
     let budget = if known.sharing {
@@ -284,16 +314,11 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
     .collect()
 }
 
-/// What of its spend today went on its councils and fleets, each named by
-/// what it went on, as spend-watch says them ("Councils", "$4.00"), and
-/// said only where its spend is.
-fn helpers(session: Session, known: &Known) -> Vec<Value> {
-    let id = text(session.presence(), "/session");
-    let collection = known.spend.filter(|_| !known.sharing);
-    if id.is_empty() || text(collection, &format!("/sessions/{id}")).is_empty() {
-        return Vec::new();
-    }
-    collection
+/// What of session `id`'s spend today went on its councils and fleets,
+/// each named by what it went on as spend-watch says it ("councils
+/// $4.00"), dotted.
+fn helpers(collection: Option<&Value>, id: &str) -> String {
+    let said: Vec<String> = collection
         .and_then(|collection| collection.get("helpers"))
         .and_then(|helpers| helpers.get(id))
         .and_then(Value::as_array)
@@ -302,14 +327,10 @@ fn helpers(session: Session, known: &Known) -> Vec<Value> {
         .filter_map(|helper| {
             let on = helper.get("on")?.as_str()?;
             let spent = helper.get("spent")?.as_str()?;
-            let mut name = on.chars();
-            let first = name.next()?;
-            Some(
-                json!({"label": format!("{}{}", first.to_uppercase(), name.as_str()),
-                "value": spent}),
-            )
+            Some(format!("{on} {spent}"))
         })
-        .collect()
+        .collect();
+    said.join(DOT)
 }
 
 /// Its hours today as Graph's spark, as spend-watch draws them. They
@@ -357,17 +378,6 @@ fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Valu
     .filter(|(_, value)| !value.is_empty())
     .map(|(fact, value)| json!({"label": words.names.word(fact), "value": value}))
     .collect();
-    // The groups it hears beside its own address, as the node says them.
-    let hears: Vec<&str> = presence
-        .and_then(|presence| presence.get("groups"))
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .collect();
-    if !hears.is_empty() {
-        facts.push(json!({"label": words.names.word("hears"), "value": hears.join(", ")}));
-    }
     let summary = about(said("/worksOn"), &[title, said("/questInfo/title")]);
     if !summary.is_empty() {
         facts.push(json!({"label": words.names.word("works"), "value": summary, "words": true}));
@@ -554,8 +564,13 @@ mod tests {
         );
         assert_eq!(
             facts(&drawn),
-            "Spent Today=$12.50; Councils=$4.00; Fleets=$1.10; Machine=skiff; \
-             Hears=#desk, #quest/reef"
+            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10; Machine=skiff",
+            "what its helpers spent is a part of its spend"
+        );
+        assert_eq!(
+            drawn["drawer"]["nerd"],
+            json!([{"label": "Hears", "value": "#desk, #quest/reef"}]),
+            "what it hears is its wiring, folded"
         );
     }
 

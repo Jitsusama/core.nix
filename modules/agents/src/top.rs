@@ -205,7 +205,7 @@ fn act_rows<'a>(
 
 /// The acts a session inside an orchestration offers: Talk and Go To only
 /// where it needs Joel.
-fn member_acts<'a>(row: &'a Row) -> impl Iterator<Item = &'a str> {
+fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
     let needs = row.state == "needs";
     row.acts
         .iter()
