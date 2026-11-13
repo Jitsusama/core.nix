@@ -662,12 +662,18 @@ in
             "${sorter}/bin/jobs-sorter"
             "--under"
             "app.slice"
+            # An agent's terminal's busy work is agents' work, so it goes in
+            # with what pi runs, beside its quest's, never in Joel's slot:
+            # polkit asks Joel for what runs there (agents-ask-first.rules).
             "--under"
-            "agents.slice"
+            "agents.slice=jobs.slice/jobs.service"
             "--home"
             "kitty-"
             "--keep"
             "pi"
+            # A session's holder, with the pi it runs, is no busy work either.
+            "--keep"
+            "mycelium"
             "--jobs"
             "jobs.slice/jobs-awaited.slice/awaited.service"
             "--split"
