@@ -76,23 +76,27 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
         all.extend_from_slice(args);
         command("git", &all).unwrap_or_default()
     };
-    Sources {
-        main: git(&[
-            "log",
-            "--first-parent",
-            &since,
-            "--format=%H %ct %s",
-            "main",
-        ]),
-        reverts: git(&[
-            "log",
-            &since,
-            "--grep=This reverts commit",
-            "--format=%b",
-            "main",
-        ]),
-        looks: records::parse_looks(
-            &command(
+    let (main, reverts, journal) = side_by_side(
+        || {
+            git(&[
+                "log",
+                "--first-parent",
+                &since,
+                "--format=%H %ct %s",
+                "main",
+            ])
+        },
+        || {
+            git(&[
+                "log",
+                &since,
+                "--grep=This reverts commit",
+                "--format=%b",
+                "main",
+            ])
+        },
+        || {
+            command(
                 "journalctl",
                 &[
                     "-u",
@@ -104,10 +108,34 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
                     "--grep=\"step\":\"(done|unchanged)\"",
                 ],
             )
-            .unwrap_or_default(),
-        ),
+            .unwrap_or_default()
+        },
+    );
+    Sources {
+        main,
+        reverts,
+        looks: records::parse_looks(&journal),
         bills: fs::read_to_string(runtime.join("spend-watch/collection.json")).unwrap_or_default(),
     }
+}
+
+/// Runs a source's three commands at once, since each waits on the disk
+/// and in a row they took over a second on a busy machine.
+fn side_by_side(
+    a: impl FnOnce() -> String + Send,
+    b: impl FnOnce() -> String + Send,
+    c: impl FnOnce() -> String + Send,
+) -> (String, String, String) {
+    std::thread::scope(|s| {
+        let a = s.spawn(a);
+        let b = s.spawn(b);
+        let c = c();
+        let joined = |t: std::thread::ScopedJoinHandle<'_, String>| {
+            t.join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        };
+        (joined(a), joined(b), c)
+    })
 }
 
 /// The harness's changes, read the way core's are: its mirror as
@@ -129,23 +157,27 @@ pub fn gather_harness(now: i64) -> Sources {
         all.extend_from_slice(args);
         command("git", &all).unwrap_or_default()
     };
-    Sources {
-        main: git(&[
-            "log",
-            "--first-parent",
-            &since,
-            "--format=%H %ct %s",
-            "main",
-        ]),
-        reverts: git(&[
-            "log",
-            &since,
-            "--grep=This reverts commit",
-            "--format=%b",
-            "main",
-        ]),
-        looks: moves(
-            &command(
+    let (main, reverts, journal) = side_by_side(
+        || {
+            git(&[
+                "log",
+                "--first-parent",
+                &since,
+                "--format=%H %ct %s",
+                "main",
+            ])
+        },
+        || {
+            git(&[
+                "log",
+                &since,
+                "--grep=This reverts commit",
+                "--format=%b",
+                "main",
+            ])
+        },
+        || {
+            command(
                 "journalctl",
                 &[
                     "--user",
@@ -158,8 +190,13 @@ pub fn gather_harness(now: i64) -> Sources {
                     "--grep=agentic-harness.pi: moved from",
                 ],
             )
-            .unwrap_or_default(),
-        ),
+            .unwrap_or_default()
+        },
+    );
+    Sources {
+        main,
+        reverts,
+        looks: moves(&journal),
         bills: String::new(),
     }
 }

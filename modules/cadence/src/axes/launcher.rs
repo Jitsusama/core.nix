@@ -9,8 +9,10 @@
 //! Openings are timed one at a time, so their 99th is exact and judged.
 //! Keys, changes and drawers are summed in batches, whose 99ths can't be
 //! pooled: health keeps the slowest batch's, only a ceiling. So their
-//! median is judged, and their 99th is said and left unread until the
-//! shell keeps each one's time.
+//! median is judged, and their 99th is said and left unread. Since
+//! 12 November the shell keeps each key's time, and health pools them
+//! into an exact 99th, saying how many keys it pooled (80ECO2): a day
+//! with that count judges the keys' 99th; one without only says it.
 
 use super::counted::Sources;
 use super::{Bar, Reading, shown};
@@ -91,18 +93,7 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
             "the launcher's middle key {} today, from his key to his screen",
             "Y2YBTS",
         ),
-        Reading::new(
-            "the launcher's slowest key in a hundred today {}",
-            None,
-            " ms",
-            "Y2YBTS",
-        )
-        .bar(Bar::AtMost(100.0))
-        .detail(ceiling("keys").map(|ceiling| {
-            format!("{ceiling}; an exact figure waits on the shell keeping each key's time")
-        }))
-        .from(FROM)
-        .his(),
+        slowest_key(s),
         middle(
             "changes",
             "the launcher's middle change from a daemon {} to his screen today",
@@ -114,6 +105,38 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
             "Y2YBTS",
         ),
     ]
+}
+
+/// The keys' 99th: exact, and judged, where health pooled every key's
+/// time; otherwise only the slowest batch's, said and left unread.
+fn slowest_key(s: &Sources) -> Reading {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let p99 = figure("health.launcher.keys.p99-ms");
+    let pooled = figure("health.launcher.keys.pooled").filter(|n| *n > 0.0);
+    let reading = |p99| {
+        Reading::new(
+            "the launcher's slowest key in a hundred today {}",
+            p99,
+            " ms",
+            "Y2YBTS",
+        )
+        .bar(Bar::AtMost(100.0))
+        .from(FROM)
+        .his()
+    };
+    match pooled {
+        Some(keys) => reading(p99).detail(Some(format!(
+            "of {} keys, each timed from his key to his screen",
+            shown(keys, "")
+        ))),
+        None => reading(None).detail(p99.map(|ceiling| {
+            format!(
+                "the 99th at most {}, the slowest batch's, since batches can't be pooled; \
+                 an exact figure waits on health pooling each key's time",
+                shown(ceiling, " ms")
+            )
+        })),
+    }
 }
 
 #[cfg(test)]
@@ -190,7 +213,7 @@ mod tests {
             read[3].detail.as_deref(),
             Some(
                 "the 99th at most 1,614 ms, the slowest batch's, since batches can't be \
-                 pooled; an exact figure waits on the shell keeping each key's time"
+                 pooled; an exact figure waits on health pooling each key's time"
             ),
             "a ceiling is said, never judged as the 99th itself"
         );
@@ -207,5 +230,34 @@ mod tests {
                 .all(|r| r.figure().is_none()),
             "a day with no launcher reads as unread, not as fast"
         );
+    }
+
+    #[test]
+    fn the_keys_99th_is_judged_once_health_pooled_every_key() {
+        let mut pooled = today();
+        let figures = pooled.health.as_mut().expect("today's figures");
+        figures.insert("health.launcher.keys.p99-ms".to_owned(), 141.0);
+        figures.insert("health.launcher.keys.pooled".to_owned(), 2_210.0);
+        let read = slowest_key(&pooled);
+        assert_eq!(
+            read.words(),
+            "the launcher's slowest key in a hundred today 141 ms, at most 100 ms"
+        );
+        assert!(read.out(), "an exact 99th past its budget is out");
+        assert_eq!(
+            read.detail.as_deref(),
+            Some("of 2,210 keys, each timed from his key to his screen")
+        );
+        figures_without_pooling(&mut pooled);
+        assert!(
+            slowest_key(&pooled).figure().is_none(),
+            "a count of none is no pooling"
+        );
+    }
+
+    fn figures_without_pooling(s: &mut Sources) {
+        if let Some(figures) = s.health.as_mut() {
+            figures.insert("health.launcher.keys.pooled".to_owned(), 0.0);
+        }
     }
 }
