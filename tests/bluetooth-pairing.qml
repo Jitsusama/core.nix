@@ -257,10 +257,10 @@ ShellRoot {
     }
 
     // A machine without the link reader.
-    // The adapter's own row, as Bluetooth lists it.
+    // The adapter's own row, as Bluetooth lists it, given the radio as its
+    // case starts, since within it `radio` would name its own.
     Accessories {
         id: stalled
-        adapter: radio
         settings: ({ links: `${Quickshell.env("XDG_RUNTIME_DIR")}/bluetooth-links.json` })
     }
 
@@ -381,6 +381,7 @@ ShellRoot {
     // The adapter whose controller stopped answering, as the devices piece
     // would say it, and then answering again.
     function stoppedHolds() {
+        stalled.adapter = radio;
         const before = Facts.all;
         const line = "echo 0000:00:14.7 | sudo tee /sys/bus/pci/drivers/btintel_pcie/unbind; "
             + "echo 0000:00:14.7 | sudo tee /sys/bus/pci/drivers/btintel_pcie/bind";
