@@ -13,10 +13,13 @@
 // the screen unlocks it stretches, then sits. Between, it's livelier the
 // less Joel is engaged (MarginCat.js's level): while he types, one small
 // move held a moment, about once a minute; ten seconds with no keys, mild
-// scenes a little more often; a minute, sometimes a stroll to the gutter
-// beside its column and back, on the same walk. Each step comes from an
-// idle timer, never a poll, a key ends any scene at once, and it keeps
-// still in Do Not Disturb.
+// scenes a little more often; a minute, in turn, a stroll to the gutter
+// beside its column and back on the same walk, a ball of yarn rolling up
+// that it eyes, bats away, pounces on and sends off, and a pounce at
+// nothing it's sure of, each a frame a screen's draw (Play.js), then the
+// walk home (Joel, 2026-11-12: "bat balls of yarn and stuff"). Each
+// step comes from an idle timer, never a poll, a key ends any scene at
+// once and walks it home, and it keeps still in Do Not Disturb.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -24,6 +27,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "Play.js" as Play
 import "../Pixels.js" as Pixels
 
 Scope {
@@ -75,6 +79,12 @@ Scope {
     // stroll nothing could take moves on rather than waiting.
     property string strollTo: ""
     property bool strollTaken: false
+    // Which play a scene asks for, "yarn" or "pounce", or "" when none is
+    // under way, and whether a screen's cat took it, as a stroll's; and how
+    // many scenes have come while he's away, which picks the next in turn.
+    property string playing: ""
+    property bool playTaken: false
+    property int played: 0
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
     // a stroll included, and the cat sits at once.
@@ -85,6 +95,7 @@ Scope {
         beats = [];
         posed = "";
         strollTo = "";
+        playing = "";
         const wait = MarginCat.rest(lively, Math.random());
         if (wait === null) {
             waiting.stop();
@@ -113,6 +124,15 @@ Scope {
                 beat();
             return;
         }
+        if (next.play !== undefined) {
+            posed = "";
+            playing = "";
+            playTaken = false;
+            playing = next.play;
+            if (!playTaken)
+                beat();
+            return;
+        }
         posed = next.pose;
         beating.interval = next.ms;
         beating.restart();
@@ -133,7 +153,9 @@ Scope {
     Timer {
         id: waiting
         onTriggered: {
-            root.beats = MarginCat.scene(root.lively, Math.random());
+            root.beats = MarginCat.scene(root.lively, Math.random(), root.played);
+            if (root.lively === "idle")
+                root.played += 1;
             root.beat();
         }
     }
@@ -307,6 +329,35 @@ Scope {
             readonly property var drawn: pose
                 ? MarginCat.turned(Theme.pixels[pose] ?? root.drawing, facing)
                 : root.drawing
+            // The play under way (Play.play), or null, and its frame now; how
+            // high it's leapt; and its yarn: the pose and the way it faces, set
+            // only as they change as the cat's are, and where it is and how
+            // opaque, which change every frame without laying its cells again.
+            property var romp: null
+            property var romped: null
+            property real lift: 0
+            Behavior on lift {
+                enabled: !player.running
+                NumberAnimation {
+                    duration: Theme.motion.short
+                    easing.type: Easing.OutCubic
+                }
+            }
+            property string yarnPose: ""
+            property int yarnFacing: 0
+            property real yarnX: 0
+            property real yarnOpacity: 0
+            // Faded rather than gone, as a key or a column moving stops a play.
+            Behavior on yarnOpacity {
+                enabled: !player.running
+                NumberAnimation {
+                    duration: Theme.motion.short
+                    easing.type: Easing.OutCubic
+                }
+            }
+            readonly property var yarnDrawn: yarnPose
+                ? MarginCat.turned(Theme.pixels[yarnPose] ?? [], yarnFacing)
+                : []
 
             // Where the keys' column now has it: nowhere, once it's held
             // nowhere a moment (leaving); from
@@ -324,6 +375,12 @@ Scope {
                     return;
                 }
                 leaving.stop();
+                // A play its column moved under stops, and the cat walks
+                // back over its seat, hurried, rather than jumping there.
+                if (romp !== null) {
+                    stopPlay();
+                    roams = true;
+                }
                 if (place !== null && going === null && wanted === sat && roams !== null) {
                     const hurried = roams;
                     roams = null;
@@ -384,19 +441,95 @@ Scope {
 
             // How its walk reached the screen, in the journal, so a walk on
             // Joel's screen says whether it kept to its rate.
-            function tell(): void {
+            // `what` names a play, "the yarn" or "a pounce", or is "" for a walk.
+            function tell(what: string): void {
                 if (!window.FramePresentation.available)
                     return;
-                const told = MarginCat.walked(shown, costs, unseen);
+                const told = MarginCat.walked(shown, costs, unseen, what || undefined);
                 console.info(told.line);
-                if (Options.reports)
-                    Report.say(`walked cat ${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
+                if (!Options.reports)
+                    return;
+                const screen = modelData?.name ?? "";
+                if (what === "")
+                    Report.say(`walked cat ${screen} ${JSON.stringify(told.said)}`);
+                else
+                    Report.say(`played cat ${screen} ${what} ${JSON.stringify(told.said)}`);
+            }
+
+            // A play, where the scene asks, taken only by the screen whose cat
+            // sits still over the column the keys are in, as a stroll is,
+            // toward the more room and short of the margin's marks; none
+            // where there's no room for it, and the scene moves on. As a key
+            // ends the scene (`kind` ""), it stops and walks home hurried.
+            function playOut(kind: string): void {
+                if (kind === "") {
+                    if (romp === null)
+                        return;
+                    handsBack = false;
+                    stopPlay();
+                    walkFrom(true);
+                    return;
+                }
+                if (place === null || column === null || going !== null || resting.running
+                    || wanted !== sat || strolled !== null || romp !== null)
+                    return;
+                const plan = Play.play(kind, {
+                    x: place.x,
+                    cell,
+                    room: Play.room({
+                        x: place.x,
+                        wide: size,
+                        across: modelData.width,
+                        marks: MarginMarks.drawn,
+                        cell: Theme.gap
+                    }),
+                    // No higher than the gap above where it's drawn.
+                    hop: Math.max(0, Math.min(place.y, window.height - size)),
+                    pause: 150 + Math.random() * 300,
+                    slowdown: Theme.motion.slowdown
+                });
+                if (plan === null)
+                    return;
+                root.playTaken = true;
+                handsBack = true;
+                shown = [];
+                costs = [];
+                unseen = 0;
+                romp = plan;
+                player.restart();
+                if (window.FramePresentation.available)
+                    window.FramePresentation.ask();
+            }
+
+            // A play stopped where it is: the cat's leap let down and its
+            // yarn faded, each by its Behavior now the player's stopped.
+            function stopPlay(): void {
+                if (romp === null)
+                    return;
+                player.stop();
+                romp = null;
+                romped = null;
+                lift = 0;
+                yarnOpacity = 0;
+            }
+
+            // A play done: said in the journal, then the walk home from where
+            // it landed, facing the way it played, which hands the scene back.
+            function endPlay(): void {
+                const what = romp.kind === "yarn" ? "the yarn" : "a pounce";
+                const landed = { x: romp.to, y: place.y };
+                const way = romp.way;
+                tell(what);
+                stopPlay();
+                place = landed;
+                stepped = { facing: way };
+                walkFrom(false);
             }
 
             // Each frame of a walk, as niri showed it or didn't, asking after
             // the next until it sits.
             FramePresentation.onPresented: (frame, at) => {
-                if (going === null)
+                if (going === null && romp === null)
                     return;
                 shown.push(at);
                 const times = window.FramePresentation.timesOf(frame);
@@ -405,13 +538,14 @@ Scope {
                 window.FramePresentation.ask();
             }
             FramePresentation.onDiscarded: () => {
-                if (going === null)
+                if (going === null && romp === null)
                     return;
                 unseen += 1;
                 window.FramePresentation.ask();
             }
 
             function halt(): void {
+                stopPlay();
                 walker.stop();
                 going = null;
                 stepped = null;
@@ -484,6 +618,10 @@ Scope {
                 function onStrollToChanged() {
                     window.stroll(root.strollTo);
                 }
+
+                function onPlayingChanged() {
+                    window.playOut(root.playing);
+                }
             }
 
             onThereChanged: follow()
@@ -522,7 +660,7 @@ Scope {
                 onTriggered: {
                     const now = MarginCat.step(window.going, walker.elapsedTime * 1000);
                     if (now.done) {
-                        window.tell();
+                        window.tell("");
                         window.halt();
                         window.sat = window.goingTo;
                         window.place = window.there ?? window.place;
@@ -535,6 +673,38 @@ Scope {
                         window.pose = now.pose;
                     window.stepped = now;
                     window.place = { x: now.x, y: window.there?.y ?? window.place.y };
+                }
+            }
+
+            // A play's frame each time the screen draws, as the walk's: the
+            // cat's pose and the way it faces, and the yarn's, set as they
+            // change; where each is and how high it's leapt, every frame.
+            FrameAnimation {
+                id: player
+                onTriggered: {
+                    const now = Play.frame(window.romp, player.elapsedTime * 1000);
+                    if (now.done) {
+                        window.endPlay();
+                        return;
+                    }
+                    if (now.facing !== window.facing)
+                        window.facing = now.facing;
+                    if (now.pose !== window.pose)
+                        window.pose = now.pose;
+                    window.lift = now.lift;
+                    const yarn = now.yarn;
+                    if (yarn === null) {
+                        window.yarnOpacity = 0;
+                    } else {
+                        if (yarn.pose !== window.yarnPose)
+                            window.yarnPose = yarn.pose;
+                        if (yarn.facing !== window.yarnFacing)
+                            window.yarnFacing = yarn.facing;
+                        window.yarnX = yarn.x;
+                        window.yarnOpacity = yarn.opacity;
+                    }
+                    window.romped = now;
+                    window.place = { x: now.x, y: window.place.y };
                 }
             }
 
@@ -609,6 +779,12 @@ Scope {
                     window: sat,
                     asleep: root.asleep,
                     stretching: root.stretching,
+                    play: romp === null || romped === null ? null : {
+                        kind: romp.kind,
+                        beat: romped.beat,
+                        lift: window.lift,
+                        yarn: romped.yarn
+                    },
                     walk: going === null || stepped === null ? null : {
                         t: Math.round(walker.elapsedTime * 10000) / 10,
                         beat: stepped.beat,
@@ -637,15 +813,44 @@ Scope {
                 say();
             }
 
+            // Where it sits, on the screen's own pixels, before any leap.
+            readonly property real ground: place
+                ? Math.max(0, Math.round(Math.min(place.y, height - size) * ratio) / ratio)
+                : 0
+
+            // The yarn, beside the cat on the same line, while a play has it.
+            Item {
+                x: Math.round(window.yarnX * window.ratio) / window.ratio
+                y: window.ground
+                width: window.size
+                height: window.size
+                opacity: window.yarnOpacity
+                visible: opacity > 0 && window.yarnDrawn.length > 0
+
+                Repeater {
+                    model: Pixels.runs(window.yarnDrawn)
+
+                    Rectangle {
+                        required property var modelData
+
+                        x: modelData.x * window.cell
+                        y: modelData.y * window.cell
+                        width: modelData.across * window.cell
+                        height: window.cell
+                        antialiasing: false
+                        color: Theme.voice
+                    }
+                }
+            }
+
             Item {
                 id: cat
 
-                // On the screen's own pixels, so every cell's edge is sharp.
+                // On the screen's own pixels, so every cell's edge is sharp,
+                // and up by its leap.
                 x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
-                y: window.place
-                    ? Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
-                        * window.ratio) / window.ratio)
-                    : 0
+                y: Math.max(0, Math.round((window.ground - window.lift) * window.ratio)
+                    / window.ratio)
                 width: window.size
                 height: window.size
 

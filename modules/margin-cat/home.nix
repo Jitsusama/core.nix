@@ -54,6 +54,7 @@
   config = {
     jitsusama.quickshell.surfaces.MarginCat = ./MarginCat.qml;
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
+    xdg.configFile."quickshell/surfaces/Play.js".source = ./Play.js;
     # Its settings in its own file beside it, read as it starts.
     xdg.configFile."quickshell/surfaces/MarginCat.json".text = builtins.toJSON {
       inherit (config.jitsusama.quickshell.cat)

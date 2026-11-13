@@ -185,7 +185,8 @@ function step(going, t) {
 // `drawing`, how long each took the shell to sync and render, its own
 // cost of a frame; and `unseen`, how many niri never showed (Joel,
 // 2026-11-12: "we need proper smooth animations with character to them").
-function walked(shown, drawing, unseen) {
+// `what` names it, "a walk" unless it's one of Play.js's.
+function walked(shown, drawing, unseen, what) {
     const gaps = shown.slice(1).map((at, i) => at - shown[i]).sort((a, b) => a - b);
     const tenths = ms => Math.round((ms ?? 0) * 10) / 10;
     const said = {
@@ -196,7 +197,7 @@ function walked(shown, drawing, unseen) {
         drawn: tenths(drawing.reduce((most, ms) => Math.max(most, ms), 0)),
         unseen
     };
-    const line = `cat: a walk presented ${said.frames} frames a median ${said.median} ms `
+    const line = `cat: ${what ?? "a walk"} presented ${said.frames} frames a median ${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn within `
         + `${said.drawn} ms, ${unseen} never shown`;
     return { said, line };
@@ -259,13 +260,20 @@ function pick(list, chance) {
     return list[Math.min(list.length - 1, Math.floor(chance * list.length))];
 }
 
-// A scene at a level (`lively`), `chance` (0 to 1) choosing which: its beats, each a
-// pose held `ms`, after which it sits again. While he types it's a single
-// pose, an ear flick, a tail swish or a blink; paused, one of the mild
-// scenes; idle, half the time a stroll to the gutter beside its column
-// and back (`walk`, its beats `to` where and a sit between), else a mild
-// scene; asleep or still, none.
-function scene(lively, chance) {
+// What it does once he's left it a minute, each in turn, so no two come
+// alike one after another and a quiet one rests between the lively ones:
+// a stroll to the gutter and back, the yarn, a mild scene, a pounce, and
+// another mild one.
+const AWAY = ["stroll", "yarn", "mild", "pounce", "mild"];
+
+// A scene at a level (`lively`), `chance` (0 to 1) choosing which: its
+// beats, each a pose held `ms`, after which it sits again. While he types
+// it's a single pose, an ear flick, a tail swish or a blink; paused, one of
+// the mild scenes; idle, the next of AWAY's after the `played` it's played
+// idle so far: a stroll to the gutter beside its column and back (`walk`,
+// its beats `to` where and a sit between), a play of Play.js's (`play`,
+// "yarn" or "pounce"), or a mild scene; asleep or still, none.
+function scene(lively, chance, played) {
     if (lively === "typing") {
         return [{ pose: pick(["earFlick", "tailSwish", "blinking"], chance), ms: GLANCE }];
     }
@@ -273,10 +281,12 @@ function scene(lively, chance) {
         return pick(MILD, chance);
     }
     if (lively === "idle") {
-        return chance < 0.5
-            ? [{ walk: true, to: "gutter" }, { pose: "nothingHere", ms: 6000 },
-                { walk: true, to: "column" }]
-            : pick(MILD, (chance - 0.5) * 2);
+        const next = AWAY[(played ?? 0) % AWAY.length];
+        if (next === "stroll") {
+            return [{ walk: true, to: "gutter" }, { pose: "nothingHere", ms: 6000 },
+                { walk: true, to: "column" }];
+        }
+        return next === "mild" ? pick(MILD, chance) : [{ play: next }];
     }
     return [];
 }
