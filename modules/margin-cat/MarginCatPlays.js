@@ -84,8 +84,10 @@ function pick(list, chance) {
 // the plays in place; idle, those three times in four, else a move. A
 // hop's rise is a beat with `hop` and how many `cells` up; a wander's
 // walks are beats with `walk`, `to` "wander", its `cells` and `way`, or
-// "column", back. Asleep or still, none.
-function scene(lively, draw, last) {
+// "column", back. Asleep or still, none. A play `asked` for by name, as a
+// test asks for the one it watches, comes in place of the one drawn where
+// the level has it, the draws taken as ever.
+function scene(lively, draw, last, asked) {
     const held = (pose, ms) => ({
         pose,
         ms: Math.max(QUICKEST, Math.round(ms * (1 - VARIES + 2 * VARIES * draw())))
@@ -99,7 +101,10 @@ function scene(lively, draw, last) {
     }
     const moving = lively === "idle" && draw() >= 1 - MOVES;
     const names = (moving ? ["hop", "wander"] : Object.keys(IN_PLACE)).filter(play => play !== last);
-    const name = pick(names, draw());
+    const drawn = pick(names, draw());
+    const allowed = lively === "idle" ? [...Object.keys(IN_PLACE), "hop", "wander"]
+        : Object.keys(IN_PLACE);
+    const name = allowed.includes(asked) ? asked : drawn;
     if (name === "hop") {
         const rises = Object.assign(held("pouncing", HOP.rises), { hop: true, cells: 1 });
         const crouched = held("pouncing", HOP.crouches);
@@ -116,12 +121,12 @@ function scene(lively, draw, last) {
 
 // What comes next at a level (`lively`): the rest before it, `after` ms,
 // and the `scene` it plays then, drawn from `draw` never as `last`; null
-// where nothing comes, asleep or still, so no timer runs at all.
-// MarginCat.qml waits `after` and plays it, and a change of level draws
-// afresh.
-function next(lively, draw, last) {
+// where nothing comes, asleep or still, so no timer runs at all; a play
+// `asked` for comes as scene() says. MarginCat.qml waits `after` and plays
+// it, and a change of level draws afresh.
+function next(lively, draw, last, asked) {
     const after = rest(lively, draw());
-    return after === null ? null : { after, scene: scene(lively, draw, last) };
+    return after === null ? null : { after, scene: scene(lively, draw, last, asked) };
 }
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it
