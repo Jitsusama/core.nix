@@ -130,7 +130,8 @@
     "subtests": [
       "test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears",
       "test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent",
-      "test_quickshell_warned_of_nothing_it_drew_all_along"
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count"
     ],
     "test": "vm-desktop-launcher-reads-mail"
   },
