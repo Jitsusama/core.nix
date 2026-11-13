@@ -1,10 +1,12 @@
 // Where the margin's cat sits and how big it's drawn, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
-// modules/margin-cat/MarginCat.js and MarginCatPlays.js beside this file and runs
+// modules/margin-cat/MarginCat.js, MarginCatPaths.js and MarginCatPlays.js
+// beside this file and runs
 // `qml -platform offscreen margin-cat.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
 
 QtObject {
@@ -63,6 +65,7 @@ QtObject {
         expect("a gap too small still draws it", MarginCat.cell(4, 1), 1);
 
         walks(expect);
+        ways(expect);
         plays(expect, at, column);
 
         for (const failure of failures)
@@ -145,16 +148,20 @@ QtObject {
         scenes(expect);
 
         // Where a short wander goes: along the margin from its seat, the
-        // way it was drawn, or the other where that one's off the screen or
-        // on the marks; nowhere where neither fits.
+        // way it was drawn, or the other where that one's off its window,
+        // off the screen or on the marks; nowhere where neither fits.
         const seat = { x: 296, y: 3 };
         const wanders = more => Plays.wander(at(column(100, 12, 400),
             Object.assign({ seat, step: 1, cells: 20, way: 1 }, more)));
         expect("it wanders its cells the way drawn", wanders(), { x: 316, y: 3 });
         expect("or the other way", wanders({ way: -1 }), { x: 276, y: 3 });
         expect("each cell its own", wanders({ step: 2 }), { x: 336, y: 3 });
+        expect("the other way where its window ends",
+            wanders({ seat: { x: 480, y: 3 } }), { x: 460, y: 3 });
+        expect("nowhere off a window narrower than its wander",
+            wanders({ seat: { x: 110, y: 3 }, column: column(100, 12, 30) }), null);
         expect("the other way where the screen ends",
-            wanders({ seat: { x: 980, y: 3 } }), { x: 960, y: 3 });
+            wanders({ seat: { x: 980, y: 3 }, column: column(700, 12, 300) }), { x: 960, y: 3 });
         expect("the other way where the marks are",
             wanders({ seat: { x: 460, y: 3 }, marks: 3 }), { x: 440, y: 3 });
         expect("nowhere where neither way fits",
@@ -260,8 +267,10 @@ QtObject {
     // by the ground it covers, overshoots, steps back and crouches as it
     // stops.
     function walks(expect) {
-        const going = MarginCat.walk(100, 200, { cell: 1, ratio: 1, pause: 200 });
-        const at = t => MarginCat.step(going, t);
+        const cat = more => Object.assign({ cell: 1, ratio: 1, wide: 8, tall: 8, air: 1 }, more);
+        const on = x => ({ x, y: 0 });
+        const going = Paths.walk(on(100), on(200), cat({ pause: 200 }));
+        const at = t => Paths.frame(going, t);
         const beats = going.beats.map(beat => beat.name);
         expect("its beats, in order", beats,
             ["turns", "thinks", "crouches", "goes", "settles", "lands"]);
@@ -294,8 +303,8 @@ QtObject {
             frames.every(frame => frame.pose === ["walkingA", "walkingB"][
                 Math.floor((frame.x - 99) / going.stride) % 2]), true);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
-        expect("as many strides as its way holds", changes.length,
-            Math.floor((201.5 - 99) / going.stride));
+        expect("as many strides as its way holds, the last ending as it stops",
+            changes.length, Math.ceil((201.5 - 99) / going.stride) - 1);
         expect("it walks on past its seat a cell and a half",
             Math.round(at(ends("goes") - 1e-6).x * 10) / 10, 201.5);
         expect("steps back onto it", [at(ends("settles") - 1e-6).beat,
@@ -304,47 +313,54 @@ QtObject {
             [at(begins("lands")).pose, at(begins("lands")).x], ["pouncing", 200]);
         expect("then sits, done", [at(going.ends).done, at(going.ends).x, at(going.ends).pose],
             [true, 200, null]);
-        expect("a way of 100 cells at a walking pace, about two seconds",
-            Math.round(ends("goes") - begins("goes")), Math.round(102.5 / 50 * 1000));
+        expect("a short way at a walking pace, about two seconds",
+            Math.round(ends("goes") - begins("goes")), MarginCat.CRUISES);
 
-        const back = MarginCat.walk(200, 100, { cell: 1, ratio: 1, pause: 0 });
+        const back = Paths.walk(on(200), on(100), cat({ pause: 0 }));
         expect("back the other way it faces left", back.facing, -1);
         expect("drawing back to the right",
-            Math.round(MarginCat.step(back, back.beats[1].ends - 1e-6).x), 201);
+            Math.round(Paths.frame(back, back.beats[1].ends - 1e-6).x), 201);
         expect("with no thought it doesn't stop to think",
             back.beats.map(beat => beat.name), ["turns", "crouches", "goes", "settles", "lands"]);
         expect("where it already sits, to the screen's pixel, it doesn't walk",
-            MarginCat.walk(40, 40.2, { cell: 1, ratio: 1.5 }), null);
-        const hurried = MarginCat.walk(150, 300, { cell: 1, ratio: 1, hurried: true, facing: 1 });
+            Paths.walk(on(40), on(40.2), cat({ ratio: 1.5 })), null);
+        const hurried = Paths.walk(on(150), on(300), cat({ hurried: true, facing: 1 }));
         expect("a walk begun on the way neither turns nor thinks nor crouches",
             hurried.beats.map(beat => beat.name), ["goes", "settles", "lands"]);
-        expect("and sets off from where it is", MarginCat.step(hurried, 0).x, 150);
-        const turned = MarginCat.walk(150, 50, { cell: 1, ratio: 1, hurried: true, facing: 1 });
+        expect("and sets off from where it is", Paths.frame(hurried, 0).x, 150);
+        const turned = Paths.walk(on(150), on(50), cat({ hurried: true, facing: 1 }));
         expect("one going back the way it came turns first", turned.beats[0].name, "turns");
-        const slowed = MarginCat.walk(100, 200, { cell: 1, ratio: 1, pause: 200, slowdown: 2 });
+        const slowed = Paths.walk(on(100), on(200), cat({ pause: 200, slowdown: 2 }));
         expect("the theme's slowdown stretches all of it", slowed.ends, going.ends * 2);
-        const far = MarginCat.walk(0, 1000, { cell: 1, ratio: 1, pause: 0 });
+        const far = Paths.walk(on(0), on(1000), cat({ pause: 0 }));
         const goes = far.beats.find(beat => beat.name === "goes");
         expect("far, it hurries, never more than 120 cells a second",
             Math.round(goes.ends - goes.begins), Math.round(1002.5 / 120 * 1000));
         expect("its stride at most ten cells", far.stride, 10);
-        const near = MarginCat.walk(0, 20, { cell: 2, ratio: 1, pause: 0 });
+        const near = Paths.walk(on(0), on(20), cat({ cell: 2, pause: 0 }));
         expect("near, it ambles, its stride half its body", near.stride, 8);
-
         const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
-            { begun: 7 });
+            { begun: 7, stepped: 6 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
-            shown.said,
-            { frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7 });
+            shown.said, {
+                frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7,
+                stepped: 6
+            });
+        // Its steps beside its frames say whether it moved on each, or
+        // was drawn again standing still (2026-11-13: Qt paced a 120 Hz
+        // screen's steps at 60 where niri said 60 Hz).
         expect("as the journal says them", shown.line, "cat: a walk presented 5 of its 7 frames "
             + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
-            + "1 never shown");
+            + "1 never shown, stepped 6 times");
         expect("a hop's frames are said as a walk's",
             MarginCat.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
                 .split(" of its")[0],
             "cat: a hop presented 2");
         expect("a walk nothing showed says so", MarginCat.walked([], [], 0, { begun: 0 }).said,
-            { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0 });
+            {
+                frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0,
+                stepped: 0
+            });
 
         // niri's own spring, as Joel's niri rides it between workspaces.
         const spring = { damping: 1, stiffness: 1600, epsilon: 0.001 };
@@ -365,79 +381,6 @@ QtObject {
                 MarginCat.slid(48, Object.assign({ slowdown: 2 }, spring))],
             [462, MarginCat.slid(24, spring)]);
 
-        // A screen 800 tall, a workspace and its gap 880, a cat of 8
-        // cells of 1 seated at 2 below the top.
-        const moving = (way, more) => MarginCat.moves({ x: 100, y: 2 }, { x: 500, y: 2 },
-            Object.assign({ way, step: 880, tall: 8, cell: 1, ratio: 1, facing: 1, spring },
-                more ?? {}));
-        const down = moving(1);
-        const rides = down.beats[0];
-        expect("a move rides its column first, as long as the slide",
-            [rides.name, rides.ends], ["rides", 231]);
-        expect("carried exactly as the world, up a workspace going down",
-            [10, 50, 100].map(t => MarginCat.moved(down, t).y),
-            [10, 50, 100].map(t => 2 - 880 * MarginCat.slid(t, spring)));
-        expect("straight up its old column, as it sat", [10, 50, 100].map(t => {
-            const where = MarginCat.moved(down, t);
-            return [where.x, where.pose, where.turn, where.facing];
-        }), [[100, null, 0, 1], [100, null, 0, 1], [100, null, 0, 1]]);
-        expect("going down, it climbs down from above onto its seat",
-            down.beats.map(beat => beat.name), ["rides", "climbs", "lands"]);
-        const climbs = down.beats[1];
-        const above = MarginCat.moved(down, climbs.begins);
-        expect("from out of sight above its seat", [above.x, above.y], [500, -8]);
-        expect("head down, a quarter turn back from its profile",
-            [above.turn, above.facing], [-1, -1]);
-        const steps = Array.from({ length: 20 }, (_, i) =>
-            MarginCat.moved(down, climbs.begins + (climbs.ends - climbs.begins) * i / 20));
-        expect("climbing only down, never back", steps.every((where, i) =>
-            i === 0 || where.y > steps[i - 1].y), true);
-        expect("in its two strides", Array.from(new Set(steps.map(where => where.pose))).sort(),
-            ["walkingA", "walkingB"]);
-        expect("at an amble over so short a way",
-            Math.round(climbs.ends - climbs.begins), Math.round(10 / 40 * 1000));
-        expect("it lands on its seat crouched, a moment", [down.beats[2].pose,
-            MarginCat.moved(down, down.beats[2].begins).x,
-            MarginCat.moved(down, down.beats[2].begins).y], ["pouncing", 500, 2]);
-        expect("then sits, done", MarginCat.moved(down, down.ends),
-            { x: 500, y: 2, pose: null, turn: 0, facing: 1, beat: "sits", done: true });
-
-        // Going up, its old column falls away below it, so it lets go and
-        // stays in the margin as the new workspace comes down under it
-        // (VKCF3Z, 294b73a0).
-        const nearBy = (x, more) => MarginCat.moves({ x: 100, y: 2 }, { x, y: 2 },
-            Object.assign({ way: -1, step: 880, tall: 8, cell: 1, ratio: 1, facing: 1, spring },
-                more ?? {}));
-        const stepAway = nearBy(130);
-        expect("going up, it stays where it sits as long as the slide",
-            [stepAway.beats[0].name, stepAway.beats[0].ends], ["stays", 231]);
-        expect("still, in its own pose, as the world slides under it", [10, 50, 100].map(t => {
-            const where = MarginCat.moved(stepAway, t);
-            return [where.x, where.y, where.pose, where.turn, where.facing];
-        }), [[100, 2, null, 0, 1], [100, 2, null, 0, 1], [100, 2, null, 0, 1]]);
-        expect("then a seat near enough it walks to, on the way it faces, at once",
-            stepAway.beats.map(beat => beat.name), ["stays", "goes", "settles", "lands"]);
-        expect("along the margin, never faster than a walk",
-            Math.round(stepAway.beats[1].ends - stepAway.beats[1].begins),
-            Math.round(31.5 / 40 * 1000));
-        expect("and sits there, done", MarginCat.moved(stepAway, stepAway.ends),
-            { x: 130, y: 2, pose: null, turn: 0, facing: 1, beat: "sits", done: true });
-        expect("one behind it, it turns for first",
-            nearBy(80).beats.map(beat => beat.name),
-            ["stays", "turns", "goes", "settles", "lands"]);
-        expect("one right where it is, it only stays",
-            [nearBy(100).beats.map(beat => beat.name), nearBy(100).rests], [["stays"], false]);
-        const acrossTheScreen = nearBy(500);
-        expect("one farther than about 1.5 s it stays for, to rest and walk as ever",
-            [acrossTheScreen.beats.map(beat => beat.name), acrossTheScreen.to,
-                acrossTheScreen.seat, acrossTheScreen.rests],
-            [["stays"], { x: 100, y: 2 }, { x: 500, y: 2 }, true]);
-        const slowAway = nearBy(130, { slowdown: 2 });
-        expect("the theme's slowdown stretches it, but brings no seat nearer",
-            [slowAway.rests, Math.round(slowAway.ends)], [false, Math.round(stepAway.ends * 2)]);
-        expect("the theme's slowdown stretches all of a move",
-            Math.round(moving(1, { slowdown: 2 }).ends), Math.round(down.ends * 2));
-
         expect("a quarter turn clockwise", MarginCat.quartered(["#.", ".."], 1), [".#", ".."]);
         expect("and back", MarginCat.quartered(["#.", ".."], -1), ["..", "#."]);
         expect("a profile facing left faces up, a quarter turn clockwise",
@@ -448,5 +391,147 @@ QtObject {
             MarginCat.turned(["#..", ".##"], 1), ["..#", "##."]);
         expect("facing left, as the theme draws it",
             MarginCat.turned(["#..", ".##"], -1), ["#..", ".##"]);
+    }
+
+    // Its ways through the world: a screen 1,248 by 800 with two columns,
+    // a gap of 16 between them and above them, the right one two windows
+    // stacked; its workspaces stacked 880 apart; and a cat of 8 cells of
+    // 1, seated a cell above the tops (Joel, 2026-11-13: "it should stay
+    // on top of the previous workspaces window ... climb up ...
+    // pathfinding through the spaces between windows"; "when crossing
+    // across gaps between windows, the kitty should jump").
+    function ways(expect) {
+        const spring = { damping: 1, stiffness: 1600, epsilon: 0.001 };
+        const tiles = [
+            { left: 16, top: 16, width: 600, height: 768, column: 0 },
+            { left: 632, top: 16, width: 600, height: 376, column: 1 },
+            { left: 632, top: 408, width: 600, height: 376, column: 1 },
+            { left: 300, top: 300, width: 100, height: 100, column: null }
+        ];
+        const world = more => Object.assign({
+            cell: 1, ratio: 1, wide: 8, tall: 8, air: 1, across: 1248, height: 800, step: 880,
+            facing: 1, spring, was: tiles, now: tiles, cols: Paths.columns(tiles, 0)
+        }, more);
+        const seat = x => ({ x, y: 7 });
+        const cols = Paths.columns(tiles, 0);
+        expect("each column once, its windows stacked top to bottom, none floating",
+            cols.map(column => [column.left, column.right, column.top, column.bottom,
+                column.rows.length]), [[16, 616, 16, 784, 1], [632, 1232, 16, 784, 2]]);
+        // Each frame at 120 Hz of all of a way that's seen on the screen.
+        const seen = way => {
+            const frames = [];
+            for (let t = 0; t <= way.ends; t += 1000 / 120) {
+                const at = Paths.frame(way, t);
+                if (at.y > -8 && at.y < 800 && at.x > -8 && at.x < 1248)
+                    frames.push(Object.assign({ t }, at));
+            }
+            return frames;
+        };
+        const smooth = frames => frames.every((at, i) => i === 0 || frames[i - 1].beat === "rides"
+            || Math.hypot(at.x - frames[i - 1].x, at.y - frames[i - 1].y) <= 4);
+
+        const across = Paths.walk(seat(300), seat(900), world({ pause: 0 }));
+        const names = across.beats.map(beat => beat.name);
+        const leaps = across.beats.find(beat => beat.name === "leaps");
+        expect("across a gap between columns it crouches, leaps and lands",
+            names.slice(names.indexOf("leaps") - 1, names.indexOf("leaps") + 2),
+            ["crouches", "leaps", "lands"]);
+        expect("from the edge of one to the edge of the next",
+            [leaps.from.x, leaps.to.x, leaps.to.y], [608, 632, 7]);
+        const flight = seen(across).filter(at => at.beat === "leaps");
+        expect("up and down again in an arc, never a glide",
+            Math.min(...flight.map(at => at.y)) < 7 - 1, true);
+        expect("as high as the room above has, never off the screen",
+            flight.every(at => at.y >= 0), true);
+        expect("long enough to be seen", leaps.ends - leaps.begins >= 160, true);
+        expect("stretched out in the air, never mid-stride",
+            Array.from(new Set(flight.map(at => at.pose))), ["leaping"]);
+        expect("never a jump between two frames", smooth(seen(across)), true);
+        expect("a walk along one column leaps nothing",
+            Paths.walk(seat(100), seat(400), world({ pause: 0 })).beats
+                .some(beat => beat.name === "leaps"), false);
+
+        // Three marks of 16 centred on 624, from 600 to 648, and the cat
+        // stops half a mark's cell off them either side.
+        const lit = Paths.marks(3, 1248, 16);
+        expect("the marks, centred", [lit.from, lit.to], [600, 648]);
+        const one = [{ left: 16, top: 16, width: 1216, height: 768, column: 0 }];
+        const behind = Paths.walk(seat(300), seat(900),
+            world({ pause: 0, cols: Paths.columns(one, 0), marks: lit }));
+        const creep = behind.beats.filter(beat => ["stops", "creeps", "stands"]
+            .includes(beat.name));
+        expect("past the marks it stops crouched, creeps behind them and stands up",
+            creep.map(beat => [beat.name, Math.round(beat.from.x), Math.round(beat.to.x)]),
+            [["stops", 584, 584], ["creeps", 584, 656], ["stands", 656, 656]]);
+        const creeping = seen(behind).filter(at => at.beat === "creeps");
+        expect("low, in its creeping strides",
+            Array.from(new Set(creeping.map(at => at.pose))).sort(), ["creepingA", "creepingB"]);
+        const pace = beat => Math.abs(beat.to.x - beat.from.x) / (beat.ends - beat.begins);
+        expect("slower than it walks", pace(creep[1]) < pace(behind.beats
+            .find(beat => beat.name === "goes")), true);
+        expect("a walk that doesn't pass them creeps nowhere",
+            Paths.walk(seat(100), seat(400), world({ pause: 0, marks: lit })).beats
+                .some(beat => beat.name === "creeps"), false);
+        expect("behind a mark only its gaps show it",
+            Paths.behind(["########", "########"], Paths.veil(606, 8, 2, lit)),
+            ["...####.", "...####."]);
+        expect("away from them nothing's veiled", Paths.veil(100, 2, 2, lit), "");
+        expect("unveiled it's drawn whole", Paths.behind(["##"], ""), ["##"]);
+
+        const down = Paths.moves(seat(100), seat(900), world({ way: 1 }));
+        const ride = down.beats[0];
+        expect("a move rides its old column first, as long as the slide",
+            [ride.name, ride.ends], ["rides", 231]);
+        expect("carried exactly as the world, up off the screen going down",
+            [10, 50, 100].map(t => Paths.frame(down, t).y),
+            [10, 50, 100].map(t => 7 - 880 * MarginCat.slid(t, spring)));
+        expect("as it sat", [Paths.frame(down, 50).x, Paths.frame(down, 50).pose], [100, null]);
+        const unseen = way => way.beats.filter(beat => beat.name !== "rides"
+            && Math.max(beat.from.y, beat.to.y) < -8)
+            .reduce((all, beat) => all + beat.ends - beat.begins, 0);
+        expect("out of sight it hurries, a third of a second all told",
+            Math.round(unseen(down)) <= 360, true);
+        const climbing = down.beats.find(beat => beat.name === "climbs");
+        expect("down its old column's side head first, belly to it",
+            [climbing.from.x, climbing.to.x, climbing.turn, climbing.facing,
+                climbing.to.y > climbing.from.y],
+            [616, 616, 1, 1, true]);
+        const falls = seen(down).filter(at => at.beat === "drops");
+        expect("it falls in from the screen's top", falls[0].y < 0, true);
+        expect("falling ever faster", falls.every((at, i) => i < 2
+            || at.y - falls[i - 1].y >= falls[i - 1].y - falls[i - 2].y - 1e-9), true);
+        const landed = down.beats[down.beats.findIndex(beat => beat.name === "drops") + 2];
+        expect("lands crouched on the column below", [landed.name, landed.from.y], ["lands", 7]);
+        expect("then walks to its seat and sits there",
+            Paths.frame(down, down.ends), { x: 900, y: 7, pose: null, turn: 0, facing: 1,
+                beat: "sits", done: true });
+        expect("all it shows is smooth", smooth(seen(down)), true);
+
+        const up = Paths.moves(seat(700), seat(100), world({ way: -1 }));
+        expect("going up, it rides its old column down off the screen",
+            Paths.frame(up, 100).y, 7 + 880 * MarginCat.slid(100, spring));
+        const climbs = up.beats.filter(beat => beat.name === "climbs");
+        expect("leaps up onto a side of a column, then climbs it head first",
+            [climbs[0].from.x, climbs[0].turn, climbs[0].facing], [616, 1, -1]);
+        expect("up the screen", climbs.every(beat => beat.to.y < beat.from.y), true);
+        const mantles = up.beats.find(beat => beat.name === "mantles");
+        expect("and over its top onto it", [mantles.to.x, mantles.to.y, mantles.turn], [608, 7, 0]);
+        expect("up its whole height in three seconds at most",
+            climbs.reduce((all, beat) => all + beat.ends - beat.begins, 0) <= 3000, true);
+        expect("and sits on its seat", [Paths.frame(up, up.ends).x, Paths.frame(up, up.ends).done],
+            [100, true]);
+        expect("all it shows is smooth", smooth(seen(up)), true);
+        const stacked = Paths.moves(seat(1100), seat(1000), world({ way: -1 }));
+        const between = stacked.beats.filter(beat => beat.turn !== 0 && beat.name === "leaps");
+        expect("up from below onto a side, and up a column of two windows across the gap",
+            between.map(beat => [Math.round(beat.from.y), Math.round(beat.to.y)]),
+            [[887, 801], [801, 776], [408, 384]]);
+
+        expect("with nothing on the new workspace it only rides",
+            Paths.moves(seat(100), seat(100), world({ way: 1, now: [] })).beats
+                .map(beat => beat.name), ["rides"]);
+        expect("the theme's slowdown stretches all of a move",
+            Math.round(Paths.moves(seat(100), seat(900), world({ way: 1, slowdown: 2 })).ends),
+            Math.round(down.ends * 2));
     }
 }

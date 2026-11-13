@@ -47,13 +47,11 @@ IDLE, DOZES, POSED = 30.0, 60, 2
 # a glance, nor so long that it's in the way of the keys pressed next.
 STRETCHES = (0.3, 1.0)
 # How long the keys rest on a column before the cat walks there
-# (modules/margin-cat/MarginCatScreen.qml), the beats of its walk in order (MarginCat.js), and the
-# longest the shell may take to sync and render one of its frames, a quarter of a frame at 60, so
-# its own work never costs one.
+# (modules/margin-cat/MarginCatScreen.qml), and the longest the shell may take to sync and
+# render one of its frames, a quarter of a frame at 60, so its own work never costs one.
 RESTS = 2.0
-BEATS = ["turns", "thinks", "crouches", "goes", "settles", "lands"]
-# The shortest of them, its crouch, in ms: a frame of the nested niri's longer than it may
-# hide it.
+# The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
+# it may hide it.
 SHORTEST_BEAT = 110
 DRAWS = 4.0
 WALKED = "walked cat "
@@ -171,8 +169,8 @@ def steps(shell: Shell, since: int) -> list[Json]:
     return [at for at in reports if at is not None and at.get("walk")]
 
 
-def unseen_only_between_frames(walked: list[Json]) -> list[str]:
-    """Give the beats a walk missed, out of order or with no frame long enough to hide them.
+def unseen_only_between_frames(walked: list[Json], beats: list[str]) -> list[str]:
+    """Give the beats a walk missed of its own, out of order or with no frame to hide them.
 
     The nested niri draws in software, and one frame in a walk can take longer than a short
     beat lasts: the crouch's 110 ms fell between two frames 121 ms apart (2026-11-12), so a
@@ -188,13 +186,13 @@ def unseen_only_between_frames(walked: list[Json]) -> list[str]:
     wrong: list[str] = []
     at = 0
     for seen, (beat, starts, _) in enumerate(took):
-        if beat not in BEATS[at:]:
+        if beat not in beats[at:]:
             return [f"{beat} out of order"]
-        skipped = BEATS[at : BEATS.index(beat, at)]
+        skipped = beats[at : beats.index(beat, at)]
         gap = starts - took[seen - 1][2] if seen else 0
         wrong += [f"{missed} unseen in {gap:.0f} ms" for missed in skipped if gap < SHORTEST_BEAT]
-        at = BEATS.index(beat, at) + 1
-    return wrong + [f"{missed} never" for missed in BEATS[at:]]
+        at = beats.index(beat, at) + 1
+    return wrong + [f"{missed} never" for missed in beats[at:]]
 
 
 def walking(said: str) -> bool:
@@ -210,9 +208,10 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     a quarter of one to draw, and niri shows every one (Joel, 2026-11-12: "we need proper
     smooth animations with character to them"). How far apart niri shows them is the nested
     screen's, drawn in software under a second compositor, so it's kept, not judged; Joel's
-    journal says it of his own screen. Its beats come in their order, and it goes in both its
-    strides, never stepping back. Its steps and how niri showed
-    them are kept as the check's result, for a strip of the walk.
+    journal says it of his own screen. Its beats come in the order its way has them, the gap
+    between the two columns leapt (Joel, 2026-11-13: "when crossing across gaps between
+    windows, the kitty should jump"), and it goes in both its strides, never stepping back.
+    Its steps and how niri showed them are kept as the check's result, for a strip of the walk.
     """
     since = shell.mark()
     first = shell.opened("a column to walk to")
@@ -234,7 +233,9 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     (kept / "walk.json").write_text(json.dumps({"steps": walked, "presented": told}))
     assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
     beats = [step["walk"]["beat"] for step in walked]
-    assert unseen_only_between_frames(walked) == [], f"the cat's beats came as {beats}"
+    way = walked[0]["walk"]["beats"]
+    assert "leaps" in way, f"the cat's way leapt no gap: {way}"
+    assert unseen_only_between_frames(walked, way) == [], f"the cat's beats came as {beats}"
     times = [step["walk"]["t"] for step in walked]
     gaps = sorted(after - before for before, after in itertools.pairwise(times))
     frame = gaps[len(gaps) // 2]
@@ -280,10 +281,21 @@ def test_tapping_along_the_columns_never_sets_it_walking(shell: Shell) -> None:
 
 
 def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
-    """It's on the overlay layer, taking no keys, so typing goes where it went before."""
+    """It's on the top layer, taking no keys, so typing goes where it went before.
+
+    The margin, the launcher and notices stay over it, on the overlay layer, so it creeps
+    behind the margin's marks rather than over them (VKCF3Z, e2068d64).
+    """
     shell.opened("a column under the cat")
     (layer,) = layered(shell, 1)
-    assert layer["layer"] == "Overlay", f"the cat is on the {layer['layer']} layer"
+    assert layer["layer"] == "Top", f"the cat is on the {layer['layer']} layer"
+    over = json.loads(shell.as_account("niri msg --json layers"))
+    under = [
+        (one["namespace"], one["layer"])
+        for one in over
+        if one["namespace"] in {"margin", "launcher", "notifications"} and one["layer"] != "Overlay"
+    ]
+    assert not under, f"these are under the overlay layer, beside the cat: {under}"
     assert layer["keyboard_interactivity"] == "None", (
         f"the cat takes keys: {layer['keyboard_interactivity']}"
     )
@@ -620,29 +632,42 @@ def moving(said: str) -> bool:
 
 
 def climbed(shell: Shell, since: int, way: int, beats: list[str]) -> list[Json]:
-    """Give a move's steps once it sits, held to its beats and to its climb's one way."""
+    """Give a move's steps once it sits, held to its way's order and to its climb's one way.
+
+    Its way is the one it found last, as niri said the new workspace's windows on the ride.
+    Only the ride, these beats, and the landing on its seat must be seen: much of a move is
+    off the screen, and hurried there, so its other beats may fall between two frames.
+    """
     took = moved(shell, since)
     said = [step["move"]["beat"] for step in took]
-    assert [beat for at, beat in enumerate(said) if at == 0 or beat != said[at - 1]] == beats, (
-        f"the cat's move came as {said}"
-    )
+    runs = [beat for at, beat in enumerate(said) if at == 0 or beat != said[at - 1]]
+    found = took[-1]["move"]["beats"]
+    assert runs[0] == "rides", f"the cat's move came as {runs}"
+    assert runs[-1] == "lands", f"the cat's move came as {runs}"
+    assert set(beats) <= set(runs), f"the cat's move came as {runs}, its way {found}"
+    at = 0
+    for beat in runs[1:]:
+        assert beat in found[at:], f"the cat's move came as {runs}, its way {found}"
+        at = found.index(beat, at) + 1
     assert {step["move"]["way"] for step in took} == {way}, f"it moved {took[:3]}"
+    # Head first down a side, belly to the window, and head first up one (Paths.clings).
     climbing = [step for step in took if step["move"]["beat"] == "climbs"]
     gone = [(after["y"] - before["y"]) * way for before, after in itertools.pairwise(climbing)]
     assert min(gone, default=0) >= 0, f"it climbed back: {[s['y'] for s in climbing]}"
-    turns = {step["move"]["turn"] for step in climbing}
-    assert turns <= {-way}, f"it climbed {climbing[:3]}"
+    held = {(step["move"]["facing"], step["move"]["turn"]) for step in climbing}
+    assert all(facing == turn * way != 0 for facing, turn in held), f"it climbed {held}"
     return took
 
 
-def test_the_cat_rides_up_with_its_workspace_and_stays_as_it_falls_away(shell: Shell) -> None:
-    """Between workspaces, it moves with what goes up and stays where things fall away.
+def test_the_cat_finds_its_way_up_and_down_between_workspaces(shell: Shell) -> None:
+    """Between workspaces, it rides its column away and finds its way to the new one.
 
-    Its ride, climb and stay are MarginCat.js's, frame by frame in Qt's engine; here, only
-    that niri's workspaces reach it: up one, its old column falls away and it stays in the
-    margin as the new one comes down under it, its seat there the same, and down one, it
-    rides up and climbs down onto its seat, head first (VKCF3Z, 294b73a0). Each move's steps
-    are kept as the check's result, for a strip of it.
+    Its ways are MarginCatPaths.js's, frame by frame in Qt's engine; here, only that niri's
+    workspaces and their windows reach it: up one, it rides its column down, leaps onto a new
+    column's side, climbs it and mantles over its top; down one, it rides its column up out
+    of sight and drops onto the column below (Joel, 2026-11-13: "it should stay on top of
+    the previous workspaces window ... i also want it to climb up"). Each move's steps are
+    kept as the check's result, for a strip of it.
     """
     since = shell.mark()
     upper = shell.opened("a workspace to climb up to")
@@ -655,14 +680,12 @@ def test_the_cat_rides_up_with_its_workspace_and_stays_as_it_falls_away(shell: S
     shell.as_account("niri msg action focus-workspace-up")
     heard(shell, moving, since)
     sits_over(shell, upper, since)
-    up = climbed(shell, since, -1, ["stays"])
-    stayed = {(step["x"], step["y"]) for step in up}
-    assert len(stayed) == 1, f"it moved as it stayed: {sorted(stayed)}"
+    up = climbed(shell, since, -1, ["climbs", "mantles"])
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, since)
     sits_over(shell, lower, since)
-    down = climbed(shell, since, 1, ["rides", "climbs", "lands"])
+    down = climbed(shell, since, 1, ["drops"])
     kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
     kept.mkdir(exist_ok=True)
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
@@ -685,7 +708,7 @@ def test_a_second_move_seats_it_at_once(shell: Shell) -> None:
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
     shell.as_account("niri msg action focus-workspace-down")
-    heard(shell, lambda said: moving(said) and '"climbs"' in said, since)
+    heard(shell, lambda said: moving(said) and '"beat":"rides"' not in said, since)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
