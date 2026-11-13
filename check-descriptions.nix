@@ -3751,9 +3751,7 @@
   '';
   vm-apps-come-first = ''
     with no disk named, the system's user.slice holds a 1 ms latency on the drive behind /home,
-    through the kernel, and no slice inside the account, machine or system does; with one named,
-    io.cost holds its model and qos, no slice holds a target, one left from before is cleared as
-    io.cost turns on, and stopping its `disk-order-<disk>` unit turns io.cost off; every slice's
+    through the kernel, and no slice inside the account, machine or system does; every slice's
     io.weight follows its CPU weight;
     app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
     agents.slice a soft 10% and a hard 512 MiB, every slice above them a hard 21% and a soft 31%,
@@ -3765,7 +3763,15 @@
     one naming a quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its
     weight for CPU and disk, which follows the file as it changes, and one naming none or an
     unlisted quest stays; two quests' work on one CPU shares it four to one by weight, and one
-    alone takes it all
+    alone takes it all; with tiers declared, a quest's work goes in the tier of its nearest ranked
+    quest, through the harness's parents file, or in jobs-work-unranked.slice, each tier weighing
+    half the one above from 640; a quest whose parent changes tier is said to move and its next
+    work follows; and the first tier's work runs about four times the third's on one CPU
+  '';
+  vm-a-measured-disk-shares-by-its-model = ''
+    with a disk named with a model, io.cost holds its model and qos, no slice holds a latency
+    target, one left from before is cleared as io.cost turns on, and stopping its
+    `disk-order-<disk>` unit turns io.cost off
   '';
   vm-a-call-is-on-reads-every-account = ''
     root's a-call-is-on says a call is on while a call program records in an account's PipeWire, and

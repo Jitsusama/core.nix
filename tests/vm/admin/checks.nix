@@ -15,7 +15,12 @@ onLinux {
   vm-libvirt-stops-quickly = import ./libvirt.nix { inherit self pkgs; };
   # Whether the kernel took a slice's disk latency shows only with the
   # account's manager starting it on a real drive.
-  vm-apps-come-first = import ./slices.nix { inherit self pkgs; };
+  vm-apps-come-first = import ./slices { inherit self pkgs; };
+  # Whether the kernel shares a disk by its model shows only with the
+  # system's systemd handing io.cost a real drive's queue.
+  vm-a-measured-disk-shares-by-its-model = import ./slices/measured-disk.nix {
+    inherit self pkgs;
+  };
   # Whether the shell draws on time while work bursts for memory shows only
   # with the kernel reclaiming and swapping across the account's real slices.
   vm-joel-comes-first = import ./joel-first { inherit self pkgs; };

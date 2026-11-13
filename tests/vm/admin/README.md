@@ -20,8 +20,6 @@ for what a VM lacks.
 | `pi-conversations-come-back-ask.mjs`            | that test's request to a pi host's socket                       |
 | `pi-hosts-recover.nix`, `-vm-test.py`           | a wedged pi host restarted, one always crashing left down       |
 | `pi-hosts-recover-host.sh`                      | that test's stand-in node, ready and pinging as a host is       |
-| `slices.nix`, `-vm-test.py`                     | the disk latency and weight the kernel gives each slice         |
-| `slices-foreground-wakes.sh`                    | that test's foreground program, timing how late it wakes        |
 | `switch-system.nix`, `-vm-test.py`              | an administrator switching to a system it has run, no password  |
 | `work-slices.nix`, `-vm-test.py`                | an administrator changing how the work slices share the machine |
 | `update-to-main.nix`, `-vm-test.py`             | a machine updating itself to its repository's main when asked   |
@@ -35,3 +33,7 @@ for what a VM lacks.
   holds over and over.
 - `niri-off-cpu/`: a stand-in for niri's main thread, waiting and asleep as
   niri does.
+- `slices/`: what the kernel gives each slice, from disk latency and memory
+  floors to agents' work shared by quest and by tier (`default.nix`, with
+  its foreground program timing how late it wakes), and a disk named with a
+  model shared by it (`measured-disk.nix`).
