@@ -173,6 +173,11 @@
       "glyph": "dictating"
     },
     {
+      "id": "sound:by-ear:for",
+      "in": "sound",
+      "name": "Choose by Ear for {microphone}"
+    },
+    {
       "id": "sound:by-ear:record",
       "in": "sound:by-ear",
       "name": "Record",

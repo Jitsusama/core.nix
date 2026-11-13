@@ -403,8 +403,8 @@ def test_for_you_offers_choose_by_ear_after_a_call(desktop: Desktop) -> None:
 
     The service leaves the offer after a call on a microphone not chosen for where it is; the
     stand-in daemon tells it as the trial does. One path through the connection, Sound's to-do
-    reaching For You and its trail reaching Choose by Ear; what the offer says, case by case, is
-    tests/by-ear.qml's.
+    reaching For You and its trail reaching Choose by Ear, and its name typed from the top
+    reaching it too; what the offer says, case by case, is tests/by-ear.qml's.
     """
     offer = json.dumps(
         {
@@ -432,6 +432,12 @@ def test_for_you_offers_choose_by_ear_after_a_call(desktop: Desktop) -> None:
     desktop.machine.wait_until_succeeds(
         desktop.in_session(f"test ! -e {left}"), timeout=timedelta(seconds=10)
     )
+    desktop.close_launcher()
+    # Its name typed from the top finds it again, offered or not.
+    desktop.answer("choose by ear")
+    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == offered)
+    desktop.machine.send_key("ret")
+    desktop.launcher_until(lambda shown: shown["rows"] == ["Record"])
     desktop.close_launcher()
     desktop.as_account("systemctl --user stop noise-cancelled-stand-in.service")
 
