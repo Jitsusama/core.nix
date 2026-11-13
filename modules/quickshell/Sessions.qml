@@ -1988,7 +1988,7 @@ Singleton {
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
         else if (session.held)
-            attach(session.held);
+            console.info("red: no attach");
     }
 
     // Joins a session held on another machine in a new window here, by
