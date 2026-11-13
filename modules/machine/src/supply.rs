@@ -468,6 +468,40 @@ mod tests {
     }
 
     #[test]
+    fn when_a_battery_was_made_and_its_health_are_read_once_a_minute() {
+        let root = std::env::temp_dir().join(format!("machine-made-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let write = |day: &str, health: &str| {
+            std::fs::write(at.join("manufacture_year"), "2025\n").unwrap();
+            std::fs::write(at.join("manufacture_month"), "3\n").unwrap();
+            std::fs::write(at.join("manufacture_day"), format!("{day}\n")).unwrap();
+            std::fs::write(at.join("health"), format!("{health}\n")).unwrap();
+        };
+        write("7", "Good");
+        let held = Root::new(&root);
+        let mut settings = Settings::default();
+        let first = Instant::now();
+        let mut said = |at: Instant| {
+            let kept = record(&held, "BAT0", &Value::Null, &mut settings, at);
+            (kept["made"].clone(), kept["health"].clone())
+        };
+        let read = said(first);
+        write("8", "Overheat");
+        let soon = said(first + Duration::from_secs(59));
+        let later = said(first + SETTINGS_KEPT);
+        std::fs::remove_dir_all(&root).unwrap();
+        let was = (json!("2025-03-07"), json!("Good"));
+        assert_eq!(read, was, "what the battery's files said");
+        assert_eq!(
+            soon, was,
+            "read again within a minute, as firmware is asked each time"
+        );
+        let moved = (json!("2025-03-08"), json!("Overheat"));
+        assert_eq!(later, moved, "kept past a minute");
+    }
+
+    #[test]
     fn a_list_marks_its_choice() {
         assert_eq!(
             chosen(Some("source [sink]".into())),
