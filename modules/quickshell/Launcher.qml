@@ -8410,11 +8410,22 @@ Scope {
     // Opens straight into a collection, all of it shown until something's
     // typed; - steps out to the search. A name no collection
     // has opens the search.
+    //
+    // Opened from inside the shell, as the portal's file chooser, Super+N
+    // with no notice out and the margin's pieces open it, no chord or IPC
+    // asked first, so the opening is asked here and timed as theirs are:
+    // Joel's file chooser said no opening line, its keys 100 ms each
+    // (2026-11-13, 03:45).
     function into(name) {
+        const asked = !open && !opening && openAsked < 0;
+        if (asked)
+            askedToOpen();
         if (!open && !opening)
             openChord = name;
         intoWhole(name);
         keepPlace(name);
+        if (asked)
+            askDone();
     }
 
     // Opens into a collection as its chord does: closed, a place kept from

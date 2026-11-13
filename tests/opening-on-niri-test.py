@@ -1045,6 +1045,26 @@ def test_the_starts_spots_are_made_in_slices_and_its_texts_after_them(shell: She
     )
 
 
+def test_an_opening_the_shell_asks_itself_is_timed(shell: Shell) -> None:
+    """Opened from inside the shell, as Super+N opens the notices when none are out, it's timed.
+
+    No chord or IPC asked for the portal's file chooser that Joel opened, so it said no opening
+    line, and his four keys in it went unexplained at 100 ms each (2026-11-13, 03:45).
+    """
+    before = latest(openings(shell))
+    shell.take_notices()
+    shell.launcher_ready()
+    timed: list[Json] = []
+
+    def came(_: Json) -> bool:
+        timed[:] = [each for each in openings(shell) if each.get("nth", 0) > before]
+        return bool(timed)
+
+    shell.launcher_until(came)
+    assert timed[0]["into"] == "notices", f"the opening wasn't into the notices: {timed}"
+    shell.close_launcher()
+
+
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
 
