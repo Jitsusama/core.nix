@@ -20,6 +20,7 @@ pub mod layout;
 pub mod time;
 pub mod wait;
 
+use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::panic::{self, AssertUnwindSafe};
@@ -94,11 +95,16 @@ impl Context {
     /// The answer as one JSON object: pretty into a terminal, one line
     /// into a pipe. Under `jsonl` it's the one line before `end`.
     pub fn answer(&self, value: &Value) -> io::Result<()> {
+        self.answer_to(&mut io::stdout().lock(), value)
+    }
+
+    /// The answer, as `answer` writes it, written to `out`: for a command
+    /// that writes its answer where it's told, as its tests tell it.
+    pub fn answer_to(&self, out: &mut dyn Write, value: &Value) -> io::Result<()> {
         debug_assert!(
             value.get("schema").is_some(),
             "every answer names its schema"
         );
-        let mut out = io::stdout().lock();
         if self.shared.format == Format::Jsonl {
             let mut line = json!({"type": "answer"});
             if let (Some(line), Some(fields)) = (line.as_object_mut(), value.as_object()) {
@@ -115,11 +121,16 @@ impl Context {
 
     /// One line of a `jsonl` stream, typed.
     pub fn line(&self, kind: &str, fields: &Value) -> io::Result<()> {
+        self.line_to(&mut io::stdout().lock(), kind, fields)
+    }
+
+    /// One line of a `jsonl` stream, as `line` writes it, written to `out`.
+    pub fn line_to(&self, out: &mut dyn Write, kind: &str, fields: &Value) -> io::Result<()> {
         let mut line = json!({"type": kind});
         if let (Some(line), Some(fields)) = (line.as_object_mut(), fields.as_object()) {
             line.extend(fields.clone());
         }
-        writeln!(io::stdout().lock(), "{line}")
+        writeln!(out, "{line}")
     }
 
     /// Text for a person on stdout, as it's laid out.
@@ -167,23 +178,7 @@ pub fn run(
     let mut stdout = String::new();
     let context = match Context::new(environment.clone(), args, &forms) {
         Ok(context) => context,
-        Err(failure) => {
-            // The line couldn't be read, so neither could its form: it's
-            // said as text, unless JSON was plainly asked for.
-            let pen = Pen::new(
-                Ink::decide(environment.stderr, Colour::Auto, environment),
-                None,
-            );
-            let stderr = for_the_journal(
-                failure.text(&pen, Room::of_stderr(environment), false),
-                environment,
-            );
-            return Ending {
-                exit: failure.exit,
-                stdout,
-                stderr,
-            };
-        }
+        Err(failure) => return unread(environment, &failure),
     };
     if context.shared.help {
         stdout = if context.shared.format.is_json() {
@@ -250,6 +245,44 @@ fn for_the_journal(said: String, environment: &Environment) -> String {
     })
 }
 
+/// How a run ends whose line couldn't be read, and so neither could its
+/// form: the failure is said as text, marked for the journal where stderr
+/// is the journal's.
+fn unread(environment: &Environment, failure: &Failure) -> Ending {
+    let pen = Pen::new(
+        Ink::decide(environment.stderr, Colour::Auto, environment),
+        None,
+    );
+    Ending {
+        exit: failure.exit,
+        stdout: String::new(),
+        stderr: for_the_journal(
+            failure.text(&pen, Room::of_stderr(environment), false),
+            environment,
+        ),
+    }
+}
+
+/// As `run`, over the arguments as the system gives them. An argument
+/// that isn't UTF-8 is refused as asked wrongly, where reading it as
+/// `String`s would panic before the body could say anything.
+pub fn run_os(
+    help: &Help,
+    version: &str,
+    environment: &Environment,
+    args: Vec<OsString>,
+    body: impl FnOnce(&Context) -> Result<(), Failure>,
+) -> Ending {
+    match args.into_iter().map(OsString::into_string).collect() {
+        Ok(args) => run(help, version, environment, args, body),
+        Err(word) => unread(
+            environment,
+            &Failure::new(Exit::Usage, "an argument isn't UTF-8 text")
+                .because(format!("{} can't be read as text", word.to_string_lossy())),
+        ),
+    }
+}
+
 /// The body's outcome, a panic in it a bug whose words are the panic's.
 fn caught(body: impl FnOnce() -> Result<(), Failure>) -> Result<(), Failure> {
     let said: Arc<Mutex<Option<String>>> = Arc::default();
@@ -292,11 +325,11 @@ pub fn main(
     version: &str,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> ExitCode {
-    let ending = run(
+    let ending = run_os(
         help,
         version,
         &Environment::here(),
-        std::env::args().skip(1).collect(),
+        std::env::args_os().skip(1).collect(),
         body,
     );
     // Nothing is left to say if a stream has closed, as it has when a
@@ -377,6 +410,20 @@ mod tests {
     #[test]
     fn a_line_it_cant_read_is_asked_wrongly() {
         assert_eq!(ran("--format yaml", |_| Ok(())).exit, Exit::Usage);
+    }
+
+    #[test]
+    fn an_argument_that_isnt_text_is_asked_wrongly_before_the_body() {
+        use std::os::unix::ffi::OsStringExt;
+        let ending = run_os(
+            &help(),
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            vec![OsString::from("go"), OsString::from_vec(vec![b'a', 0xff])],
+            |_| panic!("the body ran"),
+        );
+        assert_eq!(ending.exit, Exit::Usage);
+        assert!(ending.stderr.contains("a\u{fffd}"), "{}", ending.stderr);
     }
 
     #[test]

@@ -4,7 +4,6 @@
 # that's split, says why or is gone, so the list only shrinks.
 [
   "modules/desk-facts/facts.rs"
-  "modules/disk-guard/src/cli.rs"
   "modules/disk-guard/src/daemon.rs"
   "modules/disk-guard/src/linux.rs"
   "modules/disk-guard/src/survey.rs"

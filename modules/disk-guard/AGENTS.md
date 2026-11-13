@@ -302,8 +302,26 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |
 | `src/words.rs`            | the sentences the status file carries for the desktop     |
+| `src/cli.rs`, `cli/`      | the command line: reads, acts and the two daemons        |
 | `tests/guard/`            | the scenarios, one file per module                       |
 | `tests/*.sh`              | the check of `merged-on-github.sh`, over a stand-in gh   |
+
+## The Command Line
+
+It takes the shape every command of ours has from the terminal kit
+(docs/commands.md): `--help`, `--format text|json|jsonl` (`--json` for short)
+and `--color` anywhere before `--`, and a failure in three parts on stderr, as
+`error/1` under `--json`. A bare `disk-guard` reads the status. Each answer
+under `--json` names its schema, `disk-guard.<command>/1`, and holds facts in
+units its keys name, never a sentence; `journal --format jsonl` streams one
+`entry` line each. The machine daemon runs `keep`, `unkeep`, `clear` and
+`thaw` for the launcher's disk piece with `--json` and words Joel's sentence
+itself, so the text for a person may change without changing the shell.
+
+Its exits are the kit's: 1 when it couldn't be done or a footprint couldn't be
+read, 64 asked wrongly, 65 a file `check-config` refuses, 66 a file or folder
+that isn't there, 69 no guard to ask, 75 a daemon already holding that state,
+and 78 a config that can't be read or is the other daemon's.
 
 ## Working on It
 

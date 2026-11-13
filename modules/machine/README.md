@@ -147,11 +147,12 @@ any other is refused `not-allowed`.
 The disk guard's four are its own `keep`, `unkeep`, `clear` and `thaw`,
 run here on the act (`src/guard.rs`) so the shell spawns nothing, from
 `disk-guard` on the service's path or the program `MACHINE_DISK_GUARD`
-names. Each answers `said`, the sentence the guard printed, for Disk's
-foot, or is refused with it in `said`, without the program's name it
-opens its errors with; an act asked without its folder or reason is
-refused with no `said`, never reaching the guard. The guard marks its status before it ends,
-so the status the shell hears has moved by the time the act answers.
+names. The guard is asked with `--json`, and each answers `said`, a
+sentence for Disk's foot worded here from the facts it answered, or is
+refused with its error's what and why in `said`; an act asked without
+its folder or reason is refused with no `said`, never reaching the guard.
+The guard marks its status before it ends, so the status the shell hears
+has moved by the time the act answers.
 
 ## Every Figure, and Where It Shows
 

@@ -1478,9 +1478,10 @@ fn a_silent_guard_says_how_its_unit_stands() {
 }
 
 // Keep, Release and Clear are the guard's own keep, unkeep and clear,
-// run by the daemon, answered with what it printed, done or not.
+// run by the daemon, which words what Joel reads from the guard's JSON,
+// done or not.
 #[test]
-fn the_guards_acts_run_it_and_say_what_it_printed() {
+fn the_guards_acts_run_it_and_say_what_it_answered() {
     use std::os::unix::fs::PermissionsExt;
     let folder = std::env::temp_dir().join(format!("machine-disk-guard-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
@@ -1491,8 +1492,11 @@ fn the_guards_acts_run_it_and_say_what_it_printed() {
         &guard,
         format!(
             "#!{}\necho \"$*\" >> {}\n\
-             [ \"$1\" = keep ] && echo \"kept $2\" && exit 0\n\
-             echo \"disk-guard: $2 isn't kept\" >&2\nexit 2\n",
+             [ \"$2\" = keep ] && \
+             echo '{{\"schema\":\"disk-guard.keep/1\",\"path\":\"'\"$4\"'\",\"reason\":\"'\"$5\"'\"}}' \
+             && exit 0\n\
+             echo '{{\"schema\":\"error/1\",\"what\":\"'\"$4\"' wasn'\\''t kept\",\"why\":null}}' >&2\n\
+             exit 1\n",
             shell().display(),
             asked.display()
         ),
@@ -1508,13 +1512,16 @@ fn the_guards_acts_run_it_and_say_what_it_printed() {
         "path": "/home/joel/src", "reason": "the build's"}));
     assert_eq!(
         kept,
-        json!({"id": 1, "done": true, "said": "kept /home/joel/src"})
+        json!({"id": 1, "done": true, "said": "Kept /home/joel/src: the build's."})
     );
     let unkept = client.ask(&json!({"id": 2, "ask": "act", "act": "disk-unkeep",
         "path": "/srv"}));
     assert_eq!(unkept["error"]["code"], "refused", "{unkept}");
-    assert_eq!(unkept["error"]["message"], "disk-guard: /srv isn't kept");
-    assert_eq!(unkept["error"]["said"], "/srv isn't kept");
+    assert_eq!(
+        unkept["error"]["message"],
+        r#"{"schema":"error/1","what":"/srv wasn't kept","why":null}"#
+    );
+    assert_eq!(unkept["error"]["said"], "/srv wasn't kept");
     let reasonless = client.ask(&json!({"id": 3, "ask": "act", "act": "disk-keep",
         "path": "/srv"}));
     assert_eq!(reasonless["error"]["code"], "bad-act", "{reasonless}");
@@ -1524,7 +1531,7 @@ fn the_guards_acts_run_it_and_say_what_it_printed() {
     );
     assert_eq!(
         std::fs::read_to_string(&asked).unwrap(),
-        "keep /home/joel/src the build's\nunkeep /srv\n",
+        "--json keep -- /home/joel/src the build's\n--json unkeep -- /srv\n",
         "a refused act never reaches the guard"
     );
 }
