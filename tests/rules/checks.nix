@@ -123,10 +123,13 @@
     commands =
       let
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
+        recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
       in
       {
+        chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
+        file-preview = pkgs.callPackage ../../modules/open-with/file-preview.nix { };
         firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
         gcloud-broker = pkgs.callPackage ../../modules/gcloud-broker/package.nix { };
@@ -134,6 +137,9 @@
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        open-now = recentFiles;
+        open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
+        recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
