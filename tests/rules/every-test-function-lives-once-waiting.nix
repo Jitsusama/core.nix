@@ -70,7 +70,6 @@
   "tests/vm/sound/calls-vm-test.py" = 1;
   "tests/captured.qml" = 1;
   "tests/command-line.qml" = 1;
-  "tests/daemon.qml" = 1;
   "tests/desk-light.qml" = 3;
   "tests/desktop/desktop-captures-vm-test.py" = 2;
   "tests/desktop/desktop-keeps-copies-vm-test.py" = 2;
@@ -149,7 +148,6 @@
   "tests/stack.qml" = 1;
   "tests/status-line.qml" = 1;
   "tests/swayimg-galleries.qml" = 1;
-  "tests/taken.qml" = 1;
   "tests/talks.qml" = 3;
   "tests/tuple-call.qml" = 3;
   "tests/vm/guide/guide-beside-vm-test.py" = 2;
