@@ -907,9 +907,10 @@ def goes_home_to_its_orchestrator(
     )
     lead = desktop.window_titled(PI_WINDOW)
     # The orchestrator on the second workspace, Joel on the first.
+    leads_on = 2
     desktop.as_account(
-        f"niri msg action move-window-to-workspace --window-id {lead['id']} --focus false 2"
-        " && niri msg action focus-workspace 1"
+        f"niri msg action move-window-to-workspace --window-id {lead['id']} --focus false"
+        f" {leads_on} && niri msg action focus-workspace 1"
     )
     # The shell knows the orchestrator's window there once the agents daemon keeps its place,
     # which it pairs by the same records.
@@ -917,12 +918,13 @@ def goes_home_to_its_orchestrator(
     deadline = time.monotonic() + 30
     while True:
         read = json.loads(desktop.as_account(f"cat {ARRANGED} 2>/dev/null || echo {{}}"))
-        if read.get("boots", {}).get(boot, {}).get("01a1face-test", {}).get("workspace") == 2:  # noqa: PLR2004
+        sits = read.get("boots", {}).get(boot, {}).get("01a1face-test", {})
+        if sits.get("workspace") == leads_on:
             break
         assert time.monotonic() < deadline, f"the orchestrator's place isn't kept: {read}"
         time.sleep(1)
     spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
-    home = next(one["id"] for one in spaces if one["idx"] == 2)  # noqa: PLR2004
+    home = next(one["id"] for one in spaces if one["idx"] == leads_on)
     joels = next(one["id"] for one in spaces if one["is_focused"])
     desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays")
     watch_the_focus(desktop)
