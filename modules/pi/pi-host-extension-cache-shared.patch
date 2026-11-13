@@ -27,7 +27,7 @@ the cache, and a load begun before one caches nothing after it.
  import { createEventBus, type EventBus } from "../event-bus.ts";
  import type { ExecOptions } from "../exec.ts";
  import { execCommand } from "../exec.ts";
-@@ -135,9 +135,22 @@
+@@ -135,9 +135,32 @@
  
  type HandlerFn = (...args: unknown[]) => Promise<unknown>;
  
@@ -48,10 +48,20 @@ the cache, and a load begun before one caches nothing after it.
  const extensionCache = new Map<string, ExtensionFactory>();
 +// The file each extension path last resolved to.
 +const resolvedFiles = new Map<string, string>();
++
++// The file an extension's link points at now, which keys the cache and is
++// what the import loads; the copy it pointed at before leaves the cache.
++function currentFileOf(extensionPath: string): string {
++	const file = fs.realpathSync(extensionPath);
++	const before = resolvedFiles.get(extensionPath);
++	if (before !== undefined && before !== file) extensionCache.delete(before);
++	resolvedFiles.set(extensionPath, file);
++	return file;
++}
  
  interface ExtensionCacheToken {
  	cwd: string;
-@@ -146,17 +159,12 @@
+@@ -146,17 +169,12 @@
  
  export function clearExtensionCache(): void {
  	extensionCache.clear();
@@ -71,7 +81,7 @@ the cache, and a load begun before one caches nothing after it.
  }
  
  /**
-@@ -560,14 +568,19 @@
+@@ -560,7 +578,6 @@
  function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cacheToken is ExtensionCacheToken {
  	return (
  		cacheToken !== undefined &&
@@ -79,25 +89,21 @@ the cache, and a load begun before one caches nothing after it.
  		extensionCacheGeneration === cacheToken.generation
  	);
  }
+@@ -567,7 +584,7 @@
  
  async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
-+	// pi-host: the file the link points at now, which keys the cache and is
-+	// what the import loads; the copy it pointed at before leaves the cache.
-+	const file = fs.realpathSync(extensionPath);
-+	const before = resolvedFiles.get(extensionPath);
-+	if (before !== undefined && before !== file) extensionCache.delete(before);
-+	resolvedFiles.set(extensionPath, file);
  	if (isCurrentCacheToken(cacheToken)) {
 -		const cachedFactory = extensionCache.get(extensionPath);
-+		const cachedFactory = extensionCache.get(file);
++		const cachedFactory = extensionCache.get(currentFileOf(extensionPath));
  		if (cachedFactory) {
  			return cachedFactory;
  		}
-@@ -590,13 +603,13 @@
+@@ -590,13 +607,14 @@
  	// pi-host: import the file the link points at now, so an extension whose
  	// link moved since the host started loads its new copy and that copy's
  	// helpers, rather than resolving them through the copy it first loaded.
 -	const module = await jiti.import(fs.realpathSync(extensionPath), { default: true });
++	const file = currentFileOf(extensionPath);
 +	const module = await jiti.import(file, { default: true });
  	const factory = module as ExtensionFactory;
  	if (typeof factory !== "function") {
