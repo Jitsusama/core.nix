@@ -1390,8 +1390,11 @@ def test_the_first_letter_typed_at_home_makes_a_few_rows_after_one_arrived_while
 
 
 # The most rows the first letter at home makes after a session arrived while shut: the arriving
-# one and those its coming moved within their orchestration, measured at 3, never the list.
-FIRST_LETTER_MAKES = 3
+# one and those its coming moved within their orchestration, never the list. Measured at 5: the
+# arriving session's row with its Talk in Agents' top level and again in what's found. It was 3
+# while the top level stayed paced with the launcher open, so the arriving one wasn't in it yet
+# (2026-11-13).
+FIRST_LETTER_MAKES = 5
 
 
 # How long Agents makes no row before an opening's work is taken as done: many frames.
