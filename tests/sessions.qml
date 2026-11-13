@@ -90,6 +90,9 @@ ShellRoot {
         function onToReopenChanged() {
             Qt.callLater(root.check);
         }
+        function onKeptPlacesChanged() {
+            Qt.callLater(root.check);
+        }
     }
 
     Connections {
@@ -185,7 +188,7 @@ ShellRoot {
     function listed() {
         const other = find("OTHER2");
         if (addresses() !== "FARAWY LIVE01 NOWIN6 OTHER2 OUTRCH" || !other || !other.window
-            || Sessions.toReopen.length === 0)
+            || Sessions.toReopen.length === 0 || Sessions.keptPlaces["s-moving"] === undefined)
             return;
         const live = find("LIVE01");
         expect("a kitty with one window has it", live.window && live.window.id === 10,
@@ -207,14 +210,21 @@ ShellRoot {
         expect("working, as each record says", Sessions.working === 3, Sessions.working);
         expect("a session is its window", Sessions.isOf(other) === "window:21", Sessions.isOf(other));
         // Asked to keep where a session's window is, as the move onto pi's
-        // host asks before it closes it, the shell says whether it could.
+        // host asks before it closes it, the shell says whether it could,
+        // beside the place the daemon kept from before it started, and
+        // the daemon is told them all to keep.
         expect("a session's window kept", Sessions.keepPlace("s-OTHER2") === "kept"
             && JSON.stringify(Sessions.keptPlaces["s-OTHER2"] ?? null).startsWith(
                 '{"workspace":3,"column":2,'), JSON.stringify(Sessions.keptPlaces));
         const keptNot = ["s-NOWIN6", "r-far", "s-nobody"].map(id => Sessions.keepPlace(id));
         expect("one with no window, or not here, keeps nothing", keptNot.every(answer =>
-            answer === "no window to keep") && Object.keys(Sessions.keptPlaces).length === 1,
+            answer === "no window to keep")
+            && Object.keys(Sessions.keptPlaces).sort().join(" ") === "s-OTHER2 s-moving",
             keptNot.join(", "));
+        const told = agentsAsked.filter(one => one.ask === "keep-places").pop();
+        expect("the daemon keeps them, the one from before too",
+            Object.keys(told?.places ?? {}).sort().join(" ") === "s-OTHER2 s-moving"
+            && told.places["s-moving"].workspace === 6, JSON.stringify(told));
         Sessions.keepPlaces({});
 
         Sessions.goTo(other);
@@ -793,7 +803,9 @@ ShellRoot {
             { key: "arrangement:agents", kind: "arrangement", arrangement: { v: 1,
                 boots: { "an-earlier-boot": { "s-elsewhere": { output: "DP-4", workspace: 2,
                     column: 1, tile: 1 } } },
-                others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } }]);
+                others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } },
+            { key: "kept-places:agents", kind: "kept-places", places: {
+                "s-moving": { workspace: 6, column: 1, at: Date.now() } } }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -821,7 +833,8 @@ ShellRoot {
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
                         if (watched
-                            !== '[["reopen","restoring","to-reopen","arrangement"],"agents"]')
+                            !== '[["reopen","restoring","to-reopen","arrangement","kept-places"],'
+                                + '"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);
                         return;
@@ -835,6 +848,8 @@ ShellRoot {
                     else if (ask.ask === "put-off")
                         said([{ id: ask.id, "put-off": true },
                             { id: "all", changed: [], gone: boot }]);
+                    else if (ask.ask === "keep-places")
+                        said([{ id: ask.id, kept: Object.keys(ask.places ?? {}).length }]);
                     else
                         root.fail(`an ask of the agents daemon the shell has no need of: ${line}`);
                     Qt.callLater(root.check);

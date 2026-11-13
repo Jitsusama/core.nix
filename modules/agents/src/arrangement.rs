@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use daemon_serve::watch::Held;
 use serde_json::{Map, Value, json};
 
+use crate::file;
 use crate::served::PLACE;
 use crate::session::{Lives, Session};
 
@@ -194,14 +195,8 @@ impl Arrangement {
     /// What the shell kept before the daemon did, in the newest of its own
     /// folders under `shells`, read once while the daemon has kept none.
     pub fn from_shell(shells: &Path) -> Self {
-        fs::read_dir(shells)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|folder| folder.path().join("session-arrangement.json"))
-            .filter_map(|file| Some((fs::metadata(&file).ok()?.modified().ok()?, file)))
-            .max()
-            .and_then(|(_, file)| Self::read(&file))
+        file::newest(shells, "session-arrangement.json")
+            .and_then(|file| Self::read(&file))
             .unwrap_or_default()
     }
 

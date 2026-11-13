@@ -18,7 +18,8 @@
 //! budgets.json read from beside it), ORCHESTRATORS the harness's list of
 //! them, RESTORE its list of sessions to reopen, KEPT the daemon's own
 //! file of what Joel said of those (where each session's window sat is
-//! kept beside it, in arrangement.json), LANDED its file of the landings he
+//! kept beside it, in arrangement.json, and where those moving onto pi's
+//! host sat, in kept-places.json), LANDED its file of the landings he
 //! has read, STEER the harness's steer folders, which keep each
 //! session's talks, and SHELLS the launcher's own folders, where it kept them
 //! before the daemon did. A machine with no realm runs no node,
@@ -34,6 +35,7 @@ use agents::acts;
 use agents::arrangement::{Arrangement, Still};
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
+use agents::kept_places::KeptPlaces;
 use agents::landed::Reading;
 use agents::reopen::Kept;
 use agents::row::Words;
@@ -63,6 +65,7 @@ const DOMAIN: Domain = Domain {
         "closed",
         "agent-window",
         "arrangement",
+        "kept-places",
     ],
     sole: &[],
     named_only: &[],
@@ -151,6 +154,17 @@ fn own(
             };
             let _ = told.send(Heard::Forget(id.to_owned()));
             return Some(json!({"forgot": id}));
+        }
+        // Where the windows of sessions moving onto pi's host sat, all of
+        // them, as the shell says each time one's kept or let go.
+        if said["ask"] == "keep-places" {
+            let Some(kept) = KeptPlaces::said(&said["places"]) else {
+                return Some(json!({"error": {"code": "not-an-ask",
+                    "message": "a keep-places names no `places`, each a place by a session"}}));
+            };
+            let count = kept.places.len();
+            let _ = told.send(Heard::KeepPlaces(kept));
+            return Some(json!({"kept": count}));
         }
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -244,6 +258,25 @@ fn hear(heard: &mpsc::Receiver<Heard>, still: &Still) -> Result<Vec<Heard>, Recv
     Ok(said)
 }
 
+/// The inputs as the daemon starts: what it keeps read from its own
+/// files, or from the shell's where it has kept none yet.
+fn started(words: Words, paths: &Paths) -> Inputs {
+    Inputs {
+        words,
+        boot: std::fs::read_to_string(BOOT_ID)
+            .map(|id| id.trim().to_owned())
+            .unwrap_or_default(),
+        kept: Kept::read(&paths.kept),
+        home: std::env::var("HOME").unwrap_or_default(),
+        read: Reading::read(&paths.landed).unwrap_or_else(|| Reading::from_shell(&paths.shells)),
+        arrangement: Arrangement::read(&paths.arrangement)
+            .unwrap_or_else(|| Arrangement::from_shell(&paths.shells)),
+        kept_places: KeptPlaces::read(&paths.kept_places)
+            .unwrap_or_else(|| KeptPlaces::from_shell(&paths.shells)),
+        ..Inputs::default()
+    }
+}
+
 fn main() -> ExitCode {
     let Some(args) = args() else {
         eprintln!("{USAGE}");
@@ -300,6 +333,7 @@ fn main() -> ExitCode {
         orchestrators: args.orchestrators,
         restore: args.restore,
         arrangement: args.kept.with_file_name("arrangement.json"),
+        kept_places: args.kept.with_file_name("kept-places.json"),
         kept: args.kept,
         landed: args.landed,
         steer: args.steer,
@@ -309,18 +343,7 @@ fn main() -> ExitCode {
         eprintln!("agents: can't hear the files it reads: {why}");
         return ExitCode::FAILURE;
     }
-    let mut inputs = Inputs {
-        words,
-        boot: std::fs::read_to_string(BOOT_ID)
-            .map(|id| id.trim().to_owned())
-            .unwrap_or_default(),
-        kept: Kept::read(&paths.kept),
-        home: std::env::var("HOME").unwrap_or_default(),
-        read: Reading::read(&paths.landed).unwrap_or_else(|| Reading::from_shell(&paths.shells)),
-        arrangement: Arrangement::read(&paths.arrangement)
-            .unwrap_or_else(|| Arrangement::from_shell(&paths.shells)),
-        ..Inputs::default()
-    };
+    let mut inputs = started(words, &paths);
     let mut served = Served::default();
     let mut still = Still::default();
     while let Ok(said) = hear(&heard, &still) {

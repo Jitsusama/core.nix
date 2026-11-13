@@ -99,6 +99,20 @@ pub fn read(path: &Path) -> Option<Value> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
+/// The file `name` in whichever of the folders under `shells` wrote it
+/// last, as each start of the shell keeps its state in a folder of its
+/// own, so what the shell kept before the daemon did is read from there.
+pub fn newest(shells: &Path, name: &str) -> Option<PathBuf> {
+    fs::read_dir(shells)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|folder| folder.path().join(name))
+        .filter_map(|file| Some((fs::metadata(&file).ok()?.modified().ok()?, file)))
+        .max()
+        .map(|(_, file)| file)
+}
+
 #[cfg(test)]
 mod tests {
     use std::thread;
