@@ -294,6 +294,10 @@ impl StandIn {
             .env("XDG_CACHE_HOME", self.folder.join("cache"))
             .env("XDG_STATE_HOME", self.folder.join("state"))
             .env("NIX_OFFLOAD_DIR", self.folder.join("offload"))
+            .env(
+                "NIX_OFFLOAD_STANDING_DOOR",
+                self.folder.join("standing.sock"),
+            )
             // No stall, whatever the machine running the tests holds.
             .env("CHANGED_CHECKS_PRESSURE", self.folder.join("pressure"))
             .env("CHANGED_CHECKS_STRACE", self.folder.join("bin/strace"))
@@ -505,6 +509,31 @@ fn an_entry_naming_subtests_excuses_only_a_failure_its_log_names_in_them() {
         text(&unnamed.stderr).contains("new failed in no test its log names"),
         "{}",
         text(&unnamed.stderr)
+    );
+}
+
+#[test]
+fn a_build_here_goes_through_the_standing_door_where_there_is_one() {
+    let stand_in = StandIn::new("door");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    let offload = stand_in.path("offload");
+    fs::create_dir_all(&offload).expect("its folder");
+    fs::write(offload.join("machines-with-standing"), "").expect("written");
+    fs::write(stand_in.path("standing.sock"), "").expect("written");
+    let repo = stand_in.path("repo");
+    let flake = format!("git+file://{}#checks.x86_64-linux", repo.display());
+
+    let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        stand_in.built(),
+        format!(
+            "--no-link --keep-going -L --store unix://{} {flake}.new {flake}.a\n",
+            stand_in.path("standing.sock").display()
+        ),
+        "the build named the builders itself, which Nix heeds only from a trusted account"
     );
 }
 

@@ -166,6 +166,51 @@ def test_what_passed_is_kept_where_the_account_can_remove_none_of_it(
     lending.wait_until_fails("systemctl is-active nix-offload-keep.service", timeout=KEEPER_IDLES)
 
 
+DOOR = "/run/nix-offload-standing.sock"
+
+
+def test_the_lenders_account_reaches_the_standing_builders_untrusted(
+    lending: BaseMachine, standing: str
+) -> None:
+    """The account's build through the door is offered the standing builder; another isn't."""
+    lending.wait_until_succeeds(
+        f"grep -qxF {shlex.quote(standing)} {ROOTS}/machines-with-standing", timeout=COPYING
+    )
+    lending.wait_for_unit("nix-offload-standing.socket")
+    # Nix says what it found on its standard error.
+    asked = f"nix --extra-experimental-features nix-command store info --store unix://{DOOR} 2>&1"
+    info = lending.succeed(f"runuser -u someone -- sh -c {shlex.quote(asked)}")
+    assert "Trusted: 0" in info.splitlines(), info
+
+    def built(name: str, store: str) -> str:
+        """Build a derivation nothing has built, as the account, and give what Nix said."""
+        expression = (
+            f'derivation {{ name = "{name}-" + builtins.toString builtins.currentTime; '
+            'system = builtins.currentSystem; builder = "/bin/sh"; args = [ "-c" "echo > $out" ]; }'
+        )
+        command = (
+            f"nix --extra-experimental-features nix-command build --no-link --impure {store} "
+            f"--expr {shlex.quote(expression)} 2>&1"
+        )
+        return lending.succeed(f"runuser -u someone -- sh -c {shlex.quote(command)}")
+
+    # Unreachable here, the standing builder is tried and the build falls back to the machine.
+    through = built("through", f"--store unix://{DOOR}")
+    assert "nearby" in through, through
+    around = built("around", "")
+    assert "nearby" not in around, around
+
+
+def test_no_other_account_opens_the_standing_door(
+    lending: BaseMachine, values: dict[str, Any]
+) -> None:
+    """The door is in root's folder and the lender's account alone may open it."""
+    lending.wait_for_unit("nix-offload-standing.socket")
+    owner = lending.succeed(f"stat -c '%U %a' /run {DOOR}").split()
+    assert owner == ["root", "755", "someone", "600"], owner
+    lending.fail(f"runuser -u nobody -- {values['socat']} -u /dev/null UNIX-CONNECT:{DOOR}")
+
+
 def test_nothing_lent_takes_the_lent_line_away(lending: BaseMachine, standing: str) -> None:
     """With no instance named, the lent builder's line no longer reaches root, the standing does."""
     write(lending, f"{LENDER}/instance", "")

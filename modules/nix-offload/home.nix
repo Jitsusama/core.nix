@@ -420,7 +420,9 @@ in
         Builders always there, such as other machines nearby, named while they
         answer, so Nix never waits on one that's away. They're never offered to
         every build: only one that names /run/nix-offload/machines-with-standing
-        (`--builders @/run/nix-offload/machines-with-standing`) reaches them,
+        (`--builders @/run/nix-offload/machines-with-standing`), or, where the
+        machine opens one, goes through the door to them
+        (`--store unix:///run/nix-offload-standing.sock`), reaches them,
         beside any lent one, so a build of code they mustn't hold never does.
       '';
     };

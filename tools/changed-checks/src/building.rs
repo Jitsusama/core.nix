@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::env;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
@@ -165,7 +165,17 @@ pub fn build(
 /// machines only public code may reach; core.nix's checks are public code
 /// with public inputs alone, which `stands-alone` holds, so they may go
 /// there.
+///
+/// Where the machine has a door to them, the build goes through it, and
+/// root's daemon behind it names root's own list of them: an account Nix
+/// doesn't trust can't name builders, and one it does could name any. Only
+/// without one does the build name the list itself, which Nix heeds only
+/// from a trusted account.
 pub fn standing() -> Vec<String> {
+    let door = standing_door();
+    if door.exists() {
+        return vec!["--store".to_owned(), format!("unix://{}", door.display())];
+    }
     let with_standing = offload_dir().join("machines-with-standing");
     if with_standing.exists() {
         vec![
@@ -175,6 +185,15 @@ pub fn standing() -> Vec<String> {
     } else {
         Vec::new()
     }
+}
+
+/// The door nix-offload's NixOS module opens to the standing builders:
+/// `NIX_OFFLOAD_STANDING_DOOR`, or /run/nix-offload-standing.sock.
+fn standing_door() -> PathBuf {
+    env::var_os("NIX_OFFLOAD_STANDING_DOOR").map_or_else(
+        || PathBuf::from("/run/nix-offload-standing.sock"),
+        PathBuf::from,
+    )
 }
 
 /// The flake a builder can fetch the working tree from by itself: its
