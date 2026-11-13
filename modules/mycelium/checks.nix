@@ -306,7 +306,7 @@ in
 
   mycelium-serves-the-harness-files =
     holds "mycelium-serves-the-harness-files"
-      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts and queue aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
+      "A realm's node doesn't serve its realm's open and ended quests, restore list, runs, landings and talks from that realm's folders, the machine's waiting, verdicts, queue and the void's answers aren't served by the home realm's node alone, or a node doesn't restart when what it serves changes."
       (
         let
           state = "/home/someone/.local/state";
@@ -358,6 +358,10 @@ in
           queue = {
             file = "jobs/queue.json";
             within = "runtime";
+            whole = true;
+          };
+          void-answers = {
+            file = "${state}/void/answers.jsonl";
             whole = true;
           };
         }

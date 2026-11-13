@@ -1383,7 +1383,8 @@
     sessions to restore, its runs of subagents and reviews, what its sessions landed, and the talks
     in its steer inboxes,
     from the realm's own folders, and the home realm's alone the machine's waiting, verdicts and
-    queue, the queue's jobs and the queue whole from the login's runtime folder, each keyed as
+    queue, the queue's jobs and the queue whole from the login's runtime folder, and the void's
+    answers whole, a line each, each keyed as
     the launcher reads it; and each node restarts when what it serves changes, since it reads
     that only as it starts
   '';

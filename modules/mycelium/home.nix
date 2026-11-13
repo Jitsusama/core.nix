@@ -277,8 +277,8 @@ let
   # file each, what its sessions landed in the last 30 days, and the
   # talks in its sessions' steer inboxes, a record each of its lines;
   # and on the home realm's node the machine's
-  # waiting, verdicts and queue, which no realm owns, so nothing is heard
-  # twice. The queue is in the login's runtime folder, which the node
+  # waiting, verdicts and queue, and every answer the void has heard, a
+  # line each, which no realm owns, so nothing is heard twice. The queue is in the login's runtime folder, which the node
   # finds, as a Mac's differs by account: each job, and the queue whole as
   # how the machine stands, named for it. A file not written yet is served
   # as holding nothing.
@@ -338,6 +338,10 @@ let
       queue = {
         file = "jobs/queue.json";
         within = "runtime";
+        whole = true;
+      };
+      void-answers = {
+        file = "${state}/void/answers.jsonl";
         whole = true;
       };
     };
