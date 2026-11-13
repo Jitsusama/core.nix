@@ -242,16 +242,17 @@ fn internet_row(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value 
 /// run a speed test, and conferencing and gaming's switch while eero says
 /// how it stands. Each act is asked of this daemon (acts.rs), which
 /// answers once eero has done it, so a refusal is said in eero's words.
-/// The switch says what it becomes, so the shell draws it turned at once
-/// and takes it back if eero refuses (launcher/ReadyRows.qml's asked).
+/// Each says what it becomes, the speed test testing and the switch
+/// turned, so the shell draws it so at once and takes it back if eero
+/// refuses (launcher/ReadyRows.qml's asked).
 fn acts_inside(model: &HomeNetwork, words: &Words) -> Vec<Value> {
-    let mut rows = vec![json!({
-        "key": key("speedtest"), "thing": SPEED_TEST, "place": PLACE,
-        "parent": key("internet"), "kind": "act", "depth": 1,
-        "name": words.name(SPEED_TEST), "glyph": words.glyph(SPEED_TEST), "hue": "action",
-        "side": [], "note": items([item(words.say(SPEED_TEST, "note"))]),
-        "acts": [{"key": SPEED_TEST, "ask": {"ask": "act", "act": "speedtest"}}],
-    })];
+    let mut test = speed_test_row(model.internet.testing_since.is_some(), words);
+    test["acts"] = json!([{
+        "key": SPEED_TEST,
+        "ask": {"ask": "act", "act": "speedtest"},
+        "becomes": speed_test_row(true, words),
+    }]);
+    let mut rows = vec![test];
     if let Some(on) = model.internet.sqm {
         let mut switch = switch_row(on, words);
         switch["acts"] = json!([{
@@ -262,6 +263,22 @@ fn acts_inside(model: &HomeNetwork, words: &Words) -> Vec<Value> {
         rows.push(switch);
     }
     rows
+}
+
+/// The speed test, saying "testing" while one this daemon asked runs,
+/// until eero has its figures, without its act.
+fn speed_test_row(testing: bool, words: &Words) -> Value {
+    let side = if testing {
+        words.say(SPEED_TEST, "testing")
+    } else {
+        ""
+    };
+    json!({
+        "key": key("speedtest"), "thing": SPEED_TEST, "place": PLACE,
+        "parent": key("internet"), "kind": "act", "depth": 1,
+        "name": words.name(SPEED_TEST), "glyph": words.glyph(SPEED_TEST), "hue": "action",
+        "side": items([item(side)]), "note": items([item(words.say(SPEED_TEST, "note"))]),
+    })
 }
 
 /// Conferencing and gaming's switch, saying how it stands, without its

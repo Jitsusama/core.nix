@@ -162,6 +162,9 @@ struct Daemon {
     waiting: Option<PathBuf>,
     /// Where each day's look at the home network is written (day.rs).
     days: Option<PathBuf>,
+    /// When the speed test asked last was asked, in Unix seconds, while
+    /// eero hasn't its figures yet (testing).
+    testing: Option<i64>,
 }
 
 impl Daemon {
@@ -183,6 +186,7 @@ impl Daemon {
                 .inspect_err(|reason| eprintln!("eero: no day is written: {reason}"))
                 .ok()
                 .map(|folder| folder.join("day")),
+            testing: None,
         }
     }
 
@@ -282,6 +286,12 @@ impl Daemon {
             &probe::own_macs(),
             probe::own_hostname().as_deref(),
         );
+        self.testing = testing(
+            self.testing,
+            next.internet.speed_test.at.as_deref(),
+            now_unix(),
+        );
+        next.internet.testing_since = self.testing.map(time::from_unix);
         if heard == Some(Heard::Answered) {
             let network_read = due.contains(&Read::Network);
             if let Err(reason) = self.history.record(&next, at, network_read) {
@@ -345,6 +355,9 @@ impl Daemon {
         let done = session(&mut self.cloud, &mut self.network)
             .and_then(|(cloud, network)| acts::done(cloud, &network, act));
         self.schedule.ask();
+        if done.is_ok() && act == Act::SpeedTest {
+            self.testing = Some(now_unix());
+        }
         done.map_err(|failure| {
             let said = failure.to_string();
             if matches!(failure, Failure::SignedOut(_)) {
@@ -487,6 +500,20 @@ fn value(model: &HomeNetwork) -> Value {
     serde_json::to_value(model).expect("the model is plain data")
 }
 
+/// The longest a speed test asked of eero is said to run without its
+/// figures, in seconds; eero's take under a minute.
+const TESTING_AT_MOST: i64 = 5 * 60;
+
+/// When the speed test asked at `asked` still runs at `now`, given when
+/// eero's last one was taken: until eero has one as new, allowing half a
+/// minute between eero's clock and this machine's, or its time is up.
+fn testing(asked: Option<i64>, tested: Option<&str>, now: i64) -> Option<i64> {
+    let asked = asked?;
+    let tested = tested.and_then(time::to_unix);
+    let done = tested.is_some_and(|tested| tested >= asked - 30);
+    (!done && now - asked < TESTING_AT_MOST).then_some(asked)
+}
+
 fn runtime() -> Result<PathBuf, String> {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -602,6 +629,36 @@ mod tests {
         assert_eq!(out.cloud.state, CloudState::SignedOut);
         assert_eq!(out.cloud.since, LATER);
         assert_eq!(out.cloud.reason.as_deref(), Some(reason));
+    }
+
+    #[test]
+    fn a_speed_test_runs_until_eero_has_figures_as_new_or_its_time_is_up() {
+        let asked = 1_794_091_483;
+        let at = time::from_unix;
+        assert_eq!(
+            testing(Some(asked), Some(&at(asked - 3600)), asked + 60),
+            Some(asked),
+            "eero's last test is the one before, so this one still runs"
+        );
+        assert_eq!(
+            testing(Some(asked), Some(&at(asked + 40)), asked + 60),
+            None,
+            "eero has this test's figures"
+        );
+        assert_eq!(
+            testing(
+                Some(asked),
+                Some(&at(asked - 3600)),
+                asked + TESTING_AT_MOST
+            ),
+            None,
+            "eero never gave figures, so after a while it isn't said to run"
+        );
+        assert_eq!(
+            testing(None, Some(&at(asked)), asked),
+            None,
+            "none was asked"
+        );
     }
 
     #[test]

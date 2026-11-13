@@ -129,16 +129,51 @@ fn the_internet_holds_what_can_be_done_to_the_home_network() {
     );
     let test = inside[0];
     assert_eq!(
-        (&test["thing"], &test["acts"]),
+        (
+            &test["thing"],
+            &test["acts"][0]["key"],
+            &test["acts"][0]["ask"]
+        ),
         (
             &json!("verb:eero:speedtest"),
-            &json!([{"key": "verb:eero:speedtest", "ask": {"ask": "act", "act": "speedtest"}}])
+            &json!("verb:eero:speedtest"),
+            &json!({"ask": "act", "act": "speedtest"})
         ),
         "the speed test is asked of this daemon, by the verb's words"
     );
     assert_eq!(
         joined(&test["note"]),
         "eero measures the internet from the gateway node"
+    );
+}
+
+#[test]
+fn a_speed_test_says_it_runs_from_its_asking_until_eero_has_its_figures() {
+    let rows = made(&model());
+    let test = named(&rows, "Run a Speed Test");
+    assert_eq!(
+        joined(&test["side"]),
+        "",
+        "no test runs, so its row says nothing of one"
+    );
+    let becomes = &test["acts"][0]["becomes"];
+    assert_eq!(
+        (joined(&becomes["side"]), &becomes["key"], &becomes["acts"]),
+        (
+            "testing".to_owned(),
+            &json!("row:eero:speedtest"),
+            &Value::Null
+        ),
+        "asked, it's drawn testing at once, until this daemon says so"
+    );
+
+    let mut model = model();
+    model.internet.testing_since = Some("2026-11-07T22:54:00Z".into());
+    let rows = made(&model);
+    assert_eq!(
+        joined(&named(&rows, "Run a Speed Test")["side"]),
+        "testing",
+        "while eero runs it, its row says so"
     );
 }
 

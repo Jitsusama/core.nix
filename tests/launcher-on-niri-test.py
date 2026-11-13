@@ -3147,7 +3147,8 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
 
     The shell ran the eero program for each, through niri, and heard nothing when eero refused
     (QEST-20261111-PN2VZC). The daemon now serves them as rows inside the internet and does
-    them itself; its stand-in says each act asked of it in its log.
+    them itself; its stand-in says each act asked of it in its log. Each row reads as it becomes
+    from Return, the speed test testing and the switch off, as the daemon says it does.
     """
     log = shell.log.parent / "eero.log"
     shell.answer("internet")
@@ -3155,9 +3156,9 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
     shell.step_in()
     acts = ["Run a Speed Test", "Optimize for Conferencing and Gaming"]
     shell.launcher_until(lambda shown: shown["rows"][:2] == acts)
-    for row, line, acted in [
-        (acts[0], "speedtest", "acted speedtest"),
-        (acts[1], "set nosqm", "acted sqm off"),
+    for row, line, acted, becomes in [
+        (acts[0], "speedtest", "acted speedtest", "testing"),
+        (acts[1], "set nosqm", "acted sqm off", "off"),
     ]:
         shell.down_to(row)
         shell.normal()
@@ -3167,6 +3168,10 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
             lambda shown: (shown["command"] or {}).get("line") == line  # noqa: B023
         )
         shell.send_key("ret")
+        shell.launcher_until(
+            # Ruff's B023 fears a late binding; the wait ends within this turn of the loop.
+            lambda shown: (shown["selected"] or {}).get("side") == becomes  # noqa: B023
+        )
         # Ruff's B023 fears a late binding; the wait ends within this turn of the loop.
         shell.launcher_until(lambda _: acted in log.read_text(errors="replace"))  # noqa: B023
     shell.close_launcher()

@@ -209,7 +209,7 @@ const SAID: &[(&str, &[&str])] = &[
             "notOnNow",
         ],
     ),
-    ("verb:eero:speedtest", &["note"]),
+    ("verb:eero:speedtest", &["note", "testing"]),
     ("eero:sqm", &["note"]),
 ];
 

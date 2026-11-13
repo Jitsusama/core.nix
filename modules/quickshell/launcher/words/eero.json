@@ -290,7 +290,8 @@
       "verb": "run",
       "glyph": "traffic",
       "said": {
-        "note": "eero measures the internet from the gateway node"
+        "note": "eero measures the internet from the gateway node",
+        "testing": "testing"
       }
     },
     {
