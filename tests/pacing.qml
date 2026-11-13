@@ -603,6 +603,28 @@ QtObject {
             Pacing.drawerJoinsKey(made, "home", true), false);
         check(failures, "another kind is decided by its own makings",
             Pacing.drawerJoinsKey(made, "agents", false), false);
+        // A place's rows are of many kinds: home's people and commands make
+        // theirs in a millisecond, its programs' in 10 to 114, so one of
+        // Slack's came in its key's frame after 49 ms making (2026-11-12).
+        const person = { key: "person:ana@example.org" };
+        const program = { key: "program:slack" };
+        let home = {};
+        for (const making of [0, 1, 0])
+            home = Pacing.drawerMade(home, Pacing.drawerKind("home", person), making);
+        check(failures, "a place's rows are kinds of their own",
+            Pacing.drawerKind("home", person) === Pacing.drawerKind("home", program), false);
+        check(failures, "so a program's first drawer at home comes the frame after",
+            Pacing.drawerJoinsKey(home, Pacing.drawerKind("home", program), false), false);
+        home = Pacing.drawerMade(home, Pacing.drawerKind("home", program), 49);
+        check(failures, "as does one whose own were dear",
+            Pacing.drawerJoinsKey(home, Pacing.drawerKind("home", program), false), false);
+        check(failures, "while a person's still comes in the key's frame",
+            Pacing.drawerJoinsKey(home, Pacing.drawerKind("home", person), false), true);
+        check(failures, "and one place's kind isn't another's",
+            Pacing.drawerKind("home", program) === Pacing.drawerKind("applications", program),
+            false);
+        check(failures, "a row with no key is its place's",
+            Pacing.drawerKind("home", {}), "home");
         for (const making of [9, 13, 7])
             made = Pacing.drawerMade(made, "home", making);
         check(failures, "one whose kind's median reaches 3 ms comes the frame after",

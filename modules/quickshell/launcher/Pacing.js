@@ -154,6 +154,17 @@ function drawerMade(makings, kind, making) {
     return kept;
 }
 
+// What a drawer's makings are kept under: its place and what its row is,
+// by its key's start, since a place holds rows of many kinds. Kept by place
+// alone, home's people and commands, made in a millisecond, brought a
+// program's into its key's frame, Slack's after 49 ms making, and 7 of
+// the 15 that came there that day made in over 3 ms (2026-11-12).
+function drawerKind(place, row) {
+    const key = String(row?.key ?? "");
+    const at = key.indexOf(":");
+    return at > 0 ? `${place} ${key.slice(0, at)}` : place;
+}
+
 function drawerJoinsKey(makings, kind, held) {
     const made = makings[kind] ?? [];
     if (held || made.length === 0) {
