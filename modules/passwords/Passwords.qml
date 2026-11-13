@@ -116,10 +116,12 @@ Provider {
     // What the off row's drawer, and Home's row's, say: why it's off, and
     // what its Return opens meanwhile, where a manager's extension fills in.
     readonly property string offAbout: {
-        const why = String(said.offWhy ?? "");
+        // Sentences, so the place's own words rather than a said run.
+        const words = Words.collection("passwords");
+        const why = String(words.offWhy ?? "");
         if (offManager === null)
             return why;
-        const fills = String(said.offFills ?? "").replace("{manager}", offManager.called)
+        const fills = String(words.offFills ?? "").replace("{manager}", offManager.called)
             .replace("{browser}", offBrowser.name);
         return `${why} ${fills}`;
     }

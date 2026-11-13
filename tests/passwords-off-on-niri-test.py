@@ -27,8 +27,8 @@ LOGS = Path(os.environ["LOGS"])
 OFF = "Passwords Is Off While It's Made Safe"
 # What both drawers say: why it's off, then what Return opens, where 1Password fills in.
 ABOUT = (
-    "Off until agents are fenced off: each runs as you, so any of them could ask it for a"
-    " password. Meanwhile, Return opens Google Chrome, where 1Password's extension fills in"
+    "Off until every agent runs fenced: today each runs as you, so any of them could ask it"
+    " for a password. Meanwhile, Return opens Google Chrome, where 1Password's extension fills in"
     " sign-ins."
 )
 
@@ -56,13 +56,6 @@ def shell() -> Iterator[Shell]:
     started.stop()
 
 
-@pytest.fixture(autouse=True)
-def launcher_closed_after(shell: Shell) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone."""
-    yield
-    shell.close_launcher()
-
-
 def drawer_says(shell: Shell, body: str) -> None:
     """Wait for the drawer to be out, saying this."""
     shell.launcher_until(
@@ -78,10 +71,15 @@ def test_homes_passwords_row_says_why_its_off_in_its_drawer(shell: Shell) -> Non
     shell.launcher_ready()
     shell.down_to("Passwords")
     drawer_says(shell, ABOUT)
+    shell.close_launcher()
 
 
 def test_the_off_row_says_why_its_off_in_its_drawer(shell: Shell) -> None:
-    """The place's one row while it's off says why in its drawer, which its name alone doesn't."""
+    """The place's one row while it's off says why in its drawer, which its name alone doesn't.
+
+    Asked to step into Passwords, the launcher does whether it's open or not, so this holds
+    even where the case before failed with it open.
+    """
     shell.as_account(shell.ipc("collection", "passwords"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["held"] == ["passwords"] and shown["rows"] == [OFF])

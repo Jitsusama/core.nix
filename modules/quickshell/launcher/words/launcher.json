@@ -1057,6 +1057,8 @@
       "glyph": "passwords",
       "ask": "which entry?",
       "empty": "No favourites, and nothing changed lately.",
+      "offWhy": "Off until every agent runs fenced: today each runs as you, so any of them could ask it for a password.",
+      "offFills": "Meanwhile, Return opens {browser}, where {manager}'s extension fills in sign-ins.",
       "said": {
         "copying": "copying {title}'s {detail}\u2026",
         "copied": "copied {title}'s {detail} \u00b7 clears in {seconds} s",
@@ -1067,8 +1069,6 @@
         "away": "the passwords daemon isn't answering",
         "offNote": "use {manager}'s browser extension",
         "offSide": "off",
-        "offWhy": "Off until agents are fenced off: each runs as you, so any of them could ask it for a password.",
-        "offFills": "Meanwhile, Return opens {browser}, where {manager}'s extension fills in sign-ins.",
         "password": "password",
         "code": "one-time code",
         "hidden": "hidden",
