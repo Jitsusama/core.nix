@@ -229,9 +229,13 @@ function arrives(way, to) {
 
 // Down a workspace: off the old one's windows (`was`) the way
 // Routes.off finds, toward its seat, down a column's side to its bottom,
-// and a drop onto the column below it on the new one (`now`), one over a
-// column there and clear of the marks where it can. Standing on none of
-// them, it drops from where it is.
+// and a drop from there straight down onto what's under it on the new one
+// (`now`, Falls.under): a column's top where one is, and clear of the
+// marks where it can be, or the screen's bottom. Never across the air
+// between them, as a cat can't (Joel, 2026-11-13 17:22, by WCJQSG
+// fc3f716a: "it would not be able to drop down near the center of a
+// window below"). Standing on none of them, it drops from where it is.
+// Where it lands, as Falls.under says.
 function down(way, was, now, to) {
     const at = way.at;
     const goal = to.x + at.wide / 2;
@@ -245,23 +249,20 @@ function down(way, was, now, to) {
     if (stops !== null) {
         follows(way, stops, was, null);
     }
-    const below = under(now, way.x, at.wide);
-    let x = onScreen(Math.min(Math.max(way.x, below.left), below.right - at.wide), at);
-    if (!clear(x)) {
-        const sides = [lit.from + lit.each / 4 - at.wide, lit.to - lit.each / 4];
-        x = sides.reduce((most, one) => Math.abs(one - x) < Math.abs(most - x) ? one : most);
-    }
+    const above = { x: way.x, y: -at.tall - at.cell };
+    const onto = Falls.under(above, now, at);
     way.turn = 0;
-    way.facing = Math.sign(goal - (x + at.wide / 2)) || way.facing;
+    way.facing = Math.sign(goal - (way.x + at.wide / 2)) || way.facing;
     // It lets go, falling out of sight to just above the screen's top,
-    // clear of the window it hung on, over to where it falls in, and
-    // from there falls in, so all of its fall that's seen is a fall.
-    Ways.leap(way, { x: way.x, y: -at.tall - at.cell }, 0, "drops");
-    if (Math.abs(x - way.x) > 1e-6) {
-        Ways.leap(way, { x, y: way.y }, 0, "drops");
-    }
-    Ways.leap(way, { x, y: standsOn(below, at) }, 0, "drops");
+    // clear of the window it hung on, and from there falls in, so all of
+    // its fall that's seen is a fall.
+    Ways.leap(way, above, 0, "drops");
+    Ways.leap(way, { x: way.x, y: onto.y }, 0, "drops");
     holds(way, "lands", MarginCat.LANDS);
+    if (onto.kind === "floor") {
+        holds(way, "shakes", Falls.SHAKES);
+    }
+    return Object.assign({}, onto, { how: "stands" });
 }
 
 // Along a route's `stops` (MarginCatRoutes.js) over `now`'s columns from
@@ -465,10 +466,12 @@ function moves(from, to, at) {
     const legs = way.legs.length;
     holds(way, "thinks", at.pause ?? 0);
     if (at.way > 0) {
-        down(way, was, now, to);
-        // Off the top it dropped onto, to a window stacked under another.
-        const stops = (Routes.standing(now, to, at)?.row ?? 0) === 0 ? null
-            : Routes.between(way, to, now, at);
+        const onto = down(way, was, now, to);
+        // Up from the screen's bottom it fell to, or off the top it
+        // dropped onto to a window stacked under another.
+        const tops = (Routes.standing(now, to, at)?.row ?? 0) === 0;
+        const stops = onto.kind === "floor" ? Routes.route(onto, to, now, at)
+            : tops ? null : Routes.between(way, to, now, at);
         if (stops !== null) {
             follows(way, stops, now, at.marks);
         }
