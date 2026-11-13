@@ -6,6 +6,7 @@
   bareNixos,
   holds,
   lib,
+  pkgs,
   self,
   ...
 }:
@@ -283,6 +284,16 @@ in
   # the home realm's node alone, so nothing is heard twice.
   # The node wakes with every session it carries, so it runs in their
   # slice, every realm's alike, rather than among Joel's programs.
+  # The swarm's teams complete in a real zsh, asked of a stand-in node
+  # (tests/completion.zsh).
+  mycelium-completes-its-teams-in-zsh =
+    pkgs.runCommandLocal "mycelium-completes-its-teams-in-zsh" { nativeBuildInputs = [ pkgs.zsh ]; }
+      ''
+        export HOME=$PWD
+        zsh -f ${./tests/completion.zsh} ${./completion.zsh}
+        touch $out
+      '';
+
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
       "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."

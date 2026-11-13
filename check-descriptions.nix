@@ -1326,6 +1326,10 @@
     entry, a stream and a deleted file, and mpv started as Resume starts it plays on from there,
     and as Play From the Start does, from its start
   '';
+  mycelium-completes-its-teams-in-zsh = ''
+    mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
+    team after an act, an act after a team, and nothing for the words said to one
+  '';
   mycelium-links-what-a-machine-names = ''
     a workstation in a realm runs mycelium's node there, dialling each machine it names, as a user
     service on Linux signing in with the agents' key, or the key its realm names, and an agent on a
