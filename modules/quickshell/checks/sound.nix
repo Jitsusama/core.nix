@@ -29,6 +29,12 @@
         property string title: ""
         property string artist: ""
       '';
+      # The machine daemon's acts, as Sound's down row asks them, kept for
+      # the case to read rather than carried out.
+      watchers = singleton "Watchers.qml" ''
+        property var asked: []
+        function act(said, then) { asked = asked.concat([said]); }
+      '';
     in
     pkgs.runCommandLocal "sound-hears-only-what-can-be-heard" { } ''
       mkdir -p launcher runtime && chmod 700 runtime
@@ -44,6 +50,7 @@
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       cp ${niri} Niri.qml
       cp ${music} Music.qml
+      cp ${watchers} Watchers.qml
       cp ${../../../tests/sound.qml} shell.qml
       cp ${../../../tests/sound-served.qml} served.qml
       cp ${../../../tests/lib/Expect.js} Expect.js

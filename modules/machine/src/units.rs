@@ -30,9 +30,10 @@ const RUNNING: [&str; 5] = [
 const ASKING: Duration = Duration::from_secs(1);
 
 /// The units the shell may restart, each the daemon behind a row that
-/// offers to start it when it isn't answering: Spend's watch, and the
-/// account's disk guard, which Disk's Start the Guard starts.
-pub const RESTARTABLE: [&str; 2] = ["spend-watch.service", "disk-guard.service"];
+/// offers to start it when it isn't answering: Spend's watch, the
+/// account's disk guard, which Disk's Start the Guard starts, and the
+/// sound daemon, which Sound's one row starts while it's down.
+pub const RESTARTABLE: [&str; 3] = ["spend-watch.service", "disk-guard.service", "sound.service"];
 
 /// How long systemd is given to queue the restart before the act gives up.
 const QUEUEING: Duration = Duration::from_secs(10);
@@ -168,6 +169,9 @@ mod tests {
     #[test]
     fn only_a_unit_named_may_be_restarted() {
         assert_eq!(allowed("spend-watch.service"), Ok(()));
+        // Sound's daemon, whose one row says it isn't answering and
+        // starts it on Return.
+        assert_eq!(allowed("sound.service"), Ok(()));
         assert_eq!(allowed("").map_err(|no| no.code), Err("bad-act"));
         assert_eq!(
             allowed("sshd.service").map_err(|no| no.code),

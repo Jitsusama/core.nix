@@ -158,6 +158,17 @@ ShellRoot {
         expect("the daemon down, its row's drawer says so and what it serves",
             drawer?.title === Words.name("sound:down") && facts.join("; ") === wanted.join("; "),
             `${drawer?.title}: ${facts.join("; ")}`);
+        // And its Return starts the daemon again, through the machine
+        // daemon, as Spend's down row starts its watch: every row does
+        // something on Return (Joel, 2026-10-26).
+        const row = sound.downRow();
+        Watchers.asked = [];
+        row.run?.();
+        expect("the daemon down, its row's Return starts it again",
+            Words.verb("sound:down") === "start" && row.verb === "start"
+            && JSON.stringify(Watchers.asked)
+                === JSON.stringify([{ act: "restart-unit", unit: "sound.service" }]),
+            `${row.verb}: ${JSON.stringify(Watchers.asked)}`);
     }
 
     // Shut, a device's parts asked for again with nothing moved, as its

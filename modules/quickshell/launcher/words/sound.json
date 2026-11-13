@@ -126,7 +126,8 @@
     {
       "id": "sound:down",
       "in": "sound",
-      "name": "The Sound Daemon"
+      "name": "The Sound Daemon",
+      "verb": "start"
     },
     {
       "id": "sound:down:serves",
