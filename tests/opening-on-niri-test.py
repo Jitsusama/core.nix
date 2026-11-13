@@ -73,6 +73,13 @@ UNANSWERED_MS = 900
 # How long a kept opening's sources are woken for in a frame (Launcher.qml's wakeBudget), less
 # the millisecond its times are rounded by.
 WAKE_BUDGET_MS = 7
+# How long niri is held as an opening's sources wake, how often that's tried, and the longest
+# a slice may wait after the one before: the fallback's 33 ms, with room for a busy builder.
+WAKE_HELD = timedelta(milliseconds=600)
+WAKES_HELD = 3
+WAKE_WAITS_MS = 300
+# What the shell says once a kept opening is filled in, before its sources wake.
+FILLED_SAID = b"launcher: filled the opening in "
 
 # How long a window opening is given to reach the closed shell, which hears niri's events
 # within a few milliseconds of each.
@@ -1085,6 +1092,44 @@ def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     assert all(each["took"] >= WAKE_BUDGET_MS for each in slices[:-1]), (
         f"a slice ended before its budget: {slices}"
     )
+
+
+def test_a_kept_openings_sources_wake_though_no_frame_comes(shell: Shell) -> None:
+    """Held from drawing as its sources wake, a kept opening wakes the rest without a frame.
+
+    Each slice waited for the frame drawing the one before, and Joel's at 04:56:30 waited
+    6,962 ms for one niri never asked for, until a key drew it (2026-11-13). Niri is held from
+    once the opening says it's filled in, so no frame comes while the rest wake; tried a few
+    times, as one that woke whole before niri was held shows nothing.
+    """
+
+    def woken(nth: object) -> Json:
+        woke: list[Json] = []
+
+        def slept(_: Json) -> bool:
+            woke[:] = [each for each in openings(shell) if each.get("nth") == nth]
+            return bool(woke) and "slices" in woke[0]
+
+        shell.launcher_until(slept)
+        return woke[0]
+
+    for _ in range(WAKES_HELD):
+        shell.launcher_until(lambda shown: shown.get("kept"))
+        timed = latest(openings(shell))
+        since = shell.mark()
+        told("toggle")
+        deadline = time.monotonic() + WAKE_HELD.total_seconds()
+        while FILLED_SAID not in shell.log.read_bytes()[since:]:
+            assert time.monotonic() < deadline, "the opening never said it was filled in"
+            time.sleep(CLOSING_READ)
+        with launcher_on_niri.niri_held():
+            # Held for the span measured, as Joel's niri held its frame, not a wait for an end.
+            time.sleep(WAKE_HELD.total_seconds())
+        woke = woken(filled_after(shell, timed)["nth"])
+        assert cast("int", woke["longestWake"]) < WAKE_WAITS_MS, (
+            f"a slice waited for a frame niri held: {woke['slices']}"
+        )
+        shell.close_launcher()
 
 
 def test_the_closed_launcher_draws_nothing_as_windows_change(shell: Shell) -> None:
