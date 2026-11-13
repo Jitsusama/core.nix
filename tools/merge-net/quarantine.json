@@ -132,8 +132,7 @@
     "subtests": [
       "test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears",
       "test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent",
-      "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does"
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
     "test": "vm-desktop-launcher-reads-mail"
   },

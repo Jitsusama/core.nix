@@ -102,16 +102,9 @@ Provider {
             lasted: Interfaces.lasted,
             named: programNamed
         });
-        return {
-            thing: facts.length > 0,
-            drawer: {
-                eyebrow: words.eyebrow ?? "",
-                eyebrowNames: true,
-                title: Words.name("session:awake"),
-                facts: facts.map(fact => ({ label: Words.name(fact.id), value: fact.value })),
-                body: ""
-            }
-        };
+        const drawer = Awake.drawer(facts,
+            { eyebrow: words.eyebrow, title: Words.name("session:awake") }, Words.name);
+        return drawer === null ? {} : { thing: true, drawer };
     }
 
     // The words for a day a file's row says (FileFacts.js), so Last Slept

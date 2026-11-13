@@ -101,6 +101,21 @@ function run(failures, fromRoot) {
         ["never on the charger \u00b7 it only locks", "never \u00b7 it only locks", "never",
             "hibernates 5 min after the screens go off", "halts 5 min after the screens go off",
             "reboots without its firmware 5 min after the screens go off", ""]);
+    // logind answering with nothing Keep Awake shows, as a machine with
+    // no idle action, no other locks and no sleep yet does, gives it no
+    // drawer, so the row is no thing held for one (80ECO2's bisect of
+    // vm-desktop-launcher-reads-mail, ba28c5c1).
+    const head = { eyebrow: "Machine", title: "Keep Awake" };
+    const label = id => ({ "awake:idle-sleep": "Idle Sleep" })[id] ?? id;
+    machine("logind saying nothing to show gives no drawer",
+        Awake.drawer(Awake.facts({ inhibitors: [] }, awakeWords, awakeTold(false)), head, label),
+        null);
+    machine("logind saying something gives its drawer, each fact by its name",
+        Awake.drawer(Awake.facts(idleNow, awakeWords, awakeTold(false)), head, label), {
+            eyebrow: "Machine", eyebrowNames: true, title: "Keep Awake",
+            facts: [{ label: "Idle Sleep", value: "suspends 5 min after the screens go off" }],
+            body: ""
+        });
     machine("an error with no name kept", Power.errorOf(-71), "\u221271");
     return asked;
 }
