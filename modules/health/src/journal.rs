@@ -32,11 +32,6 @@ pub const UNIT_STARTED: &str = "39f53479d3a045ac8e11786248231fbf";
 /// systemd's message for a unit it starts to stop.
 pub const UNIT_STOPPING: &str = "de5b426a63be47a7b6ac3eaac82e2f6f";
 
-/// What `journalctl --grep` follows of those two: a service's, leaving the
-/// scopes each command an agent runs is started in, about two thousand an
-/// hour.
-const A_SERVICE: &str = r"^(Stopping|Started) [^ ]+\.service\b";
-
 /// What the launcher says once its rows are made after the shell starts,
 /// the moment it's ready to use: "launcher: home and 7 places kept as the
 /// shell started", or with no places, as `journalctl --grep` finds it.
@@ -269,11 +264,13 @@ pub fn followed() -> Vec<Vec<String>> {
         ],
         // A service stopping and started, by the machine's systemd or
         // Joel's: the two a restart is timed between, and the start of the
-        // disk's password and its opening.
+        // disk's password and its opening. Every unit's are followed, since
+        // systemd names a service by its description where it has one;
+        // the scopes an agent's commands start in, about two thousand an
+        // hour, come as information and leave the day as they come.
         vec![
             format!("MESSAGE_ID={UNIT_STOPPING}"),
             format!("MESSAGE_ID={UNIT_STARTED}"),
-            format!("--grep={A_SERVICE}"),
         ],
         // The launcher ready, after each start of the shell, and how long
         // it took to show each thing Joel did, which it says as information.
@@ -393,6 +390,23 @@ mod tests {
             entry.message
         );
         assert!(entry.kernel, "the kernel's transport is the kernel's");
+    }
+
+    #[test]
+    fn a_service_stopping_or_started_is_followed_whatever_its_description_says() {
+        // systemd says a service with a description by it, as in "Stopping
+        // Quickshell, which draws the launcher...", so a follower that
+        // greps the message for a unit's name hears no restart of one.
+        let stopping = format!("MESSAGE_ID={UNIT_STOPPING}");
+        let follower = followed()
+            .into_iter()
+            .find(|asked| asked.contains(&stopping))
+            .expect("a service stopping is followed");
+        assert_eq!(
+            follower,
+            [stopping, format!("MESSAGE_ID={UNIT_STARTED}")],
+            "a service's stop and start are followed only where the message names its unit"
+        );
     }
 
     #[test]
