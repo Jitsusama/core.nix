@@ -3329,6 +3329,82 @@ def test_a_held_arrow_makes_one_drawer_once_it_rests(shell: Shell) -> None:
             shell.close(window)
 
 
+def drawer_trace(said: list[str]) -> list[str]:
+    """Give each drawer followed, and each showing as what's typed, selected and drawn beside."""
+    trace = []
+    for one in said:
+        if one.startswith("drawer follows "):
+            trace.append(one)
+        elif one.startswith("showing "):
+            shown = json.loads(one[len("showing ") :])
+            drawer = shown["drawer"]
+            trace.append(
+                f"{shown['typed']!r} on {(shown['selected'] or {}).get('name')!r}: drawer"
+                f" {'out' if drawer['out'] else 'in'} {drawer['title']!r} for {drawer['row']!r}"
+                f" timed {drawer['timed']}"
+            )
+    return trace
+
+
+def test_letters_typed_quicker_than_the_rest_make_one_drawer(shell: Shell) -> None:
+    """Letters typed faster than they rest make the drawer once, for where the typing stops.
+
+    Joel types letters 100 to 150 ms apart, and each letter that moved the selection had its
+    drawer made right after its frame, so the next letter waited behind it: "ca" 198 ms behind
+    Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
+    A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
+    one shows it; each letter makes its row again, and its drawer was made again each time.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    try:
+        shell.on_find()
+        # Home's first row's drawer follows as it opens, before any letter.
+        shell.held_still()
+        since = shell.mark()
+        shell.send_chars("foot")
+        shell.launcher_until(lambda shown: shown["typed"] == "foot")
+        shell.reported("drawer follows program:foot", lambda _: True, since)
+        shell.held_still()
+        said, _ = shell.said_since(since)
+        followed = [report for report in said if report.startswith("drawer follows ")]
+        assert followed == ["drawer follows program:foot"], (
+            f"a drawer was made between letters: {drawer_trace(said)}"
+        )
+    finally:
+        shell.close_launcher()
+
+
+def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -> None:
+    """While letters rest, the drawer out names the row selected rather than the one before.
+
+    The drawer waits for the letters before it's made, and kept the row before's facts beside
+    the new highlight all the while, so typing "calend" would show Chrome's drawer by Google
+    Calendar for the whole word (VKCF3Z, c842849d). Typing a program's name from home moves
+    the selection from Now, whose drawer is out, to the program, whose drawer never joins its
+    key's frame, and before that drawer follows the drawer out must say the program's name.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    try:
+        shell.on_find()
+        shell.launcher_until(lambda shown: shown["drawer"]["out"] and selecting("Now", shown))
+        shell.held_still()
+        since = shell.mark()
+        shell.send_chars("foot")
+        shell.reported("drawer follows program:foot", lambda _: True, since)
+        said, _ = shell.said_since(since)
+        before = said[: said.index("drawer follows program:foot")]
+        shown = [json.loads(one[len("showing ") :]) for one in before if one.startswith("showing ")]
+        on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
+        assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
+        assert on_foot[-1]["drawer"]["title"] == "Foot", (
+            f"the drawer named another row: {drawer_trace(said)}"
+        )
+    finally:
+        shell.close_launcher()
+
+
 def test_an_opening_is_timed_from_the_chord_that_asked_for_it(shell: Shell) -> None:
     """An opening is timed from the chord that asked for it, as launcher-say says it ran.
 
