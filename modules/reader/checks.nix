@@ -427,7 +427,7 @@ onLinux {
         reader --keys > keys 2>&1 || { cat keys; exit 1; }
         grep -q 'Close the page' keys || { echo "the reader didn't run: $(cat keys)"; exit 1; }
         told=$(if [ -e said ]; then cat said; else echo 'nothing said'; fi)
-        [ "$told" = "add reader --keys" ] || { echo "the reader said: $told"; exit 1; }
+        [ "$told" = "add reader -- --keys" ] || { echo "the reader said: $told"; exit 1; }
         touch $out
       '';
 }

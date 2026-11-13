@@ -17,8 +17,10 @@ pub mod flags;
 pub mod help;
 pub mod ink;
 pub mod layout;
+pub mod time;
 pub mod wait;
 
+use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
@@ -172,7 +174,10 @@ pub fn run(
                 Ink::decide(environment.stderr, Colour::Auto, environment),
                 None,
             );
-            let stderr = failure.text(&pen, Room::of_stderr(environment), false);
+            let stderr = for_the_journal(
+                failure.text(&pen, Room::of_stderr(environment), false),
+                environment,
+            );
             return Ending {
                 exit: failure.exit,
                 stdout,
@@ -210,7 +215,10 @@ pub fn run(
             let said = if context.shared.format.is_json() {
                 format!("{}\n", failure.json(verbose))
             } else {
-                failure.text(&context.err, context.err_room, verbose)
+                for_the_journal(
+                    failure.text(&context.err, context.err_room, verbose),
+                    environment,
+                )
             };
             (failure.exit, said)
         }
@@ -227,6 +235,19 @@ pub fn run(
         stdout,
         stderr,
     }
+}
+
+/// A failure's text as the journal reads an error, where stderr is the
+/// journal's: each line opens with `<3>`, sd-daemon(3)'s mark for one, so
+/// `journalctl -p err` finds a daemon's failures. Elsewhere it's as it was.
+fn for_the_journal(said: String, environment: &Environment) -> String {
+    if !environment.journal {
+        return said;
+    }
+    said.lines().fold(String::new(), |mut marked, line| {
+        let _ = writeln!(marked, "<3>{line}");
+        marked
+    })
 }
 
 /// The body's outcome, a panic in it a bug whose words are the panic's.
@@ -338,6 +359,19 @@ mod tests {
         });
         let value: Value = serde_json::from_str(&ending.stderr).expect("the error is JSON");
         assert_eq!(value["kind"], "not-found");
+    }
+
+    #[test]
+    fn a_failure_in_the_journal_says_its_an_error_on_each_line() {
+        let mut journal = Environment::of([false; 3], &[]);
+        journal.journal = true;
+        let ending = run(&help(), "1.0", &journal, vec!["go".to_owned()], |_| {
+            Err(Failure::new(Exit::NotFound, "no such row").try_this("thing go"))
+        });
+        assert_eq!(
+            ending.stderr,
+            "<3>\u{2715} no such row\n<3>  try  thing go\n"
+        );
     }
 
     #[test]

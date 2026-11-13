@@ -51,11 +51,6 @@
     "kit"
     "helps"
   ];
-  chrome-open-tabs = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   chrome-pack-extension = [
     "kit"
     "exits"
@@ -129,11 +124,6 @@
     "helps"
   ];
   ergodox = [ "helps" ];
-  file-preview = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   git-engine = [
     "kit"
     "exits"
@@ -274,16 +264,6 @@
     "kit"
     "helps"
   ];
-  open-now = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  open-with = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   option-rom-check = [ "helps" ];
   pain-points = [
     "kit"
@@ -355,11 +335,6 @@
   quickshell-starts-warm = [ "helps" ];
   reader = [
     "kit"
-    "helps"
-  ];
-  recent-files = [
-    "kit"
-    "exits"
     "helps"
   ];
   record-window = [

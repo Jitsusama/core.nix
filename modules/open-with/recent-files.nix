@@ -3,24 +3,28 @@
 # beside it (src/bin/recent-files.rs says how it's used), with open-now,
 # which says what a program has open now for the launcher to read
 # (src/bin/open-now.rs). Their tests are package.nix's, which builds the
-# whole crate.
+# whole crate. The source is cut from the folder holding the terminal kit
+# too, as package.nix's is.
 {
   lib,
   rustPlatform,
   pkg-config,
   glib,
 }:
-rustPlatform.buildRustPackage (_finalAttrs: {
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "recent-files";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${finalAttrs.src.name}/open-with";
   cargoLock.lockFile = ./Cargo.lock;
   cargoBuildFlags = [
     "--bin"

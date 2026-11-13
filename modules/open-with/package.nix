@@ -3,7 +3,9 @@
 # description for the portal, its D-Bus service and the account's unit that
 # runs it, which asks the shell through the given Quickshell's qs; and
 # recent-files, which adds to the desktop's list of files opened lately and
-# reads it, through GLib as GTK does.
+# reads it, through GLib as GTK does. The crate takes its shape from the
+# terminal kit (../terminal-kit), so the source is cut from the folder
+# holding both.
 {
   lib,
   rustPlatform,
@@ -13,17 +15,20 @@
   neovim-unwrapped,
   quickshell,
 }:
-rustPlatform.buildRustPackage (_finalAttrs: {
+rustPlatform.buildRustPackage (finalAttrs: {
   pname = "open-with";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${finalAttrs.src.name}/open-with";
   cargoLock.lockFile = ./Cargo.lock;
 
   nativeBuildInputs = [ pkg-config ];
