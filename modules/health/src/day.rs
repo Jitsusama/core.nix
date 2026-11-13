@@ -13,6 +13,7 @@ use crate::busy::Busy;
 use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
+use crate::kernel;
 use crate::launcher::{self, Launcher};
 use crate::launches::Launches;
 use crate::memory::Memory;
@@ -41,19 +42,6 @@ const SECURITY: [&str; 12] = [
     "unix_chkpwd",
     "login",
     "greetd",
-];
-
-/// What the kernel says only as information that's still a device going
-/// wrong, or going away: a USB device dropped or reset, a PCI Express link's
-/// corrected errors, a processor throttled, firmware that wouldn't load.
-/// Each is said in full in the kernel's own words, and matched as written.
-const DEVICE_EVENTS: [&[&str]; 6] = [
-    &["USB disconnect"],
-    &["reset ", " USB device number "],
-    &["AER: ", " error"],
-    &["throttled"],
-    &["Direct firmware load"],
-    &["failed to load firmware"],
 ];
 
 /// Which kind of thing a line is about, as `health` groups them.
@@ -264,7 +252,7 @@ impl Day {
             return;
         }
         let event = entry.priority > 4 && !entry.restart;
-        if event && !(entry.kernel && is_device_event(&entry.message)) {
+        if event && !(entry.kernel && kernel::is_device_event(&entry.message)) {
             return;
         }
         let (name, kind) = named(entry);
@@ -468,37 +456,6 @@ impl std::ops::Add for Badness {
     }
 }
 
-/// Whether a kernel line said as information is a device's event.
-fn is_device_event(message: &str) -> bool {
-    DEVICE_EVENTS
-        .iter()
-        .any(|words| words.iter().all(|word| message.contains(word)))
-}
-
-/// Who a kernel line is from, by what it opens with once the openings that
-/// say nothing of it are passed: a Mac's kernel folds repeats into
-/// `3 duplicate reports for Sandbox: ...`, and its display drivers open
-/// with their source file and line, `[AppleDCPDPTXController.cpp::371] ...`.
-fn kernel_speaker(message: &str) -> String {
-    let message = [" duplicate report for ", " duplicate reports for "]
-        .iter()
-        .find_map(|folded| message.split_once(folded))
-        .filter(|(count, _)| count.chars().all(|c| c.is_ascii_digit()))
-        .map_or(message, |(_, said)| said);
-    // A Mac's System Policy, refusing a program, is the one speaker whose
-    // name is two words.
-    if message.starts_with("System Policy:") {
-        return "System Policy".to_owned();
-    }
-    let opening = message.split_whitespace().next().unwrap_or("kernel");
-    let driver = opening
-        .strip_prefix('[')
-        .and_then(|place| place.split_once("::"))
-        .and_then(|(file, _)| file.rsplit_once('.'))
-        .map(|(driver, _)| driver);
-    sign::signature(driver.unwrap_or_else(|| opening.trim_end_matches(':')))
-}
-
 /// The thing an entry is about, and its kind: a crashed program by its
 /// name, a kernel line by the driver or device it's from (the audit's and
 /// a Mac's refusals are security's), and anything else by what said it, a
@@ -508,15 +465,7 @@ fn named(entry: &Entry) -> (String, Kind) {
         return (program.clone(), Kind::Programs);
     }
     if entry.kernel {
-        let device = kernel_speaker(&entry.message);
-        // Linux's kernel refuses through the audit log; a Mac's through its
-        // Sandbox and System Policy, which Linux's never open with.
-        let kind = if matches!(device.as_str(), "audit" | "Sandbox" | "System Policy") {
-            Kind::Security
-        } else {
-            Kind::Devices
-        };
-        return (device, kind);
+        return kernel::named(&entry.message);
     }
     let kind = if SECURITY.contains(&entry.thing.as_str()) {
         Kind::Security
