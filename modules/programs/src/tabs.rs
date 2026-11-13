@@ -21,13 +21,10 @@ use serde_json::{Value, json};
 
 use super::{Daemon, Run, Shared, agents, bookmarks, due, keep, lock, programs, start};
 
-/// Whether a watch wants the tabs' rows, as a whole place.
+/// Whether a watch wants the tabs' rows, as a whole place: of it, or of
+/// every row.
 pub fn watched(daemon: &Daemon) -> bool {
-    daemon.watches.iter().any(|watch| {
-        watch.keys.is_none()
-            && watch.place.as_deref() == Some(PLACE)
-            && watch.kinds.iter().any(|kind| kind == "row")
-    })
+    daemon.served.watches("row", PLACE)
 }
 
 /// Whether what Chrome has open is wanted for a place's rows: the tabs',

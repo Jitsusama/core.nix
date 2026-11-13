@@ -14,7 +14,7 @@ use std::sync::Arc;
 use programs::program_rows;
 use serde_json::Value;
 
-use super::{Daemon, Shared, agents, follow, keep, lock, programs, tabs};
+use super::{Daemon, Shared, agents, follow, keep, lock, programs, rows_watched, tabs};
 
 /// The one watch held of the windows daemon.
 const WATCH: &str = concat!(
@@ -48,7 +48,7 @@ fn windows_changed(shared: &Shared, said: &Value) {
     let mut daemon = lock(&shared.daemon);
     follow::records(daemon.windows.get_or_insert_default(), said);
     if watched(&daemon) {
-        make(shared, &mut daemon, &[]);
+        make(shared, &mut daemon);
     }
     if tabs::watched(&daemon) {
         tabs::make(shared, &mut daemon);
@@ -58,32 +58,18 @@ fn windows_changed(shared: &Shared, said: &Value) {
 /// Whether a watch wants Programs' rows: one of the `row` kind whole, of
 /// their place or none, or naming one of them.
 pub fn watched(daemon: &Daemon) -> bool {
-    daemon.watches.iter().any(|watch| match &watch.keys {
-        Some(keys) => keys.iter().any(|key| key.starts_with("row:programs:")),
-        None => {
-            watch
-                .place
-                .as_deref()
-                .is_none_or(|place| place == "programs")
-                && watch.kinds.iter().any(|kind| kind == "row")
-        }
-    })
+    rows_watched(daemon, "programs")
 }
 
 /// Makes the rows again from the entries, read once until a folder of them
 /// changes, and the windows held, and keeps what changed, telling each
-/// watch only the rows that read differently and those gone. `also` names
-/// what a watch about to be held shows.
-pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
+/// watch only the rows that read differently and those gone, the hidden
+/// programs the settings name shown too.
+pub fn make(shared: &Shared, daemon: &mut Daemon) {
     if daemon.catalogue.is_none() {
         daemon.catalogue = Some(programs(shared, daemon, None));
     }
-    let shown: Vec<String> = daemon
-        .watches
-        .iter()
-        .flat_map(|watch| watch.shown.iter().cloned())
-        .chain(also.iter().cloned())
-        .collect();
+    let shown = daemon.shown.clone();
     let windows = daemon.windows.iter().flat_map(BTreeMap::values);
     let opened = program_rows::opened(windows, &agents::windows(daemon));
     let rows = program_rows::rows(

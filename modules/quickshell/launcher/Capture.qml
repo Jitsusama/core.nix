@@ -429,7 +429,7 @@ Provider {
         id: ready
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
         place: "taken"
-        watching: ({ folders: provider.takenIn })
+        settings: ({ folders: provider.takenIn })
         ahead: provider.takenWanted !== "" ? [provider.takenWanted] : []
         make: (row, key) => provider.servedTaken(row, key)
         drawn: provider.launcher?.open ?? false

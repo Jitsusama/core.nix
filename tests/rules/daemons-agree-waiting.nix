@@ -45,7 +45,6 @@
     "speaks"
   ];
   people = [ "speaks" ];
-  programs = [ "speaks" ];
   screen-text = [
     "held"
     "shown"

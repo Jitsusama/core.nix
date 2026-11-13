@@ -60,6 +60,13 @@ Every ask carries an `id`, which each answer to it repeats.
   `unwatch` ends it, as closing the socket does.
 - `health` answers the daemon's state, and each of its sources' state with
   its reason, where every other line says the state's word alone.
+- `settings`, for a daemon whose rows are made of something the shell
+  knows, as Programs' are of the hidden programs Joel lists and Capture's
+  of the folders shots land in: each field named replaces the one before
+  and is held until the next, and it answers every setting held. The shell
+  says it before its watch and again as it changes. It's the daemon's, not
+  a watch's, so every watch is told the same rows; with two watchers, the
+  last to say a field wins it for both.
 
 A record is `{"key": "<kind>:<id>", "kind": ..., ...}`: an identity key, and
 each field as the [glossary][glossary] names it. Records hold facts, never
@@ -68,6 +75,13 @@ the words the shell draws them in. An ask the daemon doesn't know answers
 hold `unknown-kind`. The shell's side is [`Daemon.qml`][client]; a daemon
 that follows another's records uses daemon-serve's `watch` module, and a
 program asking one uses [daemon-client][daemon-client].
+
+A daemon that reads only what's asked for, as Programs makes a preview
+once it's got, hands daemon-serve a `fresh` that reads what each get, list
+or watch names before it's answered, and hands what it read on like any
+other change, so no answer says what a watch wasn't told. What else it
+counts joins health through `health_too`, never in place of daemon-serve's
+own fields, which the check reads alike for every daemon.
 
 ## When a Daemon Doesn't Agree Yet
 

@@ -15,9 +15,8 @@ fn captures_rows_are_served_as_things_are_taken_and_whole_once_ahead() {
     let mut client = running.client();
     let shots = running.path("shots").to_string_lossy().into_owned();
     let first = format!("row:taken:{shots}/2026-11-10 09-00-00.png");
-    client.ask(&json!({
-        "id": 1, "ask": "watch", "kind": "row", "place": "taken", "folders": [shots],
-    }));
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [shots]}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "taken"}));
     let row = client.changed(&first);
     assert_eq!(
         row["row"]["name"], "2026-11-10 09-00-00.png",
@@ -79,9 +78,8 @@ fn what_was_taken_is_searched_newest_first_past_recents_nine() {
             .set_modified(since + Duration::from_secs(at))
             .unwrap();
     }
-    client.ask(&json!({
-        "id": 1, "ask": "watch", "kind": "row", "place": "taken", "folders": [shots],
-    }));
+    client.ask(&json!({"id": "settings", "ask": "settings", "folders": [shots]}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "taken"}));
     for at in 1..=11 {
         let name = format!("zz {at:02}.png");
         std::fs::rename(apart.join(&name), running.path(&format!("shots/{name}"))).unwrap();

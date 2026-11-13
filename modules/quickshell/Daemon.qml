@@ -53,6 +53,16 @@ Scope {
     // `{ listed: true }` for only those a source lists, so a kind with
     // thousands of records holds only the few shown with nothing typed.
     property var watching: ({})
+    // What the rows the daemon makes are made of, as Programs' are of
+    // the hidden programs it lists all the same: said in a settings ask
+    // before each watch and again as it changes, and held by the daemon
+    // until the next (docs/daemons.md, Settings). Null says none.
+    property var settings: null
+    onSettingsChanged: settle()
+    function settle() {
+        if (settings !== null)
+            tell(Object.assign({ id: "settings", ask: "settings" }, settings));
+    }
     // The keys to watch ahead, as the shell is about to need them; each
     // change sends the watch again, which replaces the one before, and
     // emptied it's unwatched, so a daemon reading something only while
@@ -220,9 +230,11 @@ Scope {
         wire.flush();
     }
 
-    // Once connected: hello, every record of its kind, and those ahead.
+    // Once connected: hello, what its rows are made of, every record of
+    // its kind, and those ahead.
     function greet() {
         tell({ id: "hello", ask: "hello", version: 1, client: "shell" });
+        settle();
         if (watched)
             watchAll();
         watchAhead();

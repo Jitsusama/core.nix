@@ -31,6 +31,8 @@ Scope {
     property var beside: []
     // What else narrows the watch, as the daemon reads it.
     property var watching: ({})
+    // What the daemon makes the rows of, held until it changes, as Daemon.qml's settings says.
+    property var settings: null
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
@@ -111,6 +113,7 @@ Scope {
             socket: ready.socket
             kind: ["row"].concat(ready.beside)
             watching: Object.assign({ place: ready.place }, ready.watching)
+            settings: ready.settings
             answersWhole: true
             keptThroughGap: ready.keptThroughGap
             live: ready.live

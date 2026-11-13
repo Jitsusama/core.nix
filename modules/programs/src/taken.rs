@@ -12,7 +12,7 @@ use programs::taken_rows::{self, Placing, Taken};
 use ready_rows::fuzzy::{Item, Typed, runs};
 use serde_json::{Map, Value, json};
 
-use super::{Daemon, Run, Shared, keep, lock, read_named, sources_of};
+use super::{Daemon, Run, Shared, keep, keys_watched, lock, read_named, rows_watched, sources_of};
 
 /// The place these rows are of.
 pub const PLACE: &str = "taken";
@@ -62,12 +62,7 @@ fn path_of(key: &str) -> Option<&str> {
 /// Whether a watch wants Capture's rows: of their place, whole, or naming
 /// one of them.
 pub fn watched(daemon: &Daemon) -> bool {
-    daemon.watches.iter().any(|watch| match &watch.keys {
-        Some(keys) => keys.iter().any(|key| path_of(key).is_some()),
-        None => {
-            watch.place.as_deref() == Some(PLACE) && watch.kinds.iter().any(|kind| kind == "row")
-        }
-    })
+    rows_watched(daemon, PLACE)
 }
 
 /// Reads what file-preview says of each row these keys name, as the shell
@@ -83,18 +78,7 @@ pub fn ahead(shared: &Shared, keys: &[String]) {
         return;
     }
     read_named(shared, &previews);
-    make(shared, &mut lock(&shared.daemon), &[]);
-}
-
-/// The folders Capture's watches take their rows from, and `also`.
-fn folders(daemon: &Daemon, also: &[String]) -> Vec<String> {
-    daemon
-        .watches
-        .iter()
-        .filter(|watch| watch.place.as_deref() == Some(PLACE))
-        .flat_map(|watch| watch.folders.iter().cloned())
-        .chain(also.iter().cloned())
-        .collect()
+    make(shared, &mut lock(&shared.daemon));
 }
 
 /// Everything the list held says was taken.
@@ -116,24 +100,19 @@ fn usual(shared: &Shared) -> String {
 
 /// Makes the rows again from the list held and the previews read, and
 /// keeps what changed, telling each watch only the rows that read
-/// differently and those gone. `also` names the folders a watch about to
-/// be held takes them from. With no words handed, none is made. A thing
+/// differently and those gone, from the folders the settings name. With
+/// no words handed, none is made. A thing
 /// a search found past the nine (`search`) is made whole too while it's
 /// ahead, beside them and with no `order`, so the shell's copy of it
 /// takes its drawer whole without it joining Recent's list.
-pub fn make(shared: &Shared, daemon: &mut Daemon, also: &[String]) {
+pub fn make(shared: &Shared, daemon: &mut Daemon) {
     let Some(words) = &shared.taken_words else {
         return;
     };
-    let folders = folders(daemon, also);
+    let folders = daemon.folders.clone();
     let taken = listed(daemon);
-    let ahead: Vec<&str> = daemon
-        .watches
-        .iter()
-        .filter_map(|watch| watch.keys.as_ref())
-        .flatten()
-        .filter_map(|key| path_of(key))
-        .collect();
+    let watched = keys_watched(daemon);
+    let ahead: Vec<&str> = watched.iter().filter_map(|key| path_of(key)).collect();
     let held = &daemon.held;
     let shown = |path: &str| -> (Option<Value>, bool) {
         let key = format!("preview:{path}");
@@ -184,7 +163,7 @@ pub fn search(shared: &Shared, daemon: &Daemon, id: &Value, words: &str, most: u
     };
     let typed = Typed::of(words);
     let taken = listed(daemon);
-    let folders = folders(daemon, &[]);
+    let folders = daemon.folders.clone();
     let usual = usual(shared);
     let placing = Placing {
         home: &shared.home,

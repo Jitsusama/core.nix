@@ -38,10 +38,7 @@ fn changed(shared: &Arc<Shared>, keys: &[String]) {
         let named = {
             let mut daemon = lock(&shared.daemon);
             daemon.stale[at] = true;
-            daemon
-                .watches
-                .iter()
-                .any(|watch| watch.keys.as_ref().is_some_and(|keys| keys.contains(&key)))
+            daemon.served.keys_watched().contains(&key)
                 || (tabs::kitty(shared) == Some(at) && tabs::watched(&daemon))
         };
         if named {

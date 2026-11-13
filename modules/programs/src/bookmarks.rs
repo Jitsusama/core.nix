@@ -12,13 +12,10 @@ use programs::bookmark_rows::{self, PLACE};
 
 use super::{Daemon, Shared, keep};
 
-/// Whether a watch wants the bookmarks' rows, as a whole place.
+/// Whether a watch wants the bookmarks' rows, as a whole place: of it, or
+/// of every row.
 pub fn watched(daemon: &Daemon) -> bool {
-    daemon.watches.iter().any(|watch| {
-        watch.keys.is_none()
-            && watch.place.as_deref() == Some(PLACE)
-            && watch.kinds.iter().any(|kind| kind == "row")
-    })
+    daemon.served.watches("row", PLACE)
 }
 
 /// Makes the rows again from each profile's bookmark files, leaving out
