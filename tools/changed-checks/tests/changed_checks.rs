@@ -80,6 +80,7 @@ case " $* " in
   *) echo "not kept pure, or a flake's config taken: $*" >&2; exit 1 ;;
 esac
 case "$1" in
+  store) echo "$STAND_IN/copy"; exit 0 ;;
   build)
     shift
     echo "$@" | sed 's/ --option pure-eval true --option accept-flake-config false//' \
@@ -163,10 +164,16 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
 "#;
 
 /// nix-store as changed-checks asks it what takes the flake's source in:
-/// what `referrers` lists, once a test writes it, and else nothing.
+/// what `referrers` lists, once a test writes it, and else nothing; and,
+/// once asked of the copy of the source `nix store add` names, what
+/// `copy-referrers` lists too.
 const NIX_STORE: &str = r#"#!/bin/sh
 [ "$1 $2" = "--query --referrers-closure" ] || exit 1
+shift 2
 cat "$STAND_IN/referrers" 2>/dev/null
+for path in "$@"; do
+  [ "$path" = "$STAND_IN/copy" ] && cat "$STAND_IN/copy-referrers" 2>/dev/null
+done
 exit 0
 "#;
 
@@ -1381,6 +1388,30 @@ fn a_check_whose_derivation_takes_the_whole_source_is_evaluated_by_every_gate() 
         text(&ran.stdout),
         "changed  b\n",
         "a check whose build may read any file kept the base's derivation"
+    );
+}
+
+// `src = ../..` in a folder's checks.nix is the source's root, which Nix
+// copies to a path of its own named after the source's, reading no file
+// a trace sees: every-long-file-says-why's derivation took it so on 13
+// November and kept the base's derivation through a change to a file.
+#[test]
+fn a_check_whose_derivation_takes_a_copy_of_the_whole_source_is_evaluated_by_every_gate() {
+    let stand_in = traced_alone("alone-copy");
+    fs::write(stand_in.path("copy"), "").expect("written");
+    fs::write(stand_in.path("copy-referrers"), "b.drv\n").expect("written");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    stand_in.checks("working", MOVED);
+    fs::write(stand_in.path("diff"), "M\tdocs/notes.md\n").expect("written");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  b\n",
+        "a check taking a copy of the source kept the base's derivation"
     );
 }
 
