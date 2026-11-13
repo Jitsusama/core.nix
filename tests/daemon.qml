@@ -292,7 +292,11 @@ ShellRoot {
     }
 
     function fail(what) {
-        console.warn(`FAIL ${what}: state ${people.state}, held ${JSON.stringify(people.held)}`
+        // Its refusals and whether its daemon runs say which of a restart's
+        // tries a failing step was waiting on.
+        console.warn(`FAIL ${what}: state ${people.state}, refused ${people.refusals} times,`
+            + ` its daemon ${peopleRunning.running ? "running" : "stopped"}`
+            + `, held ${JSON.stringify(people.held)}`
             + `, listed ${Object.keys(listed.held).join(" ")}`
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, answered ${JSON.stringify(root.answered)}`);
@@ -410,12 +414,22 @@ ShellRoot {
                 root.heardBefore = people.held[root.ada].heard;
                 peopleRunning.running = false;
             },
+            // Held only once the daemon has exited, not just closed its
+            // socket: a start asked of a Process still reaping its last is
+            // nothing, so on a loaded builder the next step started no
+            // daemon and its clients found only the old socket refusing
+            // (Y2YBTS, 2026-11-12).
             holds: () => people.state === "not answering" && root.heldWay(root.ada) === "ahead"
                 && forgetting.state === "not answering"
-                && Object.keys(forgetting.held).length === 0
+                && Object.keys(forgetting.held).length === 0 && !peopleRunning.running
         },
         {
             what: "the daemon starting again is connected to, and asked ahead again",
+            // A daemon run by hand, as here, is tried again 2, 4 and 8 s
+            // after it went, about 14 s in all (Daemon.qml), so the step
+            // waits 20 s rather than ten: on a loaded builder its start
+            // missed the 6 s try and came at 14 (2026-11-12, twice).
+            polls: 400,
             run: () => {
                 peopleRunning.running = true;
             },
@@ -543,7 +557,8 @@ ShellRoot {
 
     function begin() {
         const now = steps[step];
-        left = 200;
+        // Ten seconds a step, or as many polls as a step says it may need.
+        left = now.polls ?? 200;
         if (now.run)
             now.run();
         waiting.start();
