@@ -400,6 +400,85 @@ fn health_says_why_a_source_stands_as_it_does_and_every_other_line_its_word() {
     );
 }
 
+/// What a daemon reading on demand was asked to read, one line each:
+/// the kinds, keys and places named, and whether a watch began.
+fn asked(wanted: &Wanted<'_>) -> String {
+    format!(
+        "{:?} {:?} {:?} {}",
+        wanted.kinds, wanted.keys, wanted.places, wanted.watching
+    )
+}
+
+#[test]
+fn a_daemon_reading_on_demand_reads_before_a_get_a_list_or_a_watch_is_answered() {
+    let (shared, mut client, folder) = served("fresh", Box::new(|_| None));
+    shared.change(vec![row("agents", "a", "Ada")], json!({}));
+    let mut watching = Client::connect(&folder.0.join("daemon.sock"));
+    watching.ask(&json!({"id": "all", "ask": "watch", "kind": "row"}));
+    let asks = Arc::new(Mutex::new(Vec::new()));
+    let (reads, this) = (Arc::clone(&asks), Arc::downgrade(&shared));
+    shared.fresh(Box::new(move |wanted| {
+        let mut reads = reads.lock().unwrap();
+        reads.push(asked(wanted));
+        let name = format!("Ada, read {}", reads.len());
+        if let Some(shared) = this.upgrade() {
+            shared.change(vec![row("agents", "a", &name)], json!({}));
+        }
+    }));
+
+    let got = client.ask(&json!({"id": 1, "ask": "get", "keys": ["row:agents:a"]}));
+    assert_eq!(
+        got["records"][0]["row"]["name"], "Ada, read 1",
+        "a get answers what was read for it: {got}"
+    );
+    assert_eq!(
+        watching.heard()["changed"][0]["row"]["name"],
+        "Ada, read 1",
+        "what a get read is told to a watch, so no get says what a watch wasn't told"
+    );
+    let listed = client.ask(&json!({"id": 2, "ask": "list", "kind": "row", "place": "agents"}));
+    assert_eq!(
+        listed["records"][0]["row"]["name"], "Ada, read 2",
+        "{listed}"
+    );
+    let watched = client.ask(&json!({"id": 3, "ask": "watch", "keys": ["row:agents:a"]}));
+    assert_eq!(
+        watched["records"][0]["row"]["name"], "Ada, read 3",
+        "{watched}"
+    );
+    client.ask(&json!({"id": 4, "ask": "hello"}));
+    assert_eq!(
+        *asks.lock().unwrap(),
+        [
+            r#"[] Some(["row:agents:a"]) None false"#,
+            r#"["row"] None Some(["agents"]) false"#,
+            r#"["row", "summary"] Some(["row:agents:a"]) None true"#,
+        ],
+        "each is read for what it names, a watch saying so, and hello reads nothing"
+    );
+}
+
+#[test]
+fn health_says_what_else_a_daemon_counts_but_never_in_place_of_its_own() {
+    let (shared, mut client, _folder) = served("health-too", Box::new(|_| None));
+    shared.health_too(Box::new(|| json!({"took_us": [12, 30], "watches": 99})));
+    let health = client.ask(&json!({"id": 1, "ask": "health"}));
+    assert_eq!(
+        health["took_us"],
+        json!([12, 30]),
+        "the daemon's own count joins health: {health}"
+    );
+    assert_eq!(
+        health["watches"], 0,
+        "daemon-serve's own field keeps its value: {health}"
+    );
+    let hello = client.ask(&json!({"id": 2, "ask": "hello"}));
+    assert!(
+        hello.get("took_us").is_none(),
+        "only health says it: {hello}"
+    );
+}
+
 #[test]
 fn a_watch_hears_how_the_sources_stand_when_they_moved_since_its_hello() {
     let (shared, mut client, _folder) = served("since-hello", Box::new(|_| None));
