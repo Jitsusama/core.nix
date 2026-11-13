@@ -4394,10 +4394,15 @@ Scope {
             return;
         }
         // An act that asks for a target or for words is stepped into, as
-        // Return on it would, from inside the thing it belongs to.
+        // Return on it would, from inside the thing it belongs to. Already in
+        // it, it's run from the step held: stepped in again, the Internet's
+        // :set nosqm held two Internets, the second never drawing its switch
+        // turned (PN2VZC, 2026-11-12).
         const act = entry.act;
         const thing = opened.things[0];
-        if ((act.targets || act.given) && act !== thing && enter(thing)) {
+        const top = held.length > 0 ? held[held.length - 1].row : null;
+        const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
+        if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;

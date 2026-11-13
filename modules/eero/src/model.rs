@@ -96,6 +96,10 @@ pub struct Internet {
     /// Every speed test eero kept, and those the history kept from the
     /// last 30 days that eero has since dropped, newest first.
     pub speed_tests: Vec<SpeedTest>,
+    /// Since when a speed test this daemon asked of eero has run without
+    /// its figures (daemon.rs's testing); none while none runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub testing_since: Option<String>,
     pub firmware: Firmware,
     pub thread: Thread,
     pub guest: Guest,

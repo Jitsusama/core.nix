@@ -4194,6 +4194,27 @@
             "act": "speedtest",
             "ask": "act"
           },
+          "becomes": {
+            "depth": 1,
+            "glyph": "traffic",
+            "hue": "action",
+            "key": "row:eero:speedtest",
+            "kind": "act",
+            "name": "Run a Speed Test",
+            "note": [
+              {
+                "said": "eero measures the internet from the gateway node"
+              }
+            ],
+            "parent": "row:eero:internet",
+            "place": "eero",
+            "side": [
+              {
+                "said": "testing"
+              }
+            ],
+            "thing": "verb:eero:speedtest"
+          },
           "key": "verb:eero:speedtest"
         }
       ],

@@ -164,6 +164,7 @@ fn internet(answers: &Answers) -> Internet {
             up_mbps: mbps(n.pointer("/speed/up")),
         },
         speed_tests: speed_tests(&answers.speed_tests),
+        testing_since: None,
         firmware: Firmware {
             running: text(n, "/updates/target_firmware"),
             next: text(n, "/updates/update_to_firmware"),

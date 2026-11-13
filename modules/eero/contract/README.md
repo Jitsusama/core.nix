@@ -58,7 +58,7 @@ model of it.
 | `band_steering`, `wpa3`, `wireless_mode`, `mlo_mode` | the radios' network-wide settings | internet, `internet` |
 | `net.wpa3_per_band.json` `band_<GHz>_ghz` | each band's Wi-Fi security, as eero names it | internet, `internet` |
 | `net.ac_compat.json` `enabled` | whether the network keeps to what older Wi-Fi 5 (802.11ac) devices can join | internet, `internet` |
-| `speed.{down,up}.value`, `speed.date`, `speed.status` | the last speed test | place head, internet, `status`, `speeds` |
+| `speed.{down,up}.value`, `speed.date`, `speed.status` | the last speed test; one this daemon asked runs until `speed.date` is as new, or 5 minutes pass (`testing_since`) | place head, internet, the speed test's row, `status`, `speeds` |
 | `net.speedtest.json` `[].{down_mbps,up_mbps,date}` | every speed test eero kept | internet (a spark of each), `speeds` |
 | `online_eeros_count`, `offline_eeros_count`, `pending_eeros_count` | the nodes by state | place head, `status` |
 | `clients.count` | devices eero counts | place head, `status` |
