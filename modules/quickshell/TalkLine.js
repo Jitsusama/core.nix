@@ -133,7 +133,8 @@ const YOUR = /^Your /u;
 // stand mid-sentence; "" where it says something else.
 function holderIn(reply) {
     const named = String(reply ?? "").split("\n")[0].trim().match(HOLDER);
-    return named === null ? "" : named.groups.who.replace(YOUR, "your ");
+    // By its number, since Qt's engine fills no `groups`.
+    return named === null ? "" : named[1].replace(YOUR, "your ");
 }
 
 function worded(words, name, who) {
