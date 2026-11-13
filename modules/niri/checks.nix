@@ -248,6 +248,57 @@ onLinux {
         touch $out
       '';
 
+  # Xwayland without a cookie lets any account on the machine connect, read
+  # the keys typed into X11 windows and type into them. The session's
+  # xwayland-satellite, started on demand by the account's niri nested in
+  # the sandbox, lets in a client holding the cookie where the session's
+  # XAUTHORITY says, and refuses one without it
+  # (tests/x11-needs-its-cookie.sh).
+  niri-lets-x11-in-only-with-its-cookie =
+    let
+      home = account graphical;
+      files = lib.filterAttrs (name: _: lib.hasPrefix "niri/" name) home.xdg.configFile;
+      # As the user manager expands it.
+      auth =
+        lib.replaceStrings [ "\${XDG_RUNTIME_DIR}" ] [ "$XDG_RUNTIME_DIR" ]
+          home.systemd.user.sessionVariables.XAUTHORITY;
+      inherit (pkgs) mesa;
+    in
+    pkgs.runCommandLocal "niri-lets-x11-in-only-with-its-cookie"
+      {
+        nativeBuildInputs = [
+          graphical.config.programs.niri.package
+          (pkgs.callPackage ./xwayland-satellite.nix { })
+          pkgs.dbus
+          pkgs.sway-unwrapped
+          pkgs.xdpyinfo
+          pkgs.xwayland
+        ];
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        LIBGL_DRIVERS_PATH = "${mesa}/lib/dri";
+        GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
+        LIBGL_ALWAYS_SOFTWARE = 1;
+      }
+      # Kept in Nix because each line sets a folder, a variable or a file
+      # from what Nix says the session holds, then runs the scripts Nix
+      # gives it, as niri-refreshes-once-a-frame does.
+      ''
+        export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_RUNTIME_DIR=$PWD/runtime
+        mkdir -m 700 runtime
+        export XAUTHORITY=${auth}
+        # The sockets' folder as the system makes it, open to all and sticky,
+        # before the nested sway makes it with the build's umask, which niri
+        # refuses.
+        mkdir -p /tmp/.X11-unix
+        chmod 1777 /tmp/.X11-unix
+        ${lib.concatLines (
+          lib.mapAttrsToList (name: file: "install -D -m 644 ${file.source} ${lib.escapeShellArg name}") files
+        )}
+        ${lib.getExe pkgs.bash} ${../../tests/nested-niri.sh} niri/config.kdl logs \
+          ${lib.getExe pkgs.bash} ${./tests/x11-needs-its-cookie.sh} logs/niri.log
+        touch $out
+      '';
+
   # niri's own screens are drawn in colours no theme reaches, so no key
   # opens one: not its screenshot screen, not its key list, and no quit that
   # asks first. The launcher's Log Out quits without asking too.

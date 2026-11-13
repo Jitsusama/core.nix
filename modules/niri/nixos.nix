@@ -285,29 +285,9 @@
       runtimeEnv.NIRI = "${config.programs.niri.package}/bin/niri";
       text = builtins.readFile ./niri-deadline.sh;
     })
-    # niri starts it whenever an X11 program needs a display. It passes
-    # niri a window's class but not its instance, the only name some
-    # programs give each of their windows, so the patch
-    # (untitled-instance.patch) titles a window that has no name with its
-    # instance, and its tests, which start an Xwayland of their own, run as
-    # it builds.
-    (pkgs.xwayland-satellite.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./untitled-instance.patch ];
-      doCheck = true;
-      nativeCheckInputs = (old.nativeCheckInputs or [ ]) ++ [ pkgs.xwayland ];
-      cargoTestFlags = [
-        "--test"
-        "integration"
-      ];
-      checkFlags = [
-        "title"
-        "instance"
-        "class_alone"
-      ];
-      preCheck = ''
-        export XDG_RUNTIME_DIR=$(mktemp -d)
-      '';
-    }))
+    # What niri starts whenever an X11 program needs a display, with the
+    # cookie only Joel's programs hold (xwayland-satellite.nix).
+    (pkgs.callPackage ./xwayland-satellite.nix { })
     pkgs.brightnessctl
     # wl-copy and wl-paste, which programs in a terminal reach the clipboard
     # through: Neovim's + register, and pi's copying and pasting of text and
