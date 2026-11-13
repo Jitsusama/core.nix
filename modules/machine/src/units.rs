@@ -32,8 +32,14 @@ const ASKING: Duration = Duration::from_secs(1);
 /// The units the shell may restart, each the daemon behind a row that
 /// offers to start it when it isn't answering: Spend's watch, the
 /// account's disk guard, which Disk's Start the Guard starts, and the
-/// sound daemon, which Sound's one row starts while it's down.
-pub const RESTARTABLE: [&str; 3] = ["spend-watch.service", "disk-guard.service", "sound.service"];
+/// sound daemon, which Sound's one row starts while it's down; and noise
+/// cancelling's trial, which Sound's rows start while it isn't answering.
+pub const RESTARTABLE: [&str; 4] = [
+    "spend-watch.service",
+    "disk-guard.service",
+    "sound.service",
+    "noise-cancelled-trial.service",
+];
 
 /// How long systemd is given to queue the restart before the act gives up.
 const QUEUEING: Duration = Duration::from_secs(10);
