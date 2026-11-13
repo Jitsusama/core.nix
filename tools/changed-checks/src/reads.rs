@@ -271,30 +271,129 @@ pub fn keeping(cache: &Path, base: &str, system: &str) -> PathBuf {
         .join(format!("{base}-{system}.reads.json"))
 }
 
-/// Evaluate a base's checks to keep them: the ordinary ones from git, and
-/// the VM tests from the plain path under strace, keeping what they read
-/// beside them; on a builder made for the run, the two side by side. A
-/// trace that fails is said, and the VM tests are then evaluated from git,
-/// as a gate would.
-pub fn evaluated_base(
-    root: &str,
-    base: &str,
-    system: &str,
+/// A base being kept: its commit in the checkout at `root`, its flake from
+/// git, and where what its VM tests read is kept.
+struct Base<'a> {
+    root: &'a str,
+    commit: &'a str,
+    system: &'a str,
+    flake: String,
+    at: PathBuf,
+}
+
+/// What a trace of the VM tests gave: their derivations, what they read,
+/// the tree it was read from, and what each chunk took.
+type Traced = Result<(Derivations, Reads, String, Evaluation), String>;
+
+/// Keep a base's checks, as a keep of main's head asks: the ordinary ones
+/// from git, and the VM tests from the plain path under strace, keeping
+/// what they read beside them. On a builder made for the run, with nothing
+/// kept yet, the two go side by side, each with half its room, and the
+/// trace begins before the base's lock is waited on, so a gate evaluating
+/// the same base holds back only the derivations: on 12 November three
+/// keeps waited there 119 to 704 s before they began tracing, and one
+/// after the other, each half waiting on its slowest chunk, a keep took
+/// 679 s. Elsewhere, or with the derivations kept, they go one at a time.
+pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Result<(), String> {
+    let base = Base {
+        root,
+        commit,
+        system,
+        flake: format!("git+file://{root}?rev={commit}"),
+        at: keeping(&crate::cache(), commit, system),
+    };
+    let path = checks::keeping(&crate::cache(), commit, system);
+    let builder = std::env::var_os(crate::HERE).is_some();
+    if !builder || path.exists() {
+        let kept = checks::kept(&path, || {
+            let (vm, ordinary) = split(&base.flake, system)?;
+            one_at_a_time(&base, &vm, &ordinary, checks::at_once_here(builder), noted)
+        })?;
+        keep(root, commit, system, &kept, noted);
+        return Ok(());
+    }
+    let (vm, ordinary) = split(&base.flake, system)?;
+    if vm.is_empty() {
+        checks::kept(&path, || {
+            one_at_a_time(&base, &vm, &ordinary, checks::at_once_here(builder), noted)
+        })?;
+        return Ok(());
+    }
+    let at_once = checks::at_once_each_of_two_here();
+    std::thread::scope(|scope| {
+        let tracing = || traced(root, commit, system, &vm, &base.at, at_once);
+        let mut beside = Some(scope.spawn(tracing));
+        let kept = checks::kept(&path, || {
+            let mut found = ordinarily(&base, &ordinary, at_once, noted)?;
+            let traced = beside
+                .take()
+                .map_or_else(|| Err("the trace was taken".to_owned()), joined);
+            found.extend(with_vm(&base, &vm, traced, noted)?);
+            Ok(found)
+        });
+        // Still beside, the trace went unused: a gate kept the derivations
+        // while it ran, or the ordinary checks failed.
+        if let Some(beside) = beside {
+            let traced = joined(beside);
+            if let Ok(kept) = &kept
+                && let Err(why) = checked(&base.at, kept, &vm, traced, noted)
+            {
+                unrecorded(system, commit, &why);
+            }
+        }
+        kept.map(|_| ())
+    })
+}
+
+/// A flake's VM tests and its other checks, by name.
+fn split(flake: &str, system: &str) -> Result<(Vec<String>, Vec<String>), String> {
+    Ok(evaluating::names(flake, system)?
+        .into_iter()
+        .partition(|name| name.starts_with("vm-")))
+}
+
+/// Evaluate the base's ordinary checks, `ordinary`, then trace its VM
+/// tests, `vm`, each `at_once` chunks at a time.
+fn one_at_a_time(
+    base: &Base,
+    vm: &[String],
+    ordinary: &[String],
+    at_once: usize,
     noted: &mut Run,
 ) -> Result<Derivations, String> {
-    let flake = format!("git+file://{root}?rev={base}");
-    let (vm, ordinary): (Vec<String>, Vec<String>) = evaluating::names(&flake, system)?
-        .into_iter()
-        .partition(|name| name.starts_with("vm-"));
-    let at = keeping(&crate::cache(), base, system);
-    let ordinarily = |at_once| {
-        let mut evaluation = Run::evaluating("base");
-        evaluating::evaluated_by(&flake, system, &ordinary, &mut evaluation, at_once)
-            .map(|found| (found, evaluation))
-    };
-    let tracing = |at_once| {
-        let (said, reads, tree, evaluation) = traced(root, base, system, &vm, &at, at_once)?;
-        let said: Derivations = vm
+    let mut found = ordinarily(base, ordinary, at_once, noted)?;
+    if !vm.is_empty() {
+        let traced = traced(base.root, base.commit, base.system, vm, &base.at, at_once);
+        found.extend(with_vm(base, vm, traced, noted)?);
+    }
+    Ok(found)
+}
+
+/// Evaluate the base's ordinary checks from git, `at_once` chunks at a time.
+fn ordinarily(
+    base: &Base,
+    ordinary: &[String],
+    at_once: usize,
+    noted: &mut Run,
+) -> Result<Derivations, String> {
+    let mut evaluation = Run::evaluating("base");
+    let found =
+        evaluating::evaluated_by(&base.flake, base.system, ordinary, &mut evaluation, at_once)?;
+    noted.evaluated(evaluation);
+    Ok(found)
+}
+
+/// Each VM test's derivation as a trace of `vm` came to it, keeping what
+/// they read; or, when the trace or its record failed, each one's from
+/// git, as a gate would evaluate it, saying why.
+fn with_vm(
+    base: &Base,
+    vm: &[String],
+    traced: Traced,
+    noted: &mut Run,
+) -> Result<Derivations, String> {
+    let said = traced.and_then(|(said, reads, tree, evaluation)| {
+        let said = vm
             .iter()
             .map(|name| {
                 let derivation = said
@@ -302,65 +401,53 @@ pub fn evaluated_base(
                     .ok_or_else(|| format!("from a plain path, {name} isn't among the checks"))?;
                 Ok((name.clone(), derivation.clone()))
             })
-            .collect::<Result<_, String>>()?;
-        write(&at, &reads, &tree).map(|()| (said, evaluation))
-    };
-    let builder = std::env::var_os(crate::HERE).is_some();
-    // On a builder made for the run the halves go side by side, each with
-    // half its room: one after the other, each waiting on its slowest chunk,
-    // a keep took 679 s on 12 November. Elsewhere they go one at a time.
-    let (found, traced) = if vm.is_empty() {
-        (ordinarily(checks::at_once_here(builder)), None)
-    } else if builder {
-        let at_once = checks::at_once_each_of_two_here();
-        std::thread::scope(|scope| {
-            let beside = scope.spawn(|| tracing(at_once));
-            let found = ordinarily(at_once);
-            let traced = beside
-                .join()
-                .unwrap_or_else(|_| Err("the trace stopped".to_owned()));
-            (found, Some(traced))
-        })
-    } else {
-        let found = ordinarily(checks::at_once_here(builder))?;
-        (Ok(found), Some(tracing(checks::at_once_here(builder))))
-    };
-    let (mut found, evaluation) = found?;
-    noted.evaluated(evaluation);
-    match traced {
-        None => {}
-        Some(Ok((said, evaluation))) => {
+            .collect::<Result<Derivations, String>>()?;
+        write(&base.at, &reads, &tree).map(|()| (said, evaluation))
+    });
+    match said {
+        Ok((said, evaluation)) => {
             noted.evaluated(evaluation);
-            found.extend(said);
+            Ok(said)
         }
-        Some(Err(why)) => {
-            let short = base.get(..12).unwrap_or(base);
+        Err(why) => {
+            let (system, short) = (base.system, base.commit.get(..12).unwrap_or(base.commit));
             eprintln!(
                 "changed-checks: couldn't record what {system}'s VM tests read at {short}, so \
                  they're evaluated from git: {why}"
             );
             let mut evaluation = Run::evaluating("base");
-            found.extend(evaluating::evaluated(&flake, system, &vm, &mut evaluation)?);
+            let found = evaluating::evaluated(&base.flake, system, vm, &mut evaluation)?;
             noted.evaluated(evaluation);
+            Ok(found)
         }
     }
-    Ok(found)
+}
+
+/// Join the trace beside, one that panicked having stopped.
+fn joined(beside: std::thread::ScopedJoinHandle<'_, Traced>) -> Traced {
+    beside
+        .join()
+        .unwrap_or_else(|_| Err("the trace stopped".to_owned()))
 }
 
 /// Keep what the VM tests among a base's `derivations` read, unless it's
 /// kept already, as a base a gate kept first has not, saying why when it
 /// can't be: they're then evaluated in each gate on that base, as before.
-pub fn keep(root: &str, base: &str, system: &str, derivations: &Derivations, noted: &mut Run) {
+fn keep(root: &str, base: &str, system: &str, derivations: &Derivations, noted: &mut Run) {
     let at = keeping(&crate::cache(), base, system);
     if at.exists() || !derivations.keys().any(|name| name.starts_with("vm-")) {
         return;
     }
     if let Err(why) = record(root, base, system, derivations, &at, noted) {
-        let short = base.get(..12).unwrap_or(base);
-        eprintln!(
-            "changed-checks: couldn't record what {system}'s VM tests read at {short}: {why}"
-        );
+        unrecorded(system, base, &why);
     }
+}
+
+/// Say why what a base's VM tests read went unrecorded, so each gate on
+/// it evaluates them, as before.
+fn unrecorded(system: &str, base: &str, why: &str) {
+    let short = base.get(..12).unwrap_or(base);
+    eprintln!("changed-checks: couldn't record what {system}'s VM tests read at {short}: {why}");
 }
 
 /// The base's derivation of each VM test, when the tree's VM tests, `vm`,
@@ -417,7 +504,20 @@ fn record(
         .cloned()
         .collect();
     let at_once = checks::at_once_here(std::env::var_os(crate::HERE).is_some());
-    let (said, reads, tree, evaluation) = traced(root, base, system, &vm, at, at_once)?;
+    let traced = traced(root, base, system, &vm, at, at_once);
+    checked(at, derivations, &vm, traced, noted)
+}
+
+/// Keep at `at` what a trace saw the VM tests `vm` read, when each came to
+/// the derivation it came to from git, in `derivations`.
+fn checked(
+    at: &Path,
+    derivations: &Derivations,
+    vm: &[String],
+    traced: Traced,
+    noted: &mut Run,
+) -> Result<(), String> {
+    let (said, reads, tree, evaluation) = traced?;
     noted.evaluated(evaluation);
     if let Some(name) = vm
         .iter()
