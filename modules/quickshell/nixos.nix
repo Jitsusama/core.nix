@@ -21,7 +21,11 @@
 # nearest directory that is. A FileView reloaded while it was still reading
 # the file started no read of its own, so a change heard mid-read was lost
 # until the file changed again, and a status file taken away stayed said;
-# fileview-reads-again.patch reads once more as that read lands. An IPC call's connection was deleted as soon
+# fileview-reads-again.patch reads once more as that read lands. A FileView
+# of a folder never said it changed, so the launcher's looks each held a
+# watch of their own, and an open file, 406 of them past the shell's limit
+# as it started; fileview-hears-a-folder.patch says a folder changed as a
+# file in it is made, renamed in or removed. An IPC call's connection was deleted as soon
 # as its reply was handed over, cutting off a reply longer than the
 # socket's buffer, so ipc-replies-whole.patch closes it only once the reply
 # is written. The desktop entries were read again whenever anything changed
@@ -37,7 +41,7 @@
 # frame's presentation feedback and says when it was shown: the launcher
 # times Joel's every opening to it (Launcher.qml). It times each frame's
 # sync, render and swap on the render thread too, since the GUI thread
-# hears a swap only once it's free. All ten are laid over the
+# hears a swap only once it's free. All eleven are laid over the
 # machine's packages, so the shell, the greeter and the lock all run them.
 #
 # wf-recorder, which records the screen (Recorder.qml), bound the
@@ -146,6 +150,7 @@ in
             ./fileview-quiet.patch
             ./fileview-watch-nearest.patch
             ./fileview-reads-again.patch
+            ./fileview-hears-a-folder.patch
             ./frame-presentation.patch
             ./ipc-replies-whole.patch
             ./pipewire-node-state-and-format.patch
