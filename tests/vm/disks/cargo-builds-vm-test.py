@@ -114,6 +114,22 @@ def test_a_reload_leaves_a_build_running(up: BaseMachine) -> None:
     up.succeed("systemctl stop build")
 
 
+def test_a_size_raised_while_mounted_grows_the_filesystem(up: BaseMachine) -> None:
+    """Attached again with a larger size while mounted, as a switch does, the room comes at once.
+
+    A loop device keeps the size its file had when attached, so the file grew and the filesystem
+    in it didn't until a reboot.
+    """
+    script = up.succeed(f"systemctl show -P ExecStart {SERVICE}").split("path=")[1].split()[0]
+    image, folder = "/var/cache/grow.img", "/mnt/grow"
+    up.succeed(f"{script} attach {image} 300M {folder} joel:users")
+    up.succeed(f"{script} attach {image} 400M {folder} joel:users")
+    room = int(up.succeed(f"df -B1 --output=size {folder} | tail -1").strip())
+    assert room > 350 * 1024 * 1024, f"grown to 400M while mounted, it holds {room} bytes"
+    # Synced, so the next test's reading of what's free counts these blocks as freed.
+    up.succeed(f"{script} detach {folder} && rm {image} && sync")
+
+
 def test_an_image_bigger_than_the_disk_takes_half_what_is_free(up: BaseMachine) -> None:
     """Asked for more than the disk holds, the image is half what's free, and stays so.
 
