@@ -362,7 +362,7 @@ pub fn keep_base(root: &str, commit: &str, system: &str, noted: &mut Run) -> Res
 fn split(flake: &str, system: &str) -> Result<(Vec<String>, Vec<String>), String> {
     Ok(evaluating::names(flake, system)?
         .into_iter()
-        .partition(|name| name.starts_with("vm-")))
+        .partition(|name| checks::is_vm_test(name)))
 }
 
 /// Evaluate the base's ordinary checks, `ordinary`, then trace its VM
@@ -448,7 +448,7 @@ fn joined(beside: std::thread::ScopedJoinHandle<'_, Traced>) -> Traced {
 /// can't be: they're then evaluated in each gate on that base, as before.
 fn keep(root: &str, base: &str, system: &str, derivations: &Derivations, noted: &mut Run) {
     let at = keeping(&crate::cache(), base, system);
-    if at.exists() || !derivations.keys().any(|name| name.starts_with("vm-")) {
+    if at.exists() || !derivations.keys().any(|name| checks::is_vm_test(name)) {
         return;
     }
     if let Err(why) = record(root, base, system, derivations, &at, noted) {
@@ -474,7 +474,7 @@ pub fn unread(
 ) -> Option<Derivations> {
     let kept: Derivations = before
         .iter()
-        .filter(|(name, _)| name.starts_with("vm-"))
+        .filter(|(name, _)| checks::is_vm_test(name))
         .map(|(name, derivation)| (name.clone(), derivation.clone()))
         .collect();
     let named: BTreeSet<&String> = vm.iter().collect();
@@ -514,7 +514,7 @@ fn record(
 ) -> Result<(), String> {
     let vm: Vec<String> = derivations
         .keys()
-        .filter(|name| name.starts_with("vm-"))
+        .filter(|name| checks::is_vm_test(name))
         .cloned()
         .collect();
     let at_once = checks::at_once_here(std::env::var_os(crate::HERE).is_some());

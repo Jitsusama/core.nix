@@ -140,7 +140,7 @@ impl Comparison {
             .iter()
             .chain(&self.changed)
             .map(String::as_str)
-            .filter(|name| vm || !name.starts_with("vm-"))
+            .filter(|name| vm || !is_vm_test(name))
             .collect()
     }
 }
@@ -168,9 +168,14 @@ pub fn compare(before: &Derivations, after: &Derivations) -> Comparison {
     comparison
 }
 
+/// Whether the check named so is a VM test, as the flake names each one.
+pub fn is_vm_test(name: &str) -> bool {
+    name.starts_with("vm-")
+}
+
 /// Split the names, in order, into chunks weighing at most `WEIGHT` each.
 pub fn chunks(names: &[String]) -> Vec<&[String]> {
-    let weight = |name: &String| if name.starts_with("vm-") { VM_TEST } else { 1 };
+    let weight = |name: &String| if is_vm_test(name) { VM_TEST } else { 1 };
     let mut chunks = Vec::new();
     let (mut start, mut held) = (0, 0);
     for (at, name) in names.iter().enumerate() {
@@ -194,7 +199,7 @@ pub fn chunks(names: &[String]) -> Vec<&[String]> {
 /// side's median over that day's runs would have been 237 s, not 261.
 /// Their weight can't tell them apart: ten VM tests weigh as forty checks.
 pub fn begin_order(chunks: &[&[String]]) -> Vec<usize> {
-    let vm_tests = |chunk: &[String]| chunk.iter().filter(|name| name.starts_with("vm-")).count();
+    let vm_tests = |chunk: &[String]| chunk.iter().filter(|name| is_vm_test(name)).count();
     let mut order: Vec<usize> = (0..chunks.len()).collect();
     order.sort_by_key(|&at| std::cmp::Reverse(vm_tests(chunks[at])));
     order
@@ -220,7 +225,8 @@ where
 /// Do `work` on each item, up to `at_once` at a time, beginning them in
 /// `begin`'s order, which names each item's place once, and answering in
 /// the items' order. Once one fails, no item not yet begun is begun, and
-/// the first failure in the items' order is what the run reports.
+/// the first failure in the items' order among those begun is what the
+/// run reports: an item earlier by order may never have begun.
 ///
 /// Only one item at a time is sure to go: each further one begins only
 /// while `may_begin` says so, and otherwise waits and asks again. So a run
@@ -650,7 +656,8 @@ mod tests {
         let mut all: Vec<String> = (0..45).map(|at| format!("check-{at}")).collect();
         all.extend((0..12).map(|at| format!("vm-{at}")));
         let chunks = chunks(&all);
-        // Forty checks; five and eight VM tests, weighing 37; four VM tests.
+        // Forty checks; five checks and eight VM tests, weighing 37; four
+        // VM tests.
         assert_eq!(sizes(&chunks), [40, 13, 4]);
         assert_eq!(begin_order(&chunks), [1, 2, 0]);
     }
