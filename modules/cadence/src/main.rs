@@ -55,6 +55,7 @@ mod owe;
 mod passed;
 mod phases;
 mod records;
+mod reverted;
 mod revive;
 mod speed;
 mod start;
@@ -226,6 +227,11 @@ fn run(args: &Args) -> io::Result<()> {
             eprintln!("cadence: telling of idle sessions: {err}");
         }
     }
+    if let Some(watcher) = &args.watcher
+        && let Err(err) = tell_reverted(&mesh, &state_home.join("net"), &folder, watcher, now)
+    {
+        eprintln!("cadence: telling of reverts: {err}");
+    }
     let snapshot = gather(&folder, &state_home, &mesh, args, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
@@ -265,6 +271,41 @@ fn run(args: &Args) -> io::Result<()> {
         state.carded = Some(now);
     }
     write_whole(&path, &serde_json::to_string_pretty(&state)?)
+}
+
+/// Tells each merge's owner that the net reverted it, remembering in
+/// `reverted.json` which reverts were told.
+fn tell_reverted(
+    mesh: &Mesh,
+    net: &Path,
+    folder: &Path,
+    watcher: &str,
+    now: i64,
+) -> io::Result<()> {
+    let path = folder.join("reverted.json");
+    let mut told: reverted::Told = fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default();
+    let reverts = reverted::reverts(&net.join("findings"), now - 3600);
+    let landings =
+        fs::read_to_string(mesh.root.join("mesh-workflow/landings.json")).unwrap_or_default();
+    let mut failed = None;
+    for tell in reverted::due(&reverts, &landings, &mut told, now) {
+        // The owner is told as a finding, which it acts on in its next
+        // turn; the watcher is asked, since only it can find the owner.
+        let sent = match &tell.to {
+            Some(owner) => mesh.send(&message(owner, "finding", tell.text)),
+            None => mesh.send(&message(watcher, "question", tell.text)),
+        };
+        if let Err(err) = sent {
+            // Not told, so the next tick tells it again.
+            told.reverts.remove(&tell.key);
+            failed = Some(err);
+        }
+    }
+    write_whole(&path, &serde_json::to_string_pretty(&told)?)?;
+    failed.map_or(Ok(()), Err)
 }
 
 /// Tells each orchestrator of its sessions that have sat idle two hours,
@@ -482,7 +523,6 @@ fn gather(
         round,
         net_hold: records::net_hold(&fs::read_to_string(net.join("hold.json")).unwrap_or_default()),
         net_hung: crate::net::hung(&net.join("findings"), now - 3600),
-        net_unreverted: crate::net::unreverted(&net.join("findings"), now - 3600),
         watcher_alive: mesh::alive(watcher.as_ref(), |pid| {
             Path::new(&format!("/proc/{pid}")).exists()
         }),
