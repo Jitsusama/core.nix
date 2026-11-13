@@ -106,7 +106,13 @@ Scope {
         say(card, true);
     }
 
+    // Nothing is carded while Told.js's CARDED is false (Joel, 2026-11-13):
+    // each card's state still follows its talk, so setting it true cards
+    // them again as they stand. Take It Back goes with the card meanwhile;
+    // "undo" and the time, said to the void, still takes a line back.
     function say(card, replacing) {
+        if (!Told.carded())
+            return;
         const said = Words.of("verb:agent:talk").said ?? {};
         const was = card.asking;
         card.asking = asking.createObject(root, {
