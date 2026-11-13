@@ -465,7 +465,10 @@ Provider {
         glyph: profileChosen !== "" ? Words.glyph(profileChosen) : Words.glyph("session:profile"),
         // Who holds it and what the firmware and processor were told, under
         // the row (Power.js's profileDrawer).
-        drawer: () => provider.profileDrawer()
+        drawer: () => provider.profileDrawer(),
+        // None until sysfs is read, a turn after it's asked for, so a
+        // terminal's show asks again rather than taking it as none.
+        drawerUnread: () => provider.profileRead === null
     }, () => [])
 
     // What the power profile's drawer read of sysfs: read just after the
