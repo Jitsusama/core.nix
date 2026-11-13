@@ -711,8 +711,13 @@ QtObject {
         expect("up the screen", climbs.every(beat => beat.to.y < beat.from.y), true);
         const mantles = up.beats.find(beat => beat.name === "mantles");
         expect("and over its top onto it", [mantles.to.x, mantles.to.y, mantles.turn], [608, 7, 0]);
-        expect("up its whole height in two and a half seconds at most, a cat's not a lift's",
-            climbs.reduce((all, beat) => all + beat.ends - beat.begins, 0) <= 2500, true);
+        // Up its whole height at the pace a long walk takes, as quick as
+        // it walks a top and no quicker (Joel, 2026-11-13 17:22, by WCJQSG
+        // fc3f716a, over b36c3fb6's two and a half seconds at most).
+        const climbed = climbs.reduce((all, beat) => all + Math.abs(beat.to.y - beat.from.y), 0);
+        const upFor = climbs.reduce((all, beat) => all + beat.ends - beat.begins, 0);
+        expect("up its whole height at the pace it walks a long way",
+            Math.round(climbed / world({ way: -1 }).cell / (upFor / 1000)), MarginCat.HURRIES);
         const bounding = seen(up).filter(at => at.beat === "climbs").map((at, i, all) =>
             i === 0 ? 0 : Math.abs(at.y - all[i - 1].y)).slice(2);
         expect("in bounds, surging and gripping, never at a lift's even pace",
