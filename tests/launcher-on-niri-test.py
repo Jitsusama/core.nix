@@ -3985,6 +3985,68 @@ def test_a_drawer_served_apart_is_watched_only_while_its_row_is_drawn(
     assert let_go, "Charge's drawer was still watched once the launcher closed"
 
 
+def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
+    shell: Shell, machine: StandIn
+) -> None:
+    """A drawer served apart for the row beside the one drawn is held before a key reaches it.
+
+    Watched only for the row drawn, a key to the next row left the row before's drawer out
+    beside it a round trip, and its coming was never timed from the key (VKCF3Z, 2026-11-12,
+    bcbe9a24). So the drawers of the rows beside it are watched too, and a key to one brings
+    its own drawer, said presented from that key.
+    """
+    charge = battery(80)[1]
+    drawn = {
+        "charge": {"title": "Charge", "facts": [{"name": "energy_now", "said": "40,000,000"}]},
+        "rate": {"title": "Rate", "facts": [{"name": "power_now", "said": "9,000,000"}]},
+    }
+    rows = [
+        {
+            **charge,
+            "key": f"row:power:{part}",
+            "row": {
+                **charge["row"],
+                "thing": f"power:{part}",
+                "name": drawer["title"],
+                "order": 2 + nth,
+                "drawer": f"drawer:power:{part}",
+            },
+        }
+        for nth, (part, drawer) in enumerate(drawn.items())
+    ]
+    apart = [
+        {"key": f"drawer:power:{part}", "kind": "drawer", "drawer": drawer}
+        for part, drawer in drawn.items()
+    ]
+    machine.told(rows + apart, [])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    for step, holding in (
+        ("Machine", "Power"),
+        ("Power", "Battery"),
+        ("Battery", "Charge"),
+    ):
+        shell.down_to(step)
+        shell.step_in()
+        shell.launcher_until(holds(holding))
+    shell.down_to("Charge")
+    shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    beside = machine.ahead("drawer:power:rate", deadline)
+    since = shell.mark()
+    shell.down_to("Rate")
+    said = said_once(shell, since, DRAWER_SAID)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    shown = shell.showing()["drawer"]
+    shell.close_launcher()
+    assert beside, "Rate's drawer, beside the one drawn, wasn't watched before a key reached it"
+    assert any('drawer for "row:power:rate"' in line for line in lines), (
+        f"Rate's drawer was never said presented from the key that reached it: {lines}"
+    )
+    assert shown["title"] == "Rate", f"the drawer beside Rate's row was {shown['title']!r}"
+
+
 def agent_window(address: str, window: Json, title: str) -> Json:
     """Give a session's window as the agents daemon serves it, paired with niri's window."""
     return {
