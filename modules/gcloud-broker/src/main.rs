@@ -3,6 +3,9 @@
 //! the service A, and `gcloud-broker project` the project it lives in.
 //! Each token is printed alone, kept for most of its hour, and minted with
 //! the gcloud on PATH (or `--gcloud`) and the person's own login.
+//!
+//! It takes the shape every command of ours does (docs/commands.md): its
+//! help, usage that says what to try, and failures with named exits.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -12,93 +15,193 @@ use std::time::SystemTime;
 use gcloud_broker::account::Account;
 use gcloud_broker::gcloud::{self, Ask, PATIENCE};
 use gcloud_broker::held::Held;
+use serde_json::{Value, json};
+use terminal_kit::{Context, Exit, Failure, Help, flags};
 
-const USAGE: &str = "usage: gcloud-broker access --account EMAIL [--gcloud PROGRAM]\n       \
-                     gcloud-broker identity --audience AUDIENCE --account EMAIL \
-                     [--gcloud PROGRAM]\n       gcloud-broker project --account EMAIL";
+/// What it's asked for, by the first word.
+const COMMANDS: [&str; 3] = ["access", "identity", "project"];
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match run(&args) {
-        Ok(said) => {
-            println!("{said}");
-            ExitCode::SUCCESS
+/// The named flags it reads, every one taking a value.
+const FLAGS: [&str; 3] = ["--account", "--audience", "--gcloud"];
+
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "gcloud-broker",
+        "mints a service account's hour-long Google Cloud tokens with the person's login",
+    )
+    .command("access", "prints a token for Google's APIs as the account")
+    .command("identity", "prints who the account is, for --audience")
+    .command("project", "prints the project the account lives in")
+    .option(
+        "--account EMAIL",
+        "the service account; the wrapper names it",
+    )
+    .option("--audience URL", "identity: the service the token is for")
+    .option("--gcloud PROGRAM", "the gcloud to mint with, if not PATH's")
+    .example(
+        "gcloud-broker access",
+        "a token, for CLOUDSDK_AUTH_ACCESS_TOKEN",
+    )
+    .example(
+        "gcloud-broker project --json",
+        "the account's project, as JSON",
+    )
+    .exit(
+        Exit::Failed,
+        "gcloud refused, or said something that isn't a token",
+    )
+    .exit(
+        Exit::BadInput,
+        "the account or the audience isn't one Google names",
+    )
+    .exit(
+        Exit::Unavailable,
+        "gcloud couldn't be run, or didn't answer in time",
+    )
+}
+
+/// The value each named flag was given, in `FLAGS`' order. A flag given
+/// twice is refused, so an account named by whoever installed the broker
+/// can't be quietly overridden.
+fn named(args: &[String]) -> Result<(Option<&str>, [Option<String>; 3]), Failure> {
+    let mut given: [Option<String>; 3] = Default::default();
+    let mut command = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if !arg.starts_with('-') && command.is_none() {
+            command = Some(arg.as_str());
+            continue;
         }
-        Err(Refusal::Usage(why)) => {
-            eprintln!("gcloud-broker: {why}\n{USAGE}");
-            ExitCode::from(2)
+        let Some(at) = FLAGS.iter().position(|name| name == arg) else {
+            return Err(flags::unknown("flag", arg, &FLAGS));
+        };
+        let value = args.next().ok_or_else(|| {
+            Failure::new(Exit::Usage, format!("{arg} needs a value"))
+                .try_this("gcloud-broker --help")
+        })?;
+        if given[at].replace(value.clone()).is_some() {
+            return Err(Failure::new(Exit::Usage, format!("{arg} is given twice"))
+                .because("the account is the wrapper's to name, once")
+                .try_this(format!("gcloud-broker {}", command.unwrap_or("access"))));
         }
-        Err(Refusal::Failed(why)) => {
-            eprintln!("gcloud-broker: {why}");
-            ExitCode::FAILURE
+    }
+    Ok((command, given))
+}
+
+/// What a command line asks for, read: a token to mint, or the project.
+enum Asked<'a> {
+    Token(Ask<'a>),
+    Project,
+}
+
+fn asked<'a>(command: Option<&str>, audience: Option<&'a str>) -> Result<Asked<'a>, Failure> {
+    match (command, audience) {
+        (Some("project"), None) => Ok(Asked::Project),
+        (Some("access"), None) => Ok(Asked::Token(Ask::Access)),
+        (Some("identity"), Some(audience)) if gcloud::is_audience(audience) => {
+            Ok(Asked::Token(Ask::Identity(audience)))
         }
+        (Some("identity"), Some(audience)) => Err(Failure::new(
+            Exit::BadInput,
+            format!("{audience:?} isn't an audience"),
+        )
+        .because("an audience is a service's address")
+        .try_this("gcloud-broker identity --audience https://a-service.run.app")),
+        (Some("identity"), None) => Err(Failure::new(Exit::Usage, "identity needs --audience")
+            .try_this("gcloud-broker identity --audience https://a-service.run.app")),
+        (Some(verb @ ("project" | "access")), Some(_)) => Err(Failure::new(
+            Exit::Usage,
+            format!("{verb} takes no --audience"),
+        )
+        .try_this(format!("gcloud-broker {verb}"))),
+        (Some(other), _) => Err(flags::unknown("command", other, &COMMANDS)),
+        (None, _) => Err(
+            Failure::new(Exit::Usage, "it takes access, identity or project")
+                .try_this("gcloud-broker access"),
+        ),
     }
 }
 
-/// Why nothing was printed: asked wrongly, or asked rightly and refused.
-enum Refusal {
-    Usage(String),
-    Failed(String),
-}
-
-fn run(args: &[String]) -> Result<String, Refusal> {
-    let account =
-        named(args, "--account")?.ok_or_else(|| Refusal::Usage("no --account given".to_owned()))?;
-    let account = Account::parse(&account).map_err(Refusal::Failed)?;
-    let audience = named(args, "--audience")?;
-    let ask = match (args.first().map(String::as_str), audience.as_deref()) {
-        (Some("project"), None) => return Ok(account.project().to_owned()),
-        (Some("access"), None) => Ask::Access,
-        (Some("identity"), Some(audience)) if gcloud::is_audience(audience) => {
-            Ask::Identity(audience)
-        }
-        (Some("identity"), Some(audience)) => {
-            return Err(Refusal::Failed(format!(
-                "{audience:?} isn't an audience, a service's address"
-            )));
-        }
-        (Some("identity"), None) => {
-            return Err(Refusal::Usage("identity needs --audience".to_owned()));
-        }
-        (Some(verb @ ("project" | "access")), Some(_)) => {
-            return Err(Refusal::Usage(format!("{verb} takes no --audience")));
-        }
-        _ => return Err(Refusal::Usage("ask access, identity or project".to_owned())),
-    };
-    let gcloud = named(args, "--gcloud")?.map_or_else(|| OsString::from("gcloud"), OsString::from);
+/// A token minted as the account, or the one kept from a mint before.
+fn token(
+    context: &Context,
+    ask: Ask<'_>,
+    account: &Account,
+    gcloud: &OsString,
+) -> Result<String, Failure> {
     // Without a runtime folder nothing is kept, and each ask mints anew.
     let held = std::env::var_os("XDG_RUNTIME_DIR")
         .filter(|folder| !folder.is_empty())
         .map(|folder| Held::under(&PathBuf::from(folder)));
     let now = SystemTime::now();
-    if let Some(token) = held
-        .as_ref()
-        .and_then(|held| held.token(ask, &account, now))
-    {
+    if let Some(token) = held.as_ref().and_then(|held| held.token(ask, account, now)) {
         return Ok(token);
     }
-    let token = gcloud::mint(&gcloud, ask, &account, PATIENCE).map_err(Refusal::Failed)?;
+    let token = gcloud::mint(gcloud, ask, account, PATIENCE).map_err(|why| {
+        let exit = if why.starts_with("can't run") || why.contains("didn't answer") {
+            Exit::Unavailable
+        } else {
+            Exit::Failed
+        };
+        Failure::new(exit, "gcloud gave no token")
+            .because(why)
+            .try_this("gcloud auth login")
+    })?;
     if let Some(held) = &held
-        && let Err(why) = held.keep(ask, &account, &token, now)
+        && let Err(why) = held.keep(ask, account, &token, now)
     {
         // The token is still good; the next ask only mints another.
-        eprintln!("gcloud-broker: {why}");
+        let _ = context.tell(
+            "caution",
+            "warning",
+            &format!("it couldn't keep the token: {why}"),
+        );
     }
     Ok(token)
 }
 
-/// The value given after `name`, refusing one given twice, so an account
-/// named by whoever installed the broker can't be quietly overridden.
-fn named(args: &[String], name: &str) -> Result<Option<String>, Refusal> {
-    let mut found = args
-        .iter()
-        .enumerate()
-        .filter(|(_, arg)| *arg == name)
-        .map(|(at, _)| args.get(at + 1).cloned());
-    match (found.next(), found.next()) {
-        (None, _) => Ok(None),
-        (Some(Some(value)), None) => Ok(Some(value)),
-        (Some(None), None) => Err(Refusal::Usage(format!("{name} needs a value"))),
-        (Some(_), Some(_)) => Err(Refusal::Usage(format!("{name} is given twice"))),
-    }
+fn run(context: &Context) -> Result<(), Failure> {
+    let (command, [account, audience, gcloud]) = named(&context.args)?;
+    let asked = asked(command, audience.as_deref())?;
+    let account = account.ok_or_else(|| {
+        Failure::new(Exit::Usage, "no --account given")
+            .because("the wrapper on PATH names it, from jitsusama.gcloud-broker")
+            .try_this("gcloud-broker access")
+    })?;
+    let account = Account::parse(&account).map_err(|why| {
+        Failure::new(Exit::BadInput, "the account isn't a service account").because(why)
+    })?;
+    let (text, value): (String, Value) = match asked {
+        Asked::Project => (
+            account.project().to_owned(),
+            json!({"schema": "gcloud-broker.project/1", "project": account.project()}),
+        ),
+        Asked::Token(ask) => {
+            let gcloud = gcloud.map_or_else(|| OsString::from("gcloud"), OsString::from);
+            let minted = token(context, ask, &account, &gcloud)?;
+            let (kind, audience) = match ask {
+                Ask::Access => ("access", None),
+                Ask::Identity(audience) => ("identity", Some(audience)),
+            };
+            let value = json!({
+                "schema": "gcloud-broker.token/1",
+                "kind": kind,
+                "audience": audience,
+                "account": account.email(),
+                "token": minted,
+            });
+            (minted, value)
+        }
+    };
+    let said = if context.format().is_json() {
+        context.answer(&value)
+    } else {
+        context.say(&format!("{text}\n"))
+    };
+    said.map_err(|why| Failure::new(Exit::Failed, "it couldn't print it").because(why.to_string()))
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), run)
 }

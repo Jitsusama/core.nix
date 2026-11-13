@@ -232,7 +232,7 @@ fn the_project_is_the_accounts() {
 fn an_account_given_twice_is_refused() {
     let place = Place::new(&format!("echo {TOKEN}"));
     let output = place.ask(&["access", "--account", "other@a-lab.iam.gserviceaccount.com"]);
-    assert_eq!(output.status.code(), Some(2), "{}", complaint(&output));
+    assert_eq!(output.status.code(), Some(64), "{}", complaint(&output));
     assert!(
         complaint(&output).contains("given twice"),
         "{}",

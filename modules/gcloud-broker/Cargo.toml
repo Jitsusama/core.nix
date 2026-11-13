@@ -1,6 +1,8 @@
 # gcloud-broker mints a service account's hour-long Google Cloud tokens
 # with the person's own login, for what may not hold that login
-# (src/lib.rs says why). It needs nothing past the standard library.
+# (src/lib.rs says why). It needs nothing past the standard library but
+# the terminal kit, which gives its help, usage and failures the shape
+# every command of ours takes.
 [package]
 name = "gcloud-broker"
 version = "0.1.0"
@@ -9,3 +11,5 @@ license = "MIT"
 publish = false
 
 [dependencies]
+serde_json = "1.0"
+terminal-kit = { path = "../terminal-kit" }

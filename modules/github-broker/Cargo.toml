@@ -13,6 +13,8 @@ publish = false
 base64 = "0.22"
 rsa = { version = "0.9", features = ["sha2"] }
 serde_json = "1"
+# Its help, usage and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }
 # GitHub's API, over rustls.
 ureq = "3"
 

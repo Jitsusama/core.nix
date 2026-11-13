@@ -1,4 +1,6 @@
-# github-broker, built from this directory, its tests run as it builds.
+# github-broker, built from this directory, its tests run as it builds. It
+# takes its shape from the terminal kit (../terminal-kit), so the source is
+# cut from the folder holding both.
 {
   lib,
   rustPlatform,
@@ -6,18 +8,21 @@
   age,
   age-plugin-tpm,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "github-broker";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/github-broker";
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [ makeWrapper ];
   # The App is opened with age and the machine's own TPM identity, through

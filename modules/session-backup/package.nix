@@ -1,4 +1,6 @@
-# session-backup, built from this directory, its tests run as it builds.
+# session-backup, built from this directory, its tests run as it builds. It
+# takes its shape from the terminal kit (../terminal-kit), so the source is
+# cut from the folder holding both.
 {
   lib,
   rustPlatform,
@@ -7,18 +9,21 @@
   age-plugin-fido2-hmac,
   age-plugin-tpm,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "session-backup";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../.;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/session-backup";
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [ makeWrapper ];
   # The plugins age seals through: age-plugin-tag, which comes with age, for
