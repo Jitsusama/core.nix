@@ -125,13 +125,16 @@ fn what_was_taken_is_searched_newest_first_past_recents_nine() {
         json!([]),
         "nothing typed finds nothing: {said}"
     );
-    // Ahead, a shot found past the nine is served whole, still unplaced.
+    // Ahead, a shot found past the nine is served whole, still unplaced:
+    // first as it's held, which may be before file-preview's answer is, as
+    // it was on a builder at 20:10 on 12 November, then with that answer.
     client.send(&json!({"id": "ahead", "ask": "watch", "kind": ["row"], "keys": [key(1)]}));
-    let whole = client.changed(&key(1));
-    assert_eq!(
-        whole["row"]["drawer"]["facts"][2]["name"], "Dimensions",
-        "ahead, a found shot's drawer doesn't say what file-preview did: {whole}"
-    );
+    let whole = loop {
+        let row = client.changed(&key(1));
+        if row["row"]["drawer"]["facts"][2]["name"] == "Dimensions" {
+            break row;
+        }
+    };
     assert!(
         whole["row"]["order"].is_null(),
         "ahead, a found shot joined Recent's list: {whole}"
