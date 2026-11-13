@@ -199,28 +199,38 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
     let fans: Vec<Value> = numbered(&files, "fan")
         .into_iter()
         .map(|n| {
-            let rpm = |file: String| now(file).and_then(|v| v.parse::<u64>().ok());
+            // Each moving file read once, its figures and its drawer's
+            // files both from that read, as a chip's firmware is slow.
+            let listed = |file: String| lists(&file).then(|| now(file)).flatten();
+            let moving = Moving {
+                input: now(format!("fan{n}_input")),
+                target: now(format!("fan{n}_target")),
+                pwm: listed(format!("pwm{n}")),
+                enable: listed(format!("pwm{n}_enable")),
+            };
+            let rpm = |said: Option<&str>| said.and_then(|v| v.parse::<u64>().ok());
             let most = fixed(format!("fan{n}_max")).and_then(|v| v.parse::<u64>().ok());
             let least = fixed(format!("fan{n}_min")).and_then(|v| v.parse::<u64>().ok());
-            let power = lists(&format!("pwm{n}"))
-                .then(|| now(format!("pwm{n}")).and_then(|v| v.parse::<u32>().ok()))
-                .flatten()
+            let power = moving
+                .pwm
+                .as_deref()
+                .and_then(|v| v.parse::<u32>().ok())
                 .map(|p| rounded(f64::from(p.min(255)) / 255.0, 3));
             // pwm_enable says 1 where the fan is set by hand, 2 where the
             // chip sets it itself, 0 where it's at full.
-            let mode = now(format!("pwm{n}_enable")).map(|m| match m.as_str() {
+            let mode = moving.enable.as_deref().map(|m| match m {
                 "0" => "full",
                 "1" => "manual",
                 _ => "automatic",
             });
             json!({
-                "files": fan_files(n, &now, &mut fixed, &lists),
                 "n": n,
                 "label": label_of("fan", n),
-                "rpm": rpm(format!("fan{n}_input")),
+                "rpm": rpm(moving.input.as_deref()),
                 "min_rpm": least.filter(|r| *r > 0),
                 "max_rpm": most.filter(|r| *r > 0),
-                "target_rpm": rpm(format!("fan{n}_target")).filter(|r| *r > 0),
+                "target_rpm": rpm(moving.target.as_deref()).filter(|r| *r > 0),
+                "files": fan_files(n, moving, &mut fixed),
                 "power_ratio": power,
                 "mode": mode,
             })
@@ -262,29 +272,30 @@ fn temp_files(
     said_files(files)
 }
 
-/// The files behind a fan as they say it: its speed and where it's aimed
-/// read now, its least and most as kept, then how it's driven.
-fn fan_files(
-    n: u32,
-    now: &dyn Fn(String) -> Option<String>,
-    fixed: &mut dyn FnMut(String) -> Option<String>,
-    lists: &dyn Fn(&str) -> bool,
-) -> Value {
-    let mut files: Vec<(String, Option<String>)> = Vec::new();
-    for what in ["input", "min", "max", "target"] {
-        let file = format!("fan{n}_{what}");
-        let said = if matches!(what, "input" | "target") {
-            now(file.clone())
-        } else {
-            fixed(file.clone())
-        };
-        files.push((file, said));
-    }
-    for file in [format!("pwm{n}"), format!("pwm{n}_enable")] {
-        let said = lists(&file).then(|| now(file.clone())).flatten();
-        files.push((file, said));
-    }
-    said_files(files)
+/// What a fan's files say that moves, each read once a pass: its speed,
+/// where it's aimed, its power and how it's driven, the last two only
+/// where its chip lists them.
+struct Moving {
+    input: Option<String>,
+    target: Option<String>,
+    pwm: Option<String>,
+    enable: Option<String>,
+}
+
+/// The files behind a fan as they say it: its speed, its least and most
+/// as kept, where it's aimed, then how it's driven, the moving ones as
+/// its figures read them.
+fn fan_files(n: u32, moving: Moving, fixed: &mut dyn FnMut(String) -> Option<String>) -> Value {
+    let least = format!("fan{n}_min");
+    let most = format!("fan{n}_max");
+    said_files(vec![
+        (format!("fan{n}_input"), moving.input),
+        (least.clone(), fixed(least)),
+        (most.clone(), fixed(most)),
+        (format!("fan{n}_target"), moving.target),
+        (format!("pwm{n}"), moving.pwm),
+        (format!("pwm{n}_enable"), moving.enable),
+    ])
 }
 
 /// Files as `[name, said]` pairs, in the order read, those that said
