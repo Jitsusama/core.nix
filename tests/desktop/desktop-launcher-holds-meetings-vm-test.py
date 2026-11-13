@@ -734,11 +734,14 @@ def test_a_meeting_joel_holds_is_cancelled_once_he_is_sure(desktop: Desktop) -> 
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Planning")
     desktop.follow()
     desktop.down_to("Cancel the Meeting")
-    # Return asks first, saying Google tells the one guest, and cancels nothing yet.
+    # Return asks first, saying Google tells the one guest, and cancels nothing yet: the row
+    # the google daemon serves.
     desktop.step_in("ret")
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name") == "Cancel It Now, Telling 1 Guest"
     )
+    sure = desktop.showing()["selected"]["is"]
+    assert sure == "calendar:meeting:planning:cancel:sure", sure
     machine.fail(f"test -s {asked}")
     # Cancelling tells the guest, so Return writes its line, banged, since the step was the
     # asking; it cancels nothing until a fresh Return there runs it, asking no more.
