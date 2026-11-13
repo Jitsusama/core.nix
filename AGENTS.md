@@ -160,6 +160,8 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
   machine repository
 - [docs/daemons.md][25]: the shape every daemon takes, its socket, names and
   interface
+- [docs/commands.md][26]: the shape every command takes, for Joel in a
+  terminal and for a machine through a pipe
 - [docs/machines.md][5]: building a machine from core.nix
 - [docs/kernel.md][7]: the kernel, its patches and settings, and changing
   them
@@ -200,3 +202,4 @@ Renaming or removing an output or a `jitsusama.*` option is breaking: mark it
 [23]: modules/eero/AGENTS.md
 [24]: modules/warp/AGENTS.md
 [25]: docs/daemons.md
+[26]: docs/commands.md

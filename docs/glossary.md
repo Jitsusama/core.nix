@@ -179,6 +179,9 @@ be read, marked unread and archived.
 | program | something Joel runs, with or without a window | app, application | the `applications` provider |
 | shell | zsh, which Joel types commands into in a terminal | | zsh |
 | prompt | the line the shell writes before each command | | |
+| command | a program of ours typed into the shell, by Joel or by an agent, keeping one shape for both | CLI, tool | `docs/commands.md` |
+| answer | what a command writes on stdout, and nothing else does: the records, the value asked for, or the JSON | output | stdout |
+| form | how a command's answer is written: text for a person, json or jsonl for a machine | output format, which is a device's format | `--format`, `terminal_kit::Format` |
 | Google account | the account Joel's mail and calendar are kept in, which the desktop's own program holds | | the `google` program |
 | mail | Joel's messages in his Google account, and the place in Programs holding them | | Gmail |
 | wants you | mail waiting on Joel's answer | | |
@@ -568,6 +571,7 @@ The words core.nix is built from. Never a launcher place.
 | identity | who Joel is on a machine | | `jitsusama.identity.email` |
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
+| terminal kit | the library every Rust command builds on for its shared flags, ink, layout, help, errors and exit codes | CLI framework | `modules/terminal-kit/` |
 | colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |
 | serif face | the theme's serif: italic, the desktop's voice, what the launcher says to Joel; upright, the words to read beside a mono name | voice face | `jitsusama.theme.font.serif`, `Theme.serif` |
