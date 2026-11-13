@@ -903,9 +903,10 @@ mod tests {
             [
                 json!("row:agents-top:O"),
                 json!("row:agents:O"),
-                json!(served::SUMMARY)
+                json!(served::SUMMARY),
+                json!("want:agents:O")
             ],
-            "an orchestrator's own question is Joel's, and moves its rows and the summary"
+            "an orchestrator's own question is Joel's, and moves its rows, the summary and its want"
         );
         assert_eq!(
             summary_of(&shown),
