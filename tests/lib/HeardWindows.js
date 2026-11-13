@@ -25,7 +25,9 @@ function record(window, lookup, current) {
         id: window.id,
         app_id: window.app_id ?? "",
         opened: window.opened ?? null,
-        session: false,
+        // Whether it holds an agent's session, as the daemon says of a kitty
+        // window classed for one (modules/windows/src/desktop.rs's app_of).
+        session: window.session === true,
         title: window.title ?? "",
         pid: window.pid ?? null,
         entry: entry ? entry.id : null,

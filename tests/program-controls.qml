@@ -18,6 +18,7 @@
 // open and through the process behind its last window while one is, and
 // read again as its file changes, nine at most, a program held then drawn
 // again; a change while the launcher is closed is read only as it opens.
+// An agent's window, though the terminal's, isn't among its other windows.
 // A program's files on the
 // list programs share are its Recent too, found by its desktop entry's id
 // or name, and opened by its own command when it takes files, else as the
@@ -915,6 +916,20 @@ ShellRoot {
             same("with one open, through the process behind it", JSON.stringify(Niri.spawned),
                 JSON.stringify(["quiet", "@", "--to", "unix:@quiet-4242", "launch",
                     `${root.home}/src/core.nix`]));
+            // An agent's window is the terminal's too, but its Agents row
+            // holds it, so only Joel's own are listed as its other windows:
+            // kitty's step drew a row for each of 112 agents' windows on his
+            // laptop, 474 ms (2026-11-13, VKCF3Z [b31d7a90]).
+            Niri.windows = Object.assign({}, Niri.windows, {
+                "14": { id: 14, app_id: "quiet", pid: 4343, title: "Notes", workspace_id: 1,
+                    focus_timestamp: { secs: 40, nanos: 0 } },
+                "15": { id: 15, app_id: "quiet", pid: 4444, title: "pi", workspace_id: 1,
+                    session: true, focus_timestamp: { secs: 45, nanos: 0 } }
+            });
+            windowsChanged();
+            same("an agent's window isn't listed among its other windows, its own are",
+                program("quiet").verbs().filter(row => (row.key ?? "").startsWith("window:"))
+                    .map(row => row.name).join(", "), "Notes");
             Niri.windows = before;
             windowsChanged();
 
