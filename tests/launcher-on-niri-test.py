@@ -3088,9 +3088,11 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
         shell.normal()
         shell.send_chars(f":{line}")
         shell.launcher_until(
+            # Ruff's B023 fears a late binding; the wait ends within this turn of the loop.
             lambda shown: (shown["command"] or {}).get("line") == line  # noqa: B023
         )
         shell.send_key("ret")
+        # Ruff's B023 fears a late binding; the wait ends within this turn of the loop.
         shell.launcher_until(lambda _: acted in log.read_text(errors="replace"))  # noqa: B023
     shell.close_launcher()
 
