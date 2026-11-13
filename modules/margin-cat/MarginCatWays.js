@@ -4,7 +4,6 @@
 // moment of one. MarginCatPaths.js says where its ways go.
 .pragma library
 .import "MarginCat.js" as MarginCat
-.import "MarginCatRoutes.js" as Routes
 
 // How fast it falls, in its cells a second each second: a hop of a cell
 // and a half over a gap lasts about a sixth of a second, a drop between
@@ -17,9 +16,10 @@ const FALLS_AT_MOST = 54;
 const LEAPS_AT_LEAST = 160;
 // It climbs in bounds, as a cat goes up a tree rather than a lift up a
 // shaft: one each `BOUNDS` of its heights, surging and gripping by
-// `SURGES` either side of its pace (Routes.CLIMBS), so at its quickest
-// it's never more than half its body between two frames at 120 Hz
-// (WCJQSG b36c3fb6: three seconds up a screen read slow).
+// `SURGES` either side of the pace it walks, so a climb reads as quick
+// as a walk along a top and no quicker (Joel, 2026-11-13 17:22, by
+// WCJQSG fc3f716a: "Going up the side of a window should be at the same
+// speed roughly as walking on top").
 const BOUNDS = 6;
 const SURGES = 0.3;
 // The longest all the beats nobody can see may take together, in ms: off
@@ -145,7 +145,7 @@ function lasts(one, pace, at) {
         const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
         return Math.max(LEAPS_AT_LEAST, (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS);
     }
-    return (ground / at.cell / (one.kind === "climbs" ? Routes.CLIMBS : pace)) * MarginCat.MS;
+    return (ground / at.cell / pace) * MarginCat.MS;
 }
 
 // Whether any of a leg can be seen on the screen, `across` by `height`.
@@ -166,7 +166,8 @@ function seen(one, at) {
 function timed(way) {
     const at = way.at;
     const slow = at.slowdown ?? 1;
-    const walked = way.legs.filter(one => one.kind === "goes").reduce((all, one) =>
+    const walked = way.legs.filter(one => one.kind === "goes" || one.kind === "climbs")
+        .reduce((all, one) =>
         all + Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y), 0) / at.cell;
     const pace = Math.min(Math.max(walked / (MarginCat.CRUISES / MarginCat.MS), MarginCat.AMBLES),
         MarginCat.HURRIES);

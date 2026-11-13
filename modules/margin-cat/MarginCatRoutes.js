@@ -14,10 +14,10 @@
 // straight line there, as a cat makes for where it's going.
 .pragma library
 
-// Its paces, in its cells a second: walking a ledge or a top, and
-// climbing, which it does in bounds (MarginCatWays.js's frame).
+// Its pace, in its cells a second, walking a ledge or a top or climbing
+// a side, which it does at the pace it walks (Joel, 2026-11-13 17:22, by
+// WCJQSG fc3f716a: at 320 a climb "seems accelerated").
 const WALKS = 120;
-const CLIMBS = 320;
 // What a leap costs, crouch and landing and all, in ms: across a gap
 // between two of a column's windows or two columns, and over an edge onto
 // a ledge or a side.
@@ -163,7 +163,7 @@ function fromSide(stop, cols, at, add) {
             const gaps = column.rows.filter(one => one.top > Math.min(y, stop.y) + at.tall
                 && one.top <= Math.max(y, stop.y) + at.tall).length;
             add("side", stop.c, { side: stop.side, x, y, row: r, how: "climbs" },
-                (Math.abs(stop.y - y) / at.cell / CLIMBS) * 1000 + gaps * LEAPS);
+                (Math.abs(stop.y - y) / at.cell / WALKS) * 1000 + gaps * LEAPS);
         }
     }
     for (const ledge of across.filter(one => Math.abs(one.y - stop.y) <= at.cell + 1e-6)) {
