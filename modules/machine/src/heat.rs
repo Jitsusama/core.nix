@@ -20,7 +20,10 @@ const THERMAL: &str = "/sys/class/thermal";
 /// How long a chip's read takes before it counts as slow: a chip that
 /// answers through the firmware, as a Dell's `dell_smm` and `dell_ddv`
 /// do, about 40 to 75 ms a pass each on Joel's laptop and up to 330 ms
-/// while it's loaded (2026-11-13), where the rest take under 7 ms.
+/// while it's loaded (2026-11-13), where the rest take under 7 ms. A
+/// chip once slow stays so until the chips change, since `dell_ddv`'s
+/// driver answers some passes from its cache in under a millisecond
+/// (2026-11-13), and counted quick it was read each second again.
 pub const SLOW: Duration = Duration::from_millis(20);
 
 /// How long a slow chip's record is kept before it's read again. Each of
@@ -359,10 +362,8 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
         }
         let began = Instant::now();
         let record = chip(root, kept, &folder, &key, &name);
-        if began.elapsed() >= kept.slow_from {
+        if began.elapsed() >= kept.slow_from || kept.slow.contains_key(&folder) {
             kept.slow.insert(folder, (now, record.clone()));
-        } else {
-            kept.slow.remove(&folder);
         }
         records.push(record);
     }
