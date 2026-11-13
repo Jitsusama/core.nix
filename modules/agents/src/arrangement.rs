@@ -215,8 +215,10 @@ impl Arrangement {
     /// another boot at 18:41, and the places Reopen Them All had just used
     /// were dropped at 18:43, so nobody could see which it misplaced.
     pub fn before(&self, boot: &str, restoring: &str) -> Option<&str> {
-        if !restoring.is_empty() && restoring != boot && self.boots.contains_key(restoring) {
-            return Some(restoring);
+        if restoring != boot
+            && let Some((kept, _)) = self.boots.get_key_value(restoring)
+        {
+            return Some(kept);
         }
         self.boots
             .keys()
