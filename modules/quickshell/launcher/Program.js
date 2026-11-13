@@ -80,7 +80,7 @@ function usage(trees, agents) {
     if (said.length === 0) {
         return null;
     }
-    const sum = (field, trees) => (trees ?? said)
+    const sum = (field, among) => (among ?? said)
         .reduce((all, tree) => all + (Number(tree[field]) || 0), 0);
     const summed = {
         processor: Math.max(0, Math.min(1, sum("share_ratio"))),
