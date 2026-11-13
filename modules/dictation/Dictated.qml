@@ -7,6 +7,7 @@
 // how, what a terminal gets, and the other key in its fold.
 import qs
 import QtQuick
+import "../Dictated.js" as Dictated
 
 Provider {
     id: provider
@@ -45,8 +46,11 @@ Provider {
         drawer: () => ({
             eyebrow: told.eyebrow ?? "",
             title: Words.name("dictation"),
-            facts: [named("how", told.how ?? ""), named("terminal", told.terminal ?? ""),
-                named("stop", told.stop ?? "")],
+            facts: Dictated.facts({
+                lastTake: Dictation.lastTake,
+                lastSaid: Qt.formatDateTime(new Date(Dictation.lastTake), "d MMM, HH:mm"),
+                readyMs: Dictation.readyMs
+            }, told).map(fact => named(fact.id, fact.value)),
             body: (words.tells ?? {}).body ?? "",
             nerd: [named("also", told.also ?? "")]
         }),

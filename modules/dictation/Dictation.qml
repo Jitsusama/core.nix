@@ -21,6 +21,11 @@ Singleton {
     // Whether the service answers at all, so the launcher's row can say
     // it's off while its socket can't be reached.
     readonly property bool reached: watching.connected
+    // When a take last typed something, in ms since 1970, or 0 before
+    // the first; and how long the model last took to load, or -1 before
+    // it's loaded. The service says each beside its state.
+    property real lastTake: 0
+    property real readyMs: -1
 
     // A moment's answer: "still-writing", or why it heard nothing (muted,
     // short, silent or unclear).
@@ -59,6 +64,13 @@ Singleton {
                     root.answered(said);
                 else if (said.startsWith("heard-nothing "))
                     root.answered(said.slice("heard-nothing ".length));
+                else if (said.startsWith("last-take "))
+                    root.lastTake = Number(said.slice("last-take ".length)) || 0;
+                else if (said.startsWith("ready-ms ")) {
+                    const ms = Number(said.slice("ready-ms ".length));
+                    if (ms >= 0)
+                        root.readyMs = ms;
+                }
             }
         }
     }

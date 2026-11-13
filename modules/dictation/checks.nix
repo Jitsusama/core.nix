@@ -43,6 +43,7 @@
     pkgs.runCommandLocal "dictation-says-what-its-doing" { } ''
       cp ${./tests/speaking.qml} speaking.qml
       cp ${./Speaking.js} Speaking.js
+      cp ${./Dictated.js} Dictated.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

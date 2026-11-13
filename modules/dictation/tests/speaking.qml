@@ -4,6 +4,7 @@
 // `qml -platform offscreen speaking.qml`.
 import QtQuick
 import "Speaking.js" as Speaking
+import "Dictated.js" as Dictated
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -82,6 +83,20 @@ QtObject {
         expect("full is the most", Speaking.height(1, 2, 16), 16);
         expect("past full is still the most", Speaking.height(1.5, 2, 16), 16);
         expect("a quarter is half way", Speaking.height(0.25, 2, 16), 9);
+
+        // The launcher's Dictation drawer: what's not known yet is left
+        // out, and a load's time reads in seconds to a tenth.
+        const told = { how: "hold", terminal: "command", stop: "tap" };
+        const ids = stood => Dictated.facts(stood, told).map(fact => fact.id);
+        expect("before a take or a load, only how", ids({ lastTake: 0, readyMs: -1 }),
+            ["how", "terminal", "stop"]);
+        expect("after both, when and how fast before the stop",
+            Dictated.facts({ lastTake: 1, lastSaid: "1 Nov, 18:52", readyMs: 1460 }, told), [
+                { id: "how", value: "hold" }, { id: "terminal", value: "command" },
+                { id: "last", value: "1 Nov, 18:52" }, { id: "ready", value: "1.5\u00a0s" },
+                { id: "stop", value: "tap" }
+            ]);
+        expect("a load under a second keeps its tenth", Dictated.seconds(40), "0.0\u00a0s");
 
         for (const failure of failures)
             console.warn(failure);

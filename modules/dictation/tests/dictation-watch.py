@@ -55,12 +55,17 @@ def watched(server: socket.socket, case: str) -> socket.socket:
 
 def heard(state: str, case: str) -> None:
     """Wait for the shell to say it came to a state."""
+    reported(f"state {state}", case)
+
+
+def reported(line: str, case: str) -> None:
+    """Wait for the shell to report a line: a state, or a figure it keeps."""
     while True:
         try:
-            line = said.get(timeout=WAIT)
+            got = said.get(timeout=WAIT)
         except queue.Empty:
-            fail(f"{case}: the shell never came to {state}")
-        if line.strip() == f"state {state}":
+            fail(f"{case}: the shell never said {line}")
+        if got.strip() == line:
             return
 
 
@@ -100,6 +105,12 @@ client.sendall(b"idle\n")
 for state in ["listening", "transcribing", "idle"]:
     client.sendall(f"{state}\n".encode())
     heard(state, f"saying {state}")
+
+# Beside the state, when a take last typed and how long the model took to
+# load, which the launcher's Dictation row shows.
+client.sendall(b"ready-ms 1460\nlast-take 1794606000000\n")
+reported("ready 1460", "saying the load's time")
+reported("last 1794606000000", "saying the last take")
 
 # The service stops while listening, and its socket stays: the shell goes
 # back to idle and watches again, which starts it.

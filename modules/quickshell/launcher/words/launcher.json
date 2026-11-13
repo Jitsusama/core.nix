@@ -1361,6 +1361,16 @@
       "name": "In a Terminal"
     },
     {
+      "id": "dictation:last",
+      "of": "dictation",
+      "name": "Last Used"
+    },
+    {
+      "id": "dictation:ready",
+      "of": "dictation",
+      "name": "Ready In"
+    },
+    {
       "id": "dictation:stop",
       "of": "dictation",
       "name": "To Stop"

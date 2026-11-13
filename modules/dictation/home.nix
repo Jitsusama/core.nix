@@ -54,6 +54,7 @@ in
     xdg.configFile."quickshell/Dictation.qml".source = ./Dictation.qml;
     # A row in the launcher's Desktop, so dictation is found where Joel
     # looks rather than only by its key; after the desktop's own actions.
+    xdg.configFile."quickshell/Dictated.js".source = ./Dictated.js;
     jitsusama.quickshell.launcher.providers.dictation = {
       order = 46;
       source = ./Dictated.qml;
