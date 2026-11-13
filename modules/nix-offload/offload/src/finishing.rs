@@ -1,6 +1,7 @@
 //! What a stop that hands its builder over leaves for the next start: for
 //! each builder, the helper still carrying its builds, and whether a run
-//! outliving its caller builds there. A start that can't take that builder
+//! outliving its caller builds there, and whether its way still takes new
+//! connections, as a restart leaves it. A start that can't take that builder
 //! back leaves it to finish rather than give it back mid-build: on 10
 //! November a switch brought a helper that refused to take back the two
 //! builders made before it, and the start gave both back, one of them
@@ -24,6 +25,9 @@ pub struct Finishing {
     /// When the time it was asked to live runs out, in seconds since the
     /// epoch, after which nothing holds it.
     pub ends: u64,
+    /// Whether its way still takes new connections, as one a restart left
+    /// does until the next start holds the builder or names it nowhere.
+    pub accepting: bool,
 }
 
 fn path(dir: &Path, name: &str) -> PathBuf {
@@ -37,7 +41,8 @@ pub fn note(dir: &Path, name: &str, finishing: &Finishing) -> std::io::Result<()
         .helper
         .map_or_else(|| "-".to_owned(), |pid| pid.to_string());
     let outliving = u8::from(finishing.outliving);
-    let text = format!("{helper} {outliving} {}\n", finishing.ends);
+    let accepting = u8::from(finishing.accepting);
+    let text = format!("{helper} {outliving} {} {accepting}\n", finishing.ends);
     fs::write(path(dir, name), text)
 }
 
@@ -51,10 +56,13 @@ pub fn read(dir: &Path, name: &str) -> Option<Finishing> {
     };
     let outliving = words.next()? == "1";
     let ends = words.next()?.parse().ok()?;
+    // A note from before ways were left taking connections says nothing.
+    let accepting = words.next() == Some("1");
     Some(Finishing {
         helper,
         outliving,
         ends,
+        accepting,
     })
 }
 
@@ -94,6 +102,42 @@ fn carries(pid: u32, name: &str) -> bool {
             .any(|word| word == name.as_bytes())
     });
     !zombie && named
+}
+
+/// The builders a restart left whose ways still take new connections.
+pub fn accepting(dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(dir.join(FOLDER)) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| {
+            read(dir, name).is_some_and(|left| {
+                left.accepting && left.helper.is_some_and(|pid| carries(pid, name))
+            })
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// Tell the way to `name` a restart left taking connections to take no
+/// new one and finish those it has, as a helper told to hand over does,
+/// and note it no longer takes them.
+pub fn hand_over(dir: &Path, name: &str) {
+    let Some(mut left) = read(dir, name).filter(|left| left.accepting) else {
+        return;
+    };
+    if let Some(pid) = left.helper.filter(|&pid| carries(pid, name))
+        && let Ok(pid) = libc::pid_t::try_from(pid)
+    {
+        // SAFETY: a signal to the helper `carries` named, which traps it.
+        unsafe { libc::kill(pid, libc::SIGUSR1) };
+    }
+    left.accepting = false;
+    if let Err(error) = note(dir, name, &left) {
+        eprintln!("nix-offload: couldn't note that {name}'s way hands over: {error}");
+    }
 }
 
 /// Forget the note for `name`, once it's given back.

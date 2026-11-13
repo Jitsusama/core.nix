@@ -437,7 +437,8 @@ pub fn excuses(held: &Held, failed: &BTreeSet<String>) -> bool {
 
 /// The subtest a line of a VM test's log says failed, as pytest says it:
 /// `FAILED vm-pytest-x/x-vm-test.py::test_y - why`, a parametrized case
-/// by its function's name.
+/// by its function's name. It is merge-net's `failed_on` in subtests.rs,
+/// and changed-checks' in quarantine.rs, copied, so the three change together.
 pub fn failed_on(line: &str) -> Option<&str> {
     let (_, rest) = line.split_once("FAILED ")?;
     let (_, name) = rest.split_whitespace().next()?.rsplit_once("::")?;
