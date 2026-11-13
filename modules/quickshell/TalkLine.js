@@ -97,8 +97,10 @@ function eventOf(line) {
     }
 }
 
-// The events that carry an answer's words: answered, and landed once it's done.
-const ANSWERING = ["answered", "landed"];
+// The events that carry an answer's words: answered, landed once it's done, and
+// taken where whoever took it up said something, as what it will do and then what
+// it did (QCXZEB [203d9e2c]); a taking with no words is dropped with the empty.
+const ANSWERING = ["answered", "landed", "taken"];
 // The events after which someone has the line and it waits on them.
 const HOLDING = ["routed", "taken"];
 
@@ -107,7 +109,7 @@ function answersIn(own) {
     const answers = [];
     for (const event of own.filter(one => ANSWERING.includes(one.event))) {
         const answer = { msg: event.msg ?? "", text: String(event.text ?? "").trim(),
-            who: event.who ?? "", at: event.at ?? "" };
+            who: midSentence(event.who), at: event.at ?? "" };
         const replaced = answers.findIndex(one => event.supersedes && one.msg === event.supersedes);
         answers.splice(replaced < 0 ? answers.length : replaced, replaced < 0 ? 0 : 1, answer);
     }
@@ -121,13 +123,19 @@ function past(events, key) {
     const own = key === "" ? [] : (events ?? []).filter(event => event.line === key);
     const last = own.length > 0 ? own[own.length - 1] : { event: "", who: "" };
     return { answers: answersIn(own), last: last.event,
-        waiting: HOLDING.includes(last.event) ? String(last.who ?? "") : "",
-        lastWho: String(last.who ?? "") };
+        waiting: HOLDING.includes(last.event) ? midSentence(last.who) : "",
+        lastWho: midSentence(last.who) };
 }
 
 // "Your orchestrator has it", as the void's first answer says who has a line.
 const HOLDER = /^(?<who>.+) has it$/u;
 const YOUR = /^Your /u;
+
+// Who the void's events name, as they'd stand mid-sentence: it writes "Your
+// orchestrator", which read "waiting on Your orchestrator".
+function midSentence(who) {
+    return String(who ?? "").replace(YOUR, "your ");
+}
 
 // Who the void says has a line, from its first answer's words, as they'd
 // stand mid-sentence; "" where it says something else.
