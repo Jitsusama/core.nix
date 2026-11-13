@@ -71,11 +71,12 @@ function laid(words) {
     return lines;
 }
 
-// The void's reply says first where his line went, as "→ Delta · undo
-// 22:54" when it can be undone, by the time its day file keeps the line
-// at (8GYNJ6, 2026-11-12 [e7d88599]); a to-do for him, or a line it kept,
-// can't be.
-const UNDOABLE = /^(→ .*?) · undo (\d{1,2}:\d{2})$/u;
+// The void's reply says first where his line went, as "Your orchestrator
+// has it · undo 07:43" (once "→ Delta · undo 22:54") when it can be
+// undone, by the time its day file keeps the line at (8GYNJ6, 2026-11-12
+// [e7d88599]; QCXZEB, 2026-11-13 [31907e55]); a to-do for him, or a line
+// it kept, can't be.
+const UNDOABLE = /^(.*?) · undo (\d{1,2}:\d{2})$/u;
 
 // A reply as the card says it, where it went kept and the undo taken off
 // it to be an act of the card's (VKCF3Z, 2026-11-12 [244ed4fd]), and the

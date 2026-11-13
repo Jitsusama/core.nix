@@ -81,6 +81,11 @@ QtObject {
             Expect.same("to his orchestrator, the same",
                 Told.went("→ your orchestrator · undo 9:05 "),
                 { reply: "→ your orchestrator", undo: "9:05" });
+            // It says who has it in words rather than with an arrow since QCXZEB's answer of
+            // 2026-11-13 [31907e55], and can be undone all the same.
+            Expect.same("who has it said in words, the same",
+                Told.went("Your orchestrator has it · undo 07:43"),
+                { reply: "Your orchestrator has it", undo: "07:43" });
             Expect.same("a to-do for him can't be undone",
                 Told.went("→ for you: call the bank"),
                 { reply: "→ for you: call the bank", undo: "" });
