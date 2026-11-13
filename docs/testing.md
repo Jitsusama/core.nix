@@ -441,6 +441,14 @@ to a row's update path quotes that line before and after without a switch.
 Machine's spent 2 ms before the shell, 5 to 7 in it and 5 to 27 from its
 frame's start over eight rounds (2026-11-11).
 
+A drawer is timed by `test_each_drawer_is_timed`, run alone with
+`PYTEST_ADDOPTS = "-k each_drawer"`: it steps into Machine and into
+`LAB_DRAWN` (Memory unless given), walks its rows down and up by letter,
+round after round, and prints each drawer's presented time from its key and
+how it came, then the median and p90, how many were never said, and how many
+keys showed another row's drawer first. So a change to how a drawer reaches
+the shell, as one served apart from its row does, quotes it on both sides.
+
 A key is timed by the `keys-lab` beside it
 (`tests/launcher-keys-lab-on-niri.py`). It opens home round after round and
 types each of `LAB_WORDS` (Joel's `meet` and `om` unless given) a letter at
