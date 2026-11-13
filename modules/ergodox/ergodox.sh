@@ -26,6 +26,32 @@ Commands:
 EOF
 }
 
+# Help is answered wherever it's asked, and a command given more words than
+# it takes is refused, so `ergodox flash --help` never flashes the board
+# and `ergodox bootloader now` never restarts it.
+for word in "$@"; do
+  case $word in
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *) ;;
+  esac
+done
+# Refuses the command unless it was given exactly this many words, itself
+# included.
+words=$#
+asked=${1-}
+takes() {
+  [ "$words" -eq "$1" ] && return 0
+  case $1 in
+    1) printf '%s\n' "ergodox $asked takes no more words" >&2 ;;
+    *) printf '%s\n' "ergodox $asked takes one more word" >&2 ;;
+  esac
+  printf '%s\n' "  try  ergodox --help" >&2
+  exit 64
+}
+
 root=${ERGODOX_ROOT-}
 
 # The board's channel is the hidraw node whose device is ZSA's and whose
@@ -62,6 +88,7 @@ ask() {
 
 case "${1-}" in
 flash)
+  takes 1
   # A board running this firmware restarts itself, and zapp finds it waiting.
   # One running anything else ignores the command, so zapp says when to press
   # its bootloader key instead: Delete's key on either thumb while Numb is
@@ -70,12 +97,15 @@ flash)
   exec zapp flash "${ERGODOX_FIRMWARE:?the package gives its firmware}/ergodox.hex"
   ;;
 serial)
+  takes 1
   cat "${ERGODOX_FIRMWARE:?the package gives its firmware}/serial"
   ;;
 bootloader)
+  takes 1
   ask 128
   ;;
 layer)
+  takes 2
   index=0
   for name in ${ERGODOX_LAYERS:?the package gives the layer names}; do
     if [ "${2-}" = "$index" ] || [ "${2,,}" = "${name,,}" ]; then
@@ -88,6 +118,7 @@ layer)
   exit 64
   ;;
 lights)
+  takes 2
   case "${2-}" in
   on) ask 131 1 ;;
   off) ask 131 0 ;;
@@ -98,9 +129,11 @@ lights)
   esac
   ;;
 brighter)
+  takes 1
   ask 132 1
   ;;
 dimmer)
+  takes 1
   ask 132 0
   ;;
 help | -h | --help)

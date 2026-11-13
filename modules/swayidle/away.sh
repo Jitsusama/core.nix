@@ -15,6 +15,29 @@
 # or a call in Chrome keeps the screen through Wayland's own inhibitor,
 # which niri honours and this swayidle hears.
 
+case ${1-} in
+  -h | --help)
+    cat << 'EOF'
+swayidle-away  marks Joel away, locks, then turns screens off
+
+EXAMPLES
+  swayidle-away 120 300 600   each step's seconds idle
+
+EXIT
+  64  asked wrongly, and otherwise swayidle's own
+EOF
+    exit 0
+    ;;
+  *) ;;
+esac
+# Anything but three whole numbers is refused, so a typo never starts a
+# second watcher that locks the screen.
+if [ "$#" -ne 3 ] || ! [[ "$1 $2 $3" =~ ^[0-9]+\ [0-9]+\ [0-9]+$ ]]; then
+  printf '%s\n' "swayidle-away needs three whole numbers of seconds" \
+    "  try  swayidle-away --help" >&2
+  exit 64
+fi
+
 mark=$1
 lock=$2
 off=$3
@@ -23,5 +46,5 @@ here=${XDG_RUNTIME_DIR:?}/someone-at-the-machine
 exec swayidle \
   timeout 1 true resume "touch '$here'" \
   timeout "$mark" "rm -f '$here'" \
-  timeout "$lock" "screen-kept || lock-screen 'Joel stepped away'" \
+  timeout "$lock" "screen-kept || lock-screen --reason 'Joel stepped away'" \
   timeout "$off" "screen-kept || niri msg action power-off-monitors"
