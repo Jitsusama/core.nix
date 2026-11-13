@@ -1019,6 +1019,32 @@ def test_a_kept_opening_fills_in_once_niri_has_presented_its_frame(shell: Shell)
     assert waited, f"niri presented no opening within the launcher's wait: {seen}"
 
 
+def test_the_starts_spots_are_made_in_slices_and_its_texts_after_them(shell: Shell) -> None:
+    """Left shut as the shell starts, its spots are made a slice a turn, then its texts.
+
+    Made whole in one turn with its texts begun in it, the start's held the shell 62 to 91 ms
+    (XY9H5C's GPU rig, 2026-11-12), every key and frame in that time waiting on it.
+    """
+    since = shell.mark()
+    shell.restart()
+    made: list[Json] = []
+
+    def heard(rest: str) -> bool:
+        made.append(json.loads(rest))
+        return True
+
+    shell.reported(SPOTS_MADE_SHUT[0], heard, since)
+    assert made[0].get("slices", 0) >= 1, f"the start's spots weren't made in slices: {made}"
+    looked = "launcher: looked through the searched collections"
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while looked not in (logged := shell.log.read_bytes()[since:].decode(errors="replace")):
+        assert time.monotonic() < deadline, f"the start's texts were never looked through: {made}"
+        time.sleep(launcher_on_niri.POLL)
+    assert logged.index(f"report[{SPOTS_MADE_SHUT[0]}") < logged.index(looked), (
+        f"the start's texts were looked through before its spots were made: {made}"
+    )
+
+
 def test_a_kept_opening_wakes_its_sources_a_frame_apart(shell: Shell) -> None:
     """A kept opening's sources wake a few a frame once it's filled in, home's first row's first.
 

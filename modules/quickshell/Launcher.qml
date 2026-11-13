@@ -10128,11 +10128,15 @@ Scope {
         interval: 5000
         running: true
         onTriggered: {
-            if (!root.spotsMade && root.open)
+            if (!root.spotsMade && root.open) {
                 root.spotsBegin();
-            else if (!root.spotsMade)
+                root.textsMadeClosed();
+            } else if (!root.spotsMade) {
+                root.textsAfterSpots = true;
                 root.spotsMadeClosed();
-            root.textsMadeClosed();
+            } else {
+                root.textsMadeClosed();
+            }
         }
     }
 
@@ -10140,14 +10144,64 @@ Scope {
     // puts spotsLater off for, but the start's timer above came due in it:
     // every closing reopened within half a second leaves no spots made, so
     // it made them between a reopening's ask and its frame (2026-11-10).
+    //
+    // Made a slice of the wake's budget a turn, as an opening's are
+    // (spotsNext), since made whole in one turn the start's held the
+    // shell 62 to 91 ms, a frame or more of keys and whatever it drew
+    // missed (XY9H5C's GPU rig, 2026-11-12). Closed, a frame comes at
+    // once, so the turns are a timer's. The start's texts wait for the
+    // last slice, so the two never share a turn.
+    property bool spotsClosedSlicing: false
+    property bool textsAfterSpots: false
+    property var spotsClosedSaid: ({ made: [], kept: [], slices: 0, took: 0, longest: 0 })
+
     function spotsMadeClosed() {
-        if (open || opening)
+        if (open || opening || spotsClosedSlicing)
             return;
+        spotsClosedSlicing = true;
+        spotsClosedSaid = { made: [], kept: [], slices: 0, took: 0, longest: 0 };
         freshen();
-        spots = spotsFrom();
+        spotsClosedNext();
+    }
+
+    function spotsClosedNext() {
+        if (open || opening) {
+            // An opening makes what's left after its frames (spotsBegin).
+            spotsClosedSlicing = false;
+            if (textsAfterSpots) {
+                textsAfterSpots = false;
+                textsMadeClosed();
+            }
+            return;
+        }
+        const began = KeyTimes.now();
+        spots = spotsFrom(false, began + wakeBudget);
+        const took = KeyTimes.now() - began;
+        const so = spotsClosedSaid;
+        const made = so.made.concat(spotsSaid.made);
+        spotsClosedSaid = { made, kept: spotsSaid.kept.filter(where => !made.includes(where)),
+            slices: so.slices + 1, took: Math.round(so.took + took),
+            longest: Math.round(Math.max(so.longest, took)) };
+        if (spotsShort) {
+            spotsClosedSlice.restart();
+            return;
+        }
+        spotsClosedSlicing = false;
         spotsMade = true;
         spotsFreshened.restart();
-        Report.say(`spots made while closed ${JSON.stringify(spotsSaid)}`);
+        Report.say(`spots made while closed ${JSON.stringify(spotsClosedSaid)}`);
+        if (textsAfterSpots) {
+            textsAfterSpots = false;
+            textsMadeClosed();
+        }
+    }
+
+    // A frame's time between slices, as the texts' turns are (readying).
+    Timer {
+        id: spotsClosedSlice
+
+        interval: 16
+        onTriggered: root.spotsClosedNext()
     }
 
     // The figures of spots whose make held (spotsFrom), made again a minute
