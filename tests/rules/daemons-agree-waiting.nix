@@ -29,7 +29,6 @@
     "shown"
     "speaks"
   ];
-  machine = [ "speaks" ];
   meaning = [
     "held"
     "shown"
