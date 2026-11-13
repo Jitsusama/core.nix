@@ -331,7 +331,12 @@ mod tests {
             GIVES_WAY,
             "the first tier, or no tiers"
         );
-        const { assert!(ACCOUNT < GIVES_WAY && GIVES_WAY < crate::oom::AFTER) };
+        const {
+            assert!(
+                ACCOUNT < GIVES_WAY && GIVES_WAY < crate::oom::AFTER,
+                "a spared pi must rank below the rest, and every pi below work"
+            );
+        };
     }
 
     #[test]
@@ -342,7 +347,10 @@ mod tests {
             625,
             "unranked, after five tiers, goes first among pis"
         );
-        assert!(adjustment(false, 2) > adjustment(false, 1));
+        assert!(
+            adjustment(false, 2) > adjustment(false, 1),
+            "a lower tier's pi must score above a higher tier's"
+        );
     }
 
     #[test]

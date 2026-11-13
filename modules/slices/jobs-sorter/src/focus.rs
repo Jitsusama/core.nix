@@ -46,6 +46,9 @@
 //! (modules/quickshell's Sessions.qml), or else, for a kitty of its own,
 //! by the one scope that kitty has, or else by what the kitty drawing it
 //! says runs there (`src/kitty.rs`).
+//!
+//! Long because its cases, near half of it, stay beside the windows'
+//! private pieces as every module in this crate keeps them.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};

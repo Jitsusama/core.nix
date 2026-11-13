@@ -132,7 +132,7 @@ mod tests {
             "only the mark keeps a process off the most"
         );
         assert_eq!(adj(23), "1000\n", "the mark is the whole variable");
-        assert!(!warned);
+        assert!(!warned, "every score should have been written");
         fs::remove_dir_all(&proc).unwrap();
     }
 
@@ -194,7 +194,7 @@ mod tests {
         assert_eq!(adj(41), "990\n");
         assert_eq!(adj(42), "1000\n", "unranked work goes first");
         assert_eq!(adj(43), "870\n", "waiting elsewhere still goes after");
-        assert!(!warned);
+        assert!(!warned, "every score should have been written");
         fs::remove_dir_all(&proc).unwrap();
     }
 
