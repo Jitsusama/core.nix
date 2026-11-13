@@ -36,11 +36,6 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
-# The launcher closed after each test, so one failing with it open fails alone: left open in
-# a drawer, every case after it waited for it to close (2026-11-13).
-launcher_closed_after = pytest.fixture(autouse=True)(desktop_session.launcher_closed_after)
-
-
 # The scales Joel's screens are drawn at, as niri spells them.
 JOELS_SCALES = ("1.5", "2")
 

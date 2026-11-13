@@ -338,15 +338,6 @@ def started(machine: BaseMachine, values: Values) -> Desktop:
     return desktop
 
 
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone.
-
-    An area makes its autouse fixture of this, as `pytest.fixture(autouse=True)(...)`.
-    """
-    yield
-    desktop.launcher_left_closed()
-
-
 class Desktop:  # The helpers every area shares, as one machine's desktop.
     """The account's desktop on the test's machine, and what every area does with it."""
 
