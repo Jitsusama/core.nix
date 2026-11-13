@@ -738,6 +738,35 @@ mod tests {
     }
 
     #[test]
+    fn history_counts_each_source_and_leaves_the_shells_own_out() {
+        let read = |app: &str| json!({ "read": true, "app": app });
+        let browser = json!({ "read": true, "app": "Chromium", "entry": "slack" });
+        let notices = [
+            notice(5, &read("mail")),
+            notice(4, &browser),
+            notice(3, &read("Slack")),
+            notice(2, &read("pi")),
+            notice(1, &read("waiting")),
+        ];
+        let [_, _, history] = served(making(&notices, &[]));
+        let rows = keys(&history.0);
+        let kept = [
+            "row:notices-history:5",
+            "row:notices-history:4",
+            "row:notices-history:3",
+        ];
+        // The shell's own, For You lists as what they ask, aren't History's.
+        assert_eq!(rows, kept, "not the shell's own");
+        let source = |row: &Value| row["held"]["source"].clone();
+        let sources: Vec<Value> = history.0.iter().map(source).collect();
+        let each = ["desktop", "slack", "slack"];
+        assert_eq!(sources, each, "each says its source");
+        let summary = &history.1[0]["summary"];
+        let wanted = json!({ "count": 3, "sources": { "desktop": 1, "slack": 2 } });
+        assert_eq!(summary, &wanted, "counted by source");
+    }
+
+    #[test]
     fn history_serves_its_newest_page_saying_how_many_it_has_rows_for() {
         // An unread one, then PAGE and two more read, newest first.
         let mut notices = vec![notice(200, &json!({}))];
@@ -748,9 +777,9 @@ mod tests {
         assert_eq!(rows.len(), PAGE, "a page of the read: {rows:?}");
         let newest = rows.first();
         assert_eq!(newest, Some(&"row:notices-history:199"), "newest first");
-        let count = json!([{ "key": HISTORY_SUMMARY, "kind": "summary",
-            "summary": { "count": PAGE + 2 } }]);
-        assert_eq!(json!(history.1), count, "and how many it has rows for");
+        let counted = (&history.1[0]["key"], &history.1[0]["summary"]["count"]);
+        let wanted = (&json!(HISTORY_SUMMARY), &json!(PAGE + 2));
+        assert_eq!(counted, wanted, "and how many it has rows for");
         let mixed_count = &mixed.1[0]["summary"]["count"];
         assert_eq!(mixed_count, PAGE + 3, "the mixed place counts every one");
         let desktop = keys(&desktop.0);

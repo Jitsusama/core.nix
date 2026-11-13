@@ -579,6 +579,32 @@ mod tests {
     }
 
     #[test]
+    fn historys_rows_are_asked_for_by_source_without_the_shells_own() {
+        let mut state = state("history-sources");
+        let mail = state.notify(sent("Mail", &[]), 10);
+        let slack = Sent {
+            app: "Slack".into(),
+            ..sent("Slack", &[])
+        };
+        let slack = state.notify(slack, 11);
+        let pi = Sent {
+            app: "pi".into(),
+            ..sent("A question", &[])
+        };
+        let pi = state.notify(pi, 12);
+        let marked = state.holding.mark(&[mail, slack, pi], true, None, 13);
+        assert!(marked, "all three were read");
+        let key = |id: u32| format!("row:notices-history:{id}");
+        let asked = json!({ "ask": "rows", "place": "notices-history" });
+        let (every, _) = state.ask(&asked, 14);
+        let wanted = json!([key(slack), key(mail)]);
+        assert_eq!(every["keys"], wanted, "not the shell's own");
+        let asked = json!({ "ask": "rows", "place": "notices-history", "source": "desktop" });
+        let (desktop, _) = state.ask(&asked, 14);
+        assert_eq!(desktop["keys"], json!([key(mail)]), "Desktop's alone");
+    }
+
+    #[test]
     fn historys_rows_are_answered_of_the_read_alone() {
         let mut state = state("history-rows");
         let old = state.notify(sent("Old and read", &[]), 10);
