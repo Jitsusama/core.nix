@@ -1067,6 +1067,8 @@
         "away": "the passwords daemon isn't answering",
         "offNote": "use {manager}'s browser extension",
         "offSide": "off",
+        "offWhy": "Off until agents are fenced off: each runs as you, so any of them could ask it for a password.",
+        "offFills": "Meanwhile, Return opens {browser}, where {manager}'s extension fills in sign-ins.",
         "password": "password",
         "code": "one-time code",
         "hidden": "hidden",

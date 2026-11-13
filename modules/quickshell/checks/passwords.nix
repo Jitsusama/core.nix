@@ -28,4 +28,12 @@
     # On here, where no agent runs and no secret is real.
     shell.launcher.providers.passwords.off = lib.mkForce false;
   };
+
+  # Off, as the module leaves it until agents are fenced off, Home's
+  # Passwords row and the place's one row each have a drawer saying why
+  # and what Return opens meanwhile (tests/passwords-off-on-niri-test.py).
+  the-passwords-place-says-why-its-off-on-niri = launcherOnNiri {
+    name = "the-passwords-place-says-why-its-off-on-niri";
+    tests = ../../../tests/passwords-off-on-niri-test.py;
+  };
 }
