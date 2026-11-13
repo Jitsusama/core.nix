@@ -93,6 +93,16 @@ in
     action = ''spawn "launcher-say" "collection" "clipboard";'';
     flags.repeat = "false";
   }
+  # What's selected in any window, with what an agent can do with it:
+  # "act on" beside Super+S's "say", and pressed again it's put away
+  # (VKCF3Z, e684d7ae).
+  {
+    chord = "Super+X";
+    does = "Act on the selection";
+    also = "explain fix shorten reply ai agent selected text";
+    action = ''spawn "launcher-say" "collection" "selection";'';
+    flags.repeat = "false";
+  }
   {
     chord = "Super+E";
     does = "Find an emoji";

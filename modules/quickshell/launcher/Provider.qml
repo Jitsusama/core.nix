@@ -383,6 +383,10 @@ Scope {
     // was typed kept, and `search(typed)` narrows them there. `everything()`
     // gives them all once nothing is typed.
     property var collection: null
+    // What the head says in its ask's place while Joel stands in the
+    // collection, as On the Selection's head is the text selected: ""
+    // leaves its ask.
+    property string heading: ""
 
     function search(typed) {
         return { rows: [], grade: 0 };

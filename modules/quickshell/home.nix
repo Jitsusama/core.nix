@@ -136,6 +136,7 @@ let
         ++ import ./home/notices.nix
         ++ import ./home/power.nix
         ++ import ./home/programs.nix
+        ++ import ./home/selection.nix
         ++ import ./home/shell.nix
         ++ import ./home/shortcuts.nix
         ++ import ./home/sound.nix
@@ -576,6 +577,7 @@ let
     keyboards = ./launcher/Keyboards.qml;
     emoji = ./launcher/Emoji.qml;
     shortcuts = ./launcher/KeyMap.qml;
+    selection = ./launcher/OnSelection.qml;
     keyboard = ./launcher/Keyboard.qml;
     clipboard = ./launcher/Copies.qml;
     notices = ./launcher/PastNotices.qml;
@@ -1563,6 +1565,14 @@ in
       shortcuts = {
         order = 120;
         source = "shortcuts";
+      };
+      # What an agent can do with what's selected, opened by Super+X alone,
+      # where the account has pi, whose pi-verbs serves the actions and
+      # whose pi-ask answers them.
+      selection = {
+        order = 125;
+        source = "selection";
+        enable = lib.hasAttrByPath [ "pi" "ask" ] config.jitsusama;
       };
       # A quick question to a model, asked last so any other answer comes
       # first, through the pi module's pi-ask, which picks the machine's

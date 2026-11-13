@@ -70,6 +70,8 @@ in
         ''}"
       ];
       shell.launcher.providers.eero.enable = true;
+      # On the Selection without pi, its pi-verbs a case's stand-in.
+      shell.launcher.providers.selection.enable = true;
       shell.launcher.providers.warp = {
         enable = true;
         warpCli = toString warpCli;
