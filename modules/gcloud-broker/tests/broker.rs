@@ -3,8 +3,15 @@
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Held alone while a stand-in is written, and shared while a broker is
+/// started. A broker forked while another test's stand-in is open for
+/// writing holds that file until it runs, and the other test's gcloud then
+/// can't be run: "Text file busy".
+static WRITING: RwLock<()> = RwLock::new(());
 
 const BROKER: &str = env!("CARGO_BIN_EXE_gcloud-broker");
 const ACCOUNT: &str = "agents@a-lab.iam.gserviceaccount.com";
@@ -29,6 +36,7 @@ impl Place {
         std::fs::create_dir_all(root.join("runtime")).unwrap();
         let gcloud = root.join("gcloud");
         let record = root.join("asked");
+        let _alone = WRITING.write().unwrap();
         std::fs::write(
             &gcloud,
             format!(
@@ -44,14 +52,22 @@ impl Place {
     /// Runs the broker with these arguments, the account and the stand-in,
     /// and the caller's own token in its environment.
     fn ask(&self, args: &[&str]) -> Output {
-        Command::new(BROKER)
+        // Started once the broker runs, it holds no other test's files, so
+        // it's waited on with the lock let go.
+        let shared = WRITING.read().unwrap();
+        let broker = Command::new(BROKER)
             .args(args)
             .args(["--account", ACCOUNT, "--gcloud"])
             .arg(self.root.join("gcloud"))
             .env("XDG_RUNTIME_DIR", self.root.join("runtime"))
             .env("CLOUDSDK_AUTH_ACCESS_TOKEN", "ya29.the-callers-own-token")
-            .output()
-            .unwrap()
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        drop(shared);
+        broker.wait_with_output().unwrap()
     }
 
     /// Each line the stand-in recorded, one a run.
