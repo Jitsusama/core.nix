@@ -162,6 +162,8 @@
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
     "subtests": [
+      "test_a_meeting_google_lets_joel_change_is_moved_to_a_typed_time_once_he_is_sure",
+      "test_a_meetings_attachments_open_from_inside_it",
       "test_calendar_typed_lists_its_next_meetings_under_it",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
