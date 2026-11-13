@@ -279,6 +279,9 @@ onLinux {
         GBM_BACKENDS_PATH = "${mesa}/lib/gbm";
         LIBGL_ALWAYS_SOFTWARE = 1;
       }
+      # Kept in Nix because each line sets a folder, a variable or a file
+      # from what Nix says the session holds, then runs the scripts Nix
+      # gives it, as niri-refreshes-once-a-frame does.
       ''
         export HOME=$PWD XDG_CONFIG_HOME=$PWD XDG_RUNTIME_DIR=$PWD/runtime
         mkdir -m 700 runtime
