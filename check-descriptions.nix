@@ -1922,8 +1922,9 @@
   '';
   pi-hosted-keeps-each-folders-extensions = ''
     pi built with the host's patches, applied exactly, keeps the extensions it loaded for each of
-    the sixteen folders loaded most recently, two loading at once included, so a conversation in a
-    folder that loaded them reuses its modules, no two folders share one, and a reload loads afresh
+    the sixteen folders loaded most recently, two loading at once included, while a conversation
+    there holds them, so another opening there reuses its modules, no two folders share one, a
+    folder whose last conversation ended loads afresh and holds no place, and a reload loads afresh
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and

@@ -1,7 +1,8 @@
 // pi as the host runs it keeps the extensions it loaded for each folder, so
-// a conversation opening or waking in a folder that already loaded them
-// reuses that folder's modules rather than evaluating them again, and two
-// folders never share a module. Unpatched, pi keeps one folder's and empties
+// a conversation opening or waking in a folder whose conversation still
+// holds them reuses that folder's modules rather than evaluating them again,
+// and two folders never share a module. Once a folder's last conversation
+// ends they can be collected. Unpatched, pi keeps one folder's and empties
 // them whenever a load comes from another, so A, B, A evaluates A's twice.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
@@ -9,6 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import v8 from "node:v8";
+import { runInNewContext } from "node:vm";
 
 const root = resolve(process.argv[2]);
 // The coding agent sits beside its libraries in an installed tree, or is the
@@ -51,16 +54,32 @@ const folder = (name) => {
   return where;
 };
 
+// What the live conversations hold: the extensions each loaded. One that
+// ends or parks lets them go, which is all a host does to free a folder's.
+const live = [];
 // The evaluation a conversation opening in a folder gets its factory from.
-const open = async (name) => {
+// It stays open unless told it ends at once.
+const open = async (name, { ends = false } = {}) => {
   const loaded = await loadExtensionsCached([entry], folder(name));
   assert.deepEqual(loaded.errors, [], `the extension didn't load in ${name}`);
+  if (!ends) {
+    live.push(loaded);
+  }
   const [command] = loaded.extensions.flatMap((one) => [...one.commands.keys()]);
   return Number(command.replace("evaluation-", ""));
 };
 const afresh = () => {
   clearExtensionCache();
+  live.length = 0;
   globalThis.evaluations = 0;
+};
+// Collects what nothing holds, once the turns that last touched it are over.
+v8.setFlagsFromString("--expose-gc");
+const gc = runInNewContext("gc");
+const collect = async () => {
+  await new Promise((done) => setImmediate(done));
+  gc();
+  await new Promise((done) => setImmediate(done));
 };
 
 // Two in one folder share, a second folder gets its own, and the first
@@ -103,5 +122,26 @@ await open("f16");
 assert.equal(globalThis.evaluations, 17);
 assert.equal(await open("f0"), 1, "the folder opened most recently was dropped");
 assert.equal(await open("f1"), 18, "past sixteen folders none was dropped");
+
+// A folder's stay while a conversation there holds them, go once the last
+// one ends, and come back on the next open, loaded afresh.
+afresh();
+await open("a");
+await open("a", { ends: true });
+await collect();
+assert.equal(await open("a"), 1, "a folder lost its modules while a conversation held them");
+live.length = 0;
+await collect();
+assert.equal(await open("a"), 2, "a folder kept its modules once its last conversation ended");
+
+// A folder whose conversations have all ended counts against no ceiling, so
+// sixteen more folders that come and go leave a live one's in place.
+afresh();
+await open("kept");
+await sixteen.reduce(
+  (before, name) => before.then(() => open(name, { ends: true })).then(collect),
+  Promise.resolve(),
+);
+assert.equal(await open("kept"), 1, "folders with no conversation left pushed a live one out");
 
 rmSync(scratch, { recursive: true, force: true });
