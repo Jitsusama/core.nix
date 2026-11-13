@@ -22,10 +22,12 @@ use std::sync::{Arc, Mutex, PoisonError, mpsc};
 
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
+use notices::addressed::Asked;
 use notices::bus::{self, Server, now_ms};
 use notices::daemon::State;
 use notices::held::Holding;
 use notices::judged::Judge;
+use notices::posted;
 use notices::row::{self, Rows};
 use notices::sender::{Marks, Senders, Signs};
 use notices::store;
@@ -310,6 +312,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     }
+    let asker = changed.clone();
     let connection = match bus::serve(Server {
         state: Arc::clone(&state),
         changed,
@@ -328,14 +331,18 @@ fn main() -> ExitCode {
     // notice the shell has been told of is already kept.
     while let Ok(()) = heard.recv() {
         let _ = heard.try_iter().count();
-        let (told, owed) = {
+        let (told, owed, asking) = {
             let mut held = state.lock().unwrap_or_else(PoisonError::into_inner);
             if let Err(why) = store::write(&kept, &held.holding) {
                 eprintln!("notices: can't write {}: {why}", kept.display());
             }
-            (records(&mut held), std::mem::take(&mut held.owed))
+            let owed = std::mem::take(&mut held.owed);
+            (records(&mut held), owed, std::mem::take(&mut held.asking))
         };
         shared.change(told, json!({}));
+        for (id, asked, at) in asking {
+            ask(Arc::clone(&state), asker.clone(), id, asked, at);
+        }
         for signal in &owed {
             if let Err(why) = bus::send(&connection, signal) {
                 eprintln!("notices: can't send {signal:?}: {why}");
@@ -343,6 +350,28 @@ fn main() -> ExitCode {
         }
     }
     ExitCode::SUCCESS
+}
+
+/// Asks a sender's daemon, on a thread of its own, whether a notice it
+/// batched was a post, and judges it to Joel where it wasn't or no answer
+/// came in time, telling the loop it changed.
+fn ask(state: Arc<Mutex<State>>, changed: mpsc::Sender<()>, id: u32, asked: Asked, at: i64) {
+    std::thread::spawn(move || {
+        let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let socket = posted::socket(&asked.socket, &runtime);
+        if posted::post(&socket, &asked, at, posted::PATIENCE) == Some(true) {
+            return;
+        }
+        let moved = state
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replied(id, now_ms());
+        if moved {
+            let _ = changed.send(());
+        }
+    });
 }
 
 #[cfg(test)]

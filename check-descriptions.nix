@@ -1619,7 +1619,9 @@
     restart; each notice's rows list its card's acts in its order, in three places each worded for
     its list, signed as the desktop knows its sender; and a notice read where it came from closes,
     saying where it was read, while one read here stays open; and one from a conversation with one
-    open takes its place, folding it, read, and saying how many came in all
+    open takes its place, folding it, read, and saying how many came in all; and a chat
+    program's notice from a channel Joel hears every message of is asked of its daemon, a
+    reply, an error, silence or no daemon judging it to him and raising it, unless read
   '';
   notices-passes-clippy = ''
     clippy finds nothing in the notices daemon or its tests
@@ -2312,7 +2314,9 @@
     read mark passes it, beside that mark, the account saying them whole only once every
     history wanted was read; and says each message a search finds by
     where it is, who said it and its first words, the messages around one oldest first, and
-    Slack too busy apart from signed out or out of reach
+    Slack too busy apart from signed out or out of reach; and says whether a channel's notice
+    was a post there or a thread's reply, by its words and time in the channel's history, and
+    that it knows no channel by a name not yet held
   '';
   slack-message-is-one-row = ''
     a Slack message is one row whether For You holds it or Search Slack found it: one key, named

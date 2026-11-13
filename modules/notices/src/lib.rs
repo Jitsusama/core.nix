@@ -29,6 +29,7 @@ pub mod held;
 pub mod judged;
 pub mod notice;
 pub mod picture;
+pub mod posted;
 pub mod row;
 pub mod search;
 pub mod sender;

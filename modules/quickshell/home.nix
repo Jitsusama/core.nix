@@ -946,6 +946,10 @@ in
             "card"
             "urgent"
           ];
+          # The furthest of all, so a sender named only for its other
+          # settings, as Slack's module names its daemon, reaches as far as
+          # it asks, as one not named does.
+          default = "urgent";
           description = ''
             The furthest a sender's notices reach: kept in the history alone,
             counted as waiting in the margin but never shown, shown as a card,
@@ -981,6 +985,17 @@ in
             message, a mention, or a channel's notice from one not set to
             tell him every message. The rest is counted, without a card. A
             program without this is judged by its level alone.
+          '';
+        };
+        options.posted = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            The socket of the program's daemon that says whether a notice
+            from a channel Joel reads every message of was a post or a
+            reply in a thread he follows, under the runtime folder where it
+            isn't absolute. Its module gives it; with `addressed`, a reply
+            is to him and sounds.
           '';
         };
       }

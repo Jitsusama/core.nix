@@ -2222,7 +2222,10 @@ works the same way everywhere.
   program the machine says who he is in (`notices.senders.<name>.addressed`)
   is shown only for what's to him: a person's direct message, a mention,
   or a thread he follows; its every other post, and a bot's message, is
-  counted without a card. What's to him knocks once, a soft, short knock on
+  counted without a card. A notice from a channel he hears every message
+  of says a post and a reply in his thread alike, so the program's daemon
+  is asked which it was (`notices.senders.<name>.posted`); a reply, or no
+  answer within 3 seconds, is to him. What's to him knocks once, a soft, short knock on
   wood (`sounds.addressed`), once for a burst, never while notices are held
   or a call is on, and never taken for the bell. The desktop
   makes one other sound, softly, and it means something needs him now: when a

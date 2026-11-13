@@ -135,6 +135,7 @@ in
           # process must be.
           maths = prev.callPackage ./maths/package.nix { inherit qt6; };
           keyTimes = prev.callPackage ./key-times/package.nix { inherit qt6; };
+          heap = prev.callPackage ./heap/package.nix { inherit qt6; };
         in
         (prev.quickshell.override { inherit qt6; }).overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [
@@ -158,6 +159,10 @@ in
             "NIXPKGS_QT6_QML_IMPORT_PATH"
             ":"
             "${keyTimes}/${prev.qt6.qtbase.qtQmlPrefix}"
+            "--prefix"
+            "NIXPKGS_QT6_QML_IMPORT_PATH"
+            ":"
+            "${heap}/${prev.qt6.qtbase.qtQmlPrefix}"
           ];
         });
       wf-recorder = prev.wf-recorder.overrideAttrs (old: {
