@@ -163,7 +163,7 @@ pub fn search(shared: &Shared, daemon: &Daemon, id: &Value, words: &str, most: u
     };
     let typed = Typed::of(words);
     let taken = listed(daemon);
-    let folders = folders(daemon, &[]);
+    let folders = daemon.folders.clone();
     let usual = usual(shared);
     let placing = Placing {
         home: &shared.home,
