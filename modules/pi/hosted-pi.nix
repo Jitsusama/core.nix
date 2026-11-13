@@ -14,6 +14,7 @@ pkgs.pi-coding-agent.overrideAttrs (old: {
     ./pi-host-model-auth-context.patch
     ./pi-host-extension-realpath.patch
     ./pi-host-extension-cache-per-folder.patch
+    ./pi-host-extension-cache-keyed-shared.patch
   ];
   patchFlags = [
     "-p1"
