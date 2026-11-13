@@ -134,6 +134,31 @@
         && lib.elem "acpi_tad" boot.blacklistedKernelModules
       );
 
+  # Every device the laptop expects is one its sysfs was seen to hold, and
+  # device-check names each missing, and only it, once what its path matches
+  # is gone, over a stand-in sysfs of what the laptop showed
+  # (devices-seen.txt).
+  the-surface-names-each-device-it-misses =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      expected = pkgs.writeText "expected" surface.config.environment.etc."device-check".text;
+    in
+    pkgs.runCommandLocal "the-surface-names-each-device-it-misses"
+      {
+        nativeBuildInputs = [
+          (pkgs.callPackage ../../modules/device-check/package.nix { })
+          pkgs.jq
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${../../modules/device-check/tests/each-expected-device-is-missed.sh} \
+          ${expected} ${./devices-seen.txt}
+        touch $out
+      '';
+
   # The kernel leaves 1 GiB free for what amdgpu copies out as it stops for a
   # hibernation, written at every start.
   the-surface-reserves-memory-to-hibernate =

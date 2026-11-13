@@ -23,16 +23,28 @@
 
   # The devices this laptop always has, each where its driver binds it where
   # it has one, since a device the kernel found but no driver took works no
-  # better than one that's gone. The battery, the charger, the keyboard and
+  # better than one that's gone: every device a driver binds, read from the
+  # laptop, but those only another entry's device can bring, such as a PCIe
+  # bridge, the Aggregator's UART and hub, or a camera's streams. The I2C
+  # controllers but the light sensor's carry nothing a driver takes, so the
+  # light sensor stands for them. The battery, the charger, the keyboard and
   # the touchpad come through the Surface Aggregator, so those gone together
-  # mean the controller's drivers didn't bind. The controller's fifth HID
-  # device isn't here, since nobody knows yet what it's for.
+  # mean the controller's drivers didn't bind. The kernel numbers HID
+  # devices, sound cards and I2C buses in the order they come, so those are
+  # globs. devices-seen.txt holds what the laptop showed, for
+  # the-surface-names-each-device-it-misses.
   jitsusama.devices.expected = {
     "Wi-Fi" = "/sys/bus/pci/drivers/iwlwifi/0000:02:00.0";
     "Wi-Fi's radio" = "/sys/class/ieee80211/phy*";
     # The AX200's Bluetooth half is a USB device inside the laptop.
     "Bluetooth" = "/sys/bus/usb/drivers/btusb/3-4:1.0";
     "Bluetooth's adapter" = "/sys/class/bluetooth/hci0";
+    # The interface a headset's microphone and speaker talk over.
+    "Bluetooth's audio" = "/sys/bus/usb/drivers/btusb/3-4:1.1";
+    # The controller with two of the ports the firmware says reach the
+    # outside; the other has a third, the cameras and Bluetooth.
+    "The USB ports" = "/sys/bus/pci/drivers/xhci_hcd/0000:03:00.3";
+    "The inner USB controller" = "/sys/bus/pci/drivers/xhci_hcd/0000:03:00.4";
     "The disk" = "/sys/bus/pci/drivers/nvme/0000:01:00.0";
     "The graphics" = "/sys/bus/pci/drivers/amdgpu/0000:03:00.0";
     "The screen" = "/sys/class/drm/card*-eDP-1";
@@ -43,8 +55,20 @@
     # microphones go through. Its card's number depends on which of the two
     # controllers is found first.
     "The microphones" = "/sys/bus/hdaudio/drivers/snd_hda_codec_alc269/hdaudioC*D0";
+    # The GPU's codec, for sound over HDMI and DP.
+    "Sound to a display" = "/sys/bus/hdaudio/drivers/snd_hda_codec_atihdmi/hdaudioC*D0";
+    # What the Aggregator's devices hang from, on its UART.
+    "The Surface controller" = "/sys/bus/serial/drivers/surface_serial_hub/serial0-0";
     "The keyboard" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:01:00";
+    "The keyboard's keys" = "/sys/bus/hid/drivers/hid-generic/0019:045E:09AE.*";
     "The touchpad" = "/sys/bus/surface_aggregator/drivers/surface_hid/01:15:02:03:00";
+    # hid-multitouch makes it a touchpad of many fingers; taken by
+    # hid-generic, it would be a mouse.
+    "The touchpad's gestures" = "/sys/bus/hid/drivers/hid-multitouch/0019:045E:09AF.*";
+    # The Aggregator's fifth HID device, 01:15:02:05:00, carries only
+    # Microsoft's own usage page, 0xFF05, in reports of 32 bytes each way
+    # and a feature report of 57: a channel of Microsoft's, not an input.
+    "The controller's own channel" = "/sys/bus/hid/drivers/hid-generic/0019:045E:0922.*";
     # The panel, bound once the touchscreen's driver loads after boot.
     "The touchscreen" = "/sys/bus/spi/drivers/sl4a_spi_hid/spi-MSHW0231:00";
     # The pen, which the touchscreen's driver presents as a HID device of
@@ -52,6 +76,10 @@
     "The pen" = "/sys/bus/hid/drivers/hid-generic/001C:045E:0C19.*";
     "The light sensor" = "/sys/bus/i2c/drivers/apds9960/i2c-MSHW0184:00";
     "The lid's switch" = "/sys/bus/platform/drivers/acpi-button/PNP0C0D:00";
+    # The firmware's own power button, beside the one MSHW0040 gives.
+    "The firmware's power button" = "/sys/bus/platform/drivers/acpi-button/PNP0C0C:00";
+    # The pins the power button's key, among others, comes through.
+    "The GPIO controller" = "/sys/bus/platform/drivers/amd_gpio/AMDI0031:00";
     # The power button, on Surface's button device MSHW0040, which gives the
     # power key alone; the volume keys are on the keyboard. The kernel numbers
     # the instance.
@@ -68,12 +96,20 @@
     "The temperature sensors" = "/sys/bus/surface_aggregator/drivers/surface_temp/01:03:01:00:02";
     "The fan" = "/sys/bus/surface_aggregator/drivers/surface_fan/01:05:01:01:01";
     "The processor's temperature" = "/sys/bus/pci/drivers/k10temp/0000:00:18.3";
+    "The power telemetry" = "/sys/bus/platform/drivers/intel_rapl_msr/intel_rapl_msr.0";
+    # The memory's two SPD chips, on the SMBus, which say what memory it is.
+    "The memory's first description" = "/sys/bus/i2c/drivers/ee1004/*-0050";
+    "The memory's second description" = "/sys/bus/i2c/drivers/ee1004/*-0051";
+    # The CMOS clock, rtc0, which sets the time at boot.
+    "The CMOS clock" = "/sys/bus/platform/drivers/rtc_cmos/rtc_cmos";
     # The device surface-clock sets the controller's clock through.
     "The controller's clock" = "/sys/class/misc/surface_aggregator";
     # What tells the kernel how deep each sleep went, which device-check reads.
     "The sleep controller" = "/sys/bus/platform/drivers/amd_pmc/AMD0005:00";
     # What the disk's seal and the accounts' SSH keys are kept in.
     "The TPM" = "/sys/bus/platform/drivers/tpm_tis/NTC0702:00";
+    # AMD's platform security processor.
+    "The security processor" = "/sys/bus/pci/drivers/ccp/0000:03:00.2";
     "The watchdog" = "/sys/class/watchdog/watchdog0";
   };
 
