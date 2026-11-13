@@ -280,7 +280,7 @@ Provider {
             id: agentsRows
 
             socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-            kind: ["row", "summary", "recent", "landed", "landed-days", "closed"]
+            kind: ["row", "summary", "recent", "landed", "landed-days", "closed", "want"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
             paced: provider.launcher
@@ -1362,6 +1362,25 @@ Provider {
     // went, by the quest's title or the session's name, never an address,
     // or why they didn't, in words for Joel rather than the plumbing's
     // (VKCF3Z, 2026-11-12).
+    // What a session asks Joel, as the agents daemon serves it (wants.rs):
+    // what it asked, since when, and the answers it offers, or null.
+    function wantOf(address) {
+        return (rowsKind?.held ?? {})[`want:agents:${String(address).toUpperCase()}`] ?? null;
+    }
+    // Answers what a session asks, `fields` its `value` or Joel's own words
+    // as `other`: the daemon finds the want by the session's address and
+    // steers it there, and `then(put)` hears whether the node put it in
+    // the session's inbox, which Sessions says as it does any act's. Not
+    // `answer`, which the launcher asks of every source for what's typed.
+    function answerWant(address, fields, then) {
+        const said = Object.assign({ ask: "answer", address: String(address) }, fields);
+        if (!rowsKind) {
+            then(Sessions.steered(address, null));
+            return;
+        }
+        rowsKind.ask(said, reply => then(Sessions.steered(address, reply)));
+    }
+
     property string fedBack: ""
     function feedback(key, words) {
         const text = words.trim();

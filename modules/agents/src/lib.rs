@@ -31,6 +31,7 @@
 //!   viewer.
 //! - `tell`: whom a line Joel says from anywhere goes to, and sending it.
 //! - `feedback`: what Joel says of a landing, sent where it came from.
+//! - `wants`: what each session asks Joel, and his answer sent to it.
 
 pub mod acts;
 pub mod answered;
@@ -57,4 +58,5 @@ pub mod talks;
 pub mod tell;
 pub mod top;
 pub mod tree;
+pub mod wants;
 pub mod windows;
