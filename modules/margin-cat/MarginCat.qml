@@ -281,7 +281,12 @@ Scope {
             }
 
             // Each frame of a walk, as niri showed it or didn't, asking after
-            // the next until it sits.
+            // the next. Asked only here, once niri says the last was shown,
+            // the ask lands after the next frame has begun where frames come
+            // close together, so only every other frame was heard of: on a
+            // GPU at 60 Hz, and on Joel's screen at 120. Each step asks too
+            // (walker), before its frame is drawn. Asked only there, a GPU at
+            // 120 Hz drew every other frame, so both stay.
             FramePresentation.onPresented: (frame, at) => {
                 if (going === null)
                     return;
@@ -352,6 +357,10 @@ Scope {
                         window.pose = now.pose;
                     window.stepped = now;
                     window.place = { x: now.x, y: window.there?.y ?? window.place.y };
+                    // Asked as the step is taken, before its frame is drawn,
+                    // so the frame it moves is the one niri is asked about.
+                    if (window.FramePresentation.available)
+                        window.FramePresentation.ask();
                 }
             }
 
