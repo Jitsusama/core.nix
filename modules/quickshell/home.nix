@@ -2146,6 +2146,13 @@ in
                   # timed by its distance rather than by a duration, as a
                   # long row's scroll is.
                   slowdown = builtins.fromJSON motion.slowdown;
+                  # niri's spring, as its workspace slide rides it, for what
+                  # moves with that slide, as the margin's cat does.
+                  spring = {
+                    damping = builtins.fromJSON motion.spring.damping;
+                    inherit (motion.spring) stiffness;
+                    epsilon = builtins.fromJSON motion.spring.epsilon;
+                  };
                   # Easing.BezierSpline's form: the two control points, then the end.
                   curve = map builtins.fromJSON motion.curve ++ [
                     1

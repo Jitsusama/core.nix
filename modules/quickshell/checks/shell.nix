@@ -342,7 +342,9 @@
   # its folder is made only after the shell starts, as tests/watched.qml
   # drives it, in the Quickshell the machine runs
   # (fileview-watch-nearest.patch): a guard's runtime folder goes each time
-  # systemd restarts the guard.
+  # systemd restarts the guard. A view of the folder itself hears a file
+  # renamed into it or removed (fileview-hears-a-folder.patch), as the
+  # launcher's looks are heard.
   a-watched-file-comes-back = pkgs.runCommandLocal "a-watched-file-comes-back" { } ''
     mkdir runtime && chmod 700 runtime
     cp ${../pieces/StatusFile.qml} StatusFile.qml

@@ -39,6 +39,7 @@ use serde_json::{Map, Value, json};
 
 use crate::checks::{self, Derivations};
 use crate::evaluating;
+use crate::gathered;
 use crate::reads::{self, Reads};
 use crate::runs::Run;
 
@@ -104,7 +105,8 @@ fn recently_recorded(folder: &Path, system: &str, now: SystemTime) -> bool {
 }
 
 /// Trace each of the base's ordinary checks alone and keep at `at` what
-/// each one whose derivation is git's read.
+/// each one whose derivation is git's read, but the folders' checks.nix it
+/// read only because checks.nix gathers them all.
 fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> Result<(), String> {
     let derivations = checks::read_kept(&checks::keeping(&crate::cache(), base, system))?
         .ok_or("its derivations aren't kept")?;
@@ -136,7 +138,7 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     )?;
     evaluation.chunk(ordinary.len(), began.elapsed());
     noted.evaluated(evaluation);
-    let each: BTreeMap<&str, Reads> = ordinary
+    let mut each: BTreeMap<&str, Reads> = ordinary
         .iter()
         .zip(traced)
         .filter_map(|((_, name), traced)| {
@@ -146,6 +148,9 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
         .collect();
     if each.is_empty() {
         return Err("no check's trace could be read".to_owned());
+    }
+    if let Some(files) = gathered::files(&source, system) {
+        gathered::narrow(Path::new(&source), &files, &mut each);
     }
     let writing = at.with_extension("writing");
     let failed = |error: std::io::Error| format!("{}: {error}", at.display());

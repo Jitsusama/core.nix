@@ -197,10 +197,29 @@ Scope {
             // How many frames had begun as it set off, so it can say how
             // many it drew.
             property int begunAt: 0
+            // The workspace this screen shows, its id and index, so a move
+            // between two has it ride its column off with the world and climb
+            // to its new seat (VKCF3Z, 074321bd), and the one it showed.
+            readonly property var space: {
+                void Niri.revision;
+                const name = modelData?.name ?? "";
+                const shows = Object.values(Niri.workspaces)
+                    .find(workspace => workspace.output === name && workspace.is_active);
+                return shows ? { id: shows.id, idx: shows.idx } : null;
+            }
+            property var spaceWas: null
+            // The move between workspaces under way (MarginCat.moves), the
+            // window it climbs to once niri says it, and its quarter turn as it
+            // climbs, head first.
+            property var moving: null
+            property var movingTo: null
+            property int turn: 0
             // What it's drawn as: a pose of its walk, turned the way it
-            // goes, or the scope's, sitting, asleep or stretching.
+            // goes and the way it climbs, or the scope's, sitting, asleep or
+            // stretching.
             readonly property var drawn: pose
-                ? MarginCat.turned(Theme.pixels[pose] ?? root.drawing, facing)
+                ? MarginCat.quartered(
+                    MarginCat.turned(Theme.pixels[pose] ?? root.drawing, facing), turn)
                 : root.drawing
 
             // Where the keys' column now has it: nowhere, once it's held
@@ -213,6 +232,10 @@ Scope {
             // change, a title's too, so the same seat neither sets a walk off
             // again nor restarts its rest.
             function follow(): void {
+                if (moving !== null) {
+                    steer();
+                    return;
+                }
                 if (there === null) {
                     if (place !== null)
                         leaving.restart();
@@ -268,6 +291,99 @@ Scope {
                     window.FramePresentation.ask();
             }
 
+            // A move to the workspace `way` below (1) or above (-1): it rides
+            // its column up the whole slide, or stays as it falls away, from
+            // where it sits, and its new seat comes once niri says the new
+            // workspace's column (steer).
+            function moveFrom(way: int): void {
+                halt();
+                resting.stop();
+                leaving.stop();
+                movingTo = null;
+                moving = plan(way, place, place);
+                shown = [];
+                costs = [];
+                unseen = 0;
+                begunAt = window.FramePresentation.framesBegun;
+                mover.restart();
+                if (window.FramePresentation.available)
+                    window.FramePresentation.ask();
+            }
+
+            // A move's plan from `from` to its seat `to`, over a workspace's
+            // height and niri's gap between two, a tenth of the screen's
+            // height in whole device pixels, as niri's monitor.rs lays them.
+            function plan(way: int, from: var, to: var): var {
+                const gap = Math.max(1, Math.round(modelData.height * 0.1 * ratio)) / ratio;
+                return MarginCat.moves(from, to, {
+                    way,
+                    step: modelData.height + gap,
+                    tall: size,
+                    cell,
+                    ratio,
+                    facing,
+                    slowdown: Theme.motion.slowdown,
+                    spring: Theme.motion.spring
+                });
+            }
+
+            // Where a move goes as niri says the new workspace's column: on
+            // the ride, to its seat, again each time that moves, since none of
+            // the ride depends on it; once it climbs, a seat moved or the
+            // keys gone to another window seat it there at once, as a second
+            // move does (VKCF3Z, 074321bd).
+            function steer(): void {
+                if (there === null)
+                    return;
+                const riding = mover.elapsedTime * 1000 < moving.beats[0].ends;
+                const seat = moving.seat ?? moving.to;
+                const same = Math.round(there.x * ratio) === Math.round(seat.x * ratio)
+                    && Math.round(there.y * ratio) === Math.round(seat.y * ratio);
+                if (movingTo !== null && wanted !== movingTo) {
+                    arrive();
+                } else if (riding) {
+                    if (movingTo === null || !same) {
+                        movingTo = wanted;
+                        moving = plan(moving.way, moving.from, there);
+                    }
+                } else if (movingTo === null || !same) {
+                    arrive();
+                }
+            }
+
+            // Done moving, or cut short: it sits where the keys' column has
+            // it, at once, or nowhere, as it would have with no move; or, a
+            // move up whose seat was too far to walk to at once, where it
+            // stayed, until the keys rest and it walks there as ever.
+            function arrive(): void {
+                tell();
+                const rests = moving?.rests ?? false;
+                mover.stop();
+                moving = null;
+                movingTo = null;
+                turn = 0;
+                halt();
+                if (rests && place !== null && there !== null) {
+                    follow();
+                    return;
+                }
+                sat = wanted;
+                place = there;
+            }
+
+            onSpaceChanged: {
+                const was = spaceWas;
+                spaceWas = space;
+                if (was === null || space === null || was.id === space.id)
+                    return;
+                const way = Math.sign(space.idx - was.idx);
+                if (moving !== null)
+                    arrive();
+                else if (place !== null && way !== 0 && !root.asleep && !Niri.overview
+                    && !root.shared)
+                    moveFrom(way);
+            }
+
             // How its walk reached the screen, in the journal, so a walk on
             // Joel's screen says whether it kept to its rate.
             function tell(): void {
@@ -288,7 +404,7 @@ Scope {
             // (walker), before its frame is drawn. Asked only there, a GPU at
             // 120 Hz drew every other frame, so both stay.
             FramePresentation.onPresented: (frame, at) => {
-                if (going === null)
+                if (going === null && moving === null)
                     return;
                 shown.push(at);
                 const times = window.FramePresentation.timesOf(frame);
@@ -297,7 +413,7 @@ Scope {
                 window.FramePresentation.ask();
             }
             FramePresentation.onDiscarded: () => {
-                if (going === null)
+                if (going === null && moving === null)
                     return;
                 unseen += 1;
                 window.FramePresentation.ask();
@@ -359,6 +475,31 @@ Scope {
                     window.place = { x: now.x, y: window.there?.y ?? window.place.y };
                     // Asked as the step is taken, before its frame is drawn,
                     // so the frame it moves is the one niri is asked about.
+                    if (window.FramePresentation.available)
+                        window.FramePresentation.ask();
+                }
+            }
+
+            // A step of a move each time the screen draws, as the walker's.
+            FrameAnimation {
+                id: mover
+                onTriggered: {
+                    const now = MarginCat.moved(window.moving, mover.elapsedTime * 1000);
+                    // A ride with no column at its end leaves it nowhere, as
+                    // moving to an empty workspace did before it rode.
+                    if (now.done
+                        || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
+                        window.arrive();
+                        return;
+                    }
+                    if (now.facing !== window.facing)
+                        window.facing = now.facing;
+                    if ((now.pose ?? "") !== window.pose)
+                        window.pose = now.pose ?? "";
+                    if (now.turn !== window.turn)
+                        window.turn = now.turn;
+                    window.stepped = now;
+                    window.place = { x: now.x, y: now.y };
                     if (window.FramePresentation.available)
                         window.FramePresentation.ask();
                 }
@@ -445,6 +586,13 @@ Scope {
                         facing: stepped.facing,
                         stride: going.stride,
                         to: going.to
+                    },
+                    move: moving === null || stepped === null ? null : {
+                        t: Math.round(mover.elapsedTime * 10000) / 10,
+                        beat: stepped.beat,
+                        pose: stepped.pose,
+                        turn: stepped.turn,
+                        way: moving.way
                     }
                 });
                 Report.say(`sits cat ${modelData?.name ?? ""} ${at} over ${JSON.stringify(column)}`);
@@ -468,10 +616,13 @@ Scope {
 
                 // On the screen's own pixels, so every cell's edge is sharp.
                 x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
-                y: window.place
-                    ? Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
+                // Held inside the margin, but on a move down, carried up off
+                // it and climbing back.
+                y: !window.place ? 0
+                    : window.moving !== null
+                    ? Math.round(window.place.y * window.ratio) / window.ratio
+                    : Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
                         * window.ratio) / window.ratio)
-                    : 0
                 width: window.size
                 height: window.size
 

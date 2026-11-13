@@ -4,8 +4,11 @@
 // made with a status in it, then removed, then made again. Each status is
 // heard as it's written, and none while the folder is gone. A write saying
 // only a new heartbeat moves the heartbeat and leaves what's said as it
-// was, so nothing reading it runs again. It exits 0 once
-// every case holds, and otherwise 1, saying which case didn't.
+// was, so nothing reading it runs again. A view of the folder itself hears
+// a file renamed into it or removed, after the folder came and went, with
+// one watch for the whole folder, as the launcher's looks are heard
+// (fileview-hears-a-folder.patch). It exits 0 once every case holds, and
+// otherwise 1, saying which case didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -19,6 +22,17 @@ ShellRoot {
         id: status
         path: `${root.folder}/status.json`
     }
+
+    // The folder itself, and how many times it's been heard changing.
+    FileView {
+        path: root.folder
+        preload: false
+        printErrors: false
+        watchChanges: true
+        onFileChanged: root.folderHeard += 1
+    }
+    property int folderHeard: 0
+    property int folderHeardBefore: 0
 
     // How many times what's said has changed, and the heartbeat last written.
     property int told: 0
@@ -71,6 +85,20 @@ ShellRoot {
         what: "something new said once after it",
         does: () => root.written(3),
         holds: () => status.said?.n === 3 && !status.silent && root.told === root.toldBefore + 1
+    }, {
+        what: "the folder heard as a status is renamed over the one in it",
+        does: () => {
+            root.folderHeardBefore = root.folderHeard;
+            return root.written(4);
+        },
+        holds: () => root.folderHeard > root.folderHeardBefore
+    }, {
+        what: "the folder heard as a file in it is removed",
+        does: () => {
+            root.folderHeardBefore = root.folderHeard;
+            return `rm ${root.folder}/status.json`;
+        },
+        holds: () => root.folderHeard > root.folderHeardBefore
     }]
 
     property int at: 0

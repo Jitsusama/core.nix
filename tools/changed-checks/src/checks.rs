@@ -301,7 +301,9 @@ pub fn kept(
 /// The checks among `derivations` whose derivation takes `source`, the
 /// flake's whole source, in, so its build may read any file though no trace
 /// saw it read: `formatting`'s evaluation read 408 files on 12 November.
-/// No record of reads may stand for one of these.
+/// No record of reads may stand for one of these. The closure is transitive
+/// on purpose: `formatting` takes the source in through treefmt's check, a
+/// derivation it depends on, which `--referrers` alone wouldn't name.
 pub fn taking_whole<'a>(
     source: &str,
     derivations: &'a Derivations,

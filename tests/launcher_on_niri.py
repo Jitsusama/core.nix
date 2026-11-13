@@ -553,6 +553,17 @@ def niri_held() -> Iterator[None]:
         os.kill(held[0], signal.SIGCONT)
 
 
+def laid_whole(path: Path, text: str) -> None:
+    """Write a file whole, renamed into place as the harness writes a look (its writeWhole).
+
+    The shell hears a look's folder, not each file, so a file written over in place goes
+    unheard, and one made in place may be read before its text is in it.
+    """
+    laid = path.with_name(f"{path.name}.laying")
+    laid.write_text(text)
+    laid.rename(path)
+
+
 def started() -> Shell:
     """Start the shell in the folder the check gives, logging where it says."""
     shell = Shell(Path(os.environ["SHELL_FOLDER"]).resolve(), Path(os.environ["LOGS"]))

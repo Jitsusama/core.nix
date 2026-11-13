@@ -901,7 +901,14 @@ Provider {
         onCountChanged: provider.relisted()
     }
 
+    // Each look's file, read as it's listed and again as the folder is
+    // written. Each file had a watcher of its own, and each watcher holds
+    // an open file: 406 on Joel's machine (2026-11-12), about 150 more a
+    // day, took the shell to 617 of the 1,024 it may hold, and a restart's
+    // burst went past them, so niri's next file was dropped and the shell
+    // lost its display (switch848).
     Instantiator {
+        id: lookReaders
         model: lookFiles
 
         FileView {
@@ -910,10 +917,29 @@ Provider {
 
             path: filePath
             printErrors: false
-            watchChanges: true
-            onFileChanged: reload()
             onLoaded: provider.readLook(fileName, text())
         }
+    }
+
+    // The one watcher, on the folder, which hears a file renamed into it,
+    // as the harness writes a look whole (its writeWhole); a file written
+    // over in place isn't heard. A folder made after the shell started, as
+    // a machine's first look makes it, is heard as it comes
+    // (fileview-hears-a-folder.patch).
+    FileView {
+        path: provider.looksAt
+        preload: false
+        printErrors: false
+        watchChanges: true
+        onFileChanged: Qt.callLater(provider.looksHeard)
+    }
+
+    // Every look is read again, since the folder doesn't say which was
+    // written; one that reads as it did changes nothing (readLook).
+    function looksHeard() {
+        looksAskedAgain();
+        for (let at = 0; at < lookReaders.count; at += 1)
+            lookReaders.objectAt(at).reload();
     }
 
     // A file as it was read, as the shell starts and as it's written
@@ -949,11 +975,12 @@ Provider {
         lookTexts = Object.assign({}, lookTexts, { [file]: text });
     }
 
-    // The folder the looks are listed from. A folder not there as the shell
-    // starts is never watched for coming, as a machine's first look makes
-    // it, so one that listed none is asked for again as the launcher opens
-    // or a terminal reads it, written once with a slash and once without,
-    // since the model lists only a folder it's given anew.
+    // The folder the looks are listed from. The model never watches for a
+    // folder not there as the shell starts, as a machine's first look makes
+    // it, so one that listed none is asked for again as the folder comes,
+    // as the launcher opens or as a terminal reads it, written once with a
+    // slash and once without, since the model lists only a folder it's
+    // given anew.
     property string looksListed: `file://${looksAt}`
     function looksAskedAgain() {
         if (lookFiles.status === FolderListModel.Ready && lookFiles.count > 0)

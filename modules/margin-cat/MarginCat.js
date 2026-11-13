@@ -179,6 +179,176 @@ function step(going, t) {
     return { x, pose, facing: going.facing, beat: beat.name, done: false };
 }
 
+// How far niri's workspace slide has gone `t` ms after it set off, from 0
+// to 1, on the spring niri's `workspace-switch` rides (the theme's
+// motion.spring, with niri's mass of 1), slowed as niri slows its clock,
+// so the cat rides its column exactly as the world moves. The spring
+// sets off still: the cat never moves before the world does.
+function slid(t, spring) {
+    const w = Math.sqrt(spring.stiffness);
+    const beta = spring.damping * w;
+    const s = t / MS / (spring.slowdown ?? 1);
+    const envelope = Math.exp(-beta * s);
+    if (Math.abs(beta - w) < 1e-6) {
+        return 1 - envelope * (1 + beta * s);
+    }
+    if (beta < w) {
+        const w1 = Math.sqrt(w * w - beta * beta);
+        return 1 - envelope * (Math.cos(w1 * s) + (beta / w1) * Math.sin(w1 * s));
+    }
+    const w2 = Math.sqrt(beta * beta - w * w);
+    return 1 - envelope * (Math.cosh(w2 * s) + (beta / w2) * Math.sinh(w2 * s));
+}
+
+// How long the slide lasts, in ms: until it's within the spring's epsilon
+// of its end and stays there, to the millisecond, as niri's clamped
+// duration finds it.
+const SLIDES_AT_MOST = 3000;
+function slides(spring) {
+    const slow = spring.slowdown ?? 1;
+    let t = 1;
+    while (t < SLIDES_AT_MOST && 1 - slid(t * slow, spring) > spring.epsilon) {
+        t += 1;
+    }
+    return t * slow;
+}
+
+// The longest a walk along the margin may take, in ms before the theme's
+// slowdown, for a move up to walk it at once; a seat farther off is left
+// to the usual rest and walk, so the walk is never hurried (VKCF3Z,
+// 01f6c940: "please don't raise the pace").
+const ARRIVES_WITHIN = 1500;
+
+// A move between workspaces, a workspace's `step` (its height and niri's
+// gap) the world slides by, the cat always moving with what goes up and
+// staying where things fall away (VKCF3Z, 074321bd and 294b73a0). Going
+// `way` 1, to the workspace below, it rides its old column up off the
+// screen the whole slide, then climbs down from above the screen's top
+// onto its new seat at the walk's pace, in the walk's strides, and lands
+// as a walk does, crouched a moment, before it sits. Going -1, up, its old
+// column falls away below it, so it stays in the margin the whole slide,
+// then walks the margin to a seat no more than ARRIVES_WITHIN away; one
+// farther off it stays for, the move `rests`, its `seat` still the one
+// asked, and its usual walk takes it there once the keys rest. `from` and `to` are its seats, { x, y }, `tall`
+// its height, `spring` niri's.
+function moves(from, to, at) {
+    const slow = at.slowdown ?? 1;
+    const beats = [];
+    let ends = 0;
+    const beat = (name, lasts, more) => {
+        const begins = ends;
+        ends += lasts;
+        beats.push(Object.assign({ name, begins, ends }, more));
+    };
+    const rides = slides(Object.assign({}, at.spring, { slowdown: slow }));
+    if (at.way < 0) {
+        return staysAbove(from, to, at, rides);
+    }
+    beat("rides", rides, {
+        from,
+        to: { x: from.x, y: from.y - at.way * at.step },
+        facing: at.facing,
+        slide: t => slid(t, Object.assign({}, at.spring, { slowdown: slow }))
+    });
+    const cells = Math.abs(to.y + at.tall) / at.cell;
+    const pace = Math.min(Math.max(cells / (CRUISES / MS), AMBLES), HURRIES);
+    const stride =
+        Math.min(Math.max(pace * STRIDE_SECONDS, SHORTEST_STRIDE), LONGEST_STRIDE) * at.cell;
+    // Head first the way it climbs: the theme's profile faces left, so a
+    // quarter turn back has it face down.
+    beat("climbs", (cells / pace) * MS * slow, {
+        from: { x: to.x, y: -at.tall },
+        to,
+        ease: easeInOut,
+        stride,
+        turn: -1,
+        facing: -1
+    });
+    beat("lands", LANDS * slow, { from: to, to, pose: "pouncing" });
+    return { from, to, way: at.way, facing: at.facing, beats, ends };
+}
+
+// A move up (moves): it stays where it sits for the slide, `rides` ms
+// long, then walks the margin to its seat if that's near enough, unhurried
+// by the theme's slowdown in judging it, or else stays there and `rests`.
+function staysAbove(from, to, at, rides) {
+    const stays = { name: "stays", begins: 0, ends: rides, from, to: from, facing: at.facing };
+    const along = walk(from.x, to.x, {
+        cell: at.cell,
+        ratio: at.ratio,
+        slowdown: at.slowdown,
+        hurried: true,
+        facing: at.facing
+    });
+    const still = { from, way: at.way, facing: at.facing, beats: [stays], ends: rides };
+    if (along === null) {
+        return Object.assign(still, { to, rests: false });
+    }
+    if (along.ends > ARRIVES_WITHIN * (at.slowdown ?? 1)) {
+        return Object.assign(still, { to: from, seat: to, rests: true });
+    }
+    const beats = along.beats.map(b => ({
+        name: b.name,
+        begins: rides + b.begins,
+        ends: rides + b.ends,
+        from: { x: b.from, y: to.y },
+        to: { x: b.to, y: to.y },
+        ease: b.ease,
+        stride: b.stride,
+        pose: b.pose,
+        facing: along.facing
+    }));
+    return {
+        from,
+        to,
+        way: at.way,
+        facing: along.facing,
+        beats: [stays].concat(beats),
+        ends: rides + along.ends,
+        rests: false
+    };
+}
+
+// Where a move has it `t` ms after the slide set off: its `x` and `y`, its
+// `pose` by the theme's name, or null for its own, as it rides; `turn`, a
+// quarter turn clockwise (1) or back (-1) as it climbs, and 0 otherwise;
+// the way it's `facing`, the `beat` it's on, and at the end, `done`.
+function moved(moving, t) {
+    const beat = moving.beats.find(b => t < b.ends);
+    if (!beat) {
+        return Object.assign({}, moving.to, {
+            pose: null, turn: 0, facing: moving.facing, beat: "sits", done: true
+        });
+    }
+    const p = (t - beat.begins) / (beat.ends - beat.begins);
+    const eased = beat.slide ? beat.slide(t - beat.begins) : beat.ease ? beat.ease(p) : p;
+    const x = beat.from.x + (beat.to.x - beat.from.x) * eased;
+    const y = beat.from.y + (beat.to.y - beat.from.y) * eased;
+    const ground = Math.abs(x - beat.from.x) + Math.abs(y - beat.from.y);
+    const pose = beat.stride
+        ? ["walkingA", "walkingB"][Math.floor(ground / beat.stride) % 2]
+        : beat.pose ?? null;
+    return {
+        x,
+        y,
+        pose,
+        turn: beat.turn ?? 0,
+        facing: beat.facing ?? moving.facing,
+        beat: beat.name,
+        done: false
+    };
+}
+
+// A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
+// cell for cell, so a climbing cat stays as sharp as a walking one.
+function quartered(drawing, turn) {
+    const n = drawing.length;
+    const cells = drawing.map(row => row.split(""));
+    return turn === 0 ? drawing : cells[0].map((_column, c) => cells.map((_row, r) => turn > 0
+        ? cells[n - 1 - r][c]
+        : cells[r][cells[0].length - 1 - c]).join(""));
+}
+
 // How a walk reached the screen, as the journal says it once it sits:
 // `shown`, when niri presented each of its frames, in monotonic ms, so
 // the gaps between them say whether it moved at the screen's rate;
