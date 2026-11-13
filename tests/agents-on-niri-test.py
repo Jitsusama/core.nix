@@ -1630,6 +1630,9 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
     def asked(words: str, kept: str) -> None:
         """Say the words on the line, and lay the void's answer that your orchestrator has it."""
         shell.send_chars(words)
+        # In the field before Return, since an empty field after it says nothing of a
+        # Return that came before the letters landed.
+        shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
         shell.send_key("ret")
         shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
         deadline = time.monotonic() + 10
@@ -1640,7 +1643,11 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
                 if (text := str(json.loads(one.read_text()).get("text", ""))).startswith(words)
             ]
         ):
-            assert time.monotonic() < deadline, f"the void's inbox never had {words!r}"
+            held = [one.name for one in sorted((STEER / "VOID").glob("*"))]
+            assert time.monotonic() < deadline, (
+                f"the void's inbox never had {words!r}: it held {held}, "
+                f"the line {shell.showing()['line']}"
+            )
             time.sleep(0.1)
         replies = STEER / "VOID" / "replies"
         replies.mkdir(parents=True, exist_ok=True)
@@ -1659,6 +1666,9 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"])
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "insert")
+    # A key of another keymap first, as Shell.restart presses, since the line's first letter
+    # was read by the last keymap and lost, leaving "ow is it going?". F24 does nothing here.
+    subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
     asked("how is it going?", "07:42")
     asked("what is being worked on?", "07:43")
     waiting = ["waiting on your orchestrator"] * 2
