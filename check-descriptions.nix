@@ -297,6 +297,10 @@
     wake rather than a reset, so the power-off after finds it answering and the hibernation goes
     through
   '';
+  bluetooth-recovers-from-an-unread-exception = ''
+    the XPS 14's kernel resets Bluetooth's chip after a hardware exception whose dump it couldn't
+    read, rather than leaving it halted until a reboot
+  '';
   bluetooth-links-passes-clippy = ''
     clippy finds nothing in bluetooth-links or its tests
   '';
