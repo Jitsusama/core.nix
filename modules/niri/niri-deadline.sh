@@ -11,11 +11,11 @@ on) want=true ;;
 off) want=false ;;
 -h | --help)
   cat << 'EOF'
-niri-deadline  whether niri renders each frame as late as it can
+niri-deadline  whether niri draws frames as late as it can
 
 EXAMPLES
-  niri-deadline on           render by the deadline, until niri stops
-  niri-deadline off          render as soon as something changes
+  niri-deadline on   draw by the deadline, until niri stops
+  niri-deadline off  draw as soon as something changes
 
 EXIT
   0   done

@@ -12,7 +12,7 @@ if [ "$#" -gt 0 ]; then
   case $1 in
     -h | --help)
       cat << 'EOF'
-lock-for-sleep  locks the screen and turns it off, for a sleep
+lock-for-sleep  locks and turns off the screens, for a sleep
 
 EXAMPLES
   lock-for-sleep   what swayidle runs before every sleep

@@ -113,7 +113,8 @@
   # Every command keeps docs/commands.md's convention, so learning one teaches
   # them all and an agent reads each the same way. Each on the terminal kit is
   # run for its help, as JSON and in a terminal at four widths, which it has to
-  # fit (docs/commands.md, Width and What Gives Way). lag-watch, the first,
+  # fit (docs/commands.md, Width and What Gives Way); each script whose help
+  # is in our shape is run for it at the same widths. lag-watch, the first,
   # builds only on Linux, as
   # github-broker and session-backup do. Those
   # that broke a point before the rule wait in
@@ -126,8 +127,36 @@
       let
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
         recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
+        # A script whose help is in our shape, run as its module's wrapper
+        # runs it: `before` sets what the wrapper sets, and `words` go ahead
+        # of a person's, as the wrapper's own do. Only its help is asked.
+        script =
+          name: file:
+          {
+            before ? "",
+            words ? "",
+          }:
+          pkgs.writeShellScriptBin name ''
+            ${before}
+            exec ${pkgs.lib.getExe pkgs.bash} ${file} ${words} "$@"
+          '';
       in
       {
+        camera = script "camera" ../../modules/camera/camera.sh { };
+        disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
+        google-opens = script "google-opens" ../../modules/google/opens.sh {
+          words = "a-window an-opener";
+        };
+        lock-for-sleep = script "lock-for-sleep" ../../modules/swayidle/lock-for-sleep.sh { };
+        lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
+        niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
+        se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
+        shots-changed = script "shots-changed" ../../tools/shots-changed/shots-changed.sh { };
+        sign = script "sign" ../../modules/signing/sign.sh { before = "export name=sign"; };
+        ssh-askpass = script "ssh-askpass" ../../modules/quickshell/askpass.sh { };
+        swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
+        yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;

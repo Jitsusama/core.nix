@@ -11,19 +11,32 @@
 # and shellcheck, see what the script runs under.
 set -euo pipefail
 
+# Its help and refusals take the shape every command of ours does
+# (docs/commands.md), by hand, its help no wider than 60 columns.
 usage() {
-  cat <<'EOF'
-Usage: ergodox <command>
+  cat << 'EOF'
+ergodox  flashes the ErgoDox and steers it from a terminal
 
-Commands:
-  flash              write this machine's build of the firmware to the board
-  serial             print the serial number the board answers once it runs that build
-  bootloader         restart the board ready to be flashed
-  layer <layer>      lock the board on a layer, by its name or number, until the
-                     layer lock key lets it go; the first layer locks nothing
-  lights <on|off>    turn the board's lights on or off, until it restarts
-  brighter, dimmer   step the lights' brightness, until it restarts
+EXAMPLES
+  ergodox flash          write this machine's firmware to it
+  ergodox serial         the serial it answers, once flashed
+  ergodox bootloader     restart it, ready to be flashed
+  ergodox layer Numb     lock a layer, by name or number
+  ergodox layer 0        let a locked layer go
+  ergodox lights off     its lights off, till it restarts
+  ergodox brighter       step its lights up; dimmer, down
+
+EXIT
+  0   done; when flashing, zapp's own
+  64  asked wrongly
+  69  no ErgoDox is plugged in, or it can't be reached
 EOF
+}
+
+# A refusal: what's wrong, then where to read how it's asked.
+refuse() {
+  printf '%s\n' "$1" "  try  ergodox --help" >&2
+  exit 64
 }
 
 # Help is answered wherever it's asked, and a command given more words than
@@ -45,11 +58,9 @@ asked=${1-}
 takes() {
   [ "$words" -eq "$1" ] && return 0
   case $1 in
-    1) printf '%s\n' "ergodox $asked takes no more words" >&2 ;;
-    *) printf '%s\n' "ergodox $asked takes one more word" >&2 ;;
+    1) refuse "ergodox $asked takes no more words" ;;
+    *) refuse "ergodox $asked takes one more word" ;;
   esac
-  printf '%s\n' "  try  ergodox --help" >&2
-  exit 64
 }
 
 root=${ERGODOX_ROOT-}
@@ -114,18 +125,14 @@ layer)
     fi
     index=$((index + 1))
   done
-  usage >&2
-  exit 64
+  refuse "the ErgoDox has no layer $2"
   ;;
 lights)
   takes 2
   case "${2-}" in
   on) ask 131 1 ;;
   off) ask 131 0 ;;
-  *)
-    usage >&2
-    exit 64
-    ;;
+  *) refuse "ergodox lights takes on or off, not $2" ;;
   esac
   ;;
 brighter)
@@ -139,8 +146,6 @@ dimmer)
 help | -h | --help)
   usage
   ;;
-*)
-  usage >&2
-  exit 64
-  ;;
+'') refuse "ergodox needs a command" ;;
+*) refuse "ergodox doesn't know $1" ;;
 esac
