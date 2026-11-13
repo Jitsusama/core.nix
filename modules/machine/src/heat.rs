@@ -20,7 +20,10 @@ const THERMAL: &str = "/sys/class/thermal";
 /// How long a chip's read takes before it counts as slow: a chip that
 /// answers through the firmware, as a Dell's `dell_smm` and `dell_ddv`
 /// do, about 40 to 75 ms a pass each on Joel's laptop and up to 330 ms
-/// while it's loaded (2026-11-13), where the rest take under 7 ms.
+/// while it's loaded (2026-11-13), where the rest take under 7 ms. A
+/// chip once slow stays so until the chips change, since `dell_ddv`'s
+/// driver answers some passes from its cache in under a millisecond
+/// (2026-11-13), and counted quick it was read each second again.
 pub const SLOW: Duration = Duration::from_millis(20);
 
 /// How long a slow chip's record is kept before it's read again. Each of
@@ -359,10 +362,8 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
         }
         let began = Instant::now();
         let record = chip(root, kept, &folder, &key, &name);
-        if began.elapsed() >= kept.slow_from {
+        if began.elapsed() >= kept.slow_from || kept.slow.contains_key(&folder) {
             kept.slow.insert(folder, (now, record.clone()));
-        } else {
-            kept.slow.remove(&folder);
         }
         records.push(record);
     }
@@ -633,6 +634,39 @@ mod tests {
             "the slow one kept, the quick read"
         );
         assert_eq!(kept, json!(52.0), "the slow one read once kept a while");
+    }
+
+    /// A chip found slow stays slow though a later pass is quick, as
+    /// `dell_ddv`'s driver answers some from its cache in under a
+    /// millisecond: counted quick, it was read each second again.
+    #[test]
+    fn a_chip_found_slow_stays_slow_though_one_pass_is_quick() {
+        let folder = std::env::temp_dir().join(format!("machine-sticky-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let temperature = |says: &str| {
+            std::fs::write(chip.join("temp1_input"), says).expect("the file is written");
+        };
+        std::fs::write(chip.join("name"), "dell_ddv").expect("the name is written");
+        temperature("47000");
+        let root = Root::new(&folder);
+        let degrees = |kept: &mut Kept, at: Instant| {
+            sensors(&root, kept, at)[0]["temperatures"][0]["temperature_c"].clone()
+        };
+        let first = Instant::now();
+        let mut kept = Kept {
+            slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        degrees(&mut kept, first);
+        kept.slow_from = Duration::MAX;
+        temperature("52000");
+        let quick = degrees(&mut kept, first + SLOW_KEPT);
+        temperature("57000");
+        let after = degrees(&mut kept, first + SLOW_KEPT + Duration::from_secs(1));
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(quick, json!(52.0), "read again once kept a while");
+        assert_eq!(after, json!(52.0), "still kept after a quick pass");
     }
 
     #[test]
