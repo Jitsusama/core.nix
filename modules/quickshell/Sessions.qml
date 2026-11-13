@@ -555,7 +555,10 @@ Singleton {
     // holds is joined again by its words, in its folder here when that's
     // still there, or gone to if a window here has joined it since, never
     // opened twice.
-    function rejoin(lost) {
+    // `quiet` when Joel didn't ask for this one by itself, as Reopen Them All
+    // rejoins another machine's: its window opens where opensOn says, on its
+    // orchestrator's workspace, never on the one he's on (Joel, 2026-11-13).
+    function rejoin(lost, quiet) {
         const joined = running.find(one => !one.here && one.address === lost.address
             && (one.window || one.kitty));
         if (joined) {
@@ -568,7 +571,8 @@ Singleton {
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const open = there => {
             root.inSessions("pi-session",
-                (there ? ["--directory", lost.cwd] : []).concat(lost.attach));
+                (there ? ["--directory", lost.cwd] : []).concat(lost.attach),
+                quiet === true ? root.opensOn(lost, null, null) : null);
             Report.say(`joined session ${lost.address} on ${lost.machine} again`);
         };
         if (lost.cwd === "")
@@ -1251,7 +1255,7 @@ Singleton {
     function reopenAll(lost, gone, keptAt, told) {
         const kept = keptAt ?? (id => Places.keptFor(id, { now: arrangement[bootId],
             restored: arrangement[restoring.boot] }));
-        lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one));
+        lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
         lookAtScreens(() => reopenHere(here, gone, kept, told ?? ""));
     }
