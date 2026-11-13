@@ -111,7 +111,7 @@ class Account:
 
     def freezes_tried(self) -> int:
         """Give how many times the account's guard has tried to freeze a writer, as it journals."""
-        tried = "jq -s '[.[] | select(.kind == \"freeze\")] | length'"
+        tried = "jq '[.entries[] | select(.kind == \"freeze\")] | length'"
         return int(self.run(f"{GUARD} journal --json | {tried}"))
 
     def freezer_state(self, unit: str) -> str:
@@ -493,5 +493,5 @@ def test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_d
         account.there(f"/nix/var/nix/profiles/test-{n}-link")
         account.there(paths[n - 1])
     assert machine.succeed("readlink /nix/var/nix/profiles/test").strip() == "test-8-link"
-    cleared = f'any(.[]; .guard == "machine" and .path == "{dead_build}")'
-    account.run(f"{GUARD} journal --json | jq -e -s '{cleared}'")
+    cleared = f'any(.entries[]; .guard == "machine" and .path == "{dead_build}")'
+    account.run(f"{GUARD} journal --json | jq -e '{cleared}'")

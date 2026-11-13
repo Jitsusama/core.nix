@@ -60,7 +60,7 @@
   "modules/dictation/src/wav.rs" = 2;
   "modules/disk-guard/src/macos.rs" = 5;
   "modules/disk-guard/tests/guard/anchor.rs" = 3;
-  "modules/disk-guard/tests/guard/cli.rs" = 3;
+  "modules/disk-guard/tests/guard/cli.rs" = 2;
   "modules/disk-guard/tests/guard/collecting.rs" = 6;
   "modules/disk-guard/tests/guard/commands.rs" = 7;
   "modules/disk-guard/tests/guard/config.rs" = 2;

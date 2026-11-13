@@ -111,11 +111,6 @@
     "exits"
     "helps"
   ];
-  disk-guard = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   disk-guard-merged-on-github = [ "helps" ];
   disk-order = [ "helps" ];
   eero = [ "inks" ];

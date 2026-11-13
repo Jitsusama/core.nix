@@ -7,7 +7,12 @@
 //! spawns nothing (Y2YBTS, 2026-11-12). The guard writes its keeps and
 //! asks in its own state folder and marks its status before it ends, so
 //! the status the shell hears has moved by the time the act answers.
-//! What it printed is what the act says, as Joel reads it in the foot.
+//!
+//! The guard is asked for JSON, as every command of ours answers a
+//! program (docs/commands.md): its facts where it did the act, and its
+//! error's parts where it didn't. The sentence Joel reads in the foot is
+//! worded here from those facts, so a change to the guard's text for a
+//! person never changes what the shell shows.
 
 use std::process::{Command, Stdio};
 
@@ -18,7 +23,7 @@ use serde_json::Value;
 pub const DISK_GUARD: &str = "MACHINE_DISK_GUARD";
 
 /// Why an act wasn't done: its cause, for the journal, and what Joel
-/// reads of it, the guard's own sentence where it ran and refused, or
+/// reads of it, the guard's own what and why where it ran and refused, or
 /// nothing where it couldn't be asked, which the shell words itself.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Untold {
@@ -35,21 +40,20 @@ fn untold(code: &'static str, message: impl Into<String>) -> Untold {
     }
 }
 
-/// What Joel reads of the guard's refusal: the sentence it printed,
-/// without the program's name it opens its errors with.
-fn refusal_said(printed: &str) -> String {
-    printed
-        .lines()
-        .map(|line| line.strip_prefix("disk-guard: ").unwrap_or(line))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// The guard's words for an act, or why the act can't be one: each but a
-/// thaw needs its folder, and a keep its reason.
+/// thaw needs its folder, and a keep its reason. Its answer is asked for
+/// as JSON, and the folder follows `--`, so one beginning with a dash is
+/// still a folder.
 pub fn words(act: &str, said: &Value) -> Result<Vec<String>, Untold> {
+    let asked = |words: &[&str]| {
+        ["--json"]
+            .iter()
+            .chain(words)
+            .map(|word| (*word).to_owned())
+            .collect()
+    };
     if act == "disk-thaw" {
-        return Ok(vec!["thaw".to_owned()]);
+        return Ok(asked(&["thaw"]));
     }
     let text = |name: &str| said[name].as_str().unwrap_or("").to_owned();
     let path = text("path");
@@ -62,16 +66,59 @@ pub fn words(act: &str, said: &Value) -> Result<Vec<String>, Untold> {
             if reason.trim().is_empty() {
                 return Err(untold("bad-act", "keeping a folder needs its reason"));
             }
-            Ok(vec!["keep".to_owned(), path, reason])
+            Ok(asked(&["keep", "--", &path, &reason]))
         }
-        "disk-unkeep" => Ok(vec!["unkeep".to_owned(), path]),
-        "disk-clear" => Ok(vec!["clear".to_owned(), path]),
+        "disk-unkeep" => Ok(asked(&["unkeep", "--", &path])),
+        "disk-clear" => Ok(asked(&["clear", "--", &path])),
         _ => Err(untold("unknown-act", format!("no act {act:?} here"))),
     }
 }
 
-/// Does the act, saying what the guard printed: done where it ended well,
-/// and refused, with what it said, where it didn't.
+/// The sentence for what the guard did, worded from the facts it
+/// answered: a line a unit thawed, or one for the folder it kept, let go
+/// or is clearing.
+pub fn sentence(answer: &Value) -> Option<String> {
+    let text = |name: &str| answer[name].as_str();
+    let said = match text("schema")? {
+        "disk-guard.keep/1" => format!("Kept {}: {}.", text("path")?, text("reason")?),
+        "disk-guard.unkeep/1" if answer["was_kept"] == true => {
+            format!("No longer kept: {}.", text("path")?)
+        }
+        "disk-guard.unkeep/1" => format!("{} wasn't kept.", text("path")?),
+        "disk-guard.clear/1" => format!(
+            "Clearing {}; the guard starts on its next step.",
+            text("path")?
+        ),
+        "disk-guard.thaw/1" => {
+            let thawed: Vec<String> = answer["thawed"]
+                .as_array()?
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|unit| format!("Thawed {unit}."))
+                .collect();
+            if thawed.is_empty() {
+                "Nothing is frozen.".to_owned()
+            } else {
+                thawed.join("\n")
+            }
+        }
+        _ => return None,
+    };
+    Some(said)
+}
+
+/// What Joel reads of the guard's refusal, from the error it said: what
+/// failed, and why where it said why.
+pub fn refusal(error: &Value) -> Option<String> {
+    let what = error["what"].as_str()?;
+    Some(match error["why"].as_str() {
+        Some(why) => format!("{what}: {why}"),
+        None => what.to_owned(),
+    })
+}
+
+/// Does the act, saying what the guard did: done where it ended well,
+/// and refused, with its error's words, where it didn't.
 pub fn told(act: &str, said: &Value) -> Result<String, Untold> {
     let words = words(act, said)?;
     let program = std::env::var(DISK_GUARD).unwrap_or_else(|_| "disk-guard".to_owned());
@@ -85,24 +132,25 @@ pub fn told(act: &str, said: &Value) -> Result<String, Untold> {
                 format!("the disk guard couldn't be run: {error}"),
             )
         })?;
-    // It prints one sentence, on its output where it did it and on its
-    // errors where it couldn't.
     let printed = |bytes: &[u8]| String::from_utf8_lossy(bytes).trim().to_owned();
     let (out, err) = (printed(&ran.stdout), printed(&ran.stderr));
-    let both = [out, err]
-        .into_iter()
-        .filter(|text| !text.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let read = |text: &str| serde_json::from_str::<Value>(text).ok();
     if ran.status.success() {
-        Ok(both)
-    } else {
-        Err(Untold {
-            code: "refused",
-            said: refusal_said(&both),
-            message: both,
-        })
+        return read(&out).as_ref().and_then(sentence).ok_or_else(|| {
+            untold(
+                "refused",
+                format!("the disk guard answered what isn't its act's: {out}"),
+            )
+        });
     }
+    // An error it couldn't say as its own, as from a guard too old to
+    // answer JSON, is kept for the journal and left to the shell to word.
+    let said = read(&err).as_ref().and_then(refusal).unwrap_or_default();
+    Err(Untold {
+        code: "refused",
+        message: err,
+        said,
+    })
 }
 
 #[cfg(test)]
@@ -110,29 +158,38 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn owned(words: &[&str]) -> Vec<String> {
+        words.iter().map(|word| (*word).to_owned()).collect()
+    }
+
     #[test]
     fn each_act_is_the_guards_own_words_and_needs_its_folder() {
         let keep = json!({"path": "/home/joel/src", "reason": "the build's"});
         assert_eq!(
             words("disk-keep", &keep),
-            Ok(vec![
-                "keep".to_owned(),
-                "/home/joel/src".to_owned(),
-                "the build's".to_owned()
-            ])
+            Ok(owned(&[
+                "--json",
+                "keep",
+                "--",
+                "/home/joel/src",
+                "the build's"
+            ]))
         );
         assert_eq!(
             words("disk-unkeep", &keep),
-            Ok(vec!["unkeep".to_owned(), "/home/joel/src".to_owned()])
+            Ok(owned(&["--json", "unkeep", "--", "/home/joel/src"]))
         );
         assert_eq!(
             words("disk-clear", &keep),
-            Ok(vec!["clear".to_owned(), "/home/joel/src".to_owned()])
+            Ok(owned(&["--json", "clear", "--", "/home/joel/src"]))
         );
         let code = |act: &str, said: Value| words(act, &said).map_err(|no| no.code);
         assert_eq!(code("disk-keep", json!({"path": "/srv"})), Err("bad-act"));
         assert_eq!(code("disk-clear", json!({})), Err("bad-act"));
-        assert_eq!(words("disk-thaw", &json!({})), Ok(vec!["thaw".to_owned()]));
+        assert_eq!(
+            words("disk-thaw", &json!({})),
+            Ok(owned(&["--json", "thaw"]))
+        );
         assert_eq!(
             code("disk-wipe", json!({"path": "/srv"})),
             Err("unknown-act")
@@ -146,11 +203,55 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_says_the_guards_sentence_without_its_name() {
+    fn each_sentence_is_worded_from_the_guards_facts() {
+        let cases = [
+            (
+                json!({"schema": "disk-guard.keep/1", "path": "/srv", "reason": "the build's"}),
+                "Kept /srv: the build's.",
+            ),
+            (
+                json!({"schema": "disk-guard.unkeep/1", "path": "/srv", "was_kept": true}),
+                "No longer kept: /srv.",
+            ),
+            (
+                json!({"schema": "disk-guard.unkeep/1", "path": "/srv", "was_kept": false}),
+                "/srv wasn't kept.",
+            ),
+            (
+                json!({"schema": "disk-guard.clear/1", "path": "/srv"}),
+                "Clearing /srv; the guard starts on its next step.",
+            ),
+            (
+                json!({"schema": "disk-guard.thaw/1", "thawed": []}),
+                "Nothing is frozen.",
+            ),
+            (
+                json!({"schema": "disk-guard.thaw/1", "thawed": ["a.service", "b.service"]}),
+                "Thawed a.service.\nThawed b.service.",
+            ),
+        ];
+        for (answer, said) in cases {
+            assert_eq!(sentence(&answer).as_deref(), Some(said), "{answer}");
+        }
         assert_eq!(
-            refusal_said("disk-guard: /srv stays: you keep it: the build's"),
-            "/srv stays: you keep it: the build's"
+            sentence(&json!({"schema": "disk-guard.status/1"})),
+            None,
+            "an answer that isn't an act's is no sentence"
         );
-        assert_eq!(refusal_said("/srv wasn't kept."), "/srv wasn't kept.");
+    }
+
+    #[test]
+    fn a_refusal_says_the_guards_what_and_why() {
+        let error = json!({"schema": "error/1", "what": "/srv stays",
+            "why": "you keep it: the build's", "try": "disk-guard unkeep /srv"});
+        assert_eq!(
+            refusal(&error).as_deref(),
+            Some("/srv stays: you keep it: the build's")
+        );
+        assert_eq!(
+            refusal(&json!({"what": "/srv isn't there to clear", "why": null})).as_deref(),
+            Some("/srv isn't there to clear")
+        );
+        assert_eq!(refusal(&json!("not an error")), None);
     }
 }

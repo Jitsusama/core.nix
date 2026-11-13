@@ -1,21 +1,26 @@
 //! The command line: the two daemons, and the commands that answer and
-//! exit. Arguments are read by hand, since there are few of them and a
-//! parser crate would be most of the binary's dependencies.
+//! exit. It takes the shape every command of ours does (docs/commands.md)
+//! from the terminal kit, which reads the shared flags, answers help and
+//! says a failure; the guard's own options are read here by hand, since
+//! there are few of them and a parser crate would be most of the binary's
+//! dependencies.
+//!
+//! What a command answers is in `reads` (status, journal, plan, explain),
+//! what it changes in `acts` (keep, unkeep, clear, footprint, thaw), and
+//! the daemons in `daemons`, each changing for its own reason.
+
+mod acts;
+mod daemons;
+mod reads;
 
 use crate::band::Band;
 use crate::config::{Config, Scope};
-use crate::daemon::{Explained, Guard, Places};
-use crate::serve::{answering, hold, steps, stopping};
-use crate::units::{Size, Span, shown as size};
-use crate::words::span;
-use serde_json::Value;
-use std::ffi::{OsStr, OsString};
-use std::fmt::Write as _;
+use crate::units::{Size, Span};
+use serde_json::{Value, json};
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use terminal_kit::{Context, Exit, Failure, Help, flags};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Command {
@@ -27,9 +32,7 @@ pub enum Command {
         config: Option<PathBuf>,
         state: Option<PathBuf>,
     },
-    Status {
-        json: bool,
-    },
+    Status,
     Plan {
         config: Option<PathBuf>,
         band: Option<Band>,
@@ -39,7 +42,6 @@ pub enum Command {
     },
     Journal {
         since: Option<Span>,
-        json: bool,
     },
     CheckConfig {
         file: PathBuf,
@@ -87,29 +89,90 @@ pub struct Env {
     pub processes: PathBuf,
 }
 
-/// Fine.
-pub const FINE: i32 = 0;
-/// The command line or a config was refused.
-pub const REFUSED: i32 = 1;
-/// A daemon already runs for this scope.
-pub const RUNNING: i32 = 2;
-/// No daemon has anything to say.
-pub const NO_DAEMON: i32 = 3;
-
-const USAGE: &str = "usage: disk-guard user|system [--config FILE] [--state DIR]
-       disk-guard status [--json]
-       disk-guard plan [--config FILE] [--band BAND] [--pretend-free SIZE] [--fresh]
-       disk-guard keep FOLDER REASON...
-       disk-guard unkeep FOLDER
-       disk-guard clear FOLDER
-       disk-guard journal [--since SPAN] [--json]
-       disk-guard check-config FILE
-       disk-guard explain PATH [--config FILE]
-       disk-guard footprint PATH...
-       disk-guard thaw";
+/// The commands, as they're typed.
+const COMMANDS: [&str; 12] = [
+    "status",
+    "plan",
+    "journal",
+    "explain",
+    "keep",
+    "unkeep",
+    "clear",
+    "footprint",
+    "thaw",
+    "check-config",
+    "user",
+    "system",
+];
 
 /// The bands `--band` takes, as they're typed, said when it's given another.
-const BANDS: &str = "healthy, filling, nearly-full or critically-full";
+const BANDS: [&str; 4] = ["healthy", "filling", "nearly-full", "critically-full"];
+
+/// The command line's help, which the kit answers `--help` with.
+pub fn help() -> Help {
+    Help::new(
+        "disk-guard",
+        "keeps a disk from filling without breaking a build",
+    )
+    .example(
+        "disk-guard",
+        "how full each disk is, and what each guard did",
+    )
+    .example(
+        "disk-guard plan",
+        "what a pass would clear now, clearing nothing",
+    )
+    .example(
+        "disk-guard keep ~/vms mine",
+        "never offer ~/vms, because it's yours",
+    )
+    .example(
+        "disk-guard status --json",
+        "the status for a program, as disk-guard.status/1",
+    )
+    .command(
+        "status",
+        "each guard's disks, last pass and biggest holders",
+    )
+    .command("plan", "what a pass would take now, taking nothing")
+    .command("journal", "what the guards did, oldest first")
+    .command("explain", "why a path stays or would go, band by band")
+    .command("keep", "never offer what's in a folder, for your reason")
+    .command("unkeep", "let a kept folder go again")
+    .command("clear", "clear what the guard would take of a folder now")
+    .command("footprint", "what files really take on the disk")
+    .command("thaw", "let every writer the guard froze carry on")
+    .command("check-config", "whether a file is a config the guard reads")
+    .command("user", "the account's guard, kept running")
+    .command("system", "the machine's guard, kept running as root")
+    .option("--config FILE", "read this config, not the daemon's own")
+    .option(
+        "--state DIR",
+        "user, system: where the daemon keeps its state",
+    )
+    .option("--band BAND", "plan: as if the disk were in this band")
+    .option("--pretend-free SIZE", "plan: as if this much were free")
+    .option("--fresh", "plan: survey every source again")
+    .option(
+        "--since SPAN",
+        "journal: only what's newer, such as 1h or 2d",
+    )
+    .exit(
+        Exit::Failed,
+        "it couldn't be done, or a footprint couldn't be read",
+    )
+    .exit(
+        Exit::BadInput,
+        "check-config: the file isn't a config the guard reads",
+    )
+    .exit(Exit::NotFound, "the file or folder named isn't there")
+    .exit(Exit::Unavailable, "no guard is running to ask")
+    .exit(Exit::TryAgain, "a daemon already runs with that state")
+    .exit(
+        Exit::Config,
+        "the config can't be read, or is the other daemon's",
+    )
+}
 
 impl Env {
     /// The places the XDG base directories, the account and this platform
@@ -160,78 +223,68 @@ impl Env {
     }
 }
 
-/// The arguments after the program's name, read into a command.
-pub fn parse(args: &[OsString]) -> Result<Command, String> {
+/// The command line asked wrongly: what was wrong, and where to read how.
+fn asked(what: impl Into<String>) -> Failure {
+    Failure::new(Exit::Usage, what).try_this("disk-guard --help")
+}
+
+/// The arguments the kit left after the shared flags, read into a
+/// command. Nothing at all asks for the status, the common read.
+pub fn parse(args: &[String]) -> Result<Command, Failure> {
     let Some((name, rest)) = args.split_first() else {
-        return Err(USAGE.to_owned());
+        return Ok(Command::Status);
     };
     let mut options = Options::read(rest)?;
-    let command = match name.to_str() {
-        Some("user") => Command::User {
+    let command = match name.as_str() {
+        "user" => Command::User {
             config: options.path("--config"),
             state: options.path("--state"),
         },
-        Some("system") => Command::System {
+        "system" => Command::System {
             config: options.path("--config"),
             state: options.path("--state"),
         },
-        Some("status") => Command::Status {
-            json: options.flag("--json"),
-        },
-        Some("plan") => Command::Plan {
+        "status" => Command::Status,
+        "plan" => Command::Plan {
             config: options.path("--config"),
             band: options
-                .text("--band")?
+                .value("--band")
                 .map(|band| {
-                    serde_json::from_value(Value::String(band.clone()))
-                        .map_err(|_| format!("{band:?} is not a band: {BANDS}"))
+                    serde_json::from_value(Value::String(band.clone())).map_err(|_| {
+                        asked(format!("{band:?} is not a band"))
+                            .because(format!("the bands are {}", flags::or(&BANDS)))
+                    })
                 })
                 .transpose()?,
             pretend_free: options
-                .text("--pretend-free")?
-                .map(|size| Size::parse(&size))
+                .value("--pretend-free")
+                .map(|size| Size::parse(&size).map_err(asked))
                 .transpose()?,
             fresh: options.flag("--fresh"),
         },
-        Some("journal") => Command::Journal {
+        "journal" => Command::Journal {
             since: options
-                .text("--since")?
-                .map(|span| Span::parse(&span))
+                .value("--since")
+                .map(|span| Span::parse(&span).map_err(asked))
                 .transpose()?,
-            json: options.flag("--json"),
         },
-        Some("check-config") => match options.positional.as_slice() {
-            [file] => {
-                let file = PathBuf::from(file);
-                options.positional.clear();
-                Command::CheckConfig { file }
-            }
-            _ => return Err(format!("check-config takes one file\n{USAGE}")),
+        "check-config" => Command::CheckConfig {
+            file: options.one("check-config takes one file")?,
         },
-        Some("thaw") => Command::Thaw,
-        Some("keep") => {
+        "thaw" => Command::Thaw,
+        "keep" => {
             let (path, reason) = kept(std::mem::take(&mut options.positional))?;
             Command::Keep { path, reason }
         }
-        Some("unkeep") => match options.positional.as_slice() {
-            [path] => {
-                let path = PathBuf::from(path);
-                options.positional.clear();
-                Command::Unkeep { path }
-            }
-            _ => return Err(format!("unkeep takes one path\n{USAGE}")),
+        "unkeep" => Command::Unkeep {
+            path: options.one("unkeep takes one path")?,
         },
-        Some("clear") => match options.positional.as_slice() {
-            [path] => {
-                let path = PathBuf::from(path);
-                options.positional.clear();
-                Command::Clear { path }
-            }
-            _ => return Err(format!("clear takes one folder\n{USAGE}")),
+        "clear" => Command::Clear {
+            path: options.one("clear takes one folder")?,
         },
-        Some("footprint") => {
+        "footprint" => {
             if options.positional.is_empty() {
-                return Err(format!("footprint takes one path or more\n{USAGE}"));
+                return Err(asked("footprint takes one path or more"));
             }
             let paths = std::mem::take(&mut options.positional)
                 .into_iter()
@@ -239,89 +292,85 @@ pub fn parse(args: &[OsString]) -> Result<Command, String> {
                 .collect();
             Command::Footprint { paths }
         }
-        Some("explain") => {
+        "explain" => {
             let config = options.path("--config");
-            match options.positional.as_slice() {
-                [path] => {
-                    let path = PathBuf::from(path);
-                    options.positional.clear();
-                    Command::Explain { path, config }
-                }
-                _ => return Err(format!("explain takes one path\n{USAGE}")),
+            Command::Explain {
+                path: options.one("explain takes one path")?,
+                config,
             }
         }
-        _ => return Err(format!("{} is not a command\n{USAGE}", quoted(name))),
+        _ => return Err(flags::unknown("command", name, &COMMANDS).try_this("disk-guard --help")),
     };
     options.finished()?;
     Ok(command)
 }
 
 /// A keep's folder and its reason, the words after the folder.
-fn kept(words: Vec<OsString>) -> Result<(PathBuf, String), String> {
+fn kept(words: Vec<String>) -> Result<(PathBuf, String), Failure> {
     let mut words = words.into_iter();
     let path = words
         .next()
         .map(PathBuf::from)
-        .ok_or_else(|| format!("keep takes a folder and a reason\n{USAGE}"))?;
-    let reason = words
-        .map(|word| {
-            word.into_string()
-                .map_err(|word| format!("{} is not text", quoted(&word)))
-        })
-        .collect::<Result<Vec<_>, _>>()?
-        .join(" ");
+        .ok_or_else(|| asked("keep takes a folder and a reason"))?;
+    let reason = words.collect::<Vec<_>>().join(" ");
     if reason.trim().is_empty() {
-        return Err(format!("keep needs a reason, after the folder\n{USAGE}"));
+        return Err(asked("keep needs a reason, after the folder"));
     }
     Ok((path, reason.trim().to_owned()))
 }
 
-/// Options as `--name value` and `--flag`, and anything else.
+/// Options as `--name value` and `--flag`, and anything else. After `--`
+/// every word is the command's own, as a folder or a reason may begin
+/// with a dash.
 struct Options {
-    named: Vec<(String, Option<OsString>)>,
-    positional: Vec<OsString>,
+    named: Vec<(String, Option<String>)>,
+    positional: Vec<String>,
 }
 
 /// The options that take no value.
-const FLAGS: [&str; 2] = ["--json", "--fresh"];
+const FLAGS: [&str; 1] = ["--fresh"];
 
 impl Options {
-    fn read(args: &[OsString]) -> Result<Options, String> {
+    fn read(args: &[String]) -> Result<Options, Failure> {
         let mut options = Options {
             named: Vec::new(),
             positional: Vec::new(),
         };
         let mut args = args.iter();
         while let Some(arg) = args.next() {
-            let Some(name) = arg.to_str().filter(|arg| arg.starts_with("--")) else {
+            if arg == "--" {
+                options.positional.extend(args.cloned());
+                break;
+            }
+            if !arg.starts_with("--") {
                 options.positional.push(arg.clone());
                 continue;
-            };
-            if options.named.iter().any(|(seen, _)| seen == name) {
-                return Err(format!("{name} is given twice"));
             }
-            let value = if FLAGS.contains(&name) {
+            if options.named.iter().any(|(seen, _)| seen == arg) {
+                return Err(asked(format!("{arg} is given twice")));
+            }
+            let value = if FLAGS.contains(&arg.as_str()) {
                 None
             } else {
                 Some(
                     args.next()
-                        .ok_or_else(|| format!("{name} needs a value"))?
+                        .ok_or_else(|| asked(format!("{arg} needs a value")))?
                         .clone(),
                 )
             };
-            options.named.push((name.to_owned(), value));
+            options.named.push((arg.clone(), value));
         }
         Ok(options)
     }
 
     /// The option named `name` and its value, if it was given.
-    fn take(&mut self, name: &str) -> Option<(String, Option<OsString>)> {
+    fn take(&mut self, name: &str) -> Option<(String, Option<String>)> {
         let at = self.named.iter().position(|(seen, _)| seen == name)?;
         Some(self.named.remove(at))
     }
 
     /// The value given for `name`, if it was given one.
-    fn value(&mut self, name: &str) -> Option<OsString> {
+    fn value(&mut self, name: &str) -> Option<String> {
         self.take(name).and_then(|(_, value)| value)
     }
 
@@ -333,469 +382,119 @@ impl Options {
         self.value(name).map(PathBuf::from)
     }
 
-    fn text(&mut self, name: &str) -> Result<Option<String>, String> {
-        self.value(name)
-            .map(|value| {
-                value
-                    .into_string()
-                    .map_err(|value| format!("{name} {} is not text", quoted(&value)))
-            })
-            .transpose()
+    /// The one word a command takes, refused in `words` otherwise.
+    fn one(&mut self, words: &str) -> Result<PathBuf, Failure> {
+        match self.positional.as_slice() {
+            [one] => {
+                let one = PathBuf::from(one);
+                self.positional.clear();
+                Ok(one)
+            }
+            _ => Err(asked(words)),
+        }
     }
 
     /// Refuses whatever the command didn't ask for.
-    fn finished(self) -> Result<(), String> {
+    fn finished(self) -> Result<(), Failure> {
         if let Some((name, _)) = self.named.first() {
-            return Err(format!("{name} is not an option here\n{USAGE}"));
+            return Err(asked(format!("{name} is not an option here")));
         }
         if let Some(arg) = self.positional.first() {
-            return Err(format!("{} is not expected here\n{USAGE}", quoted(arg)));
+            return Err(asked(format!("{arg:?} is not expected here")));
         }
         Ok(())
     }
 }
 
-/// An argument as Rust quotes it, escaping what isn't printable or isn't
-/// text, so whatever was typed shows exactly.
-#[expect(
-    clippy::unnecessary_debug_formatting,
-    reason = "the quotes and escapes are wanted, to show an argument exactly"
-)]
-fn quoted(arg: &OsStr) -> String {
-    format!("{arg:?}")
-}
-
-/// Runs a command that answers and exits, saying how in its exit code.
-pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
-    let done = match command {
-        Command::CheckConfig { file } => read_config(&file).map(|_| FINE),
-        Command::Status { json } => status(env, json, out),
-        Command::Journal { since, json } => journal(env, since, json, out, err),
+/// Runs a command that answers and exits, its answer on `out` in the form
+/// `context` asks for and its notes on `err`, or the failure it ends with.
+pub fn run(
+    command: Command,
+    env: &Env,
+    context: &Context,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), Failure> {
+    match command {
+        Command::CheckConfig { file } => check_config(&file, context, out),
+        Command::Status => reads::status(env, context, out),
+        Command::Journal { since } => reads::journal(env, since, context, out, err),
         Command::Plan {
             config,
             band,
             pretend_free,
             fresh,
-        } => plan(env, config.as_deref(), (band, pretend_free), fresh, out),
-        Command::User { config, state } => daemon(env, Scope::User, config, state, err),
-        Command::System { config, state } => daemon(env, Scope::System, config, state, err),
-        Command::Thaw => thaw(out),
-        Command::Explain { path, config } => explain(env, &path, config.as_deref(), out),
-        Command::Keep { path, reason } => keep(env, &path, &reason, out),
-        Command::Unkeep { path } => unkeep(env, &path, out),
-        Command::Clear { path } => clear(env, &path, out),
-        Command::Footprint { paths } => footprint(env, &paths, out),
-    };
-    match done {
-        Ok(code) => code,
-        Err((code, why)) => {
-            let _ = writeln!(err, "disk-guard: {why}");
-            code
+        } => reads::plan(
+            env,
+            config.as_deref(),
+            (band, pretend_free),
+            fresh,
+            context,
+            out,
+        ),
+        Command::Explain { path, config } => {
+            reads::explain(env, &path, config.as_deref(), context, out)
         }
-    }
-}
-
-type Done = Result<i32, (i32, String)>;
-
-/// How often a daemon steps.
-const STEP_EVERY: Duration = Duration::from_secs(5);
-
-/// Runs a daemon until it's told to stop.
-fn daemon(
-    env: &Env,
-    scope: Scope,
-    config: Option<PathBuf>,
-    state: Option<PathBuf>,
-    err: &mut dyn Write,
-) -> Done {
-    // Before any thread starts, so every thread blocks them too.
-    let mut wait = stopping(&[libc::SIGTERM, libc::SIGINT, libc::SIGHUP]).map_err(failed)?;
-    let (default_config, default_state, name) = match scope {
-        Scope::User => (&env.config, &env.state, "user"),
-        Scope::System => (&env.system_config, &env.system_state, "system"),
-    };
-    let config_path = config.unwrap_or_else(|| default_config.clone());
-    let config = read_config(&config_path)?;
-    if config.scope != scope {
-        return Err((
-            REFUSED,
-            format!(
-                "{} is a config for the other daemon, not the {name} daemon",
-                config_path.display()
-            ),
-        ));
-    }
-    let state = state.unwrap_or_else(|| default_state.clone());
-    make_state(&state, scope)
-        .map_err(|error| (REFUSED, format!("{}: {error}", state.display())))?;
-    let Some(_held) = hold(&state).map_err(failed)? else {
-        return Err((
-            RUNNING,
-            format!("a {name} daemon already runs with {}", state.display()),
-        ));
-    };
-    let mut hearing = None;
-    let places = match scope {
-        Scope::User => Places {
-            state: state.clone(),
-            status: Some(env.status.clone()),
-            processes: env.processes.clone(),
-            system: Some(env.system_socket.clone()),
-            running: running(),
-        },
-        Scope::System => {
-            if let Some(dir) = env.system_socket.parent() {
-                fs::create_dir_all(dir).map_err(failed)?;
-            }
-            let store = crate::pool::pool(&config.nix.store).ok();
-            hearing = Some(
-                answering(
-                    &env.system_socket,
-                    &env.processes,
-                    crate::socket::ASK_EVERY,
-                    store,
-                )
-                .map_err(failed)?,
-            );
-            Places {
-                state: state.clone(),
-                status: Some(env.system_status.clone()),
-                processes: env.processes.clone(),
-                system: None,
-                running: running(),
-            }
+        Command::User { config, state } => daemons::daemon(env, Scope::User, config, state, err),
+        Command::System { config, state } => {
+            daemons::daemon(env, Scope::System, config, state, err)
         }
-    };
-    // Only the user daemon has a session to show a notice in.
-    let mut desk = crate::desktop::desk(config.notify && scope == Scope::User);
-    let builds = config
-        .sources
-        .values()
-        .any(|source| matches!(source, crate::config::Source::Cargo { .. }));
-    let freezes = config.freeze;
-    // Written before the first survey, so nothing the configuration keeps
-    // is ever offered, and under the daemon's hold on its state.
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |since| since.as_secs_f64());
-    crate::keeps::declare(&places.state, &config.keep, now).map_err(failed)?;
-    let mut guard = Guard::new(config, &places).map_err(failed)?;
-    guard.beat_always().map_err(failed)?;
-    // A stop waits, blocked, until a step ends, and a survey's walks once
-    // held one for 35 s; the survey asks as it goes and ends early.
-    guard.stop_when(Box::new(crate::commands::stop_waiting));
-    if let Some(hearing) = hearing {
-        guard.hear(hearing);
-    }
-    // Only the account's guard freezes, in its own manager, unless its
-    // config says never. A Mac has no manager to freeze in yet.
-    #[cfg(target_os = "linux")]
-    if scope == Scope::User && freezes {
-        guard.freeze_with(Box::new(crate::freezer::Session::default()));
-    }
-    #[cfg(not(target_os = "linux"))]
-    let _ = freezes;
-    // Without a watch nothing dates an older build, so it stays.
-    if builds {
-        match crate::opens::Watch::new() {
-            Ok(watch) => guard.listen(std::sync::Arc::new(watch)),
-            Err(error) => {
-                let _ = writeln!(
-                    err,
-                    "disk-guard: no watch on builds, so older ones stay: {error}"
-                );
-            }
-        }
-    }
-    steps(&mut guard, STEP_EVERY, &mut wait, &mut desk, err);
-    Ok(FINE)
-}
-
-/// Says why `path` stays or would go: the candidate a source offers there
-/// or holding it, how it's in use now, and what each band would do.
-fn explain(env: &Env, path: &Path, config: Option<&Path>, out: &mut dyn Write) -> Done {
-    let config = read_config(config.unwrap_or(&env.config))?;
-    let places = Places {
-        state: env.state.clone(),
-        status: None,
-        processes: env.processes.clone(),
-        system: Some(env.system_socket.clone()),
-        running: running(),
-    };
-    let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::sys::tick().map_err(failed)?;
-    let explained = guard.explain(&tick, path).map_err(failed)?;
-    let (_, unheard) = guard.unread();
-    let used_as = |used: crate::activity::Use| match used {
-        crate::activity::Use::Free => "by nothing".to_owned(),
-        crate::activity::Use::Busy(pid) => format!("busy: process {pid} works in it"),
-        crate::activity::Use::Occupied(pid) => format!("process {pid} sits in its tree"),
-        crate::activity::Use::Unknown(pid) => match &unheard {
-            Some(why) => format!(
-                "maybe: process {pid} can't be read, and the system daemon couldn't be asked \
-                 ({why})"
-            ),
-            None => format!("maybe: process {pid} can't be read"),
-        },
-    };
-    let (candidate, used) = match explained {
-        Explained::Offered { candidate, used } => (candidate, used),
-        Explained::Kept { path, used } => {
-            writeln!(out, "{}: kept while it's used", path.display()).map_err(failed)?;
-            writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
-            return Ok(FINE);
-        }
-        Explained::Nothing => {
-            writeln!(
-                out,
-                "No source offers {} or anything holding it, so the guard leaves it be.",
-                path.display()
-            )
-            .map_err(failed)?;
-            return Ok(FINE);
-        }
-    };
-    writeln!(
-        out,
-        "{}: {}, {}, idle {}",
-        candidate.path.display(),
-        candidate.class.kind(),
-        size(candidate.size),
-        span(candidate.idle)
-    )
-    .map_err(failed)?;
-    writeln!(out, "  in use: {}", used_as(used)).map_err(failed)?;
-    let (_, windows) = crate::plan::windows(&candidate);
-    for (band, window) in ["healthy", "filling", "nearly-full", "critically-full"]
-        .iter()
-        .zip(windows)
-    {
-        let when = match window {
-            None => "never".to_owned(),
-            Some(window) if window <= 0.0 => "at once".to_owned(),
-            Some(window) => format!("after {} idle", span(window)),
-        };
-        writeln!(out, "  {band}: {when}").map_err(failed)?;
-    }
-    Ok(FINE)
-}
-
-/// Keeps a folder for a reason, and says so in the status file before it
-/// ends, so whatever asked sees the holder change as it hears the answer.
-fn keep(env: &Env, path: &Path, reason: &str, out: &mut dyn Write) -> Done {
-    let path = fs::canonicalize(path)
-        .map_err(|_| (REFUSED, format!("{} isn't there to keep", path.display())))?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |since| since.as_secs_f64());
-    fs::create_dir_all(&env.state).map_err(|error| (REFUSED, error.to_string()))?;
-    crate::keeps::keep(&env.state, &path, reason, now)
-        .map_err(|error| (REFUSED, format!("keeping {}: {error}", path.display())))?;
-    marked(env)?;
-    let _ = writeln!(out, "Kept {}: {reason}.", path.display());
-    Ok(FINE)
-}
-
-/// Lets go of a keep, saying whether there was one.
-fn unkeep(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
-    // A kept folder may have gone since, and its keep with it.
-    let path = fs::canonicalize(path)
-        .or_else(|_| std::path::absolute(path))
-        .map_err(|error| (REFUSED, error.to_string()))?;
-    let was = crate::keeps::unkeep(&env.state, &path).map_err(|error| {
-        (
-            REFUSED,
-            format!("letting go of {}: {error}", path.display()),
-        )
-    })?;
-    marked(env)?;
-    if was {
-        let _ = writeln!(out, "No longer kept: {}.", path.display());
-    } else {
-        let _ = writeln!(out, "{} wasn't kept.", path.display());
-    }
-    Ok(FINE)
-}
-
-/// Asks the account's guard to clear what it would take of a folder now,
-/// and says so in the status file before it ends. A kept folder is
-/// refused here, though the guard would take nothing kept anyway, since
-/// asking to clear what Joel keeps is a slip worth saying.
-fn clear(env: &Env, path: &Path, out: &mut dyn Write) -> Done {
-    let path = fs::canonicalize(path)
-        .map_err(|_| (REFUSED, format!("{} isn't there to clear", path.display())))?;
-    let keeps = crate::keeps::load(&env.state)
-        .map_err(|error| (REFUSED, format!("reading the keeps: {error}")))?;
-    if let Some(keep) = crate::keeps::covering(&keeps, &path) {
-        return Err((
-            REFUSED,
-            format!("{} stays: you keep it: {}", path.display(), keep.reason),
-        ));
-    }
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |since| since.as_secs_f64());
-    crate::clears::ask(&env.state, &path, now).map_err(|error| {
-        (
-            REFUSED,
-            format!("asking to clear {}: {error}", path.display()),
-        )
-    })?;
-    marked(env)?;
-    let _ = writeln!(
-        out,
-        "Clearing {}; the guard starts on its next step.",
-        path.display()
-    );
-    Ok(FINE)
-}
-
-/// How long a footprint may take the machine's guard to walk.
-const FOOTPRINT_TIMEOUT: Duration = Duration::from_mins(5);
-
-/// Asks the machine's guard for a footprint, asking again while it says
-/// another of the account's asks came a moment ago, or another footprint
-/// is being walked, until the walk's time is up.
-fn asked_again(
-    socket: &Path,
-    request: &crate::socket::Request,
-) -> io::Result<crate::socket::Reply> {
-    let until = std::time::Instant::now() + FOOTPRINT_TIMEOUT;
-    loop {
-        match crate::socket::ask(socket, request, FOOTPRINT_TIMEOUT) {
-            Err(error) if std::time::Instant::now() < until => {
-                let why = error.to_string();
-                if why == crate::socket::TOO_SOON {
-                    std::thread::sleep(crate::socket::ASK_EVERY);
-                } else if why == crate::socket::WALKING {
-                    std::thread::sleep(Duration::from_secs(1));
-                } else {
-                    return Err(error);
-                }
-            }
-            answered => return answered,
-        }
+        Command::Thaw => acts::thaw(context, out),
+        Command::Keep { path, reason } => acts::keep(env, &path, &reason, context, out),
+        Command::Unkeep { path } => acts::unkeep(env, &path, context, out),
+        Command::Clear { path } => acts::clear(env, &path, context, out),
+        Command::Footprint { paths } => acts::footprint(env, &paths, context, out),
     }
 }
 
-/// Says what the files under each of `paths` take on the disk, as the
-/// machine's guard reads it, beside what they hold once read.
-fn footprint(env: &Env, paths: &[PathBuf], out: &mut dyn Write) -> Done {
-    let paths: Vec<PathBuf> = paths
-        .iter()
-        .map(|path| fs::canonicalize(path).unwrap_or_else(|_| path.clone()))
-        .collect();
-    let request = crate::socket::Request::Footprint {
-        paths: paths.clone(),
-    };
-    let asked = |error: io::Error| {
-        let code = if matches!(
-            error.kind(),
-            io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-        ) {
-            NO_DAEMON
+/// Reads a config, saying nothing where it's one the guard reads; a file
+/// that isn't there, or isn't one, is the input at fault, not the guard's
+/// own config.
+fn check_config(file: &Path, context: &Context, out: &mut dyn Write) -> Result<(), Failure> {
+    let config = read_config(file).map_err(|failure| {
+        let exit = if file.exists() {
+            Exit::BadInput
         } else {
-            REFUSED
+            Exit::NotFound
         };
-        (code, format!("asking the machine's guard: {error}"))
-    };
-    let found = match asked_again(&env.system_socket, &request).map_err(asked)? {
-        crate::socket::Reply::Footprints(found) if found.len() == paths.len() => found,
-        other => return Err((REFUSED, format!("the machine's guard answered {other:?}"))),
-    };
-    let mut code = FINE;
-    for (path, disk) in paths.iter().zip(found) {
-        let files = size(crate::footprint::files(path));
-        let _ = if let Some(disk) = disk {
-            writeln!(
-                out,
-                "{}: {} on the disk, for {files} of files.",
-                path.display(),
-                size(disk)
-            )
-        } else {
-            code = REFUSED;
-            writeln!(
-                out,
-                "{}: {files} of files; what they take on the disk can't be read \
-                 (not yours, not on Btrfs, or gone).",
-                path.display()
-            )
+        Failure { exit, ..failure }
+    })?;
+    if context.format().is_json() {
+        let scope = match config.scope {
+            Scope::User => "user",
+            Scope::System => "system",
         };
+        let answer = json!({
+            "schema": "disk-guard.check-config/1",
+            "file": file.to_string_lossy(),
+            "scope": scope,
+        });
+        return context.answer_to(out, &answer).map_err(failed);
     }
-    Ok(code)
+    Ok(())
 }
 
-/// Marks the status file's holders with the keeps and clears as they are
-/// now. The daemon marks each status it writes the same way, so whichever
-/// writes last, the file says what's kept and what's clearing.
-fn marked(env: &Env) -> Result<(), (i32, String)> {
-    let refused = |error: io::Error| (REFUSED, format!("marking the status: {error}"));
-    let Some(mut status) = crate::state::load::<Value>(&env.status).map_err(refused)? else {
-        return Ok(());
-    };
-    let Ok(mut holders) =
-        serde_json::from_value::<Vec<crate::holders::Holder>>(status["holders"].clone())
-    else {
-        return Ok(());
-    };
-    let keeps = crate::keeps::load(&env.state).map_err(refused)?;
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-    let clearing = crate::clears::clearing(&env.state);
-    crate::holders::mark(&mut holders, &keeps, &clearing, home.as_deref());
-    status["holders"] =
-        serde_json::to_value(holders).map_err(|error| refused(io::Error::other(error)))?;
-    crate::state::share(&env.status, &status).map_err(refused)
-}
-
-/// Thaws whatever the account's guard froze, through the account's own
-/// service manager. The guard sees it thawed and never freezes it again.
-#[cfg(target_os = "linux")]
-fn thaw(out: &mut dyn Write) -> Done {
-    let failed = |error: zbus::Error| (NO_DAEMON, format!("asking the service manager: {error}"));
-    let builder = zbus::blocking::connection::Builder::session().map_err(failed)?;
-    let freezer = crate::freezer::Freezer::new(crate::desktop::patient(builder).map_err(failed)?);
-    let thawed = crate::freezer::thaw_all(&freezer).map_err(failed)?;
-    if thawed.is_empty() {
-        let _ = writeln!(out, "Nothing is frozen.");
-    }
-    for unit in thawed {
-        let _ = writeln!(out, "Thawed {unit}.");
-    }
-    Ok(FINE)
-}
-
-/// A Mac's guard freezes nothing, so nothing is frozen.
-#[cfg(not(target_os = "linux"))]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "it answers as Linux's `thaw` does, which can fail"
-)]
-fn thaw(out: &mut dyn Write) -> Done {
-    let _ = writeln!(out, "Nothing is frozen.");
-    Ok(FINE)
-}
-
-/// The links to the systems running and booted, NixOS's own, whose
-/// generations never expire.
-fn running() -> Vec<PathBuf> {
-    ["/run/current-system", "/run/booted-system"]
-        .map(PathBuf::from)
-        .to_vec()
-}
-
-fn read_config(path: &Path) -> Result<Config, (i32, String)> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| (REFUSED, format!("{}: {error}", path.display())))?;
-    Config::parse(&text).map_err(|why| (REFUSED, format!("{}: {why}", path.display())))
+/// The config at `path`, or why it can't be the guard's.
+fn read_config(path: &Path) -> Result<Config, Failure> {
+    let text = fs::read_to_string(path).map_err(|error| {
+        Failure::new(Exit::Config, format!("{} can't be read", path.display()))
+            .because(error.to_string())
+    })?;
+    Config::parse(&text).map_err(|why| {
+        Failure::new(
+            Exit::Config,
+            format!("{} isn't a config the guard reads", path.display()),
+        )
+        .because(why)
+    })
 }
 
 #[expect(
     clippy::needless_pass_by_value,
     reason = "it takes the error as `map_err` hands it over, so callers write `map_err(failed)`"
 )]
-fn failed(error: io::Error) -> (i32, String) {
-    (REFUSED, error.to_string())
+fn failed(error: io::Error) -> Failure {
+    Failure::new(Exit::Failed, error.to_string())
 }
 
 fn wall() -> f64 {
@@ -804,324 +503,8 @@ fn wall() -> f64 {
         .map_or(0.0, |since| since.as_secs_f64())
 }
 
-/// How many of the things a guard last cleared `status` shows; the
-/// journal has the rest.
-const CLEARED_SHOWN: usize = 3;
-
-/// How many of the biggest holders `status` shows in words; the JSON has
-/// the rest.
-const HOLDERS_SHOWN: usize = 3;
-
-/// How old a heartbeat may be before its guard is taken to have stopped.
-const STOPPED_AFTER: f64 = 120.0;
-
-fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
-    let read = |path: &Path| -> Option<Value> {
-        serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
-    };
-    let (user, system) = (read(&env.status), read(&env.system_status));
-    if user.is_none() && system.is_none() {
-        return Err((
-            NO_DAEMON,
-            "no guard has written its status; is one running?".to_owned(),
-        ));
-    }
-    if json {
-        let both = serde_json::json!({ "user": user, "system": system });
-        writeln!(out, "{both}").map_err(failed)?;
-        return Ok(FINE);
-    }
-    let now = wall();
-    for (name, status) in [("user", user), ("system", system)] {
-        let Some(status) = status else { continue };
-        let age = now - status["heartbeat"].as_f64().unwrap_or(0.0);
-        if age > STOPPED_AFTER {
-            writeln!(out, "{name} guard, not heard from for {}", span(age)).map_err(failed)?;
-        } else {
-            writeln!(out, "{name} guard, heard from {} ago", span(age)).map_err(failed)?;
-        }
-        if let Some(says) = status["says"].as_str() {
-            writeln!(out, "  {says}").map_err(failed)?;
-        }
-        for filesystem in status["filesystems"].as_array().into_iter().flatten() {
-            let band = filesystem["band"].as_str().unwrap_or("unknown");
-            let mut line = format!(
-                "  {}: {band}, {} free of {}",
-                filesystem["path"].as_str().unwrap_or("?"),
-                size(filesystem["free"].as_u64().unwrap_or(0)),
-                size(filesystem["total"].as_u64().unwrap_or(0)),
-            );
-            let next = match band {
-                "healthy" => Some("filling"),
-                "filling" => Some("nearly-full"),
-                "nearly-full" => Some("critically-full"),
-                _ => None,
-            };
-            if let (Some(next), Some(forecast)) = (next, filesystem["forecast"].as_f64()) {
-                // Writing to a String can't fail.
-                _ = write!(line, ", {next} in {}", span(forecast));
-            }
-            writeln!(out, "{line}").map_err(failed)?;
-        }
-        let last = &status["last"];
-        if last.is_object() {
-            writeln!(
-                out,
-                "  last pass: {} ago on {}, {}, {}, freed {}",
-                span(now - last["at"].as_f64().unwrap_or(0.0)),
-                last["path"].as_str().unwrap_or("?"),
-                last["band"].as_str().unwrap_or("?"),
-                last["end"].as_str().unwrap_or("?"),
-                size(last["freed"].as_u64().unwrap_or(0)),
-            )
-            .map_err(failed)?;
-        }
-        for cleared in status["cleared"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .take(CLEARED_SHOWN)
-        {
-            let when = span(now - cleared["at"].as_f64().unwrap_or(0.0));
-            let says = cleared["says"].as_str().unwrap_or("?");
-            writeln!(out, "  {when} ago: {says}").map_err(failed)?;
-        }
-        let holders: Vec<&str> = status["holders"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|holder| holder["says"].as_str())
-            .take(HOLDERS_SHOWN)
-            .collect();
-        if !holders.is_empty() {
-            writeln!(out, "  holds the most:").map_err(failed)?;
-        }
-        for says in holders {
-            writeln!(out, "    {says}").map_err(failed)?;
-        }
-    }
-    Ok(FINE)
-}
-
-/// Makes a daemon's state folder. The system daemon's lets any account
-/// through to its journal, but not list it: every other file there is
-/// saved as root's alone, and what an earlier guard saved readable is made
-/// so first. It's set on a folder that's there too, as a Mac's earlier
-/// guard left it root's alone. On NixOS systemd opens the folder as the
-/// unit starts, so what an earlier guard left is closed a moment after.
-fn make_state(state: &Path, scope: Scope) -> io::Result<()> {
-    let mode = match scope {
-        Scope::User => 0o700,
-        Scope::System => 0o711,
-    };
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(mode)
-        .create(state)?;
-    match scope {
-        Scope::User => Ok(()),
-        Scope::System => {
-            crate::state::private(state)?;
-            fs::set_permissions(state, fs::Permissions::from_mode(mode))
-        }
-    }
-}
-
-/// One line of a guard's journal, kept as it was written until it's said,
-/// so a long journal is held as its text rather than as parsed values.
-struct Written {
-    at: f64,
-    /// Whose guard wrote it: the account's or the machine's.
-    whose: &'static str,
-    line: String,
-}
-
-/// The lines of the account's guard's journal and the machine's, from
-/// `cut` on, oldest first, each guard's in the order it wrote them. The
-/// machine's guard owns the store and what lies outside every home, so
-/// the account's journal alone never said where most of a disk's room
-/// went. A machine's journal that can't be read is said on `err`, and the
-/// account's still shown.
-fn written(env: &Env, cut: f64, err: &mut dyn Write) -> Result<Vec<Written>, (i32, String)> {
-    let mut lines = Vec::new();
-    for (whose, state) in [("account", &env.state), ("machine", &env.system_state)] {
-        for name in ["journal.jsonl.1", "journal.jsonl"] {
-            let path = state.join(name);
-            let text = match fs::read_to_string(&path) {
-                Ok(text) => text,
-                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-                Err(error) if whose == "machine" => {
-                    writeln!(
-                        err,
-                        "The machine's guard's journal, {}, can't be read: {error}",
-                        path.display()
-                    )
-                    .map_err(failed)?;
-                    break;
-                }
-                Err(error) => return Err(failed(error)),
-            };
-            for line in text.lines() {
-                // A line cut short by a crash says nothing.
-                let Ok(entry) = serde_json::from_str::<Value>(line) else {
-                    continue;
-                };
-                let at = entry["at"].as_f64().unwrap_or(0.0);
-                if at >= cut {
-                    lines.push(Written {
-                        at,
-                        whose,
-                        line: line.to_owned(),
-                    });
-                }
-            }
-        }
-    }
-    // A stable sort, so what one guard wrote at the same moment keeps its
-    // order, as a reclaim's beginning comes before its action.
-    lines.sort_by(|one, other| one.at.total_cmp(&other.at));
-    Ok(lines)
-}
-
-/// What a journal line says, after when, whose and in what band.
-fn said(entry: &Value) -> String {
-    match entry["event"].as_str() {
-        Some("action") => {
-            let mut said = format!(
-                "{:<9} {:<10} {:>10}  {}",
-                entry["outcome"].as_str().unwrap_or("?"),
-                entry["kind"].as_str().unwrap_or("?"),
-                size(entry["size"].as_u64().unwrap_or(0)),
-                entry["path"].as_str().unwrap_or("?"),
-            );
-            if let Some(reason) = entry["reason"].as_str() {
-                // Writing to a String can't fail.
-                _ = write!(said, " ({reason})");
-            }
-            said
-        }
-        Some("pass") => format!(
-            "pass {}, freed {}{}",
-            entry["end"].as_str().unwrap_or("?"),
-            size(entry["freed"].as_u64().unwrap_or(0)),
-            // A journal from before passes were timed says nothing.
-            entry["seconds"]
-                .as_f64()
-                .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
-        ),
-        _ => entry.to_string(),
-    }
-}
-
-fn journal(
-    env: &Env,
-    since: Option<Span>,
-    json: bool,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> Done {
-    let now = wall();
-    let cut = since.map_or(f64::NEG_INFINITY, |since| now - since.0.as_secs_f64());
-    for Written { at, whose, line } in written(env, cut, err)? {
-        let Ok(mut entry) = serde_json::from_str::<Value>(&line) else {
-            continue;
-        };
-        if json {
-            // Each line says whose guard wrote it, as the text does.
-            if let Some(fields) = entry.as_object_mut() {
-                fields.insert("guard".to_owned(), Value::from(whose));
-            }
-            writeln!(out, "{entry}").map_err(failed)?;
-            continue;
-        }
-        // What a reclaim began with is for a guard restarting after a
-        // crash; the action after it says what happened.
-        if entry["event"] == "begin" {
-            continue;
-        }
-        let when = format!("{} ago", span(now - at));
-        let band = entry["band"].as_str().unwrap_or("?");
-        writeln!(out, "{when:>12}  {whose}  {band:<8}  {}", said(&entry)).map_err(failed)?;
-    }
-    Ok(FINE)
-}
-
-fn plan(
-    env: &Env,
-    config: Option<&Path>,
-    (band, free): (Option<Band>, Option<Size>),
-    fresh: bool,
-    out: &mut dyn Write,
-) -> Done {
-    let config = read_config(config.unwrap_or(&env.config))?;
-    let places = Places {
-        state: env.state.clone(),
-        status: None,
-        processes: env.processes.clone(),
-        system: Some(env.system_socket.clone()),
-        running: running(),
-    };
-    let mut guard = Guard::new(config, &places).map_err(failed)?;
-    let tick = crate::sys::tick().map_err(failed)?;
-    if fresh || crate::surveyed::load(&env.state).is_none() {
-        // Said first, since the walk takes minutes on a full machine and
-        // a plan that says nothing meanwhile looks hung.
-        writeln!(
-            out,
-            "Surveying every source, which takes minutes on a full disk."
-        )
-        .map_err(failed)?;
-        out.flush().map_err(failed)?;
-    }
-    let (surveyed, previews) = guard.preview(&tick, band, free, fresh).map_err(failed)?;
-    if let Some(at) = surveyed {
-        writeln!(
-            out,
-            "From the survey the daemon's last pass made, {} ago; --fresh surveys again.",
-            span(tick.wall - at)
-        )
-        .map_err(failed)?;
-    }
-    for preview in previews {
-        let band = serde_json::to_value(preview.band).ok();
-        writeln!(
-            out,
-            "{}: {}, {} free, target {}; the pass would end {}",
-            preview.path.display(),
-            band.as_ref().and_then(Value::as_str).unwrap_or("?"),
-            size(preview.free),
-            size(preview.target),
-            preview.end,
-        )
-        .map_err(failed)?;
-        for candidate in &preview.taken {
-            writeln!(
-                out,
-                "  {:<10} {:>10}  idle {:>7}  {}",
-                candidate.class.kind(),
-                size(candidate.size),
-                span(candidate.idle),
-                candidate.path.display(),
-            )
-            .map_err(failed)?;
-        }
-    }
-    let (unread, why) = guard.unread();
-    if unread > 0 {
-        let why = why.map_or_else(String::new, |why| {
-            format!(" and the system daemon couldn't be asked about them ({why})")
-        });
-        writeln!(
-            out,
-            "{unread} processes couldn't be read{why}, so a tree one of them might use isn't \
-             shown."
-        )
-        .map_err(failed)?;
-    }
-    writeln!(
-        out,
-        "Nothing was taken. Whether each is in use is judged when a pass tries it."
-    )
-    .map_err(failed)?;
-    Ok(FINE)
+/// A path as JSON says it: as text, which the command line's own always
+/// are.
+fn said_path(path: &Path) -> Value {
+    Value::from(path.to_string_lossy().into_owned())
 }

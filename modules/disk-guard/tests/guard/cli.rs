@@ -8,13 +8,13 @@
 use disk_guard::band::Band;
 use disk_guard::cli::{Command, Env, parse, run};
 use disk_guard::units::{Size, Span};
-use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use terminal_kit::{Context, Environment, Exit};
 
-fn words(line: &str) -> Vec<OsString> {
-    line.split_whitespace().map(OsString::from).collect()
+fn words(line: &str) -> Vec<String> {
+    line.split_whitespace().map(String::from).collect()
 }
 
 #[test]
@@ -56,15 +56,23 @@ fn the_commands_that_answer_read_their_options() {
         }
     );
     assert_eq!(
-        parse(&words("journal --since 1d --json")).unwrap(),
+        parse(&words("journal --since 1d")).unwrap(),
         Command::Journal {
             since: Some(Span(Duration::from_hours(24))),
-            json: true,
         }
     );
+    assert_eq!(parse(&words("status")).unwrap(), Command::Status);
     assert_eq!(
-        parse(&words("status --json")).unwrap(),
-        Command::Status { json: true }
+        parse(&[]).unwrap(),
+        Command::Status,
+        "nothing at all asks for the common read"
+    );
+    assert_eq!(
+        parse(&words("unkeep -- --odd")).unwrap(),
+        Command::Unkeep {
+            path: PathBuf::from("--odd")
+        },
+        "after `--` a word is a path, though it begins with a dash"
     );
     assert_eq!(
         parse(&words("check-config /c.json")).unwrap(),
@@ -85,17 +93,18 @@ fn the_commands_that_answer_read_their_options() {
 #[test]
 fn what_wont_parse_says_why() {
     for (line, said) in [
-        ("", "usage"),
         ("frobnicate", "frobnicate"),
         ("user --colour", "--colour"),
         ("user --config", "--config"),
         ("plan --band bogus", "bogus"),
         ("plan --pretend-free lots", "lots"),
         ("check-config", "check-config"),
-        ("status --json --json", "--json"),
+        ("plan --fresh --fresh", "--fresh"),
     ] {
         let refused = parse(&words(line)).unwrap_err();
-        assert!(refused.contains(said), "{line:?} said {refused:?}");
+        assert_eq!(refused.exit, Exit::Usage, "{line:?} said {refused:?}");
+        let words = format!("{} {}", refused.what, refused.why.unwrap_or_default());
+        assert!(words.contains(said), "{line:?} said {words:?}");
     }
 }
 
@@ -128,14 +137,23 @@ impl Machine {
         }
     }
 
+    /// Runs a command line as the kit would, into a pipe: its exit, its
+    /// answer, and its notes with the failure's words after them.
     fn run(&self, line: &str) -> (i32, String, String) {
         let (mut out, mut err) = (Vec::new(), Vec::new());
-        let code = run(parse(&words(line)).unwrap(), &self.env, &mut out, &mut err);
-        (
-            code,
-            String::from_utf8(out).unwrap(),
-            String::from_utf8(err).unwrap(),
-        )
+        let context = Context::new(Environment::of([false; 3], &[]), words(line), &[]).unwrap();
+        let command = parse(&context.args).unwrap();
+        let ended = run(command, &self.env, &context, &mut out, &mut err);
+        let mut err = String::from_utf8(err).unwrap();
+        let code = match ended {
+            Ok(()) => 0,
+            Err(failure) => {
+                let why = failure.why.unwrap_or_default();
+                err = format!("{err}{}: {why}\n", failure.what);
+                i32::from(failure.exit.code())
+            }
+        };
+        (code, String::from_utf8(out).unwrap(), err)
     }
 }
 
@@ -155,19 +173,23 @@ fn a_config_is_checked_and_a_bad_one_refused_with_its_reason() {
     write_file(&good, GOOD);
     let (code, _, err) = machine.run(&format!("check-config {}", good.display()));
     assert_eq!((code, err.as_str()), (0, ""));
+    let (_, out, _) = machine.run(&format!("check-config --json {}", good.display()));
+    let checked: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(checked["schema"], "disk-guard.check-config/1", "{out}");
+    assert_eq!(checked["scope"], "user", "{out}");
     let bad = machine.root.join("bad.json");
     write_file(
         &bad,
         r#"{ "version": 1, "scope": "user", "colour": "red", "sources": {} }"#,
     );
     let (code, _, err) = machine.run(&format!("check-config {}", bad.display()));
-    assert_eq!(code, 1);
+    assert_eq!(code, 65, "a bad config is bad input: {err}");
     assert!(err.contains("colour"), "{err}");
     let (code, _, err) = machine.run(&format!(
         "check-config {}",
         machine.root.join("none.json").display()
     ));
-    assert_eq!(code, 1);
+    assert_eq!(code, 66, "a missing config isn't there: {err}");
     assert!(err.contains("none.json"), "{err}");
 }
 
@@ -192,8 +214,10 @@ fn status(at: f64, band: &str) -> String {
 fn status_tells_of_each_guard_that_wrote_one() {
     let machine = Machine::new();
     let (code, _, err) = machine.run("status");
-    assert_eq!(code, 3);
+    assert_eq!(code, 69, "no guard is there to ask: {err}");
     assert!(err.contains("no guard"), "{err}");
+    let (code, _, _) = machine.run("");
+    assert_eq!(code, 69, "a bare run reads the status");
 
     write_file(&machine.env.status, &status(wall() - 12.0, "filling"));
     let (code, out, _) = machine.run("status");
@@ -217,6 +241,7 @@ fn status_tells_of_each_guard_that_wrote_one() {
     let (code, out, _) = machine.run("status --json");
     assert_eq!(code, 0);
     let both: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(both["schema"], "disk-guard.status/1", "{out}");
     assert_eq!(both["user"]["filesystems"][0]["band"], "filling");
     assert_eq!(both["system"]["filesystems"][0]["band"], "healthy");
 }
@@ -387,8 +412,11 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
         said.contains("pass reached, freed 1.0 GiB in 60 s"),
         "{said}"
     );
-    assert!(out.contains("/new"));
-    serde_json::from_str::<serde_json::Value>(out.trim()).unwrap();
+    let answer: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(answer["schema"], "disk-guard.journal/1", "{out}");
+    let entries = answer["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 1, "only what's newer than an hour: {out}");
+    assert_eq!(entries[0]["path"], "/new", "{out}");
 }
 
 #[test]
@@ -413,7 +441,15 @@ fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
     assert_eq!(out.lines().count(), 1, "{out}");
     assert!(out.contains("reclaimed") && !out.contains("begin"), "{out}");
     let (_, json, _) = machine.run("journal --json");
-    assert_eq!(json.lines().count(), 2, "{json}");
+    let answer: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(answer["entries"].as_array().unwrap().len(), 2, "{json}");
+    // As a stream, one typed line an entry.
+    let (_, lines, _) = machine.run("journal --format jsonl");
+    let kinds: Vec<serde_json::Value> = lines
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()["type"].clone())
+        .collect();
+    assert_eq!(kinds, ["entry", "entry"], "{lines}");
 }
 
 #[test]
@@ -453,7 +489,8 @@ fn the_journal_shows_the_machines_guard_beside_the_accounts_by_time() {
         );
     }
     let (_, json, _) = machine.run("journal --json --since 90s");
-    let entry: serde_json::Value = serde_json::from_str(json.trim()).unwrap();
+    let answer: serde_json::Value = serde_json::from_str(json.trim()).unwrap();
+    let entry = &answer["entries"][0];
     assert_eq!(entry["guard"], "machine", "{json}");
     assert_eq!(entry["path"], "/nix/store/abc-thing", "{json}");
 }
@@ -492,14 +529,17 @@ fn a_daemon_refuses_another_scopes_config_and_a_second_of_itself() {
         r#"{ "version": 1, "scope": "system", "sources": {} }"#,
     );
     let (code, _, err) = machine.run(&format!("user --config {}", system.display()));
-    assert_eq!(code, 1);
+    assert_eq!(
+        code, 78,
+        "another scope's config is the config at fault: {err}"
+    );
     assert!(err.contains("system"), "{err}");
 
     write_file(&machine.env.config, GOOD);
     let held = disk_guard::serve::hold(&machine.env.state).unwrap();
     assert!(held.is_some());
     let (code, _, err) = machine.run("user");
-    assert_eq!(code, 2);
+    assert_eq!(code, 75, "a second daemon may try again later: {err}");
     assert!(err.contains("already"), "{err}");
 }
 
@@ -768,7 +808,7 @@ fn a_clear_refuses_what_is_kept_or_not_there() {
     assert!(err.contains("you keep it: the only copies"), "{err}");
     let gone = machine.root.join("gone");
     let (code, _, err) = machine.run(&format!("clear {}", gone.display()));
-    assert_eq!(code, 1, "{err}");
+    assert_eq!(code, 66, "{err}");
     assert!(err.contains("isn't there"), "{err}");
     assert_eq!(
         disk_guard::clears::clearing(&machine.env.state),
@@ -782,14 +822,53 @@ fn a_keep_needs_a_folder_there_and_a_reason() {
     let machine = Machine::new();
     let gone = machine.root.join("gone");
     let (code, _, err) = machine.run(&format!("keep {} a reason", gone.display()));
-    assert_eq!(code, 1, "{err}");
+    assert_eq!(code, 66, "{err}");
     assert!(err.contains("isn't there"), "{err}");
     let refused = parse(&words(&format!("keep {}", machine.root.display()))).unwrap_err();
-    assert!(refused.contains("needs a reason"), "{refused}");
+    assert!(refused.what.contains("needs a reason"), "{refused:?}");
     let (code, out, _) = machine.run(&format!("unkeep {}", machine.root.display()));
     assert_eq!(
         (code, out),
         (0, format!("{} wasn't kept.\n", machine.root.display()))
+    );
+}
+
+// The machine's daemon runs these for the launcher's disk piece and
+// words the sentence itself, so each says its facts, never a sentence.
+#[test]
+fn the_acts_answer_their_facts_as_json() {
+    let machine = Machine::new();
+    let photos = machine.root.join("photos");
+    fs::create_dir_all(&photos).unwrap();
+    let answer = |line: String| {
+        let (code, out, err) = machine.run(&line);
+        assert_eq!(code, 0, "{line}: {err}");
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()
+    };
+    let path = photos.display();
+    let kept = answer(format!("keep --json -- {path} the only copies"));
+    assert_eq!(
+        kept,
+        serde_json::json!({"schema": "disk-guard.keep/1", "path": photos,
+                           "reason": "the only copies"}),
+        "a keep answers its folder and reason"
+    );
+    let unkept = answer(format!("unkeep --json -- {path}"));
+    assert_eq!(
+        (&unkept["schema"], &unkept["was_kept"]),
+        (&"disk-guard.unkeep/1".into(), &true.into()),
+        "an unkeep says the folder was kept: {unkept}"
+    );
+    let again = answer(format!("unkeep --json -- {path}"));
+    assert_eq!(
+        again["was_kept"], false,
+        "a second unkeep finds none: {again}"
+    );
+    let cleared = answer(format!("clear --json -- {path}"));
+    assert_eq!(
+        cleared,
+        serde_json::json!({"schema": "disk-guard.clear/1", "path": photos}),
+        "a clear answers its folder"
     );
 }
 
@@ -807,8 +886,11 @@ fn with_short_socket() -> (Machine, tempfile::TempDir) {
 fn a_footprint_without_the_machines_guard_says_none_is_there() {
     let (machine, _short) = with_short_socket();
     let (code, out, err) = machine.run(&format!("footprint {}", machine.root.display()));
-    assert_eq!((code, out.as_str()), (3, ""));
-    assert!(err.contains("asking the machine's guard"), "{err}");
+    assert_eq!((code, out.as_str()), (69, ""));
+    assert!(
+        err.contains("the machine's guard couldn't be asked"),
+        "{err}"
+    );
 }
 
 #[test]
