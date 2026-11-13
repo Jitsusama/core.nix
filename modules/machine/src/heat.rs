@@ -8,6 +8,7 @@
 //! which is slow.
 
 use std::collections::{BTreeMap, HashMap};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -16,12 +17,36 @@ use crate::{Root, rounded};
 const HWMON: &str = "/sys/class/hwmon";
 const THERMAL: &str = "/sys/class/thermal";
 
+/// How long a chip's read takes before it counts as slow: a chip that
+/// answers through the firmware, as a Dell's `dell_smm` and `dell_ddv`
+/// do, about 40 to 75 ms a pass each on Joel's laptop and up to 330 ms
+/// while it's loaded (2026-11-13), where the rest take under 7 ms.
+pub const SLOW: Duration = Duration::from_millis(20);
+
+/// How long a slow chip's record is kept before it's read again. Each of
+/// its reads is a firmware call, `dell_smm`'s a system management call
+/// that holds every processor while it runs, and its temperatures and
+/// fans move over seconds, not within one.
+pub const SLOW_KEPT: Duration = Duration::from_secs(5);
+
 /// A chip's files that never change, kept by path, and the chips they
-/// were kept for.
-#[derive(Default)]
+/// were kept for, with each slow chip's record as last read, and when.
 pub struct Kept {
     chips: Vec<String>,
     files: HashMap<String, Option<String>>,
+    slow: HashMap<String, (Instant, Value)>,
+    slow_from: Duration,
+}
+
+impl Default for Kept {
+    fn default() -> Self {
+        Self {
+            chips: Vec::new(),
+            files: HashMap::new(),
+            slow: HashMap::new(),
+            slow_from: SLOW,
+        }
+    }
 }
 
 impl Kept {
@@ -39,6 +64,7 @@ impl Kept {
         let chips = root.names(HWMON);
         if chips != self.chips {
             self.files.clear();
+            self.slow.clear();
             self.chips.clone_from(&chips);
         }
         chips
@@ -307,8 +333,9 @@ fn said_files(files: Vec<(String, Option<String>)>) -> Value {
         .collect()
 }
 
-/// Every chip's record, a second chip of a name numbered after the first.
-pub fn sensors(root: &Root, kept: &mut Kept) -> Vec<Value> {
+/// Every chip's record as of `now`, a second chip of a name numbered
+/// after the first.
+pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
     let mut seen: HashMap<String, u32> = HashMap::new();
     let mut records = Vec::new();
     for hwmon in kept.chips(root) {
@@ -323,7 +350,21 @@ pub fn sensors(root: &Root, kept: &mut Kept) -> Vec<Value> {
         } else {
             format!("sensor:{name}:{count}")
         };
-        records.push(chip(root, kept, &folder, &key, &name));
+        if let Some((at, record)) = kept.slow.get(&folder)
+            && now.saturating_duration_since(*at) < SLOW_KEPT
+            && record["key"] == key.as_str()
+        {
+            records.push(record.clone());
+            continue;
+        }
+        let began = Instant::now();
+        let record = chip(root, kept, &folder, &key, &name);
+        if began.elapsed() >= kept.slow_from {
+            kept.slow.insert(folder, (now, record.clone()));
+        } else {
+            kept.slow.remove(&folder);
+        }
+        records.push(record);
     }
     records
 }
@@ -520,7 +561,7 @@ mod tests {
             std::fs::write(chip.join(file), says).expect("the chip's file is written");
         }
         let root = Root::new(&folder);
-        let records = sensors(&root, &mut Kept::default());
+        let records = sensors(&root, &mut Kept::default(), Instant::now());
         std::fs::remove_dir_all(&folder).ok();
         let moving = [
             "temp1_input",
@@ -551,6 +592,47 @@ mod tests {
             ]),
             "the fan's drawer names its files as read"
         );
+    }
+
+    /// A chip whose read is slow is read again only once it's been kept
+    /// `SLOW_KEPT`; one that's quick is read each time. Which counts as
+    /// slow is set here, since a file in a test folder reads quickly.
+    #[test]
+    fn a_slow_chip_is_read_again_only_once_kept_a_while() {
+        let folder = std::env::temp_dir().join(format!("machine-slow-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let temperature = |says: &str| {
+            std::fs::write(chip.join("temp1_input"), says).expect("the file is written");
+        };
+        std::fs::write(chip.join("name"), "dell_smm").expect("the name is written");
+        temperature("47000");
+        let root = Root::new(&folder);
+        let degrees = |kept: &mut Kept, at: Instant| {
+            sensors(&root, kept, at)[0]["temperatures"][0]["temperature_c"].clone()
+        };
+        let first = Instant::now();
+        let mut slow = Kept {
+            slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        let mut quick = Kept {
+            slow_from: Duration::MAX,
+            ..Kept::default()
+        };
+        let read = (degrees(&mut slow, first), degrees(&mut quick, first));
+        temperature("52000");
+        let soon = first + Duration::from_secs(1);
+        let after = (degrees(&mut slow, soon), degrees(&mut quick, soon));
+        let kept = degrees(&mut slow, first + SLOW_KEPT);
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(read, (json!(47.0), json!(47.0)));
+        assert_eq!(
+            after,
+            (json!(47.0), json!(52.0)),
+            "the slow one kept, the quick read"
+        );
+        assert_eq!(kept, json!(52.0), "the slow one read once kept a while");
     }
 
     #[test]
