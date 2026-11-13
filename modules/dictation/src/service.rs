@@ -31,6 +31,14 @@
 //! fills OpenVINO's cache,
 //! and lets them go again, since they hold 1.2 GiB: a load from the cache
 //! takes about 1.5 s.
+//!
+//! Where a tidying model is given, a take that lands as prose, pi's prompt
+//! included, is tidied before it's typed (tidy.rs), on a thread of its own
+//! that holds the model as Whisper's holds Whisper: compiled as the service
+//! starts, loaded as listening starts, let go after ten minutes unused. A
+//! take waits on its tidy 2 s at most, and then is typed as heard, the
+//! tidy dropped when it comes, since Joel asked for no delayed voice. A
+//! terminal's take is never tidied, since a command is typed as said.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::FromRawFd;
@@ -46,10 +54,14 @@ use dictation::mel::{RATE, SAMPLES};
 use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
+use dictation::tidy::Tidier;
 
-use crate::{kept, mode};
+use crate::kept;
+use crate::mode::{self, Mode};
 
 const UNUSED: Duration = Duration::from_mins(10);
+// How long a take waits on its tidy before it's typed as heard.
+const TIDY_CAP: Duration = Duration::from_secs(2);
 // A chord let go sooner than this was a tap, which leaves it listening.
 const HELD_MS: u128 = 400;
 // Under -40 dBFS throughout is silence, which Whisper would otherwise hear
@@ -115,12 +127,30 @@ enum Event {
     Heard(Result<String, String>),
     /// The model loaded, in this many ms.
     Ready(u128),
+    /// A take's tidy, by the take's number, or none where it may not be typed.
+    Tidied(u64, Option<String>),
+    /// A take's time to be tidied is up, by its number.
+    Late(u64),
 }
 
 enum Job {
     Prime,
     Warm,
     Transcribe(Vec<f32>),
+}
+
+enum TidyJob {
+    Prime,
+    Warm,
+    /// A take, by its number, to be tidied by when it's typed as heard.
+    Tidy(String, u64, Instant),
+}
+
+/// The model that tidies prose before it's typed, and where it runs.
+pub struct Tidying {
+    pub model: PathBuf,
+    pub device: String,
+    pub cache: Option<PathBuf>,
 }
 
 struct Recording {
@@ -138,7 +168,8 @@ pub fn socket() -> PathBuf {
         .join("dictation.sock")
 }
 
-/// Runs the service with Whisper from `model`.
+/// Runs the service with Whisper from `model`, and prose tidied as
+/// `tidying` says, where it's given.
 ///
 /// # Errors
 ///
@@ -148,6 +179,7 @@ pub fn serve(
     device: String,
     cache: Option<PathBuf>,
     words: String,
+    tidying: Option<Tidying>,
 ) -> Result<(), String> {
     let listener = listener()?;
     let (events, heard) = mpsc::channel();
@@ -156,10 +188,16 @@ pub fn serve(
     if prime {
         let _ = jobs.send(Job::Prime);
     }
+    // Compiling the tidier for the GPU takes seconds too, so it's done
+    // ahead wherever there's one.
+    let tidy = tidying.map(|tidying| tidier(tidying, events.clone()));
+    if let Some(tidy) = &tidy {
+        let _ = tidy.send(TidyJob::Prime);
+    }
     thread::spawn(open_the_microphone);
     let coordinator = thread::spawn({
         let events = events.clone();
-        move || coordinate(&heard, &events, &jobs)
+        move || coordinate(&heard, &events, &jobs, tidy.as_ref())
     });
     hear_the_chord(events.clone());
     for stream in listener.incoming() {
@@ -247,8 +285,53 @@ fn shown(state: State, sounding: bool) -> State {
     }
 }
 
-fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job>) {
+/// The words a take's tidy settles on, once, for the take that waits:
+/// the tidy, or the take as heard when there's none, or when its time ran
+/// out first. Whatever comes for a take already typed is dropped.
+fn settle(waiting: &mut Option<(u64, String)>, take: u64, tidy: Option<String>) -> Option<String> {
+    let (number, _) = waiting.as_ref()?;
+    if *number != take {
+        return None;
+    }
+    let (_, heard) = waiting.take()?;
+    Some(tidy.unwrap_or(heard))
+}
+
+/// Says a take's time to be tidied is up once it is.
+fn time_up(events: &Sender<Event>, take: u64) {
+    let events = events.clone();
+    thread::spawn(move || {
+        thread::sleep(TIDY_CAP);
+        let _ = events.send(Event::Late(take));
+    });
+}
+
+/// Types a take as the window it lands in takes it, and keeps when, in
+/// `file` and `last`, and tells the watchers, for the launcher's row.
+fn write(text: &str, file: Option<&Path>, last: &mut Option<u64>, watchers: &mut Vec<UnixStream>) {
+    match type_out(&mode::shaped(text, mode::focused())) {
+        Ok(()) => {
+            let at = kept::now();
+            *last = Some(at);
+            if let Some(Err(error)) = file.map(|f| kept::keep(f, at)) {
+                eprintln!("dictation: {error}");
+            }
+            tell(&kept::last_take(at), watchers);
+        }
+        Err(error) => notice("Dictation can't type", &error),
+    }
+}
+
+fn coordinate(
+    heard: &Receiver<Event>,
+    events: &Sender<Event>,
+    jobs: &Sender<Job>,
+    tidy: Option<&Sender<TidyJob>>,
+) {
     let mut state = State::Idle;
+    // The take waiting on its tidy, by its number, as heard.
+    let mut waiting: Option<(u64, String)> = None;
+    let mut takes = 0_u64;
     // Whether the current listening has heard the microphone yet.
     let mut sounding = false;
     let mut watchers: Vec<UnixStream> = Vec::new();
@@ -282,6 +365,9 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                     if chord {
                         held = Some(generation);
                     }
+                    if let Some(tidy) = tidy {
+                        let _ = tidy.send(TidyJob::Warm);
+                    }
                 }
                 if let Some(said) = said {
                     say(said, &mut watchers);
@@ -309,21 +395,19 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
             Event::Heard(result) => {
                 state = State::Idle;
                 match result {
-                    Ok(text) if !text.is_empty() => {
-                        let text = mode::shaped(&text, mode::focused());
-                        match type_out(&text) {
-                            Ok(()) => {
-                                let at = kept::now();
-                                last = Some(at);
-                                if let Some(Err(error)) = file.as_deref().map(|f| kept::keep(f, at))
-                                {
-                                    eprintln!("dictation: {error}");
-                                }
-                                tell(&kept::last_take(at), &mut watchers);
-                            }
-                            Err(error) => notice("Dictation can't type", &error),
+                    Ok(text) if !text.is_empty() => match tidy {
+                        // Still writing while it's tidied, so a press
+                        // meanwhile is told so.
+                        Some(tidy) if mode::focused() == Mode::Prose => {
+                            state = State::Transcribing;
+                            takes += 1;
+                            waiting = Some((takes, text.clone()));
+                            let _ =
+                                tidy.send(TidyJob::Tidy(text, takes, Instant::now() + TIDY_CAP));
+                            time_up(events, takes);
                         }
-                    }
+                        _ => write(&text, file.as_deref(), &mut last, &mut watchers),
+                    },
                     Ok(_) => say(Said::Word(Nothing::Unclear.word()), &mut watchers),
                     Err(error) => notice("Dictation failed", &error),
                 }
@@ -331,6 +415,19 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
             Event::Ready(ms) => {
                 ready = Some(ms);
                 tell(&kept::ready(ms), &mut watchers);
+            }
+            Event::Tidied(take, tidied) => {
+                if let Some(text) = settle(&mut waiting, take, tidied) {
+                    state = State::Idle;
+                    write(&text, file.as_deref(), &mut last, &mut watchers);
+                }
+            }
+            Event::Late(take) => {
+                if let Some(text) = settle(&mut waiting, take, None) {
+                    eprintln!("dictation: the tidy took over 2 s, so it's typed as heard");
+                    state = State::Idle;
+                    write(&text, file.as_deref(), &mut last, &mut watchers);
+                }
             }
         }
         let now = shown(state, sounding);
@@ -585,18 +682,7 @@ fn worker(
             }
             Ok(())
         };
-        loop {
-            let job = match work.recv_timeout(UNUSED) {
-                Ok(job) => job,
-                Err(RecvTimeoutError::Timeout) => {
-                    whisper = None;
-                    match work.recv() {
-                        Ok(job) => job,
-                        Err(_) => return,
-                    }
-                }
-                Err(RecvTimeoutError::Disconnected) => return,
-            };
+        while let Some(job) = next(&work, &mut whisper) {
             match job {
                 Job::Prime => {
                     if whisper.is_none() {
@@ -630,6 +716,95 @@ fn worker(
                         Ok(text)
                     });
                     if events.send(Event::Heard(result)).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    jobs
+}
+
+/// The next job a worker is given, letting what it holds go once it's
+/// waited ten minutes for one, or none once nothing can give it one.
+fn next<J, M>(work: &Receiver<J>, held: &mut Option<M>) -> Option<J> {
+    match work.recv_timeout(UNUSED) {
+        Ok(job) => Some(job),
+        Err(RecvTimeoutError::Timeout) => {
+            *held = None;
+            work.recv().ok()
+        }
+        Err(RecvTimeoutError::Disconnected) => None,
+    }
+}
+
+/// The thread that holds the tidying model as Whisper's holds Whisper,
+/// and tidies each take it's given by its time, or says it can't. It
+/// says how long each took, never what was said.
+fn tidier(tidying: Tidying, events: Sender<Event>) -> Sender<TidyJob> {
+    let (jobs, work) = mpsc::channel::<TidyJob>();
+    thread::spawn(move || {
+        let mut tidier: Option<Tidier> = None;
+        let fresh = || {
+            Tidier::load(
+                &tidying.model,
+                &tidying.device,
+                tidying.cache.as_deref(),
+                Priority::Waited,
+            )
+        };
+        let load = |tidier: &mut Option<Tidier>| -> Result<(), String> {
+            if tidier.is_none() {
+                let started = Instant::now();
+                let mut loaded = fresh()?;
+                loaded.warm()?;
+                eprintln!(
+                    "dictation: the tidier loaded and warmed in {} ms",
+                    started.elapsed().as_millis()
+                );
+                *tidier = Some(loaded);
+            }
+            Ok(())
+        };
+        while let Some(job) = next(&work, &mut tidier) {
+            match job {
+                TidyJob::Prime => {
+                    if tidier.is_none() {
+                        let started = Instant::now();
+                        match fresh() {
+                            Ok(_) => eprintln!(
+                                "dictation: the tidier is ready in {} ms",
+                                started.elapsed().as_millis()
+                            ),
+                            Err(error) => eprintln!("dictation: {error}"),
+                        }
+                    }
+                }
+                TidyJob::Warm => {
+                    if let Err(error) = load(&mut tidier) {
+                        eprintln!("dictation: {error}");
+                    }
+                }
+                TidyJob::Tidy(take, number, by) => {
+                    let started = Instant::now();
+                    // A take whose time ran out while another was tidied
+                    // is typed already.
+                    let written = if started < by {
+                        load(&mut tidier).and_then(|()| {
+                            tidier
+                                .as_mut()
+                                .ok_or("the tidier isn't loaded")?
+                                .tidy(&take, by)
+                        })
+                    } else {
+                        Err("its time ran out before it was begun".to_owned())
+                    };
+                    let took = started.elapsed().as_millis();
+                    match &written {
+                        Ok(_) => eprintln!("dictation: tidied in {took} ms"),
+                        Err(why) => eprintln!("dictation: typed as heard after {took} ms: {why}"),
+                    }
+                    if events.send(Event::Tidied(number, written.ok())).is_err() {
                         return;
                     }
                 }

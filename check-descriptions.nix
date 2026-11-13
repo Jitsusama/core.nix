@@ -616,10 +616,19 @@
   dictation-switches-to-the-new-one = ''
     a switch restarts dictation after reloading its units
   '';
+  dictation-tidies-a-take = ''
+    the tidying model on the CPU takes a take's filler words and false start out and punctuates
+    it, and leaves a take with a negation and a number as it was
+  '';
+  dictation-tidies-from-data-alone = ''
+    the tidying model is IRs and configs alone, fetched by hash, with no code and no chat
+    template of the export's
+  '';
   dictation-works-it-out = ''
     dictation's spectrogram, transform and vocabulary match their references, words turn into
     Whisper's tokens as GPT-2's merges join them; a held chord's release stops only what it
-    started, and a tap's none
+    started, and a tap's none; a tidy is typed only when it keeps the take's words in order,
+    every negation and number among them, and only while the take still waits for it
   '';
   dictation-writes-the-words-it-knows = ''
     Whisper writes a name it misheard as the words file spells it, given the file

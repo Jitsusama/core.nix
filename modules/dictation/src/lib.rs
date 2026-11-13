@@ -1,5 +1,6 @@
 //! Speech models on this machine, shared by the programs that hear
 //! speech: dictation (main.rs), which types what Joel says with Whisper,
+//! tidied first by a small language model where that's asked for (tidy.rs),
 //! and call-transcripts (bin/call-transcripts), which writes down what's
 //! said on a call with Parakeet (parakeet.rs) and sums it up with a
 //! language model (language.rs). The two share OpenVINO's calls and the
@@ -24,6 +25,7 @@ pub mod parakeet;
 pub mod picture;
 pub mod speech;
 pub mod takes;
+pub mod tidy;
 pub mod transcript;
 pub mod vocab;
 pub mod watch;
