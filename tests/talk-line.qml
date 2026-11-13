@@ -13,24 +13,24 @@ import "TalkLine.js" as Said
 QtObject {
     Component.onCompleted: {
         try {
-            const kitty = { app_id: "kitty", title: "π - Bootstrap optimus" };
-            const session = { to: "Y2YBTS", name: "Bootstrap optimus" };
+            const kitty = { app_id: "kitty", title: "π - Tune the launcher" };
+            const session = { to: "TESTQA", name: "Tune the launcher" };
             const rows = Said.attached(kitty, "kitty", session);
             Expect.same("a pi window attaches its window and its session",
                 rows.map(row => row.text),
-                ["kitty · π - Bootstrap optimus", "Bootstrap optimus · Y2YBTS"]);
+                ["kitty · π - Tune the launcher", "Tune the launcher · TESTQA"]);
             Expect.same("a window with no title attaches only what else it has",
                 Said.attached({ app_id: "foot", title: "" }, "Foot", null), []);
             Expect.same("none focused attaches nothing", Said.attached(null, "", null), []);
             Expect.same("his words go first, what's attached under the heading the void reads",
                 Said.said("  is this the right fix? ", rows),
-                "is this the right fix?\n\nAttached:\n- window: kitty · π - Bootstrap optimus\n"
-                    + "- pi session: Bootstrap optimus · Y2YBTS");
+                "is this the right fix?\n\nAttached:\n- window: kitty · π - Tune the launcher\n"
+                    + "- pi session: Tune the launcher · TESTQA");
             Expect.same("nothing attached sends his words alone",
                 Said.said("hello", []), "hello");
             Expect.same("the quiet line names who hears it and the window, the session left to "
                 + "the window's title", Said.about("void", rows),
-                "void · kitty · π - Bootstrap optimus");
+                "void · kitty · π - Tune the launcher");
             Expect.same("with no window it names who hears it alone", Said.about("void", []),
                 "void");
 

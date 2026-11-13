@@ -256,6 +256,9 @@ def shell() -> Iterator[Shell]:
     serves = logs / "serves.json"
     quest = {"file": str(WORKFLOW / "quests.json"), "records": "quests", "key": "id"}
     serves.write_text(json.dumps({"quest": quest, "talk": {"talks": str(STEER)}}))
+    # The node serves no talks from a folder missing as it starts, as Joel's never is: run
+    # alone, Super+S's cases laid the first steer after it, and their answers never came.
+    STEER.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
         # The node is the store's own, which the check names.
         node = subprocess.Popen(  # noqa: S603
@@ -1426,6 +1429,7 @@ def shoot() -> Callable[[str], None]:
         if folder == "":
             return
         Path(folder).mkdir(exist_ok=True)
+        # grim is the check's own, on its PATH, given a path the test made.
         subprocess.run(["grim", str(Path(folder) / f"{name}.png")], check=True)  # noqa: S603, S607
 
     return shot
@@ -1444,7 +1448,7 @@ def said_over(shell: Shell) -> Iterator[str]:
     shell.launcher_ready()
     shell.launcher_until(lambda shown: "The Void" in shown["rows"])
     shell.close_launcher()
-    title = "\u03c0 - Bootstrap optimus to replace the work MacBook"
+    title = "\u03c0 - Tune the launcher so it fits the way he works"
     window = shell.opened(title, app="kitty")
     # A window opened while a layer had the keys isn't always given them, as Joel's own is.
     shell.as_account(f"niri msg action focus-window --id {window['id']}")
