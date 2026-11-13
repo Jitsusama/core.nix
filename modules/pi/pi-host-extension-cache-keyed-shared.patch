@@ -1,0 +1,117 @@
+A host shares a keyed package's extensions across folders, and no other's.
+
+A host keeps each folder's extension factories apart, so module-scope
+state, such as a pairing an extension keeps in a module, never crosses
+from one folder's conversation to another's. A package whose every piece
+of per-session state is keyed by conversation gains nothing from that
+copy and pays for it: every folder evaluates its modules again. Such a
+package now says so in its manifest, `"pi": { "sessionStateKeyed": true }`,
+and the host keeps one factory for each of its files, whichever folder
+loads it, held whether or not a conversation is awake. Every other
+package, and an extension that belongs to none, keeps its copy for each
+folder. A package's manifest is the nearest package.json above the file
+with a `pi` field, so a folder's own package.json without one is passed
+over. Shared factories are keyed by the file a path resolves to, so once
+a link moves on, the copy it pointed at leaves the cache. A reload
+empties them, and a load begun before one caches nothing after it.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -167,8 +167,79 @@
+ 	}
+ }
+ 
++// pi-host: a package that declares its per-session state keyed, with
++// `"pi": { "sessionStateKeyed": true }` in its manifest, shares one factory
++// for each of its files across every folder. Its modules are evaluated once
++// for the host, and held whether or not a conversation is awake, so a host
++// whose conversations have all parked wakes them without evaluating its
++// modules. Every other package keeps a copy for each folder, as above,
++// because module-scope state, such as a pairing kept in a module, would
++// otherwise cross from one folder's conversation to another's. The
++// declaration covers what the package's modules import. A package's
++// manifest is the nearest package.json above the file that has a `pi`
++// field. Shared factories are keyed by the file a path resolves to, so once
++// a link moves on, the copy it pointed at leaves the cache.
++const sharedFactories = new Map<string, ExtensionFactory>();
++// The file each shared extension path last resolved to.
++const sharedFiles = new Map<string, string>();
++// Whether the package a folder belongs to declares its state keyed.
++const keyedFolders = new Map<string, boolean>();
++
++function packageKeepsStateKeyed(folder: string): boolean {
++	const known = keyedFolders.get(folder);
++	if (known !== undefined) return known;
++	let keyed = false;
++	let manifest: unknown;
++	try {
++		manifest = JSON.parse(fs.readFileSync(path.join(folder, "package.json"), "utf-8"));
++	} catch {
++		// No package.json here, or one that isn't JSON: not a manifest.
++	}
++	const pi = typeof manifest === "object" && manifest !== null ? (manifest as { pi?: unknown }).pi : undefined;
++	if (typeof pi === "object" && pi !== null) {
++		keyed = (pi as { sessionStateKeyed?: unknown }).sessionStateKeyed === true;
++	} else {
++		const parent = path.dirname(folder);
++		keyed = parent !== folder && packageKeepsStateKeyed(parent);
++	}
++	keyedFolders.set(folder, keyed);
++	return keyed;
++}
++
++// The file a shared extension's path resolves to now, or undefined when its
++// package keeps a copy for each folder.
++function sharedFileOf(extensionPath: string): string | undefined {
++	let file: string;
++	try {
++		file = fs.realpathSync(extensionPath);
++	} catch {
++		// A path that doesn't resolve fails its import, which says so.
++		return undefined;
++	}
++	if (!packageKeepsStateKeyed(path.dirname(file))) return undefined;
++	const before = sharedFiles.get(extensionPath);
++	if (before !== undefined && before !== file) sharedFactories.delete(before);
++	sharedFiles.set(extensionPath, file);
++	return file;
++}
++
++function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
++	const shared = sharedFileOf(extensionPath);
++	if (shared !== undefined) return sharedFactories.get(shared);
++	return cacheToken.cache.get(extensionPath)?.deref();
++}
++
++function cacheFactory(extensionPath: string, cacheToken: ExtensionCacheToken, factory: ExtensionFactory): void {
++	const shared = sharedFileOf(extensionPath);
++	if (shared !== undefined) sharedFactories.set(shared, factory);
++	else cacheToken.cache.set(extensionPath, new WeakRef(factory));
++}
++
+ export function clearExtensionCache(): void {
+ 	extensionCaches.length = 0;
++	sharedFactories.clear();
++	sharedFiles.clear();
++	keyedFolders.clear();
+ 	extensionCacheGeneration++;
+ }
+ 
+@@ -590,7 +661,7 @@
+ 
+ async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		const cachedFactory = cacheToken.cache.get(extensionPath)?.deref();
++		const cachedFactory = cachedFactoryOf(extensionPath, cacheToken);
+ 		if (cachedFactory) {
+ 			return cachedFactory;
+ 		}
+@@ -619,7 +690,7 @@
+ 		return undefined;
+ 	}
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		cacheToken.cache.set(extensionPath, new WeakRef(factory));
++		cacheFactory(extensionPath, cacheToken, factory);
+ 	}
+ 	return factory;
+ }
