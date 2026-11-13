@@ -93,12 +93,15 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
         place: "agents-top"
-        beside: ["drawer"]
+        // Its drawers are its sessions', read where the tree's are
+        // (topDrawer), not watched again here: each one told here remade
+        // its row, so arrows that only moved made 45 to 509 rows (keeps-up,
+        // 2026-11-13).
         watching: provider.opened() ? ({}) : ({ every: provider.shutPace })
-        ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
-        make: (row, key) => top.thing(row, key, provider.topReopens(row))
+        make: (row, key) => top.thing(row, key,
+            Object.assign(provider.topReopens(row), provider.topDrawer(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
-            ?? provider.topCloses(one)
+            ?? provider.topSessionActs(one)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -146,11 +149,45 @@ Provider {
     // Close on a served orchestration, asked first saying what stays, as a
     // session's own Close is (sessionAct), since what it leaves is worked
     // out here from the session's folder: a stopgap until the agents
-    // daemon serves what Close leaves with the act (KP0L6A). Null for any
-    // other act, or a session not here.
-    function topCloses(one) {
-        const session = one.key === "verb:agent:close" ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, "close") : null;
+    // daemon serves what Close leaves with the act (KP0L6A). Go To is the
+    // shell's too, since only the shell moves niri's focus (acts.rs): asked
+    // of the daemon, it answered nothing and said it couldn't
+    // (moves-keep-their-window, 2026-11-13). Null for any other act, or a
+    // session not here.
+    function topSessionActs(one) {
+        const id = { "verb:agent:close": "close", "verb:agent:switch": "switch" }[one.key];
+        const session = id ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, id) : null;
+    }
+
+    // A served row naming its session's drawer, "drawer:agents-top:<address>",
+    // is drawn as the tree's session rows draw it (drawerOf, SessionDrawer.js),
+    // from the drawer the tree's watch holds: the daemon serves a session's
+    // eyebrow as items and its facts as labels and values, not as
+    // ready-rows.md's drawer, so read as one it said "[object" over blank
+    // facts (finds-sessions, 2026-11-13). Its acts are named as served,
+    // Return's by ↵, except where they step into its members. What y takes
+    // is its quest, else its address, as the tree's session rows give it
+    // (sessionRow's operands): read for the foot from its acts instead,
+    // each row an arrow first chose made its four act rows, 89 in a frozen
+    // turn of 90 keys (keeps-up, 2026-11-13).
+    function topDrawer(row) {
+        const address = /^drawer:agents(?:-top)?:(.+)$/u.exec(String(row?.drawer ?? ""))?.[1];
+        if (address === undefined)
+            return {};
+        return {
+            drawer: () => {
+                const acts = top.actsOf(row);
+                const steps = acts.some(one => one.step === "rows");
+                return top.actsNamed(provider.drawerOf(address), steps ? [] : acts, null);
+            },
+            operands: () => {
+                const owns = provider.sessionAt(address)?.presence?.owns ?? [];
+                const quest = owns.find(owned => /^QEST-/u.test(owned)) ?? "";
+                return [quest !== "" ? provider.copyOperand("fact:agent:quest", quest)
+                    : provider.copyOperand("fact:agent:address", address)];
+            }
+        };
     }
 
     // A closed orchestrator the daemon serves under Closed, with no acts

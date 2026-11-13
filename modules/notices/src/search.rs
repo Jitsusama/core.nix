@@ -102,7 +102,9 @@ impl Searched {
     /// first `FOUND_LISTED` of them, with their grade, as the launcher's searches answer one. Every
     /// notice found is graded 0, as the launcher's matching grades every
     /// match now. Beside them, by key, the row of each found that's among
-    /// `unserved`, the notices place's rows its watch doesn't serve.
+    /// `unserved`, the notices place's rows its watch doesn't serve, and
+    /// how many were `found` in all, so the launcher can say when more were
+    /// found than it lists.
     pub fn answer(
         &mut self,
         notices: &[Notice],
@@ -128,13 +130,13 @@ impl Searched {
             .take(FOUND_LISTED)
             .map(|(_, _, id)| format!("row:{}:{id}", row::PLACE))
             .collect();
-        let found: serde_json::Map<String, Value> = keys
+        let rows: serde_json::Map<String, Value> = keys
             .iter()
             .take(FOUND_ROWS)
             .filter_map(|key| Some((key.clone(), unserved.get(key)?.clone())))
             .collect();
         json!({
-            "keys": keys, "rows": found,
+            "keys": keys, "rows": rows, "found": found.len(),
             "grade": if keys.is_empty() { 3 } else { 0 }, "words": typed,
         })
     }
@@ -189,6 +191,7 @@ mod tests {
             nothing["grade"], 3,
             "and graded as nothing found: {nothing}"
         );
+        assert_eq!(nothing["found"], 0, "and says none was: {nothing}");
     }
 
     #[test]
@@ -239,6 +242,10 @@ mod tests {
         assert_eq!(
             listed, newest,
             "six screens of those found are listed, newest first"
+        );
+        assert_eq!(
+            answer["found"], found,
+            "and it says how many were found, listed or not"
         );
         let rows = answer["rows"].as_object().cloned().unwrap_or_default();
         assert_eq!(

@@ -93,6 +93,36 @@ const FAN_SPAN: f64 = 500.0;
 const COLDEST: f64 = -40.0;
 const HOTTEST: f64 = 150.0;
 
+/// The files Linux keeps behind a reading, each as it says it, and the
+/// folder they're in, so a row's drawer names them as the kernel does.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Files {
+    pub folder: String,
+    pub said: Vec<(String, String)>,
+}
+
+impl Files {
+    /// A record's `files`, each `[name, said]`, in `folder`.
+    fn of(folder: &str, record: &Value) -> Self {
+        Self {
+            folder: folder.to_owned(),
+            said: list(record)
+                .iter()
+                .filter_map(|pair| Some((pair[0].as_str()?.to_owned(), text(&pair[1]))))
+                .collect(),
+        }
+    }
+
+    /// Those of its files `wanted` names, in the order they were read.
+    pub fn only(&self, wanted: impl Fn(&str) -> bool) -> Vec<(String, String)> {
+        self.said
+            .iter()
+            .filter(|(name, _)| wanted(name))
+            .cloned()
+            .collect()
+    }
+}
+
 /// One temperature a chip reads, in degrees, with the limits it says.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Temp {
@@ -105,9 +135,12 @@ pub struct Temp {
     pub emergency: Option<f64>,
     pub alarm: bool,
     pub chip: String,
+    pub files: Files,
 }
 
-/// One fan a chip turns, in turns a minute, with what it says of it.
+/// One fan a chip turns, in turns a minute, with what it says of it,
+/// and its files: its own chip's, then those of the chip telling what
+/// it doesn't.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fan {
     pub id: String,
@@ -119,6 +152,7 @@ pub struct Fan {
     pub target: Option<f64>,
     pub power: Option<f64>,
     pub mode: Option<String>,
+    pub files: Vec<Files>,
 }
 
 /// A voltage, current or power a chip reads, in its unit.
@@ -156,6 +190,7 @@ pub struct Zone {
     pub kind: String,
     pub value: f64,
     pub trips: Vec<Trip>,
+    pub files: Files,
 }
 
 /// A point where the firmware acts on a part's heat, and the zone that
@@ -182,6 +217,7 @@ pub struct Sensor {
     pub n: u64,
     pub label: String,
     pub value: f64,
+    pub files: Files,
 }
 
 /// A core's temperature, by its logical processor.
@@ -189,6 +225,7 @@ pub struct Sensor {
 pub struct Core {
     pub cpu: u64,
     pub value: f64,
+    pub files: Files,
 }
 
 /// A part Heat lists: its id, its whole reading and limits, its other
@@ -208,6 +245,7 @@ pub struct Part {
     pub sensors: Vec<Sensor>,
     pub cores: Vec<Core>,
     pub nth: usize,
+    pub files: Files,
 }
 
 /// The parts and the fans, as Heat lists them.
@@ -226,6 +264,11 @@ pub struct Throttled {
     pub longest: Option<u64>,
     pub cores: Vec<(u64, u64)>,
     pub total: u64,
+    /// The logical processor the package's counts are read from.
+    pub package_cpu: Option<u64>,
+    /// Each core's time slowed and longest slowing, in ms, by its cores'
+    /// first logical processor, where the kernel counts them.
+    pub core_ms: BTreeMap<u64, (Option<u64>, Option<u64>)>,
 }
 
 /// What's left of a temperature to its limit: the degrees to it or past
@@ -341,6 +384,7 @@ fn chip_of(record: &Value) -> Chip {
         String::new()
     };
     let chip = text(&record["chip"]);
+    let folder = text(&record["folder"]);
     let temps = list(&record["temperatures"])
         .iter()
         .filter_map(|each| {
@@ -354,6 +398,7 @@ fn chip_of(record: &Value) -> Chip {
                 emergency: limit_of(number(&each["emergency_c"])),
                 alarm: each["alarm"] == Value::Bool(true),
                 chip: chip.clone(),
+                files: Files::of(&folder, &each["files"]),
             })
         })
         .filter(|each| !part.is_empty() || !labelled(&each.label).is_empty())
@@ -371,6 +416,7 @@ fn chip_of(record: &Value) -> Chip {
                 target: number(&each["target_rpm"]),
                 power: number(&each["power_ratio"]),
                 mode: each["mode"].as_str().map(str::to_owned),
+                files: vec![Files::of(&folder, &each["files"])],
                 label,
             })
         })
@@ -430,6 +476,7 @@ pub fn zones_of(records: &[Value]) -> Vec<Zone> {
             Some(Zone {
                 part: part.to_owned(),
                 value: plausible(number(&each["temperature_c"]))?,
+                files: Files::of(&text(&each["folder"]), &each["files"]),
                 kind,
                 trips,
             })
@@ -591,7 +638,16 @@ pub fn throttled_of(processor: &Value) -> Option<Throttled> {
         .filter_map(|each| Some((whole(&each["cpu"])?, whole(&each["count"]).unwrap_or(0))))
         .collect();
     cores.sort_unstable();
+    let core_ms = list(&said["cores"])
+        .iter()
+        .filter_map(|each| {
+            let kept = (whole(&each["ms"]), whole(&each["longest_ms"]));
+            Some((whole(&each["cpu"])?, kept))
+        })
+        .collect();
     Some(Throttled {
+        package_cpu: whole(&said["package_cpu"]),
+        core_ms,
         times: whole(&said["package_count"]).unwrap_or(0),
         ms: whole(&said["package_ms"]),
         longest: whole(&said["package_longest_ms"]),
@@ -690,11 +746,13 @@ fn entry(id: &str, whole: &Temp, sensors: Vec<Sensor>, cores: Vec<Core>) -> Part
         sensors,
         cores,
         nth: 0,
+        files: whole.files.clone(),
     }
 }
 
-fn reading(value: f64, high: Option<f64>, crit: Option<f64>) -> Temp {
+fn reading(value: f64, high: Option<f64>, crit: Option<f64>, files: Files) -> Temp {
     Temp {
+        files,
         n: 0,
         label: String::new(),
         value,
@@ -726,6 +784,7 @@ fn chip_parts(chip: &Chip, cpu_of_core: &BTreeMap<u64, u64>) -> Vec<Part> {
                 Some(Core {
                     cpu: cpu_of_core.get(&n).copied().unwrap_or(n),
                     value: t.value,
+                    files: t.files.clone(),
                 })
             })
             .collect();
@@ -755,6 +814,7 @@ fn chip_parts(chip: &Chip, cpu_of_core: &BTreeMap<u64, u64>) -> Vec<Part> {
             n: t.n,
             label: t.label.clone(),
             value: t.value,
+            files: t.files.clone(),
         })
         .collect();
     let mut part = entry(&chip.part, whole, sensors, Vec::new());
@@ -794,10 +854,20 @@ fn own_parts(telemetry: &[Value], processor: Option<&Part>) -> Vec<Part> {
         .filter_map(|each| {
             let said = text(&each["part"]);
             let (_, id) = TELEMETRY.iter().find(|(named, _)| *named == said)?;
+            // Its files are the reader's own words for it, as it tells
+            // them on its socket.
+            let told = Files {
+                folder: crate::telemetry::PATH.to_owned(),
+                said: vec![
+                    ("part".to_owned(), said.clone()),
+                    ("celsius".to_owned(), each["celsius"].to_string()),
+                ],
+            };
             let held = reading(
                 number(&each["celsius"])?,
                 processor.and_then(|p| p.high),
                 processor.and_then(|p| p.crit),
+                told,
             );
             Some(entry(id, &held, Vec::new(), Vec::new()))
         })
@@ -823,7 +893,7 @@ pub fn gather(
         if !zone.part.is_empty() && !taken {
             added.push(entry(
                 &zone.part,
-                &reading(zone.value, None, None),
+                &reading(zone.value, None, None, zone.files.clone()),
                 Vec::new(),
                 Vec::new(),
             ));
@@ -846,6 +916,7 @@ fn told_of(mut made: Fan, other: Option<&Fan>) -> Fan {
         made.target = made.target.or(other.target);
         made.power = made.power.or(other.power);
         made.mode = made.mode.or_else(|| other.mode.clone());
+        made.files.extend(other.files.iter().cloned());
     }
     made
 }
@@ -902,6 +973,7 @@ mod tests {
             emergency: None,
             alarm: false,
             chip: String::new(),
+            files: Files::default(),
         }
     }
 
@@ -916,6 +988,7 @@ mod tests {
             target: None,
             power: None,
             mode: None,
+            files: vec![Files::default()],
         }
     }
 
@@ -1043,6 +1116,7 @@ mod tests {
             kind: "TCPU".to_owned(),
             value: 78.0,
             trips: vec![],
+            files: Files::default(),
         };
         let lone = gather(
             &laptop()[4..5],
@@ -1179,6 +1253,8 @@ mod tests {
                 longest: Some(125),
                 cores: vec![(0, 24), (1, 8)],
                 total: 32,
+                package_cpu: None,
+                core_ms: BTreeMap::from([(0, (None, None)), (1, (None, None))]),
             })
         );
         assert_eq!(throttled_of(&json!({ "throttled": null })), None);

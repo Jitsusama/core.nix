@@ -168,13 +168,22 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
             let limit = |what: &str, fixed: &mut dyn FnMut(String) -> Option<String>| {
                 thousandths(fixed(format!("temp{n}_{what}")), DEGREES).map(|c| rounded(c, 1))
             };
-            let alarm = ["alarm", "crit_alarm", "max_alarm", "min_alarm"]
+            let alarms: Vec<(String, Option<String>)> =
+                ["alarm", "crit_alarm", "max_alarm", "min_alarm"]
+                    .iter()
+                    .map(|what| format!("temp{n}_{what}"))
+                    .filter(|file| lists(file))
+                    .map(|file| (file.clone(), now(file)))
+                    .collect();
+            let alarm = alarms
                 .iter()
-                .filter(|what| lists(&format!("temp{n}_{what}")))
-                .map(|what| now(format!("temp{n}_{what}")).as_deref() == Some("1"))
+                .map(|(_, said)| said.as_deref() == Some("1"))
                 .reduce(|a, b| a || b);
-            let degrees = thousandths(now(format!("temp{n}_input")), DEGREES);
+            let input = now(format!("temp{n}_input"));
+            let degrees = thousandths(input.clone(), DEGREES);
+            let files = temp_files(n, input, label_of("temp", n), &mut fixed, alarms);
             json!({
+                "files": files,
                 "n": n,
                 "label": label_of("temp", n),
                 "temperature_c": degrees.map(|c| rounded(c, 1)),
@@ -205,6 +214,7 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
                 _ => "automatic",
             });
             json!({
+                "files": fan_files(n, &now, &mut fixed, &lists),
                 "n": n,
                 "label": label_of("fan", n),
                 "rpm": rpm(format!("fan{n}_input")),
@@ -221,6 +231,7 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         "key": key,
         "kind": "sensor",
         "chip": name,
+        "folder": folder,
         "part": part(name),
         "temperatures": temperatures,
         "fans": fans,
@@ -228,6 +239,61 @@ fn chip(root: &Root, kept: &mut Kept, folder: &str, key: &str, name: &str) -> Va
         "currents": electrics(("curr", "amps", 1000.0)),
         "power": electrics(("power", "watts", 1_000_000.0)),
     })
+}
+
+/// The files behind a temperature as they say it, for its rows' drawers:
+/// what it reads, its label, its limits (as kept), then its alarms.
+fn temp_files(
+    n: u32,
+    input: Option<String>,
+    label: Option<String>,
+    fixed: &mut dyn FnMut(String) -> Option<String>,
+    alarms: Vec<(String, Option<String>)>,
+) -> Value {
+    let mut files = vec![
+        (format!("temp{n}_input"), input),
+        (format!("temp{n}_label"), label),
+    ];
+    for what in ["min", "max", "crit", "emergency"] {
+        let file = format!("temp{n}_{what}");
+        files.push((file.clone(), fixed(file)));
+    }
+    files.extend(alarms);
+    said_files(files)
+}
+
+/// The files behind a fan as they say it: its speed and where it's aimed
+/// read now, its least and most as kept, then how it's driven.
+fn fan_files(
+    n: u32,
+    now: &dyn Fn(String) -> Option<String>,
+    fixed: &mut dyn FnMut(String) -> Option<String>,
+    lists: &dyn Fn(&str) -> bool,
+) -> Value {
+    let mut files: Vec<(String, Option<String>)> = Vec::new();
+    for what in ["input", "min", "max", "target"] {
+        let file = format!("fan{n}_{what}");
+        let said = if matches!(what, "input" | "target") {
+            now(file.clone())
+        } else {
+            fixed(file.clone())
+        };
+        files.push((file, said));
+    }
+    for file in [format!("pwm{n}"), format!("pwm{n}_enable")] {
+        let said = lists(&file).then(|| now(file.clone())).flatten();
+        files.push((file, said));
+    }
+    said_files(files)
+}
+
+/// Files as `[name, said]` pairs, in the order read, those that said
+/// nothing left out.
+fn said_files(files: Vec<(String, Option<String>)>) -> Value {
+    files
+        .into_iter()
+        .filter_map(|(name, said)| Some(json!([name, said?])))
+        .collect()
 }
 
 /// Every chip's record, a second chip of a name numbered after the first.
@@ -294,10 +360,13 @@ pub fn zones(root: &Root) -> Vec<Value> {
             })
             .collect();
         trips.sort_by_key(|(n, _)| *n);
-        let degrees = thousandths(root.said(&format!("{folder}/temp")), DEGREES);
+        let temp = root.said(&format!("{folder}/temp"));
+        let degrees = thousandths(temp.clone(), DEGREES);
         records.push(json!({
             "key": key,
             "kind": "zone",
+            "folder": folder,
+            "files": said_files(vec![("temp".to_owned(), temp)]),
             "type": kind,
             "temperature_c": degrees.map(|c| rounded(c, 1)),
             "policy": root.said(&format!("{folder}/policy")),
@@ -394,6 +463,7 @@ pub fn throttled(root: &Root, cpus: &[(u32, Option<u32>)]) -> Value {
         "cores_count": sum("core_throttle_count"),
         "cores_ms": sum("core_throttle_total_time_ms"),
         "cores_longest_ms": most("core_throttle_max_time_ms"),
+        "package_cpu": package,
         "package_count": at(package, "package_throttle_count"),
         "package_ms": at(package, "package_throttle_total_time_ms"),
         "package_longest_ms": at(package, "package_throttle_max_time_ms"),
