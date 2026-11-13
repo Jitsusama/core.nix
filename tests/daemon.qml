@@ -8,8 +8,7 @@
 // them alone; one not live holds nothing until it's refreshed, and then
 // holds its kind, watched no longer; one paced by a frame watches only
 // once its frame is drawn, and one begun again before then is answered
-// once it's drawn; one whose pace is lifted, as the launcher opens, is
-// asked again once its frame is drawn; a search's answer is given to it and never held; one no
+// once it's drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
 // held, asked ahead; a get is answered by id, asked as a step-in; the
 // daemon stopping is said, keeping what was held and giving a get none,
@@ -252,22 +251,6 @@ ShellRoot {
         paced: pacer
     }
 
-    // Paced as a shut launcher's watch is, until the case opens it.
-    property bool repacedShut: true
-    Daemon {
-        id: repaced
-
-        socket: `${root.runtime}/daemons/kinds.sock`
-        kind: "meeting"
-        watching: root.repacedShut ? ({ every: 10000 }) : ({})
-        paced: pacer
-    }
-    // The pace its record says its watch asked for, read as each step
-    // polls, since what's held changes in place.
-    function repacedSaid() {
-        return repaced.held["meeting:one"]?.every;
-    }
-
     // Watching a kind with no records.
     Daemon {
         id: none
@@ -456,10 +439,6 @@ ShellRoot {
         },
         {
             what: "a client watching two kinds holds records of both",
-            // Its stand-in starts only now, and a try refused while it binds
-            // waits up to 16 s before the next (Daemon.qml's waitAfter), past
-            // the usual 10 s, as it did on a busy builder (2026-11-13).
-            polls: 500,
             run: () => {
                 kindsRunning.running = true;
             },
@@ -490,28 +469,6 @@ ShellRoot {
         {
             what: "a kind with no records is known to hold none once answered",
             holds: () => none.answered && Object.keys(none.held).length === 0
-        },
-        {
-            what: "a watch paced as a shut launcher's is asks for its pace",
-            holds: () => root.repacedSaid() === 10000
-        },
-        {
-            // Asked at once, its answer would land before the opening's
-            // frame, which draws from what's held.
-            what: "its pace lifted, as the launcher opens, it's asked again after the frame",
-            run: () => {
-                root.repacedShut = false;
-            },
-            holds: () => root.left <= 195 && pacer.queued.length === 1
-                && root.repacedSaid() === 10000
-        },
-        {
-            // Agents' top level stayed paced, told at most every ten
-            // seconds with the launcher open, so a parked orchestrator
-            // woken read as closed for seconds (2026-11-13).
-            what: "and once that frame is drawn it's told unpaced",
-            run: () => pacer.drawn(),
-            holds: () => root.repacedSaid() === null && pacer.queued.length === 0
         },
         {
             what: "an ask answered in steps is given each, until one says it's done",

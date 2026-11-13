@@ -98,9 +98,6 @@ Provider {
         // its row, so arrows that only moved made 45 to 509 rows (keeps-up,
         // 2026-11-13).
         watching: provider.opened() ? ({}) : ({ every: provider.shutPace })
-        // Unpaced as the launcher opens, it's watched again once the
-        // opening's frame is drawn, as the tree's rows are.
-        paced: provider.launcher
         make: (row, key) => top.thing(row, key,
             Object.assign(provider.topReopens(row), provider.topDrawer(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
@@ -265,8 +262,7 @@ Provider {
     // it all in one line a pace, since a spend side ticking or a session
     // turning to listen moved a row about every three seconds, each line
     // waking the shut shell for nothing it shows (RO9YDD, 21 lines in 60 s
-    // on 2026-11-11). Paced by the launcher, its Daemon asks again once the
-    // opening's next frame is drawn,
+    // on 2026-11-11). Asked again once the opening's next frame is drawn,
     // the same watch is told at once what it held back, never every row
     // whole, so an opening draws from rows at most a pace old and is
     // brought up to now a frame later, its fill not waiting on the line.
@@ -283,7 +279,16 @@ Provider {
             kind: ["row", "summary", "recent", "landed", "landed-days", "closed", "want"]
             watching: provider.opened() ? ({ place: "agents" })
                 : ({ place: "agents", every: provider.shutPace })
-            paced: provider.launcher
+            onWatchingChanged: {
+                const asking = () => {
+                    if (agentsRows.wire !== null && agentsRows.watched)
+                        agentsRows.watchAll();
+                };
+                if (provider.opened() && provider.launcher)
+                    provider.launcher.afterFrame(asking);
+                else
+                    asking();
+            }
             ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
             answersWhole: true
             onHeard: (changed, gone) => provider.placed(changed, gone)

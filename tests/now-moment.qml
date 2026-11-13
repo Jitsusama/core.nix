@@ -544,11 +544,7 @@ ShellRoot {
     }
 
     function run() {
-        // The minute the row was placed in may have turned since, as it did
-        // on a busy builder (its row said 09:09 as it turned, 2026-11-13), so the one before
-        // now says the minute too.
-        const time = [Date.now() - 60000, Date.now()].map(at => Qt.formatDateTime(new Date(at),
-            "HH:mm"));
+        const time = Qt.formatDateTime(new Date(), "HH:mm");
         const date = Qt.formatDate(new Date(), "dddd d MMMM yyyy");
         let rows = moment();
         expect("no Today to step into",
@@ -561,7 +557,7 @@ ShellRoot {
             rows[0].fromLauncher === true && rows[0].is === "answer:time"
                 && rows[1].fromLauncher === true && rows[1].is === "answer:today",
             JSON.stringify(rows.slice(0, 2)));
-        expect("the time says the minute", time.includes(rows[0].side), rows[0].side);
+        expect("the time says the minute", rows[0].side === time, rows[0].side);
         expect("the date says the day", rows[1].side === date, rows[1].side);
         expect("and each holds its parts, as it does anywhere",
             rows[0].verbs()[0].name === "Zone" && rows[1].verbs()[0].name === "Week",
