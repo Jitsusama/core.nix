@@ -465,11 +465,25 @@ Provider {
             ? [place.name, here.from].filter(part => part !== "").join(", ")
             : [place.name, place.country].filter(part => part).join(", ");
         const note = `${where} \u00b7 Open-Meteo`;
+        const kind = asked.rain ? "rain" : "weather";
+        const last = lastAnswers[kind];
+        if (last && last.forecast === forecast.value && last.note === note)
+            return last.answer;
         const hours = ahead(forecast.value, hoursOf(forecast.value));
-        if (asked.rain)
-            return rainAnswer(hours.slice(0, hoursAhead), note);
-        return weatherAnswer(forecast.value, hours, away !== "", note);
+        const answer = asked.rain ? rainAnswer(hours.slice(0, hoursAhead), note)
+            : weatherAnswer(forecast.value, hours, away !== "", note);
+        lastAnswers[kind] = { forecast: forecast.value, note: note, answer: answer };
+        return answer;
     }
+
+    // The last answer of each kind, the weather's and the rain's, with the
+    // forecast and the place it said, given again while they're the same.
+    // An answer reads its time from the forecast alone, so it's the same
+    // until a forecast is heard anew. Now asks the weather at every
+    // opening, and each opening made its rows again, though nothing had
+    // changed (Joel's journal, 2026-11-12). Plain fields, so keeping one
+    // notifies nothing.
+    readonly property var lastAnswers: ({})
 
     // The rain found on its own: when it next rains as the headline, with
     // the spark beside it, and its hours a step in.

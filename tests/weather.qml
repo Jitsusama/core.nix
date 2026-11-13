@@ -370,5 +370,22 @@ ShellRoot {
             travelling.answer("weather").note
                 === "Kelpwater, Westmark, from where the laptop is \u00b7 Open-Meteo",
             travelling.answer("weather").note);
+
+        // Now asks the weather at every opening, so asked again with the
+        // forecast it holds, it makes nothing anew: Joel's openings each
+        // made the weather's 8 rows again, though nothing had changed
+        // (2026-11-12). A forecast heard anew answers anew.
+        const held = weather.answer("weather");
+        const made = weather.tally.rows;
+        const again = weather.answer("weather");
+        expect("asked again with what it holds, it makes no row",
+            again === held && weather.tally.rows === made,
+            `${weather.tally.rows - made} rows made again`);
+        expect("the rain is its own answer", weather.answer("rain") !== held,
+            "the rain answered the weather");
+        kept(forecastUrl(43.7, -79.42), forecast("2026-10-24T14:45", {}, {}));
+        const heard = weather.answer("weather");
+        expect("a forecast heard anew answers anew",
+            heard !== held && weather.tally.rows > made, "it said what it held");
     }
 }
