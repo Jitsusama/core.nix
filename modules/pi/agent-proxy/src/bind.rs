@@ -12,8 +12,9 @@
 
 use signature::Verifier;
 use ssh_key::public::KeyData;
-use ssh_key::{HashAlg, PublicKey, Signature};
+use ssh_key::{PublicKey, Signature};
 
+use crate::said::{Refusal, Why};
 use crate::wire::Fields;
 
 /// A login request, as SSH's user authentication numbers it.
@@ -62,7 +63,7 @@ pub struct Bindings {
 impl Bindings {
     /// Take a `session-bind@openssh.com` extension's fields, keeping the
     /// session when its host is one in `hosts` and that host signed it.
-    pub fn bind(&mut self, hosts: &Hosts, fields: &mut Fields) -> Result<(), String> {
+    pub fn bind(&mut self, hosts: &Hosts, fields: &mut Fields) -> Result<(), Refusal> {
         let host = fields.string()?;
         let session = fields.string()?;
         let signed = fields.string()?;
@@ -70,23 +71,24 @@ impl Bindings {
         fields.done()?;
         if forwarding {
             self.forwarded = true;
-            return Err("a session reached through a forwarded agent".to_owned());
+            return Err(Refusal::new(
+                Why::Forwarded,
+                "a session reached through a forwarded agent",
+            ));
         }
         let host = PublicKey::from_bytes(host)
             .map_err(|error| format!("a host key it can't read: {error}"))?;
         if !hosts.allows(host.key_data()) {
-            return Err(format!(
-                "a session with a host it isn't told of ({})",
-                host.fingerprint(HashAlg::Sha256)
-            ));
+            return Err(
+                Refusal::new(Why::UntoldHost, "a session with a host it isn't told of")
+                    .at(host.key_data()),
+            );
         }
-        let signed = Signature::try_from(signed)
-            .map_err(|error| format!("a host signature it can't read: {error}"))?;
+        let signed = Signature::try_from(signed).map_err(|error| {
+            Refusal::from(format!("a host signature it can't read: {error}")).at(host.key_data())
+        })?;
         host.key_data().verify(session, &signed).map_err(|_| {
-            format!(
-                "a session its host ({}) didn't sign",
-                host.fingerprint(HashAlg::Sha256)
-            )
+            Refusal::new(Why::Unsigned, "a session its host didn't sign").at(host.key_data())
         })?;
         self.bound.push(Bound {
             session: session.to_vec(),
@@ -96,46 +98,71 @@ impl Bindings {
     }
 
     /// Whether `data` is a login, with the key `key`, to a session bound
-    /// with a host this agent is told of; why not, when it isn't.
-    pub fn permits(&self, key: &[u8], data: &[u8]) -> Result<(), String> {
+    /// with a host this agent is told of: that session's host when it is,
+    /// and why not when it isn't.
+    pub fn permits(&self, key: &[u8], data: &[u8]) -> Result<&KeyData, Refusal> {
         if self.forwarded {
-            return Err("its client reached it through a forwarded agent".to_owned());
+            return Err(Refusal::new(
+                Why::Forwarded,
+                "its client reached it through a forwarded agent",
+            ));
         }
         let mut fields = Fields::new(data);
-        let session = fields.string().map_err(|_| "it isn't a login".to_owned())?;
+        let session = fields
+            .string()
+            .map_err(|_| Refusal::new(Why::NotLogin, "it isn't a login"))?;
         let bound = self
             .bound
             .iter()
             .find(|one| one.session == session)
             .ok_or_else(|| {
-                "it isn't a login to a session bound with a host it's told of".to_owned()
+                Refusal::new(
+                    Why::NoSession,
+                    "it isn't a login to a session bound with a host it's told of",
+                )
             })?;
-        if fields.byte()? != USERAUTH_REQUEST {
-            return Err("it isn't a login".to_owned());
-        }
-        let _user = fields.string()?;
-        if fields.string()? != b"ssh-connection" {
-            return Err("it logs in for something other than a connection".to_owned());
-        }
-        let hostbound = match fields.string()? {
-            b"publickey" => false,
-            b"publickey-hostbound-v00@openssh.com" => true,
-            _ => return Err("it isn't a public key login".to_owned()),
-        };
-        if !fields.boolean()? {
-            return Err("it asks for no signature".to_owned());
-        }
-        let _algorithm = fields.string()?;
-        if fields.string()? != key {
-            return Err("it names another key than the one asked to sign".to_owned());
-        }
-        if hostbound {
-            let named = PublicKey::from_bytes(fields.string()?)
-                .map_err(|error| format!("a host key it can't read: {error}"))?;
-            if *named.key_data() != bound.host {
-                return Err("it names another host than the session's".to_owned());
-            }
-        }
-        fields.done()
+        login(&mut fields, key, &bound.host).map_err(|refusal| refusal.at(&bound.host))?;
+        Ok(&bound.host)
     }
+}
+
+/// Whether the rest of `fields`, after a login's session, logs in with
+/// `key` to `host`; why not, when it doesn't.
+fn login(fields: &mut Fields, key: &[u8], host: &KeyData) -> Result<(), Refusal> {
+    let not_login = |detail: &str| Refusal::new(Why::NotLogin, detail);
+    if fields.byte()? != USERAUTH_REQUEST {
+        return Err(not_login("it isn't a login"));
+    }
+    let _user = fields.string()?;
+    if fields.string()? != b"ssh-connection" {
+        return Err(not_login(
+            "it logs in for something other than a connection",
+        ));
+    }
+    let hostbound = match fields.string()? {
+        b"publickey" => false,
+        b"publickey-hostbound-v00@openssh.com" => true,
+        _ => return Err(not_login("it isn't a public key login")),
+    };
+    if !fields.boolean()? {
+        return Err(not_login("it asks for no signature"));
+    }
+    let _algorithm = fields.string()?;
+    if fields.string()? != key {
+        return Err(Refusal::new(
+            Why::Mismatch,
+            "it names another key than the one asked to sign",
+        ));
+    }
+    if hostbound {
+        let named = PublicKey::from_bytes(fields.string()?)
+            .map_err(|error| format!("a host key it can't read: {error}"))?;
+        if named.key_data() != host {
+            return Err(Refusal::new(
+                Why::Mismatch,
+                "it names another host than the session's",
+            ));
+        }
+    }
+    Ok(fields.done()?)
 }

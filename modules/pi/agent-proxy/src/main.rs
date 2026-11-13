@@ -10,13 +10,16 @@
 //! agents' own) only with their keys and with signatures for logins to
 //! the hosts in `--hosts`, each proved by the session's own binding
 //! (src/bind.rs). Anything else a client asks, adding a key, removing
-//! one, locking, or a signature for anything else, is refused, and
-//! every refusal is said on stderr, so the journal holds why.
+//! one, locking, or a signature for anything else, is refused. Each
+//! login signed and each refusal is said on stderr in one line of a
+//! fixed shape (src/said.rs), so the journal holds the host and why, as
+//! words a reader can keep without the line's free text.
 //!
 //! systemd hands it its listening socket (`LISTEN_FDS`); `--socket`
 //! binds one itself, as the tests do.
 
 mod bind;
+mod said;
 mod wire;
 
 use std::collections::HashMap;
@@ -32,6 +35,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
 use bind::{Bindings, Hosts};
+use said::{Refusal, Why, signed_line};
 use wire::{Fields, put_string, read_message, write_message};
 
 /// What an agent answers when it won't, or can't, do what it was asked.
@@ -43,6 +47,8 @@ const REQUEST_IDENTITIES: u8 = 11;
 const IDENTITIES_ANSWER: u8 = 12;
 /// A client asking for a signature.
 const SIGN_REQUEST: u8 = 13;
+/// An agent's answer with the signature it was asked for.
+const SIGN_RESPONSE: u8 = 14;
 /// A client asking for something the protocol leaves to extensions.
 const EXTENSION: u8 = 27;
 /// The extension that binds a client's connection to a session.
@@ -112,9 +118,8 @@ fn main() {
             Ok(stream) => {
                 // Dropped at once, which closes it, when there's no place.
                 let Some(place) = Place::take(&shared) else {
-                    eprintln!(
-                        "pi-agent-proxy: refused a client, since {MOST_CLIENTS} are answered already"
-                    );
+                    let busy = format!("a client, since {MOST_CLIENTS} are answered already");
+                    eprintln!("{}", Refusal::new(Why::Busy, busy).line());
                     continue;
                 };
                 thread::spawn(move || serve(&place.0, stream));
@@ -225,10 +230,11 @@ impl<'a> Session<'a> {
             Ok(REQUEST_IDENTITIES) => self.identities(),
             Ok(SIGN_REQUEST) => self.sign(request, &mut fields),
             Ok(EXTENSION) => self.extension(&mut fields),
-            Ok(kind) => refused(&format!(
-                "a request of kind {kind}, since it only lists keys and signs logins"
+            Ok(kind) => refused(&Refusal::new(
+                Why::Request,
+                format!("a request of kind {kind}, since it only lists keys and signs logins"),
             )),
-            Err(why) => refused(&why),
+            Err(why) => refused(&Refusal::from(why)),
         }
     }
 
@@ -276,25 +282,44 @@ impl<'a> Session<'a> {
             let data = fields.string()?;
             let _flags = fields.number()?;
             fields.done()?;
-            self.bindings.permits(key, data)?;
-            Ok::<_, String>(key.to_vec())
+            let host = self.bindings.permits(key, data)?;
+            Ok::<_, Refusal>((key.to_vec(), host.clone()))
         })();
-        let key = match asked {
-            Ok(key) => key,
-            Err(why) => return refused(&format!("a signature, since {why}")),
+        let (key, host) = match asked {
+            Ok(asked) => asked,
+            Err(refusal) => return refused(&refusal),
         };
         if !self.holders.contains_key(&key) {
             self.identities();
         }
         let Some(&at) = self.holders.get(&key) else {
-            return refused("a signature with a key no agent behind holds");
+            return refused(
+                &Refusal::new(
+                    Why::NoHolder,
+                    "a signature with a key no agent behind holds",
+                )
+                .at(&host),
+            );
         };
+        let shared = self.shared;
+        let behind = shared.upstreams[at].display();
         match self.ask(at, request) {
-            Ok(answer) => answer,
-            Err(error) => refused(&format!(
-                "a signature, since {} couldn't be asked: {error}",
-                self.shared.upstreams[at].display()
-            )),
+            Ok(answer) if answer.first() == Some(&SIGN_RESPONSE) => {
+                eprintln!("{}", signed_line(&host));
+                answer
+            }
+            Ok(answer) => {
+                let declined = format!("a signature, since {behind} declined it");
+                eprintln!("{}", Refusal::new(Why::Upstream, declined).at(&host).line());
+                answer
+            }
+            Err(error) => refused(
+                &Refusal::new(
+                    Why::Upstream,
+                    format!("a signature, since {behind} couldn't be asked: {error}"),
+                )
+                .at(&host),
+            ),
         }
     }
 
@@ -303,13 +328,16 @@ impl<'a> Session<'a> {
         match fields.string() {
             Ok(SESSION_BIND) => match self.bindings.bind(&self.shared.hosts, fields) {
                 Ok(()) => vec![SUCCESS],
-                Err(why) => refused(&format!("to bind {why}")),
+                Err(refusal) => refused(&refusal),
             },
-            Ok(name) => refused(&format!(
-                "the extension {}, which it doesn't take",
-                String::from_utf8_lossy(name)
+            Ok(name) => refused(&Refusal::new(
+                Why::Extension,
+                format!(
+                    "the extension {}, which it doesn't take",
+                    String::from_utf8_lossy(name)
+                ),
             )),
-            Err(why) => refused(&why),
+            Err(why) => refused(&Refusal::from(why)),
         }
     }
 
@@ -332,8 +360,8 @@ impl<'a> Session<'a> {
 }
 
 /// Say on stderr what was refused, and answer that it failed.
-fn refused(what: &str) -> Vec<u8> {
-    eprintln!("pi-agent-proxy: refused {what}");
+fn refused(refusal: &Refusal) -> Vec<u8> {
+    eprintln!("{}", refusal.line());
     vec![FAILURE]
 }
 
