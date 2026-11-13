@@ -1503,6 +1503,10 @@
     opened, closed or moved, a cast or a screenshot, as niri's events did, with a window used or a
     workspace activated making no list again
   '';
+  niri-lets-x11-in-only-with-its-cookie = ''
+    the session's niri, nested in the sandbox, starts an Xwayland that lets in an X11 client holding
+    its cookie and refuses one without it
+  '';
   niri-moving-the-keys-makes-no-list-again = ''
     The shell's niri moves the keys, to a window or to a workspace's other window, and keeps a
     window used, without making any list again, and still lists again a window retitled, opened or

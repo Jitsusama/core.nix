@@ -196,6 +196,14 @@ in
         '';
       };
 
+  # Where the cookie Xwayland asks for is kept (xwayland-satellite.sh), for
+  # every program the user manager starts, niri and the launcher's
+  # included, so an X11 program they start finds it. The user manager
+  # expands ${XDG_RUNTIME_DIR}, which isn't known before login.
+  config.systemd.user.sessionVariables = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    XAUTHORITY = "\${XDG_RUNTIME_DIR}/xwayland-auth";
+  };
+
   # The touchscreen's swipes, which niri does itself (nixos.nix's patch), as
   # the touchpad's: three fingers move the columns and the workspaces the way
   # the content moves under them, four up open the overview and four down
