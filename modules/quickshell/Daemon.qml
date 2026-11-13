@@ -366,7 +366,10 @@ Scope {
         if (answer.id in apart)
             delete apart[answer.id];
         else if (whole && answersWhole) {
-            const holds = new Set(answer.records.map(record => record?.key));
+            // What's watched ahead is told by its own watch, which a whole answer of the kind never
+            // names, so it isn't let go with what went: a drawer served apart, held ahead, went at
+            // each opening whose whole answer came after the ahead one's (FEH1HE, 2026-11-12).
+            const holds = new Set(answer.records.map(record => record?.key).concat(ahead));
             took(answer.records, Object.keys(held).filter(key => !holds.has(key)), false);
         } else
             took(answer.records ?? answer.changed, answer.gone, answer.records === undefined);
