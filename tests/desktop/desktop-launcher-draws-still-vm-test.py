@@ -70,6 +70,18 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.close_launcher()
+    # Warming makes home and the chords' places once a start, joining the
+    # rows once as it does, and an opening puts it off until the launcher
+    # is shut again, so it's waited out too: it's no change heard while
+    # closed, which is what's counted.
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(
+            "journalctl --user --output=cat"
+            ' _PID="$(systemctl --user show quickshell -p MainPID --value)"'
+            " | grep -q 'places kept as the shell started'"
+        ),
+        timeout=STARTING,
+    )
     before = int(desktop.as_account("qs ipc call launcher joined"))
     since = desktop.mark()
     lined: Json = {"v": 1, "heartbeat": 0.0, "machine": {}, "jobs": []}

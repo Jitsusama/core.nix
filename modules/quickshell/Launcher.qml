@@ -7537,15 +7537,18 @@ Scope {
     // Whether a follow waits for the next frame, so keys handled before one
     // comes follow once, for where they left the selection.
     property bool drawerFollowDue: false
-    // How long each kind of drawer, by its place, took to make of late, by
+    // How long each kind of drawer, by its place and row, took to make of late, by
     // which one out comes in its key's own frame where its kind is cheap
     // (Pacing.js's drawerJoinsKey), and whether the one followed last did.
     // Kept while shut, as the cost is the place's and not the opening's,
     // so the first key of the next opening is decided from evidence too.
     property var drawerMakings: ({})
     property bool drawerJoined: false
-    function drawerKindOf(row) {
+    function drawerPlaceOf(row) {
         return row?.from?.settings?.name ?? "home";
+    }
+    function drawerKindOf(row) {
+        return Pacing.drawerKind(drawerPlaceOf(row), row);
     }
     // When the key that selected the row the drawer is for was pressed, on
     // KeyTimes's clock, or 0 where no key did, as when a daemon's rows move
@@ -7636,7 +7639,7 @@ Scope {
         const made = KeyTimes.now();
         const came = Pacing.drawerCame(drawerJoined);
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
-            place: drawerKindOf(drawerRow), came } : null;
+            place: drawerPlaceOf(drawerRow), came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {

@@ -24,7 +24,8 @@ pictures back. An nix-offload that can't take that runs it here.
 
 A check the net holds in quarantine on origin's main
 (tools/merge-net/quarantine.json) still runs, but its failure is said and
-blocks nothing: the run exits 0.
+blocks nothing: the run exits 0. An entry naming subtests excuses only a run
+built elsewhere whose every failed subtest it names, as the net judges one.
 """
 
 import argparse
@@ -43,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterable, Iterator, Sequence
 
 # The driver puts its network switch's socket a few names under
 # XDG_RUNTIME_DIR, and a socket's path can't pass 108 bytes, so a runtime
@@ -74,6 +75,10 @@ NOT_A_VM_TEST = "isn't a VM test, so it has no subtests"
 # branch can't quarantine its own failure.
 QUARANTINE = "tools/merge-net/quarantine.json"
 MAIN = "refs/remotes/origin/main"
+
+# A failed pytest test as a build's log says it, read as merge-net's
+# subtests.rs reads it: by its function's name, its parameters dropped.
+FAILED_TEST = re.compile(r"FAILED \S*::(test_\w+)")
 
 type Chunk = tuple[str | None, list[str]]
 
@@ -322,8 +327,17 @@ def nix_string(text: str) -> str:
     return json.dumps(text).replace("${", "\\${")
 
 
-def there(options: Options) -> int | None:
+def failed_tests(lines: Iterable[str]) -> frozenset[str]:
+    """Give the pytest tests a build's log says failed, by their functions' names."""
+    return frozenset(
+        found.group(1) for line in lines if (found := FAILED_TEST.search(line)) is not None
+    )
+
+
+def there(options: Options) -> tuple[int, frozenset[str]] | None:
     """Have nix-offload build and run it elsewhere, or None when it can't.
+
+    It gives the build's status and the tests its log says failed.
 
     nix-offload refuses arguments it doesn't know with USAGE, as one too old
     for --apply and --out does, and one that isn't installed can't be run.
@@ -339,7 +353,7 @@ def there(options: Options) -> int | None:
     command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
     print(f"building {options.check}'s subtests where nix-offload builds", file=sys.stderr)
     try:
-        status, refused = offloaded([*command, flake, f"legacyPackages.{system}.subtests"])
+        status, refused, failed = offloaded([*command, flake, f"legacyPackages.{system}.subtests"])
     except FileNotFoundError:
         return None
     if refused:
@@ -348,7 +362,7 @@ def there(options: Options) -> int | None:
             f"nix-offload there . checks.{system}.{options.check}",
             file=sys.stderr,
         )
-        return USAGE
+        return USAGE, frozenset()
     if status == USAGE:
         return None
     listed = out / "subtests"
@@ -356,21 +370,23 @@ def there(options: Options) -> int | None:
         print(listed.read_text(), end="")
     else:
         say_pictures(out, options.check)
-    return status
+    return status, failed
 
 
-def offloaded(command: list[str]) -> tuple[int, bool]:
-    """Run nix-offload, and give its status and whether it refused the check.
+def offloaded(command: list[str]) -> tuple[int, bool, frozenset[str]]:
+    """Run nix-offload, and give its status, whether it refused the check, and what failed.
 
     Its errors are shown as they come, and read for subtests.nix's refusal
-    of a check that isn't a VM test.
+    of a check that isn't a VM test and for the tests the build says failed.
     """
     refused = False
+    said: list[str] = []
     with subprocess.Popen(command, stderr=subprocess.PIPE, text=True) as running:  # noqa: S603
         for line in running.stderr or ():
             sys.stderr.write(line)
             refused = refused or NOT_A_VM_TEST in line
-    return running.returncode, refused
+            said.append(line)
+    return running.returncode, refused, failed_tests(said)
 
 
 def say_pictures(out: Path, check: str) -> None:
@@ -418,8 +434,27 @@ def quarantined(flake: str, check: str) -> dict[str, object] | None:
     return None
 
 
-def blocking(options: Options, status: int) -> int:
-    """Give the run's status, a failure of a check main quarantines read as none.
+def excused(held: dict[str, object], failed: frozenset[str]) -> bool:
+    """Say whether a quarantine entry excuses a run in which those tests failed.
+
+    A whole entry excuses any failure. One naming subtests excuses a run
+    only when it names every test that failed, and never a run that names
+    none, such as one that timed out or ran here, as merge-net judges it.
+    """
+    listed = listed_subtests(held)
+    return listed is None or (bool(failed) and failed <= listed)
+
+
+def listed_subtests(held: dict[str, object]) -> frozenset[str] | None:
+    """Give the subtests a quarantine entry names, or None for a whole entry."""
+    listed = held.get("subtests")
+    if not isinstance(listed, list):
+        return None
+    return frozenset(name for name in cast("list[object]", listed) if isinstance(name, str))
+
+
+def blocking(options: Options, status: int, failed: frozenset[str]) -> int:
+    """Give the run's status, a failure main's quarantine excuses read as none.
 
     Inside a build, given its driver, the status is the build's own, and
     the run that sent it there reads the list.
@@ -428,6 +463,14 @@ def blocking(options: Options, status: int) -> int:
         return status
     held = quarantined(options.flake, options.check)
     if held is None:
+        return status
+    if not excused(held, failed):
+        unlisted = ", ".join(sorted(failed - (listed_subtests(held) or frozenset())))
+        print(
+            f"run-subtests: {options.check} failed in {unlisted or 'no test its log names'}, "
+            "which main's quarantine doesn't excuse, so it blocks",
+            file=sys.stderr,
+        )
         return status
     reason = held.get("reason") or "no reason given"
     owner = f"; #{held['owner_pr']} owns it" if held.get("owner_pr") else ""
@@ -442,16 +485,18 @@ def blocking(options: Options, status: int) -> int:
 def main(argv: Sequence[str]) -> int:
     """List a check's subtests, or run those the words name."""
     options = arguments(argv)
-    return blocking(options, ran(options))
+    if options.there:
+        built = there(options)
+        if built is not None:
+            return blocking(options, *built)
+        print("nix-offload can't build it elsewhere, so it runs here", file=sys.stderr)
+    # A run here shows its output as it comes and reads none of it, so it
+    # names no failed test.
+    return blocking(options, ran(options), frozenset())
 
 
 def ran(options: Options) -> int:
-    """List a check's subtests, or run those the words name, and give the status."""
-    if options.there:
-        status = there(options)
-        if status is not None:
-            return status
-        print("nix-offload can't build it elsewhere, so it runs here", file=sys.stderr)
+    """List a check's subtests, or run those the words name, here, and give the status."""
     driver = options.driver or build_driver(options.flake, options.check)
     script = (driver / "test-script").read_text()
     if pytest_driven(script):
