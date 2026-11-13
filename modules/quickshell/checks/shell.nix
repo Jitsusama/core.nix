@@ -347,7 +347,8 @@
   # to another file, or watching again, keeps the one watcher it made
   # (fileview-keeps-its-watcher.patch), counted from Quickshell's log: each
   # one dropped cost the shell's thread a millisecond, 130 of them as it
-  # started.
+  # started. Kept in Nix because each line copies a file Nix gives it beside
+  # the shell, or runs the Quickshell it builds.
   a-watched-file-comes-back = pkgs.runCommandLocal "a-watched-file-comes-back" { } ''
     mkdir runtime && chmod 700 runtime
     cp ${../pieces/StatusFile.qml} StatusFile.qml
