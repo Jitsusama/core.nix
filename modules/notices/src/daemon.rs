@@ -2,7 +2,9 @@
 //! shell's asks share: the notices, what arrivals are judged by, and the
 //! signals owed to senders, which the daemon's loop sends in the order
 //! they were owed. An arrival and every ask are here rather than in the
-//! bus or the socket, so they're tested without either.
+//! bus or the socket, so they're tested without either. Long because
+//! half of it is those tests, which drive the one State through each ask
+//! and arrival with helpers of their own.
 //!
 //! The shell asks, over its socket (src/main.rs), what Joel does to a
 //! notice; each answers `{ done: true }`, or an error the shell can say:
