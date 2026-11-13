@@ -71,7 +71,9 @@
     "subtests": [
       "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
       "test_no_answer_raised_an_error",
+      "test_power_says_what_kept_the_processor_from_resting_on_battery",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_processors_telemetry_shows_in_heat_and_in_what_held_it_back",
       "test_the_time_here_says_how_the_clock_is_kept"
     ],
     "test": "vm-desktop-launcher-answers"
