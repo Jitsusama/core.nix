@@ -455,11 +455,17 @@ pub fn follow(into: &Path) -> io::Result<()> {
             .timing_typing(&state.join("pi-keys"))
             .pooling_keys(&state.join(trials::SHELLS));
     }
-    // systemd gives every account's service its runtime folder, and launchd
-    // its agent a temporary folder of its own, where the account's guard
-    // keeps its status.
+    // systemd gives every account's service its runtime folder, where the
+    // account's guard keeps its status. A Mac has none; there it's TMPDIR,
+    // the temporary folder launchd gives each agent, the guard's included.
+    // Linux's TMPDIR is somewhere else, so it's never read there, as the
+    // guard never reads it.
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .or_else(|| std::env::var_os("TMPDIR"))
+        .or_else(|| {
+            cfg!(target_os = "macos")
+                .then(|| std::env::var_os("TMPDIR"))
+                .flatten()
+        })
         .map(PathBuf::from);
     follower = follower.guarding(disk::statuses(runtime.as_deref(), source.guard_status()));
     if let Some(processes) = source.processes() {

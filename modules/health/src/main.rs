@@ -54,6 +54,7 @@ mod feel;
 mod figures;
 mod follow;
 mod journal;
+mod kernel;
 mod launcher;
 mod launches;
 mod lid;

@@ -13,6 +13,7 @@ use crate::busy::Busy;
 use crate::disk::Disks;
 use crate::feel::Pain;
 use crate::journal::{Entry, Mark, Whose};
+use crate::kernel;
 use crate::launcher::{self, Launcher};
 use crate::launches::Launches;
 use crate::memory::Memory;
@@ -41,19 +42,6 @@ const SECURITY: [&str; 12] = [
     "unix_chkpwd",
     "login",
     "greetd",
-];
-
-/// What the kernel says only as information that's still a device going
-/// wrong, or going away: a USB device dropped or reset, a PCI Express link's
-/// corrected errors, a processor throttled, firmware that wouldn't load.
-/// Each is said in full in the kernel's own words, and matched as written.
-const DEVICE_EVENTS: [&[&str]; 6] = [
-    &["USB disconnect"],
-    &["reset ", " USB device number "],
-    &["AER: ", " error"],
-    &["throttled"],
-    &["Direct firmware load"],
-    &["failed to load firmware"],
 ];
 
 /// Which kind of thing a line is about, as `health` groups them.
@@ -264,7 +252,7 @@ impl Day {
             return;
         }
         let event = entry.priority > 4 && !entry.restart;
-        if event && !(entry.kernel && is_device_event(&entry.message)) {
+        if event && !(entry.kernel && kernel::is_device_event(&entry.message)) {
             return;
         }
         let (name, kind) = named(entry);
@@ -468,30 +456,16 @@ impl std::ops::Add for Badness {
     }
 }
 
-/// Whether a kernel line said as information is a device's event.
-fn is_device_event(message: &str) -> bool {
-    DEVICE_EVENTS
-        .iter()
-        .any(|words| words.iter().all(|word| message.contains(word)))
-}
-
 /// The thing an entry is about, and its kind: a crashed program by its
-/// name, a kernel line by the driver or device it opens with (the audit's
-/// and a Mac's sandbox's are security's), and anything else by what said
-/// it, a program's when it ran in a scope or a Mac's app.
+/// name, a kernel line by the driver or device it's from (the audit's and
+/// a Mac's refusals are security's), and anything else by what said it, a
+/// program's when it ran in a scope or a Mac's app.
 fn named(entry: &Entry) -> (String, Kind) {
     if let Some(program) = &entry.crashed {
         return (program.clone(), Kind::Programs);
     }
     if entry.kernel {
-        let opening = entry.message.split_whitespace().next().unwrap_or("kernel");
-        let device = sign::signature(opening.trim_end_matches(':'));
-        let kind = if matches!(device.as_str(), "audit" | "Sandbox") {
-            Kind::Security
-        } else {
-            Kind::Devices
-        };
-        return (device, kind);
+        return kernel::named(&entry.message);
     }
     let kind = if SECURITY.contains(&entry.thing.as_str()) {
         Kind::Security
