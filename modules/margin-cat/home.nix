@@ -53,6 +53,15 @@
 
   config = {
     jitsusama.quickshell.surfaces.MarginCat = ./MarginCat.qml;
+    # Each screen's cat, beside it rather than a surface of its own.
+    xdg.configFile."quickshell/surfaces/MarginCatScreen.qml".source = ./MarginCatScreen.qml;
+    # Quickshell makes a folder's types known only for folders it found
+    # by following imports, and a surface is loaded by its path, so
+    # MarginCat.qml would find no MarginCatScreen type beside it without
+    # a qmldir naming it.
+    xdg.configFile."quickshell/surfaces/qmldir".text = ''
+      MarginCatScreen 1.0 MarginCatScreen.qml
+    '';
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
     xdg.configFile."quickshell/surfaces/MarginCatPlays.js".source = ./MarginCatPlays.js;
     # Its settings in its own file beside it, read as it starts.

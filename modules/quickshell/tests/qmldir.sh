@@ -7,6 +7,10 @@
 set -euo pipefail
 
 find "$1" -type d | while read -r dir; do
+  # A folder a module ships a qmldir to (surfaces/, for margin-cat's
+  # MarginCatScreen) has it read-only from the store; this one names the
+  # same types, and the module qmllint wants, so it takes its place.
+  rm -f "$dir/qmldir"
   {
     echo "module ${dir//\//.}"
     for file in "$dir"/[A-Z]*.qml; do

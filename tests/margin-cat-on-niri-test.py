@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Json, Shell
 
-# What the cat says each time it's placed (modules/margin-cat/MarginCat.qml).
+# What the cat says each time it's placed (modules/margin-cat/MarginCatScreen.qml).
 SITS = "sits cat "
 # How long the cat's last frame, or its hearing the lock's word, may take to land.
 LANDS = 2.0
@@ -46,9 +46,10 @@ IDLE, DOZES, POSED = 30.0, 60, 2
 # How long the cat's stretch holds as the lock lets go: about half a second, and no less than
 # a glance, nor so long that it's in the way of the keys pressed next.
 STRETCHES = (0.3, 1.0)
-# How long the keys rest on a column before the cat walks there (modules/margin-cat/MarginCat.qml),
-# the beats of its walk in order (MarginCat.js), and the longest the shell may take to sync and
-# render one of its frames, a quarter of a frame at 60, so its own work never costs one.
+# How long the keys rest on a column before the cat walks there
+# (modules/margin-cat/MarginCatScreen.qml), the beats of its walk in order (MarginCat.js), and the
+# longest the shell may take to sync and render one of its frames, a quarter of a frame at 60, so
+# its own work never costs one.
 RESTS = 2.0
 BEATS = ["turns", "thinks", "crouches", "goes", "settles", "lands"]
 # The shortest of them, its crouch, in ms: a frame of the nested niri's longer than it may

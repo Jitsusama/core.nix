@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from launcher_on_niri import Json, Shell
 
-# What the cat says each time it's placed or posed (modules/margin-cat/MarginCat.qml).
+# What the cat says each time it's placed or posed (modules/margin-cat/MarginCatScreen.qml).
 SITS = "sits cat "
 # The small moves it makes while he types, and the poses of its plays in place.
 GLANCES = {"earFlick", "tailSwish", "blinking"}
@@ -59,7 +59,7 @@ def shell() -> Iterator[Shell]:
 
 
 def walking(at: Json) -> bool:
-    """Say whether a place is a step of a walk, as MarginCat.qml says each one."""
+    """Say whether a place is a step of a walk, as MarginCatScreen.qml says each one."""
     return bool(at.get("walk"))
 
 

@@ -1,4 +1,4 @@
-// Where the margin's cat sits and how big it's drawn (MarginCat.qml): on
+// Where the margin's cat sits and how big it's drawn (MarginCatScreen.qml): on
 // the top edge of the column Joel is in, in the gap the windows leave above
 // them, so it covers nothing of his and moves only where he already looks;
 // and how it walks from one column to another, where it is at each moment

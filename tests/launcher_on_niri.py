@@ -539,7 +539,7 @@ def placed(said: str) -> Json | None:
     """Give where a margin cat's report says it sits, or None where it says nowhere.
 
     A report is the screen's name, where it sits or nowhere, and the column it saw under it
-    (modules/margin-cat/MarginCat.qml's say), as both of the cat's tests on niri read it.
+    (modules/margin-cat/MarginCatScreen.qml's say), as both of the cat's tests on niri read it.
     """
     _, rest = said.split(" ", 1)
     at, _ = rest.split(" over ", 1)
