@@ -133,8 +133,8 @@ let
   # notice's actions had nothing to read, and a screen could never be null,
   # so those stand-ins are taken out, as Qt 6.11 wrote the files: qmllint
   # finds the types Quickshell's core declares, and the actions as a list of
-  # the module's own NotificationAction. The launcher's maths and key times
-  # sit beside them, as the machine's Quickshell finds them
+  # the module's own NotificationAction. The launcher's maths, key times and
+  # heap sit beside them, as the machine's Quickshell finds them
   # (modules/quickshell/nixos.nix). They're read from the machine's own
   # Quickshell, its patches laid on, so a type a patch adds, as
   # FramePresentation, is known.
@@ -144,6 +144,8 @@ let
     cp -r ${pkgs.callPackage ./modules/quickshell/maths/package.nix { }}/lib/qt-6/qml/Maths \
       $out/lib/qt-6/qml/
     cp -r ${pkgs.callPackage ./modules/quickshell/key-times/package.nix { }}/lib/qt-6/qml/KeyTimes \
+      $out/lib/qt-6/qml/
+    cp -r ${pkgs.callPackage ./modules/quickshell/heap/package.nix { }}/lib/qt-6/qml/Heap \
       $out/lib/qt-6/qml/
     chmod -R u+w $out
     echo 'depends Quickshell' >> $out/lib/qt-6/qml/Quickshell/Wayland/_BackgroundEffect/qmldir
