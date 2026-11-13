@@ -304,11 +304,18 @@ pub fn kept(
 /// No record of reads may stand for one of these. The closure is transitive
 /// on purpose: `formatting` takes the source in through treefmt's check, a
 /// derivation it depends on, which `--referrers` alone wouldn't name.
+/// A check naming the source's root by a path takes a copy of it in, as
+/// [`copied`] says, which counts the same.
 pub fn taking_whole<'a>(
     source: &str,
     derivations: &'a Derivations,
 ) -> Result<BTreeSet<&'a str>, String> {
-    let asked = ["--query", "--referrers-closure", source];
+    let copy = copied(source)?;
+    let mut asked = vec!["--query", "--referrers-closure", source];
+    // Nix refuses a path it doesn't hold, and none took a copy not made.
+    if Path::new(&copy).exists() {
+        asked.push(&copy);
+    }
     let referring = crate::run("nix-store", &asked)?;
     let referring: BTreeSet<&str> = referring.lines().collect();
     Ok(derivations
@@ -320,6 +327,20 @@ pub fn taking_whole<'a>(
         })
         .map(|(name, _)| name.as_str())
         .collect())
+}
+
+/// The path Nix copies the source's root to when a file names it by a
+/// path, as `src = ../..` in a folder's `checks.nix` does: one of its own,
+/// named after the source's, made without reading a file a trace sees.
+/// every-long-file-says-why took it so on 13 November, and its record said
+/// it read no file, so a gate kept its base's derivation through a change.
+fn copied(source: &str) -> Result<String, String> {
+    let name = Path::new(source)
+        .file_name()
+        .map(|it| it.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("{source} names no file"))?;
+    let asked = ["store", "add", "--dry-run", "--name", &name, source];
+    crate::run("nix", &crate::evaluating::pure(&asked))
 }
 
 /// Give the derivations kept at the path, or none when nothing is kept.
