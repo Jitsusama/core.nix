@@ -191,6 +191,8 @@
           '';
       in
       {
+        # A clock moved hours ago, with a zone put back from and held.
+        clock-follows = [ { state = ../../modules/quickshell/clock-follows/tests/a-moved-clock; } ];
         # A laptop with a failed device, a missing one and a disk's fault.
         device-check = [
           {

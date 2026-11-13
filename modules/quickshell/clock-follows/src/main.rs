@@ -358,21 +358,26 @@ fn shown(state: &Path) -> Value {
     json!({ "schema": "clock-follows.show/1", "moved": moved, "held": held })
 }
 
-/// The same for a person, as facts.
-fn said(shown: &Value, context: &Context) -> String {
-    let text = |key: &str| shown["moved"][key].as_str();
+/// The same for a person, as facts, the move's time said as how long
+/// before `now` it was.
+fn said(state: &Path, now: u64, context: &Context) -> String {
+    let moved = read::<Moved>(&state.join("moved.json"));
+    let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
+    let ago = moved
+        .as_ref()
+        .map(|moved| format!("{} ago", time::span(now.saturating_sub(moved.when))));
     let mut facts = Vec::new();
-    if shown["moved"].is_null() {
-        facts.push(("moved", Some("not since it was last put back, or ever")));
+    if let Some(moved) = &moved {
+        facts.push(("moved to", Some(moved.to.as_str())));
+        facts.push(("from", Some(moved.from.as_str())));
+        facts.push(("found in", moved.place.as_deref()));
+        facts.push(("when", ago.as_deref()));
     } else {
-        facts.push(("moved to", text("to")));
-        facts.push(("from", text("from")));
-        facts.push(("found in", text("place")));
-        facts.push(("when", text("moved_at")));
+        facts.push(("moved", Some("not since it was last put back, or ever")));
     }
     facts.push((
         "held",
-        Some(shown["held"].as_str().unwrap_or("nothing, so the clock follows")),
+        Some(held.as_deref().unwrap_or("nothing, so the clock follows")),
     ));
     let mut lines = layout::facts(&facts, "unknown", &context.out, context.room).join("\n");
     lines.push('\n');
@@ -380,14 +385,29 @@ fn said(shown: &Value, context: &Context) -> String {
 }
 
 fn help() -> Help {
-    Help::new("clock-follows", "moves the clock's zone to where the laptop is")
-        .command("show [STATE]", "its last move and any zone held; the bare run")
-        .command("follow SOCKET STATE PROGRAM", "watches whereabouts and sets the zone")
-        .command("put-back STATE PROGRAM", "puts the zone back where it was")
-        .example("clock-follows", "what moved the clock last, and any zone held")
-        .example("clock-follows --json", "the same, as JSON")
-        .exit(Exit::Failed, "the zone couldn't be set, or its state kept")
-        .exit(Exit::Config, "no state folder named, and no XDG_STATE_HOME or HOME")
+    Help::new(
+        "clock-follows",
+        "moves the clock's zone to where the laptop is",
+    )
+    .command(
+        "show [STATE]",
+        "its last move and any zone held; the bare run",
+    )
+    .command(
+        "follow SOCKET STATE PROGRAM",
+        "watches whereabouts and sets the zone",
+    )
+    .command("put-back STATE PROGRAM", "puts the zone back where it was")
+    .example(
+        "clock-follows",
+        "what moved the clock last, and any zone held",
+    )
+    .example("clock-follows --json", "the same, as JSON")
+    .exit(Exit::Failed, "the zone couldn't be set, or its state kept")
+    .exit(
+        Exit::Config,
+        "no state folder named, and no XDG_STATE_HOME or HOME",
+    )
 }
 
 fn asked_wrongly(what: &str) -> Failure {
@@ -402,16 +422,19 @@ fn main() -> ExitCode {
         };
         match args.as_slice() {
             [] | ["show"] | ["show", _] => {
-                let state = args.get(1).map(PathBuf::from).or_else(kept_state).ok_or_else(|| {
-                    Failure::new(Exit::Config, "there's no state folder to read")
-                        .because("neither XDG_STATE_HOME nor HOME is set")
-                        .try_this("clock-follows show STATE")
-                })?;
-                let shown = shown(&state);
+                let state = args
+                    .get(1)
+                    .map(PathBuf::from)
+                    .or_else(kept_state)
+                    .ok_or_else(|| {
+                        Failure::new(Exit::Config, "there's no state folder to read")
+                            .because("neither XDG_STATE_HOME nor HOME is set")
+                            .try_this("clock-follows show STATE")
+                    })?;
                 if context.format().is_json() {
-                    context.answer(&shown)
+                    context.answer(&shown(&state))
                 } else {
-                    context.say(&said(&shown, context))
+                    context.say(&said(&state, now(), context))
                 }
                 .map_err(failed("what it holds couldn't be said"))
             }
@@ -424,7 +447,9 @@ fn main() -> ExitCode {
             ["follow", ..] => Err(asked_wrongly(
                 "follow takes whereabouts' socket, a state folder and timedatectl",
             )),
-            ["put-back", ..] => Err(asked_wrongly("put-back takes a state folder and timedatectl")),
+            ["put-back", ..] => Err(asked_wrongly(
+                "put-back takes a state folder and timedatectl",
+            )),
             [word, ..] => Err(terminal_kit::flags::unknown(
                 "command",
                 word,
@@ -652,8 +677,7 @@ mod tests {
 
     #[test]
     fn the_state_is_shown_with_its_times_and_nulls() {
-        let state =
-            std::env::temp_dir().join(format!("clock-follows-show-{}", std::process::id()));
+        let state = std::env::temp_dir().join(format!("clock-follows-show-{}", std::process::id()));
         let _ = fs::remove_dir_all(&state);
         fs::create_dir_all(&state).unwrap();
         let nothing = shown(&state);
