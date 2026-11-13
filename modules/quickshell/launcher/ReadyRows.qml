@@ -9,7 +9,9 @@ pragma ComponentBehavior: Bound
 // watches beside its rows, a summary, a head or a drawer served apart, are held by key and never
 // placed. A row is made as every place's are by `thing`, its served acts its verbs, which ask
 // back on the same socket, copy, open a link or step within the launcher, so a place moving
-// onto it keeps no act of its own.
+// onto it keeps no act of its own. Long because holding, placing, making and acting all read
+// the one map of what's held, as a change remakes only the rows it touched: split, each part
+// would be handed the others' state and a change would cross them all.
 import QtQuick
 import Quickshell
 import qs
