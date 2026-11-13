@@ -232,10 +232,11 @@ fn shortened(text: &str) -> String {
         return text.to_owned();
     }
     let fits: String = text.chars().take(EXAMPLE_CHARS + 1).collect();
-    let kept = fits
-        .rsplit_once(' ')
-        .map_or(fits.as_str(), |(kept, _)| kept);
-    format!("{} ...", kept.trim_end())
+    let kept = match fits.rsplit_once(' ') {
+        Some((kept, _)) => kept.trim_end().to_owned(),
+        None => fits.chars().take(EXAMPLE_CHARS).collect(),
+    };
+    format!("{kept} ...")
 }
 
 /// The week's pains by area: each pain-points record since `since` by
@@ -457,6 +458,11 @@ mod tests {
             shortened("we can merge now, why are we holding?"),
             "we can merge now, why are we holding?",
             "a short example was changed"
+        );
+        assert_eq!(
+            shortened(&"x".repeat(150)),
+            format!("{} ...", "x".repeat(100)),
+            "one word past the limit was kept past it"
         );
     }
 
