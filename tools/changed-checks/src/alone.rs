@@ -12,9 +12,16 @@
 //! a time, those 24 took 39 s on the lent builder, against 69 s untraced in
 //! one process. A check whose trace can't be read, or whose derivation
 //! from the plain path isn't git's, goes unrecorded, so every gate
-//! evaluates it, as a gate does each check the record lacks. A keep
-//! records this only when none was recorded in the last 20 minutes, so
-//! most keep as quickly as before.
+//! evaluates it, as a gate does each check the record lacks.
+//!
+//! A keep past a recorded head copies what each check main's change from
+//! it reaches nothing of read there, as a gate keeps its derivation, and
+//! traces only the rest, so each kept head is recorded in about the time
+//! its change takes to trace. Recording only once in 20 minutes, as keeps
+//! did, left gates on 13 November judging from a record 25 merges behind,
+//! and 21 of 63 since noon paid a median 281 s evaluating main's side.
+//! Every few hours a keep traces every check again, so a copy misjudged
+//! is carried no further than that.
 //!
 //! A gate's base is most often a head of main past the newest recorded one:
 //! in four hours on 12 November, 80 of 183 runs evaluated their base, 50 of
@@ -59,12 +66,9 @@ use crate::runs::{Evaluation, Run};
 /// lighter than a chunk's.
 const AT_ONCE: usize = 16;
 
-/// How long a record of what each check read stands in for every keep
-/// after it. Tracing each check alone costs a keep about 400 s, which on
-/// every keep would put kept heads 12 to 17 minutes apart, where 3 of 12
-/// November's last 13 gates already found no recent kept main; recorded
-/// once in this long, every other keep stays as quick as before.
-const STANDS_FOR: Duration = Duration::from_mins(20);
+/// How long after every check was last traced alone a record may still be
+/// copied forward: tracing every one costs a keep about 400 s.
+const COPIED_FOR: Duration = Duration::from_hours(4);
 
 /// Where a gate holds a lock, shared, for as long as it runs, so a keep
 /// beside it begins no VM test's trace.
@@ -122,15 +126,6 @@ pub fn keep(root: &str, base: &str, system: &str, noted: &mut Run) {
     if at.exists() {
         return;
     }
-    let folder = crate::cache().join("changed-checks");
-    if recently_recorded(&folder, system, SystemTime::now()) {
-        eprintln!(
-            "changed-checks: what {system}'s checks each read was recorded under \
-             {} minutes ago, so this keep records it again later",
-            STANDS_FOR.as_secs() / 60
-        );
-        return;
-    }
     if let Err(why) = record(root, base, system, &at, noted) {
         eprintln!(
             "changed-checks: couldn't record what {system}'s checks each read at {}: {why}",
@@ -139,20 +134,50 @@ pub fn keep(root: &str, base: &str, system: &str, noted: &mut Run) {
     }
 }
 
-/// Whether what each of `system`'s checks read, at any base, was recorded
-/// in `folder` less than `STANDS_FOR` before `now`.
-fn recently_recorded(folder: &Path, system: &str, now: SystemTime) -> bool {
-    let named = format!("-{system}.alone.reads.json");
-    let Ok(entries) = fs::read_dir(folder) else {
-        return false;
-    };
-    entries.flatten().any(|entry| {
-        entry.file_name().to_string_lossy().ends_with(&named)
-            && entry
-                .metadata()
-                .and_then(|kept| kept.modified())
-                .is_ok_and(|at| now.duration_since(at).unwrap_or_default() < STANDS_FOR)
-    })
+/// What a record made since every check was last traced alone gives a keep
+/// of `base`: what each check main's change from its head reaches nothing
+/// of read there, where its derivation is the base's too, and when every
+/// check was last traced. Nothing when there's no such record, it was made
+/// from another tree, or every check was last traced `COPIED_FOR` ago.
+fn copied(
+    root: &str,
+    base: &str,
+    system: &str,
+    derivations: &Derivations,
+) -> Option<(BTreeMap<String, Reads>, u64)> {
+    let recorded = recorded(root, base, system).filter(|(head, _)| head != base)?;
+    let (head, known) = &recorded;
+    let text = fs::read_to_string(keeping(&crate::cache(), head, system)).ok()?;
+    let whole = serde_json::from_str::<Value>(&text)
+        .ok()?
+        .get("whole")?
+        .as_u64()?;
+    if now().saturating_sub(whole) >= COPIED_FOR.as_secs() {
+        return None;
+    }
+    let mut each = from_kept(&text, &reads::tree(root, head).ok()?)?;
+    let names: Vec<String> = derivations.keys().cloned().collect();
+    let (unreached, _) = partitioned(root, (head.as_str(), known), Some(base), system, &names)?;
+    let copied: BTreeMap<String, Reads> = unreached
+        .into_iter()
+        .filter(|name| known.get(name) == derivations.get(name))
+        .filter_map(|name| each.remove(&name).map(|reads| (name, reads)))
+        .collect();
+    eprintln!(
+        "changed-checks: copies what {} of {system}'s {} checks read at {}, since main from \
+         it reaches nothing they read, and traces the rest alone",
+        copied.len(),
+        names.len(),
+        short(head)
+    );
+    Some((copied, whole))
+}
+
+/// Now, in seconds since 1970.
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
 }
 
 /// Trace each of the base's ordinary checks alone and keep at `at` what
@@ -166,21 +191,39 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     // A check whose derivation takes the whole source in goes unrecorded,
     // so every gate evaluates it.
     let whole = checks::taking_whole(&source, &derivations)?;
+    let (copied, traced_whole) = copied(root, base, system, &derivations).unwrap_or_default();
+    let traced_whole = if traced_whole == 0 {
+        now()
+    } else {
+        traced_whole
+    };
     let (vm, ordinary): (Vec<&String>, Vec<&String>) = derivations
         .keys()
-        .filter(|name| !whole.contains(name.as_str()))
-        .partition(|name| name.starts_with("vm-"));
+        .filter(|name| !whole.contains(name.as_str()) && !copied.contains_key(*name))
+        .partition(|name| checks::is_vm_test(name));
+    let copied: BTreeMap<&str, Reads> = copied
+        .iter()
+        .map(|(name, reads)| (name.as_str(), reads.clone()))
+        .collect();
     let tracing = (source.as_str(), system, at);
     // The floor is what every check read, so the record is narrowed whole.
     let gathering = gathered::files(&source, system);
     let ungathered = |each| narrowed(&source, gathering.as_ref(), each);
     let mut evaluation = Run::evaluating("alone");
-    let each = traced(&ordinary, &derivations, tracing, &mut evaluation, || false);
-    if each.is_empty() {
+    let each = if ordinary.is_empty() {
+        BTreeMap::new()
+    } else {
+        traced(&ordinary, &derivations, tracing, &mut evaluation, || false)
+    };
+    if each.is_empty() && !ordinary.is_empty() {
         noted.evaluated(evaluation);
         return Err("no check's trace could be read".to_owned());
     }
-    written(at, &tree, &derivations, &ungathered(each.clone()))?;
+    let mut each = ungathered(each);
+    each.extend(copied);
+    let record =
+        |each: &BTreeMap<&str, Reads>| written(at, (&tree, traced_whole), &derivations, each);
+    record(&each)?;
     let lock = gating_lock();
     let stopped = AtomicBool::new(false);
     let stop = || {
@@ -201,9 +244,8 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     if vm_each.is_empty() {
         return Ok(());
     }
-    let mut all = each;
-    all.extend(vm_each);
-    written(at, &tree, &derivations, &ungathered(all))
+    each.extend(ungathered(vm_each));
+    record(&each)
 }
 
 /// Trace each of `names` alone from `source`'s checks for `system`, its
@@ -262,16 +304,19 @@ fn narrowed<'a>(
     each
 }
 
-/// Keep at `at` the record of what `each` read of `tree`, whole, by rename.
+/// Keep at `at` the record of what `each` read of `tree`, whole, by rename,
+/// saying when every check was last traced alone.
 fn written(
     at: &Path,
-    tree: &str,
+    (tree, traced_whole): (&str, u64),
     derivations: &Derivations,
     each: &BTreeMap<&str, Reads>,
 ) -> Result<(), String> {
     let writing = at.with_extension("writing");
     let failed = |error: std::io::Error| format!("{}: {error}", at.display());
-    fs::write(&writing, kept(tree, derivations.keys(), each).to_string()).map_err(failed)?;
+    let mut record = kept(tree, derivations.keys(), each);
+    record["whole"] = json!(traced_whole);
+    fs::write(&writing, record.to_string()).map_err(failed)?;
     fs::rename(&writing, at).map_err(failed)
 }
 
@@ -534,7 +579,7 @@ pub fn past(
     let (vm, ordinary): (Vec<String>, Vec<String>) = named
         .iter()
         .cloned()
-        .partition(|name| name.starts_with("vm-"));
+        .partition(|name| checks::is_vm_test(name));
     let (unreached, left) = partitioned(root, (head, known), Some(base), system, &ordinary)?;
     let vm_read = reads::keeping(&crate::cache(), head, system);
     let vm_kept = vm.iter().all(|name| known.contains_key(name))

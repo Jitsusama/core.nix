@@ -3,6 +3,7 @@
 //! names each side's checks and their derivations from files the test
 //! writes, and records what it's asked to build.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -1365,25 +1366,122 @@ fn kept_after_another(test: &str, age: std::time::Duration) -> (StandIn, serde_j
 }
 
 #[test]
-fn a_keep_traces_no_check_alone_while_another_bases_record_is_fresh() {
+fn a_keep_traces_each_check_alone_beside_a_fresh_record_it_cant_judge_from() {
+    // On 13 November keeps skipped every head for 20 minutes after a
+    // record, leaving gates to judge from one 25 merges behind.
     let (stand_in, run) = kept_after_another("alone-fresh", std::time::Duration::from_mins(5));
 
     assert!(
-        !stand_in.path(ALONE).exists(),
-        "a keep traced each check though a record was five minutes old"
+        stand_in.path(ALONE).exists(),
+        "a keep traced no check because another base's record was five minutes old"
     );
-    assert_eq!(evaluated(&run), ["base", "reads"], "{run}");
+    assert_eq!(evaluated(&run), ["base", "reads", "alone"], "{run}");
+    assert_eq!(
+        traced_alone_in(&run),
+        [3, 1],
+        "a record of a base off this one's main served the keep: {run}"
+    );
+}
+
+/// How many checks each of a keep's chunks traced alone.
+fn traced_alone_in(run: &serde_json::Value) -> Vec<u64> {
+    run["evaluated"][2]["chunks"]
+        .as_array()
+        .expect("what was traced alone")
+        .iter()
+        .map(|chunk| chunk["checks"].as_u64().expect("a count"))
+        .collect()
+}
+
+/// The base's record of what each check read, kept alone.
+fn alone_record(stand_in: &StandIn, kept: &str) -> serde_json::Value {
+    serde_json::from_str(&fs::read_to_string(stand_in.path(kept)).expect("kept")).expect("JSON")
+}
+
+/// Keep the base once a head it came after was recorded, main having
+/// changed only a.nix between them, and give the keep's run.
+fn kept_past_a_record(
+    test: &str,
+    whole: Option<std::time::Duration>,
+) -> (StandIn, serde_json::Value) {
+    let stand_in = kept_behind(test, RECORDED, "M\ta.nix\n", "");
+    let head = format!("cache/changed-checks/{RECORDED}-x86_64-linux.alone.reads.json");
+    if let Some(age) = whole {
+        let mut record = alone_record(&stand_in, &head);
+        let at = std::time::SystemTime::now() - age;
+        record["whole"] = serde_json::json!(
+            at.duration_since(std::time::UNIX_EPOCH)
+                .expect("after 1970")
+                .as_secs()
+        );
+        fs::write(stand_in.path(&head), record.to_string()).expect("written");
+    }
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let run = stand_in.runs().pop().expect("the keep's run");
+    (stand_in, run)
 }
 
 #[test]
-fn a_keep_traces_each_check_alone_once_the_newest_record_is_old() {
-    let (stand_in, run) = kept_after_another("alone-stale", std::time::Duration::from_mins(21));
+fn a_keep_past_a_record_traces_only_the_checks_main_reached_and_copies_the_rest() {
+    let (stand_in, run) = kept_past_a_record("alone-copied", None);
 
-    assert!(
-        stand_in.path(ALONE).exists(),
-        "a keep traced no check though the newest record was 21 minutes old"
+    assert_eq!(
+        traced_alone_in(&run),
+        [1],
+        "a keep traced checks main reached nothing of since the record: {run}"
     );
-    assert_eq!(evaluated(&run), ["base", "reads", "alone"], "{run}");
+    let base = alone_record(&stand_in, ALONE);
+    let head = alone_record(
+        &stand_in,
+        &format!("cache/changed-checks/{RECORDED}-x86_64-linux.alone.reads.json"),
+    );
+    assert_eq!(
+        base["names"], head["names"],
+        "the record named other checks than the base has"
+    );
+    let read = |record: &serde_json::Value, name: &str| -> BTreeSet<String> {
+        let paths = record["paths"].as_array().expect("the paths read");
+        record["checks"][name]["read"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} wasn't recorded: {record}"))
+            .iter()
+            .map(|at| {
+                let at = usize::try_from(at.as_u64().expect("a path's number")).expect("small");
+                paths[at].as_str().expect("a path").to_owned()
+            })
+            .collect()
+    };
+    for name in ["a", "b", "gone", "vm-x"] {
+        assert_eq!(
+            read(&base, name),
+            read(&head, name),
+            "{name}'s reads weren't what the head's record held"
+        );
+    }
+}
+
+#[test]
+fn a_keep_traces_every_check_again_once_its_record_was_last_traced_whole_hours_ago() {
+    let (stand_in, run) =
+        kept_past_a_record("alone-whole", Some(std::time::Duration::from_hours(5)));
+
+    assert_eq!(
+        traced_alone_in(&run),
+        [3, 1],
+        "a record copied for five hours was copied again: {run}"
+    );
+    let whole = alone_record(&stand_in, ALONE)["whole"]
+        .as_u64()
+        .expect("when traced whole");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs();
+    assert!(
+        now - whole < 600,
+        "a record traced whole didn't say it was traced now"
+    );
 }
 
 /// A stand-in whose base's checks each read every folder's checks.nix, as
