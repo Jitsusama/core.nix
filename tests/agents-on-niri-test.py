@@ -1403,7 +1403,10 @@ def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shel
     tell answers without one (modules/agents/src/tell.rs proves the window's way).
     """
     lay("VOID", "Void Quest", {"state": "listening", "standsAtTop": {"name": "The Void"}})
-    found(shell, "the void", "The Void")
+    # Only that Agents has heard of the void, whatever else earlier cases laid beside it.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: "The Void" in shown["rows"])
     shell.close_launcher()
     line = shell.ipc("line")
     words = "is the tide in"
