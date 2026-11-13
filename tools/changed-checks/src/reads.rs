@@ -465,7 +465,8 @@ pub fn unread(
         .map(|(name, derivation)| (name.clone(), derivation.clone()))
         .collect();
     let named: BTreeSet<&String> = vm.iter().collect();
-    if !kept.keys().eq(named) || !untouched(&keeping(&crate::cache(), base, system), root, base) {
+    let at = keeping(&crate::cache(), base, system);
+    if !kept.keys().eq(named) || !untouched(&at, root, base, None) {
         return None;
     }
     let short = base.get(..12).unwrap_or(base);
@@ -719,7 +720,7 @@ fn local_input(lock: &Path) -> Result<Option<String>, String> {
 /// Whether the change from `base` to the working tree at `root` reaches
 /// nothing the record at `at` says the base's VM tests read: no when
 /// there's no record, it was made from another tree, or git can't say.
-pub fn untouched(at: &Path, root: &str, base: &str) -> bool {
+pub fn untouched(at: &Path, root: &str, base: &str, to: Option<&str>) -> bool {
     let Ok(text) = fs::read_to_string(at) else {
         return false;
     };
@@ -729,26 +730,30 @@ pub fn untouched(at: &Path, root: &str, base: &str) -> bool {
     else {
         return false;
     };
-    let moved = |folder: &str| came_or_went(root, base, folder);
-    touched_since(root, base).is_some_and(|touched| {
+    let moved = |folder: &str| came_or_went(root, base, to, folder);
+    touched_since(root, base, to).is_some_and(|touched| {
         touched
             .iter()
             .all(|(file, how)| !reads.reached_by(file, *how, &moved))
     })
 }
 
-/// Whether `folder` came or went in the change from `base` to the working
-/// tree at `root`: it's at the base or in the tree, not both.
-pub fn came_or_went(root: &str, base: &str, folder: &str) -> bool {
-    let at_base = format!("{base}:{folder}");
-    let was = crate::run("git", &["-C", root, "cat-file", "-e", &at_base]).is_ok();
-    was != Path::new(root).join(folder).is_dir()
+/// Whether `folder` came or went in the change from `base` to `to`, a
+/// commit or, when none, the working tree at `root`: it's on one side, not
+/// both.
+pub fn came_or_went(root: &str, base: &str, to: Option<&str>, folder: &str) -> bool {
+    let at = |commit: &str| {
+        let named = format!("{commit}:{folder}");
+        crate::run("git", &["-C", root, "cat-file", "-e", &named]).is_ok()
+    };
+    at(base) != to.map_or_else(|| Path::new(root).join(folder).is_dir(), at)
 }
 
-/// Each file the change from `base` to the working tree at `root` touched,
-/// and how; nothing when git can't say.
-pub fn touched_since(root: &str, base: &str) -> Option<Vec<(String, Touched)>> {
-    let asked = ["-C", root, "diff", "--name-status", "--no-renames", base];
+/// Each file the change from `base` to `to`, a commit or, when none, the
+/// working tree at `root`, touched, and how; nothing when git can't say.
+pub fn touched_since(root: &str, base: &str, to: Option<&str>) -> Option<Vec<(String, Touched)>> {
+    let mut asked = vec!["-C", root, "diff", "--name-status", "--no-renames", base];
+    asked.extend(to);
     touched(&crate::run("git", &asked).ok()?)
 }
 
