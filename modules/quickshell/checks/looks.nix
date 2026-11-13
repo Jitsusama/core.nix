@@ -321,7 +321,6 @@
   # theme's.
   quickshell-takes-its-shape-from-the-theme =
     let
-      dir = ../../.;
       files = everyShellFile;
       allowed = {
         radius = [
@@ -348,7 +347,7 @@
             value = lib.elemAt found 1;
           };
       culprits = lib.concatMap (
-        name:
+        file:
         lib.concatMap (
           line:
           let
@@ -356,8 +355,8 @@
           in
           lib.optional (
             found != null && !(lib.elem found.value allowed.${found.kind})
-          ) "${name}: ${lib.trim line}"
-        ) (lib.splitString "\n" (builtins.readFile (dir + "/${name}")))
+          ) "${file.name}: ${lib.trim line}"
+        ) (lib.splitString "\n" (builtins.readFile file.path))
       ) files;
     in
     holds "quickshell-takes-its-shape-from-the-theme" ''
@@ -372,7 +371,6 @@
   # share of the screen (`parent.height / 12`) aren't steps, so they pass.
   quickshell-keeps-to-the-space-scale =
     let
-      dir = ../../.;
       step = "Theme\\.(space\\.[a-z]+|inset|border|gap)";
       spacing = "([pP]adding|[mM]argins?|spacing)[[:space:]]*:";
       # Each raw number taken from or added to something, with what comes
@@ -401,9 +399,9 @@
           || builtins.match ".*${spacing}[[:space:]]*-?[1-9][0-9]*[[:space:]]*;?[[:space:]]*" line != null
         );
       culprits = lib.concatMap (
-        name:
-        map (line: "${name}: ${lib.trim line}") (
-          lib.filter nudged (lib.splitString "\n" (builtins.readFile (dir + "/${name}")))
+        file:
+        map (line: "${file.name}: ${lib.trim line}") (
+          lib.filter nudged (lib.splitString "\n" (builtins.readFile file.path))
         )
       ) everyShellFile;
     in

@@ -8,7 +8,10 @@
 //! (`legacyPackages.<system>.checkFiles`), and a check's record keeps, of
 //! the gathered files, its own and those a file it read names by path: a
 //! folder names each gathered file under it, as `${../..}` or a fileset of
-//! `../.` copies them, while a fileset's `root` copies nothing of its own.
+//! `../.` copies them, while a fileset's `root` copies nothing of its own,
+//! nor does a folder a fileset's filter takes only QML or another kind
+//! than Nix's from, as quickshell's checks find the shell's files under
+//! modules/.
 //! A file using the flake's whole source as a path or the outputs holding
 //! every check, and a check `checks.nix` gives itself, keep them all. But
 //! `flake.nix` and `checks.nix`, which every check reads, make the outputs:
@@ -212,9 +215,10 @@ fn paths(code: &str) -> Vec<String> {
 
 /// Whether what comes before a path, `before`, makes it one that only
 /// places other paths, copying nothing itself: a fileset's root, which
-/// copies only what the fileset names, or what a path is taken from.
+/// copies only what the fileset names, or what a path is taken from. Or
+/// a folder a fileset's filter takes only files of another kind from.
 fn places(before: &str) -> bool {
-    if before.trim_end().ends_with("removePrefix") {
+    if before.trim_end().ends_with("removePrefix") || filters_out_nix(before) {
         return true;
     }
     let Some(named) = before.trim_end().strip_suffix('=') else {
@@ -227,6 +231,40 @@ fn places(before: &str) -> bool {
     named.ends_with("root")
         && !named[..named.len() - 4].ends_with(is_named)
         && before[near..].contains("toSource")
+}
+
+/// Whether `before` ends by handing what follows to a fileset's filter
+/// taking only files of one kind other than Nix's, as
+/// `fileFilter (file: file.hasExt "qml")` does. What it gives holds no
+/// gathered file, which is Nix, however many sit beside what it takes. A
+/// file added or removed there is still seen, as the filter lists the
+/// folder and the trace sees the listing. Any other predicate, or another
+/// use of the same folder, still names every file under it.
+fn filters_out_nix(before: &str) -> bool {
+    let Some((_, filter)) = before
+        .trim_end()
+        .strip_suffix(')')
+        .and_then(|call| call.rsplit_once("fileFilter"))
+    else {
+        return false;
+    };
+    let filter: String = filter
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
+    let Some((name, asked)) = filter
+        .strip_prefix('(')
+        .and_then(|filter| filter.split_once(':'))
+    else {
+        return false;
+    };
+    let kind = asked
+        .strip_prefix(name)
+        .and_then(|asked| asked.strip_prefix(".hasExt\""))
+        .and_then(|asked| asked.strip_suffix('"'));
+    !name.is_empty()
+        && name.chars().all(is_word)
+        && kind.is_some_and(|kind| !kind.is_empty() && kind.chars().all(is_word) && kind != "nix")
 }
 
 /// The path `path` names from the folder `here`, both from the
@@ -309,8 +347,14 @@ impl Scanner<'_> {
     }
 
     /// Pass over a string, `indented` or in quotes, keeping only what it
-    /// interpolates, each as `${...}` with a space either side.
+    /// interpolates, each as `${...}` with a space either side. A kind of
+    /// file a fileset's filter asks for (`hasExt "qml"`) is kept whole, in
+    /// its quotes, when it interpolates nothing.
     fn string(&mut self, indented: bool) {
+        let kind = !indented && self.out.trim_ascii_end().ends_with(b"hasExt");
+        let from = self.at;
+        let mut plain = true;
+        let mut ended = None;
         self.out.push(b' ');
         while self.at < self.text.len() {
             if self.starts("$${") || (indented && (self.starts("''$") || self.starts("'''"))) {
@@ -320,16 +364,24 @@ impl Scanner<'_> {
             } else if !indented && self.starts("\\") {
                 self.at += 2;
             } else if self.starts("${") {
+                plain = false;
                 self.at += 2;
                 self.out.extend_from_slice(b"${");
                 self.code(true);
                 self.out.extend_from_slice(b"} ");
             } else if (indented && self.starts("''")) || (!indented && self.starts("\"")) {
+                ended = Some(self.at);
                 self.at += if indented { 2 } else { 1 };
                 break;
             } else {
                 self.at += 1;
             }
+        }
+        if let Some(end) = ended.filter(|_| kind && plain) {
+            let text = self.text;
+            self.out.push(b'"');
+            self.out.extend_from_slice(&text[from..end]);
+            self.out.push(b'"');
         }
         self.out.push(b' ');
     }

@@ -92,18 +92,22 @@ let
   programs = pkgs.callPackage ../../programs/package.nix { };
   # The daemon the launcher's windows come from, hearing a check's own niri.
   windows = pkgs.callPackage ../../windows/package.nix { };
-  # Every QML file the shell and the modules beside it draw, by its path
-  # under modules/, its tests left out: a module's surface is drawn in the
-  # theme as the shell's own are.
+  # Every QML file the shell and the modules beside it draw, its tests left
+  # out, each by its name under modules/ and its path to read: a module's
+  # surface is drawn in the theme as the shell's own are. They're taken by a
+  # fileset's filter for QML, which names no other file of modules/, so
+  # changed-checks keeps no folder's checks.nix for the checks reading them.
   everyShellFile =
-    let
-      modules = toString ../../.;
-    in
-    map (path: lib.removePrefix "${modules}/" (toString path)) (
-      lib.filter (
-        path: lib.hasSuffix ".qml" (toString path) && !(lib.hasInfix "/tests/" (toString path))
-      ) (lib.filesystem.listFilesRecursive ../../.)
-    );
+    map
+      (path: {
+        name = lib.removePrefix "./" (lib.path.removePrefix ../../. path);
+        inherit path;
+      })
+      (
+        lib.filter (path: !(lib.hasInfix "/tests/" (toString path))) (
+          lib.fileset.toList (lib.fileset.fileFilter (file: file.hasExt "qml") ../../.)
+        )
+      );
   # The launcher's maths, a QML module the shell imports as Maths
   # (maths/package.nix), and where Qt finds it.
   mathsModules = "${pkgs.callPackage ../maths/package.nix { }}/lib/qt-6/qml";
