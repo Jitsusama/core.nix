@@ -360,7 +360,6 @@
     orchestrator while leaving one that was ended, marks each of Joel's axes past its bar
     with its owner, and holds the figures health writes, a boot past 30 s, an unread yes to an
     ask for a secret and a disk past 90% used among them, and tells it once of the net hanging
-    and of each test the net quarantined for a merge it couldn't revert, naming the owner's PR
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
