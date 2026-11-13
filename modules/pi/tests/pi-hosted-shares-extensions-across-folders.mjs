@@ -1,8 +1,8 @@
 // pi as the host runs it keeps one factory for each extension file, whichever
 // folder loads it, so a conversation opening or waking in any folder reuses
-// the modules another conversation's extensions still hold rather than
-// evaluating them again, and a folder's own extension, another file, stays
-// its own. Unpatched, pi keeps one folder's and empties them whenever a load
+// the modules already evaluated, even once every conversation has parked,
+// and a folder's own extension, another file, stays its own. It keeps only
+// the files the links point at now. Unpatched, pi keeps one folder's and empties them whenever a load
 // comes from another, so A, B, A evaluates the modules three times.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
@@ -72,6 +72,7 @@ const folder = (name) => {
 
 // What the live conversations hold: the extensions each loaded. One that
 // ends or parks lets them go, which is all a host does to free them.
+// Nothing outside the cache holds a factory once these are gone.
 const live = [];
 // The evaluation of each extension a conversation opening in a folder gets
 // its factory from. It stays open unless told it ends at once.
@@ -144,16 +145,34 @@ rmSync(current);
 symlinkSync(join(installs, "v2"), current);
 assert.equal(await open("b"), 2, "a conversation after the link moved got the old copy");
 assert.equal(await open("a"), 2, "the moved link's copy wasn't shared");
+// The copy the link left is no longer cached: pointed back at it, the link
+// loads it afresh rather than reusing what the cache kept of it.
+rmSync(current);
+symlinkSync(join(installs, "v1"), current);
+assert.equal(await open("c"), 3, "the cache kept the copy the link had left");
 
-// The factory stays while any conversation holds its extensions, goes once
-// the last one ends, and the next open loads afresh.
+// With every conversation parked and a full collection run, as a quiet host
+// does, each file's modules stay evaluated once.
 afresh();
 await open("a");
 await open("b", { ends: true });
-await collect();
-assert.equal(await open("c"), 1, "the modules went while a conversation held them");
 live.length = 0;
 await collect();
-assert.equal(await open("d"), 2, "the modules stayed once the last conversation ended");
+assert.equal(await open("c"), 1, "the modules went once every conversation parked");
+assert.equal(globalThis.evaluations, 1, "a parked host evaluated the modules again");
+
+// An extension whose file has gone fails as any failed load does, in its
+// result rather than as a throw, even once its factory was cached.
+afresh();
+await open("a");
+rmSync(current);
+symlinkSync(join(installs, "gone"), current);
+const missing = await loadExtensionsCached([entry], folder("d"));
+assert.equal(missing.extensions.length, 0, "a missing file loaded");
+assert.match(
+  String(missing.errors[0]?.error),
+  /^Failed to load extension: ENOENT/,
+  "a missing file didn't fail as a load",
+);
 
 rmSync(scratch, { recursive: true, force: true });

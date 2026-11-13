@@ -8,12 +8,13 @@ host's loop stalled for seconds each time and its memory grew with every
 copy. The folder reaches an extension only through the API its factory is
 given, so one cache now serves every folder, keyed by the file the
 extension's path resolves to: folders loading the same file share its
-factory, and a folder's own extension, another file, stays its own. Each
-extension made from a factory holds it and the cache holds it weakly, so
-it stays while any live conversation holds its extensions, and the copy a
-moved link pointed at goes once its last conversation ends rather than
-living until a reload. A reload still empties the cache, and a load begun
-before one caches nothing after it.
+factory, and a folder's own extension, another file, stays its own. The
+cache holds each factory whether or not a conversation is awake, so a
+host whose conversations have all parked wakes them without evaluating
+anything. It holds only the files the links point at now: once a link
+moves on, the copy it pointed at leaves the cache, living on only in the
+extensions of the conversations still using it. A reload still empties
+the cache, and a load begun before one caches nothing after it.
 
 --- a/packages/coding-agent/src/core/extensions/loader.ts
 +++ b/packages/coding-agent/src/core/extensions/loader.ts
@@ -26,7 +27,7 @@ before one caches nothing after it.
  import { createEventBus, type EventBus } from "../event-bus.ts";
  import type { ExecOptions } from "../exec.ts";
  import { execCommand } from "../exec.ts";
-@@ -135,28 +135,41 @@
+@@ -135,9 +135,22 @@
  
  type HandlerFn = (...args: unknown[]) => Promise<unknown>;
  
@@ -37,31 +38,25 @@ before one caches nothing after it.
 +// each open or wake in another folder evaluate every extension's modules
 +// again. The folder reaches an extension only through the API its factory is
 +// given, so one factory serves every folder that loads the same file, and a
-+// folder's own extension, another file, stays its own. The cache holds a
-+// factory weakly and each extension made from it holds it, so it stays while
-+// any live conversation holds its extensions, and a copy whose link moved on
-+// goes once its last conversation ends rather than living until a reload.
++// folder's own extension, another file, stays its own. The cache holds each
++// factory whether or not a conversation is awake, so a host whose
++// conversations have all parked wakes them without evaluating anything, and
++// it holds only the files the links point at now: once a link moves on, the
++// copy it pointed at leaves the cache, living on only in the extensions of
++// the conversations still using it.
  let extensionCacheGeneration = 0;
--const extensionCache = new Map<string, ExtensionFactory>();
-+const extensionCache = new Map<string, WeakRef<ExtensionFactory>>();
-+// What keeps a factory alive: the extensions made from it.
-+const madeBy = Symbol("pi-host.extension-factory");
+ const extensionCache = new Map<string, ExtensionFactory>();
++// The file each extension path last resolved to.
++const resolvedFiles = new Map<string, string>();
  
  interface ExtensionCacheToken {
  	cwd: string;
- 	generation: number;
- }
+@@ -146,17 +159,12 @@
  
-+// Forgets the factories no extension holds any longer.
-+function forgetCollectedFactories(): void {
-+	for (const [file, factory] of extensionCache) {
-+		if (factory.deref() === undefined) extensionCache.delete(file);
-+	}
-+}
-+
  export function clearExtensionCache(): void {
  	extensionCache.clear();
 -	extensionCacheCwd = undefined;
++	resolvedFiles.clear();
  	extensionCacheGeneration++;
  }
  
@@ -72,12 +67,11 @@ before one caches nothing after it.
 -	}
 -	extensionCacheCwd = resolvedCwd;
 -	return { cwd: resolvedCwd, generation: extensionCacheGeneration };
-+	forgetCollectedFactories();
 +	return { cwd: resolvePath(cwd), generation: extensionCacheGeneration };
  }
  
  /**
-@@ -560,14 +573,16 @@
+@@ -560,14 +568,19 @@
  function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cacheToken is ExtensionCacheToken {
  	return (
  		cacheToken !== undefined &&
@@ -88,15 +82,18 @@ before one caches nothing after it.
  
  async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
 +	// pi-host: the file the link points at now, which keys the cache and is
-+	// what the import loads.
++	// what the import loads; the copy it pointed at before leaves the cache.
 +	const file = fs.realpathSync(extensionPath);
++	const before = resolvedFiles.get(extensionPath);
++	if (before !== undefined && before !== file) extensionCache.delete(before);
++	resolvedFiles.set(extensionPath, file);
  	if (isCurrentCacheToken(cacheToken)) {
 -		const cachedFactory = extensionCache.get(extensionPath);
-+		const cachedFactory = extensionCache.get(file)?.deref();
++		const cachedFactory = extensionCache.get(file);
  		if (cachedFactory) {
  			return cachedFactory;
  		}
-@@ -590,13 +605,13 @@
+@@ -590,13 +603,13 @@
  	// pi-host: import the file the link points at now, so an extension whose
  	// link moved since the host started loads its new copy and that copy's
  	// helpers, rather than resolving them through the copy it first loaded.
@@ -108,15 +105,7 @@ before one caches nothing after it.
  	}
  	if (isCurrentCacheToken(cacheToken)) {
 -		extensionCache.set(extensionPath, factory);
-+		extensionCache.set(file, new WeakRef(factory));
++		extensionCache.set(file, factory);
  	}
  	return factory;
  }
-@@ -660,6 +675,7 @@
- 		}
- 
- 		const extension = await initializeExtension(factory, extensionPath, resolvedPath, cwd, eventBus, runtime);
-+		Object.defineProperty(extension, madeBy, { value: factory });
- 
- 		return { extension, error: null };
- 	} catch (err) {
