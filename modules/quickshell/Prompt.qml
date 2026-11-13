@@ -1319,6 +1319,10 @@ Item {
             prompt.seeScrolled();
         }
         wrapMode: prompt.wraps ? TextInput.Wrap : TextInput.NoWrap
+        // As tall as its hint while that's shown, since it holds the hint and clips it:
+        // empty, it's one line tall, and a wrapped hint's last line went undrawn.
+        height: hintText.visible
+            ? Math.max(implicitHeight, hintText.y + hintText.contentHeight) : implicitHeight
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true

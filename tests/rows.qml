@@ -1367,6 +1367,15 @@ ShellRoot {
                 wrapping !== undefined && !wrapping.truncated && wrappedHint.typedLines > 1
                     && wrappedHint.wrapsTall > 0,
                 `${said(drawn(wrappedHint, []))}, ${wrappedHint.typedLines} lines`);
+            // Its last line is drawn, not clipped by a field one line tall.
+            const hintField = root.inputOf(wrappedHint);
+            const hintItem = root.textItemsOf(hintField, [])
+                .find(t => t.text === wrappedHint.hint && t.visible) ?? null;
+            const hintEnds = hintItem === null ? NaN
+                : hintItem.mapToItem(hintField, 0, hintItem.contentHeight).y;
+            expect("a wrapping field's hint is drawn to its last line",
+                hintEnds <= hintField.height + 0.5,
+                `the hint ends at ${hintEnds}, the field ${hintField.height} tall`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.rung.inset, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
