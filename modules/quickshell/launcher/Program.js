@@ -94,6 +94,17 @@ function usage(trees, agents) {
     return summed;
 }
 
+// The memory its processes hold, whole, as Machine says it, with the
+// agents' windows' share beside it where it holds theirs, as kitty does
+// (VKCF3Z [b31d7a90]): "1.80 GB · agents' windows 1.60 GB".
+function memory(used, said) {
+    const whole = FileFacts.weighed(used.memory);
+    if (!(used.agents > 0)) {
+        return whole;
+    }
+    return whole + DOT + filled(said.agents, { memory: FileFacts.weighed(used.agents) });
+}
+
 // A program's windows (as the windows daemon says them, `session` on an
 // agent's) split by whose they are: each process behind them once
 // (`pids`), as two windows are often one process's; those holding only
@@ -213,10 +224,7 @@ function facts(known, named, said) {
         : { label: named(id), value: known.asking ? null : "" });
     return [
         figure("processor", one => percent(one.processor, known.marks)),
-        // Whole, as Machine says it, with the agents' windows' share beside
-        // it where it holds theirs, as kitty does (VKCF3Z [b31d7a90]).
-        figure("memory", one => FileFacts.weighed(one.memory) + (one.agents > 0
-            ? DOT + filled(said.agents ?? "", { memory: FileFacts.weighed(one.agents) }) : "")),
+        figure("memory", one => memory(one, said)),
         figure("processes", one => String(one.count)),
         own("playing")(known.playing ?? "")
     ].concat((known.given ?? []).map(fact => ({ label: fact.label,
