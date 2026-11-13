@@ -585,17 +585,17 @@ Provider {
         const looked = {};
         const player = part("the player",
             () => playerOf(given => provider.names(entry, given, looked)));
-        // Each process once, as two windows are often one process's.
-        const pids = Array.from(new Set((running[entry.id] ?? []).map(window => window.pid)
-            .filter(pid => Number.isInteger(pid) && pid > 0))).sort((a, b) => a - b);
-        const trees = part("its processes", () => treesOf(pids));
+        // Its memory whole, with agents' share beside it, and where only
+        // Joel's own windows are.
+        const split = Program.split(running[entry.id]);
+        const trees = part("its processes", () => treesOf(split.pids));
         const given = hooked("programFacts", entry.id);
         const record = part("its entry", () => entryOf(entry.id));
         return part("its facts", () => Program.drawer({
             name: entry.name,
-            usage: Program.usage(trees),
-            asking: pids.length > 0,
-            places: (running[entry.id] ?? [])
+            usage: Program.usage(trees, split.agents),
+            asking: split.pids.length > 0,
+            places: split.own
                 .map(window => Niri.workspaces[window.workspace_id]?.idx)
                 .filter(place => place !== undefined),
             playing: player && player.trackTitle !== "" ? nowPlaying(player) : "",

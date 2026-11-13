@@ -64,7 +64,9 @@ function percent(share, marks) {
 // alone rather than twice. Each process another holds is found once, in
 // one pass, rather than every tree looking through every other's: kitty's
 // 41 processes on Joel's laptop made that some 84,000 looks a drawer.
-function usage(trees) {
+// Given the processes holding agents' windows alone (`agents`, from
+// split), it says their memory too, which is kitty's share for agents.
+function usage(trees, agents) {
     const known = trees.filter(tree => tree !== null && tree !== undefined);
     const held = new Set();
     for (const tree of known) {
@@ -78,12 +80,46 @@ function usage(trees) {
     if (said.length === 0) {
         return null;
     }
-    const sum = field => said.reduce((all, tree) => all + (Number(tree[field]) || 0), 0);
-    return {
+    const sum = (field, trees) => (trees ?? said)
+        .reduce((all, tree) => all + (Number(tree[field]) || 0), 0);
+    const summed = {
         processor: Math.max(0, Math.min(1, sum("share_ratio"))),
         memory: sum("resident_b"),
         count: sum("processes")
     };
+    if (agents !== undefined) {
+        const theirs = new Set(agents);
+        summed.agents = sum("resident_b", said.filter(tree => theirs.has(tree.pid)));
+    }
+    return summed;
+}
+
+// A program's windows (as the windows daemon says them, `session` on an
+// agent's) split by whose they are: each process behind them once
+// (`pids`), as two windows are often one process's; those holding only
+// agents' windows (`agents`), as most of kitty's do, while one holding
+// any of Joel's own is his; and his own windows (`own`), said as where
+// it is, since agents' windows are reached through Agents (VKCF3Z
+// [b31d7a90]).
+function split(windows) {
+    const pids = new Set();
+    const his = new Set();
+    const own = [];
+    for (const window of Array.from(windows ?? [])) {
+        const pid = window.pid;
+        const known = Number.isInteger(pid) && pid > 0;
+        if (known) {
+            pids.add(pid);
+        }
+        if (window.session !== true) {
+            own.push(window);
+            if (known) {
+                his.add(pid);
+            }
+        }
+    }
+    const sorted = Array.from(pids).sort((a, b) => a - b);
+    return { pids: sorted, agents: sorted.filter(pid => !his.has(pid)), own };
 }
 
 // A kind by the ending its files have, PDF, from its globs heaviest first
