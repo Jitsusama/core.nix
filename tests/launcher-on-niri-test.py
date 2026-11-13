@@ -937,6 +937,12 @@ def test_the_shut_launcher_rewords_the_windows_a_switch_moved(shell: Shell) -> N
 RESIZES = 20
 
 
+def sits_on(window: Json, said: str) -> bool:
+    """Say whether the margin cat's report has it sitting still over this window."""
+    at = launcher_on_niri.placed(said)
+    return at is not None and at.get("window") == window["id"] and not at.get("walk")
+
+
 def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     """With the launcher shut, a window beside the keys' resized over and over is heard of not once.
 
@@ -946,6 +952,8 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     every tile only while a notice is drawn. The margin's cat sits over the window with the
     keys, so that one tile is told, and a resize of it is heard; it watched every tile, and the
     shell heard each of 20 resizes again (2026-11-12). So the window resized is one beside it.
+    On its way over to that window it wants every tile, the gap it leaps among them, so the
+    shell at rest is measured once the cat sits there.
     What the shell reads of niri's windows is counted line by line, the windows' opening
     proving the count runs; a wake counted from /proc took in whatever else the shell did then,
     such as the work a closing leaves for a moment after.
@@ -959,7 +967,9 @@ def test_the_shut_shell_sleeps_as_a_window_is_resized(shell: Shell) -> None:
     # Opened right of the one with the keys, so resizing it moves nothing left of it.
     beside = shell.opened("Godwit Notes")
     try:
+        since = shell.mark()
         shell.as_account(f"niri msg action focus-window --id {window['id']}")
+        shell.reported("sits cat ", functools.partial(sits_on, window), since)
         # The span measured, for the windows' opening to reach the shell, not a wait for it.
         time.sleep(SETTLING.total_seconds())
         opening = heard()
