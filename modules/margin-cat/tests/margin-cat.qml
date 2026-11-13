@@ -155,6 +155,104 @@ QtObject {
         expect("a walk nothing showed says so", MarginCat.walked([], [], 0, 0).said,
             { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0 });
 
+        // niri's own spring, as Joel's niri rides it between workspaces.
+        const spring = { damping: 1, stiffness: 1600, epsilon: 0.001 };
+        expect("a slide sets off still", MarginCat.slid(0, spring), 0);
+        expect("and critically damped, it's a quarter way after 24 ms",
+            Math.round(MarginCat.slid(24, spring) * 100) / 100, 0.25);
+        expect("it never goes past its end", [10, 50, 100, 200, 400].every(t =>
+            MarginCat.slid(t, spring) <= 1), true);
+        expect("and slows to it, never back", [10, 50, 100, 200, 400].every((t, i, ts) =>
+            i === 0 || MarginCat.slid(t, spring) > MarginCat.slid(ts[i - 1], spring)), true);
+        expect("a looser spring overshoots, as niri's would",
+            [60, 80, 100, 120].some(t =>
+                MarginCat.slid(t, { damping: 0.5, stiffness: 1600 }) > 1), true);
+        expect("it's done within its epsilon, about a quarter second",
+            MarginCat.slides(spring), 231);
+        expect("the theme's slowdown slows it as niri's clock",
+            [MarginCat.slides(Object.assign({ slowdown: 2 }, spring)),
+                MarginCat.slid(48, Object.assign({ slowdown: 2 }, spring))],
+            [462, MarginCat.slid(24, spring)]);
+
+        // A screen 800 tall, a workspace and its gap 880, a cat of 8
+        // cells of 1 seated at 2 below the top.
+        const moving = (way, more) => MarginCat.moves({ x: 100, y: 2 }, { x: 500, y: 2 },
+            Object.assign({ way, step: 880, tall: 8, cell: 1, ratio: 1, facing: 1, spring },
+                more ?? {}));
+        const down = moving(1);
+        const rides = down.beats[0];
+        expect("a move rides its column first, as long as the slide",
+            [rides.name, rides.ends], ["rides", 231]);
+        expect("carried exactly as the world, up a workspace going down",
+            [10, 50, 100].map(t => MarginCat.moved(down, t).y),
+            [10, 50, 100].map(t => 2 - 880 * MarginCat.slid(t, spring)));
+        expect("straight up its old column, as it sat", [10, 50, 100].map(t => {
+            const where = MarginCat.moved(down, t);
+            return [where.x, where.pose, where.turn, where.facing];
+        }), [[100, null, 0, 1], [100, null, 0, 1], [100, null, 0, 1]]);
+        expect("going down, it climbs down from above onto its seat",
+            down.beats.map(beat => beat.name), ["rides", "climbs", "lands"]);
+        const climbs = down.beats[1];
+        const above = MarginCat.moved(down, climbs.begins);
+        expect("from out of sight above its seat", [above.x, above.y], [500, -8]);
+        expect("head down, a quarter turn back from its profile",
+            [above.turn, above.facing], [-1, -1]);
+        const steps = Array.from({ length: 20 }, (_, i) =>
+            MarginCat.moved(down, climbs.begins + (climbs.ends - climbs.begins) * i / 20));
+        expect("climbing only down, never back", steps.every((where, i) =>
+            i === 0 || where.y > steps[i - 1].y), true);
+        expect("in its two strides", Array.from(new Set(steps.map(where => where.pose))).sort(),
+            ["walkingA", "walkingB"]);
+        expect("at an amble over so short a way",
+            Math.round(climbs.ends - climbs.begins), Math.round(10 / 40 * 1000));
+        expect("it lands on its seat crouched, a moment", [down.beats[2].pose,
+            MarginCat.moved(down, down.beats[2].begins).x,
+            MarginCat.moved(down, down.beats[2].begins).y], ["pouncing", 500, 2]);
+        expect("then sits, done", MarginCat.moved(down, down.ends),
+            { x: 500, y: 2, pose: null, turn: 0, facing: 1, beat: "sits", done: true });
+
+        // Going up, its old column falls away below it, so it lets go and
+        // stays in the margin as the new workspace comes down under it
+        // (VKCF3Z, 294b73a0).
+        const nearBy = (x, more) => MarginCat.moves({ x: 100, y: 2 }, { x, y: 2 },
+            Object.assign({ way: -1, step: 880, tall: 8, cell: 1, ratio: 1, facing: 1, spring },
+                more ?? {}));
+        const stepAway = nearBy(130);
+        expect("going up, it stays where it sits as long as the slide",
+            [stepAway.beats[0].name, stepAway.beats[0].ends], ["stays", 231]);
+        expect("still, in its own pose, as the world slides under it", [10, 50, 100].map(t => {
+            const where = MarginCat.moved(stepAway, t);
+            return [where.x, where.y, where.pose, where.turn, where.facing];
+        }), [[100, 2, null, 0, 1], [100, 2, null, 0, 1], [100, 2, null, 0, 1]]);
+        expect("then a seat near enough it walks to, on the way it faces, at once",
+            stepAway.beats.map(beat => beat.name), ["stays", "goes", "settles", "lands"]);
+        expect("along the margin, never faster than a walk",
+            Math.round(stepAway.beats[1].ends - stepAway.beats[1].begins),
+            Math.round(31.5 / 40 * 1000));
+        expect("and sits there, done", MarginCat.moved(stepAway, stepAway.ends),
+            { x: 130, y: 2, pose: null, turn: 0, facing: 1, beat: "sits", done: true });
+        expect("one behind it, it turns for first",
+            nearBy(80).beats.map(beat => beat.name),
+            ["stays", "turns", "goes", "settles", "lands"]);
+        expect("one right where it is, it only stays",
+            [nearBy(100).beats.map(beat => beat.name), nearBy(100).rests], [["stays"], false]);
+        const acrossTheScreen = nearBy(500);
+        expect("one farther than about 1.5 s it stays for, to rest and walk as ever",
+            [acrossTheScreen.beats.map(beat => beat.name), acrossTheScreen.to,
+                acrossTheScreen.seat, acrossTheScreen.rests],
+            [["stays"], { x: 100, y: 2 }, { x: 500, y: 2 }, true]);
+        const slowAway = nearBy(130, { slowdown: 2 });
+        expect("the theme's slowdown stretches it, but brings no seat nearer",
+            [slowAway.rests, Math.round(slowAway.ends)], [false, Math.round(stepAway.ends * 2)]);
+        expect("the theme's slowdown stretches all of a move",
+            Math.round(moving(1, { slowdown: 2 }).ends), Math.round(down.ends * 2));
+
+        expect("a quarter turn clockwise", MarginCat.quartered(["#.", ".."], 1), [".#", ".."]);
+        expect("and back", MarginCat.quartered(["#.", ".."], -1), ["..", "#."]);
+        expect("a profile facing left faces up, a quarter turn clockwise",
+            MarginCat.quartered(["...", "#..", "..."], 1), [".#.", "...", "..."]);
+        expect("none leaves it as it is", MarginCat.quartered(["#.", ".."], 0), ["#.", ".."]);
+
         expect("facing right, a profile is drawn mirrored",
             MarginCat.turned(["#..", ".##"], 1), ["..#", "##."]);
         expect("facing left, as the theme draws it",
