@@ -8,6 +8,7 @@
 //! when something it draws changes (face.rs).
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
@@ -33,6 +34,11 @@ pub struct Words {
     pub open: String,
     pub password: String,
     pub account: String,
+    /// How far a join has got, by its stage as the varlink interface names it, as the launcher's
+    /// foot says it while the join goes on: "connecting to {network}\u{2026}".
+    pub stages: BTreeMap<String, String>,
+    /// Why wifid won't, by the varlink interface's name for it: "that password didn't work".
+    pub refusals: BTreeMap<String, String>,
 }
 
 /// A row's name and glyph role.
@@ -59,6 +65,16 @@ impl Words {
                 .map(str::to_owned)
                 .ok_or_else(|| format!("the vocabulary's {id} has no {}", at.join(".")))
         };
+        let said_all = |id: &str| -> Result<BTreeMap<String, String>, String> {
+            thing(id)?["said"]
+                .as_object()
+                .map(|said| {
+                    said.iter()
+                        .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())))
+                        .collect()
+                })
+                .ok_or_else(|| format!("the vocabulary's {id} has no said"))
+        };
         let radio = thing("wifi:radio")?;
         let sign_in = thing("wifi:sign-in")?;
         let network = thing("wifi:network")?;
@@ -82,7 +98,21 @@ impl Words {
             open: said("open")?,
             password: said("password")?,
             account: said("account")?,
+            stages: said_all("wifi:join")?,
+            refusals: said_all("wifi:refused")?,
         })
+    }
+
+    /// A join's stage on a network as the foot says it, or none for a stage it has no word for.
+    pub fn staged(&self, stage: &str, network: &str) -> Option<String> {
+        self.stages
+            .get(stage)
+            .map(|said| said.replace("{network}", network))
+    }
+
+    /// Why wifid won't, in the launcher's words, or none for a reason it has no word for.
+    pub fn refused(&self, why: &str) -> Option<&str> {
+        self.refusals.get(why).map(String::as_str)
     }
 }
 
@@ -157,27 +187,44 @@ fn radio_row(on: bool, words: &Words) -> Value {
 
 /// A network's row with its acts, each the ask that does it and the row
 /// it becomes once done, in wifid's words, so the shell draws the change
-/// at once and words nothing (launcher/Becoming.js). Joining asks for a
-/// password or an account on the way, so the shell asks it itself.
+/// at once and words nothing (launcher/Becoming.js). A join's fields ask
+/// Joel to type what it needs on the way, each answer set in the ask where
+/// its field says, and its stages are said in the foot as it goes
+/// (ready-rows.md's fields and streams), so the shell builds no act's row
+/// (Y2YBTS's 17a4dc7e, 1ace0a22; 2026-11-13).
 fn with_acts(network: &Network, signing: Option<&str>, words: &Words) -> Value {
     let mut row = network_row(network, signing, words);
     let ask = |act: &str| json!({"ask": "act", "act": act, "network": network.name});
     let mut acts = Vec::new();
+    // The sign-in window is a program of wifid's own, which the shell
+    // opens (SignIn.qml), so signing in goes to it rather than asking.
+    if network.connected && signing == Some(network.name) {
+        acts.push(json!({"key": "verb:wifi-sign-in", "go": "wifid-sign-in"}));
+    }
     if network.connected {
         let left = Network {
             connected: false,
             ..network.clone()
         };
+        // A network left was one joined, so it's saved, and joining it again is how u takes
+        // the leaving back.
+        let rejoin = json!({"key": "verb:wifi-join", "ask": ask("join"), "streams": true});
         acts.push(json!({"key": "verb:wifi-leave", "ask": ask("leave"),
-            "becomes": network_row(&left, None, words)}));
+            "becomes": network_row(&left, None, words), "undo": rejoin}));
     }
+    acts.extend(joins(network));
     // Nix keeps what it declares, so only a rebuild trusts or forgets it.
     if let Some(kept) = network.kept.filter(|kept| !kept.declared) {
         let mut trusting = ask("trust");
         trusting["trusted"] = json!(!kept.trusted);
         let mut trusted = row.clone();
         trusted["held"]["trusted"] = json!(!kept.trusted);
-        acts.push(json!({"key": "verb:wifi-trust", "ask": trusting, "becomes": trusted}));
+        let mut trust = json!({"key": "verb:wifi-trust", "ask": trusting, "becomes": trusted});
+        // Trusted, its act reads as stopping, in its words' own state.
+        if kept.trusted {
+            trust["wordState"] = json!("trusted");
+        }
+        acts.push(trust);
         let forgotten = Network {
             kept: None,
             ..network.clone()
@@ -187,6 +234,92 @@ fn with_acts(network: &Network, signing: Option<&str>, words: &Words) -> Value {
     }
     row["acts"] = json!(acts);
     row
+}
+
+/// How a network not connected is joined: as it's saved, or, met for the
+/// first time, asking its password, or its account over PEAP, on the way;
+/// then, unless Nix keeps them, with a new password (one saved behind an
+/// account), or an account over PEAP or TTLS, each but the one the first
+/// join already asks.
+fn joins(network: &Network) -> Vec<Value> {
+    let met = !network.known();
+    let typed = !network.kept.is_some_and(|kept| kept.declared);
+    let password = || vec![field("password", "password")];
+    let account = || {
+        vec![
+            field("identity", "account.identity"),
+            field("server", "account.serverDomain"),
+            field("password", "password"),
+        ]
+    };
+    let mut acts = Vec::new();
+    let mut asked = "";
+    if !network.connected {
+        let (fields, method) = match network.security {
+            Security::Personal if met && typed => (password(), None),
+            Security::Enterprise if met && typed => (account(), Some("peap")),
+            _ => (Vec::new(), None),
+        };
+        asked = match method {
+            Some(method) => method,
+            None if fields.is_empty() => "",
+            None => "password",
+        };
+        acts.push(join(network, "verb:wifi-join", method, fields));
+    }
+    if !typed {
+        return acts;
+    }
+    let newly = match network.security {
+        Security::Open => false,
+        Security::Personal => asked != "password",
+        Security::Enterprise => !met,
+    };
+    if newly {
+        acts.push(join(network, "verb:wifi-password", None, password()));
+    }
+    if network.security == Security::Enterprise {
+        if asked != "peap" {
+            acts.push(join(
+                network,
+                "verb:wifi-account-peap",
+                Some("peap"),
+                account(),
+            ));
+        }
+        acts.push(join(
+            network,
+            "verb:wifi-account-ttls",
+            Some("ttls"),
+            account(),
+        ));
+    }
+    acts
+}
+
+/// A join, the account's method set where it's over one, its fields asked
+/// first where it has any; its stages are said as it goes (acts.rs).
+fn join(network: &Network, key: &str, method: Option<&str>, fields: Vec<Value>) -> Value {
+    let mut ask = json!({"ask": "act", "act": "join", "network": network.name});
+    if let Some(method) = method {
+        ask["account"] = json!({ "method": method });
+    }
+    let mut act = json!({"key": key, "ask": ask, "streams": true});
+    if !fields.is_empty() {
+        act["fields"] = Value::Array(fields);
+    }
+    act
+}
+
+/// A field a join asks Joel to type into, its prompt the words key
+/// `wifi:asks:<asks>` (launcher/words/wifi.json), its answer set at `into`
+/// in the ask; a password typed unseen.
+fn field(asks: &str, into: &str) -> Value {
+    let mut field = json!({"ask": format!("wifi:asks:{asks}"), "into": into});
+    if asks == "password" {
+        field["secret"] = json!(true);
+    }
+    field
 }
 
 pub fn key(id: &str) -> String {
@@ -498,6 +631,11 @@ mod tests {
             json!([{"said": "saved"}, {"said": "3 of 4 bars"}])
         );
         assert_eq!(leave["becomes"]["held"]["connected"], false);
+        assert_eq!(
+            leave["undo"]["ask"],
+            json!({"ask": "act", "act": "join", "network": "Lantern"}),
+            "u joins it again"
+        );
         assert_eq!(act(&rows[1], "verb:wifi-leave"), &Value::Null);
     }
 
@@ -512,11 +650,151 @@ mod tests {
         assert_eq!(forget["becomes"]["side"], json!([{"said": "2 of 4 bars"}]));
         assert_eq!(forget["becomes"]["held"]["known"], false);
         // One never met, or one Nix declares, has neither.
-        assert_eq!(rows[2]["acts"], json!([]));
+        assert_eq!(act(&rows[2], "verb:wifi-trust"), &Value::Null);
+        assert_eq!(act(&rows[2], "verb:wifi-forget"), &Value::Null);
         let mut declared = described();
         declared.saved[1].declared = true;
         let rows = super::rows(&declared, &words());
         assert_eq!(act(&rows[1], "verb:wifi-forget"), &Value::Null);
+    }
+
+    fn keys(row: &Value) -> Vec<&str> {
+        row["acts"]
+            .as_array()
+            .map(|acts| acts.iter().filter_map(|act| act["key"].as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn each_network_s_acts_come_in_the_order_its_row_lists_them() {
+        let mut air = described();
+        air.nearby.push(nearby("Attic", Security::Personal, 2));
+        let rows = rows(&air, &words());
+        let row = |name: &str| {
+            rows.iter()
+                .find(|row| row["name"] == name)
+                .unwrap_or_else(|| panic!("no row for {name}"))
+        };
+        assert_eq!(
+            keys(row("Lantern")),
+            [
+                "verb:wifi-leave",
+                "verb:wifi-password",
+                "verb:wifi-trust",
+                "verb:wifi-forget"
+            ]
+        );
+        assert_eq!(
+            keys(row("Harbour")),
+            [
+                "verb:wifi-join",
+                "verb:wifi-password",
+                "verb:wifi-trust",
+                "verb:wifi-forget"
+            ]
+        );
+        assert_eq!(keys(row("Cafe 9")), ["verb:wifi-join"]);
+        // Met for the first time, its join asks the password, so it isn't offered twice.
+        assert_eq!(keys(row("Attic")), ["verb:wifi-join"]);
+        // Behind an account, its join asks it over PEAP, and TTLS is offered beside it.
+        assert_eq!(
+            keys(row("Campus")),
+            ["verb:wifi-join", "verb:wifi-account-ttls"]
+        );
+    }
+
+    #[test]
+    fn a_network_met_for_the_first_time_asks_its_password_on_the_way() {
+        let mut air = described();
+        air.nearby.push(nearby("Attic", Security::Personal, 2));
+        let rows = rows(&air, &words());
+        let attic = rows
+            .iter()
+            .find(|row| row["name"] == "Attic")
+            .expect("Attic");
+        assert_eq!(
+            act(attic, "verb:wifi-join"),
+            &json!({"key": "verb:wifi-join", "streams": true,
+                "ask": {"ask": "act", "act": "join", "network": "Attic"},
+                "fields": [{"ask": "wifi:asks:password", "into": "password", "secret": true}]})
+        );
+        // One saved joins as it's saved, asking nothing, and says its way as it goes.
+        assert_eq!(
+            act(&rows[1], "verb:wifi-join"),
+            &json!({"key": "verb:wifi-join", "streams": true,
+                "ask": {"ask": "act", "act": "join", "network": "Harbour"}})
+        );
+    }
+
+    #[test]
+    fn an_account_is_asked_its_name_its_server_s_domain_then_its_password() {
+        let rows = rows(&described(), &words());
+        let campus = &rows[4];
+        for (key, method) in [
+            ("verb:wifi-join", "peap"),
+            ("verb:wifi-account-ttls", "ttls"),
+        ] {
+            let joining = act(campus, key);
+            assert_eq!(
+                joining["ask"]["account"],
+                json!({"method": method}),
+                "{key}"
+            );
+            assert_eq!(
+                joining["fields"],
+                json!([
+                    {"ask": "wifi:asks:identity", "into": "account.identity"},
+                    {"ask": "wifi:asks:server", "into": "account.serverDomain"},
+                    {"ask": "wifi:asks:password", "into": "password", "secret": true}
+                ]),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_network_nix_declares_is_joined_but_never_asks_a_password() {
+        let mut declared = described();
+        declared.saved[1].declared = true;
+        let rows = rows(&declared, &words());
+        assert_eq!(keys(&rows[1]), ["verb:wifi-join"]);
+    }
+
+    #[test]
+    fn the_network_wanting_a_sign_in_signs_in_first() {
+        let mut wanting = described();
+        wanting.cards = vec![card(Some("Lantern"), Some(Reach::SignIn))];
+        let rows = rows(&wanting, &words());
+        assert_eq!(
+            rows[1]["acts"][0],
+            json!({"key": "verb:wifi-sign-in", "go": "wifid-sign-in"})
+        );
+        assert_eq!(rows[1]["acts"][1]["key"], "verb:wifi-leave");
+    }
+
+    #[test]
+    fn a_trusted_network_s_act_reads_as_stopping_trusting_it() {
+        let rows = rows(&described(), &words());
+        assert_eq!(act(&rows[1], "verb:wifi-trust")["wordState"], "trusted");
+        let mut doubted = described();
+        doubted.saved[1].trusted = false;
+        let rows = super::rows(&doubted, &words());
+        assert_eq!(act(&rows[1], "verb:wifi-trust").get("wordState"), None);
+    }
+
+    #[test]
+    fn a_join_s_stages_and_refusals_are_said_in_the_launcher_s_words() {
+        let words = words();
+        assert_eq!(
+            words.staged("gettingAddress", "Lantern").as_deref(),
+            Some("getting an address from Lantern\u{2026}")
+        );
+        assert_eq!(
+            words.refused("WrongPassword"),
+            Some("that password didn't work")
+        );
+        assert_eq!(words.staged("dancing", "Lantern"), None);
+        assert_eq!(words.refused("Dancing"), None);
     }
 
     #[test]

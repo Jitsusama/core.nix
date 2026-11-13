@@ -8,17 +8,21 @@
 //! {"id": 7, "ask": "act", "act": "leave", "network": "Lantern"}
 //! {"id": 7, "done": true}
 //! {"id": 8, "ask": "act", "act": "join", "network": "Lantern", "password": "..."}
-//! {"id": 8, "stage": "joining", "done": false}
-//! {"id": 8, "stage": "online", "done": true}
+//! {"id": 8, "stage": "joining", "said": "connecting to Lantern\u{2026}", "done": false}
+//! {"id": 8, "stage": "online", "said": "connected to Lantern", "done": true}
 //! ```
 //!
 //! What wifid won't do is an error coded `refused`, its `refused` the
-//! varlink interface's name for why, as `WrongPassword`.
+//! varlink interface's name for why, as `WrongPassword`. Each stage and
+//! refusal is `said` in the launcher's words for it (launcher/words/wifi.json),
+//! as the vocabulary the connection's rows are made in has them, so the
+//! shell's foot says them as they are (2026-11-13).
 
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::face::error;
+use crate::rows::Words;
 use crate::service::{Account, Ask, Refused, Stage, stopping};
 
 /// How far ahead of the shell reading them a join's steps may get.
@@ -92,9 +96,30 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
 }
 
 /// Does what one `act` ask says through wifid's main loop, telling the
-/// connection each answer, until it's done or refused.
-pub async fn act(asks: mpsc::Sender<Ask>, id: Value, said: Value, told: mpsc::Sender<String>) {
+/// connection each answer, until it's done or refused, worded in `words`
+/// where there are any.
+pub async fn act(
+    asks: mpsc::Sender<Ask>,
+    id: Value,
+    said: Value,
+    told: mpsc::Sender<String>,
+    words: Option<Words>,
+) {
     let tell = |answer: Value| told.try_send(answer.to_string()).is_ok();
+    let network = said.get("network").and_then(Value::as_str).unwrap_or("");
+    let refused = |why: &Refused| refusal(&id, why, words.as_ref());
+    let step = |stage: Stage, last: bool| {
+        let mut step = json!({"id": id, "stage": stage, "done": last});
+        let staged = step["stage"].as_str().and_then(|stage| {
+            words
+                .as_ref()
+                .and_then(|words| words.staged(stage, network))
+        });
+        if let Some(staged) = staged {
+            step["said"] = json!(staged);
+        }
+        step
+    };
     match asking(&said) {
         Err((code, why)) => {
             tell(error(&id, code, &why));
@@ -106,28 +131,28 @@ pub async fn act(asks: mpsc::Sender<Ask>, id: Value, said: Value, told: mpsc::Se
             };
             tell(match answered {
                 Ok(()) => json!({"id": id, "done": true}),
-                Err(refused) => refusal(&id, &refused),
+                Err(why) => refused(&why),
             });
         }
         Ok(Asking::Steps(ask, mut steps)) => {
             if asks.send(ask).await.is_err() {
-                tell(refusal(&id, &stopping()));
+                tell(refused(&stopping()));
                 return;
             }
             loop {
                 match steps.recv().await {
                     Some(Ok(stage)) => {
                         let last = stage.is_final();
-                        if !tell(json!({"id": id, "stage": stage, "done": last})) || last {
+                        if !tell(step(stage, last)) || last {
                             return;
                         }
                     }
-                    Some(Err(refused)) => {
-                        tell(refusal(&id, &refused));
+                    Some(Err(why)) => {
+                        tell(refused(&why));
                         return;
                     }
                     None => {
-                        tell(refusal(&id, &stopping()));
+                        tell(refused(&stopping()));
                         return;
                     }
                 }
@@ -136,8 +161,9 @@ pub async fn act(asks: mpsc::Sender<Ask>, id: Value, said: Value, told: mpsc::Se
     }
 }
 
-/// Why wifid won't, as an error naming it as the varlink interface does.
-fn refusal(id: &Value, refused: &Refused) -> Value {
+/// Why wifid won't, as an error naming it as the varlink interface does,
+/// and saying it in the launcher's words where they have it.
+fn refusal(id: &Value, refused: &Refused, words: Option<&Words>) -> Value {
     let (why, message) = match refused {
         Refused::Failed { reason } => ("Failed".to_owned(), reason.clone()),
         other => {
@@ -146,6 +172,9 @@ fn refusal(id: &Value, refused: &Refused) -> Value {
         }
     };
     let mut said = error(id, "refused", &message);
+    if let Some(worded) = words.and_then(|words| words.refused(&why)) {
+        said["error"]["said"] = json!(worded);
+    }
     said["error"]["refused"] = json!(why);
     said
 }
@@ -157,6 +186,15 @@ mod tests {
     /// Acts on one ask, the main loop answering each with `answer`, and
     /// says what the connection was told.
     async fn acted(said: Value, answer: impl FnOnce(Ask) + Send + 'static) -> Vec<Value> {
+        acted_in(None, said, answer).await
+    }
+
+    /// The same, its answers worded in the launcher's vocabulary.
+    async fn acted_in(
+        words: Option<Words>,
+        said: Value,
+        answer: impl FnOnce(Ask) + Send + 'static,
+    ) -> Vec<Value> {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
         tokio::spawn(async move {
@@ -164,7 +202,7 @@ mod tests {
                 answer(ask);
             }
         });
-        act(asks, json!(7), said, told).await;
+        act(asks, json!(7), said, told, words).await;
         let mut heard = Vec::new();
         while let Ok(line) = telling.try_recv() {
             heard.push(serde_json::from_str(&line).expect("JSON"));
@@ -292,6 +330,54 @@ mod tests {
         .await;
         assert_eq!(heard.len(), 2, "heard {heard:?}");
         assert_eq!(heard[1]["error"]["refused"], "WrongPassword");
+    }
+
+    fn words() -> Words {
+        Words::read(&crate::rows::launchers_words()).expect("Wi-Fi's words")
+    }
+
+    /// Joins Lantern, the main loop telling `told` back.
+    async fn joined(told: Vec<Result<Stage, Refused>>) -> Vec<Value> {
+        acted_in(
+            Some(words()),
+            json!({"act": "join", "network": "Lantern"}),
+            |ask| {
+                let Ask::Join { progress, .. } = ask else {
+                    panic!("asked {ask:?}, not to join");
+                };
+                for one in told {
+                    progress.try_send(one).expect("told");
+                }
+            },
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_join_says_each_step_in_the_launcher_s_words() {
+        let heard = joined(vec![Ok(Stage::Joining), Ok(Stage::Online)]).await;
+        let said: Vec<&Value> = heard.iter().map(|one| &one["said"]).collect();
+        assert_eq!(
+            said,
+            [
+                &json!("connecting to Lantern\u{2026}"),
+                &json!("connected to Lantern")
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refusal_says_why_in_the_launcher_s_words() {
+        let heard = joined(vec![Err(Refused::WrongPassword)]).await;
+        assert_eq!(
+            heard[0]["error"]["said"], "that password didn't work",
+            "heard {heard:?}"
+        );
+        let heard = joined(vec![Err(Refused::Failed {
+            reason: "no card".to_owned(),
+        })])
+        .await;
+        assert_eq!(heard[0]["error"]["said"], "it couldn't be connected");
     }
 
     #[tokio::test]
