@@ -7,7 +7,8 @@
 //! meaning's "bge loaded on the NPU in 688 ms", and how long each pi took
 //! to show its first session, from its own "pi: ready in 889 ms". And how
 //! long each service a switch restarted was gone: from systemd stopping it
-//! to its ready line, or to its start where it says none.
+//! to its ready line, or to its start where it says none, leaving out a
+//! oneshot, whose run serves nothing while it lasts.
 //!
 //! Both are our side's figures, stand-ins for what Joel waits on: an
 //! opening is timed from the process's start, not from the key that asked
@@ -126,6 +127,11 @@ impl Launches {
                 let Some(stopped) = self.stopping.remove(unit) else {
                     return true;
                 };
+                // A oneshot's run ending says "Finished" under a start's
+                // message id; it served nothing, so nothing was gone.
+                if entry.message.starts_with("Finished ") {
+                    return true;
+                }
                 if entry.at.saturating_sub(stopped) <= RESTART_WITHIN {
                     let gone = millis(entry.at.saturating_sub(stopped));
                     self.restarted.entry(unit.clone()).or_default().push(gone);
@@ -532,6 +538,34 @@ mod tests {
             Launches::default().said(),
             None,
             "a day with none said something"
+        );
+    }
+
+    #[test]
+    fn a_oneshot_finishing_after_a_stop_is_no_restart() {
+        // systemd says a oneshot's run ended with the message a start has,
+        // so home-manager's activation, which serves nothing, was being
+        // timed as a service gone for the whole of its run.
+        let mut day = Day::new("2026-11-13");
+        let job = |at, job, message: &str| Entry {
+            at,
+            job: Some(job),
+            ..entry("home-manager-jitsusama.service", 6, message)
+        };
+        day.take(&job(
+            1_000_000,
+            Job::Stopping,
+            "Stopping Home Manager environment for jitsusama...",
+        ));
+        day.take(&job(
+            13_000_000,
+            Job::Started,
+            "Finished Home Manager environment for jitsusama.",
+        ));
+        assert_eq!(
+            day.launches.restarted,
+            BTreeMap::new(),
+            "a oneshot's run was timed as a service gone"
         );
     }
 
