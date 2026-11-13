@@ -116,8 +116,8 @@ Provider {
     // What the off row's drawer, and Home's row's, say: why it's off, and
     // what its Return opens meanwhile, where a manager's extension fills in.
     readonly property string offAbout: {
-        // Sentences, so the place's own words rather than a said run.
-        const words = Words.collection("passwords");
+        // Sentences a drawer tells, so its words' tells rather than a said run.
+        const words = Words.of("passwords").tells ?? {};
         const why = String(words.offWhy ?? "");
         if (offManager === null)
             return why;
