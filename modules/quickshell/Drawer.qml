@@ -53,6 +53,7 @@ import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
 import "DrawerProse.js" as Prose
+import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Pictures.js" as Pictures
 import "Search.js" as Search
@@ -1186,12 +1187,12 @@ Floating {
         const room = column.width - labelsGap;
         const most = room - valueFace.advanceWidth("00000000");
         // Its value as it would stand in `beside`, a list with a tail as the
-        // line it's drawn on there (DrawerPage.besideText).
+        // line it's drawn on there (DrawerValue.besideText).
         const valueWidth = (fact, beside) => {
             if (fact.value === null || fact.value === undefined)
                 return 0;
             const face = faceOf(fact);
-            const said = Page.besideText(fact, beside, text => face.advanceWidth(text));
+            const said = Value.besideText(fact, beside, text => face.advanceWidth(text));
             return face.advanceWidth(unbroken(said)) + figureLeast(fact);
         };
         const named = facts.filter(fact => fact && fact.heading === undefined && !proseFact(fact));
@@ -1311,7 +1312,7 @@ Floating {
     // wide where it's drawn that it breaks partway, for the launcher to
     // report when asked. An identifier's words are its parts between its
     // own marks, its hyphens among them, since it breaks there as a
-    // typesetter breaks a path (DrawerPage.identifierWords), so a UUID
+    // typesetter breaks a path (DrawerValue.identifierWords), so a UUID
     // broken at its hyphens keeps each of its words whole; a hash's are
     // its letters, since it has no words of its own. An identifier's
     // lines are read as it's laid on them too: each fits, and none after
@@ -1323,7 +1324,7 @@ Floating {
         const known = drawnRows().filter(row => row.known);
         const laid = row => valueDrawn(row).split("\n");
         return known.length > 0 && known.every(row => row.modelData.identifies === true
-            ? Page.identifierWords(row.modelData.value).every(fits(row))
+            ? Value.identifierWords(row.modelData.value).every(fits(row))
                 && laid(row).every(line => fits(row)(line.replace(/\u00a0/g, " ")))
                 && Identifier.laidWell(row.modelData.value, laid(row))
             : unbroken(row.modelData.value).split(" ")
@@ -1331,8 +1332,9 @@ Floating {
     }
     // A fact's value on the lines it's drawn on, an ellipsis while it's
     // asked: one given as items (`valueItems`, `between`) on the lines
-    // DrawerPage.valueLines lays them on, or with a `tail` on the one line
-    // valueLine gives way on, an identifier as identifierKept lays it, and
+    // DrawerValue.valueLines lays them on, with a `tail` on the one line
+    // valueLine gives way on, or as a lead whose `gives` gives way after
+    // them on leadLine's one line, an identifier as identifierKept lays it, and
     // any other as itemsKept does. Its `value` is still what's copied.
     function valueDrawn(fact) {
         const data = fact.modelData;
@@ -1340,9 +1342,12 @@ Floating {
         if (!fact.known) {
             return "\u2026";
         }
+        if (data.valueItems && data.gives !== undefined) {
+            return Value.leadLine(data.valueItems, data.gives, fact.valueWide, width).join("\n");
+        }
         if (data.valueItems) {
-            return (data.tail ? Page.valueLine(data.valueItems, data.tail, fact.valueWide, width)
-                : Page.valueLines(data.valueItems, data.between ?? " \u00b7 ", fact.valueWide,
+            return (data.tail ? Value.valueLine(data.valueItems, data.tail, fact.valueWide, width)
+                : Value.valueLines(data.valueItems, data.between ?? " \u00b7 ", fact.valueWide,
                     width)).join("\n");
         }
         return data.identifies === true
@@ -1401,9 +1406,9 @@ Floating {
     // An identifier, as a supply's "ucsi-source-psy-USBC000:001" or a
     // desktop entry's "com.onepassword.OnePassword", breaks at its own
     // marks rather than draw past the frame (VKCF3Z, 2026-11-08 and 09), as
-    // DrawerPage.identifierLines lays it; a line that fits is held whole.
+    // DrawerValue.identifierLines lays it; a line that fits is held whole.
     function identifierKept(words, face, wide) {
-        return Page.identifierLines(words, wide, text => face.advanceWidth(text))
+        return Value.identifierLines(words, wide, text => face.advanceWidth(text))
             .map(line => face.advanceWidth(line) <= wide ? line.replace(/ /g, "\u00a0") : line)
             .join("\n");
     }
@@ -2241,7 +2246,7 @@ Floating {
                             // asked, on the one edge every value starts
                             // at, a long one breaking onto the pitch: one
                             // given as items (`valueItems`, `between`) on
-                            // the lines DrawerPage.valueLines lays them on,
+                            // the lines DrawerValue.valueLines lays them on,
                             // or with a `tail` on the one line valueLine
                             // gives way on, its `value` still what's copied.
                             PageText {

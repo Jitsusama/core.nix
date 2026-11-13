@@ -2,7 +2,7 @@
 // shown whole on as many lines as it needs, never elided (VKCF3Z,
 // 2026-11-08): broken at its own marks when it's too long for a line
 // alone, and a short last token kept beside the one before rather than
-// standing alone. DrawerPage.js lays a value's items with it, and
+// standing alone. DrawerValue.js lays a value's items with it, and
 // tests/query-keys.qml holds both in Qt's own engine. Every width is
 // `width(text)`, as the drawer measures what it draws.
 .pragma library

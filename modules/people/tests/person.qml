@@ -233,6 +233,34 @@ QtObject {
         ]);
         check("none where there's nothing", Person.firsts([{ met: null, wait: null }], null,
             said, labels), []);
+        // Their message Joel hasn't answered leads, where and when before it,
+        // which never give way, and the message after, which does (VKCF3Z,
+        // 6ea9cd26); one he wrote last waits as it did.
+        const leading = Object.assign({ from: "in {what}" }, labels);
+        const theirs = "Can you look at the deploy?";
+        check("their message unanswered leads its drawer", Person.firsts([
+            { met: null, wait: { at: 3, name: theirs, what: "Slack", opens: "slack://a" } }
+        ], null, said, leading), [{
+            label: "Waiting", value: `in Slack \u00b7 at 3 \u00b7 ${theirs}`,
+            valueItems: [{ said: "in Slack" }, { said: "at 3" }], gives: theirs
+        }]);
+        check("theirs leads before an older one he wrote last", Person.firsts([
+            { met: null, wait: { at: 2, name: "Thanks!", what: "Slack", mine: true } },
+            { met: null, wait: { at: 6, name: theirs, what: "mail" } }
+        ], null, said, leading)[0]?.gives, theirs);
+        check("one he wrote last waits as it did", Person.firsts([
+            { met: null, wait: { at: 2, name: "Thanks!", what: "Slack", mine: true } }
+        ], null, said, leading), [{ label: "Waiting", value: "Thanks! \u00b7 at 2" }]);
+        // What Return answers: the oldest of theirs still unanswered.
+        check("Return answers the oldest of theirs", Person.answering([
+            { wait: { at: 1, mine: true, opens: "slack://mine" } },
+            { wait: { at: 5, opens: "slack://later" } },
+            null,
+            { wait: { at: 4, opens: "slack://theirs" } }
+        ])?.opens, "slack://theirs");
+        check("and nothing where all he wrote waits on them", Person.answering([
+            { wait: { at: 1, mine: true, opens: "slack://mine" } }, { wait: null }
+        ]), null);
         check("someone in Joel's time says none",
             Person.awaySide("America/Toronto", 0, "12:02", away), "");
 

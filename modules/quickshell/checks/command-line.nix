@@ -88,8 +88,8 @@
   # sequences, and where the caret goes, which Typing.js says; ListedKeys.js
   # to the keys Space ? lists; the drawer as a window, Space and the arrows
   # into it and back, with DrawerPage.js to where its keys take its cursor
-  # and view, DrawerFigure.js to where a fact's figure stands and DrawerProse.js to where
-  # its prose is cut; Operators.js to what d and y do to the rows they take; and
+  # and view, DrawerFigure.js to where a fact's figure stands, DrawerProse.js to where
+  # its prose is cut and DrawerValue.js to how its value is laid on lines; Operators.js to what d and y do to the rows they take; and
   # Confirm.js to how the launcher asks once, as Vim's ask_yesno does.
   the-query-field-takes-vi-modes =
     let
@@ -102,6 +102,7 @@
         "DrawerFigure.js"
         "DrawerPage.js"
         "DrawerProse.js"
+        "DrawerValue.js"
         "Editing.js"
         "KeyNames.js"
         "ListedKeys.js"

@@ -587,7 +587,17 @@ Provider {
             // where every row lived made 18,693 of People's 19,461 rows at
             // home in Joel's morning (2026-11-09).
             parted: true,
-            run: () => provider.launcher?.enter(row),
+            // Return answers their message Joel hasn't, where it was said,
+            // and otherwise steps into them (VKCF3Z, 6ea9cd26: "Return
+            // opens the conversation in Slack").
+            run: () => {
+                const answering = Person.answering(sources.map(source =>
+                    source.firsts(person, provider)));
+                if (answering?.opens)
+                    Niri.spawn(["xdg-open", answering.opens]);
+                else
+                    provider.launcher?.enter(row);
+            },
             verbs: () => provider.inside(person),
             targets: () => provider.inside(person)
         });
@@ -955,6 +965,7 @@ Provider {
             coming ? { name: coming.name, side: coming.side ?? "" } : null,
             at => When.came(at, now, provider.dates), {
                 waiting: Words.name("person:waiting"),
+                from: (Words.of("person:waiting").said ?? {}).from,
                 next: Words.name("people:next"),
                 met: Words.name("person:met")
             });

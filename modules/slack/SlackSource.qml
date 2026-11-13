@@ -126,6 +126,19 @@ PersonSource {
             main: true,
             later: true
         };
+        // Their message he hasn't answered is answered where it was said,
+        // first of their acts (VKCF3Z, 6ea9cd26: "Reply in Slack").
+        const talked = found ? Slack.talked(person.emails, known) : null;
+        if (talked && Slack.owed(talked)) {
+            const reply = "verb:person:slack:reply";
+            return [provider.thing(Object.assign(row, {
+                key: reply,
+                name: Words.name(reply),
+                verb: Words.verb(reply),
+                glyph: Words.glyph(reply),
+                run: () => Niri.spawn(["xdg-open", Slack.opens(talked)])
+            }))];
+        }
         if (found)
             return [provider.thing(Object.assign(row, {
                 run: () => Niri.spawn(["xdg-open",
@@ -170,7 +183,7 @@ PersonSource {
             met: null,
             wait: said && Slack.owing(said, Date.now()) ? {
                 at: talk.at, name: talk.last !== "" ? talk.last : Words.name("slack:conversation"),
-                what: source.called, mine: Slack.wroteLast(said)
+                what: source.called, mine: Slack.wroteLast(said), opens: Slack.opens(said)
             } : null
         };
     }
@@ -182,7 +195,7 @@ PersonSource {
         return SlackConversation.row({
             id: talk.channel,
             name: talk.last !== "" ? talk.last : Words.name("slack:conversation"),
-            opens: `slack://channel?team=${said.team}&id=${talk.channel}`,
+            opens: Slack.opens(said),
             link: talk.link,
             side: source.called,
             note: Ago.ago(talk.at, Date.now()),

@@ -50,6 +50,15 @@
       }
     },
     {
+      "id": "verb:person:slack:reply",
+      "command": "reply",
+      "argument": "slack",
+      "in": "people",
+      "name": "Reply in Slack",
+      "verb": "reply",
+      "glyph": "reply"
+    },
+    {
       "id": "slack:person:status",
       "in": "people",
       "name": "Status"
@@ -97,6 +106,7 @@
       "said": {
         "needs": "needs you \u00b7 {what} \u00b7 {when}",
         "sent": "you wrote \u00b7 {what} \u00b7 {when}",
+        "from": "in {what}",
         "mail": "mail"
       }
     },

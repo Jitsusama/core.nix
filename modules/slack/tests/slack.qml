@@ -118,6 +118,14 @@ QtObject {
             Slack.owing(lastMine, 2 + 2 * days)], [true, false]);
         check("a conversation with nothing said owes nothing", Slack.owing(Object.assign({},
             ada, { conversation: Object.assign({}, talk, { messages: [] }) }), 2), false);
+        // Theirs last is Joel's to answer, and he answers in the
+        // conversation itself (VKCF3Z, 6ea9cd26: "Reply in Slack").
+        check("theirs last is his to answer, his last isn't",
+            [Slack.owed(talking), Slack.owed(lastMine)], [true, false]);
+        check("nothing said is nothing to answer", Slack.owed(Object.assign({}, ada, {
+            conversation: Object.assign({}, talk, { messages: [] }) })), false);
+        check("the conversation opens in Slack", Slack.opens(talking),
+            "slack://channel?team=T1&id=D1");
         check("its drawer, who said each, newest last", Slack.drawn(talking), {
             title: "Ada Lovelace",
             facts: [],
