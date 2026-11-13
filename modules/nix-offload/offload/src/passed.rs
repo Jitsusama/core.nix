@@ -1,7 +1,10 @@
 //! What passed at a commit, kept so it's never built again: each check
 //! `there` built there, each `there --changed` run, with what it named,
-//! and each VM test's subtests run-subtests sent, with where their
-//! pictures went.
+//! each VM test's subtests run-subtests sent, with where their
+//! pictures went, and each `there --run` that ended 0, with its words.
+//! A gate reads that last one (`nix-offload passed ran COMMIT`) rather
+//! than a file of the asker's, since a fenced session can ask for a run
+//! but can't reach the keeper to write one.
 //!
 //! A check built on a lent builder leaves its output there, and each
 //! builder lent starts with an empty store: the first, the second and the
@@ -211,6 +214,49 @@ impl Passed {
         }
     }
 
+    /// Each `there --run` that passed at `at`, as its line: the command's
+    /// words exactly as they ran (`ran`) and the store paths copied up
+    /// before it (`copies`).
+    pub fn ran(&self, at: &At) -> Vec<serde_json::Value> {
+        self.lines(at)
+            .into_iter()
+            .filter(|line| line["ran"].is_array())
+            .collect()
+    }
+
+    /// Keep that `there --run` of `words`, with `copies` sent up first,
+    /// passed at `at`, when it ended with `status` 0; nothing otherwise,
+    /// since nothing that failed is kept and a run that never reached a
+    /// builder has no status. Only nix-offload writes it, for the commit
+    /// it sent and the words it ran, so a gate that reads it, and the
+    /// keeper alone can write it, knows that command ran there in full:
+    /// what the words name is the gate's to judge (a fenced session can
+    /// run `true` as well as a test suite). The same run kept already at
+    /// the commit isn't kept again.
+    pub fn keep_ran(&self, at: &At, words: &[String], copies: &[String], status: Option<i32>) {
+        if status != Some(0) {
+            return;
+        }
+        let (words, copies) = (serde_json::json!(words), serde_json::json!(copies));
+        let kept = self
+            .ran(at)
+            .iter()
+            .any(|line| line["ran"] == words && line["copies"] == copies);
+        if kept {
+            return;
+        }
+        let ended = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        let line = serde_json::json!({
+            "dir": at.dir,
+            "ran": words,
+            "copies": copies,
+            "ended": ended,
+        });
+        self.keep(at, &[line]);
+    }
+
     /// Add `lines` to the commit's file, each written whole in one go, so
     /// two runs keeping theirs at once never mix them.
     fn keep(&self, at: &At, lines: &[serde_json::Value]) {
@@ -263,6 +309,27 @@ pub fn forgetting(state: &Path, commit: &str) -> ExitCode {
     }
 }
 
+/// `nix-offload passed ran COMMIT`: each `there --run` that passed at
+/// `commit`, a line of JSON each, from the keeper's record alone, since
+/// what's under the state folder is the account's own to write. It exits
+/// 69 where the machine runs no keeper, so a gate reading it can't take
+/// a record it wrote itself for a pass.
+pub fn saying_ran(state: &Path, commit: &str) -> ExitCode {
+    let Some(at) = At::new(commit, None) else {
+        eprintln!("nix-offload: passed ran needs a whole commit, not {commit}");
+        return ExitCode::from(64);
+    };
+    let kept = Passed::here(state);
+    if kept.keeper.is_none() {
+        eprintln!("nix-offload: this machine runs no keeper, so no run is kept as passed");
+        return ExitCode::from(69);
+    }
+    for line in kept.ran(&at) {
+        println!("{line}");
+    }
+    ExitCode::SUCCESS
+}
+
 /// `nix-offload passed import`: hand the keeper, once it stands, the
 /// records kept under the state folder, by a nix-offload from before it
 /// did or one still running from then.
@@ -304,9 +371,11 @@ fn hand_over(own: &Passed, kept: &Passed) -> (usize, bool) {
             continue;
         };
         let held = read(&kept.file(&at));
+        // A run's pass is only nix-offload's to keep, through the keeper:
+        // one in the account's own folder could be anyone's.
         let lines: Vec<serde_json::Value> = read(&entry.path())
             .into_iter()
-            .filter(|line| !held.contains(line))
+            .filter(|line| !held.contains(line) && line.get("ran").is_none())
             .collect();
         if !lines.is_empty() {
             if let Err(why) =
@@ -491,10 +560,16 @@ mod tests {
         let at = At::new(COMMIT, None).unwrap();
         kept.keep_checks(&at, &["checks.x.a".to_owned()]);
         own.keep_checks(&at, &["checks.x.a".to_owned(), "checks.x.b".to_owned()]);
+        own.keep_ran(&at, &["/nix/store/x-true".to_owned()], &[], Some(0));
         assert_eq!(
             hand_over(&own, &kept),
             (1, false),
             "its lines weren't handed over"
+        );
+        assert_eq!(
+            kept.ran(&at),
+            [] as [serde_json::Value; 0],
+            "a run's pass the account kept itself reached the keeper"
         );
         assert_eq!(
             kept.checks(&at),
@@ -508,6 +583,50 @@ mod tests {
             "a second import handed some again"
         );
         keeper.join().unwrap();
+    }
+
+    #[test]
+    fn a_run_is_kept_as_it_ran_and_only_once_it_passed() {
+        let state = tempfile::tempdir().unwrap();
+        let passed = Passed::under(state.path());
+        let (top, sub) = (
+            At::new(COMMIT, None).unwrap(),
+            At::new(COMMIT, Some("sub".to_owned())).unwrap(),
+        );
+        let words =
+            |said: &[&str]| -> Vec<String> { said.iter().map(|word| (*word).to_owned()).collect() };
+        let (tests, copies) = (
+            words(&[
+                "/nix/store/b-bash/bin/bash",
+                "scripts/host-run.sh",
+                "/nix/store/r",
+            ]),
+            words(&["/nix/store/r"]),
+        );
+        passed.keep_ran(&top, &tests, &copies, Some(1));
+        passed.keep_ran(&top, &tests, &copies, None);
+        assert_eq!(
+            passed.ran(&top),
+            [] as [serde_json::Value; 0],
+            "a run that failed, or never ran, was kept as passed"
+        );
+        passed.keep_ran(&top, &tests, &copies, Some(0));
+        passed.keep_ran(&top, &tests, &copies, Some(0));
+        let ran = passed.ran(&top);
+        assert_eq!(ran.len(), 1, "the pass wasn't kept once: {ran:?}");
+        assert_eq!(ran[0]["ran"], serde_json::json!(tests), "its words changed");
+        assert_eq!(
+            ran[0]["copies"],
+            serde_json::json!(copies),
+            "its copies changed"
+        );
+        assert_eq!(
+            passed.ran(&sub),
+            [] as [serde_json::Value; 0],
+            "a run at the top was kept for a folder in it"
+        );
+        passed.keep_checks(&top, &["checks.x.a".to_owned()]);
+        assert_eq!(passed.ran(&top).len(), 1, "a check read as a run");
     }
 
     #[test]

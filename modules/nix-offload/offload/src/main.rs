@@ -263,7 +263,7 @@ const USED: &str = "Usage: nix-offload serve --helper PATH --prefix NAME --rate 
                     | nix-offload lines --config PATH \
                     | nix-offload prove-standing --config PATH \
                     | nix-offload keep --folder DIR \
-                    | nix-offload passed (forget COMMIT | import) \
+                    | nix-offload passed (forget COMMIT | import | ran COMMIT) \
                     | nix-offload report --rate DOLLARS \
                     | nix-offload progress HOST \
                     | nix-offload there [--never-ask] [-L] [--keep-going] [--apply FUNCTION] \
@@ -531,8 +531,9 @@ fn main() -> ExitCode {
     {
         ["passed", "forget", commit] => return passed::forgetting(&state(), commit),
         ["passed", "import"] => return passed::importing(&state()),
+        ["passed", "ran", commit] => return passed::saying_ran(&state(), commit),
         ["passed", ..] => {
-            eprintln!("nix-offload: passed takes forget COMMIT or import\n{USED}");
+            eprintln!("nix-offload: passed takes forget COMMIT, import or ran COMMIT\n{USED}");
             return ExitCode::from(64);
         }
         _ => {}
@@ -1293,7 +1294,9 @@ fn standing(dir: &Path) -> Option<String> {
 /// `there --run`: a command run on a lent builder, in a checkout of the
 /// commit here, ending with its status (`command.rs` says why). With no
 /// builder standing it waits for one as `waiting` says, and with none it
-/// exits `NOT_TAKEN`, having run nothing, here or anywhere.
+/// exits `NOT_TAKEN`, having run nothing, here or anywhere. A run that
+/// ends 0 is kept as passed at the commit, with its words and copies
+/// (`passed.rs`), which `nix-offload passed ran COMMIT` says.
 fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let asked = match command::asked(arguments) {
         Ok(asked) => asked,
@@ -1314,6 +1317,7 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
         Ok(source) => source,
         Err(why) => return not_run(&why),
     };
+    let at = there::at_of(&source);
     let (checkout, bundle) = changed::checked_out(source);
     let sending = there::Sending {
         command: command::command(&checkout, &asked),
@@ -1345,6 +1349,12 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     }
     if let Some(bundle) = &sending.bundle {
         let _ = fs::remove_file(bundle);
+    }
+    // What ran at the commit sent, kept by nix-offload alone, so a gate
+    // (the harness's host tests) can take a pass from a fenced session,
+    // which can ask for a run but can't reach the keeper.
+    if let Some(at) = &at {
+        passed::Passed::here(&state()).keep_ran(at, &asked.words, &asked.copies, status);
     }
     match status {
         Some(status) => ExitCode::from(u8::try_from(status).unwrap_or(1)),
