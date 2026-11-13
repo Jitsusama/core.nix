@@ -139,6 +139,34 @@
         x86_64-linux = stick;
         aarch64-linux = appleSiliconStick;
       };
+
+      # Every check by its name, with the file that gives it, of which the
+      # checks are one output and their files, for changed-checks, another.
+      gathered = forEachSystem (
+        pkgs:
+        import ./checks.nix {
+          inherit
+            self
+            pkgs
+            nixpkgs
+            nix-darwin
+            rust-overlay
+            ;
+          formatting = (treefmt pkgs).config.build.check self;
+          # What core's linters are told to leave unread, apart from what
+          # treefmt-nix leaves for every repository: every-pattern-names-a-file
+          # holds each to naming a file.
+          formatterExcludes =
+            let
+              inherit ((treefmt pkgs).config) settings;
+              everyRepository = (treefmt-nix.lib.evalModule pkgs { }).config.settings.excludes;
+            in
+            nixpkgs.lib.subtractLists everyRepository settings.excludes
+            ++ nixpkgs.lib.concatMap (formatter: formatter.excludes or [ ]) (
+              builtins.attrValues settings.formatter
+            );
+        }
+      );
     in
     {
       homeModules = {
@@ -680,11 +708,15 @@
       # `nix-offload there --changed` runs from the commit it sends; and some
       # of a VM test's subtests as a build of their own, for
       # `run-subtests --there` to have built where its VM can run:
-      # `subtests { check = "vm-..."; words = [ ... ]; }`, on Linux.
+      # `subtests { check = "vm-..."; words = [ ... ]; }`, on Linux; and the
+      # file that gives each check, for changed-checks to tell what a check
+      # reads only because checks.nix gathers every folder's. It's no check,
+      # so `nix flake check` neither builds it nor warns of it.
       legacyPackages = forEachSystem (
         pkgs:
         {
           changed-checks = pkgs.callPackage ./tools/changed-checks/package.nix { };
+          checkFiles = gathered.${pkgs.stdenv.hostPlatform.system}.files;
         }
         // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           subtests = import ./tools/run-subtests/subtests.nix {
@@ -694,30 +726,6 @@
         }
       );
 
-      checks = forEachSystem (
-        pkgs:
-        import ./checks.nix {
-          inherit
-            self
-            pkgs
-            nixpkgs
-            nix-darwin
-            rust-overlay
-            ;
-          formatting = (treefmt pkgs).config.build.check self;
-          # What core's linters are told to leave unread, apart from what
-          # treefmt-nix leaves for every repository: every-pattern-names-a-file
-          # holds each to naming a file.
-          formatterExcludes =
-            let
-              inherit ((treefmt pkgs).config) settings;
-              everyRepository = (treefmt-nix.lib.evalModule pkgs { }).config.settings.excludes;
-            in
-            nixpkgs.lib.subtractLists everyRepository settings.excludes
-            ++ nixpkgs.lib.concatMap (formatter: formatter.excludes or [ ]) (
-              builtins.attrValues settings.formatter
-            );
-        }
-      );
+      checks = builtins.mapAttrs (_: these: these.checks) gathered;
     };
 }
