@@ -328,16 +328,18 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
     desktop.type_in("agents")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
     machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents"] and len(shown["rows"]) > 1)
-    # The window titled the new way is its session, named by its title.
-    assert "Another" in desktop.showing()["rows"], desktop.showing()["rows"]
-    # The second, which would go first once it wants Joel.
-    desktop.next_row()
+    # The window titled the new way is its session, named by its title, once the agents
+    # daemon has heard of it from the node, which is after the window opens.
+    desktop.launcher_until(lambda shown: shown["held"] == ["agents"] and "Another" in shown["rows"])
+    # The later of the two, which would go first once it wants Joel.
+    both = {"Another", "A quest of its own & whole"}
+    later = [row for row in desktop.showing()["rows"] if row in both][-1]
+    desktop.down_to(later)
     # Its address leads its drawer's eyebrow, since the row says only how
     # it stands and what it spent.
     desktop.launcher_until(
         lambda shown: (
-            (shown["selected"] or {}).get("name") == shown["rows"][1]
+            (shown["selected"] or {}).get("name") == later
             and shown["drawer"]["eyebrow"].split(" \u00b7 ")[0] in {"TESTQA", "TESTQB"}
         )
     )
@@ -380,41 +382,66 @@ def test_the_launchers_agents_hold_still_as_one_changes_the_selection_on_its_row
 
 def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: Desktop) -> None:
     """Where an agent's long title is cut holds still as what it says at its right shortens."""
-    machine = desktop.machine
     desktop.pi_session()
     long = "\u03c0 - Bootstrap the Lighthouse to Replace Every Other Machine on the Desk - tree"
+
+    def holds_still() -> None:
+        """Open Agents on the long session and see its title's cut hold as its side shortens."""
+        machine = desktop.machine
+
+        # Agents is looked at until the agents daemon serves the session wanting Joel, then
+        # opened afresh, since a row coming while a place is open joins at its foot, below
+        # what's drawn, so the order he's reading holds.
+        def served(shown: Json) -> bool:
+            return shown["held"] == ["agents"] and any(
+                thing["is"] == "agent:TESTQC" and "needs you" in thing["reads"]
+                for thing in shown["things"]
+            )
+
+        for _ in range(2):
+            desktop.launcher_left_closed()
+            desktop.as_account("qs ipc call launcher toggle")
+            desktop.launcher_ready()
+            desktop.type_in("agents")
+            desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
+            machine.send_key("ret")
+            desktop.launcher_until(served)
+
+        def its_row(says: str) -> Json | None:
+            """Give the long session's row as it's drawn, once its right says this."""
+            laid = laid_out(desktop)
+            row = next((row for row in laid["rows"] if "Bootstrap" in row["reads"]), None)
+            return row if row and says in row["reads"] else None
+
+        def name_of(row: Json) -> Json:
+            return max(row["words"], key=lambda word: len(word["text"]))
+
+        retry(lambda _: its_row("needs you") is not None, timeout=dt.timedelta(seconds=20))
+        before = name_of(cast("Json", its_row("needs you")))
+        assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
+        # It goes back to work: "needs you" becomes the shorter "working", and
+        # the title is cut where it was rather than reaching one letter on:
+        # its room holds, whether it's cut by an ellipsis or, selected, reads
+        # on inside it.
+        desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
+        retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
+        after = name_of(cast("Json", its_row("working")))
+        assert after["room"] == before["room"], (
+            f"the title's room went from {before['room']} to {after['room']}:"
+            f" {its_row('working')}, before {before}"
+        )
+
     desktop.pi_window("TESTQC", long)
     question = {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"}
     desktop.presence_says({"addresses": ["TESTQC"], "busy": False, "wants": question}, "TESTQC")
-    desktop.as_account("qs ipc call launcher toggle")
-    desktop.launcher_ready()
-    desktop.type_in("agents")
-    desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
-    machine.send_key("ret")
-
-    def its_row(says: str) -> Json | None:
-        """Give the long session's row as it's drawn, once its right says this."""
-        laid = laid_out(desktop)
-        row = next((row for row in laid["rows"] if "Bootstrap" in row["reads"]), None)
-        return row if row and says in row["reads"] else None
-
-    def name_of(row: Json) -> Json:
-        return max(row["words"], key=lambda word: len(word["text"]))
-
-    retry(lambda _: its_row("needs you") is not None, timeout=dt.timedelta(seconds=20))
-    before = name_of(cast("Json", its_row("needs you")))
-    assert before["cut"], f"the title wasn't cut, so its cut can't be seen to hold: {before}"
-    # It goes back to work: "needs you" becomes the shorter "working", and
-    # the title is cut where it was rather than reaching one letter on:
-    # its room holds, whether it's cut by an ellipsis or, selected, reads
-    # on inside it.
-    desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
-    retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
-    after = name_of(cast("Json", its_row("working")))
-    desktop.close_launcher()
-    desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
-    desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
-    assert after["room"] == before["room"], (before, after)
+    # Its session goes however this ends, since left, it waits on Joel in For You's cases.
+    try:
+        holds_still()
+    finally:
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
+        desktop.as_account(f"niri msg action close-window --id {desktop.window_titled(long)['id']}")
+        desktop.as_account(f"rm -f {PI_PRESENCE}/testqc.json")
 
 
 # Each quest keeps what only Joel can do in a file of its own, written by

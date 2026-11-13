@@ -36,8 +36,13 @@
   {
     "at": 1794346052,
     "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
-    "owner_pr": 2916,
-    "reason": "failed, then passed, at 0d7ca1f2a8b2",
+    "owner_pr": 3884,
+    "reason": "Agents' served top level holds no session's talks and no parked session yet, which KP0L6A serves and takes off by Sat 14; reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
+    "subtests": [
+      "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile",
+      "test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row",
+      "test_an_orchestrators_earlier_talks_say_how_each_went"
+    ],
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
@@ -220,32 +225,14 @@
     "test": "vm-joel-comes-first"
   },
   {
-    "at": 1794542585,
-    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
-    "owner_pr": 3884,
-    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-launcher-keeps-up"
-  },
-  {
-    "at": 1794543709,
-    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
-    "owner_pr": 3884,
-    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-moves-keep-their-window"
-  },
-  {
     "at": 1794545381,
     "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
     "owner_pr": 3884,
-    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "reason": "a cut title's room shrinks by 30 px as its session goes from needs you to working since Agents is served; Y2YBTS fixes it by Sat 14 and takes it off",
+    "subtests": [
+      "test_where_an_agents_title_is_cut_holds_still_as_its_side_changes"
+    ],
     "test": "vm-desktop-launcher-waits-on-joel"
-  },
-  {
-    "at": 1794547527,
-    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
-    "owner_pr": 3884,
-    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-says-what-happens"
   },
   {
     "at": 1794557415,

@@ -200,7 +200,6 @@ class InTheDrawer:
     TITLE = "Deploy log"
     LINES = 40
     FIRST = "line 1 of the deploy went by"
-    LAST = f"line {LINES} of the deploy went by"
     # More lines than its facts take between its title and its words: Arrived, Left and
     # Urgency, each a name and a value, a value wrapped included.
     FACT_LINES = 12
@@ -624,9 +623,11 @@ def test_in_a_drawer_the_keys_move_its_cursor_as_vims_do(desktop: Desktop) -> No
     assert last["scrolled"] > 0, last
     # Said whole, a string pytest never shortens, so a failure shows where the view stood.
     assert held(last), f"G left the cursor outside the view or its top cut: {last}"
-    # The words' last line, or its end where a narrow drawer wraps it, as at 1 here.
+    # The drawer's last line, its last act, since its acts come after its words (drawers.md).
     assert last["cursor"]["says"], last
-    assert page.LAST.endswith(last["cursor"]["says"]), last
+    acts = [str(act) for act in desktop.showing()["drawer"]["acts"]]
+    assert acts, desktop.showing()["drawer"]
+    assert acts[-1].endswith(last["cursor"]["says"]), (acts, last)
     page.until("g g", lambda drawer: drawer["cursor"]["line"] == 0 and drawer["scrolled"] == 0)
     page.until("ctrl-e", a_line_on)
     page.until("ctrl-y", lambda drawer: drawer["scrolled"] == 0)
