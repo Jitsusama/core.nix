@@ -255,13 +255,17 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
 
     # Return talks to a session that's listening, as this one is while it waits to move, and a
     # lone session holds only acts, so Ctrl+] goes to its row in Agents rather than into it
-    # (Joel, 2026-11-11: no menu of acts alone). Go To is its act there as its drawer names
-    # it, once the launcher knows its window, done by its command.
+    # (Joel, 2026-11-11: no menu of acts alone), or found as Agents' own row, into its acts,
+    # until Ctrl+] keeps out of an acts-only row (#3972). Go To is its act there as its drawer
+    # names it, once the launcher knows its window, or the act selected, done by its command.
     desktop.follow()
 
     def offers_go_to(shown: Json) -> bool:
         acts = (shown.get("drawer") or {}).get("acts") or []
-        return shown["held"] == ["agents"] and any(str(act).endswith("Go To") for act in acts)
+        selected = (shown["selected"] or {}).get("name")
+        return shown["held"][:1] == ["agents"] and (
+            selected == "Go To" or any(str(act).endswith("Go To") for act in acts)
+        )
 
     try:
         desktop.launcher_until(offers_go_to)

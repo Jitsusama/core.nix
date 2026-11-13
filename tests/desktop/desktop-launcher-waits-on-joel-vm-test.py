@@ -422,7 +422,10 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
         desktop.presence_says({"addresses": ["TESTQC"], "busy": True}, "TESTQC")
         retry(lambda _: its_row("working") is not None, timeout=dt.timedelta(seconds=20))
         after = name_of(cast("Json", its_row("working")))
-        assert after["room"] == before["room"], (before, after)
+        assert after["room"] == before["room"], (
+            f"the title's room went from {before['room']} to {after['room']}:"
+            f" {its_row('working')}, before {before}"
+        )
 
     desktop.pi_window("TESTQC", long)
     question = {"kind": "question", "since": "2000-01-01T00:00:00Z", "said": "Which?"}

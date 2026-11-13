@@ -164,11 +164,10 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
         return all(re.fullmatch(said, facts.get(name, "")) for name, said in known.items())
 
     desktop.launcher_until(says_what_is_known)
-    # Its acts are its drawer's, Talk first, as Return's, and Close last (VKCF3Z, 3a742b67).
+    # Its acts are its drawer's, Return's first, and Close last (VKCF3Z, 3a742b67).
     acts = [act.removeprefix("\u21b5 ") for act in desktop.showing()["drawer"]["acts"]]
-    assert acts[0] == "Talk", acts
     assert acts[-1] == "Close", acts
-    assert {"Go To", "Pause", "Stop"} <= set(acts), acts
+    assert {"Go To", "Talk", "Pause", "Stop"} <= set(acts), acts
     desktop.shoot("launcher-agent-facts")
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
@@ -412,11 +411,13 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     into_lighthouse(desktop)
-    # Pause is done by its command, its row's own act.
+    # Pause is done by its command, its row's own act, which asks first.
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
     machine.send_chars("pause\n")
+    desktop.launcher_until(lambda shown: shown["takesAnswer"])
+    machine.send_chars("y")
     machine.wait_until_succeeds(
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
         timeout=dt.timedelta(seconds=10),
