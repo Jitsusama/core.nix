@@ -92,14 +92,6 @@
     "kit"
     "helps"
   ];
-  device-check = [
-    "kit"
-    "helps"
-  ];
-  device-check-disk = [
-    "kit"
-    "helps"
-  ];
   dictation = [
     "kit"
     "exits"

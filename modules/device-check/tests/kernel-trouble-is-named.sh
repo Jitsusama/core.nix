@@ -44,24 +44,32 @@ export DEVICE_CHECK_STATE=$work/state DEVICE_CHECK_NOTIFY=$work/notify
 echo 120 > "$kernel/hung_task_timeout_secs"
 echo 0 > "$kernel/hung_task_detect_count"
 
+# device-check runs as its service does, its stderr the journal's stream,
+# which systemd names in JOURNAL_STREAM, so it says what changed there: out
+# keeps its inode however often it's written. What's wrong now, its answer,
+# goes to answer.
+: > out
+JOURNAL_STREAM=$(stat -c %d:%i out)
+export JOURNAL_STREAM
+
 tainted "$warning" "$out_of_tree" "$staging"
-device-check 2> out || fail "it failed on a kernel with harmless taints"
+device-check 2> out > answer || fail "it failed on a kernel with harmless taints"
 [ ! -s out ] || fail "it named a harmless taint"
 
 tainted "$oops" "$warning" "$out_of_tree" "$staging"
-device-check 2> out || fail "it failed on a kernel that oopsed"
+device-check 2> out > answer || fail "it failed on a kernel that oopsed"
 grep -qxF "<4>The kernel hit a fault and may misbehave until the next boot" out \
   || fail "it didn't warn of the oops"
 [ "$(wc -l < out)" = 1 ] || fail "it named more than the oops"
 [ "$(grep -c '^-u critical -a Devices ' notified)" = 1 ] || fail "it didn't notify of the oops"
 
 : > notified
-device-check 2> out || fail "a second look failed"
+device-check 2> out > answer || fail "a second look failed"
 [ ! -s out ] && [ ! -s notified ] || fail "it named the oops again"
 
 echo 1 > "$kernel/hung_task_detect_count"
 tainted "$oops" "$lockup" "$machine_check" "$bad_page"
-device-check 2> out || fail "it failed on a kernel in worse trouble"
+device-check 2> out > answer || fail "it failed on a kernel in worse trouble"
 grep -qxF "<4>The kernel locked up a processor and may misbehave until the next boot" out \
   || fail "it didn't warn of the lockup"
 grep -qxF "<4>The processor reported a hardware error" out \
@@ -72,11 +80,11 @@ grep -qxF "<4>A task was stuck in the kernel for over 120 seconds" out \
 [ "$(wc -l < out)" = 4 ] || fail "it named the oops again, or more than what's new"
 
 echo 2 > "$kernel/hung_task_detect_count"
-device-check 2> out || fail "a look after a second stuck task failed"
+device-check 2> out > answer || fail "a look after a second stuck task failed"
 [ ! -s out ] || fail "it named a second stuck task"
 
 : > notified
 tainted
 echo 0 > "$kernel/hung_task_detect_count"
-device-check 2> out || fail "a look at a clean kernel failed"
+device-check 2> out > answer || fail "a look at a clean kernel failed"
 [ ! -s out ] && [ ! -s notified ] || fail "it said the kernel's trouble had cleared"

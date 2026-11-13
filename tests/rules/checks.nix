@@ -119,9 +119,15 @@
   # list only shrinks.
   commands-agree = self.lib.commandsAgree pkgs {
     src = ../..;
-    commands = {
-      lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
-    };
+    commands =
+      let
+        deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
+      in
+      {
+        device-check = deviceCheck;
+        device-check-disk = deviceCheck;
+        lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+      };
     waiting = import ./commands-agree-waiting.nix;
   };
 }
