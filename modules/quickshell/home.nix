@@ -848,6 +848,18 @@ let
     ];
     text = builtins.readFile ./lid-held.sh;
   };
+
+  # Compiles the shell's files before a switch restarts it (./starts-warm.sh).
+  startsWarm = pkgs.writeShellApplication {
+    name = "quickshell-starts-warm";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnused
+      pkgs.quickshell
+      pkgs.systemd
+    ];
+    text = builtins.readFile ./starts-warm.sh;
+  };
 in
 {
   imports = [
@@ -2600,6 +2612,24 @@ in
       # so while it's held a shut lid locks it instead, away from a desk.
       runs = [ (lib.getExe lidHeld) ];
     });
+
+    # A switch that changes the shell's files left the new shell compiling
+    # nearly all of them before it listened, so a chord waited 1.9 s from the
+    # old shell's stop (12 November). Compiled once they're linked, while the
+    # old shell still runs, the new one starts from the cache. Every QML file
+    # the shell links is named, as its restart's triggers are.
+    home.activation.quickshellStartsWarm =
+      let
+        isShells = name: lib.hasPrefix "quickshell/" name && lib.hasSuffix ".qml" name;
+        linked = lib.attrNames config.xdg.configFile;
+        warmed = lib.remove "quickshell/warm.qml" (lib.filter isShells linked);
+        warms = pkgs.writeText "quickshell-warms.json" (
+          builtins.toJSON (map (lib.removePrefix "quickshell/") warmed)
+        );
+      in
+      lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "linkGeneration" ] ''
+        run ${lib.getExe startsWarm} ${warms}
+      '';
 
     systemd.user.services.quickshell = {
       Unit = {
