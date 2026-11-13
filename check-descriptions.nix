@@ -405,7 +405,9 @@
     builder took, builds here, and evaluates a commit's checks once; where nix-offload takes it,
     the whole run goes to `there --changed` naming this machine's system and a base as its merge
     base's commit; with a base origin's main doesn't hold, edits not yet committed, or nowhere
-    taking it, it runs nothing and exits 75, and it runs here only with --here
+    taking it, it runs nothing and exits 75, and it runs here only with --here; a test main
+    quarantines is built alone, its failure blocking nothing unless its entry names subtests
+    and its log names a failure outside them, or none
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests

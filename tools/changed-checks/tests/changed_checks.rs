@@ -59,7 +59,8 @@ esac
 
 /// nix as changed-checks asks it: a side's checks by name, then their
 /// derivations, the base's being any flake at a revision; and a build,
-/// which it records, and which fails when it names a check `failing` lists. It refuses an evaluation through its evaluation
+/// which it records, and which fails when it names a check `failing` lists,
+/// saying `failing.said` as its log. It refuses an evaluation through its evaluation
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
 /// derivations waits for another to be under way beside it before
@@ -85,9 +86,10 @@ case "$1" in
     shift
     echo "$@" | sed 's/ --option pure-eval true --option accept-flake-config false//' \
       >> "$STAND_IN/built"
+    exec 3>&2
     for word in "$@"; do
       while read -r check; do
-        case "$word" in *".$check") exit 1 ;; esac
+        case "$word" in *".$check") cat "$STAND_IN/failing.said" >&3 2>/dev/null; exit 1 ;; esac
       done < "$STAND_IN/failing"
     done 2>/dev/null
     exit 0 ;;
@@ -452,6 +454,58 @@ fn a_check_main_quarantines_is_built_alone_and_its_failure_blocks_nothing() {
     let _ = fs::remove_file(stand_in.path("built"));
     let ran = stand_in.run(&["--system", "x86_64-linux"]);
     assert!(!ran.status.success(), "{}", text(&ran.stderr));
+}
+
+#[test]
+fn an_entry_naming_subtests_excuses_only_a_failure_its_log_names_in_them() {
+    let stand_in = StandIn::new("quarantined-subtests");
+    stand_in.checks("base", BASE);
+    stand_in.checks("working", WORKING);
+    fs::write(
+        stand_in.path("quarantine.json"),
+        r#"[{"test": "new", "reason": "r", "owner_pr": 7, "subtests": ["test_q"]}]"#,
+    )
+    .expect("written");
+    fs::write(stand_in.path("failing"), "new\n").expect("written");
+    let failing_in = |said: &str| {
+        fs::write(stand_in.path("failing.said"), said).expect("written");
+        stand_in.run(&["--system", "x86_64-linux"])
+    };
+
+    let listed = failing_in("vm-test-run-new> FAILED new/new-vm-test.py::test_q - e\n");
+    assert!(
+        listed.status.success(),
+        "a failure in a listed subtest blocked: {}",
+        text(&listed.stderr)
+    );
+
+    let unlisted = failing_in(
+        "vm-test-run-new> FAILED new/new-vm-test.py::test_q - e\n\
+         vm-test-run-new> FAILED new/new-vm-test.py::test_r - e\n",
+    );
+    assert!(
+        !unlisted.status.success(),
+        "a failure in an unlisted subtest was excused: {}",
+        text(&unlisted.stderr)
+    );
+    assert!(
+        text(&unlisted.stderr)
+            .contains("new failed in test_r, which main's quarantine doesn't excuse, so it blocks"),
+        "{}",
+        text(&unlisted.stderr)
+    );
+
+    let unnamed = failing_in("error: builder failed\n");
+    assert!(
+        !unnamed.status.success(),
+        "a failure naming no subtest was excused: {}",
+        text(&unnamed.stderr)
+    );
+    assert!(
+        text(&unnamed.stderr).contains("new failed in no test its log names"),
+        "{}",
+        text(&unnamed.stderr)
+    );
 }
 
 #[test]

@@ -12,9 +12,12 @@
 //! reached; a machine that lends a builder has it, since the module that
 //! writes the store file installs it.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+
+use crate::quarantine;
 
 /// How a build there ended, and what it sent the builder.
 pub struct Sent {
@@ -23,6 +26,8 @@ pub struct Sent {
     pub there: bool,
     /// What ssh sent, as nix-offload journalled it.
     pub bytes: Option<u64>,
+    /// The subtests its log said failed.
+    pub failed: BTreeSet<String>,
 }
 
 /// Whether a builder is lent: the first line of `store` in nix-offload's
@@ -62,15 +67,16 @@ pub fn fetched(url: &str, commit: &str) -> String {
 /// log coming here as it goes, and read what it journalled in `journal`.
 pub fn build(flake: &str, system: &str, checks: &[&str], journal: &Path) -> Result<Sent, String> {
     eprintln!("changed-checks: building on the lent builder, {flake}");
-    let status = Command::new("nix-offload")
-        .args(["there", "-L", "--keep-going", flake])
-        .args(
-            checks
-                .iter()
-                .map(|check| format!("checks.{system}.{check}")),
-        )
-        .status()
-        .map_err(|error| format!("running nix-offload: {error}"))?;
+    let (status, failed) = quarantine::heard(
+        Command::new("nix-offload")
+            .args(["there", "-L", "--keep-going", flake])
+            .args(
+                checks
+                    .iter()
+                    .map(|check| format!("checks.{system}.{check}")),
+            ),
+    )
+    .map_err(|error| format!("running nix-offload: {error}"))?;
     // It refuses what it can't read as 64, its usage's status, which no
     // build gives; one older than `there` refuses it so. One whose builder
     // went before it took the build builds nothing, as 75.
@@ -86,6 +92,7 @@ pub fn build(flake: &str, system: &str, checks: &[&str], journal: &Path) -> Resu
         passed: status.success(),
         there: noted.as_ref().is_some_and(|line| line["on"].is_string()),
         bytes: noted.and_then(|line| line["sent"].as_u64()),
+        failed,
     })
 }
 

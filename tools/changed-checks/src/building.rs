@@ -1,6 +1,7 @@
 //! Building the checks a run named: which still need building, and
 //! building them on the lent builder while one stands, or here.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::path::Path;
 use std::process::Command;
@@ -52,7 +53,9 @@ pub struct Built {
 }
 
 /// Build `targets`, each that main quarantines alone after the rest, from
-/// the derivations `after` evaluated for them.
+/// the derivations `after` evaluated for them. A quarantined check's
+/// failure blocks nothing unless its entry names subtests and its log
+/// names a failure outside them, or none at all.
 pub fn built(
     flake: &str,
     system: &str,
@@ -69,6 +72,7 @@ pub fn built(
         passed: true,
         there: false,
         bytes: None,
+        failed: BTreeSet::new(),
     };
     if !blocking.is_empty() {
         sent = build(flake, system, &blocking, after)?;
@@ -76,11 +80,28 @@ pub fn built(
     // Each is built alone, so a failure is known for the check it was.
     for name in quarantined {
         let alone = build(flake, system, &[name], after)?;
-        if !alone.passed {
-            let why = quarantine::find(held, name)
-                .map(Held::said)
-                .unwrap_or_default();
-            eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
+        if let Some(entry) = quarantine::find(held, name).filter(|_| !alone.passed) {
+            if entry.excuses(&alone.failed) {
+                let why = entry.said();
+                eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
+            } else {
+                let unlisted: Vec<&str> = alone
+                    .failed
+                    .iter()
+                    .filter(|subtest| !entry.subtests.contains(*subtest))
+                    .map(String::as_str)
+                    .collect();
+                let which = if unlisted.is_empty() {
+                    "no test its log names".to_owned()
+                } else {
+                    unlisted.join(", ")
+                };
+                eprintln!(
+                    "changed-checks: {name} failed in {which}, which main's quarantine doesn't \
+                     excuse, so it blocks"
+                );
+                sent.passed = false;
+            }
         }
         sent.there |= alone.there;
         // Each build there sent its own, so the run sent them all.
@@ -115,24 +136,27 @@ pub fn build(
     // evaluator runs beside the builds: one holds its whole heap until its
     // last build ends, 1.4 to 4 GiB through a VM test. A derivation the
     // store has collected since is built from the flake, as before.
-    let built = Command::new("nix")
-        .args(["build", "--no-link", "--keep-going", "-L"])
-        .args(PURE)
-        .args(standing())
-        .args(
-            targets
-                .iter()
-                .map(|name| match after.get(*name).and_then(Option::as_deref) {
-                    Some(derivation) if Path::new(derivation).exists() => format!("{derivation}^*"),
-                    _ => format!("{flake}#checks.{system}.{name}"),
-                }),
+    let (built, failed) =
+        quarantine::heard(
+            Command::new("nix")
+                .args(["build", "--no-link", "--keep-going", "-L"])
+                .args(PURE)
+                .args(standing())
+                .args(targets.iter().map(
+                    |name| match after.get(*name).and_then(Option::as_deref) {
+                        Some(derivation) if Path::new(derivation).exists() => {
+                            format!("{derivation}^*")
+                        }
+                        _ => format!("{flake}#checks.{system}.{name}"),
+                    },
+                )),
         )
-        .status()
         .map_err(|error| format!("running nix: {error}"))?;
     Ok(Sent {
         passed: built.success(),
         there: false,
         bytes: None,
+        failed,
     })
 }
 
