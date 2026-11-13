@@ -3995,6 +3995,46 @@ def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
     bcbe9a24). So the drawers of the rows beside it are watched too, and a key to one brings
     its own drawer, said presented from that key.
     """
+    on_charge(shell, machine)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    beside = machine.ahead("drawer:power:rate", deadline)
+    shell.normal()
+    since = shell.mark()
+    # A letter, as Joel walks rows, since an arrow sent here comes with no press time to say
+    # its drawer from.
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Rate")
+    said = said_once(shell, since, DRAWER_SAID)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    shown = shell.showing()["drawer"]
+    shell.close_launcher()
+    assert beside, "Rate's drawer, beside the one drawn, wasn't watched before a key reached it"
+    assert any('drawer for "power:rate" presented' in line for line in lines), (
+        f"Rate's drawer was never said presented from the key that reached it: {lines}"
+    )
+    assert shown["title"] == "Rate", f"the drawer beside Rate's row was {shown['title']!r}"
+
+
+def test_a_drawer_apart_is_held_again_as_the_launcher_opens_again(
+    shell: Shell, machine: StandIn
+) -> None:
+    """Opened again on Charge, the launcher shows its drawer, still watched ahead from before.
+
+    Each opening watches the place and its drawers ahead again, and a whole answer to the place
+    that came after the drawers' let them go, so Charge's drawer never showed again until it
+    changed (2026-11-12).
+    """
+    on_charge(shell, machine)
+    shell.close_launcher()
+    on_charge(shell, machine)
+    shell.close_launcher()
+
+
+def on_charge(shell: Shell, machine: StandIn) -> list[Json]:
+    """Serve Charge and Rate with drawers apart, and step through Machine to Charge.
+
+    It gives the two rows as told, and leaves the launcher open on Charge with its drawer out.
+    """
     charge = battery(80)[1]
     drawn = {
         "charge": {"title": "Charge", "facts": [{"name": "energy_now", "said": "40,000,000"}]},
@@ -4031,24 +4071,16 @@ def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
         shell.step_in()
         shell.launcher_until(holds(holding))
     shell.down_to("Charge")
-    shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    beside = machine.ahead("drawer:power:rate", deadline)
-    shell.normal()
-    since = shell.mark()
-    # A letter, as Joel walks rows, since an arrow sent here comes with no press time to say
-    # its drawer from.
-    shell.send_chars("j")
-    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Rate")
-    said = said_once(shell, since, DRAWER_SAID)
-    lines = [line for line in said.splitlines() if "drawer for" in line]
-    shown = shell.showing()["drawer"]
-    shell.close_launcher()
-    assert beside, "Rate's drawer, beside the one drawn, wasn't watched before a key reached it"
-    assert any('drawer for "power:rate" presented' in line for line in lines), (
-        f"Rate's drawer was never said presented from the key that reached it: {lines}"
-    )
-    assert shown["title"] == "Rate", f"the drawer beside Rate's row was {shown['title']!r}"
+    try:
+        shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+    except AssertionError as failed:
+        with machine.lock:
+            watches = [sorted(watches.values()) for watches in machine.clients.values()]
+        said, _ = shell.said_since(0)
+        drawers = [report for report in said if "drawer" in report][-12:]
+        message = f"{failed}\nwatched of the stand-in: {watches}\nsaid of drawers: {drawers}"
+        raise AssertionError(message) from failed
+    return rows
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:
