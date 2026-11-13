@@ -7,7 +7,6 @@
     "subtests": [
       "test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says",
       "test_quickshell_warned_of_nothing_it_drew_all_along",
-      "test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_something",
       "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
     ],
     "test": "vm-desktop-launcher-goes-places"
