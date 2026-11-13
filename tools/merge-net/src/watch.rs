@@ -25,6 +25,7 @@
 //! The round talks to git, nix and GitHub through `World`, so each of
 //! those choices is tested against a stand-in (the tests below).
 
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
@@ -193,8 +194,11 @@ pub trait World: Sync {
     /// Build a check at a commit, its log written to `log`, and give its
     /// exit, none when it was stopped.
     fn build(&self, commit: &str, check: &str, log: &Path) -> Option<i32>;
-    /// The tests quarantined at `head`.
+    /// The tests quarantined whole at `head`.
     fn quarantined(&self, head: &str) -> Vec<String>;
+    /// The subtests of `test` quarantined at `head`, none when it's listed
+    /// whole or not at all.
+    fn listed_subtests(&self, head: &str, test: &str) -> BTreeSet<String>;
     /// Revert a bad merge on main through a PR merged on its own checks,
     /// once `still`, asked with main's newest head and the revert merged
     /// into it, says it's needed: true to land, false to drop it as
@@ -207,10 +211,12 @@ pub trait World: Sync {
     /// The PR whose merge, at or before `head`, last took `test` off the
     /// quarantine list, if one did.
     fn unlisted_by(&self, test: &str, head: &str) -> Option<u64>;
-    /// Put a flaky test on the quarantine list through a merged PR.
+    /// Put a flaky test on the quarantine list through a merged PR,
+    /// excusing only `subtests` of it where any are named.
     fn quarantine(
         &self,
         test: &str,
+        subtests: &BTreeSet<String>,
         owner: Option<u64>,
         commit: &str,
         reason: &str,
@@ -337,6 +343,7 @@ fn run_once(
     };
     let ran = match code {
         Some(0) => Ran::Passed,
+        Some(_) if excused(world, state, commit, check, &log) => Ran::Passed,
         Some(_) => Ran::Failed,
         None => Ran::Stalled,
     };
@@ -344,6 +351,40 @@ fn run_once(
         state.say(&why);
     }
     Some(ran)
+}
+
+/// Whether a failed run of `check` at `commit`, its log at `log`, failed
+/// only in subtests main's list names for its test, so it counts as
+/// passed and what follows a pass follows (quarantine.rs). The list is
+/// main's as last fetched, which its owners keep, rather than the
+/// commit's: a search runs at commits from before an entry was written.
+fn excused(world: &dyn World, state: &State, commit: &str, check: &str, log: &Path) -> bool {
+    let Some(newest) = world.fetched() else {
+        return false;
+    };
+    let test = subtests::whole(check);
+    let listed = world.listed_subtests(&newest, test);
+    let failing = subtests::failed_in(crate::world::lines_of(log));
+    if !crate::quarantine::excuses(&listed, &failing) {
+        return false;
+    }
+    state.say(&format!(
+        "{check} failed at {} only in subtests main lists as quarantined ({}), so it counts \
+         as passed",
+        short(commit),
+        failing.into_iter().collect::<Vec<_>>().join(", ")
+    ));
+    true
+}
+
+/// The subtests that failed in `test`'s runs at `commit`, which the net
+/// lists it by when it quarantines it: none where no run's log names one,
+/// and then the whole test is listed.
+fn failing_at(state: &State, commit: &str, test: &str) -> BTreeSet<String> {
+    (1..=FAILURES)
+        .filter_map(|run| u32::try_from(run).ok())
+        .flat_map(|run| subtests::failed_in(crate::world::lines_of(&state.log(commit, test, run))))
+        .collect()
 }
 
 /// Like `attempt`, but every run still needed to call `check` broken at
@@ -1295,7 +1336,7 @@ fn list_flaky(
     owner: Option<u64>,
 ) -> Result<(), String> {
     let reason = format!("failed, then passed, at {}", short(head));
-    let made = world.quarantine(test, owner, head, &reason);
+    let made = world.quarantine(test, &failing_at(state, head, test), owner, head, &reason);
     // On 10 November a refused merge was kept only in the finding, and the
     // list it would have landed sat unmerged for an hour and a half.
     match &made {
@@ -1364,8 +1405,8 @@ fn list_still_red(
         short(base),
         short(head)
     );
-    let listed =
-        (!listed_on_main(world, head, test)).then(|| world.quarantine(test, owner, head, &reason));
+    let listed = (!listed_on_main(world, head, test))
+        .then(|| world.quarantine(test, &failing_at(state, head, test), owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
         "owner_pr": owner, "log": log,
@@ -1428,8 +1469,15 @@ fn search(
     let merges = to_search(world, state, base, head, test)?;
     // Each step runs only the subtests that failed in both runs at the head
     // (subtests.rs), and what it finds is checked at its parent the same way.
+    // Those main lists as quarantined are left out, since they excuse a run.
+    let listed = world
+        .fetched()
+        .map(|newest| world.listed_subtests(&newest, test))
+        .unwrap_or_default();
     let at_head: Vec<_> = (1..=2)
-        .map(|run| subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))))
+        .map(|run| {
+            &subtests::failed_in(crate::world::lines_of(&state.log(head, test, run))) - &listed
+        })
         .collect();
     let narrowed = subtests::narrowed(test, &at_head);
     if narrowed != test {
@@ -1792,7 +1840,8 @@ fn list_broken(
              forward and takes it off this list"
         )
     };
-    let made = world.quarantine(&found.test, found.pr, head, &reason)?;
+    let subtests = failing_at(state, head, &found.test);
+    let made = world.quarantine(&found.test, &subtests, found.pr, head, &reason)?;
     state.clear_hold()?;
     state.say(&format!(
         "listed {} as quarantined in #{}, owned by {what}, so the hold is cleared",
@@ -1867,6 +1916,10 @@ mod tests {
         /// A commit main's newest head builds every check as.
         newest_builds_as: Option<String>,
         put_in_quarantine: Mutex<Vec<String>>,
+        /// The subtests each test put in quarantine was listed by.
+        quarantine_subtests: Mutex<Vec<BTreeSet<String>>>,
+        /// Tests listed by their subtests, at every commit.
+        listed_by_subtest: Vec<(String, Vec<String>)>,
         /// The reason each test put in quarantine was listed for.
         quarantine_reasons: Mutex<Vec<String>>,
         /// The owner each test put in quarantine was listed with.
@@ -2052,6 +2105,13 @@ mod tests {
             }
             listed
         }
+        fn listed_subtests(&self, _: &str, test: &str) -> BTreeSet<String> {
+            self.listed_by_subtest
+                .iter()
+                .filter(|(listed, _)| listed == test)
+                .flat_map(|(_, subtests)| subtests.iter().cloned())
+                .collect()
+        }
         fn revert(
             &self,
             bad: &Bad,
@@ -2094,11 +2154,16 @@ mod tests {
         fn quarantine(
             &self,
             test: &str,
+            subtests: &BTreeSet<String>,
             owner: Option<u64>,
             _: &str,
             reason: &str,
         ) -> Result<Merged, String> {
             self.put_in_quarantine.lock().unwrap().push(test.to_owned());
+            self.quarantine_subtests
+                .lock()
+                .unwrap()
+                .push(subtests.clone());
             self.quarantine_reasons
                 .lock()
                 .unwrap()
@@ -2877,6 +2942,82 @@ mod tests {
         );
         assert!(world.reverted.lock().unwrap().is_empty());
         assert_eq!(findings(&state)[0]["kind"], "failed-in-quarantine");
+    }
+
+    #[test]
+    fn a_test_failing_only_in_its_listed_subtests_passes() {
+        let state = state("listed-subtest");
+        state.set_heads("s", "s").unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            listed_by_subtest: vec![("vm-a".into(), names("test_b"))],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into()),
+            "test_b, which failed, is listed"
+        );
+        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(
+            world.built().iter().all(|(at, _)| at == "h"),
+            "nothing is searched: {:?}",
+            world.built()
+        );
+    }
+
+    #[test]
+    fn a_listed_test_failing_in_a_subtest_it_doesnt_list_is_searched() {
+        let state = state("unlisted-subtest");
+        state.set_heads("s", "s").unwrap();
+        state.make().unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("m1 m2 m3 h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            listed_by_subtest: vec![("vm-a".into(), names("test_old"))],
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1])
+        .exits("m2", "vm-a::test_b", &[1, 1])
+        .exits("m3", "vm-a::test_b", &[1, 1]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Failed("h".into())
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "only test_old is listed, and test_b broke at m2"
+        );
+    }
+
+    #[test]
+    fn a_flaky_test_is_listed_by_the_subtest_that_failed() {
+        let state = state("flaky-subtest");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 0]);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into())
+        );
+        assert_eq!(*world.put_in_quarantine.lock().unwrap(), names("vm-a"));
+        assert_eq!(
+            *world.quarantine_subtests.lock().unwrap(),
+            [names("test_b").into_iter().collect::<BTreeSet<_>>()],
+            "only test_b failed, so only it is listed"
+        );
     }
 
     #[test]

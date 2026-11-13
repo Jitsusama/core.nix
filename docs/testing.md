@@ -280,6 +280,11 @@ that list from origin's main, so a branch can't quarantine its own failure:
 a quarantined test still runs, but its failure is said and blocks nothing.
 The net reads the list at its round's head and at main's newest head, so a
 test listed while a round runs is searched for and reverted no more.
+The net lists a test by the subtests that failed, under `subtests`, and an
+entry naming them excuses only a run whose failed subtests are all among
+them: a failure in another of its subtests is searched for and reverted
+like any other, and a new flaky one is added to the entry. An entry naming
+none excuses the whole test. Gates read every entry as the whole test.
 A run the net stops, past two hours on a builder or silent there for
 thirty minutes, is a stall, not a failure (the wait for a builder counts
 for neither): one stalling twice at a commit is a finding, and no
