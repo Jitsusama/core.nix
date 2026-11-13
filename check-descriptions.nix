@@ -1920,6 +1920,11 @@
     its link points at now, so once the link moves, a reload loads the new copy and its own helpers,
     still known by the link, whether the copy it first loaded is gone or still there
   '';
+  pi-hosted-keeps-each-folders-extensions = ''
+    pi built with the host's patches, applied exactly, keeps the extensions it loaded for each of
+    the sixteen folders loaded most recently, two loading at once included, so a conversation in a
+    folder that loaded them reuses its modules, no two folders share one, and a reload loads afresh
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers

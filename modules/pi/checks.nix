@@ -378,6 +378,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi keeps each folder's extensions, so a conversation opening or
+  # waking in a folder that loaded them doesn't evaluate their modules again,
+  # and no two folders share one.
+  pi-hosted-keeps-each-folders-extensions =
+    pkgs.runCommandLocal "pi-hosted-keeps-each-folders-extensions" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-keeps-each-folders-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's conversations each read their keys and headers from their
   # own auth context and never from the process, while a pi given none
   # reads the process as ordinary pi does.
