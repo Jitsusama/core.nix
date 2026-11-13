@@ -282,6 +282,8 @@ struct Reader {
     statuses: status::Kept,
     /// The program behind lag-watch's last wait.
     behind: using::Behind,
+    /// What each battery's charging is set to, read once a minute.
+    charging: supply::Settings,
 }
 
 impl Reader {
@@ -428,7 +430,14 @@ impl Reader {
         if wants("supply") {
             for name in supply::supplies(&self.root) {
                 let said = buses.upower.get(&name).cloned().unwrap_or(Value::Null);
-                records.push(supply::record(&self.root, &name, &said));
+                let now = Instant::now();
+                records.push(supply::record(
+                    &self.root,
+                    &name,
+                    &said,
+                    &mut self.charging,
+                    now,
+                ));
             }
         }
         // The programs and the trees share one read of every process, and
@@ -724,6 +733,7 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             watchers: status::of_session(),
             statuses: status::Kept::asking(units::standing),
             behind: using::Behind::default(),
+            charging: supply::Settings::default(),
         }),
         woken: Condvar::new(),
     }
@@ -2285,7 +2295,12 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
             else {
                 return error(id, "bad-act", "a charge limit needs its stop_pct");
             };
-            let set = supply::set_limit(&lock(&shared.reader).root, name, wanted);
+            let set = {
+                let mut reader = lock(&shared.reader);
+                // Whatever came of it, the limit is read again at once.
+                reader.charging.forget(name);
+                supply::set_limit(&reader.root, name, wanted)
+            };
             if let Err(unset) = set {
                 return error(id, unset.code, &unset.message);
             }

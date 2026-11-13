@@ -4,11 +4,57 @@
 //! `/sys/class/typec`, and what `UPower` works out of the battery, its time
 //! to empty or full, as main.rs last asked it.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use serde_json::{Value, json};
 
 use crate::{Root, rounded};
 
 const SUPPLIES: &str = "/sys/class/power_supply";
+
+/// How long what a battery's charging is set to is kept before its files
+/// are read again. On a Dell each of the three is a call into the
+/// firmware, 10 to 23 ms and a 64 KiB buffer the kernel finds whole, and
+/// one that found none failed the read (2026-11-12, 22:56), though only a
+/// change Joel makes moves them.
+pub const SETTINGS_KEPT: Duration = Duration::from_secs(60);
+
+/// What each battery's charging is set to, its charge types and its
+/// limit's ends, as last read, by its folder, so a supply read each
+/// second asks the firmware once a minute. A limit set here is read again
+/// at once (`forget`).
+#[derive(Default)]
+pub struct Settings {
+    read: HashMap<String, (Instant, Set)>,
+}
+
+#[derive(Clone)]
+struct Set {
+    types: Option<String>,
+    start: Option<u64>,
+    stop: Option<u64>,
+}
+
+impl Settings {
+    /// What the battery in `folder` is set to, read again once it's been
+    /// kept `SETTINGS_KEPT` by `now`.
+    fn of(&mut self, root: &Root, folder: &str, now: Instant) -> Set {
+        let set = Set {
+            types: root.said(&format!("{folder}/charge_types")),
+            start: root.number(&format!("{folder}/{START}")),
+            stop: root.number(&format!("{folder}/{STOP}")),
+        };
+        self.read.insert(folder.to_owned(), (now, set.clone()));
+        set
+    }
+
+    /// Read the battery `name` again at its next read, as once its limit
+    /// is set.
+    pub fn forget(&mut self, name: &str) {
+        self.read.remove(&format!("{SUPPLIES}/{name}"));
+    }
+}
 
 /// The choice a kernel list marks, as `[sink]` in `source [sink]`, and
 /// every choice it lists. A file saying one thing alone, as an older
@@ -144,9 +190,17 @@ fn port(root: &Root, name: &str) -> Value {
     })
 }
 
-/// One supply's record; `upower` what `UPower` last said of it, or null.
-pub fn record(root: &Root, name: &str, upower: &Value) -> Value {
+/// One supply's record; `upower` what `UPower` last said of it, or null;
+/// what it's set to as `settings` keeps it at `now`.
+pub fn record(
+    root: &Root,
+    name: &str,
+    upower: &Value,
+    settings: &mut Settings,
+    now: Instant,
+) -> Value {
     let folder = format!("{SUPPLIES}/{name}");
+    let set = settings.of(root, &folder, now);
     let at = |file: &str| root.said(&format!("{folder}/{file}"));
     let whole = |file: &str| root.number(&format!("{folder}/{file}"));
     let units = |file: &str| millionths(root, &folder, file).map(|v| rounded(v, 3));
@@ -170,7 +224,7 @@ pub fn record(root: &Root, name: &str, upower: &Value) -> Value {
         (Some(year), Some(month), Some(day)) => Some(format!("{year:04}-{month:02}-{day:02}")),
         _ => None,
     };
-    let (charge_type, charge_types) = chosen(at("charge_types"));
+    let (charge_type, charge_types) = chosen(set.types);
     let (usb_type, usb_types) = chosen(at("usb_type"));
     // The kernel counts a battery's temperature in tenths of a degree.
     let temperature = whole("temp")
@@ -206,8 +260,8 @@ pub fn record(root: &Root, name: &str, upower: &Value) -> Value {
         "technology": at("technology"),
         "charge_type": charge_type.or_else(|| at("charge_type")),
         "charge_types": charge_types,
-        "limit_start_pct": whole("charge_control_start_threshold"),
-        "limit_stop_pct": whole("charge_control_end_threshold"),
+        "limit_start_pct": set.start,
+        "limit_stop_pct": set.stop,
         "limit_settable": limit_settable(root, &folder),
         "alarm": whole("alarm"),
         "manufacturer": at("manufacturer"),
@@ -354,6 +408,58 @@ mod tests {
         assert_eq!(set, Ok(()));
         assert_eq!(ends, ("55\n".into(), "60\n".into()));
         assert_eq!((outside, over), (Err("bad-act"), Err("bad-act")));
+    }
+
+    #[test]
+    fn what_charging_is_set_to_is_read_once_a_minute_and_again_once_set() {
+        let root = std::env::temp_dir().join(format!("machine-kept-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let write = |types: &str, start: &str, stop: &str| {
+            std::fs::write(at.join("charge_types"), format!("{types}\n")).unwrap();
+            std::fs::write(at.join(START), format!("{start}\n")).unwrap();
+            std::fs::write(at.join(STOP), format!("{stop}\n")).unwrap();
+        };
+        write("Fast [Standard]", "75", "80");
+        let held = Root::new(&root);
+        let mut settings = Settings::default();
+        let first = Instant::now();
+        let mut said = |at: Instant| {
+            let kept = record(&held, "BAT0", &Value::Null, &mut settings, at);
+            let figure = |name: &str| kept[name].clone();
+            (
+                figure("charge_type"),
+                figure("limit_start_pct"),
+                figure("limit_stop_pct"),
+            )
+        };
+        let read = said(first);
+        write("[Fast] Standard", "55", "60");
+        let soon = said(first + Duration::from_secs(59));
+        let later = said(first + SETTINGS_KEPT);
+        write("Fast [Standard]", "75", "80");
+        settings.forget("BAT0");
+        let set = record(
+            &held,
+            "BAT0",
+            &Value::Null,
+            &mut settings,
+            first + SETTINGS_KEPT,
+        );
+        std::fs::remove_dir_all(&root).unwrap();
+        let was = (json!("Standard"), json!(75), json!(80));
+        assert_eq!(read, was, "what the battery's files said");
+        assert_eq!(
+            soon, was,
+            "read again within a minute, as firmware is asked each time"
+        );
+        let moved = (json!("Fast"), json!(55), json!(60));
+        assert_eq!(later, moved, "kept past a minute");
+        assert_eq!(
+            set["limit_stop_pct"],
+            json!(80),
+            "kept past its limit being set"
+        );
     }
 
     #[test]
