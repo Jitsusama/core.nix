@@ -272,11 +272,6 @@
     "exits"
     "helps"
   ];
-  pi-packages = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   pi-settings = [ "helps" ];
   pi-spawner = [
     "kit"
