@@ -13,8 +13,12 @@ function kept() {
 }
 
 // The fields of a window's record its row's words come from: where it is
-// against the workspace in front, its name, and the title it copies.
-const WORDED = ["elsewhere", "named", "title"];
+// against the workspace in front, its name, the title it copies, the
+// workspace it says it's on (niri renumbers them as one is removed), and
+// the column and how far down, which it says when windows are alike
+// (Windows.qml's saidOf, Provider.qml's placeOf).
+const WORDED = ["elsewhere", "named", "title", "workspace", "workspace_idx", "column", "down",
+    "alike"];
 
 // Whether two records say the same, field by field; a record's fields
 // are plain values.
