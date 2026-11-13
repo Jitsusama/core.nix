@@ -580,10 +580,12 @@ mod tests {
     #[test]
     fn history_says_how_and_when_each_was_done_with_newest_done_first() {
         // Newest come first, but the oldest was read last, in Slack.
+        let withdrawn = json!({ "read": true, "withdrawn": true, "readAt": 4_000 });
+        let slack = json!({ "read": true, "readHow": "readInSlack", "readAt": 9_000 });
         let notices = [
             notice(3, &json!({ "read": true, "readAt": 5_000 })),
-            notice(2, &json!({ "read": true, "withdrawn": true, "readAt": 4_000 })),
-            notice(1, &json!({ "read": true, "readHow": "readInSlack", "readAt": 9_000 })),
+            notice(2, &withdrawn),
+            notice(1, &slack),
         ];
         let [_, _, history] = making(&notices, &[]);
         let order = keys(&history);
