@@ -24,7 +24,7 @@ from desktop_session import FROM_THE_CORNER, KEY_PACE, LAUNCHER_OPEN, NOTICES, r
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -36,14 +36,9 @@ def desktop(machine: BaseMachine, values: dict[str, Any]) -> Desktop:
     return desktop_session.started(machine, cast("desktop_session.Values", values))
 
 
-@pytest.fixture(autouse=True)
-def launcher_closed_after(desktop: Desktop) -> Iterator[None]:
-    """Close the launcher after each test, so one failing with it open fails alone.
-
-    Left open in a drawer, every case after it waited for it to close (2026-11-13).
-    """
-    yield
-    desktop.launcher_left_closed()
+# The launcher closed after each test, so one failing with it open fails alone: left open in
+# a drawer, every case after it waited for it to close (2026-11-13).
+launcher_closed_after = pytest.fixture(autouse=True)(desktop_session.launcher_closed_after)
 
 
 # The scales Joel's screens are drawn at, as niri spells them.
