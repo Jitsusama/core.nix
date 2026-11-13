@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 /// Where a journal starts again, and keeps one earlier file.
@@ -279,9 +280,12 @@ impl Journal {
         if size > 0 && size + text.len() as u64 > self.limit {
             fs::rename(&self.path, self.earlier())?;
         }
+        // Readable by every account, whose `disk-guard journal` shows the
+        // machine's guard's beside its own.
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
+            .mode(0o644)
             .open(&self.path)?;
         file.write_all(text.as_bytes())?;
         if let Some(cleared) = cleared(&line.json()) {

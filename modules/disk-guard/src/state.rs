@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 /// The version this guard writes.
@@ -93,7 +94,21 @@ pub fn version() -> u32 {
 /// the rename lasts. The shell watches the folders its status files are in,
 /// and a file made, written and renamed there woke it three times a write;
 /// made in a folder of its own, only the rename is heard (2026-10-31).
+/// The file is its owner's alone: any account may pass through the
+/// machine's guard's state folder to read its journal, and nothing else
+/// there is theirs to read.
 pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
+    write(path, value, 0o600)
+}
+
+/// Writes `value` to `path` whole, as `save` does, for anyone to read: a
+/// status file, which the desktop and every account's `disk-guard status`
+/// read.
+pub fn share<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
+    write(path, value, 0o644)
+}
+
+fn write<T: Serialize>(path: &Path, value: &T, mode: u32) -> io::Result<()> {
     let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -109,7 +124,12 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     fs::create_dir_all(&writing)?;
     let beside = writing.join(beside);
     let text = serde_json::to_vec(value).map_err(io::Error::other)?;
-    let mut file = fs::File::create(&beside)?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(mode)
+        .open(&beside)?;
     file.write_all(&text)?;
     file.sync_all()?;
     drop(file);

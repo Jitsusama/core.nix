@@ -463,7 +463,8 @@ def test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_d
 ) -> None:
     """With its store pressed the machine expires generations, collects and clears a dead build.
 
-    It keeps the newest five of a profile's generations.
+    It keeps the newest five of a profile's generations, and Joel's own journal shows the dead
+    build going, as the machine's guard journals it.
     """
     machine = store_pressed
     # Left by a build process that's gone, as a crashed one leaves it.
@@ -492,3 +493,5 @@ def test_with_its_store_pressed_the_machine_expires_generations_and_collects_a_d
         account.there(f"/nix/var/nix/profiles/test-{n}-link")
         account.there(paths[n - 1])
     assert machine.succeed("readlink /nix/var/nix/profiles/test").strip() == "test-8-link"
+    cleared = f'any(.[]; .guard == "machine" and .path == "{dead_build}")'
+    account.run(f"{GUARD} journal --json | jq -e -s '{cleared}'")

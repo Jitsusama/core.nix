@@ -129,7 +129,13 @@ or launchd, and [`home.nix`][2] the account's.
   source's root, never through a symlink, another filesystem or `..`. A
   target is renamed into a trash beside it, judged again, then emptied; a
   disk too full to rename deletes in place. Each step is in the journal, and
-  a guard starting after a crash empties what was begun.
+  a guard starting after a crash empties what was begun. `disk-guard
+  journal` shows the account's guard and the machine's together, by time,
+  each line saying whose: the machine's guard owns the store and what lies
+  outside every home, so the account's alone never said where most of a
+  disk's room went. Any account may pass through the machine's state
+  folder to its journal but not list it, and every other file there is
+  saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
   under noatime nothing on disk says. Once a disk is filling, a build of a crate with a
