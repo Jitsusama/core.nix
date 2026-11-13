@@ -207,8 +207,11 @@ fn quality(s: &Sources) -> Axis {
     axis(
         "quality",
         vec![
+            counted::crashes(&s.counted),
+            // Every program's, ours with his, over cadence's day: a
+            // stand-in beside his own, since agents' tests crash on purpose.
             Reading::new(
-                "{} crashes over the day",
+                "{} crashes of every program over the day",
                 crashes.map(|c| f64::from(c.values().sum::<u32>())),
                 "",
                 "80ECO2",
