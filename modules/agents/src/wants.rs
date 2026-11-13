@@ -88,7 +88,7 @@ pub fn records(sessions: &[Session], joel_can: &JoelCan) -> Vec<Value> {
     wanting.into_iter().map(|(_, record)| record).collect()
 }
 
-/// What a want offers (Choices.js's `of`, which this replaces): null when
+/// What a want offers, as the shell once read it for itself: null when
 /// it offers no answers, else the want's id as the session knows it,
 /// `<kind>@<since>`, its answers with the one it recommends first and the
 /// rest in its order, each `{ value, label, description, recommended }`,

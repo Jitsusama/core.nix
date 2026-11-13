@@ -104,13 +104,27 @@ ShellRoot {
 
     // Agents, as For You reads it: each session wanting Joel as Agents'
     // row for it, kept as Agents keeps its own, so a session's row For
-    // You makes is made again only when For You's own making is.
+    // You makes is made again only when For You's own making is; what each
+    // asks as the agents daemon serves it (wants), and each answer asked
+    // of it kept as it was sent, said put or not as the case sets (puts).
     QtObject {
         id: agents
 
         readonly property var settings: ({ name: "agents" })
         readonly property var toReopen: null
         readonly property var rows: ({})
+        property var wants: ({})
+        property var answered: []
+        property bool puts: true
+
+        function wantOf(address) {
+            return wants[address] ?? null;
+        }
+
+        function answer(address, fields, then) {
+            answered = answered.concat([{ address: address, fields: fields }]);
+            then(puts);
+        }
 
         function made(session) {
             if (!(session.address in rows))
@@ -936,15 +950,18 @@ ShellRoot {
     // from For You (VKCF3Z, 2026-11-12): its row says it needs his answer
     // and how many it offers, inside are the answers, the recommended
     // first, then Deal With It set apart and In Your Own Words, and an
-    // answer's Return steers the session its value at once.
+    // answer's Return asks the agents daemon to answer it at once, which
+    // finds the want and steers it (wants.rs, proven there).
     function answersInPlace(forYou) {
         const since = "2026-11-12T07:00:00Z";
         Sessions.wanting = [{ address: "WANTE", title: "Session E", presence: {
             session: "s-e", addresses: [], wants: { kind: "question", since: since,
-                said: "Push the branch?", ask: { recommended: "push", allowOther: true,
-                    choices: [{ value: "wait", label: "Not yet" },
-                        { value: "push", label: "Yes, push it",
-                            description: "Its checks passed at its head." }] } } } }];
+                said: "Push the branch?" } } }];
+        // As the daemon serves them: the one it recommends first.
+        agents.wants = { WANTE: { answers: { want: "question@2026-11-12T07:00:00.000Z",
+            own: true, choices: [{ value: "push", label: "Yes, push it",
+                description: "Its checks passed at its head.", recommended: true },
+            { value: "wait", label: "Not yet", description: "", recommended: false }] } } };
         const row = forYou().find(one => one.key === "on:waiting:want:WANTE");
         expect("a want with answers says how many",
             row?.side === "needs your answer \u00b7 2 choices", JSON.stringify(row?.side));
@@ -969,28 +986,28 @@ ShellRoot {
             JSON.stringify([inside[0].copies, inside[0].drawer(), inside[1].drawer()]));
         // An answer the node couldn't put says nothing of being answered,
         // since the session never heard it.
-        Sessions.puts = false;
+        agents.puts = false;
         inside[0].run();
         expect("an answer never put isn't said to be answered",
-            Sessions.steered.length === 1 && theLauncher.said.length === 0,
-            JSON.stringify([Sessions.steered, theLauncher.said]));
-        Sessions.puts = true;
+            agents.answered.length === 1 && theLauncher.said.length === 0,
+            JSON.stringify([agents.answered, theLauncher.said]));
+        agents.puts = true;
         inside[0].run();
-        const steered = Sessions.steered[1] ?? {};
-        expect("its Return steers the session the answer, and once put the foot says so",
-            Sessions.steered.length === 2 && steered.address === "WANTE"
-                && steered.fields.act === "answer" && steered.fields.value === "push"
-                && steered.fields.want === "question@2026-11-12T07:00:00.000Z"
-                && steered.fields.from === "joel"
+        const answered = agents.answered[1] ?? {};
+        expect("its Return asks the daemon to answer the session, and once put the foot says so",
+            agents.answered.length === 2 && answered.address === "WANTE"
+                && JSON.stringify(answered.fields) === JSON.stringify({ value: "push" })
                 && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
-            JSON.stringify([Sessions.steered, theLauncher.said]));
+            JSON.stringify([agents.answered, theLauncher.said]));
+        expect("the shell steers nothing itself", Sessions.steered.length === 0,
+            JSON.stringify(Sessions.steered));
         inside[3].given("after lunch");
         expect("his own words go as words",
-            Sessions.steered[2]?.fields.other === "after lunch"
-                && Sessions.steered[2]?.fields.value === undefined,
-            JSON.stringify(Sessions.steered[2]));
-        Sessions.steered = [];
+            JSON.stringify(agents.answered[2]?.fields) === JSON.stringify({ other: "after lunch" }),
+            JSON.stringify(agents.answered[2]));
+        agents.answered = [];
+        agents.wants = {};
         theLauncher.said = [];
         Sessions.wanting = [];
     }

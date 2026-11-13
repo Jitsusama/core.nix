@@ -193,7 +193,6 @@
     "Marks.js"
     "When.js"
     "launcher/Ago.js"
-    "launcher/Choices.js"
     "launcher/ForYou.js"
     "launcher/ForYouFilter.js"
     "launcher/Here.js"

@@ -24,7 +24,6 @@ import "../Hearing.js" as Hearing
 import "../Marks.js" as Marks
 import "../When.js" as When
 import "Ago.js" as Ago
-import "Choices.js" as Choices
 import "ForYou.js" as ForYou
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
@@ -1380,7 +1379,9 @@ Provider {
         // What it asked, in its own words, or the session by its name.
         const asked = String(session.presence?.wants?.said || session.title);
         const resting = Sessions.parkedAs(session.address);
-        const answers = Choices.of(session.presence?.wants);
+        // Its answers as the agents daemon serves them (wants.rs), the one
+        // it recommends first, or none.
+        const answers = source("agents")?.wantOf(session.address)?.answers ?? null;
         wantsNow[session.address] = session;
         return keptAlike(wantsKept, session.address,
             [made, asked, resting, session.title, JSON.stringify(answers)],
@@ -1451,9 +1452,9 @@ Provider {
     // already deliberate, and y copies its words; then, set apart, Deal
     // With It, and In Your Own Words where it takes them. The session
     // says it took the answer by its want leaving, which takes the row
-    // out of For You. A stopgap: its rows are made here, from Sessions'
-    // wants, until the agents daemon serves For You's rows ready, as it
-    // does Agents' (KP0L6A, by Sat 14 Nov).
+    // out of For You. Its answers are the agents daemon's, which takes the
+    // answer too, naming the want itself; the rows are still made here
+    // until it serves For You's rows ready, as it does Agents'.
     function answerRow(made, madeFrom, asked, resting, answers) {
         const key = `on:waiting:want:${madeFrom.address}`;
         const address = madeFrom.address;
@@ -1462,15 +1463,13 @@ Provider {
         // Said answered only once the node has put it in the session's
         // inbox, since one it couldn't put never reached the session.
         const answer = (fields, label) => {
-            Sessions.steer(address, Object.assign({
-                act: "answer",
-                want: answers.want,
-                from: "joel",
-                at: new Date().toISOString()
-            }, fields), put => {
+            const agents = provider.source("agents");
+            const answered = put => {
                 if (put)
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
-            });
+            };
+            if (agents)
+                agents.answer(address, fields, answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),
