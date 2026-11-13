@@ -488,9 +488,9 @@ let
   # checks lists them, and holds that every check says it and every description
   # names a check. Only Linux has every check, so only it holds that.
   describe =
-    checks:
+    entries:
     let
-      named = lib.attrNames checks ++ [
+      named = lib.attrNames entries ++ [
         "every-check-says-what-it-proves"
         "no-name-says-a-replaced-word"
       ];
@@ -503,8 +503,8 @@ let
           lib.optional (unchecked != [ ])
             "these descriptions in check-descriptions.nix name no check: ${lib.concatStringsSep ", " unchecked}";
       all =
-        checks
-        // onLinux {
+        entries
+        // lib.mapAttrs (_: here) (onLinux {
           every-check-says-what-it-proves =
             holds "every-check-says-what-it-proves" "Of the checks, ${lib.concatStringsSep "; and " wrong}."
               (wrong == [ ]);
@@ -515,32 +515,61 @@ let
           no-name-says-a-replaced-word = self.lib.namesSayTheGlossary pkgs (
             { names = named ++ optionNames; } // import ./tests/repository/names-kept.nix
           );
-        };
+        });
     in
     lib.mapAttrs (
-      name: check: lib.addMetaAttrs { description = descriptions.${name} or null; } check
+      name: entry:
+      entry
+      // {
+        check = lib.addMetaAttrs { description = descriptions.${name} or null; } entry.check;
+      }
     ) all;
 
+  # A check this file gives, with this file as the one that gives it.
+  here = check: {
+    file = "checks.nix";
+    inherit check;
+  };
+
   # Every folder's checks, beside the repository's own, each told what it
-  # proves. A name two of them give stops the evaluation rather than one check
-  # hiding the other.
+  # proves, with the checks by their names and the file that gives each,
+  # from the repository's root. A name two of them give stops the evaluation
+  # rather than one check hiding the other.
   gather =
-    sets:
-    describe (
-      lib.foldl' (
-        gathered: these:
-        let
-          clashes = lib.intersectLists (lib.attrNames gathered) (lib.attrNames these);
-        in
-        if clashes == [ ] then
-          gathered // these
-        else
-          throw "More than one file gives the checks ${lib.concatStringsSep ", " clashes}"
-      ) { } sets
-    );
+    { these, folders }:
+    let
+      sets =
+        map (lib.mapAttrs (_: here)) these
+        ++ map (
+          file:
+          let
+            relative = lib.removePrefix "./" (lib.path.removePrefix ./. file);
+          in
+          lib.mapAttrs (_: check: {
+            file = relative;
+            inherit check;
+          }) (import file given)
+        ) folders;
+      entries = describe (
+        lib.foldl' (
+          gathered: set:
+          let
+            clashes = lib.intersectLists (lib.attrNames gathered) (lib.attrNames set);
+          in
+          if clashes == [ ] then
+            gathered // set
+          else
+            throw "More than one file gives the checks ${lib.concatStringsSep ", " clashes}"
+        ) { } sets
+      );
+    in
+    {
+      checks = lib.mapAttrs (_: entry: entry.check) entries;
+      files = lib.mapAttrs (_: entry: entry.file) entries;
+    };
 in
-gather (
-  [
+gather {
+  these = [
     {
       inherit formatting;
 
@@ -579,8 +608,8 @@ gather (
       );
     }
     (onLinux vmTests)
-  ]
-  ++ map (file: import file given) [
+  ];
+  folders = [
     ./examples/checks.nix
     ./hardware/apple-macbook-pro-m4-pro-a3401/checks.nix
     ./hardware/dell-xps-14-da14260/checks.nix
@@ -743,5 +772,5 @@ gather (
     ./tools/merge-net/checks.nix
     ./tools/run-subtests/checks.nix
     ./tools/shell-preview/checks.nix
-  ]
-)
+  ];
+}
