@@ -26,10 +26,11 @@ pub enum Side {
 
 /// The figures, by the start of their names, that are what Joel waited
 /// for or saw: his boots and shutdowns, the moments that went worst for
-/// him, the launcher as it answered his keys, the lines he typed, and the
-/// asks shown to him.
-const HIS: [&str; 8] = [
+/// him, the launcher as it answered his keys, the lines he typed, the
+/// asks shown to him, and his programs' crashes.
+const HIS: [&str; 9] = [
     "boot.",
+    "crashes.his",
     "shutdown.",
     "feel.",
     "launcher.",
@@ -50,7 +51,7 @@ pub fn side(name: &str) -> Side {
 }
 
 /// Each figure of the day, by its name: the slowest boot and shutdown in
-/// seconds, each kind's errors, the minutes lost in the day's worst
+/// seconds, each kind's errors, his crashes and ours, the minutes lost in the day's worst
 /// moments, the most each watched program held, the agents that died, and
 /// the asks for a secret: shown, said yes to unread, asked again, avoidable;
 /// and the most any disk was in use, when a guard said any; each part of
@@ -81,6 +82,16 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
             .sum();
         figures.insert(format!("{}.errors", kind.name()), errors as f64);
     }
+    // A crash in Joel's programs' or session's slice is his, and any other,
+    // as of an agent's test, ours: on 12 November 39 of the day's 64 were
+    // one agent's sway that never started.
+    let his: u64 = day.things.values().map(|thing| thing.his_crashes).sum();
+    let crashes: u64 = day.things.values().map(|thing| thing.crashes).sum();
+    figures.insert("crashes.his".to_owned(), his as f64);
+    figures.insert(
+        "crashes.ours".to_owned(),
+        crashes.saturating_sub(his) as f64,
+    );
     let lost: f64 = day.feel.iter().map(|pain| pain.lost_seconds).sum();
     figures.insert("feel.lost-minutes".to_owned(), lost / 60.0);
     for (name, memory) in &day.memory {
@@ -114,6 +125,9 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
             put("p99-ms", p99 as f64);
             put("slowest-ms", timed.slowest_ms as f64);
             put("late-percent", timed.late_percent());
+            if !timed.pooled.is_empty() {
+                put("pooled", timed.pooled_count() as f64);
+            }
         }
     }
     // Our side's: an opening from its process's start, an end from its
@@ -193,6 +207,8 @@ mod tests {
             Thing {
                 kind: Some(Kind::Programs),
                 errors: 7,
+                crashes: 3,
+                his_crashes: 1,
                 ..Thing::default()
             },
         );
@@ -227,6 +243,7 @@ mod tests {
                 figure("asks.shown"),
                 figure("asks.again"),
                 figure("disk.most-used-percent"),
+                (figure("crashes.his"), figure("crashes.ours")),
             ),
             (
                 Some(27.0),
@@ -237,7 +254,8 @@ mod tests {
                 Some(1.0),
                 Some(4.0),
                 Some(2.0),
-                Some(85.0)
+                Some(85.0),
+                (Some(1.0), Some(2.0)),
             ),
             "a figure wasn't worked out from the day's tally: {figures:?}"
         );
@@ -250,6 +268,13 @@ mod tests {
             "launcher: 4 drawers in home presented a median 42 ms from the key, the slowest \
              134 ms, the p99 134 ms, 3 within 50 ms",
         );
+        day.launcher.took(
+            "launcher: 2 keys presented a median 40 ms from the key, the slowest 90 ms, \
+             the p99 90 ms, 1 within 50 ms",
+        );
+        for took in [38, 41, 52] {
+            day.launcher.keys.pool(took);
+        }
         day.typing = vec![
             Sample {
                 keys: 400,
@@ -270,7 +295,11 @@ mod tests {
                 figure("launcher.drawers.p99-ms"),
                 figure("launcher.drawers.slowest-ms"),
                 figure("launcher.drawers.late-percent"),
-                figure("launcher.keys.median-ms"),
+                (
+                    figure("launcher.keys.p99-ms"),
+                    figure("launcher.keys.pooled")
+                ),
+                figure("launcher.drawers.pooled"),
                 figure("typing.worst-p99-ms"),
             ),
             (
@@ -278,6 +307,7 @@ mod tests {
                 Some(134.0),
                 Some(134.0),
                 Some(25.0),
+                (Some(52.0), Some(3.0)),
                 None,
                 Some(21.0)
             ),
@@ -341,6 +371,8 @@ mod tests {
             "launcher.keys.late-percent",
             "words.errors",
             "asks.again",
+            "crashes.his",
+            "crashes.ours",
             "asks.avoidable-percent",
             "programs.errors",
             "typing.worst-p99-ms",
@@ -354,6 +386,8 @@ mod tests {
                 Side::His,
                 Side::His,
                 Side::His,
+                Side::His,
+                Side::Ours,
                 Side::Ours,
                 Side::Ours,
                 Side::Ours,

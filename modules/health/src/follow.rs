@@ -25,6 +25,7 @@ use crate::lid::{self, Looked};
 use crate::memory;
 use crate::sessions;
 use crate::source::Source;
+use crate::trials;
 use crate::typing;
 
 /// How often a changed day is written out and the lid looked at: often
@@ -44,6 +45,7 @@ pub struct Follower {
     lid_wrong: bool,
     pains: Option<PathBuf>,
     typing: Option<PathBuf>,
+    trials: Option<trials::Reader>,
     sessions: Option<sessions::Reader>,
     proc: Option<PathBuf>,
     presences: Option<PathBuf>,
@@ -83,6 +85,7 @@ impl Follower {
             lid_wrong: false,
             pains: None,
             typing: None,
+            trials: None,
             sessions: None,
             proc: None,
             presences: None,
@@ -296,6 +299,26 @@ impl Follower {
         }
     }
 
+    /// Pool every key's time to the screen from the launcher's trials in
+    /// each folder of `shells`.
+    #[must_use]
+    pub fn pooling_keys(self, shells: &Path) -> Self {
+        Self {
+            trials: Some(trials::Reader::new(shells)),
+            ..self
+        }
+    }
+
+    /// Pool the keys of the day's openings the shell kept since the last
+    /// look; it adds one as the launcher closes.
+    pub fn pool_keys(&mut self) {
+        let Some(reader) = &mut self.trials else {
+            return;
+        };
+        let day = &mut self.day;
+        self.changed |= reader.pool(&mut day.launcher.keys, &day.date, &self.zone);
+    }
+
     /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once
     /// as a device's fault, and again only after it reads open or the
     /// screen goes dark.
@@ -429,7 +452,8 @@ pub fn follow(into: &Path) -> io::Result<()> {
     if let Some(state) = into.parent() {
         follower = follower
             .feeling(&state.join("pain-points"))
-            .timing_typing(&state.join("pi-keys"));
+            .timing_typing(&state.join("pi-keys"))
+            .pooling_keys(&state.join(trials::SHELLS));
     }
     // systemd gives every account's service its runtime folder, and launchd
     // its agent a temporary folder of its own, where the account's guard
@@ -498,6 +522,7 @@ fn run(
             follower.guard(wall);
             follower.feel();
             follower.time_typing();
+            follower.pool_keys();
             follower.hear(SESSIONS_A_TICK);
             follower.write()?;
         }
