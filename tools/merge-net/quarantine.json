@@ -57,7 +57,6 @@
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
     "subtests": [
-      "test_a_search_lists_each_thing_once_and_normal_moves_through_it",
       "test_every_name_a_thing_had_still_finds_it",
       "test_no_answer_raised_an_error",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
