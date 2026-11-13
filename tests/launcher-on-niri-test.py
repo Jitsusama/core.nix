@@ -3148,7 +3148,8 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
     The shell ran the eero program for each, through niri, and heard nothing when eero refused
     (QEST-20261111-PN2VZC). The daemon now serves them as rows inside the internet and does
     them itself; its stand-in says each act asked of it in its log. Each row reads as it becomes
-    from Return, the speed test testing and the switch off, as the daemon says it does.
+    from Return, the speed test testing and the switch off, as the daemon says it does, and the
+    switch's own :set, typed inside the internet, runs there rather than stepping in again.
     """
     log = shell.log.parent / "eero.log"
     shell.answer("internet")
@@ -3177,6 +3178,8 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
         )
         # Ruff's B023 fears a late binding; the wait ends within this turn of the loop.
         shell.launcher_until(lambda _: acted in log.read_text(errors="replace"))  # noqa: B023
+    held = shell.showing()["held"]
+    assert held == ["Internet"], f"the switch's :set stepped into the internet again: {held}"
     shell.close_launcher()
 
 
