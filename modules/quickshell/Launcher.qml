@@ -48,6 +48,7 @@ import Quickshell.Services.UPower
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
+import Heap
 // Quickshell makes a folder's files types only once something imports it,
 // and the providers are made from launcher/ by name, so it's imported here.
 import qs.launcher
@@ -9476,15 +9477,27 @@ Scope {
     // handlers, so nothing Joel does then waits on it, and it isn't run
     // once an opening has begun. Said in the journal each time, so what
     // it costs, and whether a quick reopening ever waits on it, is read
-    // there.
+    // there, with what the collection left live against what the heap
+    // holds: from outside the shell only the held pages show, which Qt
+    // gives back only once a chunk is empty, so what's cut is chosen by
+    // which of the two grows. Weighing walks the heap's chunks, and how
+    // long it took is said too.
     property bool collectDue: false
     function collectClosed() {
         if (open || opening || parting !== "")
             return;
         const began = KeyTimes.now();
         gc();
-        const took = Math.round(KeyTimes.now() - began);
-        console.info(`launcher: collected after closing in ${took} ms`);
+        const collected = KeyTimes.now();
+        const weight = Heap.weigh();
+        const took = Math.round(collected - began);
+        const weighing = Math.round(KeyTimes.now() - collected);
+        const live = Math.round(weight.live);
+        const held = Math.round(weight.held);
+        const outside = Math.round(weight.outside);
+        console.info(
+            `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
+            + ` held, ${outside} MB outside, weighed in ${weighing} ms`);
     }
 
     // The rows the card shows, by what each is, what each says at its
