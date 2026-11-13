@@ -2,8 +2,8 @@
 //! for a daemon, lifted from the to-do daemon's serve.rs. The daemon's
 //! loop hands it every record whole each time something changes, and
 //! each watch is told only the records that changed and the keys that
-//! went, in one line. Nothing is read for an ask: everything said is
-//! already held.
+//! went, in one line. Nothing is read for an ask unless the daemon reads
+//! on demand: everything said is otherwise already held.
 //!
 //! Each connection is served on a thread of its own, its lines written by
 //! another, so a client that stops reading holds no other back; one with
@@ -20,6 +20,12 @@
 //! A daemon that serves something only while it's watched, as the notices
 //! daemon keeps a notice read while For You's Desktop is looked at, is
 //! told as each watch begins or ends, and asks which are watched.
+//!
+//! A daemon that reads on demand, as the programs daemon makes a
+//! preview only once it's got, is handed what each get, list or watch
+//! names before it's answered (`fresh`), and hands what it read to
+//! `change` like anything else, so every watch hears it and no answer
+//! says what a watch wasn't told.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Write};
@@ -71,10 +77,15 @@ pub struct Wanted<'a> {
     pub watching: bool,
 }
 
-/// What reads what an ask wants before it's answered.
+/// What reads what an ask wants before it's answered. It's handed the
+/// ask outside the lock, on the asking connection's thread, so it may
+/// call `change`; two connections asking at once may both read.
 pub type Fresh = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
 
-/// What else a daemon counts, said on health beside daemon-serve's own.
+/// What else a daemon counts, as an object whose fields join health's
+/// answer beside daemon-serve's own, which keep their values: the
+/// daemons-agree check reads those alike for every daemon. It's asked
+/// outside the lock.
 pub type HealthToo = Box<dyn Fn() -> Value + Send + Sync>;
 
 /// One watch a client holds.
@@ -201,6 +212,10 @@ pub struct Shared {
     /// The daemon's own asks answered knowing their connection, and what
     /// answers them.
     peered: OnceLock<(&'static [&'static str], Peered)>,
+    /// What reads what an ask wants first, once the daemon says.
+    fresh: OnceLock<Fresh>,
+    /// What else health says, once the daemon says.
+    health_too: OnceLock<HealthToo>,
 }
 
 fn lock(shared: &Shared) -> MutexGuard<'_, Held> {
@@ -235,6 +250,8 @@ impl Shared {
             heed: OnceLock::new(),
             slow: OnceLock::new(),
             peered: OnceLock::new(),
+            fresh: OnceLock::new(),
+            health_too: OnceLock::new(),
         })
     }
 
@@ -265,14 +282,58 @@ impl Shared {
         self.slow.get().is_some_and(|slow| slow.contains(&asked))
     }
 
-    /// Reads what each get, list and watch beginning wants first.
+    /// Hands `fresh` what each get, list and watch asks for before it's
+    /// answered, from then on, a watch asked again under its id
+    /// included; only the first a daemon gives is kept.
     pub fn fresh(&self, fresh: Fresh) {
-        let _ = fresh;
+        let _ = self.fresh.set(fresh);
     }
 
-    /// Says what `too` gives on health.
+    /// Says the fields `too` gives on health too, from then on, where
+    /// they don't name one of daemon-serve's own; only the first a
+    /// daemon gives is kept.
     pub fn health_too(&self, too: HealthToo) {
-        let _ = too;
+        let _ = self.health_too.set(too);
+    }
+
+    /// Has the daemon read what `asked` wants, when it reads on demand.
+    fn read_for(&self, asked: &Ask) {
+        let Some(fresh) = self.fresh.get() else {
+            return;
+        };
+        let wanted = match asked {
+            Ask::Get { keys, .. } => Wanted {
+                kinds: &[],
+                keys: Some(keys),
+                places: None,
+                watching: false,
+            },
+            Ask::List { kinds, places, .. } => Wanted {
+                kinds,
+                keys: None,
+                places: places.as_deref(),
+                watching: false,
+            },
+            Ask::Watch {
+                kinds,
+                keys,
+                places,
+                ..
+            } => Wanted {
+                kinds,
+                keys: keys.as_deref(),
+                places: places.as_deref(),
+                watching: true,
+            },
+            _ => return,
+        };
+        fresh(&wanted);
+    }
+
+    /// What else health says for `asked`, when it's health.
+    fn said_too(&self, asked: &Ask) -> Option<Value> {
+        let too = self.health_too.get()?;
+        matches!(asked, Ask::Health { .. }).then(too)
     }
 
     /// Whether any watch is of `kind` in `place`, or of every place.
@@ -516,16 +577,23 @@ fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
             Ask::Own { id, said } => Some(owned(shared, id, said, &hangup)),
             _ => None,
         };
+        // Read on demand outside the lock too, so what's read is handed
+        // to change as anything else is.
+        shared.read_for(&asked);
+        let too = shared.said_too(&asked);
         let hello = matches!(asked, Ask::Hello { .. });
         let watch = match &asked {
             Ask::Watch { id, .. } => Some(id.clone()),
             _ => None,
         };
         let mut held = lock(shared);
-        let answer = match own {
+        let mut answer = match own {
             Some(own) => Some(own),
             None => answer(shared, &mut held, asked, connection, &told, &hangup),
         };
+        if let (Some(answer), Some(too)) = (answer.as_mut(), too) {
+            joined(answer, too);
+        }
         let mut lines: Vec<Value> = answer.into_iter().collect();
         let standing = words(&held.sources);
         if hello {
@@ -567,6 +635,16 @@ fn apart(
         // One no longer read is hung up on by the next line it's told.
         let _ = told.try_send(owned(&shared, &id, &said, &stream).to_string());
     });
+}
+
+/// `too`'s fields added to `answer`, where it doesn't already say them.
+fn joined(answer: &mut Value, too: Value) {
+    let (Some(answer), Value::Object(too)) = (answer.as_object_mut(), too) else {
+        return;
+    };
+    for (field, said) in too {
+        answer.entry(field).or_insert(said);
+    }
 }
 
 /// Each source by its word, as every line but health says it: one given
