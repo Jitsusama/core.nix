@@ -476,9 +476,16 @@ Scope {
         preload: false
         printErrors: false
         watchChanges: daemon.connects && daemon.wire === null
+        // A socket just made is a daemon just started, so its tries count
+        // afresh: one bound but not yet listening refuses the first, and
+        // counted on from the tries its absence took, the next came 16 s
+        // later, past the records check's ten-second step on a busy
+        // builder (2026-11-13), and past a place's opening on his machine.
         onFileChanged: {
-            if (daemon.connects && daemon.wire === null)
+            if (daemon.connects && daemon.wire === null) {
+                daemon.refusals = 0;
                 daemon.connectAgain();
+            }
         }
     }
 
