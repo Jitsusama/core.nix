@@ -1226,8 +1226,9 @@ mod tests {
     }
 
     /// Every row has a drawer giving a little more than its line (Joel,
-    /// 2026-11-11): a holder what it holds, and every other the files
-    /// Linux keeps behind it, as they say it, and the folder they're in.
+    /// 2026-11-11): a holder what it holds, and every other what its files
+    /// mean, in the house's words, with the files themselves in its fold
+    /// as Linux writes them and the folder they're in (VKCF3Z on #4010).
     #[test]
     fn every_heat_row_has_a_drawer_saying_more() {
         let ready = read(&mut Heat::default(), 71.0, 79.0, 1000);
@@ -1238,47 +1239,109 @@ mod tests {
             .filter_map(|row| row["key"].as_str())
             .collect();
         assert!(bare.is_empty(), "rows without a drawer: {bare:?}");
-        let facts = |id: &str| -> Vec<String> {
+        let said = |id: &str, list: &str, name: &str, value: &str| -> Vec<String> {
             let drawer = &row(&ready, id)["drawer"];
-            drawer["facts"]
+            drawer[list]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .map(|fact| format!("{}={}", text(&fact[name]), text(&fact[value])))
                 .collect()
         };
+        let facts = |id: &str| said(id, "facts", "name", "said");
+        let folded = |id: &str| said(id, "nerd", "label", "value");
         let coretemp = "Read From=/sys/class/hwmon/hwmon4";
-        let cases: [(&str, &[&str]); 10] = [
-            ("processor:0/lately", &["temp1_input=71,000", coretemp]),
-            ("processor:0/high", &["temp1_max=100,000", coretemp]),
-            ("processor:0/critical", &["temp1_crit=110,000", coretemp]),
+        let degrees = |n: &str| format!("{n} \u{b0}C");
+        let speed = "Speed=2,400 of 4,800 rpm";
+        let driven = "Driven By=its chip sets its speed";
+        let since = "Counted=since the machine started";
+        let cases: [(&str, Vec<String>, &[&str]); 11] = [
             (
-                "processor:0/cores",
-                &["Core 0=79.0 \u{b0}C", "Core 2=60.0 \u{b0}C"],
+                "processor:0",
+                vec![
+                    "High=100 \u{b0}C".into(),
+                    "Critical=110 \u{b0}C".into(),
+                    "Throttles At=95.0 \u{b0}C".into(),
+                    "Linux Name=coretemp".into(),
+                    "Zone=TCPU".into(),
+                ],
+                &[
+                    "temp1_input=71000",
+                    "temp1_label=Package id 0",
+                    "temp1_max=100000",
+                    "temp1_crit=110000",
+                    coretemp,
+                ],
+            ),
+            (
+                "processor:0/lately",
+                vec![
+                    format!("Now={}", degrees("71.0")),
+                    format!("Lowest={}", degrees("71.0")),
+                    format!("Highest={}", degrees("71.0")),
+                    "High=100 \u{b0}C".into(),
+                    "Critical=110 \u{b0}C".into(),
+                ],
+                &["temp1_input=71000", coretemp],
+            ),
+            (
+                "processor:0/high",
+                vec![
+                    "Past It=the chip counts itself hot".into(),
+                    format!("Now={}", degrees("71.0")),
+                ],
+                &["temp1_max=100000", coretemp],
+            ),
+            (
+                "processor:0/critical",
+                vec![
+                    "Past It=the processor slows its cores to cool".into(),
+                    format!("Now={}", degrees("71.0")),
+                ],
+                &["temp1_crit=110000", coretemp],
             ),
             (
                 "processor:0/cores/2",
-                &["temp3_input=60,000", "temp3_label=Core 4", coretemp],
+                vec![
+                    "Sensor=Core 4, on coretemp".into(),
+                    format!("Processor={}", degrees("71.0")),
+                    "High=100 \u{b0}C".into(),
+                    "Critical=110 \u{b0}C".into(),
+                ],
+                &["temp3_input=60000", "temp3_label=Core 4", coretemp],
             ),
             (
                 "disk:0/sensor/2",
+                vec![
+                    "Sensor=Sensor 2".into(),
+                    format!("Disk={}", degrees("52.9")),
+                ],
                 &[
-                    "temp2_input=68,850",
+                    "temp2_input=68850",
                     "temp2_label=Sensor 2",
                     "Read From=/sys/class/hwmon/hwmon1",
                 ],
             ),
             (
                 "throttled",
+                vec![
+                    "Whole Processor=3,202 times".into(),
+                    "In All=19 s".into(),
+                    "Longest=125 ms".into(),
+                    "Cores=32 times".into(),
+                    "Most=core 0, 24 times".into(),
+                    since.into(),
+                ],
                 &[
-                    "package_throttle_count=3,202",
-                    "package_throttle_total_time_ms=19,016",
+                    "package_throttle_count=3202",
+                    "package_throttle_total_time_ms=19016",
                     "package_throttle_max_time_ms=125",
                     "Read From=/sys/devices/system/cpu/cpu0/thermal_throttle",
                 ],
             ),
             (
                 "throttled/cores/2",
+                vec!["In All=90 ms".into(), "Longest=12 ms".into(), since.into()],
                 &[
                     "core_throttle_count=8",
                     "core_throttle_total_time_ms=90",
@@ -1288,22 +1351,55 @@ mod tests {
             ),
             (
                 "fan:fan:1",
+                vec![speed.into(), "Power=50%".into(), driven.into()],
                 &[
-                    "fan1_input=2,400",
-                    "fan1_max=4,800",
+                    "fan1_input=2400",
+                    "fan1_max=4800",
                     "pwm1=128",
                     "pwm1_enable=2",
                     "Read From=/sys/class/hwmon/hwmon6",
                 ],
             ),
             (
+                "fan:fan:1/lately",
+                vec![
+                    "Now=2,400 rpm".into(),
+                    "Lowest=2,400 rpm".into(),
+                    "Highest=2,400 rpm".into(),
+                    "Top Speed=4,800 rpm".into(),
+                ],
+                &["fan1_input=2400", "Read From=/sys/class/hwmon/hwmon6"],
+            ),
+            (
                 "fan:fan:1/control",
+                vec![driven.into(), speed.into()],
                 &["pwm1_enable=2", "Read From=/sys/class/hwmon/hwmon6"],
             ),
         ];
-        for (id, expected) in cases {
-            assert_eq!(facts(id), expected, "{id}'s drawer");
+        for (id, lead, fold) in cases {
+            assert_eq!(facts(id), lead, "{id}'s drawer leads with what it means");
+            assert_eq!(
+                folded(id),
+                fold,
+                "{id}'s fold, its files as Linux writes them"
+            );
         }
+        let file_led: Vec<String> = ready
+            .rows
+            .iter()
+            .filter_map(|row| row["key"].as_str())
+            .map(|key| key.trim_start_matches("row:heat:"))
+            .flat_map(|id| {
+                facts(id)
+                    .into_iter()
+                    .map(move |fact| format!("{id}: {fact}"))
+            })
+            .filter(|fact| fact.contains('_') || fact.contains("Read From"))
+            .collect();
+        assert!(
+            file_led.is_empty(),
+            "facts leading with a file: {file_led:?}"
+        );
         let lately = &row(&ready, "processor:0/lately")["drawer"];
         assert_eq!(lately["eyebrow"], "on this machine \u{b7} heat");
         assert_eq!(lately["title"], "Last Reads");
