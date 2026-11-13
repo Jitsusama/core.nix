@@ -33,8 +33,6 @@
         [
           "batting"
           "blinking"
-          "creepingA"
-          "creepingB"
           "curled"
           "earFlick"
           "grooming"
@@ -89,8 +87,6 @@
       missing = lib.filter (name: !(drawn ? ${name})) [
         "batting"
         "blinking"
-        "creepingA"
-        "creepingB"
         "curled"
         "earFlick"
         "forYouEmpty"

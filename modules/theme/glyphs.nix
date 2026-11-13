@@ -1063,40 +1063,6 @@ in
       ".#...#.."
     ];
   };
-  # The margin's cat creeping behind the margin's marks (VKCF3Z, e2068d64):
-  # the walk's two strides pressed low, its belly near the ground and its
-  # head level with its back, so only its ears and eye show between the
-  # marks, the tail's tip swaying a cell between them as the walk's does.
-  creepingA = {
-    glyph = nerd "f03e9";
-    console = "m";
-    means = "the margin's cat, in one of its own poses";
-    pixels = [
-      ".......#"
-      "......#."
-      "......#."
-      "#.#...#."
-      "###.###."
-      "#.#####."
-      "#######."
-      ".#.#.#.."
-    ];
-  };
-  creepingB = {
-    glyph = nerd "f03e9";
-    console = "m";
-    means = "the margin's cat, in one of its own poses";
-    pixels = [
-      "......#."
-      "......#."
-      ".......#"
-      "#.#...#."
-      "###.###."
-      "#.#####."
-      "#######."
-      "#.#...#."
-    ];
-  };
   # The margin's cat in the air across a gap, or onto a window's side:
   # stretched out long, its forelegs reaching ahead and its hind legs
   # thrown back, its tail streaming up behind, so a leap never reads as

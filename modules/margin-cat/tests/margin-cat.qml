@@ -496,8 +496,9 @@ QtObject {
         expect("the theme's slowdown stretches all of it", slowed.ends, going.ends * 2);
         const far = Paths.walk(on(0), on(1000), cat({ pause: 0 }));
         const goes = far.beats.find(beat => beat.name === "goes");
+        // Drawn back no further than the screen's left edge, it goes 1001.5.
         expect("far, it hurries, never more than 120 cells a second",
-            Math.round(goes.ends - goes.begins), Math.round(1002.5 / 120 * 1000));
+            Math.round(goes.ends - goes.begins), Math.round(1001.5 / 120 * 1000));
         expect("its stride at most ten cells", far.stride, 10);
         const near = Paths.walk(on(0), on(20), cat({ cell: 2, pause: 0 }));
         expect("near, it ambles, its stride half its body", near.stride, 8);
