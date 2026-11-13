@@ -161,9 +161,17 @@ Provider {
     Connections {
         target: provider.launcher
 
+        // A terminal's `launcher show` reads what's listed too.
+        function onCataloguingChanged() {
+            if (provider.launcher.cataloguing)
+                provider.looksAskedAgain();
+        }
+
         function onOpenChanged() {
             if (provider.launcher.open) {
                 provider.openedAt = Date.now();
+                provider.looksHour = Math.floor(Date.now() / 3600000);
+                provider.looksAskedAgain();
                 provider.reweather();
                 // Placing the time and the date makes Time's and Today's
                 // rows, so an opening into a place that shows none of Now's
@@ -869,13 +877,21 @@ Provider {
     readonly property var looksParsed: ({})
     // The hour the looks were last listed in, which a look that has waited
     // three days goes quiet by (Looks.js's quieted): set as the launcher
-    // opens, it changes at most once an hour, so the looks are split again
-    // then and never on each opening or minute.
+    // opens and as the folder is listed again, it changes at most once an
+    // hour, so the looks are split again then and never on each opening or
+    // minute.
     property int looksHour: Math.floor(Date.now() / 3600000)
 
+    // The looks are listed and read while the launcher is shut too, each
+    // file again only as it's written, so an opening reads none of them
+    // and `launcher show` lists them with the launcher shut. Listed only
+    // while open, each opening read every file again, 27 on Joel's machine
+    // (2026-11-12), and `launcher show now "for you"` said no To Look At
+    // (2RCBOJ, 2026-11-12). A stopgap: KP0L6A's agents daemon serves the
+    // looks with For You's rows by Tue 17 Nov, with nothing read here.
     FolderListModel {
         id: lookFiles
-        folder: provider.launcher?.open ? `file://${provider.looksAt}` : ""
+        folder: provider.looksListed
         nameFilters: ["*.json"]
         showDirs: false
         showDotAndDotDot: false
@@ -894,13 +910,15 @@ Provider {
 
             path: filePath
             printErrors: false
+            watchChanges: true
+            onFileChanged: reload()
             onLoaded: provider.readLook(fileName, text())
         }
     }
 
-    // A file as it was read, as the launcher opens: every file is read
-    // again at each opening, so one reading as it did changes nothing,
-    // and the rest are taken together once the turn's reads are done.
+    // A file as it was read, as the shell starts and as it's written
+    // again: one reading as it did changes nothing, and the rest are
+    // taken together once the turn's reads are done.
     // Taken one by one, each parsed every file again and banded For You
     // afresh, 166 times in each of Joel's openings, 60 to 82% of the
     // 6.5 s his shell's thread was pegged (H6EDLC's profile, 2026-11-10).
@@ -931,11 +949,22 @@ Provider {
         lookTexts = Object.assign({}, lookTexts, { [file]: text });
     }
 
-    // Only the looks folder's listing says which looks are gone: shut, the
-    // model is given no folder and lists the shell's working one instead,
-    // which holds none of them.
+    // The folder the looks are listed from. A folder not there as the shell
+    // starts is never watched for coming, as a machine's first look makes
+    // it, so one that listed none is asked for again as the launcher opens
+    // or a terminal reads it, written once with a slash and once without,
+    // since the model lists only a folder it's given anew.
+    property string looksListed: `file://${looksAt}`
+    function looksAskedAgain() {
+        if (lookFiles.status === FolderListModel.Ready && lookFiles.count > 0)
+            return;
+        looksListed = looksListed.endsWith("/") ? `file://${looksAt}` : `file://${looksAt}/`;
+    }
+
+    // Only the looks folder's listing says which looks are gone, once it's
+    // listed whole.
     function relisted() {
-        if (lookFiles.folder.toString() !== `file://${looksAt}`
+        if (lookFiles.folder.toString().replace(/\/$/, "") !== `file://${looksAt}`
             || lookFiles.status !== FolderListModel.Ready)
             return;
         looksHour = Math.floor(Date.now() / 3600000);

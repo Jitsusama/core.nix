@@ -1152,6 +1152,36 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
         look.unlink()
 
 
+def test_a_look_written_while_shut_is_shown_to_a_terminal(shell: Shell) -> None:
+    """A look written while the launcher is shut is in For You's To Look At for `launcher show`.
+
+    The looks were listed only while it was open, so `launcher show now "for you"` said no
+    To Look At with 27 looks waiting (2RCBOJ, 2026-11-12), and each opening read every one.
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "written-shut.json"
+    # It came just now, since one three days old goes quiet (launcher/Looks.js).
+    said = {"v": 1, "id": "written-shut", "title": "Written Shut", "target": "/etc/hostname",
+            "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
+    assert not shell.showing()["open"], "the launcher was left open"
+    look.write_text(json.dumps(said))
+    try:
+        deadline = time.monotonic() + 10
+        names: list[str] = []
+        shown: Json = {}
+        while "Written Shut" not in names and time.monotonic() < deadline:
+            time.sleep(launcher_on_niri.POLL)
+            # A place missed is answered with what it was missing among, rows left out.
+            shown = shown_to_terminal(shell, "now", "for you", "to look at")
+            names = [row["name"] for row in shown.get("rows", [])]
+        assert "Written Shut" in names, f"a look written while shut was never listed: {shown}"
+        assert not shell.showing()["open"], "showing To Look At opened the launcher"
+    finally:
+        look.unlink()
+
+
 def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
     """Clearing a look in For You's To Look At writes its file again, saying it was cleared.
 
