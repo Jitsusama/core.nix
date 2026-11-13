@@ -228,6 +228,7 @@ impl Arrangement {
 
     /// The places kept once `now` and `others` are, this boot's added to
     /// what it kept already, so one that's ended keeps its place.
+    #[must_use]
     pub fn kept(
         &self,
         boot: &str,
@@ -480,7 +481,7 @@ mod tests {
         let half = Duration::from_millis(500);
         assert_eq!(
             still.wait(start + half),
-            Some(STILL - half),
+            Some(Duration::from_millis(1500)),
             "the rest of the wait"
         );
         assert!(
