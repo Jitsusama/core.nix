@@ -1,7 +1,11 @@
 # How core holds Rust to clippy, for its own checks and, through the flake's
 # `lib.clippy`, for a repository built on it, so both are held to the same
 # lints from one place.
-{ lib, clippy }:
+{
+  lib,
+  clippy,
+  linkFarm,
+}:
 rec {
   # clippy's own lints and its pedantic group, less three about a published
   # library's API, which nothing here is: the results a caller must use, and
@@ -27,10 +31,16 @@ rec {
 
   # A folder holding core's clippy.toml, its settings apart from the rest of
   # the tree, so a change elsewhere doesn't rebuild every check that reads it.
-  config = lib.fileset.toSource {
-    root = ../..;
-    fileset = ../../clippy.toml;
-  };
+  # It links the one file rather than cutting a fileset from the root, since
+  # cutting one looks at every entry of the root: changed-checks saw each
+  # Rust check read them all, so a change to any root file, most often
+  # check-descriptions.nix, was evaluated again against 96 Rust checks.
+  config = linkFarm "clippy-config" [
+    {
+      name = "clippy.toml";
+      path = ../../clippy.toml;
+    }
+  ];
 
   # A check that `package`, built with rustPlatform, passes clippy: its build
   # replaced by clippy, its tests and examples read too, and nothing
