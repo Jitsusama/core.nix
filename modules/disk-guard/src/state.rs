@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 /// The version this guard writes.
@@ -106,6 +106,34 @@ pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
 /// read.
 pub fn share<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     write(path, value, 0o644)
+}
+
+/// Makes everything in the state folder `state` its owner's alone but the
+/// journal, before the folder lets other accounts through to it: an
+/// earlier guard saved under the umask, readable by anyone, which a
+/// folder of root's alone hid. A link is left as it is, since its mode
+/// means nothing.
+pub fn private(state: &Path) -> io::Result<()> {
+    for entry in fs::read_dir(state)? {
+        let entry = entry?;
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with("journal.jsonl")
+        {
+            continue;
+        }
+        let kind = entry.file_type()?;
+        let mode = if kind.is_dir() {
+            0o700
+        } else if kind.is_file() {
+            0o600
+        } else {
+            continue;
+        };
+        fs::set_permissions(entry.path(), fs::Permissions::from_mode(mode))?;
+    }
+    Ok(())
 }
 
 fn write<T: Serialize>(path: &Path, value: &T, mode: u32) -> io::Result<()> {

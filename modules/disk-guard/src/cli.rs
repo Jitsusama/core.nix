@@ -905,8 +905,10 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
 
 /// Makes a daemon's state folder. The system daemon's lets any account
 /// through to its journal, but not list it: every other file there is
-/// saved as root's alone. It's set on a folder that's there too, as a
-/// Mac's earlier guard left it root's alone.
+/// saved as root's alone, and what an earlier guard saved readable is made
+/// so first. It's set on a folder that's there too, as a Mac's earlier
+/// guard left it root's alone. On NixOS systemd opens the folder as the
+/// unit starts, so what an earlier guard left is closed a moment after.
 fn make_state(state: &Path, scope: Scope) -> io::Result<()> {
     let mode = match scope {
         Scope::User => 0o700,
@@ -918,7 +920,10 @@ fn make_state(state: &Path, scope: Scope) -> io::Result<()> {
         .create(state)?;
     match scope {
         Scope::User => Ok(()),
-        Scope::System => fs::set_permissions(state, fs::Permissions::from_mode(mode)),
+        Scope::System => {
+            crate::state::private(state)?;
+            fs::set_permissions(state, fs::Permissions::from_mode(mode))
+        }
     }
 }
 
