@@ -72,9 +72,14 @@
 //! `src/hosts.rs` says why and how.
 //!
 //! Terminals sit in each `--under` slice: Joel's apps' and, apart from
-//! them, the agents' sessions'.
+//! them, the agents' sessions'. A terminal's busy work goes to `--jobs`,
+//! or to the cgroup named after `=` in its slice's `--under`, as the
+//! agents' sessions' does: their busy work is agents' work, and on 12
+//! November, sent where Joel's own goes, about 1,700 groups of it took his
+//! polkit answers and his weight, sessions' mycelium holders and pis among
+//! them.
 //!
-//! Usage: jobs-sorter [--under app.slice]... [--home kitty-]... [--keep pi]...
+//! Usage: jobs-sorter [--under app.slice[=JOBS]]... [--home kitty-]... [--keep pi]...
 //!        [--jobs jobs.slice/jobs.service] [--busy 500] [--ticks 2]
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
@@ -137,6 +142,20 @@ struct Settings {
     calls: Option<PathBuf>,
     niri: Option<PathBuf>,
     hosts: Option<String>,
+    /// Where each `--under` slice's terminals send their busy work, when
+    /// not to `jobs`, in the order the slices were named.
+    sends: Vec<Option<String>>,
+}
+
+impl Settings {
+    /// Each watched slice, with the cgroup its terminals' busy work goes to.
+    fn places(&self) -> Vec<(&str, &str)> {
+        self.under
+            .iter()
+            .zip(&self.sends)
+            .map(|(slice, sends)| (slice.as_str(), sends.as_deref().unwrap_or(&self.jobs)))
+            .collect()
+    }
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -1378,11 +1397,20 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         calls: None,
         niri: None,
         hosts: None,
+        sends: Vec::new(),
     };
     while let Some(flag) = args.next() {
         let mut value = || args.next().ok_or(format!("{flag} needs a value"));
         match flag.as_str() {
-            "--under" => settings.under.push(value()?),
+            "--under" => {
+                let given = value()?;
+                let (slice, sends) = match given.split_once('=') {
+                    Some((slice, sends)) => (slice.to_owned(), Some(sends.to_owned())),
+                    None => (given, None),
+                };
+                settings.under.push(slice);
+                settings.sends.push(sends);
+            }
             "--home" => settings.homes.push(value()?),
             "--keep" => settings.keep.push(value()?),
             "--jobs" => settings.jobs = value()?,
@@ -1415,6 +1443,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
     }
     if settings.under.is_empty() {
         settings.under.push("app.slice".into());
+        settings.sends.push(None);
     }
     if settings.homes.is_empty() {
         settings.homes.push("kitty-".into());
@@ -1441,7 +1470,27 @@ mod settings_tests {
     fn every_slice_named_is_watched() {
         assert_eq!(
             given("--under app.slice --under agents.slice"),
-            ["app.slice", "agents.slice"]
+            ["app.slice", "agents.slice"],
+            "a slice named with --under isn't watched"
+        );
+    }
+
+    #[test]
+    fn an_agents_terminal_sends_its_work_where_agents_work_goes() {
+        let sorted = settings(
+            "--under app.slice --under agents.slice=jobs.slice/jobs.service \
+             --jobs jobs.slice/jobs-awaited.slice/awaited.service"
+                .split_whitespace()
+                .map(str::to_owned),
+        )
+        .unwrap();
+        assert_eq!(
+            sorted.places(),
+            [
+                ("app.slice", "jobs.slice/jobs-awaited.slice/awaited.service"),
+                ("agents.slice", "jobs.slice/jobs.service"),
+            ],
+            "an agent's terminal's busy work went where Joel's own goes, or his went elsewhere"
         );
     }
 }
@@ -1547,6 +1596,26 @@ fn rank_for_memory(looking: &Looking, ranks: &mut Ranks, warned: &mut bool) {
     }
 }
 
+/// Where each watched slice's terminals send their busy work, under the
+/// account's cgroup, each said once and refused when it doesn't exist.
+fn sends_from(root: &Path, settings: &Settings) -> Result<Vec<PathBuf>, String> {
+    let places = settings.places();
+    let sends: Vec<PathBuf> = places.iter().map(|(_, sends)| root.join(sends)).collect();
+    if let Some(gone) = sends
+        .iter()
+        .find(|jobs| !jobs.join("cgroup.procs").exists())
+    {
+        return Err(format!("{} doesn't exist", gone.display()));
+    }
+    for (under, sends) in places {
+        eprintln!(
+            "Sorting busy work from {under} ({}*) into {sends}.",
+            settings.homes.join("*, ")
+        );
+    }
+    Ok(sends)
+}
+
 fn run() -> Result<(), String> {
     let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
@@ -1557,20 +1626,11 @@ fn run() -> Result<(), String> {
         .iter()
         .map(|slice| root.join(slice))
         .collect();
-    let jobs = root.join(&settings.jobs);
     let slice = format!(
         "/{}",
         settings.jobs.split('/').next().unwrap_or(&settings.jobs)
     );
-    if !jobs.join("cgroup.procs").exists() {
-        return Err(format!("{} doesn't exist", jobs.display()));
-    }
-    eprintln!(
-        "Sorting busy work from {} ({}*) into {}.",
-        settings.under.join(", "),
-        settings.homes.join("*, "),
-        jobs.display()
-    );
+    let sends = sends_from(&root, &settings)?;
     if let Some(cgroup) = &settings.revive {
         revive::watch(&root.join(cgroup));
     }
@@ -1608,13 +1668,15 @@ fn run() -> Result<(), String> {
         }
         let now = uptime_ticks().ok_or("can't read /proc/uptime")?;
         let mut alive = HashSet::new();
-        for scope in under.iter().flat_map(|slice| homes(slice, &settings.homes)) {
-            let procs = samples(&scope);
-            alive.extend(procs.iter().map(|proc| proc.pid));
-            let name = scope.file_name().unwrap_or_default().to_string_lossy();
-            for found in sorter.look(&name, &procs, now, &settings) {
-                send(&jobs, &found.pids, &mut warned);
-                eprintln!("{}", found.says);
+        for (slice, jobs) in under.iter().zip(&sends) {
+            for scope in homes(slice, &settings.homes) {
+                let procs = samples(&scope);
+                alive.extend(procs.iter().map(|proc| proc.pid));
+                let name = scope.file_name().unwrap_or_default().to_string_lossy();
+                for found in sorter.look(&name, &procs, now, &settings) {
+                    send(jobs, &found.pids, &mut warned);
+                    eprintln!("{}", found.says);
+                }
             }
         }
         for scope in under
@@ -1793,6 +1855,7 @@ mod tests {
             calls: None,
             niri: None,
             hosts: None,
+            sends: vec![None],
         }
     }
 

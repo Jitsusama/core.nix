@@ -78,8 +78,14 @@
     let
       inherit (graphical.config.systemd.user) slices services;
       weight = slice: slice.sliceConfig.CPUWeight or 100;
+      # A slice is watched when it's named alone or with where its terminals'
+      # busy work goes, after an `=` the shell quotes.
       watches =
-        slice: lib.hasInfix " --under ${slice} " "${services.jobs-sorter.serviceConfig.ExecStart} ";
+        slice:
+        let
+          given = "${services.jobs-sorter.serviceConfig.ExecStart} ";
+        in
+        lib.hasInfix " --under ${slice} " given || lib.hasInfix " --under '${slice}=" given;
     in
     holds "sessions-sit-beside-the-programs"
       "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
@@ -213,16 +219,21 @@
   # A terminal's busy work, Joel's own, goes ahead of the work pi starts in
   # jobs.service, only from inside jobs, so it still yields to the apps,
   # and behind timed work. The sorter moves it to a holder that comes back
-  # and takes what's written into it.
+  # and takes what's written into it. An agent's terminal's goes in with
+  # pi's own, and a session's holder stays, since polkit asks Joel for what
+  # runs in his slot.
   joels-work-goes-before-agents =
     let
       inherit (graphical.config) systemd;
       awaited = systemd.user.services.awaited.serviceConfig;
       sorter = systemd.user.services.jobs-sorter;
       weight = systemd.user.slices.jobs-awaited.sliceConfig.CPUWeight or 100;
+      given =
+        flag: value:
+        lib.hasInfix " ${flag} ${lib.escapeShellArg value} " "${sorter.serviceConfig.ExecStart} ";
     in
     holds "joels-work-goes-before-agents"
-      "A terminal's work isn't moved inside jobs above pi's work and below timed work, or its holder doesn't take what's written into it or stays gone."
+      "A terminal's work isn't moved inside jobs above pi's work and below timed work, or its holder doesn't take what's written into it or stays gone, or an agent's terminal's work or a session's holder goes where Joel's does."
       (
         awaited.Slice == "jobs-awaited.slice"
         && weight > 100
@@ -230,6 +241,10 @@
         && awaited.Delegate
         && (awaited.Restart or "no") == "always"
         && lib.hasInfix " --jobs jobs.slice/jobs-awaited.slice/awaited.service " sorter.serviceConfig.ExecStart
+        && given "--under" "app.slice"
+        && given "--under" "agents.slice=jobs.slice/jobs.service"
+        && !given "--under" "agents.slice"
+        && given "--keep" "mycelium"
         && lib.elem "awaited.service" sorter.requires
       );
 

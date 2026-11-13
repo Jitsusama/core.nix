@@ -300,6 +300,30 @@ def test_an_agents_run_naming_no_slice_stays_in_jobs(jobs: Account) -> None:
     jobs.wait_until_in(1015, "jobs.slice/.*bare.service$")
 
 
+def test_a_terminals_busy_work_goes_where_its_terminals_owner_works(jobs: Account) -> None:
+    """An agent's terminal's busy work goes in with pi's, and only Joel's goes in his slot."""
+    # A stand-in kitty window in each slice runs a shell that starts a spinning group of its
+    # own, with a sleep in it, as a build a terminal runs does. Polkit asks Joel for what runs
+    # in his slot, so an agent's must never land there.
+    real = "/run/current-system/systemd/bin/systemd-run"
+    for number, (owner, seconds) in enumerate([("agents", 1031), ("app", 1032)], start=1):
+        jobs.machine.succeed(
+            f"systemd-run -M alice@ --user --slice=jobs.slice --unit=window-{number}"
+            f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
+            f" '{real} --user --scope --unit=kitty-9-{number} --slice={owner}.slice"
+            f' {jobs.bash} -c "setsid {jobs.bash} -c \\"{jobs.sleep} {seconds} &'
+            ' while :; do :; done\\"; wait"\''
+        )
+    jobs.wait_until_in(1031, f"jobs.slice/{WORK_SCOPE}")
+    jobs.wait_until_in(1032, "jobs-awaited.slice/")
+    agents, joels = jobs.cgroup_of(1031), jobs.cgroup_of(1032)
+    assert "jobs-work.slice/" in agents, f"an agent's terminal's work went elsewhere: {agents}"
+    assert "jobs-awaited" not in agents, f"an agent's terminal's work is in Joel's slot: {agents}"
+    for seconds in [1031, 1032]:
+        jobs.machine.succeed(f"kill -- -$(ps -o pgid= -p {jobs.sleeping(seconds)} | tr -d ' ')")
+    assert "jobs-awaited.slice/" in joels, f"Joel's terminal's work left his slot: {joels}"
+
+
 def test_a_service_nothing_named_a_slice_for_is_said_of_and_left(jobs: Account) -> None:
     """A service systemd-run puts in app.slice unasked is said of, and stays there."""
     # An agent's shell in jobs asks through systemd's own systemd-run, as a call that skips
