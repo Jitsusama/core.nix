@@ -286,8 +286,8 @@ in
   # slice, every realm's alike, rather than among Joel's programs.
   # The swarm's teams complete in a real zsh, asked of a stand-in node
   # (tests/completion.zsh).
-  mycelium-completes-the-swarm-in-zsh =
-    pkgs.runCommandLocal "mycelium-completes-the-swarm-in-zsh" { nativeBuildInputs = [ pkgs.zsh ]; }
+  mycelium-completes-its-teams-in-zsh =
+    pkgs.runCommandLocal "mycelium-completes-its-teams-in-zsh" { nativeBuildInputs = [ pkgs.zsh ]; }
       ''
         export HOME=$PWD
         zsh -f ${./tests/completion.zsh} ${./completion.zsh}
