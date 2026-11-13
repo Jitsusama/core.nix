@@ -440,7 +440,9 @@ function walk(from, to, at) {
 // columns() takes them) from the old one's (`was`): down its old column's
 // side and a drop, or up through the new one's windows (up()); then along
 // the tops to its seat, as a walk goes. With nowhere to go, `to` null or
-// no way up, it only rides.
+// no way up, it only rides. Told of the slide `ahead` ms after niri set
+// it off, its frames are that far in, so it rides its column, never
+// behind it across the windows coming in (MarginCat.behind).
 function moves(from, to, at) {
     const slow = at.slowdown ?? 1;
     const spring = Object.assign({}, at.spring, { slowdown: slow });
@@ -452,7 +454,7 @@ function moves(from, to, at) {
     });
     const was = columns(at.was, dy);
     const now = columns(at.now, 0);
-    const rides = () => Object.assign(Ways.timed(way), { way: at.way });
+    const rides = () => Object.assign(Ways.timed(way), { way: at.way, ahead: at.ahead ?? 0 });
     if (to === null || now.length === 0) {
         return rides();
     }
@@ -480,7 +482,8 @@ function moves(from, to, at) {
     return rides();
 }
 
-// Where a way has it `t` ms in (MarginCatWays.js's frame).
+// Where a way has it `t` ms in (MarginCatWays.js's frame), and a move as
+// far ahead as it was told of late.
 function frame(route, t) {
-    return Ways.frame(route, t);
+    return Ways.frame(route, t + (route.ahead ?? 0));
 }

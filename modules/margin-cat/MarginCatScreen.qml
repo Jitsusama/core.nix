@@ -110,6 +110,8 @@ PanelWindow {
     // say whether it moved on each.
     property int begunAt: 0
     property int steps: 0
+    // How often this screen draws, in ms, as its last walk showed.
+    property real frameMs: 1000 / 60
     // The workspace this screen shows, its id and index, so a move
     // between two has it ride its column off with the world and climb
     // to its new seat (VKCF3Z, 074321bd), and the one it showed.
@@ -268,10 +270,9 @@ PanelWindow {
             window.FramePresentation.ask();
     }
 
-    // A move from workspace `was` to the one `way` below (1) or above
-    // (-1): it rides its column the whole slide from where it sits, and
-    // its way to its new seat comes once niri says the new workspace's
-    // column (steer).
+    // A move from workspace `was` to the one `way` below (1) or above (-1): it rides its column
+    // the whole slide from where it sits, and its way to its new seat comes once niri says the
+    // new workspace's column (steer).
     function moveFrom(way: int, was: var): void {
         halt();
         resting.stop();
@@ -308,6 +309,7 @@ PanelWindow {
             height: modelData.height,
             slowdown: Theme.motion.slowdown,
             spring: Theme.motion.spring,
+            ahead: MarginCat.behind(frameMs),
             was: tilesOf(movingFrom),
             now: tilesOf(space?.id),
             marks: marksLit
@@ -322,7 +324,7 @@ PanelWindow {
     function steer(): void {
         if (there === null)
             return;
-        const riding = mover.elapsedTime * 1000 < moving.beats[0].ends;
+        const riding = mover.elapsedTime * 1000 + moving.ahead < moving.beats[0].ends;
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
         if (riding) {
@@ -385,6 +387,8 @@ PanelWindow {
         const told = MarginCat.walked(shown, costs, unseen,
             { begun: window.FramePresentation.framesBegun - begunAt, stepped: steps, what });
         console.info(told.line);
+        if (told.said.frames > 10)
+            frameMs = told.said.median;
         if (Options.reports)
             Report.say(`${what === "hop" ? "hopped" : "walked"} cat `
                 + `${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
@@ -421,13 +425,11 @@ PanelWindow {
             Niri.wantTiles(wantsAs, false);
     }
 
-    // Each frame of a walk or a hop, as niri showed it or didn't,
-    // asking after the next until it sits. Asked only here, once niri
-    // says the last was shown, the ask lands after the next frame has
-    // begun where frames come close together, so only every other
-    // frame was heard of: on a GPU at 60 Hz, and on Joel's screen at
-    // 120. Each step asks too (walker, and a hop's lift), before its
-    // frame is drawn. Asked only there, a GPU at 120 Hz drew every
+    // Each frame of a walk or a hop, as niri showed it or didn't, asking after the next until
+    // it sits. Asked only here, once niri says the last was shown, the ask lands after the next
+    // frame has begun where frames come close together, so only every other frame was heard
+    // of: on a GPU at 60 Hz, and on Joel's screen at 120. Each step asks too (walker, and a
+    // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
     // other frame, so both stay.
     FramePresentation.onPresented: (frame, at) => {
         if (going === null && moving === null && !hopping)
