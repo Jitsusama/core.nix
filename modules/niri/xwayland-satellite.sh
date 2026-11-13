@@ -19,7 +19,7 @@ for arg in "$@"; do
   case $arg in
   -h | --help)
     cat << 'EOF'
-xwayland-satellite  Xwayland for niri, open only to its cookie
+xwayland-satellite  niri's Xwayland, open only to its cookie
 
 EXAMPLES
   xwayland-satellite :0 -listenfd 3   what niri starts
