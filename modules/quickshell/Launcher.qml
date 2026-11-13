@@ -8027,9 +8027,13 @@ Scope {
     // 2026-11-10): its drawer out at once rather than after the
     // selection's rest, so Return just after a step still finds it, then
     // the keys in it, as Space and Right's drawer act give them. A ready
-    // row's drawer act names its row, which is the one selected.
-    function intoDrawer() {
+    // row's drawer act names its row, and one acted on from elsewhere
+    // (`launcher do`) while another is selected opens nothing, since the
+    // drawer only ever shows the selected row's.
+    function intoDrawer(row) {
         if (!open || selected === null)
+            return;
+        if (row && row.key !== selected.key)
             return;
         drawerFollowDue = false;
         drawerRow = selected;
