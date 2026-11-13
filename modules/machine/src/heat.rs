@@ -485,6 +485,63 @@ mod tests {
         assert_eq!(part("dell_ddv"), "");
     }
 
+    /// A moving file is read once a pass, its drawer's files the figures'
+    /// own reads: `dell_smm` answers each read through the firmware, about
+    /// 2 ms a file on Joel's laptop, and Heat reads every second it's
+    /// shown (2026-11-13).
+    #[test]
+    fn each_moving_file_is_read_once_a_pass() {
+        let folder = std::env::temp_dir().join(format!("machine-heat-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let said = [
+            ("name", "dell_smm"),
+            ("temp1_input", "47000"),
+            ("temp1_alarm", "0"),
+            ("fan1_input", "2400"),
+            ("fan1_target", "2500"),
+            ("fan1_min", "0"),
+            ("fan1_max", "5000"),
+            ("pwm1", "128"),
+            ("pwm1_enable", "2"),
+        ];
+        for (file, says) in said {
+            std::fs::write(chip.join(file), says).expect("the chip's file is written");
+        }
+        let root = Root::new(&folder);
+        let records = sensors(&root, &mut Kept::default());
+        std::fs::remove_dir_all(&folder).ok();
+        let moving = [
+            "temp1_input",
+            "temp1_alarm",
+            "fan1_input",
+            "fan1_target",
+            "pwm1",
+            "pwm1_enable",
+        ];
+        let not_once: Vec<(&str, usize)> = moving
+            .iter()
+            .map(|file| (*file, root.reads_of(&format!("{HWMON}/hwmon0/{file}"))))
+            .filter(|(_, reads)| *reads != 1)
+            .collect();
+        assert!(
+            not_once.is_empty(),
+            "each moving file is read once a pass, these as often as said: {not_once:?}"
+        );
+        assert_eq!(
+            records[0]["fans"][0]["files"],
+            json!([
+                ["fan1_input", "2400"],
+                ["fan1_min", "0"],
+                ["fan1_max", "5000"],
+                ["fan1_target", "2500"],
+                ["pwm1", "128"],
+                ["pwm1_enable", "2"],
+            ]),
+            "the fan's drawer names its files as read"
+        );
+    }
+
     #[test]
     fn a_reading_out_of_reach_is_none() {
         assert_eq!(thousandths(Some("65261850".into()), DEGREES), None);
