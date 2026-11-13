@@ -364,7 +364,6 @@ fn main() -> ExitCode {
         routes.hold(
             inputs.sessions.records().map(|(_, one)| Session(one)),
             inputs.quests.records().map(|(_, one)| one),
-            served.all(),
         );
     }
     ExitCode::SUCCESS

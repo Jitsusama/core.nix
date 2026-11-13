@@ -5622,7 +5622,7 @@ Scope {
         id: talkDrafts
     }
 
-    // Super+S's line, said to whoever the focused window's session is, from over it.
+    // Super+S's line, said to the void from over the focused window.
     TalkLine {
         id: talkLine
         launcher: root

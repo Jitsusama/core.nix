@@ -1414,9 +1414,9 @@ def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shel
     """Super+S's line names who hears it, keeps its words through being put away, and says them.
 
     Talking to the void took over Joel's screen and lost his words to a switch (2026-11-12
-    16:00): the line is one band a step inside the top of the screen, over his window. No
-    window's session has the focus here, so the session standing at Agents' top hears it, as
-    tell answers without one (modules/agents/src/tell.rs proves the window's way).
+    16:00): the line is one band a step inside the top of the screen, over his window. The
+    session standing at Agents' top hears it, as tell answers, never the focused window's
+    (modules/agents/src/tell.rs proves that a window's session doesn't).
     """
     lay("VOID", "Void Quest", {"state": "listening", "standsAtTop": {"name": "The Void"}})
     # Only that Agents has heard of the void, whatever else earlier cases laid beside it.

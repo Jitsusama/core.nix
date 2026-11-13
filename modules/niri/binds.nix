@@ -124,7 +124,7 @@ in
     action = ''spawn "dictation" "hold";'';
     flags.repeat = "false";
   }
-  # A line typed to the focused window's session, else the void, at the top of the screen
+  # A line typed to the void, which routes one about a window itself, at the top of the screen
   # over what he's looking at (the shell's TalkLine.qml). S for say, beside D for dictate
   # (VKCF3Z, 2026-11-12). The chord again puts it away with its words kept.
   {

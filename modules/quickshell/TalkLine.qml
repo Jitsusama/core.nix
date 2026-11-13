@@ -2,11 +2,13 @@
 // VKCF3Z, e8b4139e): the launcher's head alone, a step inside the top of the focused screen,
 // over his windows and taking no room from them, so the window he's talking about stays in view
 // (Joel, 2026-11-12 16:00: talking to the void "ends up taking over my screen"). It opens in
-// insert, who will hear it at its left as the launcher's Talk names its session: the focused
-// window's session, else the one standing at Agents' top, the void (modules/agents/src/tell.rs).
+// insert, who will hear it at its left as the launcher's Talk names its session: the one
+// standing at Agents' top, the void, never the focused window's session, so there's one door and
+// one model, and the void routes a line about a window itself (Joel, 2026-11-13 04:33;
+// modules/agents/src/tell.rs).
 // Escape gives normal, as the launcher's line does, and never puts it away; the chord again
 // does, the words kept, as a switch keeps them (Drafts.qml). Return says them as a talk, and
-// Told's quiet card says they went and then what came back.
+// Told says they went and then what came back, wherever it cards (Told.js's CARDED).
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Wayland
@@ -85,7 +87,7 @@ Scope {
             asked = true;
             return;
         }
-        from.hears(Niri.focused, heard => {
+        from.hears(heard => {
             if (!root.up)
                 return;
             root.hears = heard;
