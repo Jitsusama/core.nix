@@ -366,6 +366,13 @@
       }
     },
     {
+      "id": "verb:agent:take-back",
+      "command": "take",
+      "in": "agents",
+      "name": "Take It Back",
+      "verb": "take back"
+    },
+    {
       "id": "verb:agent:pause",
       "command": "pause",
       "in": "agents",

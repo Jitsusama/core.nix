@@ -821,6 +821,7 @@ Provider {
         launcher: provider.launcher
         talksOf: address => provider.source("orchestrators")?.talks
             ?.[String(address).toUpperCase()] ?? []
+        talk: (address, text) => provider.actOn({ address }, "talk", { text })
     }
 
     // A session's own acts, in the one order every session keeps

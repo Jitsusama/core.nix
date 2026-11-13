@@ -1115,6 +1115,15 @@ command = "talk"
 short = "tal"
 kinds = ["list"]
 
+# A line filed from the void taken back out of where it was filed, as the
+# void's card offers once it says where the line went: Take It Back. It's
+# not :undo, which brings back the notices put away.
+[acts.take-back]
+command = "take"
+short = "tak"
+kinds = ["list"]
+changes = true
+
 # A session started on a quest that orchestrates it and every quest under
 # it, beside :new, which starts one that only works on it: a quest's
 # Orchestrate.
