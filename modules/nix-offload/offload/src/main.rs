@@ -3925,7 +3925,10 @@ exit 3
             read("at-hand-over").starts_with("ssh-ng://far "),
             "it was named nowhere as its old way handed over"
         );
-        assert!(read("machines").starts_with("ssh-ng://far "));
+        assert!(
+            read("machines").starts_with("ssh-ng://far "),
+            "it was named nowhere once taken back"
+        );
         end(&mut lent.helper);
     }
 
