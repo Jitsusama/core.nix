@@ -267,10 +267,53 @@ fn listen(mut device: File, number: u64, shared: &Shared) {
     }
 }
 
+const HELP: &str = "\
+dictation-chord  says at a socket when dictation's chord is let go
+
+EXAMPLES
+  dictation-chord /run/dictation-chord/socket   what its unit runs
+
+EXIT
+  1   the socket or the keyboards couldn't be reached
+  64  asked wrongly
+";
+
+/// What the command line asks: its help, or to serve at a socket.
+#[derive(Debug, PartialEq)]
+enum Asked {
+    Help,
+    Serve(String),
+}
+
+/// Reads the command line, refusing anything but one absolute path or a
+/// request for help. The path is removed before the socket is bound, so a
+/// word taken for it, `--help` or a typo, would delete a file of that name
+/// in the folder it was typed in and put a socket any account can write
+/// to there: only a path that can't be mistaken for a word is taken.
+fn asked(words: &[String]) -> Result<Asked, String> {
+    match words {
+        [word] if word == "-h" || word == "--help" => Ok(Asked::Help),
+        [path] if path.starts_with('/') => Ok(Asked::Serve(path.clone())),
+        [word] => Err(format!(
+            "dictation-chord needs the socket's whole path, not {word}"
+        )),
+        [] => Err("dictation-chord needs the socket's whole path".to_owned()),
+        _ => Err("dictation-chord takes one path".to_owned()),
+    }
+}
+
 fn main() -> ExitCode {
-    let Some(path) = std::env::args().nth(1) else {
-        eprintln!("usage: dictation-chord SOCKET");
-        return ExitCode::from(2);
+    let words: Vec<String> = std::env::args().skip(1).collect();
+    let path = match asked(&words) {
+        Ok(Asked::Help) => {
+            print!("{HELP}");
+            return ExitCode::SUCCESS;
+        }
+        Ok(Asked::Serve(path)) => path,
+        Err(wrong) => {
+            eprintln!("{wrong}\n  try  dictation-chord --help");
+            return ExitCode::from(64);
+        }
     };
     let _ = fs::remove_file(&path);
     let listener = match UnixListener::bind(&path) {
@@ -359,6 +402,36 @@ mod tests {
     use std::time::Duration;
 
     const KEYBOARD: u64 = 7;
+
+    fn words(said: &[&str]) -> Vec<String> {
+        said.iter().map(|word| (*word).to_owned()).collect()
+    }
+
+    #[test]
+    fn help_is_answered_rather_than_taken_for_the_socket() {
+        assert_eq!(asked(&words(&["--help"])), Ok(Asked::Help));
+        assert_eq!(asked(&words(&["-h"])), Ok(Asked::Help));
+    }
+
+    #[test]
+    fn only_a_whole_path_is_taken_for_the_socket() {
+        assert_eq!(
+            asked(&words(&["/run/dictation-chord/socket"])),
+            Ok(Asked::Serve("/run/dictation-chord/socket".to_owned()))
+        );
+        for wrong in [
+            &[][..],
+            &["flsh"],
+            &["--halp"],
+            &["./socket"],
+            &["/a", "/b"],
+        ] {
+            assert!(
+                asked(&words(wrong)).is_err(),
+                "{wrong:?} was taken for a socket, and its file would have been removed"
+            );
+        }
+    }
 
     #[test]
     fn letting_go_of_d_says_how_long_the_chord_was_held() {
