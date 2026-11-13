@@ -19,6 +19,23 @@ use crate::steer::{Ramp, Steer};
 /// How often a move steps while it's under way.
 pub const STEP: Duration = Duration::from_millis(16);
 
+/// How far the light has to move from the light the screen follows, as a
+/// ratio either way, before the screen follows it again, counting a lux
+/// more on each side so a dark room's single lux counts for little. The
+/// sensor reads whole lux, and near 12 lux Joel's curve made one lux worth
+/// 4% of the screen, past steer.rs's `SLIGHT`, so on 12 November it moved
+/// 144 times between 20:00 and 21:50 as the sensor read 11, then 12, then
+/// 11 again. A fifth is past a lux's rounding in any room lit enough to
+/// read by, and still a step the eye sees.
+pub const NOTICED: f64 = 1.2;
+
+/// Whether light at `lux` is near enough the light the screen follows,
+/// `at`, to leave the screen where it is.
+fn near(at: f64, lux: f64) -> bool {
+    let ratio = (lux + 1.0) / (at + 1.0);
+    ratio < NOTICED && ratio * NOTICED > 1.0
+}
+
 #[derive(Debug)]
 pub struct Follow {
     curve: Curve,
@@ -26,7 +43,8 @@ pub struct Follow {
     knows_joel: bool,
     steer: Steer,
     ramp: Option<Ramp>,
-    /// The light last heard, once there's been any.
+    /// The light the screen follows, once there's been any: the light
+    /// heard, held until it moves past `NOTICED`.
     lux: Option<f64>,
     /// Whether the lid is shut, so the light heard is the lid's.
     shut: bool,
@@ -97,7 +115,7 @@ impl Follow {
         &self.curve
     }
 
-    /// The light last heard, once there's been any.
+    /// The light the screen follows, once there's been any.
     pub fn lux(&self) -> Option<f64> {
         self.lux
     }
@@ -132,14 +150,19 @@ impl Follow {
     }
 
     /// The light changed to `lux`, with the screen at `shown`. Light that
-    /// can't be, or that the shut lid hears, is passed over. It says whether
-    /// the curve learned, as the first light heard teaches it the brightness
-    /// shown.
+    /// can't be, or that the shut lid hears, is passed over, and light near
+    /// the light followed is heard as that light, so the screen holds. It
+    /// says whether the curve learned, as the first light heard teaches it
+    /// the brightness shown.
     #[must_use]
     pub fn heard(&mut self, lux: f64, shown: f64, now: Instant) -> bool {
         if !lux.is_finite() || lux < 0.0 || self.shut {
             return false;
         }
+        let lux = match self.lux {
+            Some(at) if near(at, lux) => at,
+            _ => lux,
+        };
         self.lux = Some(lux);
         if self.hold == Hold::Unseen {
             self.hold = Hold::Easing;
@@ -599,6 +622,93 @@ mod tests {
         assert!(!follow.heard(f64::NAN, 0.5, start));
         assert!(!follow.heard(-1.0, 0.5, start));
         assert_eq!(follow.lux(), None);
+    }
+
+    /// As steep near 12 lux as the curve Joel's picks had made by 12
+    /// November, where a lux was worth 4% of the screen.
+    fn steep() -> Curve {
+        Curve::through([
+            Point {
+                lux: 10.0,
+                level: 0.5,
+            },
+            Point {
+                lux: 20.0,
+                level: 0.9,
+            },
+        ])
+    }
+
+    #[test]
+    fn a_lux_either_way_moves_nothing() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        for lux in [11.0, 12.0, 13.0, 14.0, 11.0, 10.0] {
+            let _ = follow.heard(lux, shown, start);
+            assert_eq!(
+                follow.wake(start),
+                None,
+                "{lux} lux moved the screen from 12's"
+            );
+        }
+    }
+
+    #[test]
+    fn light_a_fifth_away_is_followed() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(15.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + BRIGHTENING));
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(9.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + DIMMING));
+    }
+
+    #[test]
+    fn light_drifting_a_lux_at_a_time_is_followed_once_it_has_gone_a_fifth() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        for lux in [11.0, 10.0] {
+            let _ = follow.heard(lux, shown, start);
+        }
+        assert_eq!(
+            follow.wake(start),
+            None,
+            "10 lux moved the screen from 12's"
+        );
+        let _ = follow.heard(9.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + DIMMING));
+        let arrived = moved(&mut follow, shown, start + DIMMING).unwrap();
+        let wanted = steep().level_at(9.0);
+        assert!(
+            (arrived - wanted).abs() < 1e-9,
+            "arrived at {arrived}, not {wanted}"
+        );
+    }
+
+    #[test]
+    fn a_pick_holds_through_a_lux_either_way() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(11.0, shown, start);
+        let _ = follow.chose(0.6);
+        for lux in [12.0, 11.0, 13.0] {
+            let _ = follow.heard(lux, 0.6, start);
+            assert_eq!(
+                follow.wake(start),
+                None,
+                "{lux} lux moved the screen from Joel's pick"
+            );
+        }
     }
 
     #[test]
