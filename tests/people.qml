@@ -257,6 +257,18 @@ ShellRoot {
                 launcher.wanting = true;
                 expect("by the keys their rows have", keys === open.map(row => row.key)
                     .join(", "), keys);
+                // The first letter typed finds those listed already made,
+                // as the shell's start made them: it made each again, 136
+                // to 138 of 139 rows on Joel's laptop at a new shell's
+                // first letter (his journal, 2026-11-13 06:14 to 14:13).
+                // Dee is listed, so the search adds no one held.
+                const typed = people.tally.rows;
+                const dee = people.gather("dee").rows;
+                expect("the first letter makes no row of those listed",
+                    people.tally.rows === typed, `${people.tally.rows - typed} rows made`);
+                expect("and finds them by the rows listed", dee.length === 1
+                    && dee[0] === open.find(row => row.name === "Dee Ellery"),
+                    names(dee));
             }
         },
         {

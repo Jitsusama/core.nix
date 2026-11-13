@@ -433,8 +433,17 @@ Provider {
     function everyone() {
         const made = rowsOfEveryone;
         if (made.stale) {
+            // Those listed are found as their rows are listed, which the
+            // shell's start made (warming) and keeps: made again here, a
+            // new shell's first letter made every one of them a second
+            // time, 136 to 138 of 139 rows on Joel's laptop (his journal,
+            // 2026-11-13 06:14 to 14:13).
+            const listed = listedRowsOf();
             keepingBegun(made.keeping);
             made.rows = persons().map(person => {
+                const row = listed[person.key];
+                if (row)
+                    return row;
                 // One only the daemon's sources know comes with the row a
                 // search finds them as, and its drawer, kept while their record says the
                 // same, which the daemon stamps `heard` anew when a source
@@ -455,6 +464,14 @@ Provider {
             made.stale = false;
         }
         return made.rows;
+    }
+
+    // The rows of those listed, as listed now, by who each is.
+    function listedRowsOf() {
+        const by = {};
+        for (const row of listedNow())
+            by[row.person.key] = row;
+        return by;
     }
 
     // Whether two of the daemon's records say the same of someone.
