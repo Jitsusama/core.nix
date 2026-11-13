@@ -292,8 +292,10 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
     shell.down_to(within)
     shell.step_in()
     shell.normal()
-    names = cast("list[str]", shell.showing()["rows"])
-    walk = "j" * (len(names) - 1) + "k" * (len(names) - 1)
+    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
+    things = cast("list[Json]", shell.showing()["things"])
+    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
     timed: list[int] = []
     others = unsaid = 0
     came: dict[str, int] = {}
