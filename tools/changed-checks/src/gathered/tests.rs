@@ -100,17 +100,17 @@ fn source(test: &str, written: &[(&str, &str)]) -> std::path::PathBuf {
     folder
 }
 
-/// What each of the checks `files` names read, every gathered file among
-/// them, narrowed from the source `at`.
-fn narrowed(at: &Path, files: &[(&str, &str)]) -> BTreeMap<String, Vec<String>> {
+/// The files each check of the tests reads, every gathered file among them.
+const READ: [&str; 4] = ["flake.nix", "checks.nix", "x/checks.nix", "y/checks.nix"];
+
+/// What each of the checks `files` names read, each of `read`, narrowed
+/// from the source `at`.
+fn narrowed(at: &Path, files: &[(&str, &str)], read: &[&str]) -> BTreeMap<String, Vec<String>> {
     let files: BTreeMap<String, String> = files
         .iter()
         .map(|(name, file)| ((*name).to_owned(), (*file).to_owned()))
         .collect();
-    let read: BTreeSet<String> = ["flake.nix", "checks.nix", "x/checks.nix", "y/checks.nix"]
-        .into_iter()
-        .map(str::to_owned)
-        .collect();
+    let read: BTreeSet<String> = read.iter().map(|file| (*file).to_owned()).collect();
     let mut each: BTreeMap<&str, Reads> = files
         .keys()
         .map(|name| {
@@ -125,6 +125,57 @@ fn narrowed(at: &Path, files: &[(&str, &str)]) -> BTreeMap<String, Vec<String>> 
     each.into_iter()
         .map(|(name, reads)| (name.to_owned(), reads.read.into_iter().collect()))
         .collect()
+}
+
+#[test]
+fn a_file_a_gathered_one_imports_for_every_check_is_kept_only_by_its_own() {
+    // modules/quickshell/checks.nix imports 39 files of its checks, which
+    // every check then read, so a change to one reached all 882.
+    let at = source(
+        "sub-gathered",
+        &[
+            ("flake.nix", "{ }"),
+            (
+                "checks.nix",
+                "given = import ./given.nix; folders = [ ./x/checks.nix ./q/checks.nix ];",
+            ),
+            ("given.nix", "{ }"),
+            ("x/checks.nix", "{ }: { a = 1; }"),
+            ("q/checks.nix", "{ }: map import [ ./one.nix ./two.nix ]"),
+            ("q/one.nix", "{ q = 1; }"),
+            ("q/two.nix", "{ r = 1; }"),
+        ],
+    );
+    let read = [
+        "checks.nix",
+        "flake.nix",
+        "given.nix",
+        "q/checks.nix",
+        "q/one.nix",
+        "q/two.nix",
+        "x/checks.nix",
+    ];
+
+    let each = narrowed(&at, &[("a", "x/checks.nix"), ("q", "q/checks.nix")], &read);
+
+    let _ = fs::remove_dir_all(&at);
+    assert_eq!(
+        each["a"],
+        ["checks.nix", "flake.nix", "given.nix", "x/checks.nix"],
+        "a kept a file only another folder's checks import, or lost one checks.nix does"
+    );
+    assert_eq!(
+        each["q"],
+        [
+            "checks.nix",
+            "flake.nix",
+            "given.nix",
+            "q/checks.nix",
+            "q/one.nix",
+            "q/two.nix"
+        ],
+        "q lost a file its own checks import"
+    );
 }
 
 #[test]
@@ -152,6 +203,7 @@ fn a_check_keeps_only_the_gathered_files_its_own_names() {
             ("c", "y/checks.nix"),
             ("inline", "checks.nix"),
         ],
+        &READ,
     );
 
     let _ = fs::remove_dir_all(&at);
@@ -194,6 +246,7 @@ fn a_check_whose_files_use_the_whole_source_or_cant_be_read_keeps_them_all() {
             ("b", "z/checks.nix"),
             ("c", "y/checks.nix"),
         ],
+        &READ,
     );
 
     let _ = fs::remove_dir_all(&at);

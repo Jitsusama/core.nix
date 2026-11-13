@@ -12,6 +12,12 @@
 //! A file using the flake's whole source as a path or the outputs holding
 //! every check, and a check `checks.nix` gives itself, keep them all.
 //!
+//! A gathered file may gather files of its own, as
+//! `modules/quickshell/checks.nix` imports 39 for its 182 checks, and those
+//! every check reads too. So a file every check read, which a gathered file
+//! names by path, is kept as a gathered one is: by the checks whose own
+//! files name it. One that `checks.nix` or `flake.nix` names stays in all.
+//!
 //! Only the names `self` and `core` are seen: a file handed the flake as a
 //! function's argument of another name, which used its checks, would lose
 //! the gathered files it truly depends on. None does on 13 November.
@@ -37,14 +43,39 @@ pub fn files(source: &str, system: &str) -> Option<BTreeMap<String, String>> {
 }
 
 /// Leave out of each check's reads, in `each`, the gathered files, those
-/// `files` names, that neither give the check nor are named by a file it
-/// read, each read from `source`.
+/// `files` names and those they gather in turn, that neither give the check
+/// nor are named by a file it read, each read from `source`.
 pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeMap<&str, Reads>) {
-    let gathered: BTreeSet<&str> = files
+    let listed: BTreeSet<&str> = files
         .values()
         .map(String::as_str)
         .filter(|file| *file != ROOT)
         .collect();
+    let floor: BTreeSet<String> = each
+        .values()
+        .map(|reads| &reads.read)
+        .reduce(|one, other| if one.len() <= other.len() { one } else { other })
+        .into_iter()
+        .flatten()
+        .filter(|file| {
+            Path::new(file).extension().is_some_and(|it| it == "nix")
+                && ![ROOT, "flake.nix"].contains(&file.as_str())
+                && !listed.contains(file.as_str())
+                && each.values().all(|reads| reads.read.contains(*file))
+        })
+        .cloned()
+        .collect();
+    let everyones: BTreeSet<&str> = floor.iter().map(String::as_str).collect();
+    let mut gathered = listed.clone();
+    for file in &listed {
+        let named = named_by(source, file, &everyones, &listed).unwrap_or_default();
+        gathered.extend(
+            floor
+                .iter()
+                .filter(|one| named.contains(*one))
+                .map(String::as_str),
+        );
+    }
     // Many checks read the same files, so each is read once.
     let mut named: HashMap<String, BTreeSet<String>> = HashMap::new();
     for (name, reads) in each.iter_mut() {
@@ -67,9 +98,10 @@ pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeM
             if !looked.insert(file.clone()) {
                 continue;
             }
-            let these = named
-                .entry(file.clone())
-                .or_insert_with(|| names(source, &file, &gathered));
+            let these = named.entry(file.clone()).or_insert_with(|| {
+                named_by(source, &file, &gathered, &listed)
+                    .unwrap_or_else(|| gathered.iter().map(|one| (*one).to_owned()).collect())
+            });
             for one in these.iter() {
                 if kept.insert(one.clone()) {
                     left.push(one.clone());
@@ -82,16 +114,19 @@ pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeM
     }
 }
 
-/// The gathered files, of `gathered`, that `file` names by path, read from
-/// `source`; all of them when it can't be read, or uses the whole source.
-fn names(source: &Path, file: &str, gathered: &BTreeSet<&str>) -> BTreeSet<String> {
-    let every = || gathered.iter().map(|one| (*one).to_owned()).collect();
-    let Ok(text) = fs::read_to_string(source.join(file)) else {
-        return every();
-    };
+/// The files of `gathered` that `file` names by path, read from `source`,
+/// but those of `listed` the root names exactly, which is its gathering;
+/// none when it can't be read, or uses the whole source, so may need any.
+fn named_by(
+    source: &Path,
+    file: &str,
+    gathered: &BTreeSet<&str>,
+    listed: &BTreeSet<&str>,
+) -> Option<BTreeSet<String>> {
+    let text = fs::read_to_string(source.join(file)).ok()?;
     let code = code(&text);
     if takes_whole(&code) {
-        return every();
+        return None;
     }
     let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
     let mut found = BTreeSet::new();
@@ -102,12 +137,12 @@ fn names(source: &Path, file: &str, gathered: &BTreeSet<&str>) -> BTreeSet<Strin
         for one in gathered {
             let under = at.is_empty() || one.starts_with(&format!("{at}/"));
             // The root's list of files is the gathering itself.
-            if under || (*one == at && file != ROOT) {
+            if under || (*one == at && (file != ROOT || !listed.contains(one))) {
                 found.insert((*one).to_owned());
             }
         }
     }
-    found
+    Some(found)
 }
 
 /// Whether `code` uses the flake's own source, `self` or the `core` it's
