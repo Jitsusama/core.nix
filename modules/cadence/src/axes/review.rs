@@ -6,9 +6,11 @@
 //! reading from his side at all, and readings in spec in an area his
 //! pains named that week. A pain is the pain-points detector's record or
 //! a line health heard him sound pained in, each put in the area its
-//! words name, by the table below.
+//! words name, by the table below. Last, the newest day cadence kept is
+//! held against the one a week before it (weeks.rs).
 
 mod noise;
+mod weeks;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -23,6 +25,7 @@ use serde_json::Value;
 use super::messages::{self, Note};
 use super::readings::{gather as gather_axes, read};
 use super::{Axis, Reading};
+use crate::day::Day;
 use crate::mesh::Mesh;
 use crate::{DAY, folders, message, now_ms};
 use noise::{Tallies, unacted_words};
@@ -86,6 +89,8 @@ pub struct Sources {
     /// health's day files of the week.
     pub health: Vec<String>,
     pub axes: Vec<Axis>,
+    /// The days cadence kept.
+    pub days: Vec<Day>,
     /// The week's start and end, in seconds.
     pub since: i64,
     pub now: i64,
@@ -178,6 +183,10 @@ fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         points: dated(state_home.join("pain-points"), "jsonl"),
         health: dated(state_home.join("health"), "json"),
         axes: read(&gather_axes(folder, state_home, now)),
+        days: files(&folder.join("day"), "json")
+            .into_iter()
+            .filter_map(|p| serde_json::from_str(&text(p)).ok())
+            .collect(),
         since,
         now,
     }
@@ -368,6 +377,35 @@ fn page(s: &Sources) -> String {
     if blind.in_spec.is_empty() {
         out.push_str("- none\n");
     }
+    out.push_str(&week_on_week(&s.days));
+    out
+}
+
+/// The page's last part, the newest day kept against a week before it.
+fn week_on_week(days: &[Day]) -> String {
+    let Some(w) = weeks::weeks(days) else {
+        return "\nWeek on week: no day kept yet\n".to_owned();
+    };
+    let Some(before) = &w.before else {
+        return format!(
+            "\nWeek on week: no day kept a week before {}; the first was {}, so the first \
+             comparison is a week after it\n",
+            w.newest, w.oldest
+        );
+    };
+    let mut out = format!("\nWeek on week, {} against {before}:\n", w.newest);
+    for worse in &w.worse {
+        let _ = writeln!(out, "- Worse: {worse}");
+    }
+    for better in &w.better {
+        let _ = writeln!(out, "- Better: {better}");
+    }
+    let _ = writeln!(
+        out,
+        "- {} of {} figures within a fifth",
+        w.held - w.worse.len() - w.better.len(),
+        w.held
+    );
     out
 }
 
