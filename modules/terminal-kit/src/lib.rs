@@ -371,7 +371,7 @@ mod tests {
     fn the_body_reads_what_the_shared_flags_left() {
         let ending = ran("go --color never far", |context| {
             assert_eq!(context.args, ["go", "far"]);
-            assert!(!context.out.inks());
+            assert!(!context.out.inks(), "--color never inks nothing");
             Ok(())
         });
         assert_eq!(ending.exit, Exit::Done);

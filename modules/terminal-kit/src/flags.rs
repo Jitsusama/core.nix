@@ -234,16 +234,16 @@ mod tests {
     #[test]
     fn nothing_after_a_double_dash_is_taken() {
         let (shared, rest) = taken("run -- --help --json");
-        assert!(!shared.help);
+        assert!(!shared.help, "--help after -- is the command's");
         assert_eq!(shared.format, Format::Text);
         assert_eq!(rest, args("run -- --help --json"));
     }
 
     #[test]
     fn help_is_seen_wherever_it_is() {
-        assert!(taken("show machine -h").0.help);
-        assert!(taken("--help show").0.help);
-        assert!(taken("--version").0.version);
+        assert!(taken("show machine -h").0.help, "-h at the end is help");
+        assert!(taken("--help show").0.help, "--help first is help");
+        assert!(taken("--version").0.version, "--version is the version");
     }
 
     #[test]

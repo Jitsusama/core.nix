@@ -128,7 +128,9 @@ const AGREED: [(&str, &str); 6] = [
 ];
 
 /// The marks a command's states wear, and each one's stand-in, for a
-/// terminal with no theme to read them from: modules/theme/glyphs.nix's.
+/// terminal with no theme to read them from: modules/theme/glyphs.nix's,
+/// but for caution, whose own mark only the theme's font holds, so a
+/// terminal without the theme draws its stand-in.
 const MARKS: [(&str, &str, &str); 12] = [
     ("done", "\u{2713}", "v"),
     ("failed", "\u{2715}", "x"),
@@ -138,7 +140,7 @@ const MARKS: [(&str, &str, &str); 12] = [
     ("queued", "\u{25e6}", "o"),
     ("stopped", "\u{25a0}", "#"),
     ("cancelled", "\u{2212}", "-"),
-    ("caution", "\u{f071}", "!"),
+    ("caution", "!", "!"),
     ("more", "\u{2026}", "~"),
     ("separator", "\u{b7}", "."),
     ("cursor", "\u{25b8}", ">"),
@@ -344,7 +346,7 @@ impl Pen {
     }
 
     /// A mark in a role's colour, and the space after it, which kitty
-    /// needs to draw a Nerd Font mark whole and which starts the text
+    /// needs to draw a wide mark whole and which starts the text
     /// after it on one column (docs/commands.md, A mark and its space).
     pub fn marked(&self, name: &str, role: &str) -> String {
         let mark = self.mark(name);
@@ -464,7 +466,8 @@ mod tests {
                 Colour::Auto,
                 &Environment::of([false; 3], &[("TERM", "linux")])
             )
-            .console
+            .console,
+            "the Linux console draws the stand-ins"
         );
     }
 

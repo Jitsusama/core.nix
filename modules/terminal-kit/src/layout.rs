@@ -516,10 +516,12 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_cut_only_at_a_whole_word() {
-        assert_eq!(cut("Sessions to Reopen", 14), "Sessions to\u{2026}");
-        assert_eq!(cut("Sessions to Reopen", 5), "Sessions\u{2026}");
-        assert_eq!(cut("Disk", 5), "Disk");
+    fn a_name_gives_way_at_a_whole_word_and_says_so() {
+        // A word past the room keeps its first word whole, since what
+        // names a record is never cut mid-word.
+        assert_eq!(cut("switch the system now", 12), "switch the\u{2026}");
+        assert_eq!(cut("switch the system now", 3), "switch\u{2026}");
+        assert_eq!(cut("status", 6), "status");
     }
 
     #[test]
