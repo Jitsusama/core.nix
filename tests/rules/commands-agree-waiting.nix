@@ -117,16 +117,6 @@
     "exits"
     "helps"
   ];
-  firmware-notice = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  firmware-settings = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   gcloud-broker = [
     "kit"
     "exits"
@@ -171,10 +161,6 @@
   hibernate-unlock = [
     "kit"
     "exits"
-    "helps"
-  ];
-  ir-camera = [
-    "kit"
     "helps"
   ];
   jobs-broker = [
@@ -227,11 +213,6 @@
     "helps"
   ];
   meaning = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  memory-modules = [
     "kit"
     "exits"
     "helps"

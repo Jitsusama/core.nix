@@ -8,3 +8,6 @@ license = "MIT"
 publish = false
 
 [dependencies]
+serde_json = "1.0"
+# Its help, answers and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }

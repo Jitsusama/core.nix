@@ -109,6 +109,14 @@ impl Exit {
     pub fn of(code: u8) -> Option<Self> {
         Self::ALL.into_iter().find(|exit| exit.code() == code)
     }
+
+    /// Ends the process at once with this exit, saying nothing. It's for
+    /// the one place a body can't return from: a thread that has heard a
+    /// signal and cleaned up after it, as `Interrupted`. Everywhere else a
+    /// body returns its failure, so the kit says it.
+    pub fn end_now(self) -> ! {
+        std::process::exit(i32::from(self.code()))
+    }
 }
 
 impl From<Exit> for std::process::ExitCode {
