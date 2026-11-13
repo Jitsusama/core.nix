@@ -50,6 +50,7 @@
 
 mod answers;
 mod apart;
+mod candidates;
 mod gated;
 mod holds;
 mod lists;
@@ -351,21 +352,20 @@ fn needs(base: &str) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The recent passed runs that could be `commit`'s change: those carrying
-/// one of its own subjects and touching one of its `files`, the first read
-/// being cheap and the second not. Should git fail to say either, every
-/// record goes on, as slow as before but no less right.
+/// The recent passed runs that could be `commit`'s change, as
+/// `candidates::could_be` chooses them from what git says of each.
 fn candidates(commit: &str, main: &str, files: &[String]) -> Result<Vec<String>, String> {
     let records = ready::recent_records();
     let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
-    let records = logged(&records, &["--format=%H%x01%s"]).map_or(records.clone(), |said| {
-        ready::titled(&records, &said, &subjects)
-    });
-    Ok(
-        logged(&records, &["--format=%x01%H", "--name-only"]).map_or(records.clone(), |touched| {
-            ready::likely(&records, &touched, files)
-        }),
-    )
+    let said = logged(&records, &["--format=%H%x01%s"]);
+    let touched = |records: &[String]| logged(records, &["--format=%x01%H", "--name-only"]);
+    Ok(candidates::could_be(
+        &records,
+        said.as_deref(),
+        &subjects,
+        touched,
+        files,
+    ))
 }
 
 /// Name the VM tests that own a file the change touches, each of which is
@@ -667,8 +667,8 @@ fn patch_id(repo: &Path, base: &str, head: &str) -> Option<String> {
 }
 
 /// What `git log` says of each of `commits`, in `format`, from one git for
-/// them all: its subject for `ready::titled`, or what it changed in its own
-/// commit for `ready::likely`. A commit this clone lacks is left out.
+/// them all: its subject, or what it changed in its own commit, for
+/// `candidates::could_be`. A commit this clone lacks is left out.
 fn logged(commits: &[String], format: &[&str]) -> Option<String> {
     let mut log = Command::new("git")
         .args(["log", "--no-walk=unsorted", "--ignore-missing", "--stdin"])
