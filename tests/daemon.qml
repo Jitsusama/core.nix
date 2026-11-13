@@ -456,6 +456,10 @@ ShellRoot {
         },
         {
             what: "a client watching two kinds holds records of both",
+            // Its stand-in starts only now, and a try refused while it binds
+            // waits up to 16 s before the next (Daemon.qml's waitAfter), past
+            // the usual 10 s, as it did on a busy builder (2026-11-13).
+            polls: 500,
             run: () => {
                 kindsRunning.running = true;
             },
