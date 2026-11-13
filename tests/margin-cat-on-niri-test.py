@@ -49,6 +49,9 @@ STRETCHES = (0.3, 1.0)
 # render one of its frames, a quarter of a frame at 60, so its own work never costs one.
 RESTS = 2.0
 BEATS = ["turns", "thinks", "crouches", "goes", "settles", "lands"]
+# The shortest of them, its crouch, in ms: a frame of the nested niri's longer than it may
+# hide it.
+SHORTEST_BEAT = 110
 DRAWS = 4.0
 WALKED = "walked cat "
 # The fewest steps a second its walk may take, the nested screen drawing at 60.
@@ -175,6 +178,32 @@ def steps(shell: Shell, since: int) -> list[Json]:
     return [at for at in reports if at is not None and at.get("walk")]
 
 
+def unseen_only_between_frames(walked: list[Json]) -> list[str]:
+    """Give the beats a walk missed, out of order or with no frame long enough to hide them.
+
+    The nested niri draws in software, and one frame in a walk can take longer than a short
+    beat lasts: the crouch's 110 ms fell between two frames 121 ms apart (2026-11-12), so a
+    beat may go unseen only where the steps either side of it are farther apart than that.
+    """
+    took: list[tuple[str, float, float]] = []
+    for step in walked:
+        beat, t = step["walk"]["beat"], step["walk"]["t"]
+        if took and took[-1][0] == beat:
+            took[-1] = (beat, took[-1][1], t)
+        else:
+            took.append((beat, t, t))
+    wrong: list[str] = []
+    at = 0
+    for seen, (beat, starts, _) in enumerate(took):
+        if beat not in BEATS[at:]:
+            return [f"{beat} out of order"]
+        skipped = BEATS[at : BEATS.index(beat, at)]
+        gap = starts - took[seen - 1][2] if seen else 0
+        wrong += [f"{missed} unseen in {gap:.0f} ms" for missed in skipped if gap < SHORTEST_BEAT]
+        at = BEATS.index(beat, at) + 1
+    return wrong + [f"{missed} never" for missed in BEATS[at:]]
+
+
 def walking(said: str) -> bool:
     """Say whether a report is a step of a walk."""
     at = placed(said)
@@ -212,9 +241,7 @@ def test_the_cat_walks_over_a_frame_at_a_time_once_the_keys_rest(shell: Shell) -
     (kept / "walk.json").write_text(json.dumps({"steps": walked, "presented": told}))
     assert rested >= RESTS, f"the cat set off {rested:.2f} s after the key, before resting"
     beats = [step["walk"]["beat"] for step in walked]
-    assert [beat for at, beat in enumerate(beats) if at == 0 or beat != beats[at - 1]] == BEATS, (
-        f"the cat's beats came as {beats}"
-    )
+    assert unseen_only_between_frames(walked) == [], f"the cat's beats came as {beats}"
     times = [step["walk"]["t"] for step in walked]
     gaps = sorted(after - before for before, after in itertools.pairwise(times))
     frame = gaps[len(gaps) // 2]
