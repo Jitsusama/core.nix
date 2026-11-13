@@ -63,8 +63,9 @@ const IN_PLACE = {
 };
 
 // Its moves, for once he's left the keys, a quarter of its plays then so
-// it stays gentle: a hop a cell or two straight up from a crouch, landing
-// crouched; and a wander of 16 to 40 cells along the margin, a sit, and
+// it stays gentle: a hop a cell straight up from a crouch, landing
+// crouched, no higher so it never reads as the leap its walks leave out
+// (VKCF3Z, 5e211585); and a wander of 16 to 40 cells along the margin, a sit, and
 // back over its column, on the walk's own steps.
 const MOVES = 0.25;
 const HOP = { crouches: 220, rises: 380, lands: 160 };
@@ -100,7 +101,7 @@ function scene(lively, draw, last) {
     const names = (moving ? ["hop", "wander"] : Object.keys(IN_PLACE)).filter(play => play !== last);
     const name = pick(names, draw());
     if (name === "hop") {
-        const rises = Object.assign(held("pouncing", HOP.rises), { hop: true, cells: 1 + draw() });
+        const rises = Object.assign(held("pouncing", HOP.rises), { hop: true, cells: 1 });
         const crouched = held("pouncing", HOP.crouches);
         return { name, beats: [crouched, rises, held("pouncing", HOP.lands)] };
     }
@@ -111,6 +112,16 @@ function scene(lively, draw, last) {
         return { name, beats: [off, sat, { walk: true, to: "column" }] };
     }
     return { name, beats: IN_PLACE[name].map(([pose, ms]) => held(pose, ms)) };
+}
+
+// What comes next at a level (`lively`): the rest before it, `after` ms,
+// and the `scene` it plays then, drawn from `draw` never as `last`; null
+// where nothing comes, asleep or still, so no timer runs at all.
+// MarginCat.qml waits `after` and plays it, and a change of level draws
+// afresh.
+function next(lively, draw, last) {
+    const after = rest(lively, draw());
+    return after === null ? null : { after, scene: scene(lively, draw, last) };
 }
 
 // Where a short wander goes, from `at` as sits takes it with the `seat` it

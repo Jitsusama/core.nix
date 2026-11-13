@@ -86,8 +86,10 @@ Scope {
     property string posed: ""
     // The play under way or last played, so none comes twice running.
     property string played: ""
-    // What's left of the scene under way, each beat as Plays.scene says.
+    // What's left of the scene under way, each beat as Plays.scene says,
+    // and the scene waiting comes to, or null where none comes.
     property var beats: []
+    property var coming: null
     // A hop under way, its rise's `ms` and how many `cells` up, and how far
     // up it is now, from none to its height (1), each frame the screen
     // draws; null and 0 on the ground.
@@ -111,12 +113,13 @@ Scope {
         beats = [];
         posed = "";
         strollTo = "";
-        const wait = Plays.rest(lively, Math.random());
-        if (wait === null) {
+        const next = Plays.next(lively, Math.random, played);
+        coming = next?.scene ?? null;
+        if (next === null) {
             waiting.stop();
         } else {
             // Sooner by its settings' pace, as a test asks to see scenes.
-            waiting.interval = Math.max(1, Math.round(wait / (settings.pace ?? 1)));
+            waiting.interval = Math.max(1, Math.round(next.after / (settings.pace ?? 1)));
             waiting.restart();
         }
     }
@@ -191,9 +194,11 @@ Scope {
     Timer {
         id: waiting
         onTriggered: {
-            const next = Plays.scene(root.lively, Math.random, root.played);
-            root.played = next.name;
-            root.beats = next.beats;
+            if (root.coming === null)
+                return;
+            root.played = root.coming.name;
+            root.beats = root.coming.beats;
+            root.coming = null;
             root.beat();
         }
     }
