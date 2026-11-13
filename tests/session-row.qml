@@ -205,41 +205,6 @@ QtObject {
             fills.push("one with no usage said it was full");
         for (const fill of fills)
             failures.push(`how full: ${fill}`);
-        // Which landings there are, whose and whether Joel read each are
-        // the agents daemon's (modules/agents/src/landed.rs). Of those it
-        // serves, what says what to try waits in For You until he reads
-        // it, and what he read goes to its History with when; one read
-        // before when was kept goes to neither.
-        const landing = (address, ref, at, more) => Object.assign({ key: `${address} ${ref}`,
-            ref: ref, at: at, what: ref, person: "", url: "", quest: "", repo: "",
-            machine: "", session: { address: address, title: "", id: "" }, read: null }, more);
-        const served = [
-            landing("B", "world#9", "2026-11-07T11:33:00Z"),
-            landing("A", "core.nix#2140", "2026-11-07T11:31:00Z",
-                { url: "https://github.com/o/core.nix/pull/2140" }),
-            landing("A", "PLAN-20261106-2ZPAI5#4", "2026-11-07T11:30:00Z",
-                { person: "try Stop twice", tries: true }),
-            landing("B", "core.nix#2138", "2026-11-07T11:20:00Z"),
-            landing("D", "core.nix#2200", "2026-11-07T09:00:00Z", { quest: "QEST-20261106-KP0L6A",
-                repo: "Jitsusama/core.nix", machine: "skiff" }),
-            landing("E", "o#1", "2026-11-07T08:00:00Z", { person: "try it", tries: true,
-                read: 1000 }),
-            landing("E", "o#2", "2026-11-07T07:00:00Z", { person: "try it", tries: true,
-                read: true }),
-            // A line the daemon says asks nothing of him is Landed's alone,
-            // read or not.
-            landing("F", "o#3", "2026-11-07T06:00:00Z", { person: "Nothing to try",
-                tries: false }),
-            landing("F", "o#4", "2026-11-07T05:00:00Z", { person: "Nothing to try",
-                tries: false, read: 900 })
-        ];
-        const keysOf = rows => rows.map(one => one.key).join(" | ");
-        const toTry = keysOf(Landed.toTry(served));
-        if (toTry !== "A PLAN-20261106-2ZPAI5#4")
-            failures.push(`to try: "${toTry}", not only the unread one saying what to`);
-        const tried = Landed.triedRead(served);
-        if (tried.length !== 1 || tried[0].one !== served[5] || tried[0].at !== 1000)
-            failures.push(`what's read for History: ${JSON.stringify(tried.map(one => one.at))}`);
         // Landed's row says at its right how many landed today, never
         // how many are to read, which For You alone counts.
         const standing = { today: "{count} today", none: "none today" };

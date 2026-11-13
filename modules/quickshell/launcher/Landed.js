@@ -1,30 +1,11 @@
 .pragma library
 // What pi's sessions landed, as Agents' Landed shows it (VKCF3Z,
-// 2026-11-06): which of the landings wait in For You to try until Joel
-// reads them and which he has, how Landed's row stands, and when each
-// landed, as words. Which landings are worth his reading, whose each is,
-// whether he has read it and each one's drawer are the agents daemon's
-// (modules/agents/src/landed.rs), which serves them ready; what is left
-// here is saying their times. Said apart from Agents.qml so
-// tests/session-row.qml holds it in Qt's own engine.
-
-// Those of `rows` that wait in For You's To Try: each whose line asks
-// Joel to try something, as the daemon says (`tries`), while he hasn't
-// read it (`read` null). One whose line asks nothing of him, as "Nothing
-// to try", or with none, is only Landed's to list (VKCF3Z and Y2YBTS,
-// 2026-11-10; VKCF3Z, 2026-11-11).
-function toTry(rows) {
-    return rows.filter(one => one.tries === true && one.read === null);
-}
-
-// Those that waited there and he has read since, for For You's History,
-// each { one, at }, `at` when he read it, in milliseconds. One read before
-// the shell kept when (`read` true) has no time to say, so it isn't
-// History's.
-function triedRead(rows) {
-    return rows.filter(one => one.tries === true && typeof one.read === "number")
-        .map(one => ({ one, at: one.read }));
-}
+// 2026-11-06): how Landed's row stands, and when each landed, as words.
+// Which landings are worth his reading, whose each is, whether he has
+// read it, which wait in For You to try and each one's drawer are the
+// agents daemon's (modules/agents/src/landed.rs), which serves them
+// ready; what is left here is saying their times. Said apart from
+// Agents.qml so tests/session-row.qml holds it in Qt's own engine.
 
 // How Landed stands, said at its row's right: how many landed today, "5
 // today", or "none today". What's still to read is For You's alone to

@@ -50,7 +50,9 @@ use serde_json::{Value, json};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
-/// there are to reopen, with Sessions to Reopen's own words.
+/// there are to reopen, with Sessions to Reopen's own words. A landing's
+/// drawer is told only to a watch naming it, as the shell does for the
+/// few it's about to draw (landed.rs).
 const DOMAIN: Domain = Domain {
     name: "agents",
     kinds: &[
@@ -62,7 +64,9 @@ const DOMAIN: Domain = Domain {
         "to-reopen",
         "recent",
         "landed",
+        "landed-drawer",
         "landed-days",
+        "try",
         "closed",
         "agent-window",
         "arrangement",
@@ -70,7 +74,7 @@ const DOMAIN: Domain = Domain {
         "want",
     ],
     sole: &[],
-    named_only: &[],
+    named_only: &["landed-drawer"],
 };
 
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
