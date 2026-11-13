@@ -299,6 +299,39 @@ mod tests {
     }
 
     #[test]
+    fn a_macs_kernel_line_is_named_past_what_says_nothing_of_who() {
+        let kernel = |message: &str| {
+            entry(&KERNEL.replace(
+                "vm_reclaim: [80186] Failed to free(reusable) err=1",
+                message,
+            ))
+        };
+        let mut day = Day::new("2026-11-13");
+        for message in [
+            "SK[3]: flow_req_validate              flow req failed MAC check",
+            "[ERROR] ANE0: FreeSharedMemorySurface: Ignoring firmware free request",
+            "[ERROR] : processDeviceEvent: Cannot find request for uuid: 0x1f2",
+            "troller.cpp::371] DCPAV[0] AppleDCPDPTX::getByteClkSelValue No device",
+            "1043] DCPAV[0] AppleDCPDPTX::updateLinkRateDependentShadowRegisters",
+        ] {
+            day.take(&kernel(message));
+        }
+        let names = day.things.keys().map(String::as_str).collect::<Vec<_>>();
+        for (name, errors) in [
+            ("SK", 1),
+            ("ANE#", 1),
+            ("processDeviceEvent", 1),
+            ("DCPAV", 2),
+        ] {
+            assert_eq!(
+                day.things.get(name).map(|thing| thing.errors),
+                Some(errors),
+                "{name} is who spoke, past a level, an index or a cut word: {names:?}"
+            );
+        }
+    }
+
+    #[test]
     fn the_day_is_read_from_midnight_and_followed_from_now() {
         let asked = followed("2026-11-12 00:00:00", "2026-11-12 06:10:00");
         assert_eq!(asked[0][0], "stream", "one follows the log from now");
