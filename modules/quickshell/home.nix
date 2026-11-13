@@ -2620,13 +2620,11 @@ in
     # the shell links is named, as its restart's triggers are.
     home.activation.quickshellStartsWarm =
       let
-        warmed = lib.filter (
-          name: lib.hasPrefix "quickshell/" name && lib.hasSuffix ".qml" name
-        ) (lib.attrNames config.xdg.configFile);
+        isShells = name: lib.hasPrefix "quickshell/" name && lib.hasSuffix ".qml" name;
+        linked = lib.attrNames config.xdg.configFile;
+        warmed = lib.remove "quickshell/warm.qml" (lib.filter isShells linked);
         warms = pkgs.writeText "quickshell-warms.json" (
-          builtins.toJSON (
-            map (lib.removePrefix "quickshell/") (lib.remove "quickshell/warm.qml" warmed)
-          )
+          builtins.toJSON (map (lib.removePrefix "quickshell/") warmed)
         );
       in
       lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "linkGeneration" ] ''
