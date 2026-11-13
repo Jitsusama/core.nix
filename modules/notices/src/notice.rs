@@ -7,6 +7,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+/// The shell's own programs whose notices For You lists as what they ask,
+/// a session's question or a want, so its History never shows them
+/// (launcher/Lately.js's LISTED).
+const LISTED: [&str; 2] = ["waiting", "pi"];
+
 /// How urgent its sender said it is, in the specification's three levels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -133,9 +138,26 @@ impl Notice {
     /// the desktop's unread, but not Slack's, since Slack keeps its own and
     /// says what's read there (launcher/Lately.js's awaits).
     pub fn awaits(&self) -> bool {
-        !self.read
-            && !self.app.eq_ignore_ascii_case("slack")
-            && !self.entry.eq_ignore_ascii_case("slack")
+        !self.read && self.source() != "slack"
+    }
+
+    /// Which of For You's sources it's from: Slack's, by its program's name
+    /// or its desktop entry, else the desktop's (launcher/Lately.js's
+    /// sourceOf).
+    pub fn source(&self) -> &'static str {
+        let slack = |name: &str| name.eq_ignore_ascii_case("slack");
+        if slack(&self.app) || slack(&self.entry) {
+            "slack"
+        } else {
+            "desktop"
+        }
+    }
+
+    /// Whether For You's History keeps it: read, kept, and not the shell's
+    /// own, which For You lists as what they ask (launcher/Lately.js's
+    /// ours).
+    pub fn in_history(&self) -> bool {
+        self.read && !self.transient && !LISTED.contains(&self.app.as_str())
     }
 
     /// When it was done with, for History: when it was read, else when it
@@ -210,6 +232,33 @@ mod tests {
             (desktop.awaits(), slack.awaits(), read.awaits()),
             (true, false, false)
         );
+    }
+
+    #[test]
+    fn its_source_and_whether_history_keeps_it() {
+        let read = Notice {
+            read: true,
+            app: "mail".into(),
+            ..Notice::default()
+        };
+        let slack = Notice {
+            entry: "Slack".into(),
+            ..read.clone()
+        };
+        let asked = Notice {
+            app: "waiting".into(),
+            ..read.clone()
+        };
+        let unread = Notice {
+            read: false,
+            ..read.clone()
+        };
+        let sources = (read.source(), slack.source());
+        assert_eq!(sources, ("desktop", "slack"), "Slack's by its entry too");
+        let all = [&read, &slack, &asked, &unread];
+        let kept = all.map(Notice::in_history);
+        let wanted = [true, true, false, false];
+        assert_eq!(kept, wanted, "the read, not the shell's own");
     }
 
     #[test]
