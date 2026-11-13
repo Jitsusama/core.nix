@@ -39,7 +39,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
             devices: &node.devices,
         })
         .collect();
-    super::json::slice(model, Figures { nodes })
+    super::json::slice(model, "eero.mesh/1", Figures { nodes })
 }
 
 pub fn page(model: &HomeNetwork, clock: &Clock) -> Page {

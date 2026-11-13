@@ -18,6 +18,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
     let net = &model.internet;
     super::json::slice(
         model,
+        "eero.speeds/1",
         Figures {
             speed_test: &net.speed_test,
             speed_tests: &net.speed_tests,

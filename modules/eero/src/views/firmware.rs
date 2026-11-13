@@ -38,6 +38,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
         .collect();
     super::json::slice(
         model,
+        "eero.firmware/1",
         Figures {
             firmware: &model.internet.firmware,
             nodes,

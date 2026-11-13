@@ -29,7 +29,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
             radios: &node.radios,
         })
         .collect();
-    super::json::slice(model, Figures { nodes })
+    super::json::slice(model, "eero.radio/1", Figures { nodes })
 }
 
 pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {

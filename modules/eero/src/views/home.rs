@@ -40,6 +40,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
     let net = &model.internet;
     slice(
         model,
+        "eero.status/1",
         Figures {
             internet: Headline {
                 state: &net.state,
