@@ -1,0 +1,89 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] io/fileview: hear a directory's files with one watch
+
+A FileView watching a directory never said it changed. Its path was
+watched as a directory, never as a file, and a change in a directory was
+taken only as news that the file named had just been made. So a shell
+hearing a folder of files held a FileView, and an open watch, for every
+file in it: 406 of them took one shell near its limit of open files, and
+a start's burst went past it.
+
+A FileView whose path names a directory now says it changed whenever a
+file in it is made, renamed in or out, or removed, with the one watch.
+It keeps that watch as the nearest directory above it is watched, and is
+heard once it's made, as a file is. A FileView of a file hears what it
+heard before.
+
+---
+diff --git a/src/io/fileview.cpp b/src/io/fileview.cpp
+index 59409a4..bd9fb1a 100644
+--- a/src/io/fileview.cpp
++++ b/src/io/fileview.cpp
+@@ -566,12 +566,15 @@ void FileView::watchNearest() {
+ 	}
+ 
+ 	for (const auto& watched: this->watcher->directories()) {
+-		if (watched != dirPath) this->watcher->removePath(watched);
++		if (watched != dirPath && watched != this->targetPath) this->watcher->removePath(watched);
+ 	}
+ 
+ 	if (!this->watcher->directories().contains(dirPath)) this->watcher->addPath(dirPath);
+ 
+-	if (!this->watcher->files().contains(this->targetPath) && QFileInfo::exists(this->targetPath)) {
++	// A directory is watched as one, so it's heard as anything in it changes.
++	const auto& watched =
++	    QFileInfo(this->targetPath).isDir() ? this->watcher->directories() : this->watcher->files();
++	if (!watched.contains(this->targetPath) && QFileInfo::exists(this->targetPath)) {
+ 		this->watcher->addPath(this->targetPath);
+ 	}
+ }
+@@ -584,12 +587,23 @@ void FileView::onWatchedFileChanged() {
+ 	emit this->fileChanged();
+ }
+ 
+-void FileView::onWatchedDirectoryChanged() {
+-	auto wasWatched = this->watcher->files().contains(this->targetPath);
++void FileView::onWatchedDirectoryChanged(const QString& path) {
++	auto watching = [this] {
++		return this->watcher->files().contains(this->targetPath)
++		    || this->watcher->directories().contains(this->targetPath);
++	};
++
++	auto wasWatched = watching();
+ 	this->watchNearest();
+ 
++	// a directory's own change is its content's: a file made, renamed in or removed
++	if (path == this->targetPath) {
++		emit this->fileChanged();
++		return;
++	}
++
+ 	// the file was just created, perhaps with the directories above it
+-	if (!wasWatched && this->watcher->files().contains(this->targetPath)) emit this->fileChanged();
++	if (!wasWatched && watching()) emit this->fileChanged();
+ }
+ 
+ bool FileView::shouldBlockRead() const {
+diff --git a/src/io/fileview.hpp b/src/io/fileview.hpp
+index 1f62f2f..3e16c1c 100644
+--- a/src/io/fileview.hpp
++++ b/src/io/fileview.hpp
+@@ -211,7 +211,8 @@ class FileView: public QObject {
+ 	/// If true (defaule false), @@fileChanged() will be called whenever the content of the file
+ 	/// changes on disk, including when @@setText() or @@setData() are used. A file that does not
+ 	/// exist yet, or whose directory does not, is heard once it is made, and again if its
+-	/// directory is removed and made again.
++	/// directory is removed and made again. A path naming a directory is heard whenever a file in
++	/// it is made, renamed in or out, or removed, with one watch for the whole directory.
+ 	///
+ 	/// > [!NOTE] You can reload the file's content whenever it changes on disk like so:
+ 	/// > ```qml
+@@ -380,7 +381,7 @@ private:
+ 	void updateWatchedFiles();
+ 	void watchNearest();
+ 	void onWatchedFileChanged();
+-	void onWatchedDirectoryChanged();
++	void onWatchedDirectoryChanged(const QString& path);
+ 
+ 	[[nodiscard]] bool shouldBlockRead() const;
+ 	[[nodiscard]] FileViewReader* liveReader() const;

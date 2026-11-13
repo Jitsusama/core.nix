@@ -1147,7 +1147,7 @@ def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell
     # It came just now, since one three days old goes quiet (launcher/Looks.js).
     said = {"v": 1, "id": "filtered", "title": "Filtered Look", "target": "/etc/hostname",
             "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
-    look.write_text(json.dumps(said))
+    launcher_on_niri.laid_whole(look, json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -1187,20 +1187,74 @@ def test_a_look_written_while_shut_is_shown_to_a_terminal(shell: Shell) -> None:
     said = {"v": 1, "id": "written-shut", "title": "Written Shut", "target": "/etc/hostname",
             "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
     assert not shell.showing()["open"], "the launcher was left open"
-    look.write_text(json.dumps(said))
+    launcher_on_niri.laid_whole(look, json.dumps(said))
     try:
-        deadline = time.monotonic() + 10
-        names: list[str] = []
-        shown: Json = {}
-        while "Written Shut" not in names and time.monotonic() < deadline:
-            time.sleep(launcher_on_niri.POLL)
-            # A place missed is answered with what it was missing among, rows left out.
-            shown = shown_to_terminal(shell, "now", "for you", "to look at")
-            names = [row["name"] for row in shown.get("rows", [])]
-        assert "Written Shut" in names, f"a look written while shut was never listed: {shown}"
+        names = looks_listed(shell, "Written Shut")
+        assert "Written Shut" in names, f"a look written while shut was never listed: {names}"
         assert not shell.showing()["open"], "showing To Look At opened the launcher"
     finally:
         look.unlink()
+
+
+def looks_listed(shell: Shell, *titles: str) -> list[str]:
+    """Give the names in To Look At once they hold these titles, or after 10 s, as they stand."""
+    deadline = time.monotonic() + 10
+    names: list[str] = []
+    while not set(titles) <= set(names) and time.monotonic() < deadline:
+        time.sleep(launcher_on_niri.POLL)
+        # A place missed is answered with what it was missing among, rows left out.
+        shown = shown_to_terminal(shell, "now", "for you", "to look at")
+        names = [row["name"] for row in shown.get("rows", [])]
+    return names
+
+
+def watchers_held(shell: Shell) -> int:
+    """Give how many inotify watchers the shell holds open, each a file of its own."""
+    assert shell.process is not None, "the shell isn't started"
+    held = 0
+    for fd in Path(f"/proc/{shell.process.pid}/fd").iterdir():
+        # One closed while they're counted holds nothing.
+        with contextlib.suppress(FileNotFoundError):
+            held += str(fd.readlink()) == "anon_inode:inotify"
+    return held
+
+
+LOOKS_HELD = 30
+
+
+def test_the_shell_holds_no_file_for_each_look(shell: Shell) -> None:
+    """The looks cost the shell no open file each, and a look written again is still heard.
+
+    Each look's file had a watcher of its own: 406 on Joel's machine took the shell to 617 of
+    the 1,024 files it may hold open, and a restart's burst went past them, so niri's next
+    file was dropped and the shell lost its display (2026-11-12).
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    written = [looks / f"held{at:02d}.json" for at in range(LOOKS_HELD)]
+    came = now("-u", "+%FT%TZ")
+
+    def said(at: int, title: str) -> str:
+        # It came just now, since one three days old goes quiet (launcher/Looks.js).
+        return json.dumps({"v": 1, "id": f"held{at:02d}", "title": title, "kind": "file",
+                           "target": "/etc/hostname", "state": "waiting", "at": came})  # fmt: skip
+
+    before = watchers_held(shell)
+    for at, look in enumerate(written):
+        launcher_on_niri.laid_whole(look, said(at, f"Held Look {at}"))
+    try:
+        titles = [f"Held Look {at}" for at in range(LOOKS_HELD)]
+        names = looks_listed(shell, *titles)
+        assert set(titles) <= set(names), f"the looks were never all listed: {names}"
+        grown = watchers_held(shell) - before
+        assert grown < LOOKS_HELD // 2, f"the shell held a watcher for each look: {grown} more"
+        launcher_on_niri.laid_whole(written[0], said(0, "Held Look Again"))
+        names = looks_listed(shell, "Held Look Again")
+        assert "Held Look Again" in names, f"a look written again was never heard: {names}"
+    finally:
+        for look in written:
+            look.unlink()
 
 
 def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
@@ -1216,7 +1270,7 @@ def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
     # It came just now, since one three days old goes quiet (launcher/Looks.js).
     said = {"v": 1, "id": "cleared", "title": "Cleared Look", "target": "/etc/hostname",
             "kind": "file", "state": "waiting", "at": now("-u", "+%FT%TZ")}  # fmt: skip
-    look.write_text(json.dumps(said))
+    launcher_on_niri.laid_whole(look, json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
@@ -1281,7 +1335,7 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
         said = {"v": 1, "id": look.stem, "title": f"Weighed Look {at}", "kind": "file",
                 "target": "/etc/hostname", "state": "waiting",
                 "at": f"{hour}:{at:02d}:00Z"}  # fmt: skip
-        look.write_text(json.dumps(said))
+        launcher_on_niri.laid_whole(look, json.dumps(said))
     try:
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()

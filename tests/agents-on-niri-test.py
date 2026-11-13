@@ -1165,7 +1165,8 @@ def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: She
     look = looks / "asking.json"
     # It came just now, since one three days old goes quiet (launcher/Looks.js).
     came = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    look.write_text(
+    launcher_on_niri.laid_whole(
+        look,
         json.dumps(
             {
                 "v": 1,
@@ -1179,7 +1180,7 @@ def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: She
                 "ask": "Say whether it reads right.",
                 "choices": [{"value": "reads-right", "label": "Reads Right"}],
             }
-        )
+        ),
     )
     inbox = STEER / "LISTEN"
     try:
