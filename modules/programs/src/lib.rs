@@ -1,5 +1,5 @@
 //! The programs daemon's own logic, apart from its socket and threads so
-//! its tests reach it: what a client asks ([`interface`]), where the
+//! its tests reach it: its domain and its own asks ([`interface`]), where the
 //! desktop entries are ([`xdg`]), what one says ([`entry`]), the file
 //! kinds it opens ([`mime`]), the package its command comes from
 //! ([`package`]), each program's lists of what it had open ([`source`]),
@@ -7,8 +7,8 @@
 //! path ([`folder`]), the git repositories under one and their files
 //! ([`repositories`]), what a file shows of itself ([`preview`]), when
 //! zoxide saw each folder ([`visited`]), the machines ssh knows and how
-//! often it reached them ([`machines`]), the socket it answers on
-//! ([`listen`]), inotify, which says when any of them changes ([`notify`]),
+//! often it reached them ([`machines`]), inotify, which says when any of
+//! them changes ([`notify`]),
 //! and every open tab's row, Chrome's ([`tab_rows`]) and kitty's
 //! ([`kitty_tabs`]).
 //!
@@ -24,7 +24,6 @@ pub mod entry;
 pub mod folder;
 pub mod interface;
 pub mod kitty_tabs;
-pub mod listen;
 pub mod machines;
 pub mod mime;
 pub mod notify;

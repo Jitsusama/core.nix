@@ -58,9 +58,8 @@ fn programs(daemon: &Daemon, id: &Value, words: &str) -> Value {
         .map(|program| (text(&program["id"]), program))
         .collect();
     let also: BTreeMap<&str, &str> = daemon
-        .watches
+        .also
         .iter()
-        .flat_map(|watch| watch.also.iter())
         .map(|(id, said)| (id.as_str(), said.as_str()))
         .collect();
     let (keys, marks) = found(&daemon.rows, &typed, |row| {

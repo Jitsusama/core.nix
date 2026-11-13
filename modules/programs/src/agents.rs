@@ -65,7 +65,7 @@ fn told(shared: &Shared, said: &Value) {
         .collect();
     keep(&mut daemon, records, &[]);
     if rows::watched(&daemon) {
-        rows::make(shared, &mut daemon, &[]);
+        rows::make(shared, &mut daemon);
     }
     if tabs::watched(&daemon) {
         tabs::make(shared, &mut daemon);

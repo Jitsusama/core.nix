@@ -79,7 +79,7 @@ Provider {
         place: "programs"
         // The hidden programs other providers give acts to are listed too,
         // and what each program's binds do is what it's found by too.
-        watching: ({ shown: provider.declared, also: provider.bound })
+        settings: ({ shown: provider.declared, also: provider.bound })
         make: row => provider.served(row)
         drawn: provider.launcher?.open ?? false
         // The answer to what's typed in Programs now takes its order, the
