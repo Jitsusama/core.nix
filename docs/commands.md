@@ -500,9 +500,12 @@ reads every program a crate builds, and holds it to five points:
   1 where its answer is that something differs, as `diff` says, so a
   stand-in too thin to show the view fails rather than passing on an
   error. A stand-in's times are written as `@NOW-N@`, set as it runs, so
-  what it says happened lately reads that way, and the folder it's put
-  in as `@HERE@`, in the view's words, its variables and its files, so a
-  command that reads a fixed path or a settings file is pointed at it.
+  what it says happened lately reads that way, or as `@ISO-N@` where a
+  log keeps RFC 3339; and the folder it's put in as `@HERE@`, in the
+  view's words, its variables and its files, so a command that reads a
+  fixed path or a settings file is pointed at it. A view may name steps
+  to run first in the same state, as `first`, where a person would have
+  run one before, such as an import before a report.
 
 It reads every script a Nix file outside the tests wraps as a program,
 with `writeShellApplication` or `writeShellScriptBin`, too: the files its

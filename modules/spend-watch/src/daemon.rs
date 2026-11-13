@@ -539,7 +539,7 @@ fn doer(config: &Config, wake: Sender<Wake>) -> Doer {
     let registry = config.registry.clone();
     let history = config.history();
     Box::new(move |act| match act {
-        Act::Go(session) => crate::go::go(&registry, &session),
+        Act::Go(session) => Ok(crate::go::go(&registry, &session)?),
         Act::Launch(command) => acts::launch(&command),
         Act::Expect(key) => {
             let held = History::open(&history)?;

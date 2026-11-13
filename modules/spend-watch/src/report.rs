@@ -11,6 +11,7 @@ use crate::time::Zone;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use terminal_kit::{Room, layout};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Period {
@@ -1058,7 +1059,7 @@ pub fn render(report: &Report, format: Format) -> String {
         Format::Json => serde_json::to_string_pretty(report).unwrap_or_default() + "\n",
         Format::Csv => render_csv(report),
         Format::Markdown => render_markdown(report),
-        Format::Text => render_text(report),
+        Format::Text => render_text_in(report, Room::Unbounded),
     }
 }
 
@@ -1125,19 +1126,29 @@ fn render_markdown(report: &Report) -> String {
     out
 }
 
-/// A report as plain text, its rows in columns.
-fn render_text(report: &Report) -> String {
+/// A report as plain text, its rows in columns, set to `room`. In a
+/// terminal its prose wraps, a name too long for its column is cut at a
+/// whole word, or shortened in its middle where it's one word, and a row that says a sentence hangs it under itself;
+/// into a pipe, or a file the daemon keeps, nothing gives way.
+pub fn render_text_in(report: &Report, room: Room) -> String {
     const NAME: usize = 60;
+    // An inset, then a gap between the name and what it shows.
+    const AROUND: usize = 4;
+    // The fewest cells a name is shortened to, so it still tells rows apart.
+    const FEWEST: usize = 24;
+    let prose = room.for_prose();
     let mut out = format!("{}\n", report.title);
     if !report.shown.is_empty() {
-        _ = writeln!(
-            out,
+        let covers = format!(
             "{} from {} to {}, {}.",
             report.shown, report.from, report.to, report.source
         );
+        for line in layout::paragraph(&covers, 0, prose) {
+            _ = writeln!(out, "{line}");
+        }
     }
     out.push('\n');
-    let width = report
+    let widest = report
         .rows
         .iter()
         .map(|row| row.name.chars().count())
@@ -1156,20 +1167,42 @@ fn render_text(report: &Report) -> String {
     } else {
         0
     };
+    // A share is said in at most four cells, after a gap.
+    let share_width = if figures { 6 } else { 0 };
+    // A name gives way to the figures beside it, or leaves a sentence at
+    // least as many cells as it keeps itself.
+    let beside = if figures {
+        shown_width + share_width
+    } else {
+        FEWEST
+    };
+    let width = room.cells().map_or(widest, |cells| {
+        widest.min(cells.saturating_sub(AROUND + beside).max(FEWEST))
+    });
     for row in &report.rows {
-        let name: String = row.name.chars().take(NAME).collect();
+        let name: String = match room {
+            Room::Unbounded => row.name.chars().take(NAME).collect(),
+            Room::Cells(_) => layout::cut(&row.name, width),
+        };
         let share = if row.share > 0.0 {
             format!("  {:>4}", percent(row.share))
         } else {
             String::new()
         };
-        _ = writeln!(out, "  {name:<width$}  {:>shown_width$}{share}", row.shown);
+        let shown = if figures {
+            row.shown.clone()
+        } else {
+            layout::hung(&row.shown, AROUND + width, room)
+        };
+        _ = writeln!(out, "  {name:<width$}  {shown:>shown_width$}{share}");
     }
     if !report.rows.is_empty() && !report.notes.is_empty() {
         out.push('\n');
     }
     for note in &report.notes {
-        _ = writeln!(out, "{note}");
+        for line in layout::paragraph(note, 0, prose) {
+            _ = writeln!(out, "{line}");
+        }
     }
     out
 }
@@ -1184,6 +1217,81 @@ mod tests {
         assert_eq!(Period::parse("this-month"), Some(Period::ThisMonth));
         assert_eq!(Cut::parse("quests"), Some(Cut::Quest));
         assert_eq!(Cut::parse("nonsense"), None);
+    }
+
+    /// A report with a name too long for a narrow terminal, and a note
+    /// longer than any line.
+    fn a_wide_report(period: &str, share: f64, shown: &str) -> Report {
+        let row = |name: &str| Row {
+            name: name.into(),
+            dollars: 12.5,
+            share,
+            shown: shown.into(),
+            estimated: false,
+        };
+        Report {
+            title: "Spend by quest".into(),
+            period: period.into(),
+            from: "2026-11-07".into(),
+            to: "2026-11-13".into(),
+            total: 25.0,
+            shown: "$25.00".into(),
+            source: "pi's logs at list prices".into(),
+            rest: None,
+            rows: vec![
+                row("QEST-20261112-0TUD09 Exquisite Command Lines for People and Machines"),
+                row("short"),
+            ],
+            notes: vec![
+                "Of $25.00 spent at list prices, $3.00 was cache written and $1.00 of that \
+                 rebuilt context a session already had."
+                    .into(),
+            ],
+        }
+    }
+
+    fn past(said: &str, cells: usize) -> Vec<&str> {
+        said.lines()
+            .filter(|line| layout::width(line) > cells)
+            .collect()
+    }
+
+    #[test]
+    fn a_cut_fits_a_narrow_terminal() {
+        let said = render_text_in(&a_wide_report("last week", 0.5, "$12.50"), Room::Cells(60));
+        assert!(past(&said, 60).is_empty(), "lines ran past 60:\n{said}");
+        assert!(
+            said.contains("  QEST-20261112-0TUD09 Exquisite Command") && said.contains('…'),
+            "the long name wasn't cut at a whole word:\n{said}"
+        );
+    }
+
+    #[test]
+    fn a_sentence_row_hangs_under_itself() {
+        let sentence = "the default budget's cap rose from $100 to $200 at the start of the month";
+        let said = render_text_in(&a_wide_report("caps", 0.0, sentence), Room::Cells(60));
+        assert!(past(&said, 60).is_empty(), "lines ran past 60:\n{said}");
+        let words = said.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            words.contains("$200 at the start of the month short"),
+            "a sentence row lost its words:\n{said}"
+        );
+    }
+
+    #[test]
+    fn into_a_pipe_a_report_is_set_as_its_files_are() {
+        let report = a_wide_report("last week", 0.5, "$12.50");
+        let said = render_text_in(&report, Room::Unbounded);
+        assert_eq!(
+            said,
+            render(&report, Format::Text),
+            "a report into a pipe differs from the one the daemon keeps"
+        );
+        assert_eq!(
+            said.lines().count(),
+            7,
+            "a pipe's report gave way somewhere:\n{said}"
+        );
     }
 
     #[test]

@@ -175,6 +175,7 @@
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
@@ -252,6 +253,38 @@
             state = ../../modules/session-backup/tests/a-machine-behind;
           }
         ];
+        # A week of three sessions, one serving a quest with a long title
+        # and rebuilding its context after a pause, imported first as a
+        # person would before reading a report.
+        spend-watch =
+          let
+            state = ../../modules/spend-watch/tests/a-busy-week;
+            first = [ [ "import" ] ];
+          in
+          [
+            { inherit state first; }
+            {
+              args = [
+                "report"
+                "30"
+                "days"
+                "by"
+                "quest"
+              ];
+              inherit state first;
+            }
+            {
+              args = [
+                "report"
+                "waste"
+              ];
+              inherit state first;
+            }
+            {
+              args = [ "budgets" ];
+              inherit state first;
+            }
+          ];
         # A guard whose disk is nearly full, with the longest holders and
         # clears it says, which is when its status is read, and the long
         # paths its journal names.

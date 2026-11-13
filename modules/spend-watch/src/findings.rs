@@ -182,8 +182,9 @@ pub fn standing(history: &History) -> Result<Vec<Finding>, String> {
 /// Marks a finding expected, by its key or the start of it: the whole key
 /// when one holds by that name, as the shell gives it, else the one key
 /// that starts so.
-pub fn mark(history: &History, key: &str, now: f64) -> Result<String, String> {
-    let holding = |query: &str| -> Result<Vec<String>, String> {
+pub fn mark(history: &History, key: &str, now: f64) -> Result<String, Unmarked> {
+    let fail = |error| Unmarked::Broke(fail(error));
+    let holding = |query: &str| -> Result<Vec<String>, Unmarked> {
         let mut statement = history.db.prepare(query).map_err(fail)?;
         statement
             .query_map([key], |row| row.get(0))
@@ -208,12 +209,40 @@ pub fn mark(history: &History, key: &str, now: f64) -> Result<String, String> {
                 .map_err(fail)?;
             Ok(one.clone())
         }
-        [] => Err(format!("no finding holds whose key starts {key}")),
-        many => Err(format!(
-            "{} findings' keys start {key}: {}",
-            many.len(),
-            many.join(", ")
-        )),
+        [] => Err(Unmarked::Unheld(key.to_owned())),
+        many => Err(Unmarked::Several(key.to_owned(), many.to_vec())),
+    }
+}
+
+/// Why a finding wasn't marked: none holds by the key, several start so,
+/// or the history couldn't be written.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unmarked {
+    Unheld(String),
+    Several(String, Vec<String>),
+    Broke(String),
+}
+
+impl std::fmt::Display for Unmarked {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unheld(key) => write!(out, "no finding holds whose key starts {key}"),
+            Self::Several(key, keys) => write!(
+                out,
+                "{} findings' keys start {key}: {}",
+                keys.len(),
+                keys.join(", ")
+            ),
+            Self::Broke(why) => write!(out, "{why}"),
+        }
+    }
+}
+
+// The daemon marks one as the shell asks and says why it couldn't in
+// words, as it says every other failure.
+impl From<Unmarked> for String {
+    fn from(unmarked: Unmarked) -> Self {
+        unmarked.to_string()
     }
 }
 

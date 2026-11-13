@@ -1,6 +1,7 @@
 # spend-watch, built from this directory, its tests run as it builds. Its
-# rows take the form every daemon's do (../ready-rows), so the source is
-# cut from the modules folder holding both, and built from this one.
+# rows take the form every daemon's do (../ready-rows) and its command line
+# the terminal kit's (../terminal-kit), so the source is cut from the
+# modules folder holding all three, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "spend-watch";
@@ -15,6 +16,8 @@ rustPlatform.buildRustPackage rec {
       ./contract
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/spend-watch";

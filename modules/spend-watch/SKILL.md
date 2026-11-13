@@ -25,10 +25,13 @@ negotiated bill, and spend-watch has the bill.
 ## Asking
 
 Reports answer from the history, whether the daemon runs or not. Add
-`--format json` for a machine to read, `markdown` to quote.
+`--json` for a machine to read, or `--format markdown` or `csv` to quote. A
+JSON answer names its shape in `schema`, and a failure is said on stderr with
+an exit that says why, which `spend-watch --help` lists.
 
 ```bash
-spend-watch report                         # the week at a glance
+spend-watch                                # the week at a glance
+spend-watch report                         # the same
 spend-watch report last week by quest      # a period, cut one way
 spend-watch report today by session
 spend-watch report this month by model
