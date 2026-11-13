@@ -1025,22 +1025,31 @@ Provider {
     readonly property var lately: ({ typed: null, among: null, found: [] })
 
     function gather(typed) {
+        const begun = Date.now();
         seek(typed);
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
+        const asked = Date.now();
         const rows = known;
+        const listedAt = Date.now();
         const missed = { score: -1, grade: 3 };
         const found = [];
         const matched = [];
         let grade = 3;
+        const merges = merging.merges;
+        const making = rowsOfEveryone.stale;
         const among = everyone();
+        const madeAt = Date.now();
         const narrowing = lately.among === among && lately.typed !== null
             && String(typed).toLowerCase().startsWith(lately.typed);
-        for (const row of narrowing ? lately.found : among) {
+        const walked = narrowing ? lately.found : among;
+        let tried = 0;
+        for (const row of walked) {
             const byName = (row.named & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : missed;
             const byAddress = (row.mailed & need) === need
                 ? Fuzzy.match(row.also, words, false) : missed;
+            tried += Number(byName !== missed) + Number(byAddress !== missed);
             const best = byName.score >= byAddress.score ? byName : byAddress;
             if (best.score < 0)
                 continue;
@@ -1058,8 +1067,22 @@ Provider {
         const kept = found.filter(each => each.grade === grade)
             .sort((a, b) => Number(b.listed) - Number(a.listed) || b.score - a.score
                 || a.at - b.at);
+        // A search past a frame's worth says where it went, as the
+        // launcher's line says only People's whole: Joel's first two
+        // letters cost People 5 to 16 ms on 12 searches, and a letter more
+        // 1 (2026-11-12), with nothing to say which part was dear.
+        const took = Date.now() - begun;
+        if (took >= slowSearch)
+            console.info(`people: "${typed}" searched in ${took} ms: asking ${asked - begun}, `
+                + `listing ${listedAt - asked}, `
+                + `${merging.merges > merges ? `merging ${merging.persons.length} and ` : ""}`
+                + `${making ? "making" : "keeping"} ${among.length} rows ${madeAt - listedAt}, `
+                + `matching ${tried} of ${walked.length}${narrowing ? " narrowed" : ""} `
+                + `${Date.now() - madeAt}, finding ${kept.length}`);
         return { rows: kept.map(each => each.row), grade: grade };
     }
+    // A frame at 120 Hz, past which a search says where its time went.
+    readonly property int slowSearch: 8
 
     function everything() {
         return provider.wanted ? all : listedNow();
