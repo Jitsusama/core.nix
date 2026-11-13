@@ -47,7 +47,7 @@ impl Wants {
         drop(held);
         Some(match (steer, node) {
             (Err(why), _) => json!({"error": {"code": "not-an-ask", "message": why}}),
-            (Ok(steer), Some(node)) => acts::done(steer, node),
+            (Ok(steer), Some(node)) => acts::done(Ok(steer), node),
             (Ok(_), None) => json!({"error": {"code": "unsteered",
                 "message": "this machine runs no node to steer it through"}}),
         })
