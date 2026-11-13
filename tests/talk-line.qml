@@ -126,6 +126,18 @@ QtObject {
                 Said.exchange(routed, written.concat([eleven, { line: "2026-11-13 07:42",
                     msg: "m6", who: "Delta", event: "taken", at: "07:46" }]), told).waiting,
                 "waiting on Delta");
+            // Joel's 16:32 line on 13 November: his orchestrator took it up twice, saying what
+            // it would do and then what it did, and the line showed neither (QCXZEB [203d9e2c]).
+            const takenUp = [{ line: "2026-11-13 07:42", msg: "m8", who: "Your orchestrator",
+                event: "routed", at: "07:42" }, { line: "2026-11-13 07:42", msg: "m9",
+                who: "Your orchestrator", event: "taken", at: "07:46", text: "I have it." },
+                { line: "2026-11-13 07:42", msg: "m10", who: "Your orchestrator",
+                    event: "taken", at: "07:50", text: "Moved the windows back." }];
+            const tookUp = Said.exchange(routed, takenUp, told);
+            Expect.same("taken up with words, they show and it still waits on who has it, "
+                    + "named as mid-sentence", [tookUp.answers, tookUp.waiting, tookUp.by],
+                [["I have it.", "Moved the windows back."], "waiting on your orchestrator",
+                    "your orchestrator"]);
             Expect.same("undone, it reads taken back",
                 Said.exchange(routed, written.concat([{ line: "2026-11-13 07:42", msg: "m7",
                     event: "undone", at: "07:47" }]), told).stands, "taken back");
