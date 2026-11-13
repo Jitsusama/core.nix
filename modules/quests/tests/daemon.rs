@@ -95,16 +95,13 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     let mut client = daemon.client();
     client.ask(&json!({"id": 1, "ask": "hello"}));
     // The node's three watches may land as more than one making, so the
-    // watch waits for what each brings: the ended quest, and the session
-    // holding B.
+    // watch waits for what it brings: the session holding B.
     client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "summary"],
         "place": "quests"}));
     let mut held: BTreeMap<String, Value> = BTreeMap::new();
     let all_heard = |held: &BTreeMap<String, Value>| {
-        held.contains_key("row:quests:QEST-E")
-            && held
-                .get("row:quests:QEST-B")
-                .is_some_and(|b| b["row"]["held"]["session"].is_object())
+        held.get("row:quests:QEST-B")
+            .is_some_and(|b| b["row"]["held"]["session"].is_object())
     };
     while !all_heard(&held) {
         let said = client.heard();
@@ -122,10 +119,28 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
         held[key]["row"]["order"].as_i64().unwrap_or(-1)
     };
     assert!(
-        order("row:quests:QEST-A", &held) < order("row:quests:QEST-B", &held)
-            && order("row:quests:QEST-B", &held) < order("row:quests:QEST-E", &held),
-        "driving, then queued, then ended: {held:?}"
+        order("row:quests:QEST-A", &held) < order("row:quests:QEST-B", &held),
+        "driving, then queued: {held:?}"
     );
+    // The ended quest is found by its name, its row in the answer, since
+    // the watch serves only the open ones; asked until the node's ended
+    // list has landed.
+    let mut searcher = daemon.client();
+    let search = json!({"id": 9, "ask": "search", "place": "quests", "words": "banner"});
+    let mut found = searcher.ask(&search);
+    for _ in 0..200 {
+        if found["keys"] != json!([]) {
+            break;
+        }
+        thread::sleep(std::time::Duration::from_millis(25));
+        found = searcher.ask(&search);
+    }
+    assert_eq!(found["keys"], json!(["row:quests:QEST-E"]), "{found}");
+    assert_eq!(
+        found["rows"]["row:quests:QEST-E"]["name"],
+        "Tune the banner"
+    );
+    assert_eq!(found["rows"]["row:quests:QEST-E"]["held"]["id"], "QEST-E");
     let b = &held["row:quests:QEST-B"]["row"];
     assert_eq!(
         b["side"],
@@ -139,7 +154,8 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     // The first change told is the title's: the list written again, only
     // when it was heard moving, told nothing. A line saying how the
     // sources stand, as the first making's, is passed over. B is told
-    // too, since a subquest's row says its parent's name, and E is not.
+    // too, since a subquest's row says its parent's name; E, ended, is
+    // never served at all.
     let said = loop {
         let said = client.heard();
         if said.get("changed").is_some() {
@@ -159,4 +175,8 @@ fn quests_rows_are_served_in_their_order_and_only_what_moved_is_told() {
     );
     assert_eq!(said["changed"][0]["row"]["name"], "Again");
     assert_eq!(said["changed"][1]["row"]["held"]["parent"]["name"], "Again");
+    assert!(
+        !held.contains_key("row:quests:QEST-E"),
+        "the ended quest served: {held:?}"
+    );
 }

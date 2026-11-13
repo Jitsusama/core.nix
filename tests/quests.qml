@@ -6,8 +6,10 @@ pragma ComponentBehavior: Bound
 // sessions, as mycelium's does (its PROTOCOL.md, The Daemon Interface),
 // with niri, pi's sessions and the launcher stood in. With nothing typed it
 // lists the open quests, the one driving first, each saying its kind, as
-// the harness says it past the node's own, and priority; typing finds an
-// ended one too, after the open ones that match as well, and by its id;
+// the harness says it past the node's own, and priority, the open ones
+// the only ones its watch serves; typing finds an ended one too, asked of
+// the daemon, which sends its row with its answer, after the open ones
+// that match as well, and by its id, its summary and acts as an open one's;
 // Return opens pi on a quest in the folder its record says, autoloaded,
 // unless a session has it loaded, when it goes to that session's window;
 // the right arrow steps into its facts, its parent's title among them,
@@ -36,6 +38,9 @@ ShellRoot {
     property int counted: 0
     // The keys the daemon told moved or gone since a case began.
     property var told: []
+    // A case waiting on the daemon's answer to what it typed, and what it
+    // does with the rows found.
+    property var pending: null
 
     function expect(what, holds, said) {
         if (!holds)
@@ -69,7 +74,7 @@ ShellRoot {
         settings: ({ name: "quests" })
         onAllChanged: {
             root.read();
-            if (root.waiting === "the quest made since" && theQuests.all.length > 4)
+            if (root.waiting === "the quest made since" && theQuests.all.length > 3)
                 Qt.callLater(root.since);
         }
     }
@@ -93,9 +98,54 @@ ShellRoot {
                 Qt.callLater(root.heardShut);
             if (root.waiting === "only those heard"
                 && !rows().some(row => row.key === "quest:QEST-20261020-NEWONE")
-                && rows().some(row => row.name === "Retune the banner"))
+                && theQuests.counted() === "3 open, 1 driving")
                 Qt.callLater(root.onlyThoseHeard);
         }
+
+        // The answer a case waits on, taken as Quests takes it.
+        function onSearched(words) {
+            const pending = root.pending;
+            if (pending === null || pending.words !== words)
+                return;
+            root.pending = null;
+            Qt.callLater(() => {
+                try {
+                    pending.then(theQuests.search(words).rows);
+                } catch (error) {
+                    root.fail(error.message);
+                }
+            });
+        }
+    }
+
+    // What `words` finds, once the daemon has answered it.
+    function whenFound(words, then) {
+        root.pending = { words: words, then: then };
+        theQuests.search(words);
+    }
+
+    // What `words` finds once it finds anything, asked again a moment later
+    // while the daemon finds nothing, as it does until it has heard what a
+    // case told the node.
+    function onceFound(words, then) {
+        whenFound(words, rows => {
+            if (rows.length > 0) {
+                then(rows);
+                return;
+            }
+            theQuests.served.ended();
+            again.words = words;
+            again.then = then;
+            again.start();
+        });
+    }
+    Timer {
+        id: again
+
+        property string words: ""
+        property var then: null
+        interval: 25
+        onTriggered: root.onceFound(words, then)
     }
 
     // The first cases wait for the quests' rows and their count, and the
@@ -103,7 +153,7 @@ ShellRoot {
     readonly property bool machinesHeard: theQuests.machineKind?.answered ?? false
     onMachinesHeardChanged: read()
     function read() {
-        if (root.waiting === "the first reading" && theQuests.all.length === 4 && machinesHeard
+        if (root.waiting === "the first reading" && theQuests.all.length === 3 && machinesHeard
             && theQuests.counted() === "3 open, 1 driving")
             Qt.callLater(root.first);
     }
@@ -228,19 +278,51 @@ ShellRoot {
                 laptop.reads === "What Bootstrap the laptop is about.", laptop.reads);
             expect("one with no session is its own", laptop.is === "quest:QEST-20261001-LAPTOP",
                 laptop.is);
+            expect("only the open ones served", theQuests.looksThrough().length === 3
+                && !("row:quests:QEST-20250105-BANNER" in theQuests.served.held),
+                names(theQuests.looksThrough()));
+            expect("a search waits on the daemon", theQuests.awaits("banner"), "it doesn't");
+            whenFound("banner", banner => {
+                expect("a finished one, found by typing",
+                    names(banner) === "Tune the banner" && banner[0].glyph === Theme.glyph.done
+                        && banner[0].side === "5 Jan 2025", `${names(banner)} ${banner[0]?.side}`);
+                expect("and read as an open one is",
+                    banner[0].reads === "What Tune the banner is about.", banner[0].reads);
+                expect("its acts an open one's", names(banner[0].verbs()).startsWith(
+                    "Start Here, Orchestrate, ID, Status, Last Touched, Folder"),
+                    names(banner[0].verbs()));
+                expect("answered, a search waits no more", !theQuests.awaits("banner"),
+                    "it waits");
+                // Stepped into from home, Quests holds the one found, so
+                // it's selected there; closing lets it go.
+                expect("held in Quests while it's found", names(theQuests.everything())
+                    === "Bootstrap the laptop, Retune the prompt, Wait on the stick"
+                        + ", Tune the banner",
+                    names(theQuests.everything()));
+                theLauncher.open = true;
+                theLauncher.open = false;
+                expect("let go as the launcher closes", theQuests.everything().length === 3,
+                    names(theQuests.everything()));
+                // Each matches "the" as well, and the finished one is the
+                // shortest, yet the open ones come first.
+                whenFound("the", the => {
+                    expect("the open ones before the finished one",
+                        the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
+                    whenFound("20261003", byId => {
+                        expect("found by its id", names(byId) === "Retune the prompt",
+                            names(byId));
+                        root.acts(laptop, prompt);
+                    });
+                });
+            });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
 
-            const banner = theQuests.search("banner").rows;
-            expect("a finished one, found by typing",
-                names(banner) === "Tune the banner" && banner[0].glyph === Theme.glyph.done
-                    && banner[0].side === "5 Jan 2025", `${names(banner)} ${banner[0]?.side}`);
-            // Each matches "the" as well, and the finished one is the
-            // shortest, yet the open ones come first.
-            const the = theQuests.search("the").rows;
-            expect("the open ones before the finished one",
-                the.length === 4 && names(the).endsWith(", Tune the banner"), names(the));
-            const byId = theQuests.search("20261003").rows;
-            expect("found by its id", names(byId) === "Retune the prompt", names(byId));
-
+    // What Return and the right arrow do on an open quest.
+    function acts(laptop, prompt) {
+        try {
             laptop.run();
             expect("starting a session in its newest tree",
                 JSON.stringify(Sessions.started)
@@ -385,7 +467,7 @@ ShellRoot {
         try {
             expect("no row made shut", theQuests.tally.rows === root.counted,
                 `${theQuests.tally.rows - root.counted} rows`);
-            expect("the rows last made still given", theQuests.all.length === 4,
+            expect("the rows last made still given", theQuests.all.length === 3,
                 `${theQuests.all.length} rows`);
             // Every quest was told again as the list was written, and
             // every quest's row was once made again at each, 1,063 on
@@ -404,8 +486,11 @@ ShellRoot {
         if (root.waiting !== "the quest made since")
             return;
         root.waiting = "the change heard";
+        whenFound("newly", found => root.madeSince(found));
+    }
+
+    function madeSince(found) {
         try {
-            const found = theQuests.search("newly").rows;
             expect("a quest made since", names(found) === "Newly made", names(found));
             expect("after the open ones it ranks below", theQuests.everything()[3]?.name
                 === "Newly made", names(theQuests.everything()));
@@ -416,7 +501,8 @@ ShellRoot {
                 `${theQuests.tally.rows - root.counted} rows`);
             // The list written again with nothing moved but when each was
             // heard, then the new one let go, then the ended one retired
-            // and retitled: only those two rows and the count are told.
+            // and retitled: only the one let go and the count are told,
+            // since the ended one isn't served, and is found as it is now.
             root.made = now;
             root.counted = theQuests.tally.rows;
             root.told = [];
@@ -435,20 +521,25 @@ ShellRoot {
     function onlyThoseHeard() {
         if (root.waiting !== "only those heard")
             return;
+        root.waiting = "the retired one found";
+        onceFound("retune banner", found => root.retiredFound(found));
+    }
+
+    function retiredFound(found) {
         root.waiting = "the end";
         try {
             const told = Array.from(new Set(root.told)).sort().join(", ");
-            expect("told only the one let go, the one retired and the count", told
-                === "row:quests:QEST-20250105-BANNER, row:quests:QEST-20261020-NEWONE, "
-                + "summary:quests", told);
+            expect("told only the one let go and the count", told
+                === "row:quests:QEST-20261020-NEWONE, summary:quests", told);
             const now = theQuests.looksThrough();
-            const banner = now.find(row => row.name === "Retune the banner");
-            expect("the retired one wears its mark", banner.glyph === Theme.glyph.cancelled,
-                banner.glyph);
+            const banner = found[0];
+            expect("the retired one found as it is now", names(found) === "Retune the banner"
+                && banner.glyph === Theme.glyph.cancelled, `${names(found)} ${banner.glyph}`);
             const remade = root.made.filter(row => !now.includes(row)
                 && row.key !== "quest:QEST-20261020-NEWONE" && row.key !== banner.key);
             expect("every other quest's row kept", remade.length === 0, names(remade));
-            expect("one row made, for the one retired", theQuests.tally.rows - root.counted === 1,
+            expect("one row made, for the one retired found",
+                theQuests.tally.rows - root.counted === 1,
                 `${theQuests.tally.rows - root.counted} rows`);
             expect("counted again", theQuests.counted() === "3 open, 1 driving",
                 theQuests.counted());

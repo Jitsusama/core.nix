@@ -2,8 +2,10 @@
 // ready by the quests daemon (modules/quests) from the realm's mycelium
 // node's two lists of them, the open ones and the ended ones, and its
 // sessions. The open ones are all of it with nothing typed, the one
-// driving first, as the quest workflow ranks them; a concluded or retired
-// one comes as typing finds it, after the open ones that match as well.
+// driving first, as the quest workflow ranks them, and the only ones its
+// watch serves; a concluded or retired one comes as typing finds it,
+// after the open ones that match as well, the daemon finding it among
+// every quest and sending its row with the answer.
 // Each wears its status's glyph, and says its kind unless it's a quest,
 // its priority while it's open or when it was last touched once it's not,
 // and the session that has it loaded, if one does, all as the daemon
@@ -31,7 +33,7 @@ Provider {
 
     collection: Words.collection("quests")
 
-    // Every quest's row, in Quests' order, as the quests daemon makes them
+    // Every open quest's row, in Quests' order, as the quests daemon makes them
     // ready: the order, open before ended by priority and rank, then the
     // newest, then A to Z, and every word a row says are the daemon's, so
     // nothing here sorts, words or lays out a quest (Joel, 2026-11-10: "the
@@ -56,7 +58,16 @@ Provider {
         make: (row, key) => provider.made(row, key)
         maker: provider
         drawn: provider.launcher?.open ?? false
+        // The daemon's answer to what's typed now, the ended quests it
+        // found among it, is searched again (Launcher.qml's foundMore).
+        onSearched: words => {
+            if (words === provider.searchedLast)
+                provider.foundMore(false);
+        }
     }
+    // The words searched last, the only ones an answer is worth searching
+    // again for.
+    property string searchedLast: ""
     // What the daemon serves, for a reader told of each change it hears.
     readonly property alias served: ready
     readonly property string summaryKey: "summary:quests"
@@ -111,8 +122,8 @@ Provider {
     }
     onAllChanged: changedTo(all)
 
-    // A quest's title by its id, as its row says it, for a place naming
-    // the quest a session has loaded.
+    // An open quest's title by its id, as its row says it, for a place
+    // naming the quest a session has loaded; an ended one's isn't served.
     function titleOf(id) {
         return ready.served(`row:quests:${id}`)?.name;
     }
@@ -322,7 +333,46 @@ Provider {
         return Sessions.places.map(on).concat([anywhere]);
     }
 
+    // What's typed, as the quests daemon finds it among every quest, the
+    // open first (modules/quests' search.rs): the watch serves only the
+    // open ones, 230 of Joel's 1,237, since holding every ended one whole
+    // cost the shell's collector a walk over them all (BXNMUC, 2026-11-13),
+    // so the ended ones are found where they're kept, and come with their
+    // rows. While its answer is asked, the rows that still hold every
+    // letter typed stand: the last answer's, when what's typed goes on
+    // from it, else the open ones; the answer, a moment later, takes their
+    // place (`onSearched`). A daemon that can't search, or none to ask,
+    // leaves the open ones matched here (`matched`).
     function search(typed) {
+        const asked = Fuzzy.words(typed).join(" ");
+        searchedLast = asked;
+        if (ready.searchless || !ready.link)
+            return matched(typed);
+        const answer = ready.search(asked);
+        if (answer !== null)
+            return { rows: ready.foundRows(answer), grade: answer.keys.length > 0 ? 0 : 3 };
+        const need = Fuzzy.letters(Fuzzy.words(typed));
+        const holds = item => !!item && (item.mask & need) === need;
+        const last = ready.found.words !== null && asked.startsWith(ready.found.words)
+            ? ready.foundRows(ready.found) : all;
+        const rows = last.filter(row => holds(row.prepared) || holds(row.also));
+        return { rows: rows, grade: rows.length > 0 ? 0 : 3 };
+    }
+
+    // Whether a search of these letters waits on the daemon's answer, asked
+    // now if it isn't yet, so the launcher holds the key's list for it a
+    // moment (Launcher.qml's answersWaitedFor).
+    function awaits(letters) {
+        const asked = Fuzzy.words(letters).join(" ");
+        if (asked === "" || ready.searchless || !ready.link)
+            return false;
+        searchedLast = asked;
+        return ready.search(asked) === null && ready.asking === asked;
+    }
+
+    // The open quests matched here, the best grade first, for a daemon that
+    // can't search.
+    function matched(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         // Only the quests at the finest grade any reaches are kept, so one
@@ -349,13 +399,16 @@ Provider {
         return { rows: ranked.map(f => f.row), grade: grade };
     }
 
+    // The open quests, and after them the ended ones what's typed found,
+    // which the daemon doesn't serve: a match found from home is followed,
+    // by Tab or Ctrl+], through Quests and found among what it holds
+    // (Launcher.qml's enter), so an ended one is held there too.
     function everything() {
-        return rowsNow().filter(row => row.unfinished);
-    }
-
-    // A search looks through every quest, finished ones too.
-    function looksThrough() {
-        return rowsNow();
+        const open = rowsNow().filter(row => row.unfinished);
+        if (ready.found.words === null)
+            return open;
+        const ended = ready.foundRows(ready.found).filter(row => !row.unfinished);
+        return ended.length === 0 ? open : open.concat(ended);
     }
 
     // How many are open and driving, as the daemon says it, so saying how
@@ -368,9 +421,13 @@ Provider {
     Connections {
         target: provider.launcher
 
+        // Closing lets go of what was found, so the ended quests' rows are
+        // held only while a search shows them.
         function onOpenChanged() {
             if (provider.launcher.open)
                 Sessions.lookAround();
+            else
+                ready.ended();
         }
     }
 
