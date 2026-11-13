@@ -477,8 +477,9 @@ ShellRoot {
             historyPastPage();
     }
     // For You's History lists a notice past the place's page with the row
-    // the daemon's `rows` answer brought, asked once as History was first
-    // stepped into, and let go as the launcher closes.
+    // the daemon's `rows` answer brought, asked as History was first
+    // stepped into and again as a read joined it, and let go as the
+    // launcher closes.
     function historyPastPage() {
         const parcel = noticesDaemon.unserved[0];
         Notices.history = noticesDaemon.notices.concat([parcel]);
@@ -488,8 +489,10 @@ ShellRoot {
             expect("History lists a notice past the page as its notice's row",
                 row !== null && row.key === "notice:31" && row.notice === 31,
                 JSON.stringify(history.map(one => [one.key, one.name])));
-            expect("the rows past the page were asked for once",
-                noticesDaemon.rowsAsked === 1, `${noticesDaemon.rowsAsked} asks`);
+            // Once as History was first stepped into, and once more as the
+            // notice read joined it, which what was kept didn't list.
+            expect("the rows past the page were asked for once, and again for the read",
+                noticesDaemon.rowsAsked === 2, `${noticesDaemon.rowsAsked} asks`);
             theLauncher.open = false;
             expect("and they go as the launcher closes",
                 pastNotices.whole.kept === null, JSON.stringify(pastNotices.whole.kept?.keys));
