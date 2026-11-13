@@ -228,6 +228,19 @@
               inherit state;
             }
           ];
+        # A loaded reading that fell short of idle in five signals, which
+        # judge names and exits 1 for.
+        load-proof = [
+          {
+            args = [
+              "judge"
+              "@HERE@/idle"
+              "@HERE@/busy"
+            ];
+            state = ../../modules/load-proof/tests/a-loaded-reading;
+            exits = 1;
+          }
+        ];
         # A machine with logs still to send, and logs sent with no row.
         session-backup = [
           {

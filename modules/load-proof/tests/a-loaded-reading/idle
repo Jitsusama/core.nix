@@ -1,0 +1,6 @@
+calls 1500 lost 0 p50 20.50 ms p95 23.00 ms worst 29.00 ms
+sound errors 0
+shown 3600 missed 0 late 0 discarded 0 longest 8.3 ms refresh 8.33 ms
+keys 1000 echo p50 0.03 ms p99 0.60 ms worst 1.20 ms
+saves 120 took p50 4.00 ms p99 9.00 ms worst 12.00 ms
+typed 40 shown p50 6.00 ms p99 14.00 ms worst 20.00 ms
