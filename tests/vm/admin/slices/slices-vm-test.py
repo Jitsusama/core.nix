@@ -1,12 +1,11 @@
 """What the kernel gives each slice, the account's and the system's, in a virtual machine.
 
-slices.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
+default.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says why the kernel is asked rather than the module's settings read back. Each
 test asks for the state it starts from as a fixture: the account's slices held open on the machine
-naming no disk, its jobs' holders running, or the measured machine with its own slices held open. A
-test that starts work names it by its own seconds, so any test runs alone with `-k`, and the one
-that stops the measured disk's sharing comes last. The programs the units run are slices.nix's,
-given as the `values` fixture.
+naming no disk, its jobs' holders running, or the holders running on the machine ranking its
+agents' work into tiers. A test that starts work names it by its own seconds, so any test runs
+alone with `-k`. The programs the units run are default.nix's, given as the `values` fixture.
 """
 
 from __future__ import annotations
@@ -183,26 +182,16 @@ def jobs(account: Account) -> Account:
 
 
 @pytest.fixture(scope="module")
-def measured(started: None, machines: dict[str, BaseMachine], values: dict[str, Any]) -> Account:
-    """Hold app.slice and session.slice open on the machine whose disk has a model."""
+def ranked(started: None, machines: dict[str, BaseMachine], values: dict[str, Any]) -> Account:
+    """Wait for the holders on the machine whose sorter ranks quests into tiers."""
     del started
-    ordered = machines["ordered"]
-    ordered.wait_for_unit("user@1000.service")
-    held = Account(ordered, values)
-    for name in ["app", "session"]:
-        held.hold(name)
-    ordered.wait_for_unit("disk-order-vda.service")
-    return held
-
-
-@pytest.fixture(scope="module")
-def ranked(measured: Account) -> Account:
-    """Wait for the holders on the measured machine, whose sorter ranks quests into tiers."""
+    machine = machines["ranked"]
+    machine.wait_for_unit("user@1000.service")
     for holder in ["timed", "awaited"]:
-        measured.machine.wait_until_succeeds(
+        machine.wait_until_succeeds(
             f"systemctl -M alice@ --user is-active {holder}.service", timeout=APPEARING
         )
-    return measured
+    return Account(machine, values)
 
 
 def parent_quests(account: Account, parents: dict[str, str]) -> None:
@@ -223,13 +212,6 @@ def used(account: Account, path: str) -> int:
 def latency(account: Account, name: str, under: str = ACCOUNT) -> str:
     """Give the latency target the kernel holds for the slice, under its holder's cgroup."""
     return account.read(f"{under}/{name}.slice/io.latency")
-
-
-def cost(measured: Account, name: str) -> list[str]:
-    """Give the settings io.cost holds for the measured disk, from its model or qos file."""
-    vda = measured.read("/sys/class/block/vda/dev")
-    lines = measured.read(f"/sys/fs/cgroup/io.cost.{name}").splitlines()
-    return next(line.split()[1:] for line in lines if line.startswith(f"{vda} "))
 
 
 def test_no_slice_inside_the_account_has_one(account: Account) -> None:
@@ -658,41 +640,3 @@ def test_on_the_disk_slices_weigh_as_on_the_cpu(jobs: Account) -> None:
         ("/sys/fs/cgroup/system.slice", 100),
     ]:
         assert jobs.read(f"{path}/io.weight") == f"default {weight}", path
-
-
-def test_a_measured_disk_is_shared_by_its_model(measured: Account) -> None:
-    """A measured disk is shared by weight, by the model it was given."""
-    model = cost(measured, "model")
-    for setting in ["ctrl=user", "rbps=1000000000", "rrandiops=50000", "wseqiops=80000"]:
-        assert setting in model
-    qos = cost(measured, "qos")
-    for setting in ["enable=1", "ctrl=user", "rlat=5000", "wlat=5000"]:
-        assert setting in qos
-
-
-def test_with_it_no_slice_holds_a_latency_target(measured: Account) -> None:
-    """With it, no slice holds a latency target."""
-    for path in [f"{ACCOUNT}/app.slice", f"{ACCOUNT}/session.slice", "/sys/fs/cgroup/user.slice"]:
-        assert measured.read(f"{path}/io.latency") == "", path
-
-
-def test_old_latency_targets_go_as_it_turns_on(measured: Account) -> None:
-    """Latency targets left from before the disk was measured go as it turns on."""
-    # A switch from a machine that had targets keeps them: systemd doesn't write over a
-    # target it no longer manages, so they stay in the kernel until a reboot.
-    vda = measured.read("/sys/class/block/vda/dev")
-    held = [f"{ACCOUNT}/app.slice", f"{ACCOUNT}/session.slice", "/sys/fs/cgroup/user.slice"]
-    for path in held:
-        measured.machine.succeed(f"echo '{vda} target=1000' > {path}/io.latency")
-    measured.machine.succeed("systemctl restart disk-order-vda.service")
-    for path in held:
-        assert measured.read(f"{path}/io.latency") == "", path
-
-
-def test_stopping_it_hands_the_disk_back(measured: Account) -> None:
-    """Stopping it hands the disk back to first come, first served.
-
-    It turns the measured disk's sharing off, so it comes last.
-    """
-    measured.machine.succeed("systemctl stop disk-order-vda.service")
-    assert "enable=0" in cost(measured, "qos")

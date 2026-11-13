@@ -22,7 +22,7 @@
 //! whose weight changed is weighed again.
 //!
 //! Given tiers (src/tiers.rs), a quest's slice sits inside its tier's,
-//! jobs-work-walgit-qest20261024abc123.slice, so its weight ranks it only
+//! jobs-work-builds-qest20261024abc123.slice, so its weight ranks it only
 //! among the quests of its tier.
 
 use crate::tiers::{self, Tiers};
@@ -263,13 +263,13 @@ mod tests {
 
     const FILE: &str = "{\n\t\"QEST-20261023-R82FBP\": 200,\n\t\"QEST-20261024-ABC123\": 400\n}\n";
 
-    /// Weights ranked by tiers: ABC123 heads walgit, and R82FBP is under
+    /// Weights ranked by tiers: ABC123 heads builds, and R82FBP is under
     /// a quest no tier claims.
     fn ranked() -> Weights {
         let mut weights = Weights::new(PathBuf::new());
         weights.take(FILE);
         let mut ranks = Tiers::new(PathBuf::new(), PathBuf::new());
-        ranks.take_heads(r#"{"QEST-20261024-ABC123": "walgit"}"#);
+        ranks.take_heads(r#"{"QEST-20261024-ABC123": "builds"}"#);
         ranks.take_parents(r#"{"QEST-20261023-R82FBP": "QEST-20261001-OTHER0"}"#);
         weights.rank_by(ranks);
         weights
@@ -280,7 +280,7 @@ mod tests {
         let weights = ranked();
         assert_eq!(
             weights.place("jobs-work.slice", b"PI_QUEST=QEST-20261024-ABC123\0"),
-            Some(("jobs-work-walgit-qest20261024abc123.slice".into(), 400))
+            Some(("jobs-work-builds-qest20261024abc123.slice".into(), 400))
         );
         assert_eq!(
             weights.place("jobs-work.slice", b"PI_QUEST=QEST-20261023-R82FBP\0"),
@@ -303,10 +303,10 @@ mod tests {
     #[test]
     fn a_ranked_quests_slice_is_weighed_where_its_work_went() {
         let mut weights = ranked();
-        weights.weighed("jobs-work-walgit-qest20261024abc123.slice", 400);
+        weights.weighed("jobs-work-builds-qest20261024abc123.slice", 400);
         assert_eq!(
             weights.current("jobs-work.slice"),
-            vec![("jobs-work-walgit-qest20261024abc123.slice".to_string(), 400)]
+            vec![("jobs-work-builds-qest20261024abc123.slice".to_string(), 400)]
         );
     }
 
@@ -314,24 +314,24 @@ mod tests {
     fn a_quest_moving_tier_is_said_once_with_both_tiers() {
         let mut weights = ranked();
         assert_eq!(weights.moves(), Vec::<(String, String, String)>::new());
-        // The zone's map now names the other quest delta's head, and no
+        // The zone's map now names the other quest reviews' head, and no
         // longer names ABC123.
         weights
             .tiers
             .as_mut()
             .unwrap()
-            .take_heads(r#"{"QEST-20261001-OTHER0": "delta"}"#);
+            .take_heads(r#"{"QEST-20261001-OTHER0": "reviews"}"#);
         assert_eq!(
             weights.moves(),
             vec![
                 (
                     "QEST-20261023-R82FBP".into(),
                     "unranked".into(),
-                    "delta".into()
+                    "reviews".into()
                 ),
                 (
                     "QEST-20261024-ABC123".into(),
-                    "walgit".into(),
+                    "builds".into(),
                     "unranked".into()
                 ),
             ]

@@ -1,10 +1,11 @@
-# Asks the kernel what disk latency and weight each slice was given, the
-# account's and the system's, on a machine that names no disk and on one
-# that names its own with a model, as a measured machine does.
-# The target is written by systemd as a slice starts, for the drive it finds
-# behind /home, and the kernel takes it only for a drive whose queue it can
-# watch, so reading the module's settings back would prove neither. The
-# tests are slices-vm-test.py, which pytest runs inside the driver.
+# Asks the kernel what each slice was given, the account's and the
+# system's: the disk latency, memory floors and CPU weights, where agents'
+# work goes, and how it shares the CPU, by quest and by tier.
+# The latency target is written by systemd as a slice starts, for the drive
+# it finds behind /home, and the kernel takes it only for a drive whose
+# queue it can watch, so reading the module's settings back would prove
+# neither. A measured disk's sharing is measured-disk.nix's. The tests are
+# slices-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
   # The programs the tests' units run, which they read from this file as
@@ -20,7 +21,7 @@ let
     }
   );
 in
-import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
+import ../../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "slices";
 
   # Room enough for the door to let a few of thirteen heavy starts in, and
@@ -34,10 +35,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
   };
 
-  # The numbers only have to be ones the kernel takes: a virtual disk's
-  # speed says nothing of a real one's. Its agents' work is ranked into
-  # three tiers too, which the disk's sharing leaves alone.
-  nodes.ordered = {
+  # Its agents' work is ranked into three tiers, the second heading no
+  # quest, so a tier's weight is seen before any work is in it.
+  nodes.ranked = {
     imports = [ self.nixosModules.slices ];
     users.users.alice = {
       isNormalUser = true;
@@ -54,22 +54,6 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         quests = [ "QEST-20261024-THIRD0" ];
       }
     ];
-    jitsusama.slices.disks.vda = {
-      model = {
-        rbps = 1000000000;
-        rseqiops = 100000;
-        rrandiops = 50000;
-        wbps = 800000000;
-        wseqiops = 80000;
-        wrandiops = 40000;
-      };
-      qos = {
-        rpct = 95;
-        rlat = 5000;
-        wpct = 95;
-        wlat = 5000;
-      };
-    };
   };
 
   tests = ./slices-vm-test.py;
