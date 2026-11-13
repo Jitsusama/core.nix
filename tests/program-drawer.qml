@@ -26,7 +26,8 @@ QtObject {
         workspaces: "on {count} workspaces",
         program: "program",
         more: "{count} more",
-        terminal: "a terminal"
+        terminal: "a terminal",
+        agents: "agents' windows {memory}"
     })
 
     function named(id) {
@@ -65,6 +66,15 @@ QtObject {
         ]), { processor: 0.1, memory: 300, count: 3 });
         expect("no share past the whole", Program.usage([{ share_ratio: 0.8 },
             { share_ratio: 0.7 }]).processor, 1);
+        // kitty holds every agent's window, so its memory is said whole,
+        // as Machine says it, and how much of it is the agents' beside it
+        // (VKCF3Z [b31d7a90]).
+        const kitty = Program.drawer({ name: "kitty", places: [],
+            usage: { processor: 0.1, memory: 1800000000, count: 9, agents: 1600000000 },
+            id: "kitty", command: ["kitty"] }, named, said);
+        expect("the agents' windows' share said beside the whole memory",
+            kitty.facts.find(fact => fact.label === "[memory]")?.value,
+            "1.80\u00a0GB \u00b7 agents' windows 1.60\u00a0GB");
 
         expect("windows on one workspace", Program.eyebrow([4, 4], "web browser", said),
             "on 4 \u00b7 web browser");
