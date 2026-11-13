@@ -1038,6 +1038,12 @@ Provider {
         let grade = 3;
         const merges = merging.merges;
         const making = rowsOfEveryone.stale;
+        // Merged apart from the rows made, so the line says which was
+        // dear: "merging 140 and making 140 rows 24" was both at once
+        // (2026-11-13 04:56), a merge of 600 taking 26 to 38 ms alone.
+        persons();
+        const mergedAt = Date.now();
+        const madeBefore = provider.tally.rows;
         const among = everyone();
         const madeAt = Date.now();
         const narrowing = lately.among === among && lately.typed !== null
@@ -1075,8 +1081,10 @@ Provider {
         if (took >= slowSearch)
             console.info(`people: "${typed}" searched in ${took} ms: asking ${asked - begun}, `
                 + `listing ${listedAt - asked}, `
-                + `${merging.merges > merges ? `merging ${merging.persons.length} and ` : ""}`
-                + `${making ? "making" : "keeping"} ${among.length} rows ${madeAt - listedAt}, `
+                + `${merging.merges > merges
+                    ? `merging ${merging.persons.length} ${mergedAt - listedAt}, ` : ""}`
+                + `${making ? `making ${provider.tally.rows - madeBefore} of` : "keeping"} `
+                + `${among.length} rows ${madeAt - mergedAt}, `
                 + `matching ${tried} of ${walked.length}${narrowing ? " narrowed" : ""} `
                 + `${Date.now() - madeAt}, finding ${kept.length}`);
         return { rows: kept.map(each => each.row), grade: grade };
