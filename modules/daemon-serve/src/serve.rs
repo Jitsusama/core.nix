@@ -12,7 +12,9 @@
 //! A watch may be paced, as the shut launcher paces Agents': what moves
 //! is held back by key and told at most once a pace, all of it in one
 //! line, so the rows stay held for a fast opening while the shut shell
-//! wakes for one line in ten seconds rather than one in three. Asked
+//! wakes for one line in ten seconds rather than one in three. A record
+//! new to it is told at once, with all that was held back, so a row that
+//! arrived while the launcher was shut is there as it opens. Asked
 //! again under its id for the same records, a watch keeps on at its new
 //! pace, telling at once what it held back rather than everything whole,
 //! as mycelium's node does (its PROTOCOL.md, The Daemon Interface).
@@ -300,7 +302,8 @@ impl Shared {
     /// those that changed and the keys that went, and, on a line of its
     /// own as the shell's Daemon.qml reads it, how the sources stand once
     /// that changes. A paced watch is told how the sources stand at once
-    /// too, and holds back the keys that moved until its pace is up. A
+    /// too, and holds back the keys that moved until its pace is up, or
+    /// until a record new to it comes, which is told at once with them. A
     /// connection whose lines aren't being read is hung up on, and its
     /// watches dropped, rather than told less than it asked for.
     ///
@@ -358,10 +361,19 @@ impl Shared {
             let mut lines = Vec::new();
             if let Some(every) = watch.every {
                 let keys = records.iter().filter_map(|record| record["key"].as_str());
+                let arrived = keys.clone().any(|key| !held.records.contains_key(key));
                 watch
                     .moved
                     .extend(keys.chain(went.iter().copied()).map(str::to_owned));
-                if !watch.moved.is_empty() && watch.due.is_none() {
+                // A record new to it, as a session started while the
+                // launcher is shut, is told at once with all that was held
+                // back, so an opening a moment later holds it in its place:
+                // heard after the opening's first frame, the launcher keeps
+                // what it shows still and puts it last (finds-sessions,
+                // 2026-11-13). Only what moves waits for the pace.
+                if arrived && let Some(line) = watch.held_back(&now) {
+                    lines.push(line);
+                } else if !watch.moved.is_empty() && watch.due.is_none() {
                     watch.due = Some(Instant::now() + every);
                     pacing = true;
                 }

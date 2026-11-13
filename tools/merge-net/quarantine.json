@@ -36,11 +36,9 @@
     "at": 1794346052,
     "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
     "owner_pr": 3884,
-    "reason": "Agents' served top level holds no session's talks and no parked session yet, which KP0L6A serves and takes off by Sat 14; reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
+    "reason": "reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
     "subtests": [
-      "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile",
-      "test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row",
-      "test_an_orchestrators_earlier_talks_say_how_each_went"
+      "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
   },
