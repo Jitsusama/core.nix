@@ -172,9 +172,14 @@ impl Reads {
             || self.missing.contains(file)
             || above.iter().any(|folder| self.missing.contains(*folder))
             || (touched != Touched::Changed && self.entry_moved(&above, came_or_went))
-            // The root, looked at by every evaluation, never goes.
+            // A folder looked up on the way to a file is moved by a removal
+            // in it only when it went too: every check looks modules/ up,
+            // so otherwise any file removed under it reached them all. The
+            // root, looked at by every evaluation, never goes.
             || (touched == Touched::Removed
-                && above[1..].iter().any(|folder| self.read.contains(*folder)))
+                && above[1..]
+                    .iter()
+                    .any(|folder| self.read.contains(*folder) && came_or_went(folder)))
     }
 
     /// Whether a folder listed above a file added or removed had an entry
