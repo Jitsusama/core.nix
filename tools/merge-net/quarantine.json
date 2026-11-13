@@ -121,9 +121,10 @@
     "at": 1794437795,
     "commit": "461743399d56dac959e8e102cd6c137100886045",
     "owner_pr": 3363,
-    "reason": "failed, then passed, at 461743399d56",
+    "reason": "failed, then passed, at 461743399d56; a drawer served apart, since #3914, fails 1 run in 4 on main under load, as the machine socket comes back in two waves, which FEH1HE fixes and takes off by 19:00 on 13 November",
     "subtests": [
       "test_a_charge_told_in_batterys_step_is_said_there",
+      "test_a_drawer_served_apart_is_watched_only_while_its_row_is_drawn",
       "test_a_row_holding_only_a_copy_copies_on_return",
       "test_no_answer_raised_an_error_and_quickshell_warned_of_nothing",
       "test_the_shut_shell_sleeps_as_a_window_is_resized"
