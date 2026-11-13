@@ -186,10 +186,19 @@ hasn't got. The ink is still eero's own (`src/views/theme.rs`), set by
 the kit's choice; drawing it with the kit's pen waits.
 `eero watch <view>` ([`src/watch.rs`][watch]) listens on the socket and
 draws the view again with each model, and when its reading's age next
-reads differently. Every page is held to a golden one drawn from
-`home-network.json` (`src/views/golden/`): change a page on purpose with
+reads differently. A page fits the terminal it's set in, as
+docs/commands.md has it, and into a pipe stays whole: a view says what
+it holds as lines, facts and tables (`src/views/text.rs`), and the page
+is laid out in the room it's given. Lines and values wrap at their items,
+then their words, under where they started (`src/views/fit.rs`); a table
+gives way by whole columns in the order it names, least needed first,
+then shortens its names in their middle and cuts or wraps its last
+column. Every page is held to a golden one drawn from
+`home-network.json` (`src/views/golden/`), into a pipe and at 60, 80, 100
+and 140 columns: change a page on purpose with
 `EERO_GOLDEN=write cargo test`, and read the pages it wrote before
-committing them. A view shows every figure its part of the record has,
+committing them, and put back `tests/rows.json`, which it writes
+formatted otherwise. A view shows every figure its part of the record has,
 figures lined up by their point with their units beside them, each
 measure in three significant digits and the unit that reads it
 (`src/views/figures.rs`, as docs/design.md's Set, Not Styled has it), a

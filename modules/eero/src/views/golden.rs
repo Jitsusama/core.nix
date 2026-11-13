@@ -7,6 +7,7 @@ use std::path::Path;
 
 use jiff::tz::{self, TimeZone};
 use serde_json::Value;
+use terminal_kit::Room;
 
 use super::text::{Ink, Palette};
 use super::{Clock, View, json, text};
@@ -36,6 +37,7 @@ fn holds(name: &str, page: &str) {
         .join("src/views/golden")
         .join(name);
     if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, page).unwrap();
         return;
     }
@@ -63,7 +65,44 @@ fn holds(name: &str, page: &str) {
 }
 
 fn page(view: &View, model: &HomeNetwork) -> String {
-    text(view, model, &soon(), &Ink::plain()).unwrap()
+    text(view, model, &soon(), &Ink::plain(), Room::Unbounded).unwrap()
+}
+
+/// The widths a terminal is opened at, from a split beside an editor to a
+/// whole wide screen, as docs/commands.md sets every view at.
+const WIDTHS: [usize; 4] = [60, 80, 100, 140];
+
+/// A page set in a terminal each of the widths wide runs no line past its
+/// edge, and is held to its golden page at that width, in a folder named
+/// for it, where it's set otherwise than into a pipe; where it isn't,
+/// there's no page there, so a page that fits as it is reads as one.
+fn fits(name: &str, view: &View, model: &HomeNetwork) {
+    let piped = page(view, model);
+    for width in WIDTHS {
+        let set = text(view, model, &soon(), &Ink::plain(), Room::Cells(width)).unwrap();
+        for line in set.lines() {
+            assert!(
+                line.chars().count() <= width,
+                "{name} at {width} runs past the edge: {line}"
+            );
+        }
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/views/golden")
+            .join(width.to_string())
+            .join(name);
+        if set == piped {
+            if std::env::var("EERO_GOLDEN").as_deref() == Ok("write") {
+                _ = std::fs::remove_file(&file);
+            }
+            assert!(
+                !file.exists(),
+                "{name} at {width} is set as into a pipe, so {} should go",
+                file.display()
+            );
+        } else {
+            holds(&format!("{width}/{name}"), &set);
+        }
+    }
 }
 
 /// A view's JSON, read back.
@@ -79,6 +118,7 @@ macro_rules! golden {
             #[test]
             fn $test() {
                 holds($file, &page(&$view, &$model()));
+                fits($file, &$view, &$model());
             }
         )*
     };
@@ -148,10 +188,7 @@ fn filtered() -> HomeNetwork {
     model
 }
 
-/// The views a terminal's colours are tried on, and those that fit a
-/// hundred columns: the devices, node, radio and traffic tables set every
-/// figure eero has side by side, which a terminal narrower than them wraps
-/// rather than cuts.
+/// The views a terminal's colours are tried on.
 fn coloured() -> Vec<View> {
     vec![
         View::Status,
@@ -161,19 +198,6 @@ fn coloured() -> Vec<View> {
         View::Internet,
         View::Firmware,
         View::Traffic,
-    ]
-}
-
-fn narrow() -> Vec<View> {
-    vec![
-        View::Status,
-        View::Speeds,
-        View::Mesh,
-        View::Internet,
-        View::Firmware,
-        View::Profiles,
-        View::Profile("3002".into()),
-        View::Events,
     ]
 }
 
@@ -231,6 +255,7 @@ fn an_unreachable_cloud_is_said_with_how_old_the_reading_is() {
         &model,
         &clock("2026-11-07T23:10:00Z"),
         &Ink::plain(),
+        Room::Unbounded,
     )
     .unwrap();
     let head: Vec<&str> = page.lines().take(3).collect();
@@ -251,6 +276,7 @@ fn a_reading_grown_old_says_how_old_and_how_to_start_the_daemon() {
         &model(),
         &clock("2026-11-08T01:00:00Z"),
         &Ink::plain(),
+        Room::Unbounded,
     )
     .unwrap();
     assert_eq!(
@@ -281,6 +307,7 @@ fn an_unknown_node_names_the_nodes_there_are() {
         &model(),
         &soon(),
         &Ink::plain(),
+        Room::Unbounded,
     );
     assert_eq!(
         refused.unwrap_err(),
@@ -295,6 +322,7 @@ fn an_unknown_profile_names_the_profiles_there_are() {
         &model(),
         &soon(),
         &Ink::plain(),
+        Room::Unbounded,
     );
     assert_eq!(
         refused.unwrap_err(),
@@ -309,6 +337,7 @@ fn a_name_two_devices_share_is_refused_with_each_ones_address() {
         &model(),
         &soon(),
         &Ink::plain(),
+        Room::Unbounded,
     );
     assert_eq!(
         refused.unwrap_err(),
@@ -324,6 +353,7 @@ fn a_device_not_on_now_says_where_and_when_it_last_was() {
         &model(),
         &soon(),
         &Ink::plain(),
+        Room::Unbounded,
     );
     assert_eq!(
         refused.unwrap_err(),
@@ -354,7 +384,7 @@ fn on_a_terminal_every_line_keeps_its_text_and_only_gains_colour() {
         palette: Some(palette),
     };
     for view in coloured() {
-        let coloured = text(&view, &model(), &soon(), &ink).unwrap();
+        let coloured = text(&view, &model(), &soon(), &ink, Room::Unbounded).unwrap();
         let plain = page(&view, &model());
         // A graph's empty cells are drawn whole on a terminal, as its track.
         let stripped = strip(&coloured).replace('⣿', "⠀");
@@ -381,15 +411,6 @@ fn strip(text: &str) -> String {
         }
     }
     out
-}
-
-#[test]
-fn every_page_but_the_wide_tables_keeps_to_a_hundred_columns() {
-    for view in narrow() {
-        for line in page(&view, &model()).lines() {
-            assert!(line.chars().count() <= 100, "{view:?}: {line}");
-        }
-    }
 }
 
 #[test]

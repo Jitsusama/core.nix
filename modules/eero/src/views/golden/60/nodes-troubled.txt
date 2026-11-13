@@ -1,0 +1,6 @@
+home · 3 nodes · read 1 min 7 s ago
+
+node   state      backhaul                 devices
+Hall   online     Ethernet                       2
+Study  online     Wi-Fi 5.8 GHz from Hall        9
+Den    ✕ offline  Wi-Fi 5.8 GHz from Hall        4

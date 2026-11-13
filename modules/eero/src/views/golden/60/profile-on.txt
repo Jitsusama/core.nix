@@ -1,0 +1,14 @@
+profile 3 · id 3003 · read 1 min 7 s ago
+
+state     Active
+paused    no
+blocks    nothing
+schedule  none
+default   no
+traffic   –
+devices   3 · 2 on now
+
+hardware           device               node
+02:00:00:00:00:38  network equipment 1  not on now
+02:00:00:00:00:0a  generic 2            Den
+02:00:00:00:00:11  laptop computer 2    Den

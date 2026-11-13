@@ -14,6 +14,7 @@ mod devices;
 mod events;
 mod figures;
 mod firmware;
+mod fit;
 mod graph;
 mod home;
 mod internet;
@@ -42,6 +43,8 @@ pub fn rate(mbps: f64) -> String {
 }
 
 use std::borrow::Cow;
+
+use terminal_kit::Room;
 
 use crate::called;
 use crate::model::{CloudState, Device, DeviceOff, HomeNetwork, Node, Profile};
@@ -134,8 +137,15 @@ impl View {
     }
 }
 
-/// A view as text for a person.
-pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Result<String, String> {
+/// A view as text for a person, laid out in the room its stream has:
+/// whole into a pipe, and fitted to a terminal's width.
+pub fn text(
+    view: &View,
+    model: &HomeNetwork,
+    clock: &Clock,
+    ink: &Ink,
+    room: Room,
+) -> Result<String, String> {
     let page = match view {
         View::Status => home::page(model, clock),
         View::Nodes => nodes::all(model, clock),
@@ -152,7 +162,7 @@ pub fn text(view: &View, model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Resul
         View::Profile(name) => profiles::one(model, find_profile(model, name)?, clock, ink),
         View::Events => events::page(model, clock),
     };
-    Ok(ink.page(&page))
+    Ok(ink.page(page, room))
 }
 
 /// A view as JSON: the record's own slice of it, under the record's own

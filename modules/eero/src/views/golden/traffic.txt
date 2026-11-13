@@ -1,12 +1,12 @@
 home · traffic over 25 hours · read 1 min 7 s ago
 
-         down                    up
-home   167 GB  ⣿⣷⣶⣴⣴⣶⣼⣷⣦⣶  72.7 GB   ⣷⣿⣤⣄⣀⣠⣼⣷⣿⣷
-Hall   150 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  10.1 MB   ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
-Study  142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.68 MB  ⣤⣦⣧⣤⣤⣤⣤⣤⣤⣤
-Den    142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.64 MB  ⣤⣤⣇⣤⣤⣤⣤⣤⣤⣤
+traffic    down                    up
+home     167 GB  ⣿⣷⣶⣴⣴⣶⣼⣷⣦⣶  72.7 GB   ⣷⣿⣤⣄⣀⣠⣼⣷⣿⣷
+Hall     150 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀  10.1 MB   ⣾⣶⣧⣤⣤⣦⣶⣶⣶⣴
+Study    142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.68 MB  ⣤⣦⣧⣤⣤⣤⣤⣤⣤⣤
+Den      142 MB  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.64 MB  ⣤⣤⣇⣤⣤⣤⣤⣤⣤⣤
 
-            hour   home down         up  Hall down      up  Study down        up  Den down        up
+day         hour   home down         up  Hall down      up  Study down        up  Den down        up
 2026-11-06  17:00    0 B        0 B           0 B     0 B       0 B       0 B       0 B       0 B
             18:00    9.63 GB    4.60 GB     647 kB  514 kB    126 kB    197 kB    131 kB    194 kB
             19:00   10.1 GB     4.14 GB     791 kB  603 kB    124 kB    195 kB    133 kB    197 kB

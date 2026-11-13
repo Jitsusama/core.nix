@@ -5,7 +5,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use terminal_kit::{Exit, Failure};
+use terminal_kit::{Exit, Failure, Room};
 
 use crate::model::HomeNetwork;
 use crate::views::{self, Clock, Ink, View};
@@ -44,13 +44,14 @@ pub fn read(file: &Path) -> Result<HomeNetwork, Failure> {
 
 /// A view of the record, as text or as JSON. A view of one thing fails as
 /// not found when the record holds no such thing, which is the only way a
-/// view of a record that reads can fail, and says what it does hold.
-pub fn show(view: &View, json: bool, ink: &Ink) -> Result<String, Failure> {
+/// view of a record that reads can fail, and says what it does hold. The
+/// text is laid out in `room`: whole into a pipe, fitted to a terminal.
+pub fn show(view: &View, json: bool, ink: &Ink, room: Room) -> Result<String, Failure> {
     let model = read(&file()?)?;
     let page = if json {
         views::json(view, &model)
     } else {
-        views::text(view, &model, &Clock::system(), ink)
+        views::text(view, &model, &Clock::system(), ink, room)
     };
     page.map_err(|why| Failure::new(Exit::NotFound, why))
 }

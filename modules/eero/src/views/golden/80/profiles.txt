@@ -1,0 +1,6 @@
+home · 3 profiles · read 1 min 7 s ago
+
+profile    state   blocks   schedule  default  devices  on now  down   up
+profile 1  Active  nothing  none      no            10       0   0 B  0 B
+profile 2  Active  nothing  none      no             3       0   0 B  0 B
+profile 3  Active  nothing  none      no             1       0   –    –

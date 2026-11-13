@@ -47,7 +47,9 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
         Align::Point,
         Align::Point,
     ]);
-    summary.header(&["", "", "lowest", "mean", "highest"]);
+    // The corner names what the table measures, so its heading and its
+    // rows start at one edge.
+    summary.header(&["speed", "", "lowest", "mean", "highest"]);
     for (word, way) in [("down", 0), ("up", 1)] {
         // Oldest first, so the spark reads left to right as time did.
         let values: Vec<f64> = tests
@@ -73,7 +75,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
             maybe(highest, mbit),
         ]);
     }
-    page.extend(summary.lines(0));
+    page.table(0, summary);
     page.blank();
 
     let mut table = Table::new(&[Align::Left, Align::Left, Align::Point, Align::Point]);
@@ -87,6 +89,6 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
             maybe(test.up_mbps, mbit),
         ]);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }

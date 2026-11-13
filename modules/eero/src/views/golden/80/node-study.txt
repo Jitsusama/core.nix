@@ -1,0 +1,38 @@
+Study · eero Pro 6 · read 1 min 7 s ago
+
+state            online · heartbeat 2 min 4 s ago
+backhaul         Wi-Fi 5.8 GHz from Hall · 5 of 5 bars
+model            eero Pro 6 · K010011 · serial SERIAL0002
+addresses        10.0.0.88 · fe80::b/64
+hardware         02:00:00:00:00:25
+firmware         v7.17.4-5 · up to date · support ends –
+up               15 h 31 min · rebooted 2026-11-07 02:22, 15 h 32 min ago
+on eero's cloud  19 min 36 s
+joined           2020-11-13 16:50, 5 y 360 d ago
+light            on · 100 %
+power            USB
+devices          9 · 9 Wi-Fi · 0 Ethernet
+traffic          142 MB down  ⣀⣀⣇⣀⣀⣀⣀⣀⣀⣀   3.68 MB up  ⣤⣦⣧⣤⣤⣤⣤⣤⣤⣤
+
+radios
+  band        channel   width   power  busy              devices
+  2.4 GHz           6  20 MHz  30 dBm  18 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        2
+  5 GHz low        52  80 MHz  22 dBm   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        3
+  5 GHz high      149  80 MHz  28 dBm  39 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        4
+
+ports
+  port  link     speed       best  rx  tx
+  1     no link      –  1.00 Gb/s   –   –
+  2     no link      –  1.00 Gb/s   –   –
+
+devices · 9
+  device              band      signal           rx         down           up
+  laptop computer 1   5 GHz    −75 dBm  432 Mb/s     130 kb/s      14.5 kb/s
+  generic 4           5 GHz    −20 dBm  433 Mb/s       2.23 kb/s    3.31 kb/s
+  audio 1             2.4 GHz  −29 dBm   48.0 Mb/s     0 b/s        0 b/s
+  media streamer 1    5 GHz    −43 dBm  325 Mb/s       0 b/s        0 b/s
+  unknown computer 1  5 GHz    −57 dBm    1.20 Gb/s   11.5 Mb/s     9.86 Mb/s
+  thermostat 1        5 GHz    −65 dBm  390 Mb/s     132 b/s      106 b/s
+  game console 1      2.4 GHz  −66 dBm   72.2 Mb/s     0 b/s        0 b/s
+  generic 1           5 GHz    −68 dBm  360 Mb/s       0 b/s        0 b/s
+  phone 1             5 GHz    −69 dBm   48.0 Mb/s     0 b/s        0 b/s

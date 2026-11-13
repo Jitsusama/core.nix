@@ -208,6 +208,43 @@
             };
           }
         ];
+        # The made-up home network eero's golden pages are drawn from, as
+        # the daemon keeps it, read long ago, so each page opens saying the
+        # daemon may have stopped; each view is set from it, with a name
+        # for those of one node, device or profile.
+        eero =
+          let
+            state = pkgs.runCommand "a-home-network" { } ''
+              mkdir -p $out/runtime/eero
+              cp ${../../modules/eero/home-network.json} $out/runtime/eero/home-network.json
+            '';
+            view = args: { inherit args state; };
+          in
+          map view [
+            [ ]
+            [ "nodes" ]
+            [
+              "node"
+              "Study"
+            ]
+            [ "mesh" ]
+            [ "devices" ]
+            [
+              "device"
+              "unknown computer 1"
+            ]
+            [ "internet" ]
+            [ "speeds" ]
+            [ "firmware" ]
+            [ "radio" ]
+            [ "traffic" ]
+            [ "profiles" ]
+            [
+              "profile"
+              "profile 1"
+            ]
+            [ "events" ]
+          ];
         # Firmware off two of its declared settings, which a bare run names
         # and exits 1 for, as diff does.
         firmware-settings = [

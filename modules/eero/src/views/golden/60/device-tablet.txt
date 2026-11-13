@@ -1,0 +1,23 @@
+tablet 1 · 02:00:00:00:00:01 · read 1 min 7 s ago
+
+kind         tablet · Apple iPad
+name         tablet 1 · nickname – · hostname tablet 1
+hardware     02:00:00:00:00:01 · a private address
+addresses    10.0.0.29 · fe80::1
+reserved     none
+on since     2026-11-07 17:42, 13 min 15 s ago
+last active  2026-11-07 17:49, 6 min 10 s ago
+first seen   2026-02-09 15:08, 271 d 2 h ago
+node         Den · Wi-Fi
+network      home · WPA2 · subnet main · guest no
+radio        5 GHz · channel 52 · 5,260 MHz
+             BSSID 02:00:00:00:00:02
+signal       −59 dBm · SNR – · score 1.000 · 5 of 5 bars
+rx           48.0 Mb/s
+tx           –
+retries      0 % · idle 0 ms
+packets      rx 6 · tx 6 · all 12 · tx retries 30
+             rx drops 0
+per million  tx retransmitted 0 · tx failed 0 · rx dropped 0
+speed        down 1.22 Mb/s · up 24.0 kb/s
+profile      – · paused no · blocked no

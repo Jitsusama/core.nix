@@ -1,0 +1,6 @@
+home · 3 nodes · read 1 min 7 s ago
+
+node   state   backhaul                 devices  firmware
+Hall   online  Ethernet                       2  v7.17.4-5
+Study  online  Wi-Fi 5.8 GHz from Hall        9  v7.17.4-5
+Den    online  Wi-Fi 5.8 GHz from Hall        4  v7.17.4-5

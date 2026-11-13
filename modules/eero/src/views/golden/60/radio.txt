@@ -1,0 +1,12 @@
+home · 9 radios · read 1 min 7 s ago
+
+band        node   channel  busy              devices
+2.4 GHz     Hall         6   8 %  ⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀        1
+            Study        6  18 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        2
+            Den          6  20 %  ⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀        1
+5 GHz low   Hall        52   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        0
+            Study       52   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        3
+            Den         52   5 %  ⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀        2
+5 GHz high  Hall       149  41 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        1
+            Study      149  39 %  ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀        4
+            Den        149  37 %  ⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀        1

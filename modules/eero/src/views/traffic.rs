@@ -74,7 +74,9 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
         Align::Point,
         Align::Left,
     ]);
-    totals.header(&["", "down", "", "up", ""]);
+    // The corner names what the table measures, so its heading and its
+    // rows start at one edge.
+    totals.header(&["traffic", "down", "", "up", ""]);
     let graph = |series: &Series| {
         #[expect(clippy::cast_precision_loss, reason = "a graph's height")]
         let values: Vec<f64> = series.hours.iter().map(|hour| hour.bytes as f64).collect();
@@ -99,7 +101,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
             graph(&usage.upload),
         ]);
     }
-    page.extend(totals.lines(0));
+    page.table(0, totals);
     page.blank();
 
     let mut aligns = vec![Align::Left, Align::Left];
@@ -109,9 +111,17 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
         .iter()
         .flat_map(|(name, _)| [format!("{name} down"), "up".to_owned()])
         .collect();
-    let mut header = vec!["", "hour"];
+    let mut header = vec!["day", "hour"];
     header.extend(headings.iter().map(String::as_str));
     table.header(&header);
+    // The nodes give way from the last, two columns each, so the home
+    // network's own hours stay.
+    table.gives_way(
+        (1..each.len())
+            .rev()
+            .map(|node| vec![2 + node * 2, 3 + node * 2])
+            .collect(),
+    );
     let mut last_day = None;
     for at in hours {
         let when = clock::parse(at);
@@ -134,6 +144,6 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
         }
         table.row(cells);
     }
-    page.extend(table.lines(0));
+    page.table(0, table);
     page
 }
