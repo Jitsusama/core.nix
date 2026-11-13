@@ -16,7 +16,9 @@
 // lent it, as a mail its sender, is told to ask for it again. A guest
 // asked after before the daemon answers is named once it does, and one
 // Tuple comes to know after their name was typed is found without typing
-// it again. It exits 0 once every case
+// it again. Someone Slack found once stepped into, whom nobody lists,
+// makes no row at the next first letter and is found as Slack says they
+// stand. It exits 0 once every case
 // holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -65,7 +67,8 @@ ShellRoot {
         launcher: launcher
         settings: ({
             name: "people",
-            sources: [{ name: "tuple", order: 10 }, { name: "pages", order: 20 }],
+            sources: [{ name: "slack", order: 5 }, { name: "tuple", order: 10 },
+                { name: "pages", order: 20 }],
             zones: Quickshell.shellPath("zones.jsonl")
         })
     }
@@ -615,8 +618,63 @@ ShellRoot {
                 expect("tells the place holding them, to ask for them again",
                     guesting.told > 0, `told ${guesting.told} times`);
             }
-        }
+        },
+        {
+            // Slack knows only those it's asked about, as Joel steps into
+            // them: Zoë, whom nobody lists, stepped into from a meeting's
+            // guests, as Calendar lends her row.
+            what: "one Slack is asked about, stepped into",
+            run: () => people.whoIs("zoe@example.com"),
+            holds: () => people.whoIs("zoe@example.com") !== null,
+            check: () => {
+                people.personOf("zoe@example.com").verbs();
+                launcher.wanting = false;
+                launcher.open = false;
+                // Everyone made as they stand before Slack answers, so
+                // what the first letter after makes is Slack's alone.
+                people.everyone();
+                root.shutRows = people.tally.rows;
+            }
+        },
+        {
+            // Slack's people were its source's own, merged here: a new
+            // shell's first letter made a row for each the daemon
+            // neither listed nor found, as every one held was before
+            // (his journal, 2026-11-13, 139 to 140 rows a first letter).
+            what: "one Slack found makes no row at the first letter, open or shut",
+            holds: () => slack().known["zoe@example.com"]?.id === "U9",
+            check: () => {
+                expect("Slack's answer, heard shut, makes no row",
+                    people.tally.rows === root.shutRows,
+                    `${people.tally.rows - root.shutRows} rows made`);
+                launcher.open = true;
+                launcher.wanting = true;
+                void people.all;
+                expect("she isn't among those the last search found",
+                    !("person:zoe@example.com" in people.soughtOf), people.sought.words);
+                const typed = people.tally.rows;
+                people.gather("q");
+                expect("the first letter makes no row", people.tally.rows === typed,
+                    `${people.tally.rows - typed} rows made`);
+                expect("and holds only those listed and those found",
+                    !people.persons().some(person => person.key === "zoe@example.com"),
+                    names(people.persons()));
+            }
+        },
+        seeking("quill", "one Slack found is found as Slack says she stands", () => {
+            const zoe = found("quill");
+            expect("active, as the daemon serves her", names(zoe) === "Zo\u00eb \"Zed\" Quill"
+                && zoe[0].side === "active", `${names(zoe)} ${zoe[0]?.side}`);
+        })
     ]
+
+    // Slack's source, as People made it.
+    function slack() {
+        return people.sources.find(source => source.settings.name === "slack");
+    }
+    // How many rows People had made once Slack was asked, the launcher
+    // shut.
+    property int shutRows: 0
 
     // When the people daemon was stopped.
     property real stoppedAt: 0

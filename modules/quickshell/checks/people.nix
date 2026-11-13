@@ -17,7 +17,8 @@
   # The launcher's People, with Tuple as its source, reads Tuple's contacts
   # from the real people daemon, which runs the real tuple-people reading
   # a stand-in for Tuple's follow here, and calls, joins or favours one
-  # (tests/people.qml), with niri stood in. A listener stands in for
+  # (tests/people.qml), with niri stood in. Slack's source rides beside it,
+  # its reader stood in by tests/people-slack-source.sh. A listener stands in for
   # Tuple's daemon's socket, and the shell never asks Tuple anything
   # itself, since it reaches Tuple through niri alone.
   the-launcher-finds-the-people =
@@ -84,6 +85,22 @@
         cat ${snapshot "busy" true}
         while :; do sleep 1; done
       '';
+      # How someone stands in Slack, as Slack's module tells the daemon.
+      slackStands = {
+        field = "presence";
+        words = {
+          active = {
+            word = "active";
+            order = 0;
+          };
+          away = {
+            word = "away";
+            order = 2;
+          };
+        };
+        others = true;
+        mark = "emoji";
+      };
     in
     pkgs.runCommandLocal "the-launcher-finds-the-people" { } ''
       mkdir -p launcher/people
@@ -91,6 +108,7 @@
       ${copied [
         "Daemon.qml"
         "Words.qml"
+        "launcher/Ago.js"
         "launcher/Placed.js"
         "launcher/Provider.qml"
         "launcher/ReadyRows.js"
@@ -103,6 +121,11 @@
       cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../../people/PersonSource.qml} PersonSource.qml
       cp ${../../tuple/TupleSource.qml} launcher/people/tuple.qml
+      # Slack's source as a machine bringing Slack has it, over a stand-in
+      # for slack-people, so its people are seen to make no rows here.
+      cp ${../../slack/SlackSource.qml} launcher/people/slack.qml
+      cp ${../../slack/Slack.js} launcher/people/Slack.js
+      cp ${../../slack/SlackConversation.qml} SlackConversation.qml
       cp ${../../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${../../../tests/people.qml} shell.qml
@@ -119,7 +142,9 @@
       {"sources": [{"name": "tuple", "stands": $(cat ${../../tuple/stands.json}),
         "command": ["${helper}/bin/tuple-people", "people", "${tuple}/bin/tuple", "tuple-0"]},
         {"name": "facts",
-          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]}]}
+          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-facts-source.sh}"]},
+        {"name": "slack", "stands": ${builtins.toJSON slackStands},
+          "command": ["${lib.getExe pkgs.bash}", "${../../../tests/people-slack-source.sh}"]}]}
       EOF
       export PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export WORDS=${(import ../launcher/words.nix).file}
