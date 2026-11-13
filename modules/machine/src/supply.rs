@@ -17,13 +17,15 @@ const SUPPLIES: &str = "/sys/class/power_supply";
 /// are read again. On a Dell each of the three is a call into the
 /// firmware, 10 to 23 ms and a 64 KiB buffer the kernel finds whole, and
 /// one that found none failed the read (2026-11-12, 22:56), though only a
-/// change Joel makes moves them.
+/// change Joel makes moves them. When the battery was made and its
+/// health are firmware calls too, about 2.7 ms each, and never or seldom
+/// move (2026-11-13).
 pub const SETTINGS_KEPT: Duration = Duration::from_secs(60);
 
 /// What each battery's charging is set to, its charge types and its
-/// limit's ends, as last read, by its folder, so a supply read each
-/// second asks the firmware once a minute. A limit set here is read again
-/// at once (`forget`).
+/// limit's ends, as last read, by its folder, with when it was made and
+/// its health, so a supply read each second asks the firmware once a
+/// minute. A limit set here is read again at once (`forget`).
 #[derive(Default)]
 pub struct Settings {
     read: HashMap<String, (Instant, Set)>,
@@ -34,6 +36,8 @@ struct Set {
     types: Option<String>,
     start: Option<u64>,
     stop: Option<u64>,
+    made: Option<String>,
+    health: Option<String>,
 }
 
 impl Settings {
@@ -49,6 +53,8 @@ impl Settings {
             types: root.said(&format!("{folder}/charge_types")),
             start: root.number(&format!("{folder}/{START}")),
             stop: root.number(&format!("{folder}/{STOP}")),
+            made: made(root, folder),
+            health: root.said(&format!("{folder}/health")),
         };
         self.read.insert(folder.to_owned(), (now, set.clone()));
         set
@@ -59,6 +65,13 @@ impl Settings {
     pub fn forget(&mut self, name: &str) {
         self.read.remove(&format!("{SUPPLIES}/{name}"));
     }
+}
+
+/// When the battery in `folder` was made, as its firmware says the day.
+fn made(root: &Root, folder: &str) -> Option<String> {
+    let whole = |file: &str| root.number(&format!("{folder}/manufacture_{file}"));
+    let (year, month, day) = (whole("year")?, whole("month")?, whole("day")?);
+    Some(format!("{year:04}-{month:02}-{day:02}"))
 }
 
 /// The choice a kernel list marks, as `[sink]` in `source [sink]`, and
@@ -221,14 +234,6 @@ pub fn record(
         let design = whole(&format!("{unit}_full_design")).filter(|d| *d > 0)?;
         Some(rounded(crate::float(full) / crate::float(design), 4))
     });
-    let made = match (
-        whole("manufacture_year"),
-        whole("manufacture_month"),
-        whole("manufacture_day"),
-    ) {
-        (Some(year), Some(month), Some(day)) => Some(format!("{year:04}-{month:02}-{day:02}")),
-        _ => None,
-    };
     let (charge_type, charge_types) = chosen(set.types);
     let (usb_type, usb_types) = chosen(at("usb_type"));
     // The kernel counts a battery's temperature in tenths of a degree.
@@ -261,7 +266,7 @@ pub fn record(
         "min_volts": units("voltage_min"),
         "max_amps": units("current_max"),
         "cycles": whole("cycle_count"),
-        "health": at("health"),
+        "health": set.health,
         "technology": at("technology"),
         "charge_type": charge_type.or_else(|| at("charge_type")),
         "charge_types": charge_types,
@@ -272,7 +277,7 @@ pub fn record(
         "manufacturer": at("manufacturer"),
         "model": at("model_name"),
         "serial": at("serial_number"),
-        "made": made,
+        "made": set.made,
         "temperature_c": temperature,
         "usb_type": usb_type,
         "usb_types": usb_types,
