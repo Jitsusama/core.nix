@@ -1,8 +1,10 @@
-//! What jiti names the entry it keeps for a source, and the removal of
-//! a version's entries from a cache, leaving every other entry.
+//! What jiti names the entry it keeps for a source, the removal of a
+//! version's entries from a cache, leaving every other entry, and the
+//! age-out of entries nothing kept wrote.
 
-use std::fs;
+use std::fs::{self, File};
 use std::path::Path;
+use std::time::{Duration, SystemTime};
 
 use pi_packages::jiti;
 
@@ -108,5 +110,55 @@ fn forgetting_a_version_removes_its_entries_and_no_others() {
     assert!(
         cache.join("other-thing.12345678.mjs").exists(),
         "an unrelated entry went"
+    );
+}
+
+#[test]
+fn aging_out_removes_old_entries_but_a_kept_versions() {
+    let scratch = tempfile::tempdir().expect("a scratch folder");
+    let kept = scratch.path().join("versions/kept");
+    fs::create_dir_all(kept.join("extensions/advisor")).expect("a version");
+    fs::write(kept.join("extensions/advisor/index.ts"), "").expect("a source");
+    let real = fs::canonicalize(&kept).expect("a version");
+    let kept_entry = jiti::entry_names(&real.join("extensions/advisor/index.ts"))[0].clone();
+    let cache = jiti::cache_of(&scratch.path().join("tmp"));
+    fs::create_dir_all(&cache).expect("a cache");
+    let now = SystemTime::now();
+    let week_ago = now - Duration::from_hours(24 * 8);
+    for (name, written, bytes) in [
+        (kept_entry.as_str(), week_ago, 3),
+        ("tree-index.12345678.mjs", week_ago, 5),
+        ("tree-other.87654321.mjs", now, 7),
+    ] {
+        fs::write(cache.join(name), vec![b'x'; bytes]).expect("an entry");
+        File::options()
+            .write(true)
+            .open(cache.join(name))
+            .and_then(|entry| entry.set_modified(written))
+            .expect("its time");
+    }
+
+    let aged = jiti::age_out(
+        &[kept],
+        &[cache.clone(), scratch.path().join("none")],
+        now - Duration::from_hours(24 * 7),
+    );
+
+    assert_eq!(
+        aged,
+        jiti::Aged { files: 1, bytes: 5 },
+        "only the old entry nothing kept wrote goes"
+    );
+    assert!(
+        !cache.join("tree-index.12345678.mjs").exists(),
+        "the old entry was kept"
+    );
+    assert!(
+        cache.join(&kept_entry).exists(),
+        "a kept version's entry went"
+    );
+    assert!(
+        cache.join("tree-other.87654321.mjs").exists(),
+        "a new entry went"
     );
 }

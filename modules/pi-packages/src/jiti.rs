@@ -13,7 +13,9 @@
 //! after a swap spent 13.2 s transpiling in jiti, and the next 0.7 s,
 //! and 1.6 GB of entries no pi would read again had built up. The
 //! warm (warm.rs) writes a version's entries before the swap, and a
-//! version's entries go with it (version.rs).
+//! version's entries go with it (version.rs). Entries no version kept
+//! here wrote, from worktrees and scratch pis, go once a week old
+//! (`age_out`, run from each update).
 //!
 //! This follows jiti 2.7, which pi 1.5 ships. Under FIPS jiti hashes
 //! with SHA-256 rather than MD5, which these names don't follow: there
@@ -22,6 +24,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// The folder jiti keeps its entries in, under a pi's temporary folder.
 #[must_use]
@@ -47,7 +50,7 @@ pub fn entry_names(file: &Path) -> Vec<String> {
         Some(dot) if dot > 0 => &name[..dot],
         _ => name,
     };
-    let hash = &hex(&md5(file.as_os_str().as_encoded_bytes()))[..8];
+    let hash = path_hash(file);
     let mut names = Vec::new();
     for map in ["", "+map"] {
         for interop in ["", ".i"] {
@@ -63,20 +66,24 @@ pub fn entry_names(file: &Path) -> Vec<String> {
     names
 }
 
+/// The part of an entry's name jiti takes from its source's path: the
+/// first 8 hex of its MD5.
+fn path_hash(file: &Path) -> String {
+    hex(&md5(file.as_os_str().as_encoded_bytes()))[..8].to_owned()
+}
+
+/// The path's hash in an entry's name, the part before its last dot.
+fn hash_in(name: &str) -> Option<&str> {
+    name.rsplit('.').nth(1)
+}
+
 /// Remove from each cache in `caches` every entry jiti may have written
 /// for a file under one of `versions`, which must still be there to be
 /// listed. Says how many went. A cache that isn't there, or an entry
 /// that can't be removed, is passed over: an entry left is only disk.
 #[must_use]
 pub fn forget(versions: &[PathBuf], caches: &[PathBuf]) -> usize {
-    let mut names = HashSet::new();
-    for version in versions {
-        // pi hands jiti each file by its real path, links resolved.
-        let version = fs::canonicalize(version).unwrap_or_else(|_| version.clone());
-        for file in sources(&version) {
-            names.extend(entry_names(&file));
-        }
-    }
+    let names = names_of(versions);
     if names.is_empty() {
         return 0;
     }
@@ -95,6 +102,80 @@ pub fn forget(versions: &[PathBuf], caches: &[PathBuf]) -> usize {
         }
     }
     removed
+}
+
+/// What an age-out removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Aged {
+    pub files: usize,
+    pub bytes: u64,
+}
+
+/// Remove from each cache in `caches` every entry last written before
+/// `before`, except those jiti may have written for a file under one of
+/// `kept`, known by the path's hash in its name. Says how many went and
+/// their size.
+///
+/// An entry's own path is in nobody's hands here: worktrees, scratch pis
+/// and versions long gone each left theirs, about 400 copies of every
+/// file on 12 November. Read times aren't kept where /tmp is noatime, so
+/// a write's age is the one sign left: an entry is written again when
+/// its source changes, and a pi that read it once has it already. A tree
+/// idle that long rebuilds its entries at its next start. What a kept
+/// version wrote stays whatever its age, so a pi installed here never
+/// starts cold. Its hashes, one a file, are what is held, never every
+/// name: on 12 November 57 versions were kept, some 190,000 files. As
+/// with `forget`, an entry that can't be read or removed is passed over.
+#[must_use]
+pub fn age_out(kept: &[PathBuf], caches: &[PathBuf], before: SystemTime) -> Aged {
+    let keep = hashes_of(kept);
+    let mut aged = Aged::default();
+    for cache in caches {
+        let Ok(entries) = fs::read_dir(cache) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(about) = entry.metadata() else {
+                continue;
+            };
+            let old = about.is_file() && about.modified().is_ok_and(|written| written < before);
+            let kept = entry
+                .file_name()
+                .to_str()
+                .and_then(hash_in)
+                .is_some_and(|hash| keep.contains(hash));
+            if old && !kept && fs::remove_file(entry.path()).is_ok() {
+                aged.files += 1;
+                aged.bytes += about.len();
+            }
+        }
+    }
+    aged
+}
+
+/// Every name jiti may give an entry for a file under one of `versions`.
+fn names_of(versions: &[PathBuf]) -> HashSet<String> {
+    files_of(versions)
+        .iter()
+        .flat_map(|file| entry_names(file))
+        .collect()
+}
+
+/// The path's hash of every file under one of `versions`.
+fn hashes_of(versions: &[PathBuf]) -> HashSet<String> {
+    files_of(versions)
+        .iter()
+        .map(|file| path_hash(file))
+        .collect()
+}
+
+/// Every file under one of `versions`, by the real path pi hands jiti,
+/// links resolved.
+fn files_of(versions: &[PathBuf]) -> Vec<PathBuf> {
+    versions
+        .iter()
+        .flat_map(|version| sources(&fs::canonicalize(version).unwrap_or_else(|_| version.clone())))
+        .collect()
 }
 
 /// Every file under `dir`, links not followed: a dependency's link leads

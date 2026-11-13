@@ -225,6 +225,41 @@ fn first_pi_started(config: &Config) -> Option<SystemTime> {
         .min()
 }
 
+/// How long jiti's entries that no kept version wrote are left: a week,
+/// so a tree in use now and then keeps its entries warm.
+pub const JITI_KEEPS: Duration = Duration::from_hours(24 * 7);
+
+/// The least time between two age-outs. Entries age by the week, so a
+/// day loses nothing, and each 15-minute run is spared listing every
+/// kept version's files (191,099 on 12 November, 0.2 s).
+pub const JITI_AGES_EVERY: Duration = Duration::from_hours(24);
+
+/// Age out of every jiti cache the entries no version kept here wrote,
+/// once they are older than [`JITI_KEEPS`] (jiti.rs), at most once each
+/// [`JITI_AGES_EVERY`]: `None` when it isn't due.
+#[must_use]
+pub fn age_jiti(config: &Config, now: SystemTime) -> Option<jiti::Aged> {
+    let marker = config.root.join(".last-jiti-age");
+    let last = fs::metadata(&marker).and_then(|marker| marker.modified());
+    if last.is_ok_and(|last| last + JITI_AGES_EVERY > now) {
+        return None;
+    }
+    let kept: Vec<PathBuf> = config
+        .packages
+        .iter()
+        .flat_map(|package| {
+            let place = Place::of(config, package);
+            [place.versions(), place.former_versions()]
+        })
+        .filter_map(|folder| fs::read_dir(folder).ok())
+        .flat_map(|entries| entries.flatten().map(|entry| entry.path()))
+        .collect();
+    let aged = jiti::age_out(&kept, &caches(config), now - JITI_KEEPS);
+    // Failing, the next run ages out again, which costs only the listing.
+    let _ = File::create(&marker).and_then(|file| file.set_modified(now));
+    Some(aged)
+}
+
 /// Each jiti cache a removed version's entries may be in: every live pi's,
 /// and this process's own temporary folder's, the one a pi that set no
 /// temporary folder used.
