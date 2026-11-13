@@ -41,6 +41,10 @@ pub struct Growth {
 /// Each place that grew, by its path.
 pub type Grown = BTreeMap<PathBuf, Growth>;
 
+/// One measure of what holds the disks: when, in wall seconds, each place
+/// and its bytes, and how much each had grown by then.
+pub type Measure = (f64, Vec<(Place, u64)>, Grown);
+
 /// The measurements in the state folder `state`, oldest first: none when
 /// there's no file, or one that won't read, since the ledger is a signal
 /// and starting it afresh loses only a day of it.
@@ -66,6 +70,25 @@ pub fn record(state: &Path, at: f64, measured: &[(Place, u64)]) -> io::Result<Gr
     });
     state::save(&state.join(FILE), &entries)?;
     Ok(grew)
+}
+
+/// The newest measurement in the state folder `state`, of those of
+/// `places` it sized, when it was taken, and how much each had grown by
+/// then. A guard started again says these until its own first measure
+/// ends, which on a full home takes minutes, rather than holding nothing.
+/// A place it didn't size, gone since or newly named, waits for that.
+pub fn last(state: &Path, places: Vec<Place>) -> Option<Measure> {
+    let mut entries = load(state);
+    let newest = entries.pop()?;
+    let sized: Vec<(Place, u64)> = places
+        .into_iter()
+        .filter_map(|place| {
+            let bytes = *newest.sizes.get(&place.path)?;
+            Some((place, bytes))
+        })
+        .collect();
+    let grew = grown(&entries, newest.at, &sized);
+    Some((newest.at, sized, grew))
 }
 
 /// How much each place in `measured` grew since the earliest measurement

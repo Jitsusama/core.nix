@@ -854,6 +854,33 @@ fn a_restarted_guard_beats_on_the_last_status_before_its_first_step() {
     assert_eq!(status["says"], "left by the last guard");
 }
 
+/// A restarted guard's first measure of home takes minutes, in which its
+/// status named no holders: on 13 November a switch left the user guard's
+/// list empty while the system guard's came back. It says what the ledger
+/// last measured until its own measure ends.
+#[test]
+fn a_restarted_guard_names_the_holders_it_last_measured() {
+    let home = Home::new();
+    let scratch = home.cold_scratch("build").parent().unwrap().to_owned();
+    fs::write(
+        home.root.join("state").join(disk_guard::ledger::FILE),
+        format!(
+            r#"[{{ "at": 1000.0, "sizes": {{ "{}": 5368709120 }} }}]"#,
+            scratch.display()
+        ),
+    )
+    .unwrap();
+    let mut guard = home.guard(home.config("0%", "0%"));
+    guard.step(&tick(), &CALM).unwrap();
+    let status = home.status();
+    assert_eq!(status["holders_at"], 1000.0, "when the ledger measured it");
+    assert_eq!(
+        status["holders"][0]["path"],
+        scratch.display().to_string(),
+        "a healthy disk measures nothing new, so the last measure stands"
+    );
+}
+
 /// Once a guard has written its own, a beat rewrites that, fresh.
 #[test]
 fn a_beat_rewrites_the_status_last_written_with_a_fresh_heartbeat() {

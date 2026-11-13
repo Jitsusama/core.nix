@@ -1,5 +1,5 @@
 use disk_guard::holders::{Kind, Owner, Place};
-use disk_guard::ledger::{Entry, Growth, grown, load, record};
+use disk_guard::ledger::{Entry, Growth, grown, last, load, record};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
@@ -80,6 +80,43 @@ fn the_ledger_keeps_two_days_of_measurements() {
         BTreeMap::new(),
         "the measurement a day and a half old is past a day, so it says no growth"
     );
+}
+
+#[test]
+fn a_guard_started_again_has_its_last_measure_of_the_places_still_named() {
+    let dir = tempfile::tempdir().unwrap();
+    record(dir.path(), DAY, &sized(&[("/a", GIB), ("/gone", GIB)])).unwrap();
+    record(
+        dir.path(),
+        2.0 * DAY,
+        &sized(&[("/a", 3 * GIB), ("/gone", GIB)]),
+    )
+    .unwrap();
+    let (at, measured, grew) = last(
+        dir.path(),
+        sized(&[("/a", 0), ("/new", 0)])
+            .into_iter()
+            .map(|(place, _)| place)
+            .collect(),
+    )
+    .expect("a ledger with measurements in it gives the newest");
+    assert_eq!(at, 2.0 * DAY, "the newest measurement, not the first");
+    assert_eq!(
+        measured,
+        sized(&[("/a", 3 * GIB)]),
+        "a place no longer named, or never measured, is left for the next measure"
+    );
+    assert_eq!(
+        grew.get(&PathBuf::from("/a")).map(|growth| growth.bytes),
+        Some(2 * GIB),
+        "its growth is read as it was when measured"
+    );
+}
+
+#[test]
+fn a_guard_with_no_ledger_has_no_last_measure() {
+    let dir = tempfile::tempdir().unwrap();
+    assert_eq!(last(dir.path(), Vec::new()), None);
 }
 
 #[test]
