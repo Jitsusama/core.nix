@@ -26,7 +26,8 @@
 // a gap. What each message changed and let go is heard apart, a key let
 // go never said as changed, and a whole answer says only the keys whose
 // records differ from what was held and those it dropped, so a rewatch
-// answered with the same records hears nothing. A handler of a told change
+// answered with the same records hears nothing, and lets go nothing
+// watched ahead, which it never names. A handler of a told change
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
@@ -135,6 +136,18 @@ ShellRoot {
         }
     }
     property int rewatchHeard: -1
+
+    // Answered whole and watching a key ahead that its kind's whole answer never names, as a
+    // place's ready rows watch a drawer served apart: watched again, as each opening watches.
+    Daemon {
+        id: wholeAhead
+
+        socket: `${root.runtime}/daemons/kinds.sock`
+        kind: "drawn"
+        answersWhole: true
+        ahead: ["drawn:apart"]
+    }
+    property bool wholeAheadRewatched: false
 
     // What a handler of its records reads as the time its line was heard,
     // for the watch's whole answer and the change told after it, and what
@@ -473,6 +486,20 @@ ShellRoot {
                     return false;
                 }
                 return rewatched.answeredThisWatch && root.rewatchHeard === 0;
+            }
+        },
+        {
+            what: "a whole answer lets go nothing watched ahead",
+            holds: () => {
+                if (!("drawn:apart" in wholeAhead.held))
+                    return false;
+                if (!root.wholeAheadRewatched) {
+                    root.wholeAheadRewatched = true;
+                    wholeAhead.live = false;
+                    wholeAhead.live = true;
+                    return false;
+                }
+                return wholeAhead.answeredThisWatch && "drawn:one" in wholeAhead.held;
             }
         },
         {
