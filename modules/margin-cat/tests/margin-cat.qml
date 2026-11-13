@@ -659,6 +659,13 @@ QtObject {
             [10, 50, 100].map(t => Paths.frame(down, t).y),
             [10, 50, 100].map(t => 7 - 880 * MarginCat.slid(t, spring)));
         expect("as it sat", [Paths.frame(down, 50).x, Paths.frame(down, 50).pose], [100, null]);
+        const late = Paths.moves(seat(100), seat(900), world({ way: 1, ahead: 50 }));
+        expect("told of the slide late, it starts as far into it as niri's window has gone",
+            [0, 100].map(t => Paths.frame(late, t).y),
+            [50, 150].map(t => Paths.frame(down, t).y));
+        expect("and gets there as much sooner", Paths.frame(late, down.ends - 50).done, true);
+        expect("which is two and a half frames, as a GPU's niri showed at 60 and 120 Hz",
+            [MarginCat.behind(1000 / 60), MarginCat.behind(1000 / 120)], [42, 21]);
         const unseen = way => way.beats.filter(beat => beat.name !== "rides"
             && Math.max(beat.from.y, beat.to.y) < -8)
             .reduce((all, beat) => all + beat.ends - beat.begins, 0);
