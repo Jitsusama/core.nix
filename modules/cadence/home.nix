@@ -29,6 +29,11 @@
 # Each finding stays in findings.jsonl until its figure is back two days,
 # goes once to the owner `owners` names for it, and to the orchestrator
 # once more if it's still open past its date.
+#
+# Each Friday at 18:00, `cadence review` sends the week's noise (what
+# nobody acted on or came again, by sender) and blind spots (where the
+# axes and Joel's pains disagree) to the orchestrator and to the owner
+# `owners` names for `review`.
 {
   config,
   lib,
@@ -38,6 +43,11 @@
 let
   cfg = config.jitsusama.cadence;
   package = pkgs.callPackage ./package.nix { };
+  # Who Friday's review goes to: the orchestrator, and the owner of `review`.
+  reviewed = lib.filter (address: address != null) [
+    cfg.orchestrator
+    (cfg.owners.review or null)
+  ];
   asking = lib.optionals (cfg.watcher != null && cfg.orchestrator != null) [
     "--watcher"
     cfg.watcher
@@ -93,7 +103,8 @@ in
         prefix of its key, the longest matching: `crashes:biome`,
         `failed:quickshell.service`, `pressure.cpu.jobs`, `oom.machine`,
         `switch.minutes.longest`. A finding no prefix matches goes to the
-        watcher.
+        watcher. The key `review` names who gets Friday's `cadence review`
+        beside the orchestrator.
       '';
     };
     revive = {
@@ -178,6 +189,42 @@ in
         Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
         Slice = "background.slice";
       };
+    };
+    systemd.user.services.cadence-review = {
+      Unit.Description = "Reviews the week's noise and blind spots";
+      Service = {
+        Type = "oneshot";
+        ExecStart = lib.escapeShellArgs (
+          [
+            (lib.getExe package)
+            "review"
+          ]
+          ++ lib.concatMap (address: [
+            "--to"
+            address
+          ]) reviewed
+        );
+        # git and systemctl, for the axes it reads beside the week. niri's
+        # windows go unread, as the service has no socket of his session's,
+        # which costs only scale's stand-in.
+        Environment = [
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.git
+              pkgs.systemd
+            ]
+          }"
+        ];
+        Slice = "background.slice";
+      };
+    };
+    systemd.user.timers.cadence-review = {
+      Unit.Description = "Reviews the week each Friday evening";
+      Timer = {
+        OnCalendar = "Fri *-*-* 18:00:00";
+        Persistent = true;
+      };
+      Install.WantedBy = [ "timers.target" ];
     };
     systemd.user.timers.cadence-day = {
       Unit.Description = "Reads the day each evening";

@@ -18,13 +18,42 @@ use serde::{Deserialize, Serialize};
 use crate::DAY;
 use crate::mesh;
 
-/// A mesh message, as far as the axes read one.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+/// A mesh message, as far as the axes and the week's review read one.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq)]
 pub struct Note {
     pub id: String,
     pub intent: String,
     #[serde(default)]
     pub re: Option<String>,
+    /// Who sent it, for the review's noise by sender.
+    #[serde(default)]
+    pub from: String,
+    /// What it said, hashed, so a message sent again is seen without
+    /// keeping the text of a week of them.
+    #[serde(default, rename = "text", deserialize_with = "hashed")]
+    pub said: u64,
+}
+
+/// A message's text as its hash, or a hash kept from an earlier reading.
+fn hashed<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Said {
+        Text(String),
+        Hash(u64),
+    }
+    Ok(match Said::deserialize(d)? {
+        Said::Text(text) => fnv(&text),
+        Said::Hash(hash) => hash,
+    })
+}
+
+/// FNV-1a, which a toolchain update never changes, unlike std's hasher,
+/// so a kept hash still matches the same text read after one.
+fn fnv(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+    })
 }
 
 /// Every message sent since `since`, in seconds, under the mesh's `root`,
@@ -42,9 +71,10 @@ pub fn read(root: &Path, since: i64, kept: Option<&Path>) -> Vec<Note> {
     // message straight into the folder, named by when it was sent; a
     // message written both ways counts once. Either way a file is chosen
     // by the time in its name before it's opened.
-    let by_day = [since, since + DAY]
-        .iter()
-        .filter_map(|at| Timestamp::from_second(*at).ok())
+    // A week's review reads eight days' folders; a day's reading, two.
+    let by_day = (0..=8)
+        .map(|n| since + n * DAY)
+        .filter_map(|at| Timestamp::from_second(at).ok())
         .map(|at| folder.join(at.strftime("%Y-%m-%d").to_string()))
         .collect::<BTreeSet<PathBuf>>()
         .into_iter()

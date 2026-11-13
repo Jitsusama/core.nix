@@ -28,10 +28,14 @@
 //! to, each against its bar with its owner, and `cadence axes <axis>`
 //! steps into one (axes.rs).
 //!
+//! `cadence review`, run each Friday evening by a timer, sends the week's
+//! noise and blind spots to the addresses it's given (axes/review.rs).
+//!
 //!     cadence tick [--watcher ADDRESS --orchestrator ADDRESS]
 //!         [--restart WORDS [--revive ADDRESS]... [--skip ADDRESS]...]
 //!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
 //!     cadence axes [AXIS]
+//!     cadence review [--to ADDRESS]...
 
 mod asking;
 mod axes;
@@ -94,6 +98,7 @@ fn main() -> ExitCode {
         Some("tick") => {}
         Some("day") => return day(args),
         Some("axes") => return axes::run(args),
+        Some("review") => return axes::review::run(args),
         Some("owe") => {
             return match folders() {
                 Ok((_, _, folder)) => owe::run(args, &folder, now_ms() / 1000),
@@ -108,7 +113,8 @@ fn main() -> ExitCode {
                 "usage: cadence tick [--watcher ADDRESS --orchestrator ADDRESS] [--restart WORDS \
                  [--revive ADDRESS]... [--skip ADDRESS]...]\n       \
                  {DAY_USAGE}\n       \
-                 cadence axes [AXIS]\n       {}",
+                 cadence axes [AXIS]\n       \
+                 cadence review [--to ADDRESS]...\n       {}",
                 owe::USAGE
             );
             return ExitCode::from(2);

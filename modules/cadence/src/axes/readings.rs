@@ -682,6 +682,7 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             id,
             intent: intent.into(),
             re: re.map(str::to_owned),
+            ..Note::default()
         };
         let asked = format!("{old}-A-1-aa");
         let s = Sources {

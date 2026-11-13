@@ -46,6 +46,13 @@ than ask, since asking waits on the session's turn.
 `jitsusama.cadence.watcher` and `jitsusama.cadence.orchestrator` name them by
 their mesh addresses; with neither, it writes the card alone.
 
+Each Friday at 18:00, `cadence review` sends the orchestrator, and the
+session `jitsusama.cadence.owners` names for `review`, the week's noise
+and blind spots. Noise is, by sender, the notices, looks, landings and
+messages nobody acted on or that came again. Blind spots are pains Joel
+had in an area no reading from his side names, axes with no reading from
+his side, and readings in spec in an area his pains named that week.
+
 It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every
 orchestrator and every orchestrator's session whose pi died, on its own
