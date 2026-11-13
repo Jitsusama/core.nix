@@ -130,6 +130,30 @@ Scope {
         });
     }
 
+    // A watch asked otherwise, as one paced while the launcher's shut and
+    // unpaced once it opens, is sent again, the same watch told at once
+    // what it held back. Paced by a frame, it's sent once the frame is
+    // drawn, since the opening draws from what's held. Not sent again,
+    // Agents' top level stayed told at most every ten seconds with the
+    // launcher open, so a parked orchestrator woken read as closed
+    // (2026-11-13). Said as text, so a binding giving the same watch anew
+    // sends nothing.
+    readonly property string watchingSaid: JSON.stringify(watching)
+    onWatchingSaidChanged: {
+        if (wire === null || !watched)
+            return;
+        if (paced === null) {
+            watchAll();
+            return;
+        }
+        const begun = watchesBegun;
+        const said = watchingSaid;
+        paced.afterFrame(() => {
+            if (begun === watchesBegun && said === watchingSaid && wire !== null && watched)
+                watchAll();
+        });
+    }
+
     // Reads its kind whole once now, as a daemon reads it when watched,
     // though nothing shows it: for what's made from what's held while
     // the launcher is closed, as what's inside the battery is. A daemon
