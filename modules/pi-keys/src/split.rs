@@ -56,8 +56,14 @@ pub fn windows(
     keys: usize,
     seed: u64,
 ) -> Vec<Part<(u64, Packages)>> {
-    let _ = (path, held, installs, frame, keys, seed);
-    Vec::new()
+    parts(
+        path,
+        held,
+        |h| (h.window, installs(h.pi)),
+        frame,
+        keys,
+        seed,
+    )
 }
 
 /// The keys of the stretches grouped by `key`, each group modelled over
@@ -215,7 +221,11 @@ mod tests {
             100,
             7,
         );
-        assert_eq!(split.len(), 1, "one window, left and come back to: {split:?}");
+        assert_eq!(
+            split.len(),
+            1,
+            "one window, left and come back to: {split:?}"
+        );
         assert_eq!(split[0].seconds, 1.5, "a second and half a second");
     }
 }
