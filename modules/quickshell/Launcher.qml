@@ -4670,6 +4670,7 @@ Scope {
         const began = Date.now();
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
+        const collected = Heap.collected();
         if (held.length > 0 && row.given) {
             ask(row);
             return true;
@@ -4738,7 +4739,7 @@ Scope {
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now() });
-        keyTimed(`\u2192 ${row.name}`, began, heard, pressed);
+        keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return true;
     }
 
@@ -5950,8 +5951,12 @@ Scope {
     // `pressed` is KeyTimes.pressed() read as the key was heard, since a key
     // searched later, with others typed at once, is timed after KeyTimes has
     // let its press go.
-    function keyTimed(typed, began, heard, pressed) {
-        keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began,
+    // `collected` is the collector's time as the key was heard (Heap), so
+    // its line says how much of the key was the collector's: Joel's
+    // slowest keys waited on it, traced in the lab (2026-11-12), and his
+    // own line says which.
+    function keyTimed(typed, began, heard, pressed, collected) {
+        keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
             searched: Date.now() - began, parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, heard,
             done: KeyTimes.now() }]);
@@ -6030,7 +6035,8 @@ Scope {
         trials.timed(newest.searched, drawn - newest.began, newest.parts, newest.text,
             Object.assign({
                 waiting: Math.round(newest.begun - newest.done),
-                drawing: Math.round(shown - newest.begun)
+                drawing: Math.round(shown - newest.begun),
+                collecting: Math.round(Heap.collected() - newest.collected)
             }, frameSplit(newest, shown)));
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
@@ -6160,12 +6166,13 @@ Scope {
         const began = Date.now();
         const heard = KeyTimes.now();
         const pressed = KeyTimes.pressed();
+        const collected = Heap.collected();
         searchParts = null;
         // What the glide it sets going is timed from, as the key is.
         movingFrom = pressed > 0 ? pressed : heard;
         current = to;
         movingFrom = 0;
-        keyTimed(arrow, began, heard, pressed);
+        keyTimed(arrow, began, heard, pressed, collected);
     }
     property real movingFrom: 0
 
@@ -6608,7 +6615,7 @@ Scope {
     property var keysDue: []
     property bool searchedThisTurn: false
     function searchSoon(text, began, heard, pressed) {
-        keysDue = keysDue.concat([{ text, began, heard, pressed }]);
+        keysDue = keysDue.concat([{ text, began, heard, pressed, collected: Heap.collected() }]);
         if (searchedThisTurn)
             return;
         searchedThisTurn = true;
@@ -6647,7 +6654,8 @@ Scope {
             Object.assign(searchParts, Awaited.waitedOf(waited, Date.now(), answersWaitedFor,
                 waited.timedOut === true));
         if (!asking)
-            due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed));
+            due.forEach(key => keyTimed(key.text, key.began, key.heard, key.pressed,
+                key.collected));
     }
 
     // How long a key's list waits for the sources whose search awaits a

@@ -70,7 +70,17 @@ Scope {
                     + `${parts.waited ? `, waiting ${parts.waited} on answers${behind(parts)}`
                         : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
-                    + " drawing it" + drawingApart(frame) : ""));
+                    + " drawing it" + drawingApart(frame) + collecting(frame, drawn) : ""));
+    }
+
+    // How much of the key, from its being heard to its frame, Qt's
+    // collector spent, in slices between the launcher's own work or all
+    // at once, said even when none, so a slow key it didn't hold says so.
+    // Said of the key's whole time, which the collector's may fall in any
+    // part of.
+    function collecting(frame, drawn) {
+        return frame.collecting === undefined ? ""
+            : `, the collector ${frame.collecting} ms of the ${drawn}`;
     }
 
     // How much of a key's wait for answers was past its bound, behind the
