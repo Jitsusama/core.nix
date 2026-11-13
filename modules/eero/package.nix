@@ -1,6 +1,7 @@
 # eero, built from this directory, its tests run as it builds. Its rows take
-# the form every daemon's do (../ready-rows), so the source is cut from the
-# modules folder holding both, and built from this one.
+# the form every daemon's do (../ready-rows), and its command line the
+# shape every command's does (../terminal-kit), so the source is cut from
+# the modules folder holding them, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "eero";
@@ -22,6 +23,8 @@ rustPlatform.buildRustPackage rec {
       ./tests/rows.json
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/eero";

@@ -78,10 +78,7 @@ pub enum View {
 pub const VIEWS: [(&str, &str); 14] = [
     ("status", "the home network at a glance"),
     ("nodes", "every node: state, backhaul, devices, firmware"),
-    (
-        "node",
-        "one node: backhaul, radios, ports, addresses, devices",
-    ),
+    ("node", "one node: its backhaul, radios, ports and devices"),
     ("mesh", "the nodes as a tree from the gateway"),
     ("devices", "every device on now, under its node"),
     ("device", "one device: every figure eero has for it"),
