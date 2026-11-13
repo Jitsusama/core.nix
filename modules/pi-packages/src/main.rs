@@ -13,7 +13,7 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
-use terminal_kit::{Context, Exit, Failure, Format, Help};
+use terminal_kit::{Context, Exit, Failure, Format, Help, Room, layout};
 
 use pi_packages::ask::{Asked, asked};
 use pi_packages::config::{Config, Package};
@@ -96,12 +96,34 @@ fn answer(
             .iter()
             .try_for_each(|(kind, fields)| context.line(kind, fields)),
         format if format.is_json() => context.answer(whole),
-        _ => context.say(
-            &text
-                .iter()
-                .fold(String::new(), |said, line| said + line + "\n"),
-        ),
+        _ => context.say(&text.iter().fold(String::new(), |said, line| {
+            said + &fitted(line, context.room) + "\n"
+        })),
     })
+}
+
+/// How far in a line's words go on when its lead is too long to hang under.
+const INSET: usize = 4;
+
+/// A line set to the room: wrapped under the words after its lead, a
+/// package's name or the hold, while that lead takes half the room at most,
+/// and a few cells in past that. Into a pipe it's the line as it was.
+fn fitted(line: &str, room: Room) -> String {
+    let Some(cells) = room.cells() else {
+        return line.to_owned();
+    };
+    if layout::width(line) <= cells {
+        return line.to_owned();
+    }
+    match line.split_once(": ") {
+        Some((lead, rest)) if layout::width(lead) + 2 <= cells / 2 => {
+            format!(
+                "{lead}: {}",
+                layout::hung(rest, layout::width(lead) + 2, room)
+            )
+        }
+        _ => layout::hung(line, INSET, room),
+    }
 }
 
 /// A moment in RFC 3339.
@@ -405,4 +427,68 @@ fn status(context: &Context, config: &Config) -> Result<(), Failure> {
         }),
         &lines,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HELD: &str = "swaps are held until released: a demo of the launcher at three, \
+                        so nothing moves under it";
+
+    #[test]
+    fn a_long_line_wraps_under_the_words_after_its_lead() {
+        let line = "example.com/harness: not updated: its mirror couldn't be fetched from \
+                    example.com, which didn't answer";
+        let lines: Vec<String> = fitted(line, Room::Cells(60))
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let lead = "example.com/harness: ".len();
+        assert!(lines.len() > 1, "it should wrap at 60: {lines:?}");
+        for line in &lines {
+            assert!(layout::width(line) <= 60, "{line:?} runs past 60");
+        }
+        for line in &lines[1..] {
+            assert_eq!(
+                &line[..lead],
+                " ".repeat(lead),
+                "{line:?} should hang under its lead"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lead_past_half_the_room_hangs_a_few_cells_in() {
+        let lines: Vec<String> = fitted(HELD, Room::Cells(60))
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        assert!(lines.len() > 1, "it should wrap at 60: {lines:?}");
+        for line in &lines[1..] {
+            assert!(
+                line.starts_with("    ") && !line.starts_with("     "),
+                "{line:?} should start 4 in"
+            );
+        }
+    }
+
+    #[test]
+    fn into_a_pipe_a_line_is_as_it_was() {
+        assert_eq!(
+            fitted(HELD, Room::Unbounded),
+            HELD,
+            "a pipe should take the line whole"
+        );
+    }
+
+    #[test]
+    fn a_line_that_fits_is_left_alone() {
+        let line = "example.com/harness: current is 0123abcd";
+        assert_eq!(
+            fitted(line, Room::Cells(60)),
+            line,
+            "a short line should stay as it is"
+        );
+    }
 }
