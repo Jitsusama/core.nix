@@ -30,6 +30,10 @@
 //!
 //! Times go out as the harness wrote them, and the shell words them
 //! (clock.rs).
+//!
+//! Long because its cases are most of it: each of what a landing, its
+//! drawer and its try say is held to one, and the making is one pass
+//! over the landings that splitting would make two files reading alike.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
@@ -745,7 +749,8 @@ mod tests {
         let titles = HashMap::from([("QEST-1", "The Lighthouse Quest")]);
         drawn(&mut records, &words(), &titles);
         assert_eq!(
-            drawer_of(&records, 0)["eyebrow"][0]["said"], "The Lighthouse Quest",
+            drawer_of(&records, 0)["eyebrow"][0]["said"],
+            "The Lighthouse Quest",
             "a session named only by its address is named by the quest it landed for"
         );
     }
@@ -794,7 +799,8 @@ mod tests {
             "who landed it by its session's title, when as a time the shell words, its ids folded"
         );
         assert_eq!(
-            drawer_of(&records, 1)["eyebrow"][0]["said"], "The Lighthouse Quest",
+            drawer_of(&records, 1)["eyebrow"][0]["said"],
+            "The Lighthouse Quest",
             "a session ended named by the quest it landed for, never its address"
         );
         let unknown = drawer_of(&records, 2);
@@ -825,7 +831,10 @@ mod tests {
     /// The drawer the `at`th landing names, served apart from it.
     fn drawer_of(records: &[Value], at: usize) -> &Value {
         let key = &records[at]["landed"]["drawer"];
-        assert!(key.is_string(), "a landing names its drawer by its key, not {key}");
+        assert!(
+            key.is_string(),
+            "a landing names its drawer by its key, not {key}"
+        );
         &records
             .iter()
             .find(|one| one["key"] == *key && one["kind"] == DRAWER)
@@ -843,8 +852,8 @@ mod tests {
         ];
         let read = Reading {
             at: BTreeMap::from([
-                ("GONE01 o#2 2026-11-11T10:00:00Z".to_owned(), Some(1000)),
-                ("GONE01 o#3 2026-11-11T09:00:00Z".to_owned(), None),
+                ("s o#2 2026-11-11T10:00:00Z".to_owned(), Some(1000)),
+                ("s o#3 2026-11-11T09:00:00Z".to_owned(), None),
             ]),
         };
         let (records, _) = landed(landings.iter(), &[], &read, now());
@@ -856,8 +865,14 @@ mod tests {
         assert_eq!(
             tries,
             [
-                (&json!("landed:agents:GONE01 o#1 2026-11-11T11:00:00Z"), &Value::Null),
-                (&json!("landed:agents:GONE01 o#2 2026-11-11T10:00:00Z"), &json!(1000)),
+                (
+                    &json!("landed:agents:s o#1 2026-11-11T11:00:00Z"),
+                    &Value::Null
+                ),
+                (
+                    &json!("landed:agents:s o#2 2026-11-11T10:00:00Z"),
+                    &json!(1000)
+                ),
             ],
             "the one waiting, then the one read with when; none read before when was kept, \
              none asking nothing"
