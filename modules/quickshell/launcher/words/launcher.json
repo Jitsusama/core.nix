@@ -1057,6 +1057,10 @@
       "glyph": "passwords",
       "ask": "which entry?",
       "empty": "No favourites, and nothing changed lately.",
+      "tells": {
+        "offWhy": "Off until every agent runs fenced: today each runs as you, so any of them could ask it for a password.",
+        "offFills": "Meanwhile, Return opens {browser}, where {manager}'s extension fills in sign-ins."
+      },
       "said": {
         "copying": "copying {title}'s {detail}\u2026",
         "copied": "copied {title}'s {detail} \u00b7 clears in {seconds} s",

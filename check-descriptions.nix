@@ -3316,6 +3316,11 @@
     launcher goes, its foot saying 1Password offers to fill it, with a stand-in for 1Password's
     manager
   '';
+  the-passwords-place-says-why-its-off-on-niri = ''
+    on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
+    and the place's one row each have a drawer saying why it's off and that Return opens a
+    stand-in Chrome, where 1Password's extension fills in sign-ins
+  '';
   the-passwords-show-every-figure-but-the-secret = ''
     each kind of entry wears its own mark, the favourites are listed first, then what changed
     lately, newest first, twenty at most, a row says its username at its side and names its
