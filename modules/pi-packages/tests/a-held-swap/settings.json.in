@@ -1,0 +1,16 @@
+{
+  "root": "@HERE@/packages",
+  "packages": [
+    {
+      "url": "https://example.com/harness",
+      "branch": "main"
+    },
+    {
+      "url": "https://example.com/notes",
+      "branch": "main"
+    }
+  ],
+  "git": "/run/missing/git",
+  "node": "/run/missing/node",
+  "pnpm": "/run/missing/pnpm"
+}

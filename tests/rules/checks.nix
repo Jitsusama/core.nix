@@ -247,6 +247,34 @@
             exits = 1;
           }
         ];
+        # One package swapped in and one not yet, under a hold whose reason
+        # wraps, put in place first as a person would.
+        pi-packages = [
+          {
+            args = [
+              "--config"
+              "@HERE@/settings.json"
+            ];
+            state = ../../modules/pi-packages/tests/a-held-swap;
+            first = [
+              [
+                "--config"
+                "@HERE@/settings.json"
+                "hold"
+                "the"
+                "launcher's"
+                "demo"
+                "at"
+                "three,"
+                "so"
+                "nothing"
+                "moves"
+                "under"
+                "it"
+              ]
+            ];
+          }
+        ];
         # A machine with logs still to send, and logs sent with no row.
         session-backup = [
           {
