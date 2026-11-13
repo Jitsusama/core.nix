@@ -12,17 +12,39 @@
 # Pictures that change by themselves between two runs of the same code, a
 # clock or a camera's moving pattern, are named in shots-that-move.txt
 # beside this file and listed apart, so they don't bury a real change. They
-# are drawn all the same, since a real change can land in one too.
+# are drawn all the same, since a real change can land in one too. Its help
+# and failures take the shape every command of ours does (docs/commands.md),
+# by hand.
 
-before=$1
-after=$2
+case ${1:-} in
+-h | --help)
+  cat << 'EOF'
+shots-changed  what changed on screen between two runs of a VM test
+
+EXAMPLES
+  shots-changed BEFORE AFTER         names each changed picture, and draws
+                                     it in shots-changed/
+  shots-changed BEFORE AFTER DRAWN   draws them in DRAWN instead
+
+EXIT
+  0   done
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+before=${1:-}
+after=${2:-}
 drawn=${3:-shots-changed}
 moving=@moving@
 margin=24
 
 [ -d "$before" ] && [ -d "$after" ] || {
-  echo "usage: shots-changed <before> <after> [<where to draw>]" >&2
-  exit 2
+  printf '%s\n' "shots-changed needs two folders of pictures" \
+    "  try  shots-changed --help" >&2
+  exit 64
 }
 mkdir -p "$drawn"
 

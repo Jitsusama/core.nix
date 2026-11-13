@@ -13,7 +13,9 @@
 # the one git names after -f, then checked against the file it signs, and
 # taken back when it doesn't verify: a refused confirmation leaves one, and a
 # Mac's Touch ID key hands back a well-formed signature with nothing in it
-# when nobody touches the sensor, and says it succeeded.
+# when nobody touches the sensor, and says it succeeded. Its help and
+# failures take the shape every command of ours does (docs/commands.md), by
+# hand.
 
 # Picks who signs, into signer, and their key, into key: SIGN_AS when it's
 # set, or else Joel when standard input is a terminal and the controlling
@@ -37,8 +39,8 @@ pick_signer() {
       agent_environment
       ;;
     *)
-      echo "$name: SIGN_AS must be joel or agent, not '$signer'." >&2
-      exit 2
+      printf '%s\n' "no signer called $signer" "  SIGN_AS says joel or agent" >&2
+      exit 78
       ;;
   esac
   if [ ! -f "$key" ]; then
@@ -78,7 +80,29 @@ check_signature() {
   fi
 }
 
+help() {
+  cat << EOF
+$name  signs for git with Joel's key, or the agents' when a harness drives it
+
+EXAMPLES
+  git commit -S              signs as whoever is at the keyboard
+  SIGN_AS=agent git commit   signs with the agents' key, which asks nothing
+
+EXIT
+  0   done
+  1   the key is missing, or its signature doesn't verify
+  78  SIGN_AS names nobody it signs as
+EOF
+}
+
 main() {
+  case "${1:-}" in
+  -h | --help)
+    help
+    exit 0
+    ;;
+  *) ;;
+  esac
   if [ "${1:-}" != -Y ] || [ "${2:-}" != sign ]; then
     exec "$real" "$@"
   fi

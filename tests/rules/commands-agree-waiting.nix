@@ -3,6 +3,7 @@
 # to agree. The check fails on a command breaking a point it doesn't wait on,
 # and on one waiting on a point it keeps, so the list only shrinks.
 {
+  "1password-in-its-unit" = [ "helps" ];
   a-call-is-on = [
     "kit"
     "exits"
@@ -21,6 +22,13 @@
     "kit"
     "helps"
   ];
+  bluetooth-pairing-seal = [ "helps" ];
+  boot-fell-back = [ "helps" ];
+  boot-fell-back-told = [ "helps" ];
+  boot-stopped = [
+    "inks"
+    "helps"
+  ];
   cadence = [
     "kit"
     "exits"
@@ -37,6 +45,8 @@
     "exits"
     "helps"
   ];
+  camera = [ "helps" ];
+  cargo-builds = [ "helps" ];
   changed-checks = [
     "kit"
     "helps"
@@ -59,6 +69,7 @@
     "kit"
     "helps"
   ];
+  chrony-network-servers = [ "helps" ];
   claude-plan-feed = [
     "kit"
     "helps"
@@ -84,6 +95,7 @@
     "exits"
     "helps"
   ];
+  collect = [ "helps" ];
   collector = [
     "kit"
     "helps"
@@ -92,6 +104,8 @@
     "kit"
     "helps"
   ];
+  console-setup = [ "helps" ];
+  declared-last = [ "helps" ];
   dictation = [
     "kit"
     "exits"
@@ -107,11 +121,14 @@
     "exits"
     "helps"
   ];
+  disk-guard-merged-on-github = [ "helps" ];
+  disk-order = [ "helps" ];
   eero = [
     "kit"
     "inks"
     "helps"
   ];
+  ergodox = [ "helps" ];
   file-preview = [
     "kit"
     "exits"
@@ -132,11 +149,13 @@
     "exits"
     "helps"
   ];
+  gnome-keyring-unlock = [ "helps" ];
   google = [
     "kit"
     "exits"
     "helps"
   ];
+  google-opens = [ "helps" ];
   google-people = [
     "kit"
     "exits"
@@ -163,6 +182,8 @@
     "exits"
     "helps"
   ];
+  inkscape-drawings = [ "helps" ];
+  ir-camera-pipeline = [ "helps" ];
   jobs-broker = [
     "kit"
     "exits"
@@ -177,6 +198,7 @@
     "exits"
     "helps"
   ];
+  launched = [ "helps" ];
   launcher = [
     "kit"
     "exits"
@@ -192,16 +214,20 @@
     "exits"
     "helps"
   ];
+  lid-held = [ "helps" ];
   load-proof = [
     "kit"
     "exits"
     "helps"
   ];
+  loader-first-in-boot-order = [ "helps" ];
   location = [
     "kit"
     "exits"
     "helps"
   ];
+  lock-for-sleep = [ "helps" ];
+  lock-screen = [ "helps" ];
   loopback-holders = [
     "kit"
     "exits"
@@ -222,6 +248,9 @@
     "exits"
     "helps"
   ];
+  mpv-command = [ "helps" ];
+  mpv-stopped = [ "helps" ];
+  mypy = [ "helps" ];
   network-revive = [
     "kit"
     "exits"
@@ -232,6 +261,10 @@
     "exits"
     "helps"
   ];
+  niri-deadline = [ "helps" ];
+  niri-off-cpu = [ "helps" ];
+  niri-off-cpu-as-root = [ "helps" ];
+  niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
     "kit"
     "exits"
@@ -261,6 +294,7 @@
     "exits"
     "helps"
   ];
+  option-rom-check = [ "helps" ];
   pain-points = [
     "kit"
     "exits"
@@ -289,6 +323,10 @@
     "exits"
     "helps"
   ];
+  pi-ask = [ "helps" ];
+  pi-carry = [ "helps" ];
+  pi-claude = [ "helps" ];
+  pi-host-down = [ "helps" ];
   pi-keys = [
     "kit"
     "exits"
@@ -296,12 +334,15 @@
   ];
   pi-packages = [
     "kit"
+    "exits"
     "helps"
   ];
+  pi-settings = [ "helps" ];
   pi-spawner = [
     "kit"
     "helps"
   ];
+  pi-verbs = [ "helps" ];
   plymouth-waits = [
     "kit"
     "helps"
@@ -315,11 +356,13 @@
     "exits"
     "helps"
   ];
+  qt-javascript-lint = [ "helps" ];
   quests = [
     "kit"
     "exits"
     "helps"
   ];
+  quickshell-starts-warm = [ "helps" ];
   reader = [
     "kit"
     "helps"
@@ -338,18 +381,23 @@
     "kit"
     "helps"
   ];
+  saves-while-open = [ "helps" ];
+  screen-kept = [ "helps" ];
   screen-text = [
     "kit"
     "exits"
     "helps"
   ];
+  se-keys = [ "helps" ];
   secret-asks = [
     "kit"
     "exits"
     "helps"
   ];
+  secure-boot-signed-check = [ "helps" ];
   session-backup = [
     "kit"
+    "exits"
     "helps"
   ];
   shaper = [
@@ -366,11 +414,13 @@
     "kit"
     "helps"
   ];
+  shots-changed = [ "helps" ];
   shutdown-status = [
     "kit"
     "exits"
     "helps"
   ];
+  sign = [ "helps" ];
   slack-people = [
     "kit"
     "exits"
@@ -396,10 +446,18 @@
     "exits"
     "helps"
   ];
+  ssh-askpass = [ "helps" ];
   surface-clock = [
     "kit"
     "helps"
   ];
+  swap-file-grows = [ "helps" ];
+  swayidle-away = [ "helps" ];
+  swayimg-command = [ "helps" ];
+  switch-system = [ "helps" ];
+  switch-system-as-root = [ "helps" ];
+  switch-system-known = [ "helps" ];
+  systemd-run = [ "helps" ];
   timekeeping = [
     "kit"
     "helps"
@@ -414,6 +472,7 @@
     "exits"
     "helps"
   ];
+  tpm-follows-a-firmware-update = [ "helps" ];
   tuple-call = [
     "kit"
     "exits"
@@ -424,6 +483,7 @@
     "exits"
     "helps"
   ];
+  update-to-main-the-launcher-is-in-use = [ "helps" ];
   vm-first = [
     "kit"
     "exits"
@@ -433,11 +493,13 @@
     "kit"
     "helps"
   ];
+  watchdog-wakes-again = [ "helps" ];
   whereabouts = [
     "kit"
     "exits"
     "helps"
   ];
+  wifi-power-save = [ "helps" ];
   wifid = [
     "kit"
     "helps"
@@ -456,6 +518,9 @@
     "exits"
     "helps"
   ];
+  xdg-open = [ "helps" ];
+  yubikey-keys = [ "helps" ];
+  yubikey-once-in = [ "helps" ];
   zathura-command = [
     "kit"
     "exits"
@@ -466,4 +531,5 @@
     "exits"
     "helps"
   ];
+  zoom-opens = [ "helps" ];
 }

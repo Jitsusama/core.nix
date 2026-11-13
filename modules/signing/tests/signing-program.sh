@@ -101,8 +101,8 @@ grep -qF "joel's signature doesn't verify, so nothing was signed." "$work/said" 
 grep -qF "SIGN_AS=agent" "$work/said" || fails "didn't say the agents' key signs without asking"
 
 sign env SIGN_AS=nobody setsid -w "$BASH" -c "$signing < /dev/null"
-((status == 2)) || fails "took SIGN_AS=nobody"
-grep -qF "SIGN_AS must be joel or agent, not 'nobody'." "$work/said" \
+((status == 78)) || fails "took SIGN_AS=nobody, or refused it with $status, not 78"
+grep -qF "no signer called nobody" "$work/said" \
   || fails "refused SIGN_AS=nobody without saying why: $(cat "$work/said")"
 
 rm "$work/agent-signing"

@@ -1,5 +1,5 @@
-# The check that every command a repository's crates build keeps the
-# convention docs/commands.md sets, for core and for any repository built on
+# The check that every command a repository's crates and script wrappers
+# build keeps the convention docs/commands.md sets, for core and for any repository built on
 # it, as `core.lib.commandsAgree pkgs`: commands-agree.py, beside this, says
 # what each point holds.
 {
@@ -9,8 +9,8 @@
   writeText,
 }:
 {
-  # The repository's tree, as its flake sees it, whose crates build the
-  # commands.
+  # The repository's tree, as its flake sees it, whose crates and Nix
+  # wrappers build the commands.
   src,
   # The commands on the terminal kit, built, by name: the check runs each
   # for its help, so every one on the kit is given here.

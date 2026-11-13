@@ -8,7 +8,8 @@ it off, and nothing new goes on. `checks.nix` runs all ten on core itself.
 `daemons-agree` reads an evaluated account's units rather than the files
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
-given those commands built, and runs on Linux, where the first builds.
+given those commands built, and runs on Linux, where the first builds. It
+reads the scripts Nix wrappers build as well as the crates' programs.
 Every rule is also given to other repositories built on core, through
 `core.lib` in `flake.nix`, with a waiting list of their own.
 
