@@ -1,0 +1,122 @@
+A host keeps one factory for each extension file, whichever folder loads it.
+
+pi caches the factories it loads for one folder and empties the cache
+whenever a load comes from another, with jiti's module cache off. A host
+opens and wakes conversations in many folders, so each open or wake in a
+folder other than the last evaluated every extension's modules again: the
+host's loop stalled for seconds each time and its memory grew with every
+copy. The folder reaches an extension only through the API its factory is
+given, so one cache now serves every folder, keyed by the file the
+extension's path resolves to: folders loading the same file share its
+factory, and a folder's own extension, another file, stays its own. Each
+extension made from a factory holds it and the cache holds it weakly, so
+it stays while any live conversation holds its extensions, and the copy a
+moved link pointed at goes once its last conversation ends rather than
+living until a reload. A reload still empties the cache, and a load begun
+before one caches nothing after it.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -16,7 +16,7 @@
+ import type { KeyId } from "@earendil-works/pi-tui";
+ import type { createJiti } from "jiti";
+ import { CONFIG_DIR_NAME, getAgentDir, isBunBinary, isBundledNode } from "../../config.ts";
+-import { pathsEqual, resolvePath } from "../../utils/paths.ts";
++import { resolvePath } from "../../utils/paths.ts";
+ import { createEventBus, type EventBus } from "../event-bus.ts";
+ import type { ExecOptions } from "../exec.ts";
+ import { execCommand } from "../exec.ts";
+@@ -135,28 +135,41 @@
+ 
+ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
+ 
+-let extensionCacheCwd: string | undefined;
++// pi-host: one cache for the process, keyed by the file an extension's path
++// resolves to, rather than one folder's emptied whenever the folder changed.
++// A host opens and wakes conversations in many folders, and that slot made
++// each open or wake in another folder evaluate every extension's modules
++// again. The folder reaches an extension only through the API its factory is
++// given, so one factory serves every folder that loads the same file, and a
++// folder's own extension, another file, stays its own. The cache holds a
++// factory weakly and each extension made from it holds it, so it stays while
++// any live conversation holds its extensions, and a copy whose link moved on
++// goes once its last conversation ends rather than living until a reload.
+ let extensionCacheGeneration = 0;
+-const extensionCache = new Map<string, ExtensionFactory>();
++const extensionCache = new Map<string, WeakRef<ExtensionFactory>>();
++// What keeps a factory alive: the extensions made from it.
++const madeBy = Symbol("pi-host.extension-factory");
+ 
+ interface ExtensionCacheToken {
+ 	cwd: string;
+ 	generation: number;
+ }
+ 
++// Forgets the factories no extension holds any longer.
++function forgetCollectedFactories(): void {
++	for (const [file, factory] of extensionCache) {
++		if (factory.deref() === undefined) extensionCache.delete(file);
++	}
++}
++
+ export function clearExtensionCache(): void {
+ 	extensionCache.clear();
+-	extensionCacheCwd = undefined;
+ 	extensionCacheGeneration++;
+ }
+ 
+ function useExtensionCacheCwd(cwd: string): ExtensionCacheToken {
+-	const resolvedCwd = resolvePath(cwd);
+-	if (extensionCacheCwd !== undefined && !pathsEqual(extensionCacheCwd, resolvedCwd)) {
+-		clearExtensionCache();
+-	}
+-	extensionCacheCwd = resolvedCwd;
+-	return { cwd: resolvedCwd, generation: extensionCacheGeneration };
++	forgetCollectedFactories();
++	return { cwd: resolvePath(cwd), generation: extensionCacheGeneration };
+ }
+ 
+ /**
+@@ -560,14 +573,16 @@
+ function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cacheToken is ExtensionCacheToken {
+ 	return (
+ 		cacheToken !== undefined &&
+-		extensionCacheCwd === cacheToken.cwd &&
+ 		extensionCacheGeneration === cacheToken.generation
+ 	);
+ }
+ 
+ async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
++	// pi-host: the file the link points at now, which keys the cache and is
++	// what the import loads.
++	const file = fs.realpathSync(extensionPath);
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		const cachedFactory = extensionCache.get(extensionPath);
++		const cachedFactory = extensionCache.get(file)?.deref();
+ 		if (cachedFactory) {
+ 			return cachedFactory;
+ 		}
+@@ -590,13 +605,13 @@
+ 	// pi-host: import the file the link points at now, so an extension whose
+ 	// link moved since the host started loads its new copy and that copy's
+ 	// helpers, rather than resolving them through the copy it first loaded.
+-	const module = await jiti.import(fs.realpathSync(extensionPath), { default: true });
++	const module = await jiti.import(file, { default: true });
+ 	const factory = module as ExtensionFactory;
+ 	if (typeof factory !== "function") {
+ 		return undefined;
+ 	}
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		extensionCache.set(extensionPath, factory);
++		extensionCache.set(file, new WeakRef(factory));
+ 	}
+ 	return factory;
+ }
+@@ -660,6 +675,7 @@
+ 		}
+ 
+ 		const extension = await initializeExtension(factory, extensionPath, resolvedPath, cwd, eventBus, runtime);
++		Object.defineProperty(extension, madeBy, { value: factory });
+ 
+ 		return { extension, error: null };
+ 	} catch (err) {
