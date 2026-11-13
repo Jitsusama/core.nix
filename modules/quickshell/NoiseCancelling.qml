@@ -20,10 +20,15 @@ Singleton {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/noise-cancelled.sock`
         kind: "trial"
+        // The trial's record says what runs now, so none is held once it
+        // isn't answering: held, a microphone's Noise Cancelling said the
+        // cleaner it ran last as though it still ran, and never offered
+        // to start it (2026-11-13).
+        keptThroughGap: false
     }
 
-    // The trial as the daemon says it, or null until it does, or when what
-    // it says isn't one.
+    // The trial as the daemon says it, or null until it does, while it
+    // isn't answering, or when what it says isn't one.
     readonly property var record: daemon.revision >= 0
         ? ByEar.whole(daemon.held["trial:now"] ?? null) : null
     // How the daemon stands, in Daemon.qml's words: "starting", its own,
