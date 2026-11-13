@@ -829,7 +829,18 @@ Singleton {
     }
     // Where a session reopened or handed over opens, { workspace, column }
     // by the workspace's id and the column from 1, or null to leave it to
-    // niri and the moves after: where it was kept, as the column whereBack
+    // niri and the moves after. One with an orchestrator goes home to it
+    // first, whatever its kept place says (Joel, 2026-11-13 16:32: "agent
+    // sessions only land on the workspace of their orchestrator"): its
+    // home is the address Places.homeOf reads, and that workspace is the
+    // one named for it, else the one its orchestrator's window sits on,
+    // found by who it is rather than by any number a boot gave it; one
+    // going there is `withKin`, so it's placed there after, never moved
+    // back to a place kept on a workspace its orchestrator has left. A
+    // home not open yet, as when a session comes back before its
+    // orchestrator, is made on the screen's empty workspace and named
+    // for it, so the orchestrator and its sessions gather there whichever
+    // comes first. With no home: where it was kept, as the column whereBack
     // says on a workspace there now (Places.opensAt), or, for one given a
     // workspace of its own, last on the one at its number on its screen,
     // else on that screen's last, as focusing them by number did; else its kin's
@@ -840,8 +851,16 @@ Singleton {
     // and moves, and nothing takes his focus to put it in place (Joel,
     // 2026-11-07: sessions started in the wrong workspaces). One kept on a
     // workspace not there now, or with a kin whose window isn't told apart
-    // from its kitty's yet, gives none, and is moved after.
-    function opensOn(one, at, beside) {
+    // from its kitty's yet, gives none, and is moved after. One with
+    // neither a kept place nor kin opens on the screen's empty workspace,
+    // never on the one Joel is on.
+    function opensOn(one, at, beside, home) {
+        const others = root.inUse(root.running).filter(session => session.here
+            && (session.window !== null || session.kitty !== null)
+            && session.presence.session !== one.id);
+        const homed = root.homeSpace(one, others, home ?? Places.homeOf(one, null));
+        if (homed !== null)
+            return homed;
         if (at !== null) {
             const where = Places.whereBack(at, beside);
             if (!where.make)
@@ -859,22 +878,52 @@ Singleton {
                 .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
             return { workspace: there.id, column: Math.max(0, ...columns) + 1 };
         }
-        const others = root.inUse(root.running).filter(session => session.here
-            && (session.window !== null || session.kitty !== null)
-            && session.presence.session !== one.id);
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
             orchestratedBy: one.orchestratedBy ?? "" };
         const kin = root.kinOf(others, asked);
         if (!kin?.window || !Niri.workspace(kin.window.workspace))
-            return null;
-        // Under its orchestrator, at its place in title order there.
-        const by = root.orchestratorOf(others, asked);
-        if (by !== "" && kin.presence.orchestrates === by) {
-            const under = others.filter(session => session.window
-                && session.presence.orchestratedBy === by).map(root.standing);
-            return Places.underOrchestrator(one.title ?? "", root.standing(kin), under);
-        }
+            return root.quietSpace();
         return { workspace: kin.window.workspace, column: null };
+    }
+    // The workspace a session goes home to, `home` being its orchestrator's
+    // address: the one named so, else its orchestrator's, in title order
+    // after it, else one made for it. Null with no home, or with one whose
+    // orchestrator's window isn't told apart from its kitty's yet, which is
+    // placed once it is (placeQuietly). The orchestrator itself goes to the
+    // workspace named for it when its sessions came back first, else to
+    // its own kept place.
+    function homeSpace(one, others, home) {
+        if (home === "")
+            return null;
+        const named = Object.values(Niri.workspaces).find(space => space.name === home);
+        if (one.address === home || one.orchestrates === home)
+            return named ? { workspace: named.id, column: null, withKin: true } : null;
+        const leader = others.find(session => session.presence.orchestrates === home
+            || (session.presence.addresses ?? []).includes(home));
+        const standing = leader?.window && Niri.workspace(leader.window.workspace)
+            ? root.standing(leader) : null;
+        const under = others.filter(session => session.window
+            && session.presence.orchestratedBy === home).map(root.standing);
+        if (standing !== null && (!named || named.id === standing.workspace))
+            return Object.assign(Places.underOrchestrator(one.title ?? "", standing, under),
+                { withKin: true });
+        if (named)
+            return { workspace: named.id, column: null, withKin: true };
+        if (leader)
+            return null;
+        const made = root.quietSpace();
+        if (made === null)
+            return null;
+        Niri.act({ SetWorkspaceName: { name: home, workspace: { Id: made.workspace } } });
+        return Object.assign(made, { withKin: true });
+    }
+    // The empty workspace niri keeps last on the screen in use, where a
+    // window opens out of Joel's way; null while that's the one he's on.
+    function quietSpace() {
+        const output = Niri.workspace()?.output ?? null;
+        const empty = output !== null ? root.lastOn(output) : null;
+        const there = empty !== null ? Niri.workspace(empty) : null;
+        return there && !there.is_focused ? { workspace: there.id, column: null } : null;
     }
     function placeQuietly(id, waiting) {
         const window = Niri.windows[id];
@@ -1282,6 +1331,10 @@ Singleton {
                 // title order (85PKB2, 2026-11-08 [051e6eea]).
                 orchestratedBy: typeof one.orchestratedBy === "string"
                     && /^[A-Z0-9]+$/.test(one.orchestratedBy) ? one.orchestratedBy : "",
+                // The workspace it goes home to, named for the orchestrator
+                // over its quest, else its quest (Places.homeOf).
+                workspace: typeof one.workspace === "string"
+                    && /^[A-Z0-9]+$/.test(one.workspace) ? one.workspace : "",
                 title: typeof one.title === "string" ? one.title : "",
                 // The model a restart asks for (the harness's quest spawn), passed
                 // to pi as it's said, and dropped when it's anything but a name.
@@ -1289,7 +1342,8 @@ Singleton {
                     ? one.model : "",
                 // What it was started with, passed on as reopened says.
                 env: one.env,
-                quiet: one.focus !== true }));
+                quiet: one.focus !== true,
+                focused: one.focus === true }));
         if (given.length === 0)
             return "refused: no session with an id and a folder";
         console.info(`sessions: reopening ${given.length} handed over`);
@@ -1520,15 +1574,22 @@ Singleton {
             // goes beside those given the same screen, a gone one's too.
             const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
                 column: next.at.column, tile: next.at.tile ?? 1 } : null;
-            // It opens where it goes when that's a workspace there now.
-            // Else where it goes is focused first, so it most often opens
-            // there and is seldom seen to move, but for one another session
-            // started, which never moves the focus.
+            // It opens where it goes, its orchestrator's workspace first
+            // (opensOn), and never where Joel is unless he asked for it by
+            // itself, handed over to be focused with no home and no place.
+            // Only with no workspace to open on is where it goes focused
+            // first, so it opens there and is seldom seen to move.
             const quiet = next.one.quiet === true;
-            const into = quiet || at !== null
-                ? root.opensOn(next.one, at, root.besideOf(reopening.placed)) : null;
-            const focuses = !quiet && into === null;
+            const home = Places.homeOf(next.one, next.kept);
+            const asked = next.one.focused === true && at === null && home === "";
+            const into = asked ? null
+                : root.opensOn(next.one, at, root.besideOf(reopening.placed), home);
+            // One going home is placed beside its kin there (placeQuietly),
+            // never moved back to a place kept elsewhere.
+            const homed = into?.withKin === true;
+            const focuses = !quiet && !homed && into === null;
             console.info(`sessions: reopening ${next.one.id}, kept at ${root.keptSaid(at)}, `
+                + (home !== "" ? `home ${home}, ` : "")
                 + (into !== null
                     ? `asked on ${root.spaceSaid(into.workspace)} column ${into.column ?? "last"}`
                     : focuses ? "its place focused" : "beside Joel"));
@@ -1544,10 +1605,11 @@ Singleton {
             } else if (focuses && reopening.back !== null) {
                 Niri.act({ FocusWindow: { id: reopening.back } });
             }
-            reopening.waiting = { classed: null, at, opened: null, said: false,
-                away: next.at?.away ?? null, kept: next.kept ?? null, quiet,
-                quest: next.one.quest ?? "", from: next.one.from ?? "", id: next.one.id,
-                orchestratedBy: next.one.orchestratedBy ?? "" };
+            reopening.waiting = { classed: null, at: homed ? null : at, opened: null,
+                said: false, away: next.at?.away ?? null, kept: next.kept ?? null,
+                quiet: quiet || homed, quest: next.one.quest ?? "", from: next.one.from ?? "",
+                id: next.one.id,
+                orchestratedBy: home !== "" ? home : next.one.orchestratedBy ?? "" };
             // The pace is counted from once it's begun and said, so the next
             // is said two seconds after however long this one took to start.
             // Its window's app id, which niri says as it opens, after this.

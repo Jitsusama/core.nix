@@ -40,7 +40,7 @@ from desktop_session import (
 from PIL import Image, ImageChops
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from desktop_session import Desktop, Json
     from test_driver.machine import BaseMachine
@@ -875,7 +875,81 @@ def test_the_shell_reopens_the_sessions_the_harness_hands_it(desktop: Desktop) -
         )
     finally:
         desktop.as_account("rm -f $XDG_RUNTIME_DIR/pi-stays; pkill -f 'sleep 60[0]'; true")
+    try:
+        goes_home_to_its_orchestrator(desktop, handing)
+    finally:
+        desktop.as_account(
+            "rm -f $XDG_RUNTIME_DIR/pi-stays ~/focus-events; pkill -f 'sleep 60[0]';"
+            " pkill -f 'event-strea[m]'; true"
+        )
         desktop.as_account("rm -rf ~/quay")
+
+
+def goes_home_to_its_orchestrator(
+    desktop: Desktop, handing: Callable[[dict[str, Any]], str]
+) -> None:
+    """Each session handed over opens on its orchestrator's workspace, never on Joel's.
+
+    After a boot, Reopen Them All opened sessions wherever their kept workspace's number had
+    gone, and those kept nowhere on the workspace Joel was on (Joel, 2026-11-13 16:32: "agent
+    sessions only land on the workspace of their orchestrator"). One whose orchestrator isn't
+    open yet gets a workspace named for it, made out of his way.
+    """
+    desktop.pi_session()
+    desktop.presence_says(
+        {
+            "session": "01a1face-test",
+            "addresses": ["TESTQA"],
+            "orchestrates": "TESTQA",
+            "owns": ["QEST-20261022-TESTQA"],
+            "groups": ["#desk"],
+        }
+    )
+    lead = desktop.window_titled(PI_WINDOW)
+    # The orchestrator on the second workspace, Joel on the first.
+    desktop.as_account(
+        f"niri msg action move-window-to-workspace --window-id {lead['id']} --focus false 2"
+        " && niri msg action focus-workspace 1"
+    )
+    # The shell knows the orchestrator's window there once the agents daemon keeps its place,
+    # which it pairs by the same records.
+    boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
+    deadline = time.monotonic() + 30
+    while True:
+        read = json.loads(desktop.as_account(f"cat {ARRANGED} 2>/dev/null || echo {{}}"))
+        if read.get("boots", {}).get(boot, {}).get("01a1face-test", {}).get("workspace") == 2:  # noqa: PLR2004
+            break
+        assert time.monotonic() < deadline, f"the orchestrator's place isn't kept: {read}"
+        time.sleep(1)
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    home = next(one["id"] for one in spaces if one["idx"] == 2)  # noqa: PLR2004
+    joels = next(one["id"] for one in spaces if one["is_focused"])
+    desktop.as_account("touch $XDG_RUNTIME_DIR/pi-stays")
+    watch_the_focus(desktop)
+    quay = "/home/jitsusama/quay"
+    answer = handing(
+        {
+            "sessions": [
+                {"id": "01b2-home", "cwd": quay, "workspace": "TESTQA"},
+                {"id": "01b2-said", "cwd": quay, "orchestratedBy": "TESTQA"},
+                {"id": "01b2-made", "cwd": quay, "workspace": "BEACON"},
+            ]
+        }
+    )
+    assert answer == "taken", answer
+    every = (
+        "[ $(niri msg --json windows | grep -o 'pi --session 01b2-[a-z]*' | sort -u | wc -l) = 3 ]"
+    )
+    desktop.machine.wait_until_succeeds(desktop.in_session(every), timeout=dt.timedelta(seconds=60))
+    spaces = json.loads(desktop.as_account("niri msg --json workspaces"))
+    made = next((one for one in spaces if one["name"] == "BEACON"), None)
+    assert made is not None, spaces
+    first = {one: first_on(desktop, f"pi --session 01b2-{one}") for one in ("home", "said", "made")}
+    # Each opened there, never on Joel's workspace first and moved after.
+    assert first == {"home": home, "said": home, "made": made["id"]}, (first, joels)
+    assert joels not in first.values(), (first, joels)
+    focused = next(one["id"] for one in spaces if one["is_focused"])
+    assert focused == joels, (focused, joels)
 
 
 def test_a_session_another_starts_leaves_every_key_where_joel_types(desktop: Desktop) -> None:
