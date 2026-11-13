@@ -240,12 +240,24 @@ Provider {
         // minute the shell heard no turn of, since a turn rightly makes
         // Time's and Today's rows again however late it's heard.
         function onDateChanged() {
-            Report.say("the clock turned a minute");
-            if (provider.wanted)
-                Qt.callLater(provider.retime);
-            else
-                provider.timeStale = true;
+            provider.minuteTurned();
         }
+    }
+
+    // A turn heard after the time was placed in the minute it turned to
+    // leaves nothing stale: a loaded machine can hear the clock's turn
+    // late, after an opening placed it, and marking it stale then made
+    // Time's and Today's rows again within the minute as Now's rows were
+    // come to (the-launcher-places-the-time-only-when-now-is-wanted,
+    // "said 1, meant 0", 2026-11-12).
+    function minuteTurned() {
+        Report.say("the clock turned a minute");
+        if (timedMinute === minuteNow())
+            return;
+        if (wanted)
+            Qt.callLater(retime);
+        else
+            timeStale = true;
     }
 
     Component.onCompleted: Qt.callLater(retime)
