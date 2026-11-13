@@ -260,7 +260,8 @@ the hold as that PR merges, or as a test ends once it's on main, and writes a
 finding for its owner in `~/.local/state/net/findings`. A check
 that fails before the revert too doesn't stop it, or one break on main
 would keep another in place. A revert whose checks no builder took is
-tried again as each round begins, until one does. A revert that won't
+tried again as each round begins, until one does, and so is one GitHub
+refused because main moved after its checks ran. A revert that won't
 apply, as when later merges built on the broken one, puts the test on the
 quarantine list below with the broken merge's PR as its owner and clears
 the hold, so the owner fixes it forward while switches go on. A test that
