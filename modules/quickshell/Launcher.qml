@@ -9377,8 +9377,8 @@ Scope {
     // first, then the rest; none that says what it holds itself, whose rows
     // home never wants.
     function wakingOrder() {
-        const named = id => sources.find(one => one.settings.name
-            === (Words.of(id).provider ?? id)) ?? null;
+        const named = Wanted.sourceNamed(sources, one => one.settings.name,
+            id => Words.of(id).provider ?? id);
         const place = id => {
             const category = placeNamed(id)?.category;
             return category ? { stands: category.stands ?? null, holds: holdings(category) }
