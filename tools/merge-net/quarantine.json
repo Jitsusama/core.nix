@@ -36,8 +36,12 @@
   {
     "at": 1794346052,
     "commit": "0d7ca1f2a8b290d6eabe8d2affd24cd0d1905de5",
-    "owner_pr": 2916,
-    "reason": "failed, then passed, at 0d7ca1f2a8b2",
+    "owner_pr": 3884,
+    "reason": "Agents' served top level holds no session's talks and no parked session yet; KP0L6A serves both and takes these off",
+    "subtests": [
+      "test_agents_resumes_a_closed_orchestrator_where_it_left_off_from_one_row",
+      "test_an_orchestrators_earlier_talks_say_how_each_went"
+    ],
     "test": "vm-desktop-launcher-finds-sessions"
   },
   {
@@ -218,13 +222,6 @@
     "owner_pr": 3908,
     "reason": "failed, then passed, at b2be6ae26c8f",
     "test": "vm-joel-comes-first"
-  },
-  {
-    "at": 1794543709,
-    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
-    "owner_pr": 3884,
-    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "test": "vm-desktop-moves-keep-their-window"
   },
   {
     "at": 1794545381,

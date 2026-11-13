@@ -388,20 +388,24 @@ def test_where_an_agents_title_is_cut_holds_still_as_its_side_changes(desktop: D
     def holds_still() -> None:
         """Open Agents on the long session and see its title's cut hold as its side shortens."""
         machine = desktop.machine
-        # Agents is opened once the agents daemon serves it, since a row coming while a place
-        # is open joins at its foot, below what's drawn, so the order he's reading holds.
+
+        # Agents is looked at until the agents daemon serves the session wanting Joel, then
+        # opened afresh, since a row coming while a place is open joins at its foot, below
+        # what's drawn, so the order he's reading holds.
+        def served(shown: Json) -> bool:
+            return shown["held"] == ["agents"] and any(
+                thing["is"] == "agent:TESTQC" and "needs you" in thing["reads"]
+                for thing in shown["things"]
+            )
+
         for _ in range(2):
+            desktop.launcher_left_closed()
             desktop.as_account("qs ipc call launcher toggle")
             desktop.launcher_ready()
             desktop.type_in("agents")
             desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Agents")
             machine.send_key("ret")
-            desktop.launcher_until(
-                lambda shown: any(thing["is"] == "agent:TESTQC" for thing in shown["things"])
-            )
-            if "Bootstrap" in str(laid_out(desktop)["rows"]):
-                break
-            desktop.close_launcher()
+            desktop.launcher_until(served)
 
         def its_row(says: str) -> Json | None:
             """Give the long session's row as it's drawn, once its right says this."""
