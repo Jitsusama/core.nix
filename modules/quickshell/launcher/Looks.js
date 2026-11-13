@@ -9,7 +9,7 @@
 // What a look is about, and how it stands, as the harness writes them, and
 // the one version of its file this reads.
 const KINDS = ["pr", "page", "file", "diff", "terminal"];
-const STATES = ["waiting", "opened", "cleared", "resolved"];
+const STATES = ["waiting", "opened", "cleared", "resolved", "expired"];
 const VERSION = 1;
 // What's read from a look's file only for the shell's own use, never
 // written back.
@@ -107,25 +107,42 @@ function taken(split, answered, saying) {
         how: saying(given[one.id].label), resolved: given[one.id].at }));
     return {
         waiting: split.waiting.filter(one => given[one.id]?.taken !== true),
+        reading: split.reading ?? [],
         history: Order.sorted(done.concat(split.history),
             Order.stream(one => one.resolved ?? one.since))
     };
 }
 
-// A look waiting since longer ago than QUIET_AFTER, as History holds it: gone quiet when its
-// time ran out, which History's side says. Its file still says it waits; nothing's written,
-// and the look as its file was read, kept to be read again, is left as it was.
+// A look waiting past its time, as History holds it: expired at its expiresAt, which the
+// harness gives one asking nothing (85PKB2, 2026-11-12), or gone quiet QUIET_AFTER after it
+// came, which History's side says. Its file still says it waits until a session of its quest
+// writes it expired; nothing's written here, and the look as its file was read, kept to be
+// read again, is left as it was.
 function quieted(one, now) {
-    const gone = one.state === "waiting" && one.since !== null && now - one.since > QUIET_AFTER;
+    if (one.state !== "waiting") {
+        return one;
+    }
+    const expires = ForYou.when(one.expiresAt);
+    if (expires !== null && now >= expires) {
+        return Object.assign({}, one, { state: "expired", resolved: expires });
+    }
+    const gone = one.since !== null && now - one.since > QUIET_AFTER;
     return gone ? Object.assign({}, one, { state: "quiet", resolved: one.since + QUIET_AFTER })
         : one;
 }
 
-// The looks folder's files, each { file, text }, as { waiting, history }: those waiting in the
-// order they came, the oldest first, the rest newest first by when each was resolved or went
-// quiet, as at `now`. One still being written, `*.writing`, or unreadable is left out. A file
-// whose text is as `kept.by` holds it isn't parsed again: an act changes one of Joel's 166, and
-// parsing all took 9 ms (2026-11-10).
+// Whether a look asks nothing of Joel, only to be seen, so it's to read rather than to look
+// at: the harness says so as `asks: false`, and one saying nothing asks (85PKB2, 2026-11-12).
+function asksNothing(one) {
+    return one.asks === false;
+}
+
+// The looks folder's files, each { file, text }, as { waiting, reading, history }: those
+// waiting that ask something, then those that ask nothing (To Read, VKCF3Z, 2026-11-12), each
+// in the order they came, the oldest first, the rest newest first by when each was resolved,
+// expired or went quiet, as at `now`. One still being written, `*.writing`, or unreadable is
+// left out. A file whose text is as `kept.by` holds it isn't parsed again: an act changes one of
+// Joel's 166, and parsing all took 9 ms (2026-11-10).
 function looks(files, kept, now) {
     const was = kept.by ?? {};
     const read = {};
@@ -139,9 +156,11 @@ function looks(files, kept, now) {
             return made === null ? null : quieted(made, now);
         }).filter(one => one !== null);
     kept.by = read;
+    const waits = listed.filter(one => one.state === "waiting");
     return {
-        waiting: Order.sorted(listed.filter(one => one.state === "waiting"),
+        waiting: Order.sorted(waits.filter(one => !asksNothing(one)),
             Order.smaller(one => one.since)),
+        reading: Order.sorted(waits.filter(asksNothing), Order.smaller(one => one.since)),
         history: Order.sorted(listed.filter(one => one.state !== "waiting"),
             Order.stream(one => one.resolved ?? one.since))
     };
