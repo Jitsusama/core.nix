@@ -52,6 +52,8 @@ and blind spots. Noise is, by sender, the notices, looks, landings and
 messages nobody acted on or that came again. Blind spots are pains Joel
 had in an area no reading from his side names, axes with no reading from
 his side, and readings in spec in an area his pains named that week.
+Last, it holds the newest day's figures against the day a week before,
+saying which moved by more than a fifth and their floor.
 
 It keeps the sessions up too. Given `jitsusama.cadence.revive.restart`,
 the words that start a session, each tick first starts again every

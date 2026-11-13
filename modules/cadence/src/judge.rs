@@ -204,7 +204,7 @@ fn times_said(times: u32) -> String {
 }
 
 /// A figure as the note says it: whole past ten, else to one place.
-fn round(value: f64) -> String {
+pub(crate) fn round(value: f64) -> String {
     if value.abs() >= 10.0 || value.fract() == 0.0 {
         format!("{value:.0}")
     } else {
