@@ -46,6 +46,7 @@
     "owner_pr": null,
     "reason": "failed, then passed, at 405fff7e09e7",
     "subtests": [
+      "test_a_programs_media_and_sound_work_its_real_player_and_its_stream",
       "test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
