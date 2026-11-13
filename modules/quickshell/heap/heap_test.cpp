@@ -1,7 +1,8 @@
 // What Heap says of a JavaScript engine's heap as it keeps a few hundred
 // thousand objects and then lets them go, each read after a collection, as
 // the launcher reads it: live grows by what's kept and falls once it's let
-// go, and the heap never holds less than is live in it. It exits 0 once
+// go, and the heap never holds less than is live in it; and the time the
+// collector has spent grows with each collection. It exits 0 once
 // all of it holds, and otherwise 1, saying what didn't.
 #include "heap.h"
 
@@ -42,6 +43,7 @@ int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     QJSEngine engine;
     Heap heap(&engine);
+    const double collectedFirst = heap.collected();
     const Weight empty = weighed(engine, heap);
     // Held from here, since the engine's global object takes no new names.
     QJSValue kept = engine.evaluate(
@@ -55,7 +57,9 @@ int main(int argc, char **argv) {
     }
     const Weight keeping = weighed(engine, heap);
     kept = QJSValue();
+    const double collectedBefore = heap.collected();
     const Weight letGo = weighed(engine, heap);
+    const double collectedAfter = heap.collected();
     const bool grows = expect("what's kept is live after a collection",
                               keeping.live - empty.live > KEPT_MB, empty, keeping);
     const bool falls = expect("what's let go isn't live after a collection",
@@ -63,5 +67,11 @@ int main(int argc, char **argv) {
     const bool holds = expect("the heap holds at least what's live in it",
                               keeping.held >= keeping.live && letGo.held >= letGo.live, keeping,
                               letGo);
-    return grows && falls && holds ? 0 : 1;
+    // Letting go of 20 MB takes the collector well over a microsecond,
+    // and each collection adds to what it's said to have spent.
+    const bool timed = collectedAfter > collectedBefore && collectedBefore > collectedFirst;
+    if (!timed)
+        std::fprintf(stderr, "FAIL the collector's time grows with each collection: %.3f, "
+                     "then %.3f, then %.3f ms\n", collectedFirst, collectedBefore, collectedAfter);
+    return grows && falls && holds && timed ? 0 : 1;
 }
