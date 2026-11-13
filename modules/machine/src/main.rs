@@ -354,10 +354,10 @@ impl Reader {
             records.extend(heat::sensors(&self.root, &mut self.sensors, Instant::now()));
         }
         if wants("zone") {
-            records.extend(heat::zones(&self.root));
+            records.extend(heat::zones(&self.root, &mut self.sensors, Instant::now()));
         }
         if wants("cooling") {
-            records.extend(heat::cooling(&self.root));
+            records.extend(heat::cooling(&self.root, &mut self.sensors, Instant::now()));
         }
         if wants("firmware") {
             records.extend(buses.firmware.iter().cloned());

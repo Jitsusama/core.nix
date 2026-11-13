@@ -39,6 +39,7 @@ pub struct Kept {
     files: HashMap<String, Option<String>>,
     slow: HashMap<String, (Instant, Value)>,
     slow_from: Duration,
+    file_slow_from: Duration,
 }
 
 impl Default for Kept {
@@ -48,6 +49,7 @@ impl Default for Kept {
             files: HashMap::new(),
             slow: HashMap::new(),
             slow_from: SLOW,
+            file_slow_from: Duration::MAX,
         }
     }
 }
@@ -372,7 +374,7 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
 
 /// Every thermal zone's record: its temperature, how it's governed, and
 /// the trip points where it acts, an unset one left out.
-pub fn zones(root: &Root) -> Vec<Value> {
+pub fn zones(root: &Root, _kept: &mut Kept, _now: Instant) -> Vec<Value> {
     let mut seen: HashMap<String, u32> = HashMap::new();
     let mut records = Vec::new();
     for zone in root.names(THERMAL) {
@@ -432,7 +434,7 @@ pub fn zones(root: &Root) -> Vec<Value> {
 
 /// Each kind of cooling device, alike ones together: how many there are,
 /// each one's state now, and the most any can reach.
-pub fn cooling(root: &Root) -> Vec<Value> {
+pub fn cooling(root: &Root, _kept: &mut Kept, _now: Instant) -> Vec<Value> {
     let mut kinds: BTreeMap<String, Vec<(u64, Option<u64>)>> = BTreeMap::new();
     let mut devices: Vec<(u32, String)> = root
         .names(THERMAL)
@@ -667,6 +669,65 @@ mod tests {
         std::fs::remove_dir_all(&folder).ok();
         assert_eq!(quick, json!(52.0), "read again once kept a while");
         assert_eq!(after, json!(52.0), "still kept after a quick pass");
+    }
+
+    /// A thermal zone's temperature and a cooling device's state that
+    /// are slow to read are read again only once kept `SLOW_KEPT`, as a
+    /// slow chip is: on Joel's laptop each is a call to the firmware, and
+    /// read each second they cost Heat about 30 ms of every second
+    /// (2026-11-13). Which counts as slow is set here, as for chips.
+    #[test]
+    fn a_slow_zone_or_cooling_state_is_read_again_only_once_kept_a_while() {
+        let folder = std::env::temp_dir().join(format!("machine-zones-{}", std::process::id()));
+        let zone = folder.join("sys/class/thermal/thermal_zone0");
+        let fan = folder.join("sys/class/thermal/cooling_device0");
+        for made in [&zone, &fan] {
+            std::fs::create_dir_all(made).expect("the folder is made");
+        }
+        let write = |file: &std::path::Path, says: &str| {
+            std::fs::write(file, says).expect("the file is written");
+        };
+        write(&zone.join("type"), "SEN1");
+        write(&fan.join("type"), "dell-smm-fan1");
+        write(&fan.join("max_state"), "2");
+        let says = |degrees: &str, state: &str| {
+            write(&zone.join("temp"), degrees);
+            write(&fan.join("cur_state"), state);
+        };
+        says("47000", "1");
+        let root = Root::new(&folder);
+        let read = |kept: &mut Kept, at: Instant| {
+            (
+                zones(&root, kept, at)[0]["temperature_c"].clone(),
+                cooling(&root, kept, at)[0]["states"][0].clone(),
+            )
+        };
+        let first = Instant::now();
+        let mut slow = Kept {
+            file_slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        let mut quick = Kept {
+            file_slow_from: Duration::MAX,
+            ..Kept::default()
+        };
+        read(&mut slow, first);
+        read(&mut quick, first);
+        says("52000", "2");
+        let soon = first + Duration::from_secs(1);
+        let after = (read(&mut slow, soon), read(&mut quick, soon));
+        let kept = read(&mut slow, first + SLOW_KEPT);
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(
+            after,
+            ((json!(47.0), json!(1)), (json!(52.0), json!(2))),
+            "the slow ones kept, the quick read"
+        );
+        assert_eq!(
+            kept,
+            (json!(52.0), json!(2)),
+            "the slow ones read once kept a while"
+        );
     }
 
     #[test]
