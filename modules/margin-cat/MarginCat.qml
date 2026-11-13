@@ -10,7 +10,13 @@
 // frame only as the column under it changes, and none at rest, so the
 // closed shell draws nothing for it. After ten minutes with
 // no keys it curls up asleep, one frame, and wakes as they come again; as
-// the screen unlocks it stretches, then sits.
+// the screen unlocks it stretches, then sits. Between, it's livelier the
+// less Joel is engaged (MarginCat.js's level): while he types, one small
+// move held a moment, about once a minute; ten seconds with no keys, mild
+// scenes a little more often; a minute, sometimes a stroll to the gutter
+// beside its column and back, on the same walk. Each step comes from an
+// idle timer, never a poll, a key ends any scene at once, and it keeps
+// still in Do Not Disturb.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -49,7 +55,93 @@ Scope {
     // Not For You's empty tray, which means nothing's for him (VKCF3Z
     // [a3b1144a]).
     readonly property var drawing: (stretching ? Theme.pixels.stretching
-        : asleep ? Theme.pixels.curled : Theme.pixels.nothingHere) ?? []
+        : asleep ? Theme.pixels.curled
+        : posed !== "" ? Theme.pixels[posed] ?? Theme.pixels.nothingHere
+        : Theme.pixels.nothingHere) ?? []
+    // How lively it may be, from how engaged Joel is: typing, paused ten
+    // seconds, idle a minute, asleep, or still in Do Not Disturb.
+    readonly property string lively: MarginCat.level({
+        paused: pausing.isIdle,
+        idle: idling.isIdle,
+        asleep: root.asleep,
+        quiet: Quiet.on
+    })
+    // The pose a scene holds now, by the theme's name, or "" for sitting.
+    property string posed: ""
+    // What's left of the scene under way, each beat as MarginCat.scene says.
+    property var beats: []
+    // Where a stroll asks the cat to walk, "gutter" or "column", or "" when
+    // none is under way; and whether a screen's cat took the walk, so a
+    // stroll nothing could take moves on rather than waiting.
+    property string strollTo: ""
+    property bool strollTaken: false
+
+    // Each level a fresh rest, so a key ends whatever scene was under way,
+    // a stroll included, and the cat sits at once.
+    onLivelyChanged: begin()
+
+    function begin(): void {
+        beating.stop();
+        beats = [];
+        posed = "";
+        strollTo = "";
+        const wait = MarginCat.rest(lively, Math.random());
+        if (wait === null) {
+            waiting.stop();
+        } else {
+            // Sooner by its settings' pace, as a test asks to see scenes.
+            waiting.interval = Math.max(1, Math.round(wait / (settings.pace ?? 1)));
+            waiting.restart();
+        }
+    }
+
+    // The next beat of the scene, or a fresh rest once it's done. A walk's
+    // beat goes to the screen whose cat takes it, which hands back the next
+    // as it sits; one nothing takes moves straight on.
+    function beat(): void {
+        if (beats.length === 0) {
+            begin();
+            return;
+        }
+        const next = beats[0];
+        beats = beats.slice(1);
+        if (next.walk === true) {
+            posed = "";
+            strollTaken = false;
+            strollTo = next.to;
+            if (!strollTaken)
+                beat();
+            return;
+        }
+        posed = next.pose;
+        beating.interval = next.ms;
+        beating.restart();
+    }
+
+    IdleMonitor {
+        id: pausing
+        timeout: root.settings.pauses ?? 10
+        respectInhibitors: false
+    }
+
+    IdleMonitor {
+        id: idling
+        timeout: root.settings.idles ?? 60
+        respectInhibitors: false
+    }
+
+    Timer {
+        id: waiting
+        onTriggered: {
+            root.beats = MarginCat.scene(root.lively, Math.random());
+            root.beat();
+        }
+    }
+
+    Timer {
+        id: beating
+        onTriggered: root.beat()
+    }
     // While the screen is shared, as a call shares it through the portal,
     // the cat isn't there to be seen: a layer niri keeps from a capture is a
     // black square in it, so home.nix's layer rule only covers the moment
@@ -68,7 +160,10 @@ Scope {
     // alone, and none while it's away for a share or the overview.
     readonly property var over: shared || Niri.overview ? null : Niri.current
     onOverChanged: Niri.wantTile("cat", over)
-    Component.onCompleted: Niri.wantTile("cat", over)
+    Component.onCompleted: {
+        Niri.wantTile("cat", over);
+        begin();
+    }
     Component.onDestruction: Niri.wantTile("cat", null)
 
     IdleMonitor {
@@ -169,10 +264,23 @@ Scope {
             }
             readonly property real cell: MarginCat.cell(Theme.gap, ratio) / ratio
             readonly property real size: Math.max(1, root.drawing.length) * cell
-            // Where it'd sit over the keys' column, and where it's drawn:
-            // there, a step of its walk, or still where it sat while it
-            // waits for the keys to rest.
-            readonly property var there: seat(column)
+            // Where it'd sit over the keys' column, or in the gutter beside
+            // it while a stroll has it there, and where it's drawn: there, a
+            // step of its walk, or still where it sat while it waits for the
+            // keys to rest.
+            // It reads nothing follow() writes, since a write there would
+            // work it out again inside its own change, a binding loop.
+            readonly property var there: column === null ? null
+                : strolled ?? seat(column)
+            // A stroll's: the gutter seat it walks to or sits at, or null for
+            // its column; whether the walk under way is a scene's, which
+            // hands the scene its next beat as it sits; and whether the next
+            // move of its seat walks rather than carries it there, hurried
+            // (true, a key bringing it back) or not (false), or null for a
+            // column moving, which carries it.
+            property var strolled: null
+            property bool handsBack: false
+            property var roams: null
             property var place: null
             // The walk under way, the window it walks to, and the step it's
             // on: its pose, by the theme's name, and the way it faces.
@@ -216,7 +324,12 @@ Scope {
                     return;
                 }
                 leaving.stop();
-                if (place === null || (going === null && wanted === sat)) {
+                if (place !== null && going === null && wanted === sat && roams !== null) {
+                    const hurried = roams;
+                    roams = null;
+                    resting.stop();
+                    walkFrom(hurried);
+                } else if (place === null || (going === null && wanted === sat)) {
                     resting.stop();
                     sat = wanted;
                     place = there;
@@ -225,6 +338,9 @@ Scope {
                         walkFrom(true);
                 } else if (going !== null || !resting.running || wanted !== waitingOn) {
                     halt();
+                    // Its gutter forgotten a moment later, outside this
+                    // change of `there`, which forgetting it changes again.
+                    Qt.callLater(endStroll);
                     place = { x: place.x, y: there.y };
                     waitingOn = wanted;
                     resting.restart();
@@ -236,6 +352,7 @@ Scope {
             // crouching again, or, setting off, after a thought of 150 to
             // 450 ms, so no two walks begin alike.
             function walkFrom(hurried: bool): void {
+                roams = null;
                 if (place === null || there === null)
                     return;
                 const plan = MarginCat.walk(place.x, there.x, {
@@ -251,6 +368,7 @@ Scope {
                     halt();
                     sat = wanted;
                     place = there;
+                    sits();
                     return;
                 }
                 if (going === null) {
@@ -300,6 +418,73 @@ Scope {
                 pose = "";
             }
 
+            // A scene's walk done, handing the scene its next beat.
+            function sits(): void {
+                if (!handsBack)
+                    return;
+                handsBack = false;
+                Qt.callLater(root.beat);
+            }
+
+            // A stroll ended by its column going or another's taking the
+            // keys: its gutter is forgotten, and the scene moves on rather
+            // than waiting on a walk that's gone.
+            function endStroll(): void {
+                strolled = null;
+                roams = null;
+                sits();
+            }
+
+            // A stroll's walk, where the scene says, taken only by the screen
+            // whose cat sits still over the column the keys are in: to the
+            // gutter beside it, then back over it, each with a thought and a
+            // crouch as any walk; or, as a key ends the scene (`to` ""),
+            // straight back over its column, hurried.
+            function stroll(to: string): void {
+                if (to === "") {
+                    handsBack = false;
+                    if (strolled !== null) {
+                        roams = true;
+                        strolled = null;
+                    }
+                    return;
+                }
+                if (place === null || going !== null || resting.running || wanted !== sat)
+                    return;
+                if (to === "column") {
+                    if (strolled === null)
+                        return;
+                    root.strollTaken = true;
+                    handsBack = true;
+                    roams = false;
+                    strolled = null;
+                    return;
+                }
+                const spot = MarginCat.gutter({
+                    column,
+                    across: modelData.width,
+                    marks: MarginMarks.drawn,
+                    cell: Theme.gap,
+                    wide: size,
+                    tall: size,
+                    air: cell
+                });
+                if (spot === null)
+                    return;
+                root.strollTaken = true;
+                handsBack = true;
+                roams = false;
+                strolled = spot;
+            }
+
+            Connections {
+                target: root
+
+                function onStrollToChanged() {
+                    window.stroll(root.strollTo);
+                }
+            }
+
             onThereChanged: follow()
 
             // Nowhere, once it's held a moment: niri can say a column moving
@@ -314,6 +499,7 @@ Scope {
                     if (window.there !== null)
                         return;
                     window.halt();
+                    window.endStroll();
                     resting.stop();
                     window.sat = window.wanted;
                     window.place = null;
@@ -339,6 +525,7 @@ Scope {
                         window.halt();
                         window.sat = window.goingTo;
                         window.place = window.there ?? window.place;
+                        window.sits();
                         return;
                     }
                     if (now.facing !== window.facing)
@@ -411,6 +598,8 @@ Scope {
                     cells: window.drawn.length,
                     lit: window.drawn.join("").split("#").length - 1,
                     hue: `${Theme.voice}`,
+                    pose: root.posed,
+                    strolling: handsBack || strolled !== null,
                     window: sat,
                     asleep: root.asleep,
                     stretching: root.stretching,
@@ -434,6 +623,9 @@ Scope {
             onAsleepChanged: say()
             readonly property bool stretching: root.stretching
             onStretchingChanged: say()
+            // A scene's pose changes nothing of its place, so it says so too.
+            readonly property string posed: root.posed
+            onPosedChanged: say()
             Component.onCompleted: {
                 follow();
                 say();

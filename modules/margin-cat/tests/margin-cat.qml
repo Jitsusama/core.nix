@@ -113,26 +113,20 @@ QtObject {
         expect("no beat is quicker than an eighth of a second",
             [...typed, ...paused].every(beats => beats.every(beat => beat.ms >= 125)), true);
 
-        // Where a stroll goes: the gutter beside its column, between two of
-        // the windows, sat as on a column's edge, and nowhere without one.
-        const others = (...columns) => columns;
-        expect("with no column beside it, there's nowhere to stroll",
-            MarginCat.gutter(at(column(100, 12, 400), { others: others() })), null);
+        // Where a stroll goes: the gutter beside its column, half niri's gap
+        // (the cell, 12) past its edge, sat as on a column's edge.
         expect("it strolls to the gutter on its right, over the gap's middle",
-            MarginCat.gutter(at(column(100, 12, 400),
-                { others: others(column(512, 12, 300)) })), { x: 502, y: 3 });
-        expect("or its left where nothing's on the right",
-            MarginCat.gutter(at(column(412, 12, 400),
-                { others: others(column(100, 12, 300)) })), { x: 402, y: 3 });
+            MarginCat.gutter(at(column(100, 12, 400))), { x: 502, y: 3 });
+        expect("or its left when the right's is off the screen",
+            MarginCat.gutter(at(column(600, 12, 396))), { x: 590, y: 3 });
         expect("never to a gutter off the screen",
-            MarginCat.gutter(at(column(600, 12, 400),
-                { others: others(column(1012, 12, 300)) })), null);
-        expect("but to its left when the right's is off the screen",
-            MarginCat.gutter(at(column(600, 12, 396),
-                { others: others(column(1012, 12, 300), column(100, 12, 488)) })), { x: 590, y: 3 });
-        expect("nor onto the margin's marks",
-            MarginCat.gutter(at(column(100, 12, 394),
-                { marks: 3, others: others(column(506, 12, 300)) })), null);
+            MarginCat.gutter(at(column(2, 12, 994))), null);
+        expect("or its left when the right's is under the margin's marks",
+            MarginCat.gutter(at(column(100, 12, 394), { marks: 3 })), { x: 90, y: 3 });
+        expect("nor onto the marks on either side",
+            MarginCat.gutter(at(column(494, 12, 12), { marks: 3 })), null);
+        expect("nor where its column leaves no room above",
+            MarginCat.gutter(at(column(100, 4, 400))), null);
 
         for (const failure of failures)
             console.warn(failure);
