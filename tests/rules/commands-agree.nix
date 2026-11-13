@@ -19,6 +19,12 @@
   # name, while it comes to agree. The check fails on a command breaking a
   # point it doesn't wait on, and on one waiting on a point it keeps.
   waiting ? { },
+  # What each command given here answers a person from a machine's state,
+  # by its name: a list of views, each the words after the program, as
+  # `args`, and the folder of stand-in state it reads, as `state`, whose
+  # config, state, cache, data and runtime folders are its XDG folders.
+  # Each is set at the widths its help is, and has to fit as help does.
+  views ? { },
   name ? "commands-agree",
 }:
 let
@@ -27,6 +33,7 @@ in
 runCommandLocal name { } ''
   ${lib.getExe python3} ${./commands-agree.py} ${src} \
     ${writeText "runs.json" (builtins.toJSON runs)} \
-    ${writeText "waiting.json" (builtins.toJSON waiting)}
+    ${writeText "waiting.json" (builtins.toJSON waiting)} \
+    ${writeText "views.json" (builtins.toJSON views)}
   touch $out
 ''

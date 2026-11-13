@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "heartbeat": @NOW-20@,
+  "says": "The disk at / is nearly full, with 18.0 GiB free of 900.0 GiB; at this rate it's critically full in 2 h 10 min.",
+  "filesystems": [
+    {
+      "path": "/",
+      "band": "nearly-full",
+      "free": 19327352832,
+      "total": 966367641600,
+      "size": 966367641600,
+      "used": 947040288768,
+      "forecast": 7800,
+      "fill_per_hour": 3221225472,
+      "full_at": @NOW+21600@,
+      "says": "The disk is nearly full, with 18.0 GiB free.",
+      "exhausted": false
+    },
+    {
+      "path": "/home/joel/.local/share/containers/storage",
+      "band": "healthy",
+      "free": 214748364800,
+      "total": 536870912000,
+      "size": 536870912000,
+      "used": 322122547200,
+      "forecast": null,
+      "fill_per_hour": null,
+      "full_at": null,
+      "says": "The disk is healthy, with 200.0 GiB free.",
+      "exhausted": false
+    }
+  ],
+  "cleared": [
+    {
+      "at": @NOW-5400@,
+      "kind": "target",
+      "path": "/home/joel/src/core.nix/modules/disk-guard/target",
+      "bytes": 6442450944,
+      "says": "Cleared a Rust build, ~/src/core.nix/modules/disk-guard/target (6.0 GiB of files)."
+    },
+    {
+      "at": @NOW-9000@,
+      "kind": "git-temporary",
+      "path": "/home/joel/src/world/.git/objects/pack/tmp_pack_Xk2Pq9",
+      "bytes": 1288490188,
+      "says": "Cleared what an unfinished git fetch left, ~/src/world/.git/objects/pack/tmp_pack_Xk2Pq9 (1.2 GiB of files)."
+    }
+  ],
+  "last": {
+    "at": @NOW-5400@,
+    "path": "/",
+    "band": "nearly-full",
+    "end": "freed enough",
+    "freed": 7730941132
+  },
+  "frozen": [],
+  "writer": null,
+  "notice": null,
+  "holders": [
+    {
+      "path": "/nix/store",
+      "bytes": 654982512640,
+      "says": "The Nix store holds 610.0 GiB, of which 42.0 GiB can be cleared now. It grew 9.0 GiB in 1 d."
+    },
+    {
+      "path": "/home/joel/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261112-0TUD09",
+      "bytes": 48318382080,
+      "says": "The quest Exquisite Command Lines for People and Machines holds 45.0 GiB; its quest is still open, or only just finished."
+    },
+    {
+      "path": "/home/joel/vms",
+      "bytes": 107374182400,
+      "says": "~/vms holds 100.0 GiB; you keep it: the virtual machines I test the installer on."
+    }
+  ],
+  "holders_at": @NOW-600@
+}

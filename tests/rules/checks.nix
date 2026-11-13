@@ -147,5 +147,20 @@
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
+    views = {
+      # A guard whose disk is nearly full, with the longest holders and
+      # clears it says, which is when its status is read.
+      disk-guard =
+        let
+          state = ../../modules/disk-guard/tests/a-full-disk;
+        in
+        [
+          { inherit state; }
+          {
+            args = [ "status" ];
+            inherit state;
+          }
+        ];
+    };
   };
 }

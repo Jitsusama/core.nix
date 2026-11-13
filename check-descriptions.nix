@@ -537,7 +537,9 @@
     exits only with the table's codes, spells no colour and answers --help with its name; and
     each command given it sets its help at 60, 80, 100 and 140 columns with no line past the
     edge, no wrap losing its inset or parting a figure from its unit, and none wider than at 80,
-    but the points each still waits on
+    and sets each view it's given, such as disk-guard's bare run and status from a nearly full
+    disk's stand-in, at those widths, exiting 0 with no line past the edge and no wrap losing
+    its inset or parting a figure, but the points each still waits on
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests

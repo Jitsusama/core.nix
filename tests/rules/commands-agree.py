@@ -1,6 +1,6 @@
 """Check that every command this repository builds keeps the convention docs/commands.md sets.
 
-    commands-agree TREE RUNS WAITING
+    commands-agree TREE RUNS WAITING VIEWS
 
 A command here is a program built from one of TREE's crates, by the crate's
 src/main.rs, its src/bin or a [[bin]] it declares. It agrees when:
@@ -16,7 +16,10 @@ src/main.rs, its src/bin or a [[bin]] it declares. It agrees when:
   and so without starting anything; and `--version` answers one line;
 - fits: its `--help`, set in a terminal 60, 80, 100 and 140 columns wide,
   runs no line past the edge, keeps each line's inset when it wraps, never
-  parts a figure from its unit across lines, and reads past 80 as at 80.
+  parts a figure from its unit across lines, and reads past 80 as at 80;
+  and each of its views, what it answers a person from a machine's state,
+  is set at those widths from stand-in state, exits 0, and fits as its help
+  does, short of reading past 80 as at 80, since a table may use the room.
 
 A script is a command too: a program a Nix file outside the tests builds
 with writeShellApplication or writeShellScriptBin, named by the wrapper, or
@@ -35,7 +38,14 @@ to run; a command on the kit has to be given, since its help is only proven
 by running it. WAITING is JSON naming, for each command that broke the
 convention before the rule, the points it breaks while it comes to agree. A
 command breaking a point it doesn't wait on fails, as does one waiting on a
-point it now keeps, so the list only shrinks. Every failure is printed before
+point it now keeps, so the list only shrinks. VIEWS is JSON naming, for a
+command given to run, the views to set: each its words after the program,
+and the folder of stand-in state it reads, if any. That folder's config,
+state, cache, data and runtime folders are the XDG folders the view is run
+with, copied so it may write; a file in them named X.in is written as X,
+each @NOW@ in it the time it's set, in seconds since the epoch, and each
+@NOW-N@ or @NOW+N@ that time N seconds before or after, so what the state
+says happened a while ago reads that way. Every failure is printed before
 the check exits 1, and the last line says how many agree.
 """
 
@@ -45,6 +55,8 @@ import os
 import pty
 import re
 import select
+import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -93,6 +105,21 @@ WIDTHS = (60, 80, 100, 140)
 # The widest prose is set however wide the terminal, so past it an answer
 # reads as it does here.
 MEASURE = 80
+
+# The folders of a view's stand-in state, by the XDG variable each is.
+XDG = {
+    "XDG_CONFIG_HOME": "config",
+    "XDG_STATE_HOME": "state",
+    "XDG_CACHE_HOME": "cache",
+    "XDG_DATA_HOME": "data",
+    "XDG_RUNTIME_DIR": "runtime",
+}
+
+# A time in a stand-in file, as it's set: now, or a number of seconds off it.
+NOW = re.compile(r"@NOW(?:([+-])(\d+))?@")
+
+# What a stand-in file's name ends with when it holds times to set.
+SET = ".in"
 
 # How the terminal is told what to draw, which takes no cells: a CSI
 # sequence, an OSC one ending in BEL or ST, and the carriage return a
@@ -285,22 +312,69 @@ def cells(line: str) -> int:
     )
 
 
-def rendered(program: str, width: int) -> str | None:
-    """Give a command's help as a terminal `width` columns wide shows it, or None past the time."""
+@dataclass(frozen=True)
+class View:
+    """One answer a command gives a person: its words, and the stand-in state it reads."""
+
+    args: tuple[str, ...]
+    state: Path | None = None
+
+    @property
+    def typed(self) -> str:
+        """Say it as it's typed after the program's name."""
+        return " ".join(self.args) if self.args else "with no words"
+
+
+# What every command is asked first, which reads no state.
+HELP = View(("--help",))
+
+
+@dataclass(frozen=True)
+class Run:
+    """A command the check is given built: the program to run, and its views."""
+
+    program: str
+    views: tuple[View, ...] = ()
+
+
+def stood_in(state: Path, into: Path) -> None:
+    """Copy a view's stand-in state into a folder it may write, setting each file's times."""
+    shutil.copytree(state, into, dirs_exist_ok=True)
+    # Copied from the store, it's read-only, and the command may write its
+    # state as it would at home.
+    for path in [into, *into.rglob("*")]:
+        path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    now = int(time.time())
+    for path in sorted(into.rglob(f"*{SET}")):
+        text = NOW.sub(
+            lambda found: str(now + (-1 if found[1] == "-" else 1) * int(found[2] or 0)),
+            path.read_text(),
+        )
+        path.with_name(path.name.removesuffix(SET)).write_text(text)
+        path.unlink()
+
+
+def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | None:
+    """Give a view as a `width`-column terminal shows it, and its exit; None past the time."""
     leader, follower = pty.openpty()
     fcntl.ioctl(follower, termios.TIOCSWINSZ, struct.pack("HHHH", 50, width, 0, 0))
-    with tempfile.TemporaryDirectory() as home:
+    with tempfile.TemporaryDirectory() as scratch:
+        home = Path(scratch) / "home"
+        home.mkdir()
+        if view.state is not None:
+            stood_in(view.state, Path(scratch))
         environment = {
-            "HOME": home,
+            "HOME": str(home),
             "PATH": os.environ.get("PATH", ""),
             "TERM": "xterm-256color",
             "COLUMNS": str(width),
             # Colour is the inks point's; this one reads only the words.
             "NO_COLOR": "1",
+            **{variable: str(Path(scratch) / folder) for variable, folder in XDG.items()},
         }
         # The program is one the check was given built, from Nix.
         child = subprocess.Popen(  # noqa: S603
-            [program, "--help"],
+            [program, *view.args],
             stdin=subprocess.DEVNULL,
             stdout=follower,
             stderr=subprocess.DEVNULL,
@@ -323,12 +397,12 @@ def rendered(program: str, width: int) -> str | None:
             said += chunk
         os.close(leader)
         try:
-            child.wait(max(deadline - time.monotonic(), 0))
+            code = child.wait(max(deadline - time.monotonic(), 0))
         except subprocess.TimeoutExpired:
             child.kill()
             child.wait()
             return None
-    return CONTROLS.sub("", said.decode(errors="replace"))
+    return CONTROLS.sub("", said.decode(errors="replace")), code
 
 
 def unfit(text: str, width: int) -> list[str]:
@@ -355,22 +429,34 @@ def unfit(text: str, width: int) -> list[str]:
     return [*wrong, *(said for said in (lost, parted) if said)]
 
 
-def fits(program: str) -> list[str]:
-    """Say how a command's help fails to fit the widths a terminal is opened at, if it does."""
+def fits(program: str, views: tuple[View, ...] = ()) -> list[str]:
+    """Say how a command's help and views fail to fit the widths a terminal is opened at."""
     wrong = []
-    at_measure = None
-    for width in WIDTHS:
-        text = rendered(program, width)
-        if text is None:
-            return [f"--help in a terminal took over {HELP_SECONDS} seconds"]
-        # Nothing said would fit any width, so it's a fault, not a pass.
-        if not text.strip():
-            return [f"--help in a terminal {width} columns wide said nothing"]
-        wrong.extend(unfit(text, width))
-        if width == MEASURE:
-            at_measure = text
-        elif width > MEASURE and text != at_measure:
-            wrong.append(f"at {width} it's set wider than at {MEASURE}, past a reading measure")
+    for view in (HELP, *views):
+        # Help is what every command is asked, so it goes unnamed.
+        whose = "" if view == HELP else f"{view.typed}: "
+        at_measure = None
+        for width in WIDTHS:
+            seen = rendered(program, width, view)
+            if seen is None:
+                wrong.append(f"{whose or '--help '}in a terminal took over {HELP_SECONDS} seconds")
+                break
+            text, code = seen
+            # A view that fails shows its failure, not what it's for.
+            if code != 0 and view != HELP:
+                wrong.append(f"{whose}exited {code} at {width}, so its stand-in isn't enough")
+                break
+            # Nothing said would fit any width, so it's a fault, not a pass.
+            if not text.strip():
+                wrong.append(f"{whose or '--help '}in a terminal {width} columns wide said nothing")
+                break
+            wrong.extend(f"{whose}{said}" for said in unfit(text, width))
+            if view != HELP:
+                continue
+            if width == MEASURE:
+                at_measure = text
+            elif width > MEASURE and text != at_measure:
+                wrong.append(f"at {width} it's set wider than at {MEASURE}, past a reading measure")
     return wrong
 
 
@@ -401,14 +487,15 @@ def spelled_breaks(text: str, whose: str) -> dict[str, list[str]]:
     return out
 
 
-def script_broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]]:
+def script_broken(command: Command, runs: dict[str, Run]) -> dict[str, list[str]]:
     """Give the points a script breaks, each with what was seen."""
     out = spelled_breaks(command.text or "", "it")
     if command.name in runs:
-        wrong = script_helps(command.name, runs[command.name])
+        run = runs[command.name]
+        wrong = script_helps(command.name, run.program)
         if wrong:
             out["helps"] = wrong
-        unfitting = fits(runs[command.name])
+        unfitting = fits(run.program, run.views)
         if unfitting:
             out["fits"] = unfitting
     else:
@@ -440,7 +527,7 @@ def helps(name: str, program: str) -> list[str]:
     return wrong
 
 
-def broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]]:
+def broken(command: Command, runs: dict[str, Run]) -> dict[str, list[str]]:
     """Give the points a command breaks, each with what was seen."""
     if command.is_script:
         return script_broken(command, runs)
@@ -455,10 +542,11 @@ def broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]]:
     if ESCAPES.search(code) or colours:
         out["inks"] = [f"it takes {', '.join(colours)}"] if colours else []
     if command.name in runs:
-        wrong = helps(command.name, runs[command.name])
+        run = runs[command.name]
+        wrong = helps(command.name, run.program)
         if wrong:
             out["helps"] = wrong
-        unfitting = fits(runs[command.name])
+        unfitting = fits(run.program, run.views)
         if unfitting:
             out["fits"] = unfitting
     else:
@@ -470,7 +558,7 @@ def broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]]:
 
 
 def judged(
-    found: list[Command], runs: dict[str, str], waiting: dict[str, list[str]], tree: Path
+    found: list[Command], runs: dict[str, Run], waiting: dict[str, list[str]], tree: Path
 ) -> tuple[list[str], int]:
     """Say every way the commands disagree with the convention, and how many agree."""
     out = []
@@ -484,7 +572,10 @@ def judged(
         )
         for point in sorted(set(breaks) - waits, key=POINTS.index):
             seen = "".join(f"; {words}" for words in breaks[point])
-            wrapper = all(words.startswith("its wrapper") for words in breaks[point])
+            # A point broken with nothing seen, as kit is, isn't the wrapper's.
+            wrapper = bool(breaks[point]) and all(
+                words.startswith("its wrapper") for words in breaks[point]
+            )
             fix = (SCRIPT_FIXES if command.is_script or wrapper else FIXES)[point]
             out.append(f"{command.name} ({where}) breaks {point}{seen}: {fix}.")
         if command.is_script and "kit" in waits:
@@ -511,9 +602,17 @@ def judged(
 
 def main() -> int:
     """Check the tree's commands, printing each disagreement."""
-    tree, runs_file, waiting_file = (Path(arg) for arg in sys.argv[1:4])
-    runs = json.loads(runs_file.read_text())
+    tree, runs_file, waiting_file, views_file = (Path(arg) for arg in sys.argv[1:5])
+    programs = json.loads(runs_file.read_text())
     waiting = json.loads(waiting_file.read_text())
+    views = {
+        name: tuple(
+            View(tuple(view.get("args", [])), view.get("state") and Path(view["state"]))
+            for view in given
+        )
+        for name, given in json.loads(views_file.read_text()).items()
+    }
+    runs = {name: Run(program, views.get(name, ())) for name, program in programs.items()}
     wrapped = {script.name: script for script in scripts(tree)}
     crates = [
         replace(crate, wrapper=wrapped.pop(crate.name).text) if crate.name in wrapped else crate
@@ -521,6 +620,9 @@ def main() -> int:
     ]
     found = sorted([*crates, *wrapped.values()], key=lambda command: command.name)
     out, agree = judged(found, runs, waiting, tree)
+    out.extend(
+        f"{name} has views, but isn't given to run." for name in sorted(set(views) - set(runs))
+    )
     for line in out:
         print(line)
     print(f"{agree} of {len(found)} commands agree with docs/commands.md.")
