@@ -36,7 +36,8 @@ use ready_rows::kept::Kept;
 use serde_json::{Value, json};
 use windows::entries::{self, Entries};
 
-/// The daemon as the shell knows it: a record for each notice, its rows,
+/// The daemon as the shell knows it: a record for each recent notice
+/// (notice.rs's recent), the rows of every one,
 /// and beside the mixed place's page and History's the count each has
 /// rows for, sent only to a watch that names it, as the launcher's does.
 const DOMAIN: Domain = Domain {

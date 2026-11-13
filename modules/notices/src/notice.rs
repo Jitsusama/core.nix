@@ -171,8 +171,7 @@ impl Notice {
     /// (row.rs's notices-history), so the shell holds about fifty rather
     /// than every one kept (BXNMUC, 2026-11-13: 1.26 MB of 1,000).
     pub fn recent(&self, now: i64) -> bool {
-        let _ = now;
-        true
+        !self.read || self.live || self.missed || now - self.done_at() < RECENT
     }
 
     /// When it was done with, for History: when it was read, else when it
