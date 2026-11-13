@@ -14,6 +14,8 @@ age = { version = "0.12", features = ["plugin"] }
 # Reaping the plugins age starts, which it leaves unwaited.
 libc = "0.2"
 serde_json = "1"
+# Its help, usage and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }
 # Drive's API and Google's token endpoint, over rustls.
 ureq = "3"
 zstd = "0.13"

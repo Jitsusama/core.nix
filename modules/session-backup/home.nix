@@ -75,11 +75,13 @@ let
     }
   );
   # The command, told its settings, for the account to ask what's sent and
-  # to read a copy back.
+  # to read a copy back. A flag alone, --json or --help, is status's; any
+  # other word reaches the binary as it's given, which says what to try.
   configured = pkgs.writeShellScriptBin "session-backup" ''
     case "''${1:-status}" in
       run | status | fetch) exec ${lib.getExe package} "''${1:-status}" --config ${configFile} "''${@:2}" ;;
-      *) echo "usage: session-backup [status | run [--most N] | fetch NAME --to PATH]" >&2; exit 2 ;;
+      -*) exec ${lib.getExe package} status --config ${configFile} "$@" ;;
+      *) exec ${lib.getExe package} "$@" ;;
     esac
   '';
 in
