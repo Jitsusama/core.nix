@@ -53,9 +53,17 @@ pub const UNCHECKED: &str = "no builder took its checks";
 /// may start, rather than land what someone paused it to keep off main.
 pub const PAUSED: &str = "held while its checks ran";
 
+/// How a revert fails that GitHub refused to merge because main moved
+/// after its checks ran, so the net checks it again on the new main next
+/// round. On 13 November #4049 lost that race at 05:49, and the net
+/// quarantined three of vm-desktop-captures' subtests at once instead.
+pub const MOVED: &str = "main moved before it merged";
+
 /// Whether a revert that failed for `why` is tried again next round.
 fn tried_again(why: &str) -> bool {
-    why.starts_with(UNCHECKED) || why.starts_with(PAUSED)
+    [UNCHECKED, PAUSED, MOVED]
+        .iter()
+        .any(|retried| why.starts_with(retried))
 }
 
 /// How a revert fails that main's newest head made needless while its
@@ -1932,6 +1940,8 @@ mod tests {
         paused: Mutex<Option<String>>,
         /// How many reverts to come find no builder for their checks.
         unchecked_reverts: Mutex<u32>,
+        /// How many reverts to come GitHub refuses, main having moved.
+        moved_under_reverts: Mutex<u32>,
         /// The head main moves to while a revert's checks run.
         moves_while_reverting: Option<String>,
         moved: Mutex<Option<String>>,
@@ -2120,6 +2130,12 @@ mod tests {
             if self.reverts_conflict {
                 return Err("the revert doesn't apply to main".to_owned());
             }
+            let mut moved_under = self.moved_under_reverts.lock().unwrap();
+            if *moved_under > 0 {
+                *moved_under -= 1;
+                return Err(format!("{MOVED}: #9 was refused, land.log"));
+            }
+            drop(moved_under);
             let mut unchecked = self.unchecked_reverts.lock().unwrap();
             if *unchecked > 0 {
                 *unchecked -= 1;
@@ -3935,6 +3951,37 @@ mod tests {
         let hold = state.hold().unwrap();
         assert_eq!(hold["revert_commit"], "revert", "{hold}");
         assert_eq!(hold["revert_again"], false, "{hold}");
+    }
+
+    #[test]
+    fn a_revert_main_moved_under_is_tried_again_rather_than_quarantined() {
+        let state = state("revert-moved-under");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            moved_under_reverts: Mutex::new(1),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        let hold = state.hold().expect("the refused revert left no hold");
+        assert_eq!(
+            hold["revert_again"], true,
+            "a revert refused as main moved wasn't kept to try again: {hold}"
+        );
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "a revert refused as main moved was quarantined instead"
+        );
+
+        state.set_heads("s", "s").unwrap();
+        round(&world, &state, "s").unwrap();
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("h"),
+            "the revert wasn't landed the round after main moved under it"
+        );
     }
 
     #[test]

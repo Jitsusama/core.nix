@@ -20,7 +20,7 @@ use crate::holds;
 use crate::running;
 use crate::state::{now, short};
 use crate::subtests;
-use crate::watch::{Bad, Changed, DROPPED, Merged, UNCHECKED, UNSENT, World};
+use crate::watch::{Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNSENT, World};
 
 /// What the net's changed-checks runs ask, so a builder lets them ahead of
 /// sessions' runs waiting for a turn: on 8 November the net's comparison
@@ -391,7 +391,7 @@ impl Real {
                 _ => break,
             }
         }
-        merging.map_err(|why| format!("#{pr} is open but didn't merge: {why}"))?;
+        merging.map_err(|why| refused(pr, &why))?;
         // GitHub may name the merge's commit a moment after it merges; the
         // hold clears only once it's known and on main.
         let mut merged = None;
@@ -465,6 +465,16 @@ fn open_already(why: &str) -> Option<u64> {
         return None;
     }
     why.split_whitespace().rev().find_map(pr_named)
+}
+
+/// How a land fails whose PR `pr` GitHub refused to merge for `why`:
+/// as `MOVED` when main moved after its checks ran, which they must run
+/// again on, and otherwise as the PR left open.
+fn refused(pr: u64, why: &str) -> String {
+    if why.contains("Base branch was modified") {
+        return format!("{MOVED}: #{pr} was refused: {why}");
+    }
+    format!("#{pr} is open but didn't merge: {why}")
 }
 
 /// Whether GitHub refused a merge only because it hadn't yet seen the
@@ -1144,6 +1154,22 @@ mod tests {
         assert!(
             !head_not_seen("gh failed: GraphQL: Base branch was modified. (mergePullRequest)"),
             "a moved main, which the net lands onto afresh, was asked again"
+        );
+    }
+
+    #[test]
+    fn a_merge_refused_because_main_moved_says_so() {
+        let base = "gh failed: GraphQL: Base branch was modified. Review and try the merge \
+                    again. (mergePullRequest)";
+        assert!(
+            refused(4049, base).starts_with(MOVED),
+            "a merge refused as main moved wasn't said to be: {}",
+            refused(4049, base)
+        );
+        assert_eq!(
+            refused(4049, "gh failed: the PR is closed"),
+            "#4049 is open but didn't merge: gh failed: the PR is closed",
+            "another refusal wasn't said as before"
         );
     }
 
