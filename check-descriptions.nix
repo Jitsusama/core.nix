@@ -960,7 +960,9 @@
     minute however busy the journals, and shows the three worst pains in plain words, pi's as
     pi's, then a line a kind, the gravest first; it times a launcher ready by today's line, each
     launcher part and pi's modelled typing against their budgets, the keys' p99 exactly from every
-    key the launcher's trials kept once each though the shell writes them again, keeps each
+    key the launcher's trials kept once each though the shell writes them again, saying how many
+    it's over, counts the searches typed and those left with nothing picked without what was
+    sought, keeps each
     program's openings and ends as the windows daemon timed them and each daemon's ready as it said it as ours, holds
     pi's start to its own budget apart from the daemons', times a service's restart from its
     stopping to its ready line, the shell's ready or else its start, leaving a start alone, a stop

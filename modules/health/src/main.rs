@@ -35,7 +35,8 @@
 //! `health services` lists a kind's worst things, and `health chrome` shows what each thing whose name holds the words kept saying.
 //! `health boot` breaks each boot into its stages. `health launcher` times
 //! each part of the launcher against its budget in docs/design.md, the
-//! keys' p99 from every key the launcher's trials kept,
+//! keys' p99 from every key the launcher's trials kept, and how many of
+//! its searches Joel left with nothing picked,
 //! `health launches` each program's openings and ends as the windows
 //! daemon timed them, each daemon's ready and pi's start as it said it,
 //! and each service a restart had gone, and

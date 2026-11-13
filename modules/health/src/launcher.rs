@@ -37,6 +37,35 @@ pub struct Launcher {
     pub shown: Timed,
     /// Openings, from the chord to the launcher taking keys.
     pub usable: Timed,
+    /// Searches, from the launcher's trials.
+    pub searches: Searches,
+}
+
+/// The day's searches: the openings Joel typed a letter in, and those he
+/// left with nothing picked, as the shell's trials say. What he sought is
+/// never kept here, only counted.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Searches {
+    /// Openings he typed a letter in.
+    pub typed: u64,
+    /// Of those, the ones he closed with nothing picked.
+    pub missed: u64,
+}
+
+impl Searches {
+    /// The share of searches he left with nothing picked, in percent.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a day's count of searches is far below where a float loses whole numbers"
+    )]
+    pub fn missed_percent(&self) -> f64 {
+        if self.typed == 0 {
+            return 0.0;
+        }
+        100.0 * self.missed as f64 / self.typed as f64
+    }
 }
 
 /// One part of the launcher, as the day names and says it.
@@ -210,10 +239,12 @@ impl Launcher {
         ]
     }
 
-    /// A line for each part timed, as `health launcher` shows it.
+    /// A line for each part timed, as `health launcher` shows it, and one
+    /// for the day's searches when he typed any.
     #[must_use]
     pub fn said(&self) -> Vec<String> {
-        self.parts()
+        let mut said: Vec<String> = self
+            .parts()
             .into_iter()
             .filter(|part| part.timed.count > 0)
             .map(|part| {
@@ -227,8 +258,17 @@ impl Launcher {
                     ),
                 };
                 let ceiling = if timed.exact() { "" } else { "at most " };
+                // The pooled are fewer than those timed while the trials
+                // only began to give each key on 12 November.
+                let pooled = timed.pooled_count();
+                let over = if pooled > 0 && pooled != timed.count {
+                    format!(" over {pooled} pooled")
+                } else {
+                    String::new()
+                };
                 format!(
-                    "{} {}: a median {} ms, the p99 {ceiling}{} ms, the slowest {} ms; {late}",
+                    "{} {}: a median {} ms, the p99 {ceiling}{} ms{over}, the slowest {} ms; \
+                     {late}",
                     timed.count,
                     if timed.count == 1 {
                         part.one
@@ -240,7 +280,22 @@ impl Launcher {
                     timed.slowest_ms
                 )
             })
-            .collect()
+            .collect();
+        let searches = &self.searches;
+        if searches.typed > 0 {
+            said.push(format!(
+                "{} {} typed: {} left with nothing picked ({})",
+                searches.typed,
+                if searches.typed == 1 {
+                    "search"
+                } else {
+                    "searches"
+                },
+                searches.missed,
+                percent(searches.missed_percent())
+            ));
+        }
+        said
     }
 
     /// The day's launcher in a line, as `health` opens with it: how many
@@ -401,9 +456,25 @@ mod tests {
             "the keys' p99 is still the batches' ceiling though every key was pooled"
         );
         assert!(
-            launcher.said()[0].contains(", the p99 99 ms,"),
-            "an exact p99 was said as a ceiling: {:?}",
+            launcher.said()[0].contains(", the p99 99 ms over 100 pooled,"),
+            "an exact p99 was said as a ceiling, or without how many it's over: {:?}",
             launcher.said()
+        );
+    }
+
+    #[test]
+    fn the_searches_left_with_nothing_picked_are_said_with_their_share() {
+        let launcher = Launcher {
+            searches: Searches {
+                typed: 20,
+                missed: 11,
+            },
+            ..Launcher::default()
+        };
+        assert_eq!(
+            launcher.said(),
+            ["20 searches typed: 11 left with nothing picked (55%)"],
+            "the day's searches weren't said, or their misses' share was wrong"
         );
     }
 

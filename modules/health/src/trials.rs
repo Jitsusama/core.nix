@@ -3,7 +3,9 @@
 //! its state named for its config, and since 12 November with `presented`:
 //! each key's milliseconds from the press to niri showing it. Pooled over
 //! the day they give its exact 99th, where the journal's batches give only
-//! a ceiling (`launcher.rs` says why).
+//! a ceiling (`launcher.rs` says why). Each also says how many letters
+//! were typed and whether it closed with nothing picked after them, a
+//! search given up on; what was sought is never read.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -14,7 +16,7 @@ use jiff::tz::TimeZone;
 use serde::Deserialize;
 
 use crate::follow::date_of;
-use crate::launcher::Timed;
+use crate::launcher::Launcher;
 
 /// Where the shells keep a folder for each config, under the account's
 /// state.
@@ -24,12 +26,22 @@ pub const SHELLS: &str = "quickshell/by-shell";
 const TRIALS: &str = "launcher-trials.jsonl";
 
 /// As much of an opening as the pool takes: when it opened, in
-/// milliseconds since the epoch, and each key's time to the screen.
+/// milliseconds since the epoch, each key's time to the screen, its keys,
+/// and whether it was a search left with nothing picked.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 struct Trial {
     at: i64,
     presented: Vec<u64>,
+    keys: Keys,
+    missed: bool,
+}
+
+/// As much of an opening's keys as the pool takes.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct Keys {
+    letters: u64,
 }
 
 /// Reads the shells' trials as they grow.
@@ -57,10 +69,11 @@ impl Reader {
         }
     }
 
-    /// Pool into `keys` each key of every opening on `date` in `zone` not
-    /// pooled yet, reading a file again only once it changed, and saying
-    /// whether any was. A file last changed before the day holds none.
-    pub fn pool(&mut self, keys: &mut Timed, date: &str, zone: &TimeZone) -> bool {
+    /// Pool into `launcher` each key and search of every opening on `date`
+    /// in `zone` not pooled yet, reading a file again only once it changed,
+    /// and saying whether any was. A file last changed before the day holds
+    /// none.
+    pub fn pool(&mut self, launcher: &mut Launcher, date: &str, zone: &TimeZone) -> bool {
         if self.date != date {
             date.clone_into(&mut self.date);
             self.seen.clear();
@@ -101,8 +114,13 @@ impl Reader {
                 continue;
             }
             self.pooled_to = trial.at;
+            if trial.keys.letters > 0 {
+                launcher.searches.typed += 1;
+                launcher.searches.missed += u64::from(trial.missed);
+                any = true;
+            }
             for took in trial.presented {
-                keys.pool(took);
+                launcher.keys.pool(took);
                 any = true;
             }
         }
@@ -138,11 +156,12 @@ mod tests {
         fs::write(old.join(TRIALS), before.clone() + &morning).expect("the old shell's trials");
         fs::write(new.join(TRIALS), line(NOON + 2, &[52, 36]) + "{\"at\":").expect("its trials");
         let mut reader = Reader::new(shells.path());
-        let mut keys = Timed::default();
+        let mut launcher = Launcher::default();
         assert!(
-            reader.pool(&mut keys, "2026-11-12", &TimeZone::UTC),
+            reader.pool(&mut launcher, "2026-11-12", &TimeZone::UTC),
             "the day's keys weren't pooled"
         );
+        let keys = &launcher.keys;
         assert_eq!(
             keys.pooled.keys().copied().collect::<Vec<_>>(),
             [36, 38, 41, 52],
@@ -150,25 +169,58 @@ mod tests {
         );
         fs::write(old.join(TRIALS), morning + &line(NOON + 3, &[60])).expect("a rewrite");
         assert!(
-            reader.pool(&mut keys, "2026-11-12", &TimeZone::UTC),
+            reader.pool(&mut launcher, "2026-11-12", &TimeZone::UTC),
             "an opening added as the file was written again wasn't pooled"
         );
         assert_eq!(
-            keys.pooled_count(),
+            launcher.keys.pooled_count(),
             5,
             "an opening pooled before was pooled again when its file was written again"
         );
         assert!(
-            !reader.pool(&mut keys, "2026-11-12", &TimeZone::UTC),
+            !reader.pool(&mut launcher, "2026-11-12", &TimeZone::UTC),
             "a file that hadn't changed was read again"
         );
-        let mut tomorrow = Timed::default();
+        let mut tomorrow = Launcher::default();
         fs::write(new.join(TRIALS), line(NOON + day, &[70])).expect("tomorrow's trials");
         reader.pool(&mut tomorrow, "2026-11-13", &TimeZone::UTC);
         assert_eq!(
-            tomorrow.pooled_count(),
+            tomorrow.keys.pooled_count(),
             1,
             "the next day's keys weren't pooled into it"
+        );
+    }
+
+    /// A search's line as the shell writes it: its letters, and whether it
+    /// closed with nothing picked, keeping what was sought.
+    fn search(at: i64, letters: u64, missed: bool) -> String {
+        let sought = if missed { "[\"zom\"]" } else { "[]" };
+        format!(
+            "{{\"at\":{at},\"keys\":{{\"letters\":{letters},\"arrows\":2}},\"picked\":\"\",\
+             \"missed\":{missed},\"sought\":{sought}}}\n"
+        )
+    }
+
+    #[test]
+    fn each_search_typed_and_each_left_unpicked_is_counted_once() {
+        let shells = tempfile::tempdir().expect("a folder for the shells");
+        let folder = shells.path().join("shell");
+        fs::create_dir_all(&folder).expect("the shell's folder");
+        let trials =
+            search(NOON, 3, true) + &search(NOON + 1, 4, false) + &search(NOON + 2, 0, false);
+        fs::write(folder.join(TRIALS), &trials).expect("the shell's trials");
+        let mut reader = Reader::new(shells.path());
+        let mut launcher = Launcher::default();
+        assert!(
+            reader.pool(&mut launcher, "2026-11-12", &TimeZone::UTC),
+            "the day's searches weren't pooled"
+        );
+        fs::write(folder.join(TRIALS), trials + &search(NOON + 3, 2, true)).expect("a rewrite");
+        reader.pool(&mut launcher, "2026-11-12", &TimeZone::UTC);
+        assert_eq!(
+            (launcher.searches.typed, launcher.searches.missed),
+            (3, 2),
+            "an opening with no letters was counted as a search, or one was counted twice"
         );
     }
 }
