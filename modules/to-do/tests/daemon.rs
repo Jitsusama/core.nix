@@ -633,6 +633,7 @@ fn a_look_joel_clears_is_kept_in_its_file_and_told_as_it_now_stands() {
     let dir = tempfile::tempdir().unwrap().keep();
     fs::create_dir_all(dir.join("waiting")).unwrap();
     let look = json!({"v": 1, "id": "a1", "kind": "pr", "title": "Fix", "state": "waiting"});
+    fs::create_dir_all(dir.join("looks")).unwrap();
     written(&dir.join("looks/a1.json"), &look.to_string());
     let daemon = served(dir);
     let mut client = daemon.client();
