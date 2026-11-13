@@ -68,6 +68,8 @@ pub struct Snapshot {
     /// The net's hold on switching, while a test it broke is unfixed.
     pub net_hold: Option<NetHold>,
     pub net_hung: Option<crate::net::Hung>,
+    /// The merges the net quarantined a test for, unable to revert them.
+    pub net_unreverted: Vec<crate::net::Unreverted>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
     pub watcher_alive: bool,
@@ -139,6 +141,7 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
         out.push(breach);
     }
     out.extend(s.net_hung.as_ref().map(crate::net::hang));
+    out.extend(s.net_unreverted.iter().map(crate::net::owed));
     if let Some(hold) = s.net_hold.as_ref().filter(|h| {
         let patience = if h.landing {
             REVERT_LANDING_MIN
