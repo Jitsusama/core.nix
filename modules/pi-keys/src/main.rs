@@ -11,7 +11,7 @@
 //! to $XDG_STATE_HOME/pi-keys/<UTC day>.jsonl, for cadence's daily read,
 //! with what it ran beside: the CPU's contention, and which windows, pi
 //! and pi packages it read (src/context.rs), and the keys again by the
-//! install each window ran (src/install.rs).
+//! install each window ran and by window (src/split.rs).
 //! It reads only /proc, /sys and niri's answers, never touches a window,
 //! and stops the moment a call starts.
 //!
@@ -19,9 +19,9 @@
 
 mod burst;
 mod context;
-mod install;
 mod model;
 mod path;
+mod split;
 
 use burst::{Bursts, Reading};
 use path::Window;
@@ -193,9 +193,9 @@ struct Sampler {
     at: Option<At>,
     frame: f64,
     spans: [Vec<(f64, f64)>; 3],
-    at_pi: Vec<install::Held>,
-    /// When the stretch at a pi window began, and its pi.
-    since: Option<(f64, u32)>,
+    at_pi: Vec<split::Held>,
+    /// When the stretch at a pi window began, its window and its pi.
+    since: Option<(f64, u64, u32)>,
     windows: HashSet<u64>,
     /// The pi processes of the windows read.
     pis: HashSet<u32>,
@@ -212,20 +212,26 @@ impl Sampler {
             at.kitty.bursts.reset();
             at.pi.bursts.reset();
         }
-        if let Some((from, pi)) = self.since {
-            self.at_pi.push(install::Held {
+        if let Some((from, window, pi)) = self.since {
+            self.at_pi.push(split::Held {
                 from,
                 to: now - interval,
+                window,
                 pi,
             });
-            self.since = Some((now, pi));
+            self.since = Some((now, window, pi));
         }
     }
 
     /// Ends the span at a pi window, if one is open.
     fn away(&mut self, now: f64) {
-        if let Some((from, pi)) = self.since.take() {
-            self.at_pi.push(install::Held { from, to: now, pi });
+        if let Some((from, window, pi)) = self.since.take() {
+            self.at_pi.push(split::Held {
+                from,
+                to: now,
+                window,
+                pi,
+            });
         }
     }
 
@@ -244,7 +250,7 @@ impl Sampler {
         if let Some(found) = self.at.as_ref() {
             self.windows.insert(found.window);
             self.pis.insert(found.pi.tid);
-            self.since = Some((now, found.pi.tid));
+            self.since = Some((now, found.window, found.pi.tid));
             if let Some(frame) = ask(&self.socket, "FocusedOutput")
                 .as_deref()
                 .and_then(path::frame)
@@ -278,7 +284,7 @@ impl Sampler {
     /// Milliseconds spent at pi windows so far.
     fn held(&self, now: f64) -> f64 {
         self.at_pi.iter().map(|h| h.to - h.from).sum::<f64>()
-            + self.since.map_or(0.0, |(s, _)| now - s)
+            + self.since.map_or(0.0, |(s, _, _)| now - s)
     }
 
     /// The sample's line, or None when no time at a pi window was read.
@@ -324,26 +330,39 @@ impl Sampler {
         let seconds = stretches.iter().map(|(a, b)| b - a).sum::<f64>() / 1000.0;
         // The same keys again, by the install each window's pi loaded, so
         // installs compare under the one load the sample saw.
-        let by_install: Vec<serde_json::Value> = install::split(
-            &path,
-            &self.at_pi,
-            |pid| context::loaded_by(&root, pid),
-            self.frame,
-            KEYS,
-            ended,
-        )
-        .into_iter()
-        .map(|each| {
+        let installs = |pid| context::loaded_by(&root, pid);
+        let figures = |seconds: f64, summary: &model::Summary| {
             serde_json::json!({
-                "packages": each.packages,
-                "seconds_at_pi": round(each.seconds, 1),
-                "p50_ms": round(each.summary.p50, 1),
-                "p99_ms": round(each.summary.p99, 1),
-                "over_33ms": round(each.summary.late, 4),
-                "pi_over_16ms": round(each.summary.lost_at[2], 4),
+                "seconds_at_pi": round(seconds, 1),
+                "p50_ms": round(summary.p50, 1),
+                "p99_ms": round(summary.p99, 1),
+                "over_33ms": round(summary.late, 4),
+                "pi_over_16ms": round(summary.lost_at[2], 4),
             })
-        })
-        .collect();
+        };
+        // The same keys again, by the install each window's pi loaded, so
+        // installs compare under the one load the sample saw, and by
+        // window, so one long session's slow keys show as its own.
+        let by_install: Vec<serde_json::Value> =
+            split::installs(&path, &self.at_pi, installs, self.frame, KEYS, ended)
+                .into_iter()
+                .map(|each| {
+                    let mut line = figures(each.seconds, &each.summary);
+                    line["packages"] = serde_json::json!(each.of);
+                    line
+                })
+                .collect();
+        let by_window: Vec<serde_json::Value> =
+            split::windows(&path, &self.at_pi, installs, self.frame, KEYS, ended)
+                .into_iter()
+                .map(|each| {
+                    let (window, packages) = each.of;
+                    let mut line = figures(each.seconds, &each.summary);
+                    line["window"] = serde_json::json!(window);
+                    line["packages"] = serde_json::json!(packages);
+                    line
+                })
+                .collect();
         Some(serde_json::json!({
             "ended": ended,
             "keys": sum.keys,
@@ -365,6 +384,7 @@ impl Sampler {
             "pi": sorted(pis),
             "packages": sorted(packages),
             "by_install": by_install,
+            "by_window": by_window,
             "cpu_waited": round(cpu_waited, 4),
             "load1": load1,
             "call": call,
