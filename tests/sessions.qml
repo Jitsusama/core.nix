@@ -288,6 +288,28 @@ ShellRoot {
         Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
         expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
             && Niri.spawns.length === before + 1, `${root.unhosted} ${Niri.spawned.join(" ")}`);
+        holdsAlone();
+    }
+
+    // One the realm's node holds here with no window, as the void is once
+    // it leaves pi's host (OSPHT4, 2026-11-12): Go To attaches its hold in
+    // a new window of the sessions' kitty, where niri opens one, focused,
+    // and only once while that window comes.
+    function holdsAlone() {
+        const alone = {
+            address: "ALONE7", here: true, window: null, kitty: null, held: "hold-7",
+            presence: { session: "s-alone", addresses: ["ALONE7"] }
+        };
+        const before = Niri.spawns.length;
+        Sessions.goTo(alone);
+        const attached = asked(Niri.spawned.join(" "));
+        expect("Go To attaches one held alone in a window of its own, where niri opens one",
+            attached !== null && /^pi-session\.\d+$/.test(attached.classed)
+            && attached.words === 'zsh -lic exec mycelium --realm "$0" attach "$1" harbour hold-7'
+            && !Niri.spawned.includes("XDG_ACTIVATION_TOKEN"), Niri.spawned.join(" "));
+        Sessions.goTo(alone);
+        expect("attached only once while its window comes", Niri.spawns.length === before + 1,
+            Niri.spawns.slice(before).join("\n"));
     }
 
     // One the node says is parked is listed apart, never running, however
@@ -429,7 +451,7 @@ ShellRoot {
     function reopening() {
         const kitties = Niri.spawns.map(command => inSessions(command))
             .filter(command => command.startsWith("sessions ") && !command.includes("attach r-far")
-                && !command.includes("attach --host"));
+                && !command.includes("attach --host") && !command.includes('attach "$1"'));
         if (kitties.length < 6 || unopened.length < 3 || !steered || !talked())
             return;
         // Each window is opened with an app id of its own, which its process
