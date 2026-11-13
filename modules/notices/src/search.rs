@@ -189,6 +189,7 @@ mod tests {
             nothing["grade"], 3,
             "and graded as nothing found: {nothing}"
         );
+        assert_eq!(nothing["found"], 0, "and says none was: {nothing}");
     }
 
     #[test]
@@ -239,6 +240,10 @@ mod tests {
         assert_eq!(
             listed, newest,
             "six screens of those found are listed, newest first"
+        );
+        assert_eq!(
+            answer["found"], found,
+            "and it says how many were found, listed or not"
         );
         let rows = answer["rows"].as_object().cloned().unwrap_or_default();
         assert_eq!(
