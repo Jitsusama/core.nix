@@ -205,6 +205,22 @@ impl Holding {
         )
     }
 
+    /// One judged again, by `how`, as it turns out to be to Joel, as a
+    /// busy channel's notice its sender's daemon said was a reply in a
+    /// thread he follows; raised, so the shell hears it told anew. Only
+    /// one still open and unread is.
+    pub fn judged_again(&mut self, id: u32, now: i64, how: impl FnOnce(&mut Notice)) -> bool {
+        self.change(
+            id,
+            |notice| notice.live && !notice.read,
+            |notice| {
+                how(notice);
+                notice.resting = false;
+                notice.raised_at = Some(now);
+            },
+        )
+    }
+
     /// Marks those of `ids` read, or unread again. Read, one's no longer
     /// missed, and `how` says where it was read where that wasn't here, as
     /// `readInSlack`, or `withdrawn` where what it said stopped standing,

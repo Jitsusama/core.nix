@@ -798,6 +798,52 @@ fn searching(line: &str) -> String {
     }
 }
 
+/// Slack as it answers for #random's newest messages, a post and a reply
+/// also sent to the channel, and what wants Joel, as `wanting` does.
+fn posting(line: &str) -> String {
+    if line.contains("conversations.history") && line.contains("channel=C3") {
+        concat!(
+            r#"{"ok": true, "messages": [{"ts": "1730300000.000100", "user": "U9","#,
+            r#""text": "Lunch at noon?"}, {"ts": "1730299990.000100", "user": "U0","#,
+            r#""subtype": "thread_broadcast", "thread_ts": "1730200000.000100","#,
+            r#""text": "On it"}]}"#
+        )
+        .into()
+    } else {
+        wanting(line)
+    }
+}
+
+#[test]
+fn a_notice_from_a_channel_is_said_a_post_or_a_reply_by_its_history() {
+    let stand_in = StandIn::new(posting);
+    let path = credentials("unreads-posted");
+    let run = path.with_extension("posted");
+    let mut program = unreads(&stand_in, &path, &run);
+    until("the socket never came", || socket(&run).exists());
+    let posted = |id: u64, channel: &str, words: &str| {
+        asked(
+            &run,
+            &serde_json::json!({"id": id, "ask": "posted", "channel": channel,
+                "words": words, "at": 1_730_300_001_000_u64}),
+        )
+    };
+    // Unknown until a round has named the channel.
+    until("#random was never named", || {
+        posted(1, "#random", "").get("error").is_none()
+    });
+    let post = |id: u64, channel: &str, words: &str| posted(id, channel, words)["post"].clone();
+    assert_eq!(post(2, "#random", "Lunch at noon?"), true, "a post");
+    assert_eq!(post(3, "random", "On it"), false, "a broadcast reply");
+    assert_eq!(post(4, "#random", "sure"), false, "a thread's reply");
+    let unknown = posted(5, "#nowhere", "hi");
+    assert_eq!(unknown["error"]["code"], "unknown", "{unknown}");
+    program.kill().unwrap();
+    program.wait().unwrap();
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    forget(&path);
+}
+
 #[test]
 fn a_socket_systemd_hands_it_is_the_one_it_answers_on() {
     // As systemd does for slack-unreads.socket: the socket is listened on

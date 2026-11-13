@@ -3,8 +3,10 @@
 //! Interface"), version 1. What every daemon answers alike, `hello`,
 //! `health`, `list`, `watch`, `unwatch` and `get` of what it holds, is
 //! answered by daemon-serve (../daemon-serve), as every daemon's is; what
-//! only Slack can say is answered here: `search` for Joel's words, and
-//! `around`, a message a search found with the few around it, each asked
+//! only Slack can say is answered here: `search` for Joel's words,
+//! `around`, a message a search found with the few around it, and
+//! `posted`, whether a channel's notice was one of its posts or a reply
+//! in a thread, as the notices daemon asks (posted.rs), each asked
 //! of Slack on a thread of its own, so one waiting on Slack holds up no
 //! other ask.
 //!
@@ -45,6 +47,7 @@ use daemon_serve::serve::{self, Own, Shared};
 use serde_json::{Map, Value, json};
 
 use crate::messages::People;
+use crate::posted;
 use crate::rows::{self, Words};
 use crate::search::{self, Failed};
 use crate::unreads::{Conversation, Said, State};
@@ -71,7 +74,11 @@ const DOMAIN: Domain = Domain {
 };
 
 /// The asks only Slack answers, each of which waits on Slack.
-const ITS_OWN: &[&str] = &["search", "around"];
+const ITS_OWN: &[&str] = &["search", "around", "posted"];
+
+/// How many of a channel's newest messages `posted` reads: a post told a
+/// moment ago is among them however busy the channel.
+const NEWEST: &str = "15";
 
 /// Every record what Slack last said makes, in its order: what's unread,
 /// those wanting Joel first, then what he read last, then each message
@@ -236,6 +243,8 @@ struct Asking {
     credentials: PathBuf,
     origin: String,
     people: People,
+    /// What's held, by which a channel is found by its name.
+    held: Arc<Mutex<Held>>,
 }
 
 /// Listens on `socket`, on threads of its own, for as long as the
@@ -252,10 +261,12 @@ pub fn listen(socket: &Path, credentials: PathBuf, origin: String) -> Daemon {
 impl Daemon {
     fn new(credentials: PathBuf, origin: String) -> Daemon {
         let people = People::default();
+        let held = Arc::new(Mutex::new(Held::default()));
         let asking = Asking {
             credentials,
             origin,
             people: people.clone(),
+            held: Arc::clone(&held),
         };
         let own: Own = Box::new(move |said| asking.answer(said));
         let shared = Shared::new(DOMAIN, own);
@@ -265,7 +276,7 @@ impl Daemon {
         shared.change(Vec::new(), Stands::Starting.sources());
         Daemon {
             shared,
-            held: Arc::new(Mutex::new(Held::default())),
+            held,
             people,
         }
     }
@@ -305,7 +316,37 @@ impl Asking {
         match said.get("ask").and_then(Value::as_str)? {
             "search" => Some(self.search(said)),
             "around" => Some(self.around(said)),
+            "posted" => Some(self.posted(said)),
             _ => None,
+        }
+    }
+
+    /// Whether the notice asked of, by its `channel`'s name, its `words`
+    /// and `at`, when it came in milliseconds since the epoch, was one of
+    /// the channel's posts, as `{"post": true}`, read from its newest
+    /// messages. A channel no round has named yet is said unknown, which
+    /// the notices daemon hears as a reply, as it does Slack refusing.
+    fn posted(&self, said: &Value) -> Value {
+        let text = |field: &str| said.get(field).and_then(Value::as_str).unwrap_or_default();
+        let name = text("channel").trim_start_matches('#');
+        let named = {
+            let held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
+            channel_named(&held.records, name)
+        };
+        let Some(id) = named else {
+            return error(&Value::Null, "unknown", "no channel by that name yet");
+        };
+        let Some(account) = Account::read(&self.credentials) else {
+            return error(&Value::Null, "signed-out", "nobody is signed in to Slack");
+        };
+        let at = said.get("at").and_then(Value::as_f64).unwrap_or_default() / 1000.0;
+        let query = [("channel", id.as_str()), ("limit", NEWEST)];
+        match Slack::new(self.origin.clone()).ask(&account, "conversations.history", &query) {
+            Ok(history) => json!({"post": posted::posted(&history, text("words"), at)}),
+            Err(why) => {
+                eprintln!("<4>couldn't read #{name}'s history: {why:?}");
+                error(&Value::Null, "refused", "Slack couldn't be reached")
+            }
         }
     }
 
@@ -354,6 +395,21 @@ impl Asking {
         }
         json!({"records": records})
     }
+}
+
+/// The id of the conversation held by this name, as Slack's notices name
+/// it, among those unread, read last and read past, which hold a
+/// channel's with its `#`.
+fn channel_named(records: &BTreeMap<String, Value>, name: &str) -> Option<String> {
+    records.values().find_map(|record| {
+        let kind = record.get("kind").and_then(Value::as_str)?;
+        let thing = record.get(kind)?;
+        let held = thing.get("name").and_then(Value::as_str)?;
+        if held.trim_start_matches('#') != name {
+            return None;
+        }
+        thing.get("id").and_then(Value::as_str).map(str::to_owned)
+    })
 }
 
 /// Whether two records hold the same, whenever each was heard.

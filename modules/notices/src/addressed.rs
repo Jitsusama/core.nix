@@ -8,7 +8,11 @@
 //! thread. It sends a channel's notice only for a mention, a thread Joel
 //! follows, or a channel he set to tell him every message, so outside
 //! those channels each one is to him. The names, bots and channels are
-//! the machine's to give, since core names no one.
+//! the machine's to give, since core names no one. Inside them, a post
+//! and a reply in a thread he follows read alike, so where the sender's
+//! daemon can say which from the channel's history (`posted`), it's
+//! asked, and a reply is to him (2026-11-12: 36 such replies went
+//! silent).
 
 use serde::Deserialize;
 
@@ -23,10 +27,26 @@ pub struct Addressed {
     pub bots: Vec<String>,
     /// The channels he set to tell him every message, without the `#`.
     pub every_message: Vec<String>,
+    /// The socket of the sender's daemon that says whether one of those
+    /// channels' notices was a post, from the runtime folder where it
+    /// isn't absolute, as `daemons/slack-unreads.sock`; none to ask none.
+    pub posted: Option<String>,
+}
+
+/// What's asked of the sender's daemon of a notice batched from a channel
+/// he reads every message of: whether it was a post there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Asked {
+    /// The daemon's socket, as `posted` gives it.
+    pub socket: String,
+    /// The channel, without its `#`.
+    pub channel: String,
+    /// The notice's words after its sender's name.
+    pub words: String,
 }
 
 /// How a notice stands to him.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum To {
     /// It's to him: a person's direct message, a mention, or what a
     /// channel tells only for a thread he follows.
@@ -64,6 +84,23 @@ impl Addressed {
         }
     }
 
+    /// What to ask of a notice `to` batches from a channel he reads every
+    /// message of, where there's a daemon to ask; none for any other.
+    pub fn asks(&self, summary: &str, body: &str) -> Option<Asked> {
+        let socket = self.posted.clone()?;
+        let (_, said) = summary.strip_prefix('[')?.split_once("] ")?;
+        let channel = said.strip_prefix("in ")?.trim_start_matches('#');
+        if self.to(summary, body) != To::Batched {
+            return None;
+        }
+        let words = body.split_once(": ").map_or(body, |(_, words)| words);
+        Some(Asked {
+            socket,
+            channel: channel.to_owned(),
+            words: words.to_owned(),
+        })
+    }
+
     /// Whether its words name him, or everyone there with him.
     fn mentions(&self, body: &str) -> bool {
         let named = |name: &str| {
@@ -90,6 +127,7 @@ mod tests {
             names: vec!["ada".into(), "ada.l".into()],
             bots: vec!["Merge Bot".into()],
             every_message: vec!["busy".into(), "team chat".into()],
+            posted: None,
         };
         ada.to(summary, body)
     }
@@ -126,6 +164,32 @@ mod tests {
     fn a_shape_it_doesnt_know_is_to_him() {
         assert_eq!(to("Slack", "You have a new message"), Him);
         assert_eq!(to("[work] said something", "Grace: hi"), Him);
+    }
+
+    #[test]
+    fn a_busy_channels_notice_is_asked_of_where_there_is_a_daemon_to_ask() {
+        let ada = Addressed {
+            names: vec!["ada".into()],
+            bots: vec!["Merge Bot".into()],
+            every_message: vec!["busy".into()],
+            posted: Some("daemons/chat.sock".into()),
+        };
+        let asked = ada.asks("[work] in #busy", "Grace: lunch: noon?");
+        let wanted = Asked {
+            socket: "daemons/chat.sock".into(),
+            channel: "busy".into(),
+            words: "lunch: noon?".into(),
+        };
+        assert_eq!(asked, Some(wanted), "a busy channel's, unasked");
+        // A mention, another channel and a bot's message are known already.
+        assert_eq!(ada.asks("[work] in #busy", "Grace: @ada lunch?"), None);
+        assert_eq!(ada.asks("[work] in #quiet", "Grace: lunch?"), None);
+        assert_eq!(ada.asks("[work] from Merge Bot", "merged"), None);
+        let unasked = Addressed {
+            posted: None,
+            ..ada
+        };
+        assert_eq!(unasked.asks("[work] in #busy", "Grace: lunch?"), None);
     }
 
     #[test]

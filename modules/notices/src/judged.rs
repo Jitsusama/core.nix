@@ -12,7 +12,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::addressed::{Addressed, To};
+use crate::addressed::{Addressed, Asked, To};
 use crate::notice::{Notice, Urgency};
 
 /// From the least reach to the most: kept in the history alone, counted
@@ -107,6 +107,24 @@ impl Judge {
             .addressed
             .get(&name)
             .map(|addressed| addressed.to(&notice.summary, &notice.body));
+        self.judge_as(notice, quiet, to);
+    }
+
+    /// Judges again one batched that its sender's daemon said wasn't a
+    /// post, as a reply in a thread Joel follows: to him.
+    pub fn to_him(&self, notice: &mut Notice, quiet: bool) {
+        self.judge_as(notice, quiet, Some(To::Him));
+    }
+
+    /// What to ask its sender's daemon of a notice just judged, where it's
+    /// batched from a channel only the channel's history can tell of.
+    pub fn asks(&self, notice: &Notice) -> Option<Asked> {
+        let addressed = self.addressed.get(&notice.app.to_lowercase())?;
+        addressed.asks(&notice.summary, &notice.body)
+    }
+
+    fn judge_as(&self, notice: &mut Notice, quiet: bool, to: Option<To>) {
+        let name = notice.app.to_lowercase();
         let kept = self.levels.get(&name).map(String::as_str);
         let kept = if to == Some(To::Batched) {
             Some(at_most(kept, "count"))
@@ -255,6 +273,19 @@ mod tests {
         levels.levels.insert("slack".into(), "history".into());
         levels.judge(&mut kept, false);
         assert_eq!((kept.level.as_str(), kept.chimes), ("history", false));
+    }
+
+    #[test]
+    fn one_from_a_busy_channel_its_daemon_said_was_a_reply_chimes() {
+        let mut busy = said("[work] in #busy", "Grace: on it");
+        let judge = addressing();
+        judge.judge(&mut busy, false);
+        judge.to_him(&mut busy, false);
+        let judged = (busy.level.as_str(), busy.held, busy.chimes);
+        assert_eq!(judged, ("card", false, true), "a reply stayed batched");
+        let mut quiet = said("[work] in #busy", "Grace: on it");
+        judge.to_him(&mut quiet, true);
+        assert!(!quiet.chimes, "a reply held by quiet chimed");
     }
 
     #[test]

@@ -33,10 +33,14 @@ let
     )
   );
   # Who Joel is in each chat program's notices that says so, by its name
-  # in lower case (src/addressed.rs).
+  # in lower case, with the socket that tells its posts from its replies
+  # where its module gives one (src/addressed.rs).
+  said =
+    sender:
+    sender.addressed // lib.optionalAttrs (sender.posted or null != null) { inherit (sender) posted; };
   addressed = pkgs.writeText "notices-addressed.json" (
     builtins.toJSON (
-      lib.mapAttrs' (name: sender: lib.nameValuePair (lib.toLower name) sender.addressed) (
+      lib.mapAttrs' (name: sender: lib.nameValuePair (lib.toLower name) (said sender)) (
         lib.filterAttrs (_: sender: sender.addressed or null != null) (
           config.jitsusama.quickshell.notices.senders or { }
         )
