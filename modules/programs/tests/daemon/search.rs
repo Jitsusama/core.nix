@@ -12,9 +12,17 @@ use super::Running;
 fn a_search_finds_a_program_by_its_name_its_keywords_and_its_binds() {
     let running = Running::new("search");
     let mut client = running.client();
-    client.ask(&json!({
-        "id": 1, "ask": "watch", "kind": "row", "also": {"viewer": "Read aloud"},
+    let settled = client.ask(&json!({
+        "id": "settings", "ask": "settings", "also": {"viewer": "Read aloud"},
     }));
+    assert_eq!(
+        settled["settings"]["also"],
+        json!({"viewer": "Read aloud"}),
+        "the settings are answered as held: {settled}"
+    );
+    // A later ask naming only what's shown leaves what binds do be.
+    client.ask(&json!({"id": "settings", "ask": "settings", "shown": []}));
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "row"}));
     let search = |client: &mut daemon_client::Client, id: u64, words: &str| {
         client.ask(&json!({"id": id, "ask": "search", "place": "programs", "words": words}))
     };
