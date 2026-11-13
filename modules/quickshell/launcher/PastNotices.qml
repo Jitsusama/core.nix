@@ -311,7 +311,18 @@ Provider {
         state.asking = false;
         if (!Array.isArray(answer?.keys) || provider.launcher?.open === false)
             return;
-        state.kept = { keys: answer.keys, rows: answer.rows ?? {}, made: {}, listed: null };
+        // A row past the page that reads as it did is kept as made, so a
+        // notice read, which History asks again for, remakes none of the
+        // rest it already held.
+        const rows = answer.rows ?? {};
+        const was = state.kept;
+        const made = {};
+        for (const key of Object.keys(rows)) {
+            if (was !== null && key in was.made
+                && JSON.stringify(was.rows[key]) === JSON.stringify(rows[key]))
+                made[key] = was.made[key];
+        }
+        state.kept = { keys: answer.keys, rows: rows, made: made, listed: null };
         provider.changed();
     }
 
