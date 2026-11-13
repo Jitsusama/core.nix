@@ -49,8 +49,16 @@ fn run_in(home: &Path, command: &str, given: &str) -> bool {
         .stdout(std::process::Stdio::null())
         .spawn()
         .expect("sh didn't start");
-    if let Some(mut input) = running.stdin.take() {
-        input.write_all(given.as_bytes()).expect("sh took no input");
+    // A command that refuses ends without reading, so its input's pipe may
+    // close before it's written, as it did in a run on 12 November.
+    if let Some(mut input) = running.stdin.take()
+        && let Err(error) = input.write_all(given.as_bytes())
+    {
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::BrokenPipe,
+            "sh took no input: {error}"
+        );
     }
     running.wait().expect("sh didn't end").success()
 }
