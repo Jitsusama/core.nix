@@ -1254,10 +1254,15 @@ works the same way everywhere.
   A desktop check types everything Joel has picked for, and fails on a thing
   listed twice.
 - **The same letters land on the same row.** The name typed whole comes
-  first, then a name it starts, then a later word it starts, then a word
-  that only finds it, typed whole before only started: an act's name starts
+  first, then a name it starts, then a later word typed whole, then one
+  only started, so "void" is The Void before Roxanne Voidonicolas; a name
+  it had counts as its name, so "caffe" is Keep Awake. Then a word that
+  only finds it, typed whole before only started: an act's name starts
   with its verb, so "quiet" is do not disturb before the volume's
-  "quieter". What's
+  "quieter". Last is what's found only by what it holds, a screenshot by
+  its words or a person by their mail, after every name (VKCF3Z,
+  2026-11-12). Stepping into a place from what's typed is a pick of it, as
+  doing something is. What's
   picked most for what was typed, counting the longer words it starts, is
   first there once it's been picked two more times than anything else, so
   "sl", "sla" and "slac" all mean Slack, and "l" means what its words were

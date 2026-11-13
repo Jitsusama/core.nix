@@ -410,6 +410,29 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
 
 
+def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: Shell) -> None:
+    """Return into For You from "for you" keeps For You as a pick of those words, at once.
+
+    Only doing something learned what was meant, so a place stepped into and left never came
+    first for its words, however often (VKCF3Z, 2026-11-12); tests/ranking.qml holds the rest.
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def picked() -> dict[str, Json]:
+        said: dict[str, Json] = {}
+        for path in state.glob("quickshell/by-shell/*/launcher-picks.json"):
+            if path.read_text().strip():
+                said.update(cast("dict[str, Json]", json.loads(path.read_text())))
+        return said
+
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    typed_at_once(shell, "'for you' -k Return")
+    shell.launcher_until(lambda shown: shown["path"][-1:] == ["For You"])
+    assert picked().get("for you"), f"stepping into For You kept nothing for it: {picked()}"
+    shell.close_launcher()
+
+
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:
     """The date is copied, the power acts arm first, and a bind's words find its action."""
     # The date in full, as the clock has it; the day may turn while it's
