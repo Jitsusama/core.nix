@@ -18,9 +18,7 @@
 // It's home's first row, Now, saying what's in it by name.
 import qs
 import Quickshell
-import Quickshell.Io
 import QtQuick
-import Qt.labs.folderlistmodel
 import "../Fuzzy.js" as Fuzzy
 import "../Hearing.js" as Hearing
 import "../Marks.js" as Marks
@@ -161,17 +159,10 @@ Provider {
     Connections {
         target: provider.launcher
 
-        // A terminal's `launcher show` reads what's listed too.
-        function onCataloguingChanged() {
-            if (provider.launcher.cataloguing)
-                provider.looksAskedAgain();
-        }
-
         function onOpenChanged() {
             if (provider.launcher.open) {
                 provider.openedAt = Date.now();
                 provider.looksHour = Math.floor(Date.now() / 3600000);
-                provider.looksAskedAgain();
                 provider.reweather();
                 // Placing the time and the date makes Time's and Today's
                 // rows, so an opening into a place that shows none of Now's
@@ -260,7 +251,12 @@ Provider {
             timeStale = true;
     }
 
-    Component.onCompleted: Qt.callLater(retime)
+    // The looks the stream already holds, as a launcher made after the
+    // shell's first answer hears no change until the next.
+    Component.onCompleted: {
+        Qt.callLater(retime);
+        Qt.callLater(looksHeard);
+    }
     onLauncherChanged: Qt.callLater(retime)
     onWantedChanged: {
         if (wanted)
@@ -865,21 +861,21 @@ Provider {
     // so keeping notifies nothing.
     readonly property var ownKept: keeper()
 
-    // What the agents left for Joel to look at, each a file of the looks
-    // folder the harness writes, ~/.local/state/pi/agentic-harness.pi/
-    // looks/<id>.json: a pull request, a page, a file, a diff or a
-    // terminal, with why. The folder is listed only while the launcher is
-    // open and each file read then, so a closed launcher costs nothing and
-    // nothing is polled (VKCF3Z, 2026-11-08); what was read last stays
-    // while it's closed, so For You opens on it before the folder answers.
-    readonly property string looksAt: `${Quickshell.env("XDG_STATE_HOME")
-        || `${Quickshell.env("HOME")}/.local/state`}/pi/agentic-harness.pi/looks`
-    // Each file's text, by its name, as it was last read.
+    // What the agents left for Joel to look at: a pull request, a page, a
+    // file, a diff or a terminal, with why. The to-do daemon (modules/to-do)
+    // watches the harness's looks folder and streams each look whole, and
+    // settles one as Joel asks, so nothing here lists, reads or writes a
+    // file: one Rust daemon per domain (WCJQSG, 2026-11-09), and one copy
+    // of the looks rather than the 421 files the shell read and parsed on
+    // Joel's machine (2026-11-13). The stream is ForYouHolds', heard while
+    // the shell runs, so an opening draws from what it holds and never
+    // waits on it. A machine without the daemon has no looks to show.
+    readonly property var lookStream: ForYouHolds.lookStream
+    // Each look's text, by its file's name, as the stream last told it,
+    // with each Joel settled laid over it until the stream says so too.
     property var lookTexts: ({})
-    // Each file's look is kept by its text, in looksParsed.by, so only a
-    // file that changed is parsed again. A stopgap: KP0L6A's agents daemon
-    // takes the looks over by Sat 14 Nov, and For You takes its rows from
-    // it ready, with nothing to read or parse here.
+    // Each look is kept by its text, in looksParsed.by, so only a look
+    // that changed is parsed again.
     readonly property var looksSplit: Looks.looks(Object.keys(lookTexts)
         .map(file => ({ file: file, text: lookTexts[file] })), looksParsed, looksHour * 3600000)
     // Those read, each one Joel's answer has handled in History (Looks.js's
@@ -889,195 +885,82 @@ Provider {
     readonly property var looksParsed: ({})
     // The hour the looks were last listed in, which a look that has waited
     // three days goes quiet by (Looks.js's quieted): set as the launcher
-    // opens and as the folder is listed again, it changes at most once an
+    // opens and as the stream tells the looks again, it changes at most once an
     // hour, so the looks are split again then and never on each opening or
     // minute.
     property int looksHour: Math.floor(Date.now() / 3600000)
 
-    // The looks are listed and read while the launcher is shut too, each
-    // file again only as it's written, so an opening reads none of them
-    // and `launcher show` lists them with the launcher shut. Listed only
-    // while open, each opening read every file again, 27 on Joel's machine
-    // (2026-11-12), and `launcher show now "for you"` said no To Look At
-    // (2RCBOJ, 2026-11-12). A stopgap: KP0L6A's agents daemon serves the
-    // looks with For You's rows by Tue 17 Nov, with nothing read here.
-    FolderListModel {
-        id: lookFiles
-        folder: provider.looksListed
-        nameFilters: ["*.json"]
-        showDirs: false
-        showDotAndDotDot: false
-        // A file gone from the folder goes from what's read, once it has
-        // been listed whole.
-        onStatusChanged: provider.relisted()
-        onCountChanged: provider.relisted()
-    }
+    // The stream's looks are taken a turn after it tells them, so a burst
+    // of changes, as a restart's whole answer, is taken once: taken one by
+    // one, each look parsed every other again and banded For You afresh,
+    // 166 times in each of Joel's openings, 60 to 82% of the 6.5 s his
+    // shell's thread was pegged (H6EDLC's profile, 2026-11-10).
+    Connections {
+        target: provider.lookStream
 
-    // Each look's file, read as it's listed and again as the folder is
-    // written. Each file had a watcher of its own, and each watcher holds
-    // an open file: 406 on Joel's machine (2026-11-12), about 150 more a
-    // day, took the shell to 617 of the 1,024 it may hold, and a restart's
-    // burst went past them, so niri's next file was dropped and the shell
-    // lost its display (switch848).
-    Instantiator {
-        id: lookReaders
-        model: lookFiles
-
-        FileView {
-            required property string fileName
-            required property string filePath
-
-            path: filePath
-            printErrors: false
-            onLoaded: provider.readLook(fileName, text())
+        function onRevisionChanged() {
+            Qt.callLater(provider.looksHeard);
         }
     }
 
-    // The one watcher, on the folder, which hears a file renamed into it,
-    // as the harness writes a look whole (its writeWhole); a file written
-    // over in place isn't heard. A folder made after the shell started, as
-    // a machine's first look makes it, is heard as it comes
-    // (fileview-hears-a-folder.patch).
-    FileView {
-        path: provider.looksAt
-        preload: false
-        printErrors: false
-        watchChanges: true
-        onFileChanged: Qt.callLater(provider.looksHeard)
-    }
-
-    // Every look is read again, since the folder doesn't say which was
-    // written; one that reads as it did changes nothing (readLook).
     function looksHeard() {
-        looksAskedAgain();
-        for (let at = 0; at < lookReaders.count; at += 1)
-            lookReaders.objectAt(at).reload();
+        looksTold(lookStream?.held ?? {});
     }
 
-    // A file as it was read, as the shell starts and as it's written
-    // again: one reading as it did changes nothing, and the rest are
-    // taken together once the turn's reads are done.
-    // Taken one by one, each parsed every file again and banded For You
-    // afresh, 166 times in each of Joel's openings, 60 to 82% of the
-    // 6.5 s his shell's thread was pegged (H6EDLC's profile, 2026-11-10).
-    function readLook(file, text) {
-        if (!(file in looksRead) && lookTexts[file] === text)
-            return;
-        looksRead[file] = text;
-        Qt.callLater(looksReadDue);
-    }
-    readonly property var looksRead: ({})
-
-    function looksReadDue() {
-        const files = Object.keys(looksRead);
-        if (files.length === 0)
-            return;
-        const next = Object.assign({}, lookTexts);
-        for (const file of files) {
-            next[file] = looksRead[file];
-            delete looksRead[file];
-        }
-        lookTexts = next;
-    }
-
-    // A file's text as Now wrote it, taken at once, so the act that wrote
-    // it is seen in its own frame; a read of it still waiting is older.
-    function heardLook(file, text) {
-        delete looksRead[file];
-        lookTexts = Object.assign({}, lookTexts, { [file]: text });
-    }
-
-    // The folder the looks are listed from. The model never watches for a
-    // folder not there as the shell starts, as a machine's first look makes
-    // it, so one that listed none is asked for again as the folder comes,
-    // as the launcher opens or as a terminal reads it, written once with a
-    // slash and once without, since the model lists only a folder it's
-    // given anew.
-    property string looksListed: `file://${looksAt}`
-    function looksAskedAgain() {
-        if (lookFiles.status === FolderListModel.Ready && lookFiles.count > 0)
-            return;
-        looksListed = looksListed.endsWith("/") ? `file://${looksAt}` : `file://${looksAt}/`;
-    }
-
-    // Only the looks folder's listing says which looks are gone, once it's
-    // listed whole.
-    function relisted() {
-        if (lookFiles.folder.toString().replace(/\/$/, "") !== `file://${looksAt}`
-            || lookFiles.status !== FolderListModel.Ready)
-            return;
+    // The looks as `records` tells them, the stream's records by key, with
+    // each Joel settled laid over its record until the record says it too
+    // or is gone. Told as they stand, they change nothing.
+    function looksTold(records) {
         looksHour = Math.floor(Date.now() / 3600000);
-        const listed = {};
-        for (let at = 0; at < lookFiles.count; at += 1)
-            listed[lookFiles.get(at, "fileName")] = true;
-        const kept = Object.keys(lookTexts).filter(file => listed[file]);
-        if (kept.length === Object.keys(lookTexts).length)
-            return;
         const next = {};
-        for (const file of kept)
-            next[file] = lookTexts[file];
+        for (const one of Holding.lookFiles(records))
+            next[one.file] = one.text;
+        for (const file of Object.keys(looksSettling)) {
+            const told = records[`look:${looksSettling[file].id}`]?.look;
+            if (told === undefined || told?.state === looksSettling[file].state)
+                delete looksSettling[file];
+            else
+                next[file] = looksSettling[file].text;
+        }
+        const files = Object.keys(next);
+        if (files.length === Object.keys(lookTexts).length
+            && files.every(file => lookTexts[file] === next[file]))
+            return;
         lookTexts = next;
     }
 
-    // A look's file written again whole, as it's done with, through a file
-    // beside it renamed over it (atomicWrites), so a reader never sees half
-    // of one. It's written off the shell's thread: written there, with its
-    // sync to disk, it took 3 to 31 ms of Joel's act, 70 on the first
-    // (2026-11-10). Each file has a writer of its own until it's written,
-    // since a writer given a second write gives up the first: a second
-    // write of the same file is the one meant, and replaces the first. A
-    // write that fails puts the look back as it read before the act and
-    // says so, since a look shown cleared that comes back at the next read
-    // would say nothing of why (Y2YBTS, 2026-11-10).
-    Component {
-        id: lookWrite
+    // Each look Joel settled, by its file's name, `{ id, state, text }`,
+    // while the stream still tells it as it was.
+    readonly property var looksSettling: ({})
 
-        FileView {
-            id: writer
-
-            required property string file
-            // The file's text before the act, and the text written.
-            required property string was
-            property string wrote: ""
-
-            preload: false
-            printErrors: false
-            atomicWrites: true
-            blockWrites: false
-            onSaved: provider.lookWritten(file, writer)
-            onSaveFailed: error => provider.lookUnwritten(file, writer, error)
-        }
-    }
-    // Each file's writer, by its name, while its write is under way.
-    readonly property var lookWriters: ({})
-
+    // A look Joel is done with, shown so in the act's own frame and asked
+    // of the to-do daemon, which writes its file whole (#4012's
+    // settle-look). One it doesn't settle, refused or not there to ask, is
+    // put back as it read before the act and said in the journal, since a
+    // look shown cleared that comes back later would say nothing of why
+    // (Y2YBTS, 2026-11-10).
     function settleLook(one, state, how) {
         if (one.file === "")
             return;
+        const was = lookTexts[one.file] ?? "";
         const text = Looks.rewritten(one, state, how, Date.now());
-        if (!(one.file in lookWriters))
-            lookWriters[one.file] = lookWrite.createObject(provider, { file: one.file,
-                was: lookTexts[one.file] ?? "", path: `${provider.looksAt}/${one.file}` });
-        lookWriters[one.file].wrote = text;
-        // Taken before it's written, so a write that fails, even within
-        // setText, finds the text it wrote.
-        heardLook(one.file, text);
-        lookWriters[one.file].setText(text);
+        looksSettling[one.file] = { id: one.id, state: state, text: text };
+        lookTexts = Object.assign({}, lookTexts, { [one.file]: text });
+        lookStream.ask({ ask: "settle-look", look: one.id, state: state, how: how },
+            answer => provider.lookSettled(one.file, text, was, answer));
     }
 
-    // Put back only while nothing has read or written the file since.
-    function lookUnwritten(file, writer, error) {
-        console.warn(`Now: ${looksAt}/${file} wasn't written (${FileViewError.toString(error)}),`
-            + " so its look stands as it was");
-        if (lookWriters[file] === writer && lookTexts[file] === writer.wrote && writer.was !== "")
-            heardLook(file, writer.was);
-        lookWritten(file, writer);
-    }
-
-    function lookWritten(file, writer) {
-        if (lookWriters[file] === writer)
-            delete lookWriters[file];
-        writer.destroy();
+    // Put back only while nothing has settled or told the look since.
+    function lookSettled(file, text, was, answer) {
+        if (answer?.done === true)
+            return;
+        console.warn(`Now: the to-do daemon didn't settle ${file} (${answer?.error?.message
+            ?? "not there to ask"}), so its look stands as it was`);
+        if (looksSettling[file]?.text !== text)
+            return;
+        delete looksSettling[file];
+        if (lookTexts[file] === text && was !== "")
+            lookTexts = Object.assign({}, lookTexts, { [file]: was });
     }
 
     // The session a terminal look is about, by the session or address it
@@ -1449,9 +1332,9 @@ Provider {
     readonly property var given: ForYou.given(provider.launcher?.sources ?? [],
         looksHour * 3600000, (Words.of("on:waiting").said ?? {}).notTried)
     // What the sources give, as Now reads them, counted with the rest where
-    // the tray counts them too; and the looks, which the tray hears from the
-    // to-do daemon instead wherever it runs (ForYouHolds.qml), both read
-    // from the same folder.
+    // the tray counts them too; and the looks that wait, as Now takes them
+    // from the to-do daemon's stream, Joel's own acts laid over it, so the
+    // tray and For You say one number and parse the looks once.
     Binding {
         target: ForYouHolds
         property: "looks"

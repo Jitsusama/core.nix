@@ -90,6 +90,8 @@ let
   # The daemon Machine's answers come from, run over a check's own /proc.
   machine = pkgs.callPackage ../../machine/package.nix { };
   programs = pkgs.callPackage ../../programs/package.nix { };
+  # The daemon For You's looks come from, watching the looks folder.
+  toDo = pkgs.callPackage ../../to-do/package.nix { };
   # The daemon the launcher's windows come from, hearing a check's own niri.
   windows = pkgs.callPackage ../../windows/package.nix { };
   # Every QML file the shell and the modules beside it draw, its tests left
@@ -358,6 +360,8 @@ let
           # here, given no program's lists, since none has any here.
           "PROGRAMS=${lib.getExe programs}"
           "PROGRAMS_SOURCES=${pkgs.writeText "no-sources.json" "[]"}"
+          # And For You's looks from the to-do daemon, as the account's do.
+          "TO_DO=${lib.getExe toDo}"
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given

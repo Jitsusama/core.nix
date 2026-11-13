@@ -231,23 +231,34 @@ ShellRoot {
     }
 
     // The cases that hold once what a change deferred has run, then once
-    // the files an opening reads in one turn are taken, together: each
-    // taken alone parsed every file and banded For You afresh, 166 times
-    // in each of Joel's openings (2026-11-10).
+    // the looks the to-do daemon's stream tells at once are taken,
+    // together: each taken alone parsed every look and banded For You
+    // afresh, 166 times in each of Joel's openings (2026-11-10).
     function afterwards() {
-        const looksBefore = now.looks;
         if (tried(() => {
             heldHears();
             bandedAtReads = now.bandsKept.times;
-            ["e", "f", "g"].forEach(id => now.readLook(`${id}.json`, JSON.stringify({ v: 1,
-                id: id, kind: "page", at: root.lookedAt, title: id, why: "Because.",
-                target: "https://example.com", state: "waiting", session: "" })));
-            expect("files read in one turn wait for its end", now.looks === looksBefore,
-                JSON.stringify(Object.keys(now.lookTexts)));
+            const told = {};
+            for (const id of ["e", "f", "g"])
+                told[`look:${id}`] = { kind: "look", look: { v: 1, id: id, kind: "page",
+                    at: root.lookedAt, title: id, why: "Because.",
+                    target: "https://example.com", state: "waiting", session: "" } };
+            now.looksTold(told);
         }))
             Qt.callLater(root.readsTaken);
     }
     property int bandedAtReads: 0
+
+    // The to-do daemon's records of looks whose texts are `texts`, by file,
+    // as its stream tells them.
+    function records(texts) {
+        const told = {};
+        for (const text of Object.values(texts)) {
+            const look = JSON.parse(text);
+            told[`look:${look.id}`] = { kind: "look", look: look };
+        }
+        return told;
+    }
 
     function readsTaken() {
         const banded = () => now.bandsKept.times - bandedAtReads;
@@ -727,11 +738,11 @@ ShellRoot {
         now.filterable();
         expect("asked again with nothing changed, For You bands nothing again",
             now.bandsKept.times === bandedBefore, now.bandsKept.times - bandedBefore);
-        // Every file is read again at each opening.
+        // The stream tells every look again as the daemon restarts.
         const looksBefore = now.looks;
-        now.readLook("a.json", now.lookTexts["a.json"]);
-        expect("a file read again as it was changes nothing", now.looks === looksBefore
-            && Object.keys(now.looksRead).length === 0, JSON.stringify(now.looksRead));
+        now.looksTold(records(now.lookTexts));
+        expect("the looks told again as they stand change nothing", now.looks === looksBefore,
+            JSON.stringify(Object.keys(now.lookTexts)));
         now.lookTexts = Object.assign({}, now.lookTexts, { "b.json": lookAt("b", "Read B Now") });
         const changed = looked();
         expect("a look whose file changed is made again, and only it",

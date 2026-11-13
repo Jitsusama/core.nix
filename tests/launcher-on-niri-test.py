@@ -1292,8 +1292,8 @@ def test_the_shell_holds_no_file_for_each_look(shell: Shell) -> None:
 def test_a_look_cleared_in_for_you_is_written_cleared(shell: Shell) -> None:
     """Clearing a look in For You's To Look At writes its file again, saying it was cleared.
 
-    The write is made off the shell's thread (2026-11-10), so this is the one path showing it
-    still lands, whole.
+    The to-do daemon writes it, asked to settle it (2026-11-13), so this is the one path
+    showing the ask lands and the file is written whole.
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
     looks = state / "pi/agentic-harness.pi/looks"

@@ -35,8 +35,8 @@
   # For You weighs what needs Joel, heaviest first and ties as they came,
   # bands what needs him now apart from To Look At and To Try, the
   # heaviest first and ties the oldest first in each, says each row's
-  # strongest reason, reads the looks folder's files into what waits and
-  # what's history, a look three days old gone quiet into History, says a
+  # strongest reason, reads the looks' texts into what waits and what's
+  # history, a look three days old gone quiet into History, says a
   # look's ask under its why, offers its choices, each answered by a steer
   # to the session that left it or its quest's, and gathers what other
   # sources give it, as Passwords' one to-do, weighed beside the rest or
@@ -65,8 +65,9 @@
   # location is Location.qml's own, reading whereabouts itself over its
   # socket: here is the one it kept from before it started, written here,
   # GeoClue isn't there to say another, and the clock's zone is a link
-  # that names another than the place's. For You's looks are given as
-  # their files' texts, kept only while each reads the same, and what's
+  # that names another than the place's. For You's looks are given as the
+  # to-do daemon's stream tells them, kept only while each reads the same,
+  # and what's
   # on as pieces whose rows are kept while each reads the same. For You's
   # Desktop holds the notices' rows as their daemon serves them, stood in
   # (tests/lib/NoticesDaemon.qml), each kept while its notice is the same.
@@ -87,16 +88,13 @@
     test = ../../../tests/now-retime.qml;
   };
 
-  # A look Joel acts on whose file can't be written, its folder a file
-  # here, is put back as it read and said in the journal, rather than shown
-  # done until it comes back at the next read (tests/now-look-unwritten.qml).
+  # A look Joel acts on shows so at once; one the to-do daemon refuses to
+  # settle is put back as it read and said in the journal, and one it
+  # settles stays as its stream then tells it, the daemon stood in on its
+  # socket by the case itself (tests/now-look-unwritten.qml).
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
     test = ../../../tests/now-look-unwritten.qml;
-    before = ''
-      mkdir -p $HOME/.local/state/pi/agentic-harness.pi
-      touch $HOME/.local/state/pi/agentic-harness.pi/looks
-    '';
   };
 
   # The launcher's weather answers now, its parts and the rain by the hour
