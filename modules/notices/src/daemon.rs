@@ -561,7 +561,8 @@ mod tests {
         let mut state = state("history-rows");
         let old = state.notify(sent("Old and read", &[]), 10);
         state.notify(sent("New", &[]), 11);
-        assert!(state.holding.mark(&[old], true, None, 12), "the old one was read");
+        let marked = state.holding.mark(&[old], true, None, 12);
+        assert!(marked, "the old one was read");
         let old_key = format!("row:notices-history:{old}");
         let row = json!({ "key": old_key, "name": "Old and read" });
         state.unserved(BTreeMap::from([(old_key.clone(), row.clone())]));
