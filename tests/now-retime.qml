@@ -22,6 +22,7 @@ ShellRoot {
 
         property bool open: false
         property bool wanting: false
+        property bool cataloguing: false
         property var held: []
         readonly property var sources: []
         property int placed: 0
@@ -51,7 +52,10 @@ ShellRoot {
     // than when this was made, they wait for the next minute's start
     // instead, and take the time as placed in that minute (intoAPlace). A
     // timer made with this file once fired after the minute it was meant
-    // for had turned, on a loaded builder (gate af3, 2026-11-12).
+    // for had turned, on a loaded builder (gate af3, 2026-11-12). Nor do
+    // they begin in a minute's first seconds, since the clock's turn may be
+    // heard late and rightly makes the time stale: begun just past one,
+    // the case placed it once more (2RCBOJ's gate, 2026-11-12).
     Timer {
         id: begin
 
@@ -62,8 +66,8 @@ ShellRoot {
 
     function intoAPlace() {
         const into = Date.now() % 60000;
-        if (now.timedMinute < 0 || into > 50000) {
-            begin.interval = now.timedMinute < 0 ? 100 : 60100 - into;
+        if (now.timedMinute < 0 || into < 5000 || into > 50000) {
+            begin.interval = now.timedMinute < 0 ? 100 : (into < 5000 ? 5100 : 65100) - into;
             begin.start();
             return;
         }
