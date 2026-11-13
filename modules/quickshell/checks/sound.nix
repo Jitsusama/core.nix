@@ -32,10 +32,12 @@
         property string artist: ""
       '';
       # The machine daemon's acts, as Sound's down row asks them, kept for
-      # the case to read rather than carried out.
+      # the case to read rather than carried out, each answered as the case
+      # sets.
       watchers = singleton "Watchers.qml" ''
         property var asked: []
-        function act(said, then) { asked = asked.concat([said]); }
+        property var answer: ({ ok: true })
+        function act(said, then) { asked = asked.concat([said]); then?.(answer); }
       '';
     in
     pkgs.runCommandLocal "sound-hears-only-what-can-be-heard" { } ''

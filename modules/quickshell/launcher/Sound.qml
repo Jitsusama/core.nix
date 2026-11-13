@@ -63,6 +63,7 @@ import "Ago.js" as Ago
 import "ByEar.js" as ByEar
 import "ForYou.js" as ForYou
 import "Order.js" as Order
+import "ReadyRows.js" as Ready
 import "Sounds.js" as Sounds
 import "Targets.js" as Targets
 
@@ -352,10 +353,8 @@ Provider {
             hue: "warning",
             verb: Words.verb("sound:down"),
             stays: true,
-            run: () => Watchers.act({ act: "restart-unit", unit: "sound.service" }, answer => {
-                if (answer === null || answer.error)
-                    provider.refused("sound:down", said("down"));
-            }),
+            run: () => Watchers.act({ act: "restart-unit", unit: "sound.service" },
+                answer => provider.startRefused(Words.name("sound:down"), answer)),
             drawer: {
                 eyebrow: said("joined-here"),
                 title: Words.name("sound:down"),
@@ -1010,9 +1009,22 @@ Provider {
             side: side,
             note: note,
             run: () => Watchers.act(
-                { act: "restart-unit", unit: "noise-cancelled-trial.service" },
-                () => NoiseCancelling.start())
+                { act: "restart-unit", unit: "noise-cancelled-trial.service" }, answer => {
+                    if (!provider.startRefused(name, answer))
+                        NoiseCancelling.start();
+                })
         });
+    }
+
+    // Says a start the machine daemon refused in its words, or that it had
+    // no answer, as ReadyRows' shut does, and whether it did. A row that
+    // starts a daemon holds nothing drawn, so `refused` would have no hold
+    // to take back, and said nothing at all (VKCF3Z, 2026-11-13).
+    function startRefused(name, answer) {
+        const why = Ready.refusal(answer, Words.field.becoming ?? {});
+        if (why !== "")
+            launcher?.toldNot(name, "start", why);
+        return why !== "";
     }
 
     // Choose by Ear: Return steps into the trial, saying how it stands.
