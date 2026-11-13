@@ -9,7 +9,7 @@
   "tests/vm/boot/bluetooth-disk-prompt-vm-test.py" = 1;
   "tests/vm/boot/bluetooth-keyboard-stand-in.py" = 6;
   "tests/desktop/desktop-launcher-answers-vm-test.py" = 4;
-  "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 13;
+  "tests/desktop/desktop-launcher-finds-by-name-vm-test.py" = 11;
   "tests/desktop/desktop-launcher-finds-sessions-vm-test.py" = 6;
   "tests/desktop/desktop-launcher-goes-places-vm-test.py" = 2;
   "tests/desktop/desktop-launcher-holds-meetings-vm-test.py" = 2;
