@@ -267,6 +267,7 @@
     "launcher/ByEar.js"
     "launcher/ForYou.js"
     "launcher/Order.js"
+    "launcher/ReadyRows.js"
     "launcher/Sounds.js"
     "launcher/Targets.js"
   ];

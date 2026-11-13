@@ -57,6 +57,12 @@ ShellRoot {
         readonly property var held: []
         // Where a row's Return last asked it to go.
         property var went: null
+        // What it was told wasn't done, each as "name act: why".
+        property var notDone: []
+
+        function toldNot(name, act, why) {
+            notDone = notDone.concat([`${name} ${act}: ${why}`]);
+        }
 
         function wants(source) {
             return wanting;
@@ -164,6 +170,7 @@ ShellRoot {
         downDrawn();
         byEarFound();
         noiseStarted();
+        startsRefused();
     }
 
     // Choose by Ear is found from the top by its name, once for each
@@ -199,6 +206,30 @@ ShellRoot {
             && JSON.stringify(Watchers.asked) === JSON.stringify(
                 [{ act: "restart-unit", unit: "noise-cancelled-trial.service" }]),
             `${row.verb}: ${JSON.stringify(Watchers.asked)}`);
+    }
+
+    // A start the machine daemon refuses is said in its words, and one it
+    // can't be asked says it had no answer, on each row whose Return starts
+    // a daemon, rather than nothing; one it takes says nothing (VKCF3Z on
+    // #4115, 2026-11-13).
+    function startsRefused() {
+        const noise = Words.name("sound:noise");
+        const down = Words.name("sound:down");
+        const none = Words.field.becoming?.noAnswer ?? "";
+        const cases = [[{ ok: true }, []],
+            [{ error: { said: "no such unit" } },
+                [`${noise} start: no such unit`, `${down} start: no such unit`]],
+            [null, [`${noise} start: ${none}`, `${down} start: ${none}`]]];
+        for (const [answer, wanted] of cases) {
+            shutLauncher.notDone = [];
+            Watchers.answer = answer;
+            shutSound.startsRow("sound:mic:noise", noise, "", "").run?.();
+            shutSound.downRow().run?.();
+            expect(`a start answered ${JSON.stringify(answer)} is said as wanted`,
+                none !== "" && JSON.stringify(shutLauncher.notDone) === JSON.stringify(wanted),
+                JSON.stringify(shutLauncher.notDone));
+        }
+        Watchers.answer = { ok: true };
     }
 
     // With the daemon not answering, its one row's drawer says a little
