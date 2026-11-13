@@ -97,7 +97,6 @@
       "id": "agents:line",
       "in": "agents",
       "name": "Say to the Focused Session",
-      "term": "Agents/line",
       "glyph": "reply",
       "ask": "what to say?",
       "said": {

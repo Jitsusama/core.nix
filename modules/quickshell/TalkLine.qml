@@ -129,6 +129,7 @@ Scope {
         // Quickshell's type files can't place margins, so qmllint can't.
         margins.top: root.up ? Theme.space.rung.screen - card.reach // qmllint disable unqualified
             : 1 - implicitHeight
+        // The same holds for the left margin.
         margins.left: !root.up || !surface.screen ? 1 - implicitWidth // qmllint disable unqualified
             : Math.round((surface.screen.width - root.launcher.width) / 2) - card.reach
         implicitWidth: root.launcher.width + 2 * card.reach
