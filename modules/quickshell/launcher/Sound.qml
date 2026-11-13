@@ -996,7 +996,10 @@ Provider {
     }
 
     // A row saying noise-cancelled isn't answering, whose Return starts it,
-    // staying open to say so once it answers.
+    // staying open to say so once it answers. Its socket is mostly what's
+    // gone, stopped or failed, so the machine daemon restarts its trial's
+    // service, which listens itself when handed no socket; then the shell
+    // asks it again rather than waiting out its next try.
     function startsRow(key, name, side, note) {
         return thing({
             key: key,
@@ -1006,7 +1009,9 @@ Provider {
             stays: true,
             side: side,
             note: note,
-            run: () => NoiseCancelling.start()
+            run: () => Watchers.act(
+                { act: "restart-unit", unit: "noise-cancelled-trial.service" },
+                () => NoiseCancelling.start())
         });
     }
 

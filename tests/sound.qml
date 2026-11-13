@@ -163,6 +163,7 @@ ShellRoot {
         partsKept();
         downDrawn();
         byEarFound();
+        noiseStarted();
     }
 
     // Choose by Ear is found from the top by its name, once for each
@@ -183,6 +184,21 @@ ShellRoot {
                 spot: "sound:by-ear:now"
             }), JSON.stringify(shutLauncher.went));
         expect("and it stays open there", found[0].stays === true, found[0].stays);
+    }
+
+    // With noise-cancelled not answering, Return on a row that offers to
+    // start it has the machine daemon restart its trial's service, which
+    // starts it even when its socket has stopped or failed, where asking
+    // the socket again finds nothing (1KZFHC, 2026-11-12).
+    function noiseStarted() {
+        const row = sound.startsRow("sound:mic:noise", Words.name("sound:noise"), "", "");
+        Watchers.asked = [];
+        row.run?.();
+        expect("noise cancelling down, its row's Return restarts its service",
+            row.verb === Words.verb("sound:by-ear:down")
+            && JSON.stringify(Watchers.asked) === JSON.stringify(
+                [{ act: "restart-unit", unit: "noise-cancelled-trial.service" }]),
+            `${row.verb}: ${JSON.stringify(Watchers.asked)}`);
     }
 
     // With the daemon not answering, its one row's drawer says a little
