@@ -1234,7 +1234,8 @@
         "workspaces": "on {count} workspaces",
         "program": "program",
         "more": "{count} more",
-        "terminal": "a terminal"
+        "terminal": "a terminal",
+        "agents": "agents' windows {memory}"
       },
       "tells": {
         "holding": "Every program on this machine, and what each has open."
