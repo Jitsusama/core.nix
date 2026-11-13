@@ -222,6 +222,22 @@ fn areas(text: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// The longest an example of a pain is quoted, in characters.
+const EXAMPLE_CHARS: usize = 100;
+
+/// `text` as the page quotes it: whole, or cut at its last word that fits
+/// and marked as cut, so no word is left half-said.
+fn shortened(text: &str) -> String {
+    if text.chars().count() <= EXAMPLE_CHARS {
+        return text.to_owned();
+    }
+    let fits: String = text.chars().take(EXAMPLE_CHARS + 1).collect();
+    let kept = fits
+        .rsplit_once(' ')
+        .map_or(fits.as_str(), |(kept, _)| kept);
+    format!("{} ...", kept.trim_end())
+}
+
 /// The week's pains by area: each pain-points record since `since` by
 /// its place, and each of health's pained lines by the first area it
 /// names. A line naming none is counted under "" rather than guessed.
@@ -230,7 +246,7 @@ fn pains(points: &[String], health: &[String], since: i64) -> BTreeMap<String, P
     let mut add = |area: String, times: u32, example: String| {
         let pain = pains.entry(area).or_default();
         if pain.example.is_empty() {
-            pain.example = example.chars().take(100).collect();
+            pain.example = shortened(&example);
         }
         pain.times += times;
     };
@@ -423,6 +439,25 @@ mod tests {
             readings,
             findings: Vec::new(),
         }
+    }
+
+    #[test]
+    fn an_example_too_long_is_cut_at_a_word_and_says_so() {
+        // 13 November's page quoted "... and acceluary-next? d", the
+        // next word cut to its first letter.
+        // Seventeen words are 84 characters, so the question ends at 100.
+        let words = "word ".repeat(17);
+        let long = format!("{words}acceluary-next? done");
+        assert_eq!(
+            shortened(&long),
+            format!("{words}acceluary-next? ..."),
+            "a long example was cut mid-word or not said to be cut"
+        );
+        assert_eq!(
+            shortened("we can merge now, why are we holding?"),
+            "we can merge now, why are we holding?",
+            "a short example was changed"
+        );
     }
 
     #[test]
