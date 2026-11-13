@@ -3999,12 +3999,7 @@ def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     beside = machine.ahead("drawer:power:rate", deadline)
     shell.normal()
-    since = shell.mark()
-    # A letter, as Joel walks rows, since an arrow sent here comes with no press time to say
-    # its drawer from.
-    shell.send_chars("j")
-    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Rate")
-    said = said_once(shell, since, DRAWER_SAID)
+    said = said_once(shell, walked_to_rate(shell), DRAWER_SAID)
     lines = [line for line in said.splitlines() if "drawer for" in line]
     shown = shell.showing()["drawer"]
     shell.close_launcher()
@@ -4030,10 +4025,34 @@ def test_a_drawer_apart_is_held_again_as_the_launcher_opens_again(
     shell.close_launcher()
 
 
-def on_charge(shell: Shell, machine: StandIn) -> list[Json]:
+def walked_to_rate(shell: Shell) -> int:
+    """Walk down from Charge to Rate by letter, and give the log's mark at the key reaching it.
+
+    By a letter, as Joel walks rows, since an arrow sent here comes with no press time to say
+    its drawer from. Battery's own Copy row lands before or after Rate as Rate is placed.
+    """
+
+    def named(shown: Json) -> object:
+        return (shown["selected"] or {}).get("name")
+
+    def left(was: object, shown: Json) -> bool:
+        return named(shown) != was
+
+    for _ in range(3):
+        since = shell.mark()
+        was = named(shell.showing())
+        shell.send_chars("j")
+        shell.launcher_until(functools.partial(left, was))
+        if named(shell.showing()) == "Rate":
+            return since
+    unreached = f"three keys down from Charge never reached Rate: {shell.showing()}"
+    raise AssertionError(unreached)
+
+
+def on_charge(shell: Shell, machine: StandIn) -> None:
     """Serve Charge and Rate with drawers apart, and step through Machine to Charge.
 
-    It gives the two rows as told, and leaves the launcher open on Charge with its drawer out.
+    It leaves the launcher open on Charge with its drawer out.
     """
     charge = battery(80)[1]
     drawn = {
@@ -4080,7 +4099,6 @@ def on_charge(shell: Shell, machine: StandIn) -> list[Json]:
         drawers = [report for report in said if "drawer" in report][-12:]
         message = f"{failed}\nwatched of the stand-in: {watches}\nsaid of drawers: {drawers}"
         raise AssertionError(message) from failed
-    return rows
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:
