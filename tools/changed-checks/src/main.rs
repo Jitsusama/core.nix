@@ -31,9 +31,10 @@
 //!
 //! The checks are evaluated a few dozen at a time, in a nix eval each, a VM
 //! test counting four, two evaluations at once, or up to eight on a builder
-//! with the cores and memory for them (`checks.rs` says why),
-//! rather than all in one, which held every check at once and reached 24 GB
-//! on a machine many sessions share; each evaluation's memory goes when it
+//! with the cores and memory for them (`checks.rs` says why, and
+//! `evaluating.rs` evaluates them), rather than all in one, which held
+//! every check at once and reached 24 GB on a machine many sessions
+//! share; each evaluation's memory goes when it
 //! ends. A run that builds no VM test evaluates the tree's ordinary checks
 //! first and builds what they moved while it evaluates its VM tests, which
 //! are half the evaluating, so the build waits on none of them. A commit's
@@ -56,7 +57,8 @@
 //! it runs here only with `--here`. nix-offload keeps
 //! what passed at each commit, since each builder it lends starts with an
 //! empty store, and tells the far side, as `CHANGED_CHECKS_PASSED`, which
-//! checks passed at its commit, so it builds none of them again; the same
+//! checks passed at its commit, so it builds none of them again
+//! (`building.rs` builds the rest); the same
 //! run again at a commit where it passed is answered by nix-offload
 //! alone. While nix-offload lends a builder, a build here is sent
 //! to it as a command naming a commit origin has, and the builder fetches
@@ -71,7 +73,9 @@
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
 
+mod building;
 mod checks;
+mod evaluating;
 mod first;
 mod keep;
 mod pressure;
@@ -87,12 +91,13 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
+use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
+use evaluating::{derivations, evaluated, names, pure};
 use quarantine::Held;
-use runs::{Evaluation, Run};
-use there::Sent;
+use runs::Run;
 
 /// What a run asked for is refused with, as sysexits.h numbers it.
 const USAGE: u8 = 64;
@@ -118,10 +123,6 @@ const NOT_TAKEN: i32 = 75;
 
 /// Set on the far side's run, which runs there and never sends itself on.
 const HERE: &str = "CHANGED_CHECKS_HERE";
-
-/// Set on the far side's run to the checks that passed at its commit
-/// already, which it builds none of again (`passed_at` says how).
-const PASSED: &str = "CHANGED_CHECKS_PASSED";
 
 /// What a run was asked for.
 #[expect(
@@ -641,292 +642,12 @@ fn named(comparison: &checks::Comparison) -> usize {
     named
 }
 
-/// Those of the checks a comparison moved that `passed` doesn't say passed
-/// at the commit already, saying of each it leaves out, when building, that
-/// it isn't built again.
-fn unpassed(
-    moved: &[&str],
-    passed: &[String],
-    commit: Option<&str>,
-    building: bool,
-) -> Vec<String> {
-    moved
-        .iter()
-        .copied()
-        .filter(|name| {
-            let already = passed.iter().any(|check| check == name);
-            if already && building {
-                let short = commit.and_then(|commit| commit.get(..12));
-                eprintln!(
-                    "changed-checks: {name} passed at {} already, so it isn't built again",
-                    short.unwrap_or_default()
-                );
-            }
-            !already
-        })
-        .map(str::to_owned)
-        .collect()
-}
-
-/// A build of the checks a run named: how many, how long it took, and how
-/// it ended.
-struct Built {
-    checks: usize,
-    took: Duration,
-    sent: Sent,
-}
-
-/// Build `targets`, each that main quarantines alone after the rest, from
-/// the derivations `after` evaluated for them.
-fn built(
-    flake: &str,
-    system: &str,
-    held: &[Held],
-    targets: &[String],
-    after: &Derivations,
-) -> Result<Built, String> {
-    let began = Instant::now();
-    let (quarantined, blocking): (Vec<&str>, Vec<&str>) = targets
-        .iter()
-        .map(String::as_str)
-        .partition(|name| quarantine::find(held, name).is_some());
-    let mut sent = Sent {
-        passed: true,
-        there: false,
-        bytes: None,
-    };
-    if !blocking.is_empty() {
-        sent = build(flake, system, &blocking, after)?;
-    }
-    // Each is built alone, so a failure is known for the check it was.
-    for name in quarantined {
-        let alone = build(flake, system, &[name], after)?;
-        if !alone.passed {
-            let why = quarantine::find(held, name)
-                .map(Held::said)
-                .unwrap_or_default();
-            eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
-        }
-        sent.there |= alone.there;
-        // Each build there sent its own, so the run sent them all.
-        sent.bytes = match (sent.bytes, alone.bytes) {
-            (Some(before), Some(now)) => Some(before + now),
-            (before, now) => before.or(now),
-        };
-    }
-    Ok(Built {
-        checks: targets.len(),
-        took: began.elapsed(),
-        sent,
-    })
-}
-
-/// Build `targets` on the lent builder while one stands, and otherwise
-/// here, each from the derivation `after` evaluated for it.
-fn build(flake: &str, system: &str, targets: &[&str], after: &Derivations) -> Result<Sent, String> {
-    if there::lent(&offload_dir()) {
-        let journal = state().join("nix-offload/there.jsonl");
-        match published().and_then(|fetched| there::build(&fetched, system, targets, &journal)) {
-            Ok(sent) => return Ok(sent),
-            Err(why) => eprintln!("changed-checks: building here, since {why}"),
-        }
-    }
-    // Each check is built from the derivation just evaluated, so no
-    // evaluator runs beside the builds: one holds its whole heap until its
-    // last build ends, 1.4 to 4 GiB through a VM test. A derivation the
-    // store has collected since is built from the flake, as before.
-    let built = Command::new("nix")
-        .args(["build", "--no-link", "--keep-going", "-L"])
-        .args(PURE)
-        .args(standing())
-        .args(
-            targets
-                .iter()
-                .map(|name| match after.get(*name).and_then(Option::as_deref) {
-                    Some(derivation) if Path::new(derivation).exists() => format!("{derivation}^*"),
-                    _ => format!("{flake}#checks.{system}.{name}"),
-                }),
-        )
-        .status()
-        .map_err(|error| format!("running nix: {error}"))?;
-    Ok(Sent {
-        passed: built.success(),
-        there: false,
-        bytes: None,
-    })
-}
-
 /// Where nix-offload says the machine's builders: `NIX_OFFLOAD_DIR`, or
 /// /run/nix-offload. In it, machines-with-standing names the standing
 /// builders beside any lent one, for a build that asks for them, and store
 /// the lent builder's store, while one stands.
 fn offload_dir() -> PathBuf {
     env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from("/run/nix-offload"), PathBuf::from)
-}
-
-/// What a build here asks for: the standing builders, where the machine
-/// has them. Those are never offered to every build, since they may be
-/// machines only public code may reach; core.nix's checks are public code
-/// with public inputs alone, which `stands-alone` holds, so they may go
-/// there.
-fn standing() -> Vec<String> {
-    let with_standing = offload_dir().join("machines-with-standing");
-    if with_standing.exists() {
-        vec![
-            "--builders".to_owned(),
-            format!("@{}", with_standing.display()),
-        ]
-    } else {
-        Vec::new()
-    }
-}
-
-/// The flake a builder can fetch the working tree from by itself: its
-/// commit, from origin, when the tree is that commit and origin has it.
-/// Otherwise why not, since then only this machine has what's built.
-fn published() -> Result<String, String> {
-    let Some(commit) = clean_commit()? else {
-        return Err("the working tree differs from its commit".to_owned());
-    };
-    let short = commit.get(..12).unwrap_or(&commit);
-    let on = run(
-        "git",
-        &["branch", "-r", "--contains", &commit, "--list", "origin/*"],
-    )?;
-    if on.is_empty() {
-        return Err(format!(
-            "origin doesn't have {short}; push it to build there"
-        ));
-    }
-    let url = run("git", &["remote", "get-url", "origin"])?;
-    Ok(there::fetched(&url, &commit))
-}
-
-/// Which checks, by name, `CHANGED_CHECKS_PASSED` says passed at `commit`,
-/// the working tree's when it's clean: its commit, then each name. A
-/// check that passed at a commit passes there again, so nix-offload, which
-/// keeps what passed wherever it was built, says so when it sends a run;
-/// told of another commit, or of a tree with changes, it names none.
-fn passed_at(commit: Option<&str>) -> Vec<String> {
-    let told = env::var(PASSED).unwrap_or_default();
-    let mut words = told.split_whitespace();
-    match (words.next(), commit) {
-        (Some(told), Some(commit)) if told == commit => words.map(str::to_owned).collect(),
-        _ => Vec::new(),
-    }
-}
-
-/// The working tree's commit, when nothing in it differs from the commit
-/// in what Nix reads: no file git tracks, or has been told of, changed.
-fn clean_commit() -> Result<Option<String>, String> {
-    let changed = run("git", &["status", "--porcelain", "--untracked-files=no"])?;
-    if !changed.is_empty() {
-        return Ok(None);
-    }
-    run("git", &["rev-parse", "HEAD"]).map(Some)
-}
-
-/// Each evaluation goes past nix's evaluation cache. Evaluated through
-/// `--apply`, a result can't be kept there, so the cache saved nothing (one
-/// chunk took 115 s with it and 108 to 127 s without), while two evaluations
-/// at once, or two runs, found its database busy.
-const UNCACHED: &str = "--no-eval-cache";
-
-/// Every evaluation is pure, and no flake's own config is taken. A fenced
-/// session's run goes to a lent builder with a flake it chose, which may
-/// read only what the commit holds there (ISXEG8, 11 November): an impure
-/// evaluation reads the machine's files and environment, and a flake's
-/// `nixConfig`, once taken, could turn purity off again.
-const PURE: [&str; 6] = [
-    "--option",
-    "pure-eval",
-    "true",
-    "--option",
-    "accept-flake-config",
-    "false",
-];
-
-/// Nix's words `asked`, then those that keep its evaluation [`PURE`].
-fn pure<'a>(asked: &[&'a str]) -> Vec<&'a str> {
-    asked.iter().copied().chain(PURE).collect()
-}
-
-/// Evaluate each of a flake's checks for a system to its derivation's path,
-/// noting in the run what each chunk of them took, as the side named.
-fn derivations(
-    flake: &str,
-    system: &str,
-    side: &'static str,
-    noted: &mut Run,
-) -> Result<Derivations, String> {
-    let mut evaluation = Run::evaluating(side);
-    let found = evaluated(flake, system, &names(flake, system)?, &mut evaluation)?;
-    noted.evaluated(evaluation);
-    Ok(found)
-}
-
-/// The names of a flake's checks for a system.
-fn names(flake: &str, system: &str) -> Result<Vec<String>, String> {
-    let checks = format!("{flake}#checks.{system}");
-    let naming: [&str; 6] = [
-        "eval",
-        "--json",
-        &checks,
-        "--apply",
-        "builtins.attrNames",
-        UNCACHED,
-    ];
-    let listed = run("nix", &pure(&naming))?;
-    serde_json::from_str(&listed).map_err(|error| format!("nix named the checks oddly: {error}"))
-}
-
-/// Evaluate these of a flake's checks for a system to their derivations'
-/// paths, noting in the evaluation what each chunk of them took.
-fn evaluated(
-    flake: &str,
-    system: &str,
-    names: &[String],
-    evaluation: &mut Evaluation,
-) -> Result<Derivations, String> {
-    // As many go at once as a builder made for the run has room for, and two
-    // on the person's own machine (`checks::at_once` says why).
-    let at_once = checks::at_once_here(env::var_os(HERE).is_some());
-    evaluated_by(flake, system, names, evaluation, at_once)
-}
-
-/// Evaluate as `evaluated` does, `at_once` chunks at a time.
-fn evaluated_by(
-    flake: &str,
-    system: &str,
-    names: &[String],
-    evaluation: &mut Evaluation,
-    at_once: usize,
-) -> Result<Derivations, String> {
-    let checks = format!("{flake}#checks.{system}");
-    let chunks = checks::chunks(names);
-    // A further chunk begins only while memory isn't stalling: two at once
-    // while it was full stalled Joel's launcher on 29 October.
-    let evaluated = checks::each_at_once(
-        &chunks,
-        at_once,
-        || !pressure::memory_stalled(),
-        |chunk| {
-            let selecting = checks::selecting(chunk)?;
-            let began = Instant::now();
-            let asked: [&str; 6] = ["eval", "--json", &checks, "--apply", &selecting, UNCACHED];
-            let evaluated = run("nix", &pure(&asked))?;
-            let took = began.elapsed();
-            let derivations: Derivations = serde_json::from_str(&evaluated)
-                .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
-            Ok::<_, String>((chunk.len(), took, derivations))
-        },
-    )?;
-    let mut found = Derivations::new();
-    for (checks, took, derivations) in evaluated {
-        evaluation.chunk(checks, took);
-        found.extend(derivations);
-    }
-    Ok(found)
 }
 
 /// Run a program on the path, and give what it printed, trimmed; what it
