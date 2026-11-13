@@ -138,5 +138,12 @@
     "owner_pr": 3794,
     "reason": "failed, then passed, at b0e3be7a0f1b",
     "test": "vm-desktop-looks-vi"
+  },
+  {
+    "at": 1794528605,
+    "commit": "039909ee6f729f3c8d44e0ca2acb523133ce9be4",
+    "owner_pr": 3827,
+    "reason": "failed, then passed, at 039909ee6f72",
+    "test": "the-launcher-opens-on-what-it-kept-on-niri"
   }
 ]
