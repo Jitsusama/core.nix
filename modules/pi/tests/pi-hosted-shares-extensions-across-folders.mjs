@@ -6,7 +6,15 @@
 // comes from another, so A, B, A evaluates the modules three times.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -73,7 +81,9 @@ const load = async (name, { ends = false, also = [] } = {}) => {
   if (!ends) {
     live.push(loaded);
   }
-  return loaded.extensions.map((one) => Number([...one.commands.keys()][0].replace("evaluation-", "")));
+  return loaded.extensions.map((one) =>
+    Number([...one.commands.keys()][0].replace("evaluation-", "")),
+  );
 };
 const open = async (name, options) => (await load(name, options))[0];
 const afresh = () => {
@@ -105,7 +115,11 @@ afresh();
 await open("a");
 const own = extensionIn(join(folder("own"), ".pi", "extensions", "own"));
 assert.deepEqual(await load("own", { also: [own] }), [1, 2], "a folder's own extension was shared");
-assert.deepEqual(await load("own", { also: [own] }), [1, 2], "a folder's own extension was evaluated again");
+assert.deepEqual(
+  await load("own", { also: [own] }),
+  [1, 2],
+  "a folder's own extension was evaluated again",
+);
 assert.equal(await open("b"), 1);
 
 // A reload empties the cache, so it loads what's on disk now.
