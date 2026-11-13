@@ -5,6 +5,7 @@
 // same letters land on the same row, a thing is one row, and one slip
 // teaches nothing.
 import QtQuick
+import "Member.js" as Member
 import "Rank.js" as Rank
 
 QtObject {
@@ -380,6 +381,47 @@ QtObject {
         expect("made in the order found", byKind.made.map(one => one.copied && one.key),
             ["p1", "a1", "p2"]);
         expect("each kind's time", byKind.took, { password: 7, person: 1 });
+
+        // A program's row reads what it holds, its note and count, and
+        // every act it has, only when something asks, as Provider's gotten
+        // makes it. Over a whole search's ranking, ordering, making, being
+        // one row and placing, only keysHeld reads one of them, its own
+        // layer, once a row: making them read each one of all 96 programs
+        // "m" found, for the nine drawn (2026-11-12).
+        const reads = { note: 0, count: 0, actsOnly: 0, ownLayer: 0 };
+        let windows = 0;
+        const program = (key, name) => {
+            const fields = Object.getOwnPropertyDescriptors(row(key, name,
+                { what: "program", tier: 1 }));
+            for (const field of Object.keys(reads))
+                fields[field] = {
+                    enumerable: true,
+                    configurable: true,
+                    get: () => {
+                        reads[field] += 1;
+                        return field === "count" ? `${windows} windows` : "";
+                    }
+                };
+            return Object.defineProperties({}, fields);
+        };
+        const programs = [program("program:mail", "Mail"), program("program:maps", "Maps"),
+            program("program:music", "Music")];
+        const searched = Rank.order(programs.map(one => ({ choice: one, tier: 1, score: 1 })),
+            {});
+        const madeRows = Rank.madeByKind(searched, one => one.choice.what,
+            one => Member.copied(one.choice, { grade: 1, tier: one.tier, kept: false }),
+            () => 0).made;
+        const listedRows = Rank.keysHeld(Rank.once(Rank.placed(madeRows, [], "")));
+        expect("a search lists every program", keys(listedRows),
+            "program:mail program:maps program:music");
+        expect("and reads only each one's own layer", reads,
+            { note: 0, count: 0, actsOnly: 0, ownLayer: 3 });
+        windows = 2;
+        expect("what a row holds is read as it's asked", listedRows[0].count, "2 windows");
+        expect("its making's own fields beside its own", [listedRows[0].grade,
+            listedRows[0].kept, listedRows[0].name], [1, false, "Mail"]);
+        expect("its own field over its making's", Member.copied(row("a", "A", { tier: 1 }),
+            { tier: 4 }).tier, 1);
 
         // A key named as Object's own is a key like any other, so a thing
         // named so is one row, said as what it threw where it throws so a
