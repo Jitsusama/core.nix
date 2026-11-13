@@ -6,6 +6,10 @@
 //! to It, since he steers a team through its orchestrator; a session
 //! inside one acts first with a look at its drawer, and is gone to only
 //! where it needs his own hands.
+//!
+//! Long because more than half of it is its tests, which read the private
+//! builders of each row they check; the rows themselves are under 400
+//! lines.
 
 use std::collections::{HashMap, HashSet};
 
