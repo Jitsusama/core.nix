@@ -234,8 +234,11 @@ function arrives(way, to) {
 // marks where it can be, or the screen's bottom. Never across the air
 // between them, as a cat can't (Joel, 2026-11-13 17:22, by WCJQSG
 // fc3f716a: "it would not be able to drop down near the center of a
-// window below"). Standing on none of them, it drops from where it is.
-// Where it lands, as Falls.under says.
+// window below"). With nothing under the side it hangs on, it pushes
+// off the wall onto the near edge of a window a cat's width across, as a
+// falling cat grabs a corner (Falls.grabbed), never further in. Standing
+// on none of them, it drops from where it is. Where it lands, as
+// Falls.under says.
 function down(way, was, now, to) {
     const at = way.at;
     const goal = to.x + at.wide / 2;
@@ -243,21 +246,25 @@ function down(way, was, now, to) {
     const clear = spot => !lit || !Routes.inMarks(spot, lit.each / 4, at);
     const lands = spot => clear(spot) && now.some(column => spot < column.right
         && spot + at.wide > column.left);
+    const near = spot => clear(spot) && Falls.pushes(spot, now, at, clear) !== null;
     const toward = { x: to.x, y: way.y };
-    const stops = [lands, clear, null].reduce((found, where) => found
+    const stops = [lands, near, clear, null].reduce((found, where) => found
         ?? Routes.off(way, was, at, { toward, down: true, lands: where }), null);
     if (stops !== null) {
         follows(way, stops, was, null);
     }
     const above = { x: way.x, y: -at.tall - at.cell };
-    const onto = Falls.under(above, now, at);
+    const x = Falls.under(above, now, at).kind !== "floor" ? way.x
+        : Falls.pushes(way.x, now, at, clear) ?? way.x;
+    const onto = Falls.under({ x, y: above.y }, now, at);
     way.turn = 0;
-    way.facing = Math.sign(goal - (way.x + at.wide / 2)) || way.facing;
+    way.facing = Math.sign(goal - (x + at.wide / 2)) || way.facing;
     // It lets go, falling out of sight to just above the screen's top,
     // clear of the window it hung on, and from there falls in, so all of
-    // its fall that's seen is a fall.
+    // its fall that's seen is a fall, no faster than a dropped thing falls
+    // however far that is.
     Ways.leap(way, above, 0, "drops");
-    Ways.leap(way, { x: way.x, y: onto.y }, 0, "drops");
+    Ways.falls(way, { x, y: onto.y }, "drops");
     holds(way, "lands", MarginCat.LANDS);
     if (onto.kind === "floor") {
         holds(way, "shakes", Falls.SHAKES);

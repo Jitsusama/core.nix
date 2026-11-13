@@ -154,9 +154,11 @@ QtObject {
             // straight down from the edge it let go of onto what's under
             // it, never over across the air between them (Joel, 2026-11-13
             // 17:22, by WCJQSG fc3f716a: "it would not be able to drop
-            // down near the center of a window below").
+            // down near the center of a window below"). Falling beside a
+            // window, it may push off the wall onto the near edge of one
+            // below, two of its widths across at most.
             for (const beat of journey.beats.filter(one => one.name === "drops"))
-                if (Math.abs(beat.to.x - beat.from.x) > 0.01)
+                if (Math.abs(beat.to.x - beat.from.x) > 2 * at.wide + 0.01)
                     wrong.push(`${said} drops from ${Math.round(beat.from.x)} `
                         + `to ${Math.round(beat.to.x)}`);
             let before = null;
@@ -706,6 +708,8 @@ QtObject {
             || at.y - falls[i - 1].y >= falls[i - 1].y - falls[i - 2].y - 1e-9), true);
         const landed = down.beats[down.beats.map(beat => beat.name).lastIndexOf("drops") + 1];
         expect("lands crouched on the column below", [landed.name, landed.from.y], ["lands", 7]);
+        expect("pushed off its wall onto the near edge of the window under it, no further in",
+            landed.from.x, 608);
         expect("then walks to its seat and sits there",
             Paths.frame(down, down.ends), { x: 900, y: 7, pose: null, turn: 0, facing: 1,
                 beat: "sits", done: true });
