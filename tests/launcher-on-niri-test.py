@@ -3008,7 +3008,7 @@ def test_the_internets_drawer_is_the_one_the_eero_daemon_serves(shell: Shell) ->
     )
     drawer = internet["row"]["drawer"]
     assert drawer["title"] == "Internet", str(drawer)
-    assert drawer["eyebrow"] == "via Example ISP", str(drawer)
+    assert drawer["eyebrow"] == "via eero \u00b7 internet", str(drawer)
     facts = {fact.get("label"): fact.get("value") for fact in drawer["facts"]}
     assert facts["Provider"] == "Example ISP \u00b7 AS64496", str(facts)
     assert str(facts["Last Look"]).endswith(" \u00b7 from home"), str(facts)

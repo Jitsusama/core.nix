@@ -8,8 +8,9 @@
 //! it are in its own drawer, and who came and went in its node's (Joel,
 //! 2026-11-11: "home network internet seems to have devices connected to
 //! the LAN thrown in"). How it stands is its row's side, so the drawer
-//! doesn't say it again. Its eyebrow is who carries it, "via Example ISP",
-//! as every drawer's here says where the thing is (VKCF3Z, 2026-11-07).
+//! doesn't say it again. Its eyebrow is "via eero · internet", as the
+//! place's is "via eero · network", since who carries it is a fact of its
+//! own (VKCF3Z, 2026-11-12).
 
 use ready_rows::numbers::Numbers;
 use ready_rows::time::{self as said_at, Form};
@@ -87,7 +88,6 @@ pub fn record(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value {
 }
 
 fn drawer(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value {
-    let isp = model.internet.isp.as_deref().unwrap_or("");
     let mut facts = head(model, words, numbers);
     facts.extend(probe(&model.internet, words, numbers));
     facts.extend(outages(&model.internet, words));
@@ -96,11 +96,7 @@ fn drawer(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Value {
     facts.extend(switches(&model.internet, words));
     facts.extend(events(model, words));
     json!({
-        "eyebrow": if isp.is_empty() {
-            String::new()
-        } else {
-            fill(words.say("eero:internet", "via"), &[("isp", isp)])
-        },
+        "eyebrow": words.say("eero:internet", "eyebrow"),
         "eyebrowNames": true,
         "title": words.internet,
         "facts": facts,

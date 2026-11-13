@@ -62,7 +62,7 @@ model of it.
 | `net.speedtest.json` `[].{down_mbps,up_mbps,date}` | every speed test eero kept | internet (a spark of each), `speeds` |
 | `online_eeros_count`, `offline_eeros_count`, `pending_eeros_count` | the nodes by state | place head, `status` |
 | `clients.count` | devices eero counts | place head, `status` |
-| `updates.{target_firmware,update_to_firmware,has_update,can_update_now,preferred_update_hour,last_update_started}` | firmware: what runs, what's next, when it updates | internet, `firmware`; a notice when an update comes to wait |
+| `updates.{target_firmware,update_to_firmware,has_update,can_update_now,preferred_update_hour,last_update_started}` | firmware: what's next, when it updates; what runs is the gateway node's `os_version`, as `target_firmware` is the update's own while one waits | internet, `firmware`; a notice when an update comes to wait |
 | `thread`, `net.thread.json` `{name,channel,border_agent}` | the Thread network and its border agent | internet, `internet`; its keys are dropped |
 | `guest_network.{enabled,name}` | the guest network | internet, `internet`; its password is dropped |
 | `ddns.enabled`, `backup_internet_enabled`, `power_saving` | the rest of the internet's switches | internet, `internet` |

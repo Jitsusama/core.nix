@@ -32,7 +32,7 @@ fn ms(at: &str) -> i64 {
 }
 
 #[test]
-fn its_eyebrow_is_who_carries_it_and_its_state_is_the_rows() {
+fn its_eyebrow_is_eeros_and_its_state_is_the_rows() {
     let drawer = drawn(&model());
     assert_eq!(
         [
@@ -40,8 +40,12 @@ fn its_eyebrow_is_who_carries_it_and_its_state_is_the_rows() {
             &drawer["eyebrowNames"],
             &drawer["title"]
         ],
-        [&json!("via Example ISP"), &json!(true), &json!("Internet")],
-        "the eyebrow names who carries it, as it's written"
+        [
+            &json!("via eero · internet"),
+            &json!(true),
+            &json!("Internet")
+        ],
+        "the eyebrow says it's eero's internet, who carries it a fact of its own"
     );
     assert_eq!(
         named_fact(&drawer, "State"),

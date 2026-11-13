@@ -23,7 +23,7 @@
         "signedOut": "signed out of eero",
         "unreachable": "eero unreachable",
         "tested": "tested {speed}",
-        "via": "via {isp}",
+        "eyebrow": "via eero · internet",
         "asn": "AS{asn}",
         "ispDown": "down",
         "updateReady": "{version} ready",
