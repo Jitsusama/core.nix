@@ -2330,9 +2330,16 @@ in
     # N MB: JS heap ...`, so how it grows between switches and what a cut
     # saved are read there rather than from one look at a running shell. It
     # only reads /proc, the shell's cgroup and its GPU's fdinfo, in about
-    # 30 ms, attaching to nothing.
+    # 30 ms, attaching to nothing. It runs only while the shell does
+    # (Requisite), so a ten-minute mark with no shell, as at boot before
+    # the session starts, skips it rather than leaving it failed: a boot
+    # test spanning a mark failed on it (16V6F4, 2026-11-13).
     systemd.user.services.shell-weighs = {
-      Unit.Description = "Says what the shell weighs, part by part";
+      Unit = {
+        Description = "Says what the shell weighs, part by part";
+        Requisite = [ "quickshell.service" ];
+        After = [ "quickshell.service" ];
+      };
       Service = {
         Type = "oneshot";
         ExecStart = lib.getExe shellWeighs;
