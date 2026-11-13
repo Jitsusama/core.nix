@@ -135,16 +135,11 @@ struct Served {
 impl Served {
     /// Every record, its notices' and their rows, as they stand: each
     /// notice's with its card's sender and words beside it, of those
-    /// still recent at `now` (notice.rs's recent), while the rows are of
-    /// every one. One passing a day done with goes at the next change, as
-    /// one comes or is read, rather than on a clock of its own.
-    fn records(
-        &mut self,
-        holding: &Holding,
-        signs: &Signs,
-        desktop_watched: bool,
-        now: i64,
-    ) -> Vec<Value> {
+    /// still recent now (notice.rs's recent), while the rows are of every
+    /// one. One passing a day done with goes at the next change, as one
+    /// comes or is read, rather than on a clock of its own.
+    fn records(&mut self, holding: &Holding, signs: &Signs, desktop_watched: bool) -> Vec<Value> {
+        let now = now_ms();
         let looked = if desktop_watched {
             std::mem::take(&mut self.looked)
         } else {
@@ -311,8 +306,7 @@ fn main() -> ExitCode {
             entries: &entries,
             words: &words,
         };
-        let desktop_watched = shared.watches("row", row::DESKTOP);
-        let told = served.records(&held.holding, &signs, desktop_watched, now_ms());
+        let told = served.records(&held.holding, &signs, shared.watches("row", row::DESKTOP));
         held.unserved(served.unserved());
         told
     };
