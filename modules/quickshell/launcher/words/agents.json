@@ -96,12 +96,15 @@
     {
       "id": "agents:line",
       "in": "agents",
-      "name": "Say to the Focused Session",
+      "name": "Say to the Void",
       "glyph": "reply",
-      "ask": "what to say?",
+      "ask": "Say anything, and the void passes it to whoever owns it.",
       "said": {
+        "hearer": "void",
         "nobody": "nobody to hear it",
-        "asking": "finding who hears it"
+        "sent": "sent",
+        "taking": "taking it back",
+        "taken": "taken back"
       }
     },
     {

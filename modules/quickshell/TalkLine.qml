@@ -1,38 +1,65 @@
-// The line Joel says something on from anywhere, on Super+S (QCXZEB's slice B, e23364f8;
-// VKCF3Z, e8b4139e): the launcher's head alone, a step inside the top of the focused screen,
-// over his windows and taking no room from them, so the window he's talking about stays in view
-// (Joel, 2026-11-12 16:00: talking to the void "ends up taking over my screen"). It opens in
-// insert, who will hear it at its left as the launcher's Talk names its session: the focused
-// window's session, else the one standing at Agents' top, the void (modules/agents/src/tell.rs).
-// Escape gives normal, as the launcher's line does, and never puts it away; the chord again
-// does, the words kept, as a switch keeps them (Drafts.qml). Return says them as a talk, and
-// Told's quiet card says they went and then what came back.
+// The line Joel says something on from anywhere, on Super+S: one frame a step inside the top
+// of the focused screen, over the furniture of his windows (a browser's tabs, a terminal's
+// oldest lines) rather than what he's reading, its typing the hero (Joel, 2026-11-13: "so many
+// padding issues, no room to type"). What's typed wraps at a whole word, a line at a time,
+// never scrolling off its start. Under it, quiet, who hears it, the void, which passes each
+// line to whoever owns it, and the window it's said over, which goes with the words for the
+// void to route it by (QCXZEB, 2026-11-13 [ae5dfdb6]). Return sends it and the line stays up:
+// under a hairline, his words, then "sent", then the answer in place, then what became of it,
+// all in this frame and never on a card elsewhere (VKCF3Z, 2026-11-13 [092d52ca]). Put away
+// first, the answer waits here for its next opening. Where the void can undo what it did,
+// :take in normal takes it back, the foot naming it while it's offered. It opens in insert;
+// Escape gives normal and never puts it away; the chord again does, or :q, the words kept, as
+// a switch keeps them (Drafts.qml). TalkLine.js says what it says and sends.
 pragma ComponentBehavior: Bound
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
+import "TalkLine.js" as Said
 
 Scope {
     id: root
 
-    // The launcher, whose head this is, whose drafts it keeps and whose Agents it says through.
+    // The launcher, whose drafts it keeps and whose Agents it says through.
     required property var launcher
     // Whether it's up, and on which screen: the one focused as the chord came.
     property bool up: false
     property var screen: null
-    // Who hears it, `{ to, name }`, once Agents has said; null while it's asking, and while
-    // nobody would.
+    // Who hears it, `{ to, name }`: the void, or null while none stands at Agents' top.
     property var hears: null
-    property bool asked: false
-    // Return pressed before Agents said who hears it, so it's said once it has.
-    property bool waiting: false
+    // What goes with a line of the window it's said over (TalkLine.js's attached), read as
+    // it comes up; the session in it comes a moment later, from the agents daemon.
+    property var window: null
+    property var session: null
+    readonly property var rows: Said.attached(window, program, session)
+    property string program: ""
+    // The talk the last Return began (TalkLine.js's begun), or null before any.
+    property var talk: null
+    // Whether the command line has the keys, in the field's place.
+    property bool commanding: false
     // What's typed on the line is kept under its own name until it's sent.
     readonly property string key: "line"
     readonly property var words: Words.of("agents:line")
+    readonly property var said: words.said ?? {}
+    readonly property string takes: String(Words.of("verb:agent:take-back").name ?? "")
 
     function agents() {
         return launcher.collections.find(one => one.settings.name === "agents") ?? null;
+    }
+
+    // Agents opens the line from the void's row, so it's told which line is this one.
+    Binding {
+        target: root.agents()
+        property: "line"
+        value: root
+        when: root.agents() !== null
+    }
+
+    // Brought up from a row rather than its chord, and left up where it already is.
+    function open() {
+        if (!up)
+            toggle(-1);
     }
 
     // `chord` is when launcher-say ran for it, on the wall clock in ms, or -1 where it didn't
@@ -70,9 +97,10 @@ Scope {
 
     function bringUp() {
         screen = launcher.focusedScreen;
-        hears = null;
-        asked = false;
-        waiting = false;
+        const from = agents();
+        hears = from?.voidOf() ?? null;
+        window = null;
+        commanding = false;
         const kept = launcher.drafts.kept(key);
         prompt.text = kept.text;
         up = true;
@@ -80,42 +108,117 @@ Scope {
         prompt.typing();
         if (kept.text !== "")
             prompt.caretTo(kept.caret);
-        const from = agents();
-        if (!from) {
-            asked = true;
+        look();
+    }
+
+    // The window it's said over, read again while it's up as niri says more of it, since a
+    // window opened a moment before the chord may not be listed yet, nor its title said.
+    // Once the line's layer has the keys niri says no window has them, which leaves the
+    // window it was said over as it was.
+    // Opened again the moment it was put away, niri may not have given that window the keys
+    // back yet, so it's said over the window it was last, while niri still lists it.
+    function look() {
+        const id = Niri.focused ?? (window === null ? lastOver : null);
+        const focused = id === null ? null : Niri.windows[id] ?? null;
+        if (focused === null && window !== null)
             return;
-        }
-        from.hears(Niri.focused, heard => {
-            if (!root.up)
-                return;
-            root.hears = heard;
-            root.asked = true;
-            if (root.waiting)
-                root.send();
+        if ((focused?.id ?? null) === (window?.id ?? null)
+            && (focused?.title ?? "") === lookedTitle)
+            return;
+        const asked = (focused?.id ?? null) !== (window?.id ?? null);
+        window = focused;
+        if (focused !== null)
+            lastOver = focused.id;
+        lookedTitle = focused?.title ?? "";
+        program = programOf(focused?.app_id ?? "");
+        if (!asked)
+            return;
+        session = null;
+        agents()?.sessionIn(focused?.id ?? null, found => {
+            if (root.up && (root.window?.id ?? null) === (focused?.id ?? null))
+                root.session = found;
         });
+    }
+    property string lookedTitle: ""
+    property var lastOver: null
+
+    Connections {
+        target: root.up ? Niri : null
+        function onFocusedChanged() {
+            root.look();
+        }
+        function onRevisionChanged() {
+            root.look();
+        }
+        function onWindowsChanged() {
+            root.look();
+        }
+    }
+
+    // A window's program as it names itself, where the desktop has an entry by its app id.
+    function programOf(app) {
+        return (DesktopEntries.byId(app) ?? DesktopEntries.byId(app.toLowerCase()))?.name || app;
     }
 
     function putAway() {
         launcher.drafts.flush();
+        commanding = false;
         up = false;
     }
 
+    // Return: the words go to the void with what's attached, and the line stays up, saying
+    // under them how the talk stands. Nobody to hear it keeps the words on the line.
     function send() {
         const text = prompt.text.trim();
-        if (text === "")
+        if (text === "" || hears === null)
             return;
-        if (!asked) {
-            waiting = true;
-            return;
-        }
-        waiting = false;
-        // Nobody to hear it keeps the words on the line, saying so in its place.
-        if (hears === null)
-            return;
-        launcher.drafts.handed(key, hears.to, text);
-        agents()?.say(hears, text);
+        const sent = Said.said(text, rows);
+        launcher.drafts.handed(key, hears.to, sent);
+        agents()?.say(hears, sent);
+        talk = Said.begun(hears.to, text, sent, Date.now());
         prompt.clear();
-        up = false;
+    }
+
+    // Said again whenever a talk's line comes, its answer among them, up or not, so an
+    // answer that came while it was put away is there as it opens.
+    // It reads the talks as Agents folds them, so it hears them once folded rather than
+    // when the sources change, which comes first.
+    readonly property var heard: talk === null ? [] : agents()?.talksOf(talk.to) ?? []
+    onHeardChanged: follow()
+    function follow() {
+        if (talk === null)
+            return;
+        const moved = Said.followed(talk, heard);
+        if (moved !== null)
+            talk = moved;
+    }
+
+    // :take, while the void can undo what it did with the line.
+    function take() {
+        const asked = Said.taking(talk, Date.now());
+        if (asked === null)
+            return;
+        talk = asked.talk;
+        agents()?.talkTo(talk.to, asked.asked);
+    }
+
+    // What : runs: take, or q, which puts it away as the chord does.
+    readonly property var menu: {
+        const entry = (command, short, title) => ({ command, short, title, key: "", kind: "line",
+            argument: "", after: "", lowered: ` ${title.toLowerCase()}`, bang: false,
+            takes: false, ranged: false, undoable: false });
+        const away = entry("quit", "q", "Put Away");
+        return (talk?.undo ?? "") !== "" ? [entry("take", "take", takes), away] : [away];
+    }
+
+    function ran(read) {
+        commanding = false;
+        prompt.resume("normal");
+        const command = read.entry?.command ?? "";
+        if (command === "take")
+            take();
+        else if (command === "quit")
+            putAway();
     }
 
     PanelWindow {
@@ -156,42 +259,187 @@ Scope {
             x: reach
             y: reach
             width: root.launcher.width
-            bands: true
             keys: root.up
             // Clear rather than hidden while put away, since a hidden field can't hold the
             // focus, and a letter typed as it comes would be lost.
             opacity: root.up ? 1 : 0
 
+            // Everything at the inset on every side, measured to the ink: the field's first
+            // capital at the top, the foot's baseline at the bottom (docs/design.md, The
+            // Ladder). Down it, space counts in lines: each line of one thing a pitch on, each
+            // group a beat further, and the talk a region of its own under a hairline.
             Item {
-                x: -card.inset
-                width: card.contentWidth + 2 * card.inset
-                height: root.launcher.headTall
+                id: body
 
-                Prompt {
-                    id: prompt
+                readonly property real pitch: Theme.level.figure.pitch
+                readonly property real beat: Theme.space.beat
+                readonly property real caps: prompt.lineBaseline - prompt.capsTop
+                // Where what's typed ends: its last line's baseline.
+                readonly property real typedEnds: caps + prompt.wrapsTall
+                readonly property bool talking: root.talk !== null
+                // His words a group under what's typed, the hairline halfway between, so the
+                // room over it and under it is the same to the ink.
+                readonly property real lineAt: typedEnds + 2 * pitch + beat
+                readonly property real ruleAt: Math.round((typedEnds + lineAt - caps) / 2)
+                readonly property real lineEnds: lineAt + (spoken.lineCount - 1) * pitch
+                readonly property real standsAt: lineEnds + pitch + beat
+                readonly property real standsEnds: standsAt + (stands.lineCount - 1)
+                    * Theme.level.words.pitch
+                readonly property real textAt: prompt.fieldX - card.inset
+
+                width: card.contentWidth
+                height: foot.y + foot.baselineOffset
+
+                Item {
+                    x: -card.inset
+                    y: -prompt.capsTop
+                    width: card.contentWidth + 2 * card.inset
+                    height: prompt.height
+
+                    Prompt {
+                        id: prompt
+                        width: parent.width
+                        lineTall: body.pitch
+                        height: body.pitch + wrapsTall
+                        wraps: true
+                        steady: true
+                        modal: true
+                        words: true
+                        awake: root.up
+                        taking: root.up && !root.commanding
+                        opacity: root.commanding ? 0 : 1
+                        fade: Options.caret.fade
+                        stopsAfter: Options.caret.stopsAfter
+                        wait: Options.keyTiming.wait
+                        glyph: ""
+                        lead: Theme.glyph[root.words.glyph ?? ""] ?? ""
+                        leadHue: Theme.voice
+                        // Its own frame, not the launcher's, so the lead stands at the inset
+                        // as the first capital does, rather than on the launcher's columns.
+                        glyphWidth: 0
+                        hint: root.hears === null ? root.said.nobody ?? "" : root.words.ask ?? ""
+                        aside: ""
+                        onAccepted: root.send()
+                        onTextChanged: root.typed()
+                        onCaretChanged: root.typed()
+                        onCommanded: range => {
+                            root.commanding = true;
+                            commandLine.take(range, "");
+                        }
+                    }
+
+                    // The command line, the launcher's own, in the field's place while : is
+                    // open, as Vim's : takes the line.
+                    CommandLine {
+                        id: commandLine
+                        visible: root.commanding
+                        width: parent.width
+                        height: body.pitch
+                        markMiddle: prompt.cellMiddle
+                        typedAt: prompt.fieldX
+                        menu: root.menu
+                        onRan: read => root.ran(read)
+                        onLetGo: how => {
+                            root.commanding = false;
+                            prompt.resume("normal");
+                        }
+                    }
+                }
+
+                // The talk's region, inset to inset, never meeting the frame.
+                Rectangle {
+                    visible: body.talking
+                    y: body.ruleAt
                     width: parent.width
-                    height: parent.height
-                    steady: true
-                    modal: true
-                    words: true
-                    awake: root.up
-                    taking: root.up
-                    fade: Options.caret.fade
-                    stopsAfter: Options.caret.stopsAfter
-                    wait: Options.keyTiming.wait
-                    glyph: ""
-                    lead: Theme.glyph[root.words.glyph ?? ""] ?? ""
-                    leadHue: Theme.voice
-                    glyphWidth: root.launcher.textAreaAt
-                    leadColumn: root.launcher.glyphColumn
-                    // Who hears it, where the launcher's Talk names its session.
-                    chips: [{ text: !root.asked ? root.words.said?.asking ?? ""
-                        : root.hears?.name ?? root.words.said?.nobody ?? "", yields: false }]
-                    hint: root.words.ask ?? ""
-                    aside: ""
-                    onAccepted: root.send()
-                    onTextChanged: root.typed()
-                    onCaretChanged: root.typed()
+                    height: Theme.border
+                    color: Theme.edge
+                }
+
+                // His words as he sent them, muted now they're said, whole.
+                Text {
+                    id: spoken
+                    visible: body.talking
+                    x: body.textAt
+                    y: body.lineAt - baselineOffset
+                    width: parent.width - x
+                    text: root.talk?.line ?? ""
+                    textFormat: Text.PlainText
+                    color: Theme.muted
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 3
+                    elide: Text.ElideRight
+                    lineHeight: Theme.level.words.pitch
+                    lineHeightMode: Text.FixedHeight
+                    font.family: Theme.level.words.family
+                    font.pointSize: Theme.level.words.pointSize
+                    font.variableAxes: Theme.level.words.variableAxes
+                }
+
+                // How it stands under them: the answer in the words, where it went first; or,
+                // in the shell's voice, sent, being taken back, taken back.
+                Text {
+                    id: stands
+                    readonly property bool answer: root.talk?.said === "answered"
+                    visible: body.talking
+                    x: body.textAt
+                    y: body.standsAt - baselineOffset
+                    width: parent.width - x
+                    text: Said.standing(root.talk, root.said)
+                    textFormat: Text.PlainText
+                    color: answer ? Theme.text : Theme.muted
+                    wrapMode: Text.Wrap
+                    maximumLineCount: 5
+                    elide: Text.ElideRight
+                    lineHeight: Theme.level.words.pitch
+                    lineHeightMode: Text.FixedHeight
+                    font.family: answer ? Theme.level.words.family : Theme.level.voice.family
+                    font.italic: answer ? Theme.level.words.italic : Theme.level.voice.italic
+                    font.pointSize: answer ? Theme.level.words.pointSize
+                        : Theme.level.voice.pointSize
+                    font.variableAxes: answer ? Theme.level.words.variableAxes
+                        : Theme.level.voice.variableAxes
+                }
+
+                // The foot, a group under the last line: who hears it and the window it's
+                // about, quiet, on the text's column; and, while the void can undo what it
+                // did, :take at its right.
+                Text {
+                    id: foot
+                    x: body.textAt
+                    y: (body.talking ? body.standsEnds : body.typedEnds) + body.pitch + body.beat
+                        - baselineOffset
+                    width: (offer.visible ? offer.x - Theme.space.rung.groups : parent.width) - x
+                    text: root.hears === null ? "" : Said.about(root.said.hearer ?? "", root.rows)
+                    textFormat: Text.PlainText
+                    color: Theme.muted
+                    elide: Text.ElideRight
+                    font.family: Theme.level.note.family
+                    font.pointSize: Theme.level.note.pointSize
+                }
+
+                Row {
+                    id: offer
+                    visible: (root.talk?.undo ?? "") !== ""
+                    x: parent.width - width
+                    // A Row says no baseline of its own, so it says its words'.
+                    baselineOffset: takeCommand.baselineOffset
+                    anchors.baseline: foot.baseline
+                    spacing: Theme.space.rung.mark
+
+                    Text {
+                        id: takeCommand
+                        text: ":take"
+                        color: Theme.text
+                        font.family: Theme.level.note.family
+                        font.pointSize: Theme.level.note.pointSize
+                    }
+
+                    Text {
+                        text: root.takes.toLowerCase()
+                        color: Theme.muted
+                        font.family: Theme.level.note.family
+                        font.pointSize: Theme.level.note.pointSize
+                    }
                 }
             }
         }
@@ -203,10 +451,15 @@ Scope {
     }
 
     // What the line shows, for the launcher's showing: whether it's up with the keys, what's
-    // typed, its mode and caret, who it names, and how far down the screen its card stands.
+    // typed, its mode and caret, who it names and what it's about, how the talk stands and
+    // what it offers, and how far down the screen its card stands.
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
-            caret: prompt.caret, hears: prompt.chips[0]?.text ?? "",
-            top: up ? surface.margins.top + card.reach : -1 };
+            caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
+            about: foot.text, lines: prompt.typedLines, talk: root.talk?.said ?? "",
+            standing: stands.text, takes: offer.visible, commanding,
+            top: up ? surface.margins.top + card.reach : -1,
+            over: { focused: Niri.focused, known: Object.keys(Niri.windows).length,
+                title: root.window?.title ?? "" } };
     }
 }

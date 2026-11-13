@@ -3281,6 +3281,11 @@
     name, sent, then answered in that card's place, the reply cut to whole words and its last line
     saying the rest is in the talk
   '';
+  the-talk-line-says-what-became-of-its-words = ''
+    Super+S's line sends Joel's words with the window they're said over attached for the void,
+    names who hears it quietly, and says inside itself that they were sent, the answer in their
+    place, and taken back
+  '';
   a-live-notice-asks-the-daemon = ''
     a notice the notices daemon serves reads as Quickshell's own did, its urgency in Quickshell's
     numbers, and each act on it is an ask of the daemon, an action's with the token niri gave

@@ -76,6 +76,7 @@
   "SetWords.js" = [ "Commands.js" ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
+  "TalkLine.js" = [ "Told.js" ];
   "Taken.qml" = [ "Fuzzy.js" ];
   "Trials.qml" = [ "launcher/Trials.js" ];
   "Waiting.js" = [ "PiSource.js" ];

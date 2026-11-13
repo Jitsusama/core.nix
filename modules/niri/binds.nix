@@ -134,12 +134,13 @@ in
     action = ''spawn "dictation" "hold";'';
     flags.repeat = "false";
   }
-  # A line typed to the focused window's session, else the void, at the top of the screen
-  # over what he's looking at (the shell's TalkLine.qml). S for say, beside D for dictate
-  # (VKCF3Z, 2026-11-12). The chord again puts it away with its words kept.
+  # A line typed to the void, which passes it to whoever owns it, the focused window going
+  # with it (QCXZEB, 2026-11-13), at the top of the screen over what he's looking at (the
+  # shell's TalkLine.qml). S for say, beside D for dictate (VKCF3Z, 2026-11-12). The chord
+  # again puts it away with its words kept.
   {
     chord = "Super+S";
-    does = "Say to the focused session";
+    does = "Say to the void";
     also = "talk tell void line ask agent";
     action = ''spawn "launcher-say" "line";'';
     flags.repeat = "false";

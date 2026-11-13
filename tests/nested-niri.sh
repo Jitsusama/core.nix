@@ -40,7 +40,8 @@ appears() {
 # shellcheck disable=SC2046 # Each job's id is a word of its own.
 trap 'kill $(jobs -p) 2> /dev/null || true' EXIT
 
-printf 'output HEADLESS-1 resolution 1280x800\n' > "$logs/sway.conf"
+# NESTED_SIZE gives a screen of Joel's own, as 2880x1800, for a check pictured at it.
+printf 'output HEADLESS-1 resolution %s\n' "${NESTED_SIZE:-1280x800}" > "$logs/sway.conf"
 WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
   sway -c "$logs/sway.conf" > "$logs/sway.log" 2>&1 &
 appears sway "$XDG_RUNTIME_DIR/wayland-1"

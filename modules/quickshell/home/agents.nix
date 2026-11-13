@@ -8,6 +8,7 @@
   "Sessions.qml"
   "SessionWindows.js"
   "TalkLine.qml"
+  "TalkLine.js"
   "Told.qml"
   "Told.js"
   "Viewers.js"
