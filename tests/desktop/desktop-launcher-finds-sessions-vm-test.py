@@ -30,7 +30,6 @@ from desktop_session import (
     SHELL_STARTS,
     focus_given,
     kept,
-    laid_out,
     lighthouse_listed,
     listed_quest,
     quests_listed,
@@ -152,51 +151,34 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
         )
     )
     desktop.shoot("launcher-agents")
-    # Gone into by Ctrl+], as Return goes to it, what's known of it, each
-    # a row of its own.
-    desktop.follow()
-    desktop.launcher_until(
-        lambda shown: (
-            (shown["selected"] or {}).get("name") == "Go To"
-            and shown["selected"]["verb"] == "go to"
-        )
-    )
-    # Its acts in the order every session keeps them, Close last since it's
-    # here, then what's known of it, each named first, as every part is, then
-    # what it says.
-    assert desktop.showing()["rows"][:5] == ["Go To", "Talk", "Pause", "Stop", "Close"]
-    desktop.down_to("Close")
-    for name, side in [
-        ("Quest", r"QEST-20261022-TESTQA"),
-        ("Address", r"TESTQA"),
-        ("Started", r"\d\d:\d\d"),
-        ("Spent Today", r"\$12\.50"),
-        ("Councils", r"\$4\.00"),
-        ("Test the shell", r"2nd in line"),
-        ("Working On", r"Tidy the tests"),
-        ("Hears", r"#desk"),
-    ]:
-        desktop.next_row()
-        # The wait ends before the loop moves on, so it reads this pass's names.
-        desktop.launcher_until(
-            lambda shown: (
-                (shown["selected"] or {}).get("name") == name  # noqa: B023
-                and re.fullmatch(side, shown["selected"]["side"])  # noqa: B023
-            )
-        )
-    # Scrolled down past its first rows, the selection is still drawn on
-    # its own row.
-    selection = laid_out(desktop)["selection"]
-    assert selection["y"] == selection["row"], f"the selection is off its row: {selection}"
+    # What's known of it is in its drawer, each fact beside its name, since a session alone
+    # holds only acts, so it has no step of its own (Joel, 2026-11-11: no menu of acts alone).
+    known = {
+        "Quest": r"QEST-20261022-TESTQA",
+        "Spent Today": r"\$12\.50",
+        "Working On": r"Tidy the tests",
+    }
+
+    def says_what_is_known(shown: Json) -> bool:
+        facts = dict(zip(shown["drawer"]["facts"], shown["drawer"]["values"], strict=True))
+        return all(re.fullmatch(said, facts.get(name, "")) for name, said in known.items())
+
+    desktop.launcher_until(says_what_is_known)
+    # Its acts are its drawer's, Talk first, as Return's, and Close last (VKCF3Z, 3a742b67).
+    acts = [act.removeprefix("\u21b5 ") for act in desktop.showing()["drawer"]["acts"]]
+    assert acts[0] == "Talk", acts
+    assert acts[-1] == "Close", acts
+    assert {"Go To", "Pause", "Stop"} <= set(acts), acts
     desktop.shoot("launcher-agent-facts")
-    desktop.step_out()
-    desktop.launcher_until(lambda shown: shown["held"] == ["agents"])
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
     )
-    # Found by its address too.
+    # Found by its address too, and gone to by Go To's command, since Return talks.
     desktop.type_in("testqa", selecting="A quest of its own & whole")
-    machine.send_key("ret")
+    desktop.normal()
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
+    machine.send_chars("buffer\n")
     machine.wait_until_succeeds(
         desktop.in_session("niri msg --json focused-window | grep -q TESTQA"),
         timeout=dt.timedelta(seconds=10),
@@ -262,12 +244,20 @@ def an_orchestrator(desktop: Desktop) -> None:
 
 
 def into_lighthouse(desktop: Desktop) -> None:
-    """Open Agents, find Lighthouse's session there by its short name, and step into it."""
-    desktop.as_account("qs ipc call launcher collection agents")
+    """Find Lighthouse's session from home by its short name, and follow it to its row in Agents.
+
+    Alone, it holds only acts, so it has no step of its own (Joel, 2026-11-11: no menu of acts
+    alone); its acts are its drawer's, done by their commands.
+    """
+    desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
-    desktop.launcher_until(lambda shown: "Talk" in shown["rows"])
+    desktop.launcher_until(
+        lambda shown: (
+            shown["path"] == ["Agents"] and (shown["selected"] or {}).get("name") == LIGHTHOUSE
+        )
+    )
 
 
 def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
@@ -278,7 +268,7 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
     an_orchestrator(desktop)
     # A running one is its session, a row of Agents' tree drawn as every
     # session is: what it's doing beside it and its address in its drawer,
-    # and its Return goes to its window.
+    # and its Return talks to it (VKCF3Z, 3a742b67: Talk to It leads).
     desktop.as_account("qs ipc call launcher collection agents")
     desktop.launcher_ready()
     desktop.launcher_until(
@@ -286,22 +276,21 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
             (shown["selected"] or {}).get("name") == LIGHTHOUSE
             and "TESTQA" not in str(shown["selected"]["side"])
             and str(shown["drawer"]["eyebrow"]).startswith("TESTQA \u00b7 ")
-            and shown["selected"]["verb"] == "go to"
+            and shown["selected"]["verb"] == "talk"
         )
     )
     desktop.close_launcher()
     # Found from the root by the short name the harness lists it by, Ctrl+]
-    # in normal goes straight inside it, though its Return goes to its
-    # window, the crumbs saying where it lives; - comes back to the search,
-    # it selected (VKCF3Z, 2026-10-29: "\u2190 is where you came from").
+    # in normal goes to where it lives, its row in Agents, since alone it
+    # holds only acts; - comes back to the search, it selected (VKCF3Z,
+    # 2026-10-29: "\u2190 is where you came from").
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Agents", LIGHTHOUSE]
-            and {"Talk", "Pause", "Stop"} <= set(shown["rows"])
+            shown["path"] == ["Agents"] and (shown["selected"] or {}).get("name") == LIGHTHOUSE
         )
     )
     desktop.step_out()
@@ -313,20 +302,21 @@ def test_an_orchestrator_is_found_by_name_and_talked_to_through_its_inbox(
         )
     )
     desktop.close_launcher()
-    # Inside, its acts come in the order every session keeps them.
+    # In Agents, its drawer names its acts, Talk first, as its Return, then Go To.
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_ready()
     desktop.type_in("lighthouse", selecting=LIGHTHOUSE)
     desktop.follow()
     desktop.launcher_until(
         lambda shown: (
-            shown["path"] == ["Agents", LIGHTHOUSE]
-            and shown["rows"][:4] == ["Go To", "Talk", "Pause", "Stop"]
+            shown["path"] == ["Agents"]
+            and (shown["selected"] or {}).get("name") == LIGHTHOUSE
+            and [act.removeprefix("\u21b5 ") for act in shown["drawer"]["acts"]][:2]
+            == ["Talk", "Go To"]
         )
     )
     # Talk asks for words, which go to its session's inbox as Joel's,
     # opening a talk its session follows.
-    desktop.type_in("talk", selecting="Talk")
     desktop.step_in("ret")
     # Its words are typed in insert, which the foot names by its mark, INS, in
     # three capitals as every mode's since #1985, and the mark is whole, since
@@ -399,7 +389,8 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     # Stepping in left the find for normal, where Return talks at once.
     machine.send_key("ret")
     # The question goes to its inbox with what was answered, and the
-    # launcher lands inside Lighthouse, where its talks say how each went.
+    # launcher lands on Lighthouse's row in Agents, its session alone
+    # holding only acts (Joel, 2026-11-11: no menu of acts alone).
     machine.wait_until_succeeds(
         desktop.in_session(f"cat {INBOX}/*.json | grep -q 'The launcher answered: A fjord'"),
         timeout=dt.timedelta(seconds=10),
@@ -408,7 +399,9 @@ def test_a_question_asked_is_talked_over_with_an_orchestrator(desktop: Desktop) 
     assert said["text"].startswith("what is a fjord?\n\nThe launcher answered: "), said
     assert said["from"] == "joel", said
     desktop.launcher_until(
-        lambda shown: shown["path"] == ["Agents", LIGHTHOUSE] and "Talk" in shown["rows"]
+        lambda shown: (
+            shown["path"] == ["Agents"] and (shown["selected"] or {}).get("name") == LIGHTHOUSE
+        )
     )
     desktop.close_launcher()
 
@@ -419,10 +412,11 @@ def test_an_orchestrator_is_paused_with_no_words(desktop: Desktop) -> None:
     closed = desktop.in_session(LAUNCHER_OPEN)
     an_orchestrator(desktop)
     into_lighthouse(desktop)
-    desktop.type_in("pause", selecting="Pause")
-    # Return from the find lands on it, since it changes how things stand, and a second does it.
-    desktop.land()
-    machine.send_key("ret")
+    # Pause is done by its command, its row's own act.
+    desktop.normal()
+    machine.send_chars(":")
+    desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
+    machine.send_chars("pause\n")
     machine.wait_until_succeeds(
         desktop.in_session(f'cat {INBOX}/*.json | grep -q \'"act":"pause"\''),
         timeout=dt.timedelta(seconds=10),
