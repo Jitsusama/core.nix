@@ -548,6 +548,24 @@ mod tests {
     }
 
     #[test]
+    fn historys_rows_are_answered_of_the_read_alone() {
+        let mut state = state("history-rows");
+        let old = state.notify(sent("Old and read", &[]), 10);
+        state.notify(sent("New", &[]), 11);
+        assert!(state.holding.mark(&[old], true, None, 12), "the old one was read");
+        let old_key = format!("row:notices-history:{old}");
+        let row = json!({ "key": old_key, "name": "Old and read" });
+        state.unserved(BTreeMap::from([(old_key.clone(), row.clone())]));
+        let asked = json!({ "ask": "rows", "place": "notices-history" });
+        let (history, _) = state.ask(&asked, 13);
+        let wanted = json!({ "keys": [old_key.clone()], "rows": { old_key: row } });
+        assert_eq!(history, wanted, "the read, and their rows unserved");
+        let desktop = json!({ "ask": "rows", "place": "notices-desktop" });
+        let (refused, _) = state.ask(&desktop, 13);
+        assert_eq!(refused["error"]["code"], "unknown-place", "{refused}");
+    }
+
+    #[test]
     fn its_actions_reply_and_hints_are_read_as_its_sender_said_them() {
         let mut state = state("hints");
         let mut said = sent(
