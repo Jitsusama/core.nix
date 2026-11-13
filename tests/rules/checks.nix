@@ -234,8 +234,8 @@
           {
             args = [
               "judge"
-              "@HERE@/idle"
-              "@HERE@/busy"
+              "@HERE@/idle.txt"
+              "@HERE@/busy.txt"
             ];
             state = ../../modules/load-proof/tests/a-loaded-reading;
             exits = 1;
