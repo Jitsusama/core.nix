@@ -226,7 +226,7 @@ onLinux {
         zathura --version one.pdf > version 2>&1 || { cat version; exit 1; }
         grep -q -i zathura version || { echo "zathura didn't run: $(cat version)"; exit 1; }
         told=$(if [ -e said ]; then cat said; else echo 'nothing said'; fi)
-        [ "$told" = "add zathura --version one.pdf" ] || { echo "zathura said: $told"; exit 1; }
+        [ "$told" = "add zathura -- --version one.pdf" ] || { echo "zathura said: $told"; exit 1; }
         touch $out
       '';
 }

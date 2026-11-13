@@ -51,6 +51,9 @@ const STOPS: [i64; 5] = [60, 70, 80, 90, 100];
 const MINUTE_MS: u64 = 60_000;
 /// The parts of a run said in one, as "45.0 W · 15.0 V".
 const DOT: &str = " \u{b7} ";
+/// The most facts a drawer says; the rest go to its fold, its nerd facts
+/// (Y2YBTS, 2026-11-12, 44efb47f).
+const FACTS: usize = 6;
 
 /// The reads kept between one and the next while Power is watched: the
 /// watts drawn or charging at, and the volts, with when they were last
@@ -367,22 +370,45 @@ impl Say<'_> {
     /// A row's drawer, where it has none, saying what the supply's folder
     /// keeps behind it by the kernel's names, those it says, then the
     /// folder (Joel, 2026-11-11: every row's drawer says a little more).
+    /// A drawer says six facts at most, most decisive first, so past six
+    /// the folder goes to the fold, then what the first six leave out
+    /// before it (Y2YBTS, 2026-11-12).
     fn kernel(&self, mut row: Made, supply: &Value, kept: &[(&str, String)]) -> Made {
         if row.drawer.is_some() {
             return row;
         }
-        let mut facts: Vec<Value> = kept
+        let facts = kept
             .iter()
             .filter(|(_, said)| !said.is_empty())
             .map(|(name, said)| json!({ "name": name, "said": said }))
             .collect();
-        facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
-            "said": format!("/sys/class/power_supply/{}", text(&supply["name"])),
-            "identifies": true }));
-        row.drawer = Some(json!({
+        let mut drawer = json!({
             "eyebrow": self.words.said("machine:read-from", "power", &[]),
-            "eyebrowNames": true, "title": row.name, "facts": facts }));
+            "eyebrowNames": true, "title": row.name });
+        self.folded(&mut drawer, facts, supply);
+        row.drawer = Some(drawer);
         row
+    }
+
+    /// A drawer's facts, most decisive first, kept to six: the supply's
+    /// folder is the last of them where there's room, and otherwise goes
+    /// to the fold, after what the first six leave out.
+    fn folded(&self, drawer: &mut Value, mut facts: Vec<Value>, supply: &Value) {
+        let from = json!({ "name": self.words.name("machine:read-from", &[]),
+            "said": format!("/sys/class/power_supply/{}", text(&supply["name"])),
+            "identifies": true });
+        if facts.len() < FACTS {
+            facts.push(from);
+        } else {
+            let nerd: Vec<Value> = facts
+                .split_off(FACTS)
+                .iter()
+                .chain([&from])
+                .map(|fact| json!({ "label": fact["name"], "value": fact["said"] }))
+                .collect();
+            drawer["nerd"] = json!(nerd);
+        }
+        drawer["facts"] = json!(facts);
     }
 
     /// A figure the record keeps in whole units, in the millionths the
@@ -455,8 +481,11 @@ impl Say<'_> {
                     ("capacity_level", self.plain(&b["capacity_level"])),
                     ("status", self.plain(&b["status"])),
                 ];
-                kept.extend(self.held(b));
+                let mut held = self.held(b);
+                let designed = held.pop();
+                kept.extend(held);
                 kept.push(self.drawn(b));
+                kept.extend(designed);
                 kept
             }
             "rate" => vec![
@@ -569,21 +598,26 @@ impl Say<'_> {
                 "said": self.says("until", "at", &[("span", &lasted(seconds))]) }),
             );
         }
+        // How much is left and how fast it goes before what it was made to
+        // hold, as the Charge's drawer says them, so the six keep both.
         let mut kept = vec![("status", self.plain(&battery["status"]))];
+        let mut designed = None;
         if battery["energy_full_wh"].is_number() || battery["charge_full_ah"].is_number() {
-            kept.extend(self.held(battery));
+            let mut held = self.held(battery);
+            designed = held.pop();
+            kept.extend(held);
         }
         kept.push(self.drawn(battery));
+        kept.extend(designed);
         facts.extend(
             kept.into_iter()
                 .filter(|(_, said)| !said.is_empty())
                 .map(|(name, said)| json!({ "name": name, "said": said })),
         );
-        facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
-            "said": format!("/sys/class/power_supply/{}", text(&battery["name"])),
-            "identifies": true }));
-        json!({ "eyebrow": self.words.said("machine:read-from", PLACE, &[]),
-            "eyebrowNames": true, "title": self.words.name(PLACE, &[]), "facts": facts })
+        let mut drawer = json!({ "eyebrow": self.words.said("machine:read-from", PLACE, &[]),
+            "eyebrowNames": true, "title": self.words.name(PLACE, &[]) });
+        self.folded(&mut drawer, facts, battery);
+        drawer
     }
 
     /// The charge and what the battery is doing, a dot between: "36% ·
@@ -1485,10 +1519,9 @@ mod tests {
                 "status=Discharging",
                 "energy_now=40,000,000 \u{b5}Wh",
                 "energy_full=50,000,000 \u{b5}Wh",
-                "power_now=12,000,000 \u{b5}W",
-                "Read From=/sys/class/power_supply/BAT0"
+                "power_now=12,000,000 \u{b5}W"
             ],
-            "on battery, when it's empty, then what it holds and draws"
+            "on battery, when it's empty, then what it holds and draws, its folder folded"
         );
         let whole = say.head_drawer(
             &json!({ "name": "BAT0", "status": "Full", "upower": { "state": "full" } }),
@@ -1522,6 +1555,50 @@ mod tests {
             ready.head.unwrap()["drawer"]["title"],
             "Battery",
             "the headline is served with it"
+        );
+    }
+
+    /// The headline's drawer keeps to six facts as the Charge's does, so a
+    /// battery that says its designed energy, as Joel's does, folds it and
+    /// where it's read away rather than saying eight (Y2YBTS, 2026-11-12).
+    #[test]
+    fn the_headlines_drawer_says_six_facts_and_folds_the_rest() {
+        let words = words();
+        let say = Say { words: &words };
+        let drawer = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Discharging", "capacity_pct": 80,
+                "energy_wh": 40.0, "energy_full_wh": 50.0, "energy_design_wh": 60.0,
+                "watts": 12.0,
+                "upower": { "state": "discharging", "time_to_empty_s": 11_400.0 } }),
+            1_762_000_000_000,
+        );
+        let said = |part: &str, name: &str, value: &str| -> Vec<String> {
+            drawer[part]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|fact| format!("{}={}", text(&fact[name]), text(&fact[value])))
+                .collect()
+        };
+        assert_eq!(
+            said("facts", "name", "said"),
+            [
+                "Status=on battery",
+                "Empty={time}, in 3 h 10 min",
+                "status=Discharging",
+                "energy_now=40,000,000 \u{b5}Wh",
+                "energy_full=50,000,000 \u{b5}Wh",
+                "power_now=12,000,000 \u{b5}W"
+            ],
+            "how it stands, when it's empty, and how much is left and how fast it goes"
+        );
+        assert_eq!(
+            said("nerd", "label", "value"),
+            [
+                "energy_full_design=60,000,000 \u{b5}Wh",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "what the six leave out is in the fold, the designed energy first"
         );
     }
 
@@ -1577,7 +1654,9 @@ mod tests {
     /// Every row Power serves but a choice has a drawer giving a little
     /// more than its line (Joel, 2026-11-11 22:00): what the battery's
     /// folder keeps behind it, in its own units. The Charge's says the
-    /// energy now, full and designed, and the rate (Y2YBTS, 2026-11-11).
+    /// energy now and full, and the rate (Y2YBTS, 2026-11-11), six facts at
+    /// most, so the designed energy and where it's read go to the fold
+    /// (Y2YBTS, 2026-11-12).
     #[test]
     fn every_power_row_has_a_drawer_saying_more() {
         let mut b = battery();
@@ -1628,11 +1707,27 @@ mod tests {
                 "status=Charging",
                 "energy_now=20,000,000 \u{b5}Wh",
                 "energy_full=55,000,000 \u{b5}Wh",
+                "power_now=30,000,000 \u{b5}W"
+            ],
+            "the charge says how much is left and how fast it's going, in six facts"
+        );
+        let folded: Vec<String> = row(&ready, "row:power:charge")["drawer"]["nerd"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|bit| format!("{}={}", text(&bit["label"]), text(&bit["value"])))
+            .collect();
+        assert_eq!(
+            folded,
+            [
                 "energy_full_design=60,000,000 \u{b5}Wh",
-                "power_now=30,000,000 \u{b5}W",
                 "Read From=/sys/class/power_supply/BAT0"
             ],
-            "the charge says the energy now, full and designed, and the rate"
+            "what the six facts leave out is in the fold, the designed energy first"
+        );
+        assert!(
+            row(&ready, "row:power:temperature")["drawer"]["nerd"].is_null(),
+            "a drawer within six facts folds nothing away"
         );
         assert_eq!(
             facts("row:power:type"),

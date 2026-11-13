@@ -120,7 +120,10 @@ stderr as JSON as well, so an agent learns why without reading words:
 
 stderr isn't a log. It carries no levels (`ERROR`, `WARN`), no times and
 no module paths; `--verbose` adds detail and a command's journal or log
-file keeps the rest.
+file keeps the rest. Where stderr is the journal's own stream, as a
+unit's is (`JOURNAL_STREAM` names it), the kit opens each line of a
+failure with `<3>`, sd-daemon's mark for an error, so `journalctl -p err`
+finds it; journald takes the mark off.
 
 ## Colour and Marks
 
@@ -407,9 +410,9 @@ terminal-kit = { git = "https://github.com/Jitsusama/core.nix", rev = "<commit>"
 
 Its Nix package then names the kit's hash beside its lock, in
 `cargoLock.outputHashes."terminal-kit-0.1.0"`: set to `lib.fakeHash`
-first, a build refuses it and prints the real one. It holds its commands to this page with `core.lib.commandsAgree`,
-as core does, given the commands it builds on the kit and a waiting list
-of its own.
+first, a build refuses it and prints the real one. It holds its commands
+to this page with `core.lib.commandsAgree`, as core does, given the
+commands it builds on the kit and a waiting list of its own.
 
 ## When a Command Doesn't Agree Yet
 

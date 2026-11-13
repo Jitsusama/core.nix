@@ -78,6 +78,23 @@ Scope {
     // watched from then on.
     property bool refreshing: false
     readonly property bool watched: live || refreshing
+    // Whether it's connected at all. A daemon that rests once nothing has
+    // held it for a while, as pi-verbs ends after five minutes alone, is
+    // connected only while what it says can be used, so it's never held
+    // awake all day (85PKB2's harness #1436): false lets the connection
+    // go and tries nothing again, true connects at once. What was held
+    // stays held between, as through a gap.
+    property bool connects: true
+    onConnectsChanged: {
+        if (connects) {
+            connectAgain();
+            return;
+        }
+        again.stop();
+        link.active = false;
+        if (wire !== null)
+            gone();
+    }
     // What a watch begun waits on, when it's begun by what Joel pressed:
     // something with `afterFrame(then)`, as the launcher is, which runs
     // `then` once its next frame is drawn, or at once while nothing is
@@ -109,6 +126,30 @@ Scope {
         const begun = watchesBegun;
         paced.afterFrame(() => {
             if (begun === watchesBegun && watched)
+                watchAll();
+        });
+    }
+
+    // A watch asked otherwise, as one paced while the launcher's shut and
+    // unpaced once it opens, is sent again, the same watch told at once
+    // what it held back. Paced by a frame, it's sent once the frame is
+    // drawn, since the opening draws from what's held. Not sent again,
+    // Agents' top level stayed told at most every ten seconds with the
+    // launcher open, so a parked orchestrator woken read as closed
+    // (2026-11-13). Said as text, so a binding giving the same watch anew
+    // sends nothing.
+    readonly property string watchingSaid: JSON.stringify(watching)
+    onWatchingSaidChanged: {
+        if (wire === null || !watched)
+            return;
+        if (paced === null) {
+            watchAll();
+            return;
+        }
+        const begun = watchesBegun;
+        const said = watchingSaid;
+        paced.afterFrame(() => {
+            if (begun === watchesBegun && said === watchingSaid && wire !== null && watched)
                 watchAll();
         });
     }
@@ -408,7 +449,7 @@ Scope {
     LazyLoader {
         id: link
 
-        active: true
+        active: daemon.connects
 
         Socket {
             id: socket
@@ -458,15 +499,24 @@ Scope {
         path: daemon.socket
         preload: false
         printErrors: false
-        watchChanges: daemon.wire === null
+        watchChanges: daemon.connects && daemon.wire === null
+        // A socket just made is a daemon just started, so its tries count
+        // afresh: one bound but not yet listening refuses the first, and
+        // counted on from the tries its absence took, the next came 16 s
+        // later, past the records check's ten-second step on a busy
+        // builder (2026-11-13), and past a place's opening on his machine.
         onFileChanged: {
-            if (daemon.wire === null)
+            if (daemon.connects && daemon.wire === null) {
+                daemon.refusals = 0;
                 daemon.connectAgain();
+            }
         }
     }
 
     function connectAgain() {
         again.stop();
+        if (!connects)
+            return;
         link.active = false;
         link.active = true;
     }
@@ -497,7 +547,7 @@ Scope {
     // A connection dropped says so twice, as its state and as an error,
     // so a try already waiting counts once.
     function tryAgain() {
-        if (again.running)
+        if (again.running || !connects)
             return;
         again.interval = waitAfter(refusals);
         refusals += 1;

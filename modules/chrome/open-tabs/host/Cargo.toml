@@ -10,3 +10,5 @@ publish = false
 [dependencies]
 # Chrome's messages and the extension's answers are JSON.
 serde_json = "1"
+# The shape every command of ours takes (docs/commands.md).
+terminal-kit = { path = "../../../terminal-kit" }

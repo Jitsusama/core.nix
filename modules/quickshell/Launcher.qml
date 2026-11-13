@@ -10655,8 +10655,14 @@ Scope {
                         // already say "type", so a bare "which?" there was
                         // one more level in a head held to two (VKCF3Z,
                         // 2026-11-06, on Joel's "a bumpy hill").
-                        readonly property string asks: root.held.length === 0 ? ""
-                            : root.held[root.held.length - 1].row.ask ?? ""
+                        // A place with a head of its own says it here
+                        // instead, on any step of its own (Provider.qml's
+                        // heading): a collection opened by its chord is
+                        // held as no row that opens it.
+                        readonly property var standsIn: root.held.length === 0 ? null
+                            : root.held[root.held.length - 1].row
+                        readonly property string asks: standsIn === null ? ""
+                            : (standsIn.from?.heading ?? "") || (standsIn.ask ?? "")
                         hint: asks !== Words.anyAsk ? asks : ""
                         ghost: root.completion
                         // An answer's headline, which y copies, is said in

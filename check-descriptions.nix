@@ -2869,6 +2869,11 @@
     run or what it waits for, its quest and memory, and goes to its session or copies its name;
     the sessions said anew make no row again, and the queue written again only the job it changed
   '';
+  the-launcher-heads-the-selection-at-a-whole-word = ''
+    On the Selection's head is the selected text on one line, given way at a whole word; an
+    answer is named by its first sentence, pi-verbs' actions keep its order, and each answer's
+    note says how it stands, a replacing one that it was copied
+  '';
   the-launcher-hears-talks-from-the-node = ''
     Agents hears each talk from the node by its session's address, newest first, moves it on as
     its session writes a line, hears one made since and lets one go, reading no talk's file; and

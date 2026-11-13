@@ -3,7 +3,8 @@
 It answers the shell's daemon interface (RSCH-20261029-0E8050) on the socket named as its one
 argument: hello, and a watch, answered with one record for each key asked, or else one for each
 kind asked, `<kind>:one`. Each record says the kinds its watch asked for, so tests/daemon.qml can
-tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone.
+tell the client sent its list of kinds in every watch, the one ahead too, and not one kind alone,
+and the pace it asked for (`every`), so it can tell a watch whose pace changed was asked again.
 A watch of sessions is answered as mycelium's node answers one: a record whole, then a change
 saying only the fields that differ, one dropped as null. A watch of marks is answered whole,
 then told a change, so tests/daemon.qml can tell which of the two is heard under its line.
@@ -90,6 +91,7 @@ def answer(asked: dict[str, object], unwatched: int) -> list[dict[str, object]]:
             "kind": key.split(":", 1)[0],
             "heard": 1,
             "asked": kinds,
+            "every": asked.get("every"),
             "unwatched": unwatched,
         }
         for key in named

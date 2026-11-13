@@ -23,7 +23,7 @@
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;
   "modules/calls/src/lib.rs" = 5;
-  "modules/chrome/open-tabs/host/src/main.rs" = 2;
+  "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
   "modules/claude/statusline/src/line.rs" = 1;
   "modules/claude/statusline/tests/statusline.rs" = 2;

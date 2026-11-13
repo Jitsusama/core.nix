@@ -28,10 +28,7 @@
   "FileFacts.js" = [ "When.js" ];
   "Files.qml" = [ "FileFacts.js" ];
   "Finding.js" = [ "LineEditing.js" ];
-  "ForYouHolds.qml" = [
-    "launcher/Looks.js"
-    "pieces/Holding.js"
-  ];
+  "ForYouHolds.qml" = [ "pieces/Holding.js" ];
   "KeyboardLayout.qml" = [ "launcher/Keyboards.js" ];
   "Mark.qml" = [ "MarkSize.js" ];
   "ModeMarks.js" = [ "QueryKeys.js" ];
