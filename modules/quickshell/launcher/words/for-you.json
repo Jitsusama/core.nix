@@ -29,9 +29,7 @@
         "notice": "notice",
         "folds": "{count} in all",
         "sent": "sent",
-        "answered": "answered",
-        "taken": "taken back",
-        "told": "{told}"
+        "answered": "answered"
       }
     }
   ]
