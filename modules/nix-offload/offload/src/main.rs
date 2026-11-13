@@ -1379,8 +1379,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         return not_taken("this folder can't be read");
     };
     let given = arguments;
-    let arguments = with_system(arguments);
-    let arguments = arguments.as_slice();
+    let arguments: &[String] = &with_system(arguments);
     let more_dir = more_dir();
     let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
         Ok(source) => source,
@@ -1445,7 +1444,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     // Said while it runs, so a merge sharing its files waits for it
     // (`running.rs`).
     let started = now();
-    let _running = at.as_ref().and_then(|at| {
+    let said_running = at.as_ref().and_then(|at| {
         running::Running::start(&state(), std::process::id(), &at.commit, &folder, started)
     });
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
@@ -1468,6 +1467,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
         kept_passing(&passed, at, arguments, printed, started);
     }
     if runs_again(replayed.as_deref(), finished.status) {
+        drop(said_running); // The replay ended, so it goes unsaid first.
         return changed_there(given, waiting, false);
     }
     ExitCode::from(u8::try_from(finished.status).unwrap_or(1))

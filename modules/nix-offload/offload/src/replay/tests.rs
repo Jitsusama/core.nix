@@ -92,21 +92,51 @@ fn only_a_bases_checks_for_the_system_are_kept() {
 #[test]
 fn a_change_isnt_checked_where_main_moved_beside_it() {
     let change = ["modules/one/a".to_owned()];
+    for forward in [false, true] {
+        assert!(
+            refusal(&["flake.lock".to_owned()], &change, forward).is_some(),
+            "a moved lock reaches every check"
+        );
+        assert!(
+            refusal(&["modules/one/z".to_owned()], &change, forward).is_some(),
+            "main moved a file in the change's own folder"
+        );
+        assert_eq!(
+            refusal(
+                &["modules/two/b".to_owned(), "README.md".to_owned()],
+                &change,
+                forward
+            ),
+            None,
+            "main moved only what the change doesn't reach"
+        );
+    }
+}
+
+#[test]
+fn a_change_is_checked_where_main_moved_its_own_files_as_ready_takes() {
+    // 49 of main's 200 merges before 18:30 on 12 November moved
+    // check-descriptions.nix, which most changes touch too.
+    let change = [
+        "check-descriptions.nix".to_owned(),
+        "modules/one/a".to_owned(),
+        "modules/one/checks.nix".to_owned(),
+    ];
+    for file in ["check-descriptions.nix", "modules/one/checks.nix"] {
+        assert_eq!(
+            refusal(&[file.to_owned()], &change, false),
+            None,
+            "refused over {file}, whose lines ready reads apart"
+        );
+    }
     assert!(
-        refusal(&["flake.lock".to_owned()], &change).is_some(),
-        "a moved lock reaches every check"
-    );
-    assert!(
-        refusal(&["modules/one/z".to_owned()], &change).is_some(),
-        "main moved a file in the change's own folder"
+        refusal(&["modules/one/a".to_owned()], &change, false).is_some(),
+        "replayed back over main moving its own code, where ready refuses the pass"
     );
     assert_eq!(
-        refusal(
-            &["modules/two/b".to_owned(), "README.md".to_owned()],
-            &change
-        ),
+        refusal(&["modules/one/a".to_owned()], &change, true),
         None,
-        "main moved only what the change doesn't reach"
+        "refused forward over its own file, where a clean apply is enough"
     );
 }
 
@@ -195,6 +225,30 @@ fn a_change_isnt_replayed_over_a_move_beside_it() {
     assert!(
         why.as_ref().is_err_and(|why| why.contains("modules/one/z")),
         "replayed over main moving the change's folder: {why:?}"
+    );
+}
+
+#[test]
+fn a_change_is_replayed_forward_over_a_move_to_its_own_file() {
+    let tree = Tree::new();
+    let scratch = tempfile::tempdir().expect("no scratch");
+    let lines = "1\n2\n3\n4\n5\n6\n7\n8\n";
+    let base = tree.wrote("modules/one/a", lines, "start");
+    tree.said(&["checkout", "-q", "-b", "change"]);
+    let head = tree.wrote("modules/one/a", &lines.replace('1', "one"), "change one");
+    tree.said(&["checkout", "-q", "main"]);
+    let kept_head = tree.wrote("modules/one/a", &lines.replace('8', "eight"), "main moves");
+    let replay = replayed(
+        tree.top(),
+        &base,
+        &head,
+        "main",
+        &kept(&[&kept_head]),
+        scratch.path(),
+    );
+    assert!(
+        replay.as_ref().is_ok_and(Option::is_some),
+        "not replayed onto a newer main that moved its file elsewhere: {replay:?}"
     );
 }
 

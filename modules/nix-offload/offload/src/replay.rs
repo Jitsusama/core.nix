@@ -10,9 +10,13 @@
 //! id, where main has moved none of its files since.
 //!
 //! A change isn't replayed when main moved, between the two bases, a file
-//! in a folder the change touches, or one that reaches every check, since
-//! the pass could then say something of the change it wouldn't say on its
-//! own base; nor when it holds a merge, or a commit doesn't apply cleanly.
+//! beside the change's in a folder it touches, or one that reaches every
+//! check, since the pass could then say something of the change it
+//! wouldn't say on its own base; nor when it holds a merge, or a commit
+//! doesn't apply cleanly. A file the change touches itself is enough
+//! applied cleanly onto a newer main, and onto an older one when ready
+//! reads its lines apart: 49 of main's 200 merges before 18:30 on 12
+//! November moved check-descriptions.nix, which most changes touch too.
 //! It then runs on its own base, as it would have.
 
 use std::collections::HashSet;
@@ -32,6 +36,14 @@ const LOOKS_BACK: &str = "300";
 
 /// Files whose move on main reaches every check.
 const EVERYWHERE: [&str; 3] = ["flake.nix", "flake.lock", "checks.nix"];
+
+/// Files `merge-net ready` reads line by line, besides each folder's
+/// `checks.nix`, so a change to one stands apart from main's.
+const APART: [&str; 3] = [
+    "check-descriptions.nix",
+    "examples/laptop.nix",
+    "modules/quickshell/checks/imports.nix",
+];
 
 /// Who wrote and committed a commit, and when, given again as they were,
 /// so the same change replayed onto the same main is the same commit, and
@@ -65,8 +77,11 @@ pub fn kept_in(listing: &str, system: &str) -> HashSet<String> {
 
 /// Why a change touching `change` can't be checked on a base that differs
 /// from its own by `moved`, or none: a file reaching every check moved, or
-/// one in a folder the change touches.
-pub fn refusal(moved: &[String], change: &[String]) -> Option<String> {
+/// one beside the change's in a folder it touches. A file the change
+/// touches itself is enough applied cleanly going `forward`, onto a main
+/// holding its own base; going back, only one whose lines `merge-net
+/// ready` reads apart is, since ready refuses a pass of the rest over it.
+pub fn refusal(moved: &[String], change: &[String], forward: bool) -> Option<String> {
     if let Some(file) = moved
         .iter()
         .find(|file| EVERYWHERE.contains(&file.as_str()))
@@ -76,8 +91,16 @@ pub fn refusal(moved: &[String], change: &[String]) -> Option<String> {
     let touched: HashSet<&str> = change.iter().map(|file| folder(file)).collect();
     moved
         .iter()
-        .find(|file| touched.contains(folder(file)))
+        .filter(|file| touched.contains(folder(file)))
+        .find(|file| !(change.contains(*file) && (forward || read_apart(file))))
         .map(|file| format!("main moved {file}, beside what the change touches"))
+}
+
+/// Whether `merge-net ready` reads `file`'s lines apart, taking a pass of a
+/// change to it over main's own lines in it: the checks' descriptions, a
+/// folder's checks, and the lists every module or case is named in.
+fn read_apart(file: &str) -> bool {
+    APART.contains(&file) || file.ends_with("/checks.nix")
 }
 
 /// The folder a file's change stays within: its first two folders, such as
@@ -125,7 +148,8 @@ pub fn replayed(
             .map(|names| names.lines().map(str::to_owned).collect::<Vec<_>>())
             .ok_or("git couldn't say what moved")
     };
-    if let Some(why) = refusal(&names(&onto, base)?, &names(base, commit)?) {
+    let forward = git(&["merge-base", "--is-ancestor", base, &onto]).is_some();
+    if let Some(why) = refusal(&names(&onto, base)?, &names(base, commit)?, forward) {
         return Err(why);
     }
     let commits = git(&["rev-list", "--reverse", &change]).unwrap_or_default();

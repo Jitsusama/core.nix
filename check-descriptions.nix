@@ -1538,7 +1538,8 @@
     builder the checks and reads its base kept, whole and never over its own; a change whose
     base no lent builder keeps is checked replayed onto the newest main one does, saying so,
     never when it holds a merge, a commit doesn't apply or main moved a file beside it or one
-    every check reads, and runs again on its own base should the replay fail; and `relay`
+    every check reads, though its own files may move onto a newer main, and onto an older
+    where ready reads their lines apart, and runs again on its own base should the replay fail; and `relay`
     dials a far side again
     while it closes before saying its first line, passes that line and everything after
     both ways, and hangs up once, without dialling again, on one that says nothing in time,
