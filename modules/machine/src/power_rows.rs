@@ -47,6 +47,8 @@ const WORN: f64 = 0.8;
 /// The limits a step into the charge limit offers; the daemon starts
 /// charging again a little below each.
 const STOPS: [i64; 5] = [60, 70, 80, 90, 100];
+/// A minute, which a time the headline's drawer says is rounded down to.
+const MINUTE_MS: u64 = 60_000;
 /// The parts of a run said in one, as "45.0 W · 15.0 V".
 const DOT: &str = " \u{b7} ";
 
@@ -80,8 +82,8 @@ impl Power {
         made.extend(own);
         let mut rows = Vec::new();
         crate::rows::placed(PLACE, made, None, 0, &mut rows);
-        let mut head =
-            json!({ "key": format!("head:{PLACE}"), "place": PLACE, "said": say.doing(battery) });
+        let mut head = json!({ "key": format!("head:{PLACE}"), "place": PLACE,
+            "said": say.doing(battery), "drawer": say.head_drawer(battery, crate::now_ms()) });
         if let Some(charge) = charge {
             head["graph"] = charge;
         }
@@ -536,6 +538,52 @@ impl Say<'_> {
             _ => return row,
         };
         self.kernel(row, b, &kept)
+    }
+
+    /// The headline's drawer: how the battery stands, in the headline's
+    /// own words, and when it's full or empty, `wall` (ms since 1970) on,
+    /// to the minute, a time the shell says as a time of day (ready-rows'
+    /// Times) so the drawer moves only as the estimate does; then what
+    /// the kernel keeps behind it and where (Y2YBTS 791a3de5).
+    fn head_drawer(&self, battery: &Value, wall: u64) -> Value {
+        let upower = &battery["upower"];
+        let time = |field: &str| upower[field].as_f64().filter(|s| *s > 0.0);
+        let (standing, until) = match state_of(battery).as_str() {
+            "charging" => ("charging", time("time_to_full_s").map(|s| ("", s))),
+            "discharging" => ("battery", time("time_to_empty_s").map(|s| ("empty", s))),
+            "full" => ("whole", None),
+            _ => ("holding", None),
+        };
+        let mut facts = vec![json!({ "name": self.name("status", &[]),
+            "said": self.says("", standing, &[]) })];
+        if let Some((state, seconds)) = until {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a battery's time is a few days of seconds, and never below none"
+            )]
+            let ahead = (seconds * 1000.0) as u64;
+            facts.push(
+                json!({ "name": self.words.name_in("power:until", state, &[]),
+                "at": (wall + ahead) / MINUTE_MS * MINUTE_MS, "as": "moment",
+                "said": self.says("until", "at", &[("span", &lasted(seconds))]) }),
+            );
+        }
+        let mut kept = vec![("status", self.plain(&battery["status"]))];
+        if battery["energy_full_wh"].is_number() || battery["charge_full_ah"].is_number() {
+            kept.extend(self.held(battery));
+        }
+        kept.push(self.drawn(battery));
+        facts.extend(
+            kept.into_iter()
+                .filter(|(_, said)| !said.is_empty())
+                .map(|(name, said)| json!({ "name": name, "said": said })),
+        );
+        facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
+            "said": format!("/sys/class/power_supply/{}", text(&battery["name"])),
+            "identifies": true }));
+        json!({ "eyebrow": self.words.said("machine:read-from", PLACE, &[]),
+            "eyebrowNames": true, "title": self.words.name(PLACE, &[]), "facts": facts })
     }
 
     /// The charge and what the battery is doing, a dot between: "36% ·
@@ -1380,6 +1428,100 @@ mod tests {
             say.doing(&json!({ "status": "Discharging" })),
             "on battery",
             "a charge nobody knows is left out, never said as none"
+        );
+    }
+
+    /// The headline's drawer says how the battery stands and when it's full
+    /// or empty, a time the shell words, then what the kernel keeps behind
+    /// it (Y2YBTS 791a3de5: "80% · on battery" had no drawer).
+    #[test]
+    fn the_headlines_drawer_says_how_it_stands_and_when_its_full_or_empty() {
+        let words = words();
+        let say = Say { words: &words };
+        let wall = 1_762_000_000_000;
+        let facts = |drawer: &Value| -> Vec<String> {
+            drawer["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|fact| format!("{}={}", text(&fact["name"]), text(&fact["said"])))
+                .collect()
+        };
+        let charging = say.head_drawer(&battery(), wall);
+        assert_eq!(charging["title"], "Battery", "named as Power's answer is");
+        assert_eq!(charging["eyebrow"], "on this machine \u{b7} power");
+        assert_eq!(
+            charging["eyebrowNames"], true,
+            "its eyebrow drawn as a name"
+        );
+        assert_eq!(
+            facts(&charging),
+            [
+                "Status=charging",
+                "Full={time}, in 50 min",
+                "status=Charging",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "how it stands, when it's full, then the kernel's"
+        );
+        let full = &charging["facts"][1];
+        assert_eq!(full["as"], "moment", "the shell says the time of day");
+        assert_eq!(
+            full["at"],
+            (wall + 3_000_000) / 60_000 * 60_000,
+            "to the minute, so a second's read moves nothing"
+        );
+        let draining = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Discharging", "capacity_pct": 80,
+                "energy_wh": 40.0, "energy_full_wh": 50.0, "watts": 12.0,
+                "upower": { "state": "discharging", "time_to_empty_s": 11_400.0 } }),
+            wall,
+        );
+        assert_eq!(
+            facts(&draining),
+            [
+                "Status=on battery",
+                "Empty={time}, in 3 h 10 min",
+                "status=Discharging",
+                "energy_now=40,000,000 \u{b5}Wh",
+                "energy_full=50,000,000 \u{b5}Wh",
+                "power_now=12,000,000 \u{b5}W",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "on battery, when it's empty, then what it holds and draws"
+        );
+        let whole = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Full", "upower": { "state": "full" } }),
+            wall,
+        );
+        assert_eq!(
+            facts(&whole),
+            [
+                "Status=full",
+                "status=Full",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "full, with no time to say"
+        );
+        let held = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Not charging",
+                "upower": { "state": "pending-charge", "time_to_full_s": 600.0 } }),
+            wall,
+        );
+        assert_eq!(
+            facts(&held),
+            [
+                "Status=on power, holding",
+                "status=Not charging",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "held at a limit, with no time to say even where one is guessed"
+        );
+        let ready = Power::default().read(&[battery()], 0, &words);
+        assert_eq!(
+            ready.head.unwrap()["drawer"]["title"],
+            "Battery",
+            "the headline is served with it"
         );
     }
 
