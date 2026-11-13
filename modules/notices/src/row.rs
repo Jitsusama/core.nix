@@ -526,11 +526,7 @@ pub fn served(made: [Vec<Value>; 3]) -> [(Vec<Value>, Vec<Value>); 3] {
     let sources = json!({ "desktop": of("desktop"), "slack": of("slack") });
     let (rows, mut counted) = page(HISTORY_SUMMARY, history);
     counted[0]["summary"]["sources"] = sources;
-    [
-        page(SUMMARY, mixed),
-        (desktop, Vec::new()),
-        (rows, counted),
-    ]
+    [page(SUMMARY, mixed), (desktop, Vec::new()), (rows, counted)]
 }
 
 /// The rows of a paged place it serves, of every one made, in their
