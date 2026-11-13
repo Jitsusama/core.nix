@@ -89,7 +89,8 @@ struct Range {
 /// `jobs-sorter swap-in PID` as root, or `jobs-sorter swap-in --owned PID`
 /// as the pid's account; what it did, or why it did nothing.
 ///
-/// Only being asked wrongly fails. Anything it can't find or ask, the
+/// Only being asked wrongly fails, or asked for a process of root's, which
+/// nobody may have read back. Anything it can't find or ask, the
 /// process gone, niri's socket or its manager not answering, only means
 /// nothing is read back, since it only hints: a failed unit fails the
 /// switch it lands in, and on 13 November one asked while a switch
@@ -97,11 +98,25 @@ struct Range {
 /// switch went back.
 pub fn main(args: &[String]) -> Result<String, String> {
     let done = match args {
-        [pid] => become_owner(parse(pid)?),
+        [pid] => {
+            let pid = parse(pid)?;
+            if roots(pid) {
+                return Err(format!(
+                    "process {pid} is root's, whose memory isn't read back"
+                ));
+            }
+            become_owner(pid)
+        }
         [owned, pid] if owned == "--owned" => read_back(parse(pid)?),
         _ => return Err("usage: jobs-sorter swap-in [--owned] PID".to_owned()),
     };
     Ok(done.unwrap_or_else(|error| format!("Read nothing back: {error}.")))
+}
+
+/// Whether `pid` runs as root, as far as `/proc` says.
+fn roots(pid: u32) -> bool {
+    fs::read_to_string(format!("/proc/{pid}/status"))
+        .is_ok_and(|status| owner(&status, "Uid:") == Some(0))
 }
 
 fn parse(pid: &str) -> Result<u32, String> {
@@ -125,6 +140,8 @@ fn become_owner(pid: u32) -> Result<String, String> {
     let (Some(uid), Some(gid)) = (owner(&status, "Uid:"), owner(&status, "Gid:")) else {
         return Err(format!("process {pid} says no owner"));
     };
+    // Asked by `main` already, and asked again here, since the pid may
+    // have been taken by another process since.
     if uid == 0 {
         return Err(format!(
             "process {pid} is root's, whose memory isn't read back"
@@ -737,6 +754,10 @@ mod tests {
         assert!(
             main(&["1".to_owned()]).is_err(),
             "asked for no process, it said nothing was wrong"
+        );
+        assert!(
+            roots(1),
+            "init wasn't found to be root's, so its memory could be asked for"
         );
         assert!(
             main(&["--other".to_owned(), "7".to_owned()]).is_err(),
