@@ -126,9 +126,13 @@ Provider {
             figure: true,
             plain: true,
             copies: () => typeof made?.side === "string" ? made.side : "",
-            // The first node and the first profile each start a group.
-            gap: (kind === "node" || kind === "profile")
-                && ready.keys.find(one => ready.held[one]?.row?.kind === kind) === key,
+            // Each eero heads a group of its own, its devices a step in
+            // under it as the daemon serves them, and the profiles start one
+            // more, so a device reads as its eero's (Joel, 2026-11-13: "endpoints
+            // are not obviously grouped under their base station").
+            gap: kind === "node" || (kind === "profile"
+                && ready.keys.find(one => ready.held[one]?.row?.kind === kind) === key),
+            depth: row.depth ?? 0,
             drawer: () => ready.drawerOf(row)
         });
         if (made === null)
