@@ -45,7 +45,9 @@ state, cache, data and runtime folders are the XDG folders the view is run
 with, copied so it may write; a file in them named X.in is written as X,
 each @NOW@ in it the time it's set, in seconds since the epoch, and each
 @NOW-N@ or @NOW+N@ that time N seconds before or after, so what the state
-says happened a while ago reads that way. Every failure is printed before
+says happened a while ago reads that way; @ISO@ and @ISO-N@ say the same
+times in RFC 3339, as a log does. A view may name steps to run first, in
+the same state, as a history is imported before it's read. Every failure is printed before
 the check exits 1, and the last line says how many agree.
 """
 
@@ -66,6 +68,7 @@ import time
 import tomllib
 import unicodedata
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 POINTS = ("kit", "exits", "inks", "helps", "fits")
@@ -116,7 +119,7 @@ XDG = {
 }
 
 # A time in a stand-in file, as it's set: now, or a number of seconds off it.
-NOW = re.compile(r"@NOW(?:([+-])(\d+))?@")
+NOW = re.compile(r"@(NOW|ISO)(?:([+-])(\d+))?@")
 
 # What a stand-in file's name ends with when it holds times to set.
 SET = ".in"
@@ -328,6 +331,9 @@ class View:
     # What it ends with: 0, or 1 where its answer is that something differs,
     # as `diff` says.
     exits: int = 0
+    # The words of steps run before it, in the same state, each to end 0:
+    # what a person would have run first, such as an import.
+    first: tuple[tuple[str, ...], ...] = ()
 
     @property
     def typed(self) -> str:
@@ -358,11 +364,15 @@ def stood_in(state: Path, into: Path) -> None:
             continue
         path.chmod(path.stat().st_mode | stat.S_IWUSR)
     now = int(time.time())
+
+    def when(found: re.Match[str]) -> str:
+        at = now + (-1 if found[2] == "-" else 1) * int(found[3] or 0)
+        if found[1] == "NOW":
+            return str(at)
+        return datetime.fromtimestamp(at, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     for path in sorted(into.rglob(f"*{SET}")):
-        text = NOW.sub(
-            lambda found: str(now + (-1 if found[1] == "-" else 1) * int(found[2] or 0)),
-            path.read_text(),
-        ).replace(HERE, str(into))
+        text = NOW.sub(when, path.read_text()).replace(HERE, str(into))
         path.with_name(path.name.removesuffix(SET)).write_text(text)
         path.unlink()
 
@@ -386,6 +396,26 @@ def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | N
             **{variable: str(Path(scratch) / folder) for variable, folder in XDG.items()},
             **{variable: value.replace(HERE, scratch) for variable, value in view.env},
         }
+        # A step's answer isn't the view, so only how it ends is read.
+        for step in view.first:
+            try:
+                done = subprocess.run(  # noqa: S603
+                    [program, *(arg.replace(HERE, scratch) for arg in step)],
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=environment,
+                    timeout=HELP_SECONDS,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                os.close(leader)
+                os.close(follower)
+                return None
+            if done.returncode != 0:
+                os.close(leader)
+                os.close(follower)
+                return "", done.returncode
         # The program is one the check was given built, from Nix.
         child = subprocess.Popen(  # noqa: S603
             [program, *(arg.replace(HERE, scratch) for arg in view.args)],
@@ -629,6 +659,7 @@ def main() -> int:
                 view.get("state") and Path(view["state"]),
                 tuple(sorted(view.get("env", {}).items())),
                 view.get("exits", 0),
+                tuple(tuple(step) for step in view.get("first", [])),
             )
             for view in given
         )
