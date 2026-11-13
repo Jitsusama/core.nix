@@ -381,6 +381,45 @@ def test_a_check_main_quarantines_fails_saying_so_and_blocking_nothing(
 
 
 @pytest.mark.usefixtures("stand_in")
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("vm-test-run-x> FAILED vm-pytest-x/x-vm-test.py::test_a[one] - assert", 0),
+        (
+            (
+                "x> FAILED vm-pytest-x/x-vm-test.py::test_a - assert\n"
+                "x> FAILED vm-pytest-x/x-vm-test.py::test_b - assert"
+            ),
+            1,
+        ),
+        ("x> action timed out after 300 seconds", 1),
+    ],
+)
+def test_a_check_main_quarantines_by_its_subtests_is_excused_only_for_those(
+    tool: Tool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: tuple[str, int],
+) -> None:
+    says, status = case
+    # As the net's quarantine since 12 November: an entry naming subtests
+    # excuses a run whose every failed subtest it names, and no other, so a
+    # new break in a quarantined test, or a run naming none, still blocks.
+    listed = tmp_path / "quarantine.json"
+    listed.write_text(json.dumps([{"test": "vm-desktop-x", "subtests": ["test_a"]}]))
+    monkeypatch.setenv("STAND_IN_QUARANTINE", str(listed))
+    monkeypatch.setenv("STAND_IN_OFFLOAD_STATUS", "1")
+    monkeypatch.setenv("STAND_IN_OFFLOAD_SAYS", says)
+
+    assert tool.main(["--there", "vm-desktop-x", "launcher"]) == status, (
+        f"a run saying {says!r} wasn't judged by the subtests main lists"
+    )
+    said = capsys.readouterr().err
+    assert ("blocks nothing" in said) == (status == 0), said
+
+
+@pytest.mark.usefixtures("stand_in")
 def test_a_check_that_isnt_a_vm_test_is_refused_and_never_excused(
     tool: Tool,
     monkeypatch: pytest.MonkeyPatch,
