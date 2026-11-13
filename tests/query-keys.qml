@@ -296,9 +296,9 @@ QtObject {
         // A served act whose daemon says what stays is asked saying so,
         // naming what it ends, as a session's Close is ("Close O? Its
         // folder stays.").
-        const close = { key: "verb:agent:close", ask: { ask: "close", address: "O" },
+        const served = { key: "verb:agent:close", ask: { ask: "close", address: "O" },
             askedAs: "O", leaves: "its folder stays." };
-        holds("a served act's ask names it and says what stays", Confirm.asking(close),
+        holds("a served act's ask names it and says what stays", Confirm.asking(served),
             { askedAs: "O", leaves: "its folder stays." });
         holds("and one saying neither is asked as any other",
             Confirm.asking({ key: "verb:agent:stop", ask: { ask: "stop" } }), {});
