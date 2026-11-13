@@ -44,6 +44,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde_json::{Map, Value, json};
@@ -82,7 +83,12 @@ pub fn gating(lock: &Path) -> Option<fs::File> {
 
 /// Whether a gate runs here, as its lock says: a keep tries it whole and
 /// gives it back at once, so a gate starting then waits only that long.
+/// A lock tried whole holds against every other open of it, this
+/// process's too, so a keep's threads ask one at a time: asking together,
+/// each took another's try for a gate and the keep stopped.
 fn a_gate_runs(lock: &Path) -> bool {
+    static ASKING: Mutex<()> = Mutex::new(());
+    let _alone = ASKING.lock().unwrap_or_else(PoisonError::into_inner);
     let Ok(tried) = fs::File::create(lock) else {
         return false;
     };
@@ -587,5 +593,28 @@ mod tests {
         assert!(a_gate_runs(&lock), "the second gate ran unseen");
         drop(other);
         assert!(!a_gate_runs(&lock), "a gate was seen after both let go");
+    }
+
+    #[test]
+    fn a_keeps_threads_asking_together_never_take_one_another_for_a_gate() {
+        // Each of a keep's 16 tracing threads asks before it begins a VM
+        // test, and a lock tried whole is held, for that instant, against
+        // every other open of it, this process's too.
+        let scratch = Scratch::new("gating-together");
+        let lock = scratch.join("changed-checks/gating.lock");
+        fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+        let seen = std::thread::scope(|scope| {
+            let asking: Vec<_> = (0..AT_ONCE)
+                .map(|_| scope.spawn(|| (0..200).filter(|_| a_gate_runs(&lock)).count()))
+                .collect();
+            asking
+                .into_iter()
+                .map(|thread| thread.join().expect("asked"))
+                .sum::<usize>()
+        });
+        assert_eq!(
+            seen, 0,
+            "with no gate, a keep's threads saw one {seen} times"
+        );
     }
 }

@@ -1167,12 +1167,14 @@ fn a_gate_whose_change_reaches_nothing_the_vm_tests_read_keeps_their_base_deriva
     // and each spent half its evaluating on them.
     // A listing gives names alone, so a file changed in a folder listed
     // moves nothing, nor one added in a folder that was there already.
+    // Nor does a file removed from a folder looked up that stays.
     let stand_in = kept_with_reads(
         "reads-unreached",
-        "M\ta\nA\tnew\nD\tgone\nM\tlisted/old.nix\nA\tlisted/kept/new.nix\n",
+        "M\ta\nA\tnew\nD\tgone\nM\tlisted/old.nix\nA\tlisted/kept/new.nix\nD\ttests/y.nix\n",
     );
     fs::create_dir_all(stand_in.path("repo/listed/kept")).expect("made");
-    fs::write(stand_in.path("based"), "listed/kept\n").expect("written");
+    fs::create_dir_all(stand_in.path("repo/tests")).expect("made");
+    fs::write(stand_in.path("based"), "listed/kept\ntests\n").expect("written");
     // The other checks are evaluated, so only the VM tests' record counts.
     fs::remove_file(stand_in.path(ALONE)).expect("each check's record removed");
 
@@ -1213,6 +1215,8 @@ fn a_gate_whose_change_reaches_what_the_vm_tests_read_evaluates_them() {
     ] {
         let stand_in = kept_with_reads("reads-reached", diff);
         fs::create_dir_all(stand_in.path("repo/listed/came")).expect("made");
+        // tests/ went with tests/y.nix, its last file.
+        fs::write(stand_in.path("based"), "tests\n").expect("written");
 
         let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
 

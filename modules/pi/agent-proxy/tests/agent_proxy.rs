@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use signature::Signer;
 use ssh_key::private::Ed25519Keypair;
 use ssh_key::public::KeyData;
-use ssh_key::{PublicKey, Signature};
+use ssh_key::{HashAlg, PublicKey, Signature};
 
 const FAILURE: u8 = 5;
 const SUCCESS: u8 = 6;
@@ -100,7 +100,8 @@ fn sign(key: &[u8], data: &[u8]) -> Vec<u8> {
     body
 }
 
-/// The proxy, the fake agent behind it and how often that agent signed.
+/// The proxy, the fake agent behind it and how often that agent signed,
+/// with what the proxy says kept in a file.
 struct Proxy {
     child: Child,
     socket: PathBuf,
@@ -127,7 +128,9 @@ impl Proxy {
             .arg(&upstream)
             .arg("--socket")
             .arg(&socket)
-            .stderr(Stdio::null())
+            .stderr(Stdio::from(
+                fs::File::create(dir.join("said")).expect("a file for what it says"),
+            ))
             .spawn()
             .expect("the proxy starts");
         let started = Instant::now();
@@ -154,6 +157,63 @@ impl Proxy {
     fn signatures(&self) -> usize {
         self.signed.load(Ordering::SeqCst)
     }
+
+    /// Each line the proxy has said so far. It says one before it
+    /// answers, so a line is there once its answer is received.
+    fn lines(&self) -> Vec<String> {
+        fs::read_to_string(self.dir.join("said"))
+            .expect("what it said is read")
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
+/// The fingerprint a host's key has in the proxy's lines.
+fn fingerprint(blob: &[u8]) -> String {
+    PublicKey::from_bytes(blob)
+        .expect("a host key reads")
+        .fingerprint(HashAlg::Sha256)
+        .to_string()
+}
+
+/// The words a refusal's line may give for why, as src/said.rs has them.
+const REASONS: &[&str] = &[
+    "unreadable",
+    "request",
+    "extension",
+    "forwarded",
+    "untold-host",
+    "unsigned",
+    "no-session",
+    "not-login",
+    "mismatch",
+    "no-holder",
+    "upstream",
+    "busy",
+];
+
+/// Whether `line` has the fixed shape a journal reader keeps fields
+/// from: a signature's host alone, or a refusal's reason word and host,
+/// with its sentence only after ` -- `.
+fn shaped(line: &str) -> bool {
+    let Some(said) = line.strip_prefix("pi-agent-proxy: ") else {
+        return false;
+    };
+    let host = |host: &str| host == "none" || (host.starts_with("SHA256:") && !host.contains(' '));
+    if let Some(signed) = said.strip_prefix("signed host=") {
+        return host(signed);
+    }
+    let Some(refused) = said.strip_prefix("refused why=") else {
+        return false;
+    };
+    let Some((fields, sentence)) = refused.split_once(" -- ") else {
+        return false;
+    };
+    let Some((why, at)) = fields.split_once(" host=") else {
+        return false;
+    };
+    REASONS.contains(&why) && host(at) && !sentence.is_empty()
 }
 
 impl Drop for Proxy {
@@ -248,6 +308,14 @@ fn signs_a_login_to_a_session_its_allowed_host_signed() {
         answer, expected,
         "the agent's signature comes back as it gave it"
     );
+    assert_eq!(
+        proxy.lines(),
+        [format!(
+            "pi-agent-proxy: signed host={}",
+            fingerprint(&blob)
+        )],
+        "the login it signed is said with its host"
+    );
     assert_eq!(proxy.signatures(), 1, "the agent signed once");
 }
 
@@ -295,6 +363,18 @@ fn refuses_a_host_it_is_not_told_of() {
         "the login is refused"
     );
     assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+    let lines = proxy.lines();
+    assert!(
+        lines[0].starts_with(&format!(
+            "pi-agent-proxy: refused why=untold-host host={} -- ",
+            fingerprint(&other_blob)
+        )),
+        "the binding's refusal names the host it was for: {lines:?}"
+    );
+    assert!(
+        lines[1].starts_with("pi-agent-proxy: refused why=no-session host=none -- "),
+        "the login's refusal says it had no session: {lines:?}"
+    );
 }
 
 #[test]
@@ -365,6 +445,19 @@ fn refuses_anything_but_a_login_to_the_bound_session() {
         );
     }
     assert_eq!(proxy.signatures(), 0, "the agent was never asked");
+    let reasons: Vec<String> = proxy
+        .lines()
+        .iter()
+        .filter_map(|line| line.split_once("why=").map(|(_, rest)| rest.to_owned()))
+        .collect();
+    let host = fingerprint(&blob);
+    assert!(
+        reasons[0].starts_with("not-login host=none -- ")
+            && reasons[1].starts_with("no-session host=none -- ")
+            && reasons[2].starts_with(&format!("mismatch host={host} -- ")),
+        "a commit, another session and another key each say why, with the \
+         session's host once it's known: {reasons:?}"
+    );
 }
 
 #[test]
@@ -452,4 +545,60 @@ fn refuses_to_change_the_agents_behind_it() {
             "{what} is refused"
         );
     }
+}
+
+#[test]
+fn says_each_refusal_and_signature_in_one_fixed_shape() {
+    let (allowed, blob) = host(1);
+    let (other, other_blob) = host(2);
+    let proxy = Proxy::start("shaped", &hosts_file(&[&allowed]));
+    let mut client = proxy.client();
+    let session = b"session one";
+    let forged = b"a session with another host";
+    let asks = [
+        bind(
+            &other_blob,
+            b"session two",
+            &signed(&other, b"session two"),
+            false,
+        ),
+        bind(&blob, forged, &signed(&other, forged), false),
+        bind(&blob, session, &signed(&allowed, session), false),
+        sign(LOGIN_KEY, &login(session, LOGIN_KEY)),
+        sign(LOGIN_KEY, &login(b"session three", LOGIN_KEY)),
+        vec![ADD_IDENTITY, 0, 0, 0, 0],
+        vec![EXTENSION, 0, 0, 0, 3, b'w', b'h', b'o'],
+        vec![SIGN_REQUEST, 0, 0],
+    ];
+    for ask in asks {
+        send(&mut client, &ask);
+        receive(&mut client).expect("an answer");
+    }
+
+    let lines = proxy.lines();
+    assert_eq!(
+        lines.len(),
+        7,
+        "one line each but the binding taken: {lines:?}"
+    );
+    for line in &lines {
+        assert!(shaped(line), "a line a reader can keep fields from: {line}");
+    }
+    let reasons: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| line.split_once("why=")?.1.split_once(' '))
+        .map(|(why, _)| why)
+        .collect();
+    assert_eq!(
+        reasons,
+        [
+            "untold-host",
+            "unsigned",
+            "no-session",
+            "request",
+            "extension",
+            "unreadable"
+        ],
+        "each refusal names its reason"
+    );
 }
