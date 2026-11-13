@@ -12,7 +12,9 @@
 {
   # A machine's own programs come first on code-health's PATH, with core's
   # git after: stock git refuses a repository its own git keeps with an
-  # extension stock git doesn't know, and left such a one unread.
+  # extension stock git doesn't know, and left such a one unread. Core's
+  # coreutils come last, for a git of the machine's that is a script: on
+  # 13 November one called tr about 60 times a read and found none.
   code-health-finds-a-machines-programs-first =
     let
       # A package, and a profile kept outside the store, whose bin is searched.
@@ -35,10 +37,10 @@
       ]);
       # Written out rather than built as the module builds it.
       profile = "/home/someone/.local/state/tools/profile/bin";
-      wanted = "PATH=${pkgs.hello}/bin:${profile}:${pkgs.git}/bin";
+      wanted = "PATH=${pkgs.hello}/bin:${profile}:${pkgs.git}/bin:${pkgs.coreutils}/bin";
     in
     holds "code-health-finds-a-machines-programs-first"
-      "code-health doesn't find a machine's programs first, or lost core's git."
+      "code-health doesn't find a machine's programs first, or lost core's git or coreutils."
       (home.systemd.user.services.code-health.Service.Environment == [ wanted ]);
 
   # code-health's tests run as it builds: a long file or crowded folder
