@@ -10,8 +10,11 @@
 # The image is a file on the system's disk made without copy-on-write, so
 # Btrfs never copies a block builds write over, and ext4 keeps its own
 # journal. The image's size is a ceiling: it holds only the blocks its
-# builds write, and hands each back as a build deletes it, so a 48 GB image
-# holding 21 GB of builds takes 21 GB of the disk. Reserving it whole kept
+# builds write, and hands each back as a build deletes it, so a 96 GB image
+# holding 21 GB of builds takes 21 GB of the disk. At 48 GB, on 13
+# November, one workspace's 25 GiB of intermediates beside the others'
+# filled it while the disk had 313 GiB free, and links failed with "Disk
+# full?"; a build still running holds its folder, so the guard can't help. Reserving it whole kept
 # Btrfs from ever placing a block, yet saves measured beside a sparse image
 # with holes punched as builds deleted were no slower: p99 456 ms against
 # 379 ms reserved, the median of three rounds each, within the load's noise. What's
@@ -50,7 +53,7 @@ in
     };
     size = lib.mkOption {
       type = lib.types.str;
-      default = "48G";
+      default = "96G";
       description = ''
         The most the image may hold, as truncate reads a size, or half what
         the disk would have free without it, when that's less. It takes only
