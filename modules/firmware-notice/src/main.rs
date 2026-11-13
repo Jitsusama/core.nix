@@ -14,7 +14,10 @@
 //! offered are kept. A notice that couldn't be sent, the shell being away,
 //! isn't kept, so the next run says it.
 //!
-//! Usage: firmware-notice FWUPDMGR NOTIFY-SEND
+//!   firmware-notice FWUPDMGR NOTIFY-SEND    says each release not said yet
+//!
+//! It takes the shape every command of ours does (docs/commands.md): its
+//! help, and a failure that says what to try.
 
 use serde::Deserialize;
 use std::collections::BTreeSet;
@@ -22,6 +25,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use terminal_kit::{Exit, Failure, Help};
 
 /// What fwupdmgr exits with when there's nothing to do: here, no update
 /// offered to any device, which it says in words rather than JSON.
@@ -97,16 +101,23 @@ fn notices(offered: &Offered) -> Vec<Notice> {
 }
 
 /// What fwupdmgr said, as the releases offered: nothing where it exits
-/// saying there's nothing to do, and an error where it couldn't say, so
+/// saying there's nothing to do, and a failure where it couldn't say, so
 /// what's been said is kept rather than forgotten.
-fn offered(code: Option<i32>, stdout: &[u8]) -> Result<Offered, String> {
+fn offered(code: Option<i32>, stdout: &[u8]) -> Result<Offered, Failure> {
+    let unanswered = |why: String| {
+        Failure::new(Exit::Unavailable, "fwupd didn't say what it offers")
+            .because(why)
+            .try_this("fwupdmgr get-updates")
+    };
     match code {
-        Some(0) => {
-            serde_json::from_slice(stdout).map_err(|error| format!("fwupd's updates: {error}"))
-        }
+        Some(0) => serde_json::from_slice(stdout).map_err(|error| {
+            Failure::new(Exit::BadInput, "fwupd's list of updates couldn't be read")
+                .because(error.to_string())
+                .try_this("fwupdmgr get-updates --json")
+        }),
         Some(NOTHING_OFFERED) => Ok(Offered::default()),
-        Some(code) => Err(format!("fwupdmgr get-updates exited {code}")),
-        None => Err("fwupdmgr get-updates was killed".to_owned()),
+        Some(code) => Err(unanswered(format!("fwupdmgr get-updates exited {code}"))),
+        None => Err(unanswered("fwupdmgr get-updates was killed".to_owned())),
     }
 }
 
@@ -122,15 +133,26 @@ fn kept(notices: &[Notice], before: &BTreeSet<String>, said: &[&Notice]) -> BTre
 }
 
 /// Where what's been said is kept.
-fn state() -> Result<PathBuf, String> {
+fn state() -> Result<PathBuf, Failure> {
     if let Some(dir) = env::var_os("STATE_DIRECTORY") {
         return Ok(PathBuf::from(dir));
     }
     let home = env::var_os("XDG_STATE_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| Path::new(&home).join(".local/state")))
-        .ok_or("neither STATE_DIRECTORY, XDG_STATE_HOME nor HOME is set")?;
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "there's nowhere to keep what it said")
+                .because("neither STATE_DIRECTORY, XDG_STATE_HOME nor HOME is set")
+                .try_this("systemctl --user start firmware-notice")
+        })?;
     Ok(home.join("firmware-notice"))
+}
+
+/// Why what it has said couldn't be read or kept, and what to try.
+fn unkept(why: String, file: &Path) -> Failure {
+    Failure::new(Exit::Failed, "it couldn't keep what it has said")
+        .because(why)
+        .try_this(format!("check that {} can be written", file.display()))
 }
 
 /// The keys said before, or none where nothing has been said yet.
@@ -167,35 +189,52 @@ fn say(notify_send: &str, notice: &Notice) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-fn run(fwupdmgr: &str, notify_send: &str) -> Result<(), String> {
+fn run(fwupdmgr: &str, notify_send: &str) -> Result<(), Failure> {
     let asked = Command::new(fwupdmgr)
         .args(["get-updates", "--json"])
         .output()
-        .map_err(|error| format!("{fwupdmgr}: {error}"))?;
+        .map_err(|error| {
+            Failure::new(Exit::Unavailable, format!("{fwupdmgr} wouldn't run"))
+                .because(error.to_string())
+                .try_this("check that fwupd is installed")
+        })?;
     let notices = notices(&offered(asked.status.code(), &asked.stdout)?);
     let file = state()?.join(SAID);
-    let before = read(&file)?;
+    let before = read(&file).map_err(|why| unkept(why, &file))?;
     let said: Vec<&Notice> = notices
         .iter()
         .filter(|notice| !before.contains(&notice.key))
         .filter(|notice| say(notify_send, notice))
         .collect();
-    write(&file, &kept(&notices, &before, &said))
+    write(&file, &kept(&notices, &before, &said)).map_err(|why| unkept(why, &file))
+}
+
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "firmware-notice",
+        "says, once, each firmware update fwupd offers the machine",
+    )
+    .example(
+        "firmware-notice fwupdmgr notify-send",
+        "what its unit runs, saying each release not said yet",
+    )
+    .exit(Exit::Failed, "it couldn't keep what it has said")
+    .exit(Exit::BadInput, "fwupd's list of updates couldn't be read")
+    .exit(Exit::Unavailable, "fwupd didn't say what it offers")
+    .exit(Exit::Config, "there's nowhere to keep what it said")
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let [fwupdmgr, notify_send] = args.as_slice() else {
-        eprintln!("usage: firmware-notice FWUPDMGR NOTIFY-SEND");
-        return ExitCode::from(2);
-    };
-    match run(fwupdmgr, notify_send) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("firmware-notice: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [fwupdmgr, notify_send] = context.args.as_slice() else {
+            return Err(
+                Failure::new(Exit::Usage, "it takes fwupdmgr and notify-send, as paths")
+                    .try_this("firmware-notice fwupdmgr notify-send"),
+            );
+        };
+        run(fwupdmgr, notify_send)
+    })
 }
 
 #[cfg(test)]
