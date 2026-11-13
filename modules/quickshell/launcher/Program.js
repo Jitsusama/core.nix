@@ -6,8 +6,9 @@
 // keywords, where it starts and whether in a terminal, and its version and
 // package; and what identifies it last, its command, window class, desktop
 // entry's id and file, and store path (VKCF3Z, 2026-11-07 and 08). Its desktop entry's comment is
-// its words. What its entry says is the programs daemon's record of it. Plain JavaScript,
-// so tests/program-drawer.qml holds it in Qt's own engine.
+// its words. What its entry says is the programs daemon's record of it. A
+// slow making says what each part of it spent. Plain JavaScript, so
+// tests/program-drawer.qml holds it in Qt's own engine.
 .pragma library
 .import "../FileFacts.js" as FileFacts
 .import "Numbers.js" as Numbers
@@ -196,6 +197,49 @@ function facts(known, named, said) {
         Object.assign(own("store-path")(pack?.store_path ?? ""), { identifies: true,
             valueItems: [{ said: pack?.store_path ?? "", whole: true }] })
     ]).filter(fact => fact.value !== "");
+}
+
+// How long a program's drawer or acts may take making before what each
+// part spent is said in the journal. Most take 4 to 17 ms, and the bar from
+// a key to the screen is 50, which five of 26 drawers' making alone missed
+// in Joel's journal, with nothing saying which part was dear (2026-11-13).
+const SAID_FROM = 25;
+
+// The answer of `work`, its time on `clock` (ms) kept in `parts` by its
+// name, { name, ms }, summed with the part of that name already kept: a
+// provider asked twice in one making is one part. With no parts, it's
+// only run, since nothing is timing a making.
+function timed(parts, name, clock, work) {
+    if (!parts) {
+        return work();
+    }
+    const began = clock();
+    const answer = work();
+    const ms = clock() - began;
+    const kept = parts.find(part => part.name === name);
+    if (kept) {
+        kept.ms += ms;
+    } else {
+        parts.push({ name, ms });
+    }
+    return answer;
+}
+
+// What a making that took `took` ms spent, by its parts, the dearest first
+// and what no part holds as "the rest", each to the millisecond and those
+// under one unsaid: "slack's drawer made in 90 ms: kitty 72, the rest 14".
+// Empty for one under SAID_FROM, which Joel never feels.
+function makingSaid(what, took, parts) {
+    if (took < SAID_FROM) {
+        return "";
+    }
+    const rest = took - parts.reduce((sum, part) => sum + part.ms, 0);
+    const each = parts.concat([{ name: "the rest", ms: rest }])
+        .map((part, at) => ({ name: part.name, ms: Math.round(part.ms), at }))
+        .filter(part => part.ms >= 1)
+        .sort((one, other) => other.ms - one.ms || one.at - other.at);
+    return `${what} made in ${Math.round(took)} ms: `
+        + each.map(part => `${part.name} ${part.ms}`).join(", ");
 }
 
 // A program's drawer: { eyebrow, title, facts, body }. What it is is said

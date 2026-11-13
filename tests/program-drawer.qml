@@ -178,6 +178,34 @@ QtObject {
             asking.facts.slice(0, 3), ["processor", "memory", "processes"]
                 .map(id => ({ label: `[${id}]`, value: null })));
 
+        // A making timed by its parts on a clock that moves only as each
+        // part works, so each part's time is what it was given.
+        let clock = 0;
+        const now = () => clock;
+        const spends = ms => () => {
+            clock += ms;
+            return ms;
+        };
+        const parts = [];
+        expect("a timed part gives back its answer",
+            Program.timed(parts, "kitty", now, spends(60)), 60);
+        Program.timed(parts, "passwords", now, spends(4));
+        Program.timed(parts, "kitty", now, spends(12));
+        Program.timed(parts, "zathura", now, spends(0.2));
+        expect("each part's time kept by its name, a name twice summed",
+            parts.map(part => [part.name, Math.round(part.ms)]),
+            [["kitty", 72], ["passwords", 4], ["zathura", 0]]);
+        expect("nothing kept while no making is timed",
+            Program.timed(null, "kitty", now, spends(3)), 3);
+        expect("a slow making said by its parts, the dearest first, the rest last",
+            Program.makingSaid("slack's drawer", 90.4, parts),
+            "slack's drawer made in 90 ms: kitty 72, the rest 14, passwords 4");
+        expect("a part under a millisecond left unsaid",
+            Program.makingSaid("zathura's acts", 30, [{ name: "zathura", ms: 0.4 },
+                { name: "neovim", ms: 29.6 }]), "zathura's acts made in 30 ms: neovim 30");
+        expect("a making quick enough to feel nothing says nothing",
+            Program.makingSaid("slack's drawer", 24, [{ name: "kitty", ms: 20 }]), "");
+
         // Said as warnings, since Qt keeps ordinary logging quiet.
         for (const failure of failures)
             console.warn(failure);
