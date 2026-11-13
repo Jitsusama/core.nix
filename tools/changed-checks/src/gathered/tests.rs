@@ -1,4 +1,5 @@
 use super::*;
+use crate::reads::Touched;
 
 #[test]
 fn code_keeps_what_a_string_interpolates_and_nothing_a_comment_says() {
@@ -21,6 +22,21 @@ fn paths_are_the_literals_that_copy_or_read() {
         paths(&code(text)),
         ["../..", "./x.nix", "./.", "./"],
         "a fileset's root, a path taken from, or a name with a slash counted as a path"
+    );
+}
+
+#[test]
+fn a_folder_filtered_for_files_of_another_kind_than_nix_names_none() {
+    let text = "a = lib.fileset.fileFilter (file: file.hasExt \"qml\") ../.; \
+                b = fileFilter (f: f.hasExt \"nix\") ../y; \
+                c = fileFilter (f: g.hasExt \"qml\") ../z; \
+                d = fileFilter (f: f.hasExt \"q${x}\") ../w; e = toString ../.;";
+
+    assert_eq!(
+        paths(&code(text)),
+        ["../y", "../z", "../w", "../."],
+        "a folder filtered for QML counted, or one filtered for Nix, for another's \
+         kind, for a kind said by interpolation or used otherwise did not"
     );
 }
 
@@ -243,6 +259,79 @@ fn a_check_keeps_only_the_gathered_files_its_own_names() {
         each["inline"],
         ["checks.nix", "flake.nix", "x/checks.nix", "y/checks.nix"],
         "a check checks.nix gives lost a gathered file"
+    );
+}
+
+#[test]
+fn a_check_filtering_a_folder_for_qml_keeps_none_of_its_nix_files() {
+    // Quickshell's checks found every QML file under modules/, so from 13
+    // November each of its 336 kept every folder's checks.nix.
+    let filtered = "lib.fileset.fileFilter (file: file.hasExt \"qml\") ../.";
+    let at = source(
+        "filtered",
+        &[
+            ("flake.nix", "{ }"),
+            ("checks.nix", "folders = [ ./x/checks.nix ./y/checks.nix ];"),
+            (
+                "x/checks.nix",
+                &format!("{{ }}: {{ a = lib.fileset.toList ({filtered}); }}"),
+            ),
+            (
+                "z/checks.nix",
+                &format!("{{ }}: {{ b = map (f: readFile (dir + f)) ({filtered}); dir = ../.; }}"),
+            ),
+            ("y/checks.nix", "{ }: { c = 1; }"),
+        ],
+    );
+    let read = [
+        "flake.nix",
+        "checks.nix",
+        "x/checks.nix",
+        "y/checks.nix",
+        "z/checks.nix",
+    ];
+
+    let mut each = narrowed(
+        &at,
+        &[
+            ("a", "x/checks.nix"),
+            ("b", "z/checks.nix"),
+            ("c", "y/checks.nix"),
+        ],
+        &read,
+    );
+
+    let _ = fs::remove_dir_all(&at);
+    assert_eq!(
+        each["a"],
+        ["checks.nix", "flake.nix", "x/checks.nix"],
+        "a check filtering a folder for QML kept a checks.nix under it"
+    );
+    assert_eq!(
+        each["b"],
+        [
+            "checks.nix",
+            "flake.nix",
+            "x/checks.nix",
+            "y/checks.nix",
+            "z/checks.nix"
+        ],
+        "a check also using the folder another way lost a checks.nix under it"
+    );
+    // The filter's folders are listed, so a file added to one still
+    // reaches the check, as the filter may take it.
+    let reads = Reads {
+        read: each.remove("a").expect("a").into_iter().collect(),
+        listed: BTreeSet::from(["y".to_owned()]),
+        ..Reads::default()
+    };
+    assert!(
+        !reads.reached_by("y/checks.nix", Touched::Changed, &|_| false),
+        "a change to a checks.nix the filter can't take reached the check"
+    );
+    assert!(
+        reads.reached_by("y/new.qml", Touched::Added, &|_| true),
+        "a file added where the filter looks didn't reach the check"
     );
 }
 
