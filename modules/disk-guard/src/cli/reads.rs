@@ -271,33 +271,61 @@ fn written(env: &Env, cut: f64, err: &mut dyn Write) -> Result<Vec<Written>, Fai
     Ok(lines)
 }
 
-/// What a journal line says, after when, whose and in what band.
-fn said(entry: &Value) -> String {
+/// The journal's columns as text: when, whose guard, in what band, what
+/// it did, to what kind of thing, how big, and what. What it did names
+/// the entry, after when, so neither ever gives way.
+const JOURNAL: [(&str, layout::Align); 7] = [
+    ("when", layout::Align::Right),
+    ("guard", layout::Align::Left),
+    ("band", layout::Align::Left),
+    ("did", layout::Align::Left),
+    ("kind", layout::Align::Left),
+    ("size", layout::Align::Right),
+    ("what", layout::Align::Left),
+];
+
+/// Which of the journal's columns give way in a narrow terminal, least
+/// useful first: the band is said again in status, the kind is in the
+/// path, and whose guard is in the path too, as a home or not.
+const JOURNAL_GIVES_WAY: [usize; 4] = [2, 4, 1, 5];
+
+/// What a journal line says after when, whose and in what band: what
+/// was done, to what kind, how big, and what. A pass says how big as
+/// what it freed, and what as how it ended and how long it took.
+fn said(entry: &Value) -> [String; 4] {
     match entry["event"].as_str() {
         Some("action") => {
-            let mut said = format!(
-                "{:<9} {:<10} {:>10}  {}",
-                entry["outcome"].as_str().unwrap_or("?"),
-                entry["kind"].as_str().unwrap_or("?"),
-                size(entry["size"].as_u64().unwrap_or(0)),
-                entry["path"].as_str().unwrap_or("?"),
-            );
+            let mut what = entry["path"].as_str().unwrap_or("?").to_owned();
             if let Some(reason) = entry["reason"].as_str() {
                 // Writing to a String can't fail.
-                _ = write!(said, " ({reason})");
+                _ = write!(what, " ({reason})");
             }
-            said
+            [
+                entry["outcome"].as_str().unwrap_or("?").to_owned(),
+                entry["kind"].as_str().unwrap_or("?").to_owned(),
+                size(entry["size"].as_u64().unwrap_or(0)),
+                what,
+            ]
         }
-        Some("pass") => format!(
-            "pass {}, freed {}{}",
-            entry["end"].as_str().unwrap_or("?"),
+        Some("pass") => [
+            "pass".to_owned(),
+            String::new(),
             size(entry["freed"].as_u64().unwrap_or(0)),
-            // A journal from before passes were timed says nothing.
-            entry["seconds"]
-                .as_f64()
-                .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
-        ),
-        _ => entry.to_string(),
+            format!(
+                "{}{}",
+                entry["end"].as_str().unwrap_or("?"),
+                // A journal from before passes were timed says nothing.
+                entry["seconds"]
+                    .as_f64()
+                    .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
+            ),
+        ],
+        other => [
+            other.unwrap_or("?").to_owned(),
+            String::new(),
+            String::new(),
+            entry.to_string(),
+        ],
     }
 }
 
@@ -314,6 +342,7 @@ pub(super) fn journal(
     let now = wall();
     let cut = since.map_or(f64::NEG_INFINITY, |since| now - since.0.as_secs_f64());
     let mut entries = Vec::new();
+    let mut rows = Vec::new();
     for Written { at, whose, line } in written(env, cut, err)? {
         let Ok(mut entry) = serde_json::from_str::<Value>(&line) else {
             continue;
@@ -336,12 +365,26 @@ pub(super) fn journal(
                 if entry["event"] == "begin" {
                     continue;
                 }
-                let when = format!("{} ago", span(now - at));
-                let band = entry["band"].as_str().unwrap_or("?");
-                writeln!(out, "{when:>12}  {whose}  {band:<8}  {}", said(&entry))
-                    .map_err(failed)?;
+                let mut row = vec![
+                    format!("{} ago", span(now - at)),
+                    whose.to_owned(),
+                    entry["band"].as_str().unwrap_or("?").to_owned(),
+                ];
+                row.extend(said(&entry));
+                rows.push(row);
             }
         }
+    }
+    if !rows.is_empty() {
+        let lines = layout::table_in(
+            &JOURNAL,
+            &rows,
+            &context.out,
+            context.room,
+            &JOURNAL_GIVES_WAY,
+        );
+        out.write_all(layout::joined(vec![lines]).as_bytes())
+            .map_err(failed)?;
     }
     if context.format() == &Format::Json {
         let answer = json!({"schema": "disk-guard.journal/1", "entries": entries});
