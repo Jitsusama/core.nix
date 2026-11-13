@@ -243,5 +243,15 @@
     "owner_pr": 3884,
     "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-says-what-happens"
+  },
+  {
+    "at": 1794557415,
+    "commit": "aefa56b98e800e1374a5970b1dfc53c8db215db6",
+    "owner_pr": 3956,
+    "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
+    "subtests": [
+      "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent"
+    ],
+    "test": "vm-desktop-looks"
   }
 ]
