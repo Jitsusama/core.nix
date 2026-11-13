@@ -87,11 +87,21 @@ QtObject {
                 { key: "window:4", order: 900 }]),
             { unknown: [], turned: [], reworded: ["window:3", "window:2"] });
         Expect.same("what a row says is what the shut launcher hears beside the order",
-            HeldWindows.worded(), ["elsewhere", "named", "title"]);
+            HeldWindows.worded(), ["elsewhere", "named", "title", "workspace",
+                "workspace_idx", "column", "down", "alike"]);
         Expect.same("so a whole answer after the switch differs in none",
             HeldWindows.take(held, [record(3, 800, { title: "renamed", focused: true,
                 elsewhere: true }), record(2, 400, { title: "later", named: "later" }),
                 record(4, 900)], []), []);
+        // A window moved between workspaces behind the front one stays
+        // elsewhere, and one below a workspace niri removed is renumbered,
+        // but its row says the number; one moved a column, or joined by
+        // another of its program, says its column (9KI56O on #3530).
+        Expect.same("a moved, renumbered or newly alike window rewords its row",
+            HeldWindows.used(held, [{ key: "window:3", order: 800, workspace: 2,
+                workspace_idx: 2 }, { key: "window:2", order: 400, workspace_idx: 3 },
+                { key: "window:4", order: 900, column: 2, alike: 2 }]),
+            { unknown: [], turned: [], reworded: ["window:3", "window:2", "window:4"] });
 
         const window = HeldWindows.asWindow(record(5, 1000500,
             { workspace: 2, column: 3, down: 2, floating: true }));
