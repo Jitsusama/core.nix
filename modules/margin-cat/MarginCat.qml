@@ -102,6 +102,21 @@ Scope {
     // stroll nothing could take moves on rather than waiting.
     property string strollTo: ""
     property bool strollTaken: false
+    // The play a test asks to come next, by its name, kept until its level
+    // has it; "" for one at random.
+    property string asked: ""
+
+    IpcHandler {
+        target: "cat"
+
+        // Asks that the next play be `play`, as a test watching it asks:
+        // the scene waiting is drawn again with it, its rest left running.
+        function next(play: string): void {
+            root.asked = play;
+            if (root.coming !== null)
+                root.coming = Plays.scene(root.lively, Math.random, root.played, play);
+        }
+    }
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
     // a stroll included, and the cat sits at once.
@@ -113,7 +128,7 @@ Scope {
         beats = [];
         posed = "";
         strollTo = "";
-        const next = Plays.next(lively, Math.random, played);
+        const next = Plays.next(lively, Math.random, played, asked);
         coming = next?.scene ?? null;
         if (next === null) {
             waiting.stop();
@@ -196,6 +211,8 @@ Scope {
         onTriggered: {
             if (root.coming === null)
                 return;
+            if (root.coming.name === root.asked)
+                root.asked = "";
             root.played = root.coming.name;
             root.beats = root.coming.beats;
             root.coming = null;
