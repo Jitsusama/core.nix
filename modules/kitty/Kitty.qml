@@ -412,7 +412,8 @@ Provider {
         });
         const copies = ids.copy === "" ? [] : [provider.said(ids.copy, `${ids.copy}:${one.key}`, {
             copy: fields.name,
-            copies: fields.name
+            copies: fields.name,
+            run: () => Quickshell.clipboardText = fields.name
         })];
         const panes = kind === "tab" && one.panes.length > 1
             ? one.panes.map(each => provider.row(each, "pane", where)) : [];
