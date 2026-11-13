@@ -93,12 +93,12 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
             f" && mv {jobs}/.q {jobs}/queue.json"
         )
 
-    def watches() -> int:
-        """How many of the shell's inotify watches are on the queue's folder."""
+    def watches(on: str = jobs) -> int:
+        """The shell's inotify watches on `on`, the queue's folder unless named."""
         return int(
             desktop.as_account(
                 "p=$(systemctl --user show quickshell -p MainPID --value);"
-                f" i=$(printf '%x' $(stat -c %i {jobs}));"
+                f" i=$(printf '%x' $(stat -L -c %i {on}));"
                 ' cat /proc/$p/fdinfo/* 2>/dev/null | grep -c " ino:$i " || true'
             ).strip()
         )
@@ -113,6 +113,10 @@ def test_a_closed_launcher_makes_nothing_of_the_machine_queue(desktop: Desktop) 
     # is seen heard by the lines Windows reads of it, since a closed
     # Windows holds it and makes no row, so says no change of its own.
     assert watches() == 0, "the closed launcher watches the queue's folder"
+    # Nor does it watch its own files to reload, which are the store's and
+    # never change: a switch restarts it (modules/quickshell/home.nix).
+    shell = "$HOME/.config/quickshell/shell.qml"
+    assert watches(shell) == 0, "the shell watches its own files to reload"
     lines = "qs ipc call launcher linesHeard | jq .windows"
     windows = int(desktop.as_account(lines))
     desktop.as_account("niri msg action spawn -- kitty --title still-closed sleep infinity")

@@ -2707,9 +2707,17 @@ in
         # 202 with one for each thread, and its openings and keys took as
         # long as with four (2026-11-12). Four held Joel's lit shell at 150
         # to 171 MB, against 190 to 200 before, so one follows it.
+        #
+        # Quickshell watches every file it loaded, and each one's folder, to
+        # reload when one changes: one inotify holding 194 watches on Joel's
+        # shell (2026-11-12). Here they are store files, which never change,
+        # and a switch restarts the unit instead (X-Restart-Triggers above),
+        # so the watch is turned off. shell-preview and the nested niri
+        # checks run the working copy outside this unit, and keep it.
         Environment = [
           "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0"
           "MALLOC_CONF=narenas:1"
+          "QS_DISABLE_FILE_WATCHER=1"
         ];
         # The bar, the launcher, notices and the lock screen are the
         # desktop's own, so they sit with the compositor in session.slice, at
