@@ -479,7 +479,7 @@
       "couldNot": "couldn't",
       "done": "done",
       "missing": "{program} is gone",
-      "dropped": "nothing sent, what was typed let go",
+      "dropped": "nothing sent",
       "objects": {
         "deskLight": "Desk Light",
         "recording": "Recording"

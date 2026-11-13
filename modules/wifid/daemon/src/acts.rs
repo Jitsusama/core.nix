@@ -107,7 +107,7 @@ pub async fn act(
 ) {
     let tell = |answer: Value| told.try_send(answer.to_string()).is_ok();
     let network = said.get("network").and_then(Value::as_str).unwrap_or("");
-    let refused = |why: &Refused| refusal(&id, why, words.as_ref());
+    let refused = |why: &Refused| refusal(&id, &said, why, words.as_ref());
     let step = |stage: Stage, last: bool| {
         let mut step = json!({"id": id, "stage": stage, "done": last});
         let staged = step["stage"].as_str().and_then(|stage| {
@@ -162,8 +162,11 @@ pub async fn act(
 }
 
 /// Why wifid won't, as an error naming it as the varlink interface does,
-/// and saying it in the launcher's words where they have it.
-fn refusal(id: &Value, refused: &Refused, words: Option<&Words>) -> Value {
+/// and saying it in the launcher's words where they have it. A password
+/// that didn't work is said by what the ask gave: an account's, one Joel
+/// typed, or none, when the one saved has changed, as the launcher said it
+/// before wifid served its acts (2026-11-13).
+fn refusal(id: &Value, asked: &Value, refused: &Refused, words: Option<&Words>) -> Value {
     let (why, message) = match refused {
         Refused::Failed { reason } => ("Failed".to_owned(), reason.clone()),
         other => {
@@ -171,8 +174,15 @@ fn refusal(id: &Value, refused: &Refused, words: Option<&Words>) -> Value {
             (why.clone(), why)
         }
     };
+    let worded_as = match refused {
+        Refused::WrongPassword if asked.get("account").is_some_and(|one| !one.is_null()) => {
+            "AccountPassword"
+        }
+        Refused::WrongPassword if asked.get("password").is_none() => "PasswordChanged",
+        _ => why.as_str(),
+    };
     let mut said = error(id, "refused", &message);
-    if let Some(worded) = words.and_then(|words| words.refused(&why)) {
+    if let Some(worded) = words.and_then(|words| words.refused(worded_as)) {
         said["error"]["said"] = json!(worded);
     }
     said["error"]["refused"] = json!(why);
@@ -337,25 +347,22 @@ mod tests {
     }
 
     /// Joins Lantern, the main loop telling `told` back.
-    async fn joined(told: Vec<Result<Stage, Refused>>) -> Vec<Value> {
-        acted_in(
-            Some(words()),
-            json!({"act": "join", "network": "Lantern"}),
-            |ask| {
-                let Ask::Join { progress, .. } = ask else {
-                    panic!("asked {ask:?}, not to join");
-                };
-                for one in told {
-                    progress.try_send(one).expect("told");
-                }
-            },
-        )
+    async fn joined(asked: Value, told: Vec<Result<Stage, Refused>>) -> Vec<Value> {
+        acted_in(Some(words()), asked, |ask| {
+            let Ask::Join { progress, .. } = ask else {
+                panic!("asked {ask:?}, not to join");
+            };
+            for one in told {
+                progress.try_send(one).expect("told");
+            }
+        })
         .await
     }
 
     #[tokio::test]
     async fn a_join_says_each_step_in_the_launcher_s_words() {
-        let heard = joined(vec![Ok(Stage::Joining), Ok(Stage::Online)]).await;
+        let lantern = json!({"act": "join", "network": "Lantern"});
+        let heard = joined(lantern, vec![Ok(Stage::Joining), Ok(Stage::Online)]).await;
         let said: Vec<&Value> = heard.iter().map(|one| &one["said"]).collect();
         assert_eq!(
             said,
@@ -368,16 +375,35 @@ mod tests {
 
     #[tokio::test]
     async fn a_refusal_says_why_in_the_launcher_s_words() {
-        let heard = joined(vec![Err(Refused::WrongPassword)]).await;
-        assert_eq!(
-            heard[0]["error"]["said"], "that password didn't work",
-            "heard {heard:?}"
-        );
-        let heard = joined(vec![Err(Refused::Failed {
-            reason: "no card".to_owned(),
-        })])
+        let lantern = json!({"act": "join", "network": "Lantern"});
+        let heard = joined(
+            lantern.clone(),
+            vec![Err(Refused::Failed {
+                reason: "no card".to_owned(),
+            })],
+        )
         .await;
         assert_eq!(heard[0]["error"]["said"], "it couldn't be connected");
+        for (asked, said) in [
+            (lantern, "its password has changed"),
+            (
+                json!({"act": "join", "network": "Lantern", "password": "typed"}),
+                "that password didn't work",
+            ),
+            (
+                json!({"act": "join", "network": "Campus", "password": "typed",
+                    "account": {"method": "peap", "identity": "joel",
+                        "serverDomain": "campus.example"}}),
+                "that account's password didn't work",
+            ),
+        ] {
+            let heard = joined(asked, vec![Err(Refused::WrongPassword)]).await;
+            assert_eq!(heard[0]["error"]["said"], said, "heard {heard:?}");
+            assert_eq!(
+                heard[0]["error"]["refused"], "WrongPassword",
+                "coded as varlink says"
+            );
+        }
     }
 
     #[tokio::test]
