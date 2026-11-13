@@ -201,8 +201,10 @@ const PLACES: [Place; 5] = [HEAT, POWER, FIRMWARE, MACHINE, DISK];
 /// them: two reads' time, so one read a little late doesn't lose them.
 const USING_FRESH: Duration = Duration::from_secs(2);
 /// How long to wait before asking the processor's telemetry again once
-/// it couldn't be reached, as on a machine with none.
-const TELEMETRY_AGAIN: Duration = Duration::from_secs(30);
+/// it couldn't be reached, as on a machine with none or while its reader
+/// restarts. A refused connection costs one call, so a few seconds keeps
+/// Heat's own parts from going missing for long after a switch.
+const TELEMETRY_AGAIN: Duration = Duration::from_secs(5);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
 /// How many lines a connection may have waiting to be written before
