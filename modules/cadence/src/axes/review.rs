@@ -47,6 +47,24 @@ const AREAS: &[(&str, &[&str])] = &[
         "builds and merges",
         &["build", "builds", "merge", "merges", "switch"],
     ),
+    // Most of his words that named no area asked why the work was slow
+    // or waited on him. It comes last, so a line naming a part he uses
+    // goes there first.
+    (
+        "the work's pace",
+        &[
+            "slow",
+            "slowing",
+            "faster",
+            "long",
+            "wait",
+            "waiting",
+            "parking",
+            "lazy",
+            "orchestrator",
+            "land",
+        ],
+    ),
 ];
 
 /// The most senders the page lists, the noisiest first.
@@ -382,6 +400,7 @@ mod tests {
         let health = vec![
             r#"{"things":{"folder":{"kind":"words","signatures":{
                 "why is the launcher so slow":{"count":2},
+                "why are you taking so long, why is it waiting on me?":{"count":3},
                 "what is this":{"count":1}}},
               "pi bash":{"kind":"tools","signatures":{"launcher":{"count":9}}}}}"#
                 .to_owned(),
@@ -399,6 +418,11 @@ mod tests {
                 example: "why is the launcher so slow".to_owned()
             }),
             "his line names the launcher, twice; a tool's errors are not his words"
+        );
+        assert_eq!(
+            pains.get("the work's pace").map(|p| p.times),
+            Some(3),
+            "a line asking why the work is slow or waits on him is the work's pace"
         );
         assert_eq!(
             pains.get("").map(|p| p.times),
