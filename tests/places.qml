@@ -236,6 +236,17 @@ QtObject {
                 { workspace: 7, column: 5 }, { workspace: 7, column: 5 }]);
         expect("with no orchestrator here, nowhere of its own",
             Places.underOrchestrator("Coral Counts", null, under), null);
+        // A session goes home to its orchestrator's workspace, by the
+        // address of the top orchestrator over its quest as the harness
+        // hands it over, else the orchestrator it names, else the one its
+        // place last boot was kept under; never by a word that's no address.
+        expect("home: handed over, said, kept, none, and no address",
+            [Places.homeOf({ workspace: "REEF", orchestratedBy: "KELP" }, { under: "BUOY" }),
+                Places.homeOf({ orchestratedBy: "KELP" }, { under: "BUOY" }),
+                Places.homeOf({ id: "01-a" }, { under: "BUOY" }),
+                Places.homeOf({ id: "01-a" }, null),
+                Places.homeOf({ workspace: "reef; rm" }, null)],
+            ["REEF", "KELP", "BUOY", "", ""]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });

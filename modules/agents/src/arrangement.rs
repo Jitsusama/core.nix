@@ -136,6 +136,16 @@ pub fn now<'a>(
             );
             let mut place = desk.at(window, Map::new())?;
             place.insert("leads".into(), json!(leads));
+            // The orchestrator it sits under, so Reopen Them All puts it
+            // back on that one's workspace whatever number the workspace
+            // has after a boot (Sessions.qml's opensOn, Places.js's homeOf).
+            let under = one
+                .presence()?
+                .get("orchestratedBy")
+                .and_then(Value::as_str);
+            if let Some(under) = under.filter(|under| !under.is_empty()) {
+                place.insert("under".into(), json!(under.to_uppercase()));
+            }
             Some((id.to_owned(), Value::Object(place)))
         })
         .collect()
@@ -395,9 +405,11 @@ mod tests {
                 "s-lead": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
                            "workspace": 3, "column": 1, "tile": 2, "leads": true},
                 "s-kelp": {"screen": "HP Inc. HP Z27k G3 CN41", "output": "DP-4",
-                           "workspace": 3, "column": 2, "tile": 1, "leads": false}
+                           "workspace": 3, "column": 2, "tile": 1, "leads": false,
+                           "under": "LEAD"}
             }),
-            "one leading another says so; a closed one and one with no window aren't kept"
+            "one leading another says so, and one under another names it; a closed one and \
+             one with no window aren't kept"
         );
     }
 

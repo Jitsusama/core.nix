@@ -264,6 +264,19 @@ function leadersFirst(queue) {
     return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
 }
 
+// The address of the workspace a session goes home to, its orchestrator's,
+// as Sessions.qml's opensOn finds it (Joel, 2026-11-13 16:32: "agent
+// sessions only land on the workspace of their orchestrator"): the
+// `workspace` the harness hands it over with or kept it by, the top
+// orchestrator over its quest, else the orchestrator it says, else the one
+// its place kept last boot names it under (`kept.under`); "" for none. A
+// word but an address's is no home.
+const anAddress = /^[A-Z0-9]+$/u;
+function homeOf(one, kept) {
+    const address = word => typeof word === "string" && anAddress.test(word) ? word : "";
+    return address(one?.workspace) || address(one?.orchestratedBy) || address(kept?.under);
+}
+
 // Where a session started under an orchestrator opens, { workspace, column }
 // as opensOn gives it: on the orchestrator's workspace, the column after the
 // last of the sessions it orchestrates there whose title comes before this
