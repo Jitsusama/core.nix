@@ -13,7 +13,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use terminal_kit::{Context, Exit, Failure, Format};
+use terminal_kit::{Context, Exit, Failure, Format, Pen, Room, layout};
 
 /// The bands from healthy to critically full, as each is typed.
 const BANDS: [&str; 4] = ["healthy", "filling", "nearly-full", "critically-full"];
@@ -55,63 +55,91 @@ pub(super) fn status(env: &Env, context: &Context, out: &mut dyn Write) -> Resul
         return context.answer_to(out, &both).map_err(failed);
     }
     let now = wall();
-    for (name, status) in [("user", user), ("system", system)] {
-        let Some(status) = status else { continue };
-        said_status(name, &status, now, out).map_err(failed)?;
-    }
-    Ok(())
+    let guards: Vec<Vec<String>> = [("user", user), ("system", system)]
+        .into_iter()
+        .filter_map(|(name, status)| {
+            Some(said_status(name, &status?, now, &context.out, context.room))
+        })
+        .map(|blocks| {
+            layout::joined(blocks)
+                .trim_end()
+                .split('\n')
+                .map(str::to_owned)
+                .collect()
+        })
+        .collect();
+    out.write_all(layout::joined(guards).as_bytes())
+        .map_err(failed)
 }
 
-/// One guard's status in words.
-fn said_status(name: &str, status: &Value, now: f64, out: &mut dyn Write) -> io::Result<()> {
+/// How far in a guard's status is set under its name.
+const INSET: usize = 2;
+
+/// One guard's status in words, as blocks: its name and when it was
+/// heard from; what it says; each disk and its last pass, as facts; what
+/// it cleared lately, by when; and what holds the most. Every block sits
+/// two cells in, is set at the reading measure into a terminal, and
+/// wraps under itself, so nothing folds at the terminal's edge; into a
+/// pipe each line stays whole.
+pub(super) fn said_status(
+    name: &str,
+    status: &Value,
+    now: f64,
+    pen: &Pen,
+    room: Room,
+) -> Vec<Vec<String>> {
+    let prose = room.for_prose();
+    let inner = prose.less(INSET);
+    let inset = |lines: Vec<String>| -> Vec<String> {
+        lines
+            .into_iter()
+            .map(|line| format!("{}{line}", " ".repeat(INSET)))
+            .collect()
+    };
     let age = now - status["heartbeat"].as_f64().unwrap_or(0.0);
-    if age > STOPPED_AFTER {
-        writeln!(out, "{name} guard, not heard from for {}", span(age))?;
+    let heard = if age > STOPPED_AFTER {
+        pen.role("warning", &format!("not heard from for {}", span(age)))
     } else {
-        writeln!(out, "{name} guard, heard from {} ago", span(age))?;
-    }
+        pen.role("muted", &format!("heard from {} ago", span(age)))
+    };
+    let mut blocks = vec![vec![format!(
+        "{}  {heard}",
+        pen.role("text", &format!("{name} guard"))
+    )]];
     if let Some(says) = status["says"].as_str() {
-        writeln!(out, "  {says}")?;
-    }
-    for filesystem in status["filesystems"].as_array().into_iter().flatten() {
-        let band = filesystem["band"].as_str().unwrap_or("unknown");
-        let mut line = format!(
-            "  {}: {band}, {} free of {}",
-            filesystem["path"].as_str().unwrap_or("?"),
-            size(filesystem["free"].as_u64().unwrap_or(0)),
-            size(filesystem["total"].as_u64().unwrap_or(0)),
+        blocks.push(
+            layout::paragraph(says, INSET, prose)
+                .into_iter()
+                .map(|line| pen.role("text", &line))
+                .collect(),
         );
-        let next = BANDS
+    }
+    let disks = disk_facts(status, now);
+    let set = |facts: &[(String, String)]| -> Vec<String> {
+        let facts: Vec<(&str, Option<&str>)> = facts
             .iter()
-            .position(|named| *named == band)
-            .and_then(|at| BANDS.get(at + 1));
-        if let (Some(next), Some(forecast)) = (next, filesystem["forecast"].as_f64()) {
-            // Writing to a String can't fail.
-            _ = write!(line, ", {next} in {}", span(forecast));
-        }
-        writeln!(out, "{line}")?;
+            .map(|(label, value)| (label.as_str(), Some(value.as_str())))
+            .collect();
+        inset(layout::facts(&facts, "", pen, inner))
+    };
+    if !disks.is_empty() {
+        blocks.push(set(&disks));
     }
-    let last = &status["last"];
-    if last.is_object() {
-        writeln!(
-            out,
-            "  last pass: {} ago on {}, {}, {}, freed {}",
-            span(now - last["at"].as_f64().unwrap_or(0.0)),
-            last["path"].as_str().unwrap_or("?"),
-            last["band"].as_str().unwrap_or("?"),
-            last["end"].as_str().unwrap_or("?"),
-            size(last["freed"].as_u64().unwrap_or(0)),
-        )?;
-    }
-    for cleared in status["cleared"]
+    let cleared: Vec<(String, String)> = status["cleared"]
         .as_array()
         .into_iter()
         .flatten()
         .take(CLEARED_SHOWN)
-    {
-        let when = span(now - cleared["at"].as_f64().unwrap_or(0.0));
-        let says = cleared["says"].as_str().unwrap_or("?");
-        writeln!(out, "  {when} ago: {says}")?;
+        .map(|cleared| {
+            let when = span(now - cleared["at"].as_f64().unwrap_or(0.0));
+            (
+                format!("{when} ago"),
+                cleared["says"].as_str().unwrap_or("?").to_owned(),
+            )
+        })
+        .collect();
+    if !cleared.is_empty() {
+        blocks.push(set(&cleared));
     }
     let holders: Vec<&str> = status["holders"]
         .as_array()
@@ -121,12 +149,64 @@ fn said_status(name: &str, status: &Value, now: f64, out: &mut dyn Write) -> io:
         .take(HOLDERS_SHOWN)
         .collect();
     if !holders.is_empty() {
-        writeln!(out, "  holds the most:")?;
+        let mut block = vec![format!(
+            "{}{}",
+            " ".repeat(INSET),
+            pen.label("holds the most")
+        )];
+        for says in holders {
+            // Each holder hangs: its first line at the label's inset, the
+            // rest two further in, so where one ends and the next begins
+            // reads at a glance.
+            let hung = layout::hung(says, INSET + layout::GAP, prose);
+            for (at, line) in hung.split('\n').enumerate() {
+                let lead = if at == 0 { INSET } else { 0 };
+                block.push(format!("{}{}", " ".repeat(lead), pen.role("text", line)));
+            }
+        }
+        blocks.push(block);
     }
-    for says in holders {
-        writeln!(out, "    {says}")?;
+    blocks
+}
+
+/// Each disk a guard watches and its last pass, as facts: a disk's band,
+/// what's free and when it reaches the next band, and the pass's when,
+/// where, band, end and what it freed.
+fn disk_facts(status: &Value, now: f64) -> Vec<(String, String)> {
+    let mut disks: Vec<(String, String)> = Vec::new();
+    for filesystem in status["filesystems"].as_array().into_iter().flatten() {
+        let band = filesystem["band"].as_str().unwrap_or("unknown");
+        let mut said = format!(
+            "{band}{}{} free of {}",
+            layout::ITEMS,
+            size(filesystem["free"].as_u64().unwrap_or(0)),
+            size(filesystem["total"].as_u64().unwrap_or(0)),
+        );
+        let next = BANDS
+            .iter()
+            .position(|named| *named == band)
+            .and_then(|at| BANDS.get(at + 1));
+        if let (Some(next), Some(forecast)) = (next, filesystem["forecast"].as_f64()) {
+            // Writing to a String can't fail.
+            _ = write!(said, "{}{next} in {}", layout::ITEMS, span(forecast));
+        }
+        disks.push((filesystem["path"].as_str().unwrap_or("?").to_owned(), said));
     }
-    Ok(())
+    let last = &status["last"];
+    if last.is_object() {
+        let said = [
+            format!(
+                "{} ago on {}",
+                span(now - last["at"].as_f64().unwrap_or(0.0)),
+                last["path"].as_str().unwrap_or("?")
+            ),
+            last["band"].as_str().unwrap_or("?").to_owned(),
+            last["end"].as_str().unwrap_or("?").to_owned(),
+            format!("freed {}", size(last["freed"].as_u64().unwrap_or(0))),
+        ];
+        disks.push(("last pass".to_owned(), said.join(layout::ITEMS)));
+    }
+    disks
 }
 
 /// One line of a guard's journal, kept as it was written until it's said,
