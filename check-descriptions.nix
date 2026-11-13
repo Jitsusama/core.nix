@@ -3025,7 +3025,8 @@
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
     names, one it's told of, signed the session; with no session, another host, a forged binding,
     a commit, another session or key, or a forwarded agent, nothing reaches the agent behind; it
-    never adds, removes or locks keys, and answers at most 64 clients at once
+    never adds, removes or locks keys, and answers at most 64 clients at once; and it says each
+    login signed and each refusal in one line of a fixed shape, its host and why as a fixed word
   '';
   pi-spawner-passes-clippy = ''
     clippy finds nothing in pi-spawner or its tests, which starts pi's shell commands for it from

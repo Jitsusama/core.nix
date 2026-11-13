@@ -55,8 +55,10 @@
   # the keys behind it listed, a login signed once its allowed host signed
   # the session, and nothing else reaching the agent behind it: no session,
   # another host, a forged binding, a commit, another session or key, a
-  # forwarded agent, or adding, removing and locking keys; and no more than
-  # 64 clients answered at once, a place given back as each goes.
+  # forwarded agent, or adding, removing and locking keys; no more than
+  # 64 clients answered at once, a place given back as each goes; and each
+  # login signed and each refusal said in one line of a fixed shape, with
+  # its host and its reason as a word from a fixed set.
   pi-agent-proxy-signs-only-logins = pkgs.callPackage ./package.nix { };
 
   # clippy finds nothing in pi-agent-proxy, its tests included.
