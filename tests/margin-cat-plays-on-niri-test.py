@@ -15,10 +15,11 @@ from __future__ import annotations
 import json
 import time
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import launcher_on_niri
 import pytest
+from launcher_on_niri import placed
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -51,13 +52,6 @@ def shell() -> Iterator[Shell]:
     with launcher_on_niri.running() as started:
         started.reported(SITS, lambda _: True, 0)
         yield started
-
-
-def placed(said: str) -> Json | None:
-    """Give where a report says the cat sits, or None where it says nowhere."""
-    _, rest = said.split(" ", 1)
-    at, _ = rest.split(" over ", 1)
-    return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
 def walking(at: Json) -> bool:

@@ -24,10 +24,11 @@ import zlib
 from collections import Counter
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import launcher_on_niri
 import pytest
+from launcher_on_niri import placed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -110,16 +111,6 @@ def asleep(said: str) -> bool:
     """Say whether a report has the cat asleep where it sits."""
     at = placed(said)
     return at is not None and bool(at.get("asleep"))
-
-
-def placed(said: str) -> Json | None:
-    """Give where a report says the cat sits, or None where it says nowhere.
-
-    A report is the screen's name, where it sits or nowhere, and the column it saw under it.
-    """
-    _, rest = said.split(" ", 1)
-    at, _ = rest.split(" over ", 1)
-    return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
 def sits_over(shell: Shell, window: Json, since: int) -> None:
