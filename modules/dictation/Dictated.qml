@@ -13,6 +13,11 @@ Provider {
 
     what: "dictation"
 
+    // Super+D's own row, the key's action as niri's binds name it
+    // (modules/niri/binds.nix), which this row stands in for, so a search
+    // for dictate finds one row rather than two.
+    draws: ["Dictate into the focused window, or stop and type it"]
+
     readonly property var words: Words.of("dictation")
     readonly property var told: words.said ?? {}
 
