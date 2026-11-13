@@ -51,6 +51,7 @@
 mod answers;
 mod apart;
 mod candidates;
+mod comments;
 mod gated;
 mod holds;
 mod lists;
@@ -260,6 +261,7 @@ fn needs(base: &str) -> Result<ExitCode, String> {
         .collect();
     files.sort();
     files.dedup();
+    let files = comments::reaching(files, |file| git(&["diff", &merge_base, "--", file]).ok());
     let areas = rules::areas();
     let known = known_vm_tests();
     let root = git(&["rev-parse", "--show-toplevel"])?;
