@@ -73,6 +73,69 @@ QtObject {
             Expect.same("any other answer is what it says, never silent",
                 Said.standing(Said.followed(asked.talk, refused), words), "Too late to undo.");
             Expect.same("before any talk it says nothing", Said.standing(null, words), "");
+
+            // Every answer to a line shows under it, the newest in place of one it
+            // supersedes, and while someone has it the line says it waits on them
+            // (WCJQSG [cf8639ab], Joel at 07:46 on 2026-11-13). The void writes each
+            // event as it happens (8GYNJ6 [a9490eb0]).
+            const told = { sent: "sent", taken: "taken back", waiting: "waiting on {who}",
+                void: "the void", letGo: "{who} let it go" };
+            const asking = Said.begun("VOID", "how is it going?", "how is it going?",
+                new Date(2026, 10, 13, 7, 42, 10).getTime());
+            Expect.same("sent, it waits on the void", Said.exchange(asking, [], told),
+                { line: "how is it going?", answers: [], waiting: "waiting on the void",
+                    stands: "", side: "07:42" });
+            const routed = Said.followed(asking, [{ words: "how is it going?",
+                at: new Date(2026, 10, 13, 7, 42, 20).toISOString(), stage: "replied",
+                reply: "Your orchestrator has it \u00b7 undo 07:42" }]);
+            Expect.same("its key in the void's day file is the day and the undo's time",
+                Said.keyOf(routed), "2026-11-13 07:42");
+            Expect.same("an undo's hour said in one figure keys in two",
+                Said.keyOf(Object.assign({}, routed, { kept: "9:05" })), "2026-11-13 09:05");
+            Expect.same("before the void writes, its answer says who has it, in words",
+                Said.exchange(routed, [], told).waiting, "waiting on your orchestrator");
+            const written = Said.eventsIn([
+                '{"line":"2026-11-13 07:42","msg":"m1","who":"your orchestrator",'
+                    + '"event":"routed","at":"07:42"}',
+                '{"line":"2026-11-13 07:4',
+                '{"line":"2026-11-13 07:43","msg":"m2","who":"your orchestrator",'
+                    + '"event":"routed","at":"07:43"}',
+                ""].join("\n"));
+            Expect.same("a line half written is left out", written.length, 2);
+            Expect.same("routed, it waits on who has it", Said.exchange(routed, written, told)
+                .waiting, "waiting on your orchestrator");
+            const eleven = { line: "2026-11-13 07:42", msg: "m3", re: "m1",
+                who: "your orchestrator", event: "answered", at: "07:44",
+                text: "Eleven clean updates." };
+            const answeredOnce = Said.exchange(routed, written.concat([eleven]), told);
+            Expect.same("answered, the answer shows and the wait ends, who answered at its right",
+                [answeredOnce.answers, answeredOnce.waiting, answeredOnce.side],
+                [["Eleven clean updates."], "", "your orchestrator \u00b7 07:44"]);
+            const thirteen = Object.assign({}, eleven, { msg: "m4", supersedes: "m3",
+                at: "07:45", text: "Thirteen clean updates." });
+            const landed = { line: "2026-11-13 07:42", msg: "m5", who: "your orchestrator",
+                event: "landed", at: "07:50", text: "Merged." };
+            Expect.same("one that supersedes stands in its place, and a later one under it",
+                Said.exchange(routed, written.concat([eleven, landed, thirteen]), told).answers,
+                ["Thirteen clean updates.", "Merged."]);
+            Expect.same("another line's answers are never this one's",
+                Said.exchange(routed, [Object.assign({}, eleven, { line: "2026-11-13 07:43" })],
+                    told).answers, []);
+            Expect.same("taken up again after an answer, it waits once more",
+                Said.exchange(routed, written.concat([eleven, { line: "2026-11-13 07:42",
+                    msg: "m6", who: "Delta", event: "taken", at: "07:46" }]), told).waiting,
+                "waiting on Delta");
+            Expect.same("undone, it reads taken back",
+                Said.exchange(routed, written.concat([{ line: "2026-11-13 07:42", msg: "m7",
+                    event: "undone", at: "07:47" }]), told).stands, "taken back");
+            const toDo = Said.followed(asking, [{ words: "how is it going?",
+                at: new Date(2026, 10, 13, 7, 42, 20).toISOString(), stage: "replied",
+                reply: "For you: call the bank" }]);
+            Expect.same("what can't be undone is the answer itself",
+                [Said.exchange(toDo, [], told).answers, Said.exchange(toDo, [], told).waiting],
+                [["For you: call the bank"], ""]);
+            Expect.same("a line keeps its three newest talks, newest first",
+                Said.kept([3, 2, 1], 4), [4, 3, 2]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

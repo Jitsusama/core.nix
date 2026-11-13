@@ -5,14 +5,15 @@
 // never scrolling off its start. Under it, quiet, who hears it, the void, which passes each
 // line to whoever owns it, and the window it's said over, which goes with the words for the
 // void to route it by (QCXZEB, 2026-11-13 [ae5dfdb6]). Return sends it and the line stays up:
-// under a hairline, his words, then "sent", then the answer in place, then what became of it,
-// all in this frame and never on a card elsewhere (VKCF3Z, 2026-11-13 [092d52ca]). Put away
-// first, the answer waits here for its next opening. Where the void can undo what it did,
+// under a hairline, his last three lines, newest first, each with whom it waits on until
+// every answer comes, all in this frame and never on a card elsewhere (VKCF3Z, 2026-11-13
+// [092d52ca]; WCJQSG [cf8639ab]). Put away first, the answers wait here for its next opening. Where the void can undo what it did,
 // :take in normal takes it back, the foot naming it while it's offered. It opens in insert;
 // Escape gives normal and never puts it away; the chord again does, or :q, the words kept, as
 // a switch keeps them (Drafts.qml). TalkLine.js says what it says and sends.
 pragma ComponentBehavior: Bound
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
@@ -34,8 +35,10 @@ Scope {
     property var session: null
     readonly property var rows: Said.attached(window, program, session)
     property string program: ""
-    // The talk the last Return began (TalkLine.js's begun), or null before any.
-    property var talk: null
+    // The talks the last Returns began (TalkLine.js's begun and kept), newest first, and the
+    // newest, or null before any, which :take acts on.
+    property var talks: []
+    readonly property var talk: talks.length > 0 ? talks[0] : null
     // Whether the command line has the keys, in the field's place.
     property bool commanding: false
     // What's typed on the line is kept under its own name until it's sent.
@@ -108,6 +111,7 @@ Scope {
         prompt.typing();
         if (kept.text !== "")
             prompt.caretTo(kept.caret);
+        breathing.restart();
         look();
     }
 
@@ -175,7 +179,8 @@ Scope {
         const sent = Said.said(text, rows);
         launcher.drafts.handed(key, hears.to, sent);
         agents()?.say(hears, sent);
-        talk = Said.begun(hears.to, text, sent, Date.now());
+        talks = Said.kept(talks, Said.begun(hears.to, text, sent, Date.now()));
+        breathing.restart();
         prompt.clear();
     }
 
@@ -186,11 +191,39 @@ Scope {
     readonly property var heard: talk === null ? [] : agents()?.talksOf(talk.to) ?? []
     onHeardChanged: follow()
     function follow() {
-        if (talk === null)
-            return;
-        const moved = Said.followed(talk, heard);
-        if (moved !== null)
-            talk = moved;
+        let moved = false;
+        const now = talks.map(one => {
+            const next = Said.followed(one, heard);
+            moved = moved || next !== null;
+            return next ?? one;
+        });
+        if (moved)
+            talks = now;
+    }
+
+    // What became of each line past the void, as the void writes it: every answer, one
+    // superseding another, and who has it meanwhile (8GYNJ6 [a9490eb0]). A stopgap reading the
+    // void's file, while the line is up and has talked, until KP0L6A's agents daemon serves it
+    // as `void-answers`, due Fri 13 November 13:00 ([38a732e1]).
+    FileView {
+        id: answersFile
+        path: root.up && root.talks.length > 0
+            ? `${Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"}`
+                + "/void/answers.jsonl" : ""
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: root.events = Said.eventsIn(text())
+    }
+    property var events: []
+    readonly property var exchanges: talks.map(one => Said.exchange(one, events, said))
+
+    // A line waiting on someone breathes, quietly, from the moment it's up or said for as long
+    // as the caret blinks, then holds still, so a line left open draws nothing more
+    // (docs/design.md: motion that never ends ranks nothing).
+    Timer {
+        id: breathing
+        interval: Options.caret.stopsAfter
     }
 
     // :take, while the void can undo what it did with the line.
@@ -198,7 +231,7 @@ Scope {
         const asked = Said.taking(talk, Date.now());
         if (asked === null)
             return;
-        talk = asked.talk;
+        talks = [asked.talk].concat(talks.slice(1));
         agents()?.talkTo(talk.to, asked.asked);
     }
 
@@ -277,14 +310,12 @@ Scope {
                 // Where what's typed ends: its last line's baseline.
                 readonly property real typedEnds: caps + prompt.wrapsTall
                 readonly property bool talking: root.talk !== null
-                // His words a group under what's typed, the hairline halfway between, so the
+                // The talks a group under what's typed, the hairline halfway between, so the
                 // room over it and under it is the same to the ink.
                 readonly property real lineAt: typedEnds + 2 * pitch + beat
                 readonly property real ruleAt: Math.round((typedEnds + lineAt - caps) / 2)
-                readonly property real lineEnds: lineAt + (spoken.lineCount - 1) * pitch
-                readonly property real standsAt: lineEnds + pitch + beat
-                readonly property real standsEnds: standsAt + (stands.lineCount - 1)
-                    * Theme.level.words.pitch
+                // The last talk's last baseline.
+                readonly property real talksEnd: lineAt - pitch + spoken.height
                 readonly property real textAt: prompt.fieldX - card.inset
 
                 width: card.contentWidth
@@ -355,49 +386,124 @@ Scope {
                     color: Theme.edge
                 }
 
-                // His words as he sent them, muted now they're said, whole.
-                Text {
+                // The talks, newest first, each on the one text column and every line on the
+                // pitch, so nothing wraps back past where it starts; a talk an empty line from
+                // the next (docs/design.md: an empty line between groups of lines). In each,
+                // his words muted, when he said them or who answered at its right; then every
+                // answer in the text's ink; and while someone has it, "waiting on" them in the
+                // voice, breathing (WCJQSG [cf8639ab], Joel at 07:46 on 2026-11-13). The newest
+                // has room for eight lines of answer and the others three, so the two before
+                // it stay in view (the designer's choice).
+                Column {
                     id: spoken
                     visible: body.talking
-                    x: body.textAt
-                    y: body.lineAt - baselineOffset
-                    width: parent.width - x
-                    text: root.talk?.line ?? ""
-                    textFormat: Text.PlainText
-                    color: Theme.muted
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 3
-                    elide: Text.ElideRight
-                    lineHeight: Theme.level.words.pitch
-                    lineHeightMode: Text.FixedHeight
-                    font.family: Theme.level.words.family
-                    font.pointSize: Theme.level.words.pointSize
-                    font.variableAxes: Theme.level.words.variableAxes
-                }
+                    y: body.lineAt - body.pitch
+                    width: parent.width
+                    spacing: body.pitch
 
-                // How it stands under them: the answer in the words, where it went first; or,
-                // in the shell's voice, sent, being taken back, taken back.
-                Text {
-                    id: stands
-                    readonly property bool answer: root.talk?.said === "answered"
-                    visible: body.talking
-                    x: body.textAt
-                    y: body.standsAt - baselineOffset
-                    width: parent.width - x
-                    text: Said.standing(root.talk, root.said)
-                    textFormat: Text.PlainText
-                    color: answer ? Theme.text : Theme.muted
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 5
-                    elide: Text.ElideRight
-                    lineHeight: Theme.level.words.pitch
-                    lineHeightMode: Text.FixedHeight
-                    font.family: answer ? Theme.level.words.family : Theme.level.voice.family
-                    font.italic: answer ? Theme.level.words.italic : Theme.level.voice.italic
-                    font.pointSize: answer ? Theme.level.words.pointSize
-                        : Theme.level.voice.pointSize
-                    font.variableAxes: answer ? Theme.level.words.variableAxes
-                        : Theme.level.voice.variableAxes
+                    Repeater {
+                        model: root.exchanges
+
+                        Item {
+                            id: told
+
+                            required property var modelData
+                            required property int index
+                            readonly property real pitch: Theme.level.words.pitch
+                            readonly property int saidLines: line.lineCount
+                            readonly property int answerLines: answers.visible
+                                ? answers.lineCount : 0
+
+                            width: spoken.width
+                            height: (saidLines + answerLines + (stands.visible ? 1 : 0)) * pitch
+
+                            Text {
+                                id: line
+                                x: body.textAt
+                                y: told.pitch - baselineOffset
+                                width: side.x - Theme.space.rung.groups - x
+                                text: told.modelData.line
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                                lineHeight: told.pitch
+                                lineHeightMode: Text.FixedHeight
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
+                                font.variableAxes: Theme.level.words.variableAxes
+                            }
+
+                            Text {
+                                id: side
+                                x: told.width - width
+                                anchors.baseline: line.baseline
+                                text: told.modelData.side
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
+                                font.features: { "tnum": 1 }
+                            }
+
+                            Text {
+                                id: answers
+                                visible: told.modelData.answers.length > 0
+                                x: body.textAt
+                                y: (told.saidLines + 1) * told.pitch - baselineOffset
+                                width: told.width - x
+                                text: told.modelData.answers.join("\n")
+                                textFormat: Text.PlainText
+                                color: Theme.text
+                                wrapMode: Text.Wrap
+                                maximumLineCount: told.index === 0 ? 8 : 3
+                                elide: Text.ElideRight
+                                lineHeight: told.pitch
+                                lineHeightMode: Text.FixedHeight
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
+                                font.variableAxes: Theme.level.words.variableAxes
+                            }
+
+                            Text {
+                                id: stands
+                                readonly property bool waits: told.modelData.waiting !== ""
+                                visible: text !== ""
+                                x: body.textAt
+                                y: (told.saidLines + told.answerLines + 1) * told.pitch
+                                    - baselineOffset
+                                width: told.width - x
+                                text: waits ? told.modelData.waiting : told.modelData.stands
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                elide: Text.ElideRight
+                                font.family: Theme.level.voice.family
+                                font.italic: Theme.level.voice.italic
+                                font.pointSize: Theme.level.voice.pointSize
+                                font.variableAxes: Theme.level.voice.variableAxes
+
+                                // In and out over twice the caret's fade, on a soft curve
+                                // rather than its linear one, so it reads as breath rather
+                                // than a blink; it rests whole (the designer's choice).
+                                SequentialAnimation on opacity {
+                                    running: root.up && stands.waits && breathing.running
+                                    loops: Animation.Infinite
+                                    onStopped: stands.opacity = 1
+                                    NumberAnimation {
+                                        to: 0.4
+                                        duration: 2 * Options.caret.fade
+                                        easing.type: Easing.InOutSine
+                                    }
+                                    NumberAnimation {
+                                        to: 1
+                                        duration: 2 * Options.caret.fade
+                                        easing.type: Easing.InOutSine
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // The foot, a group under the last line: who hears it and the window it's
@@ -406,7 +512,7 @@ Scope {
                 Text {
                     id: foot
                     x: body.textAt
-                    y: (body.talking ? body.standsEnds : body.typedEnds) + body.pitch + body.beat
+                    y: (body.talking ? body.talksEnd : body.typedEnds) + body.pitch + body.beat
                         - baselineOffset
                     width: (offer.visible ? offer.x - Theme.space.rung.groups : parent.width) - x
                     text: root.hears === null ? "" : Said.about(root.said.hearer ?? "", root.rows)
@@ -445,6 +551,15 @@ Scope {
         }
     }
 
+    // How a talk reads under his words, for the launcher's showing: its answers, or else
+    // whom it waits on, or how it stands.
+    function standingOf(shown) {
+        if (shown === null)
+            return "";
+        return shown.answers.length > 0 ? shown.answers.join("\n")
+            : shown.waiting !== "" ? shown.waiting : shown.stands;
+    }
+
     function typed() {
         if (up)
             launcher.drafts.typed(key, prompt.text, prompt.caret);
@@ -457,7 +572,8 @@ Scope {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
             caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
             about: foot.text, lines: prompt.typedLines, talk: root.talk?.said ?? "",
-            standing: stands.text, takes: offer.visible, commanding,
+            standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
+            takes: offer.visible, commanding,
             top: up ? surface.margins.top + card.reach : -1,
             over: { focused: Niri.focused, known: Object.keys(Niri.windows).length,
                 title: root.window?.title ?? "" } };

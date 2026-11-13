@@ -104,7 +104,10 @@
         "nobody": "nobody to hear it",
         "sent": "sent",
         "taking": "taking it back",
-        "taken": "taken back"
+        "taken": "taken back",
+        "waiting": "waiting on {who}",
+        "void": "the void",
+        "letGo": "{who} let it go"
       }
     },
     {
