@@ -222,10 +222,7 @@ fn a_watch_asked_again_keeps_on_at_its_new_pace_and_tells_what_it_held_back() {
     // Asks are answered in turn, so once this is, the watch is paced.
     client.ask(&json!({"id": "paced", "ask": "health"}));
     shared.change(vec![row("agents", "O", "harbour")], json!({}));
-    shared.change(
-        vec![row("agents", "O", "buoy"), row("agents", "Q", "lantern")],
-        json!({}),
-    );
+    shared.change(vec![row("agents", "O", "buoy")], json!({}));
     client.send(&json!({"id": "health", "ask": "health"}));
     let next = client.heard();
     assert_eq!(
@@ -238,10 +235,45 @@ fn a_watch_asked_again_keeps_on_at_its_new_pace_and_tells_what_it_held_back() {
         (&told["id"], &told["changed"], &told["gone"]),
         (
             &json!("all"),
-            &json!([row("agents", "O", "buoy"), row("agents", "Q", "lantern")]),
+            &json!([row("agents", "O", "buoy")]),
             &json!(["row:agents:P"])
         ),
         "at once again, it's told at once all it held back, in one line"
+    );
+}
+
+#[test]
+fn a_paced_watch_is_told_a_record_new_to_it_at_once_with_all_it_held_back() {
+    let (shared, mut client, _folder) = served("arrived", Box::new(|_| None));
+    shared.change(vec![row("agents", "O", "kelp")], json!({}));
+    client.ask(&json!({"id": "all", "ask": "watch", "kind": "row", "every": 60_000}));
+    shared.change(vec![row("agents", "O", "harbour")], json!({}));
+    // A session started while the launcher is shut: its row is told at
+    // once, so the launcher opened a moment later holds it in its place
+    // rather than hearing of it after its first frame, when it goes last.
+    shared.change(
+        vec![row("agents", "Q", "lantern"), row("agents", "O", "harbour")],
+        json!({}),
+    );
+    client.send(&json!({"id": "health", "ask": "health"}));
+    let told = client.heard();
+    assert_eq!(
+        (&told["id"], &told["changed"]),
+        (
+            &json!("all"),
+            &json!([row("agents", "O", "harbour"), row("agents", "Q", "lantern")])
+        ),
+        "the new row at once, with the move held back before it: {told}"
+    );
+    shared.change(
+        vec![row("agents", "Q", "lantern"), row("agents", "O", "buoy")],
+        json!({}),
+    );
+    client.send(&json!({"id": "again", "ask": "health"}));
+    assert_eq!(
+        client.heard()["id"],
+        "again",
+        "a row that only moved waits for its pace again"
     );
 }
 
