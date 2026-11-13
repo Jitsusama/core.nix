@@ -11,6 +11,14 @@
 // launcher's lab (2026-11-12), a few microseconds against the 25 to 90 ms
 // a collection takes.
 //
+// Free pages are counted because Qt gives a chunk back only once nothing in
+// it is live, and never moves what is, so Joel's shell held three times what
+// was live after a day (2026-11-13). A page that holds no item and no free
+// run's own header could go back to the kernel and come back zeroed, as Qt
+// zeroes each item it makes, so their count says what letting them go would
+// save. Only resident ones count, as mincore says, since a page never
+// written costs nothing.
+//
 // heap_test.cpp holds it to what it says.
 
 #include "heap.h"
@@ -18,12 +26,46 @@
 #include <QJSEngine>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <vector>
 
 namespace {
 
 constexpr double BYTES_PER_MB = 1024.0 * 1024.0;
 
 double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_PER_MB; }
+
+// The bytes in an allocator's chunks that are resident and lie in pages
+// holding no item and no free run's header. A chunk's first page holds its
+// bitmaps, and a run's header is its first slot, so a page counts when
+// every slot in it, and the one just before it, is free.
+std::size_t freePages(const QV4::BlockAllocator &allocator) {
+    using QV4::Chunk;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    const std::size_t words = page / Chunk::SlotSize / Chunk::Bits;
+    if (words == 0 || Chunk::ChunkSize % page != 0)
+        return 0;
+    const std::size_t pages = Chunk::ChunkSize / page;
+    std::vector<unsigned char> resident(pages);
+    std::size_t bytes = 0;
+    for (Chunk *chunk : allocator.chunks) {
+        if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0)
+            continue;
+        const auto used = [chunk](std::size_t word) {
+            return chunk->objectBitmap[word] | chunk->extendsBitmap[word];
+        };
+        for (std::size_t at = 1; at < pages; ++at) {
+            const std::size_t first = at * words;
+            bool empty = (used(first - 1) >> (Chunk::Bits - 1)) == 0;
+            for (std::size_t word = first; empty && word < first + words; ++word)
+                empty = used(word) == 0;
+            if (empty && (resident[at] & 1) != 0)
+                bytes += page;
+        }
+    }
+    return bytes;
+}
 
 } // namespace
 
@@ -42,6 +84,8 @@ QVariantMap Heap::weigh() const {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
+        {QStringLiteral("free"),
+         megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
     };
 }
 
