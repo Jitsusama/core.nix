@@ -1035,7 +1035,9 @@
   jobs-sorter-sorts-by-behaviour = ''
     the sorter moves a group busy two seconds running, never the shell's or pi's, sends a scope
     started from jobs back there unless it sets limits, and weighs a window low only while every
-    pi in it is marked as one nobody is at, waking at once when a mark goes
+    pi in it is marked as one nobody is at, waking at once when a mark goes; with tiers, work
+    and pis are ended lowest tier first, every tier's work before any pi, and a pi Joel was at
+    within half an hour or that orchestrates is spared as the account's
   '';
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
@@ -3779,8 +3781,9 @@
     unlisted quest stays; two quests' work on one CPU shares it four to one by weight, and one
     alone takes it all; with tiers declared, a quest's work goes in the tier of its nearest ranked
     quest, through the harness's parents file, or in jobs-work-unranked.slice, each tier weighing
-    half the one above from 640; a quest whose parent changes tier is said to move and its next
-    work follows; and the first tier's work runs about four times the third's on one CPU
+    half the one above from 640, its work's OOM score ten lower for each tier above the
+    unranked one; a quest whose parent changes tier is said to move and its next work follows;
+    and the first tier's work runs about four times the third's on one CPU
   '';
   vm-a-measured-disk-shares-by-its-model = ''
     with a disk named with a model, io.cost holds its model and qos, no slice holds a latency

@@ -301,6 +301,21 @@ impl Recent {
             .collect()
     }
 
+    /// The session windows Joel is at `now` or left within `since`.
+    pub fn within(&self, now: Instant, since: Duration) -> Vec<Window> {
+        self.at
+            .iter()
+            .map(|(window, _)| window)
+            .chain(
+                self.left
+                    .iter()
+                    .filter(|(_, left)| now.saturating_duration_since(*left) < since)
+                    .map(|(window, _)| window),
+            )
+            .cloned()
+            .collect()
+    }
+
     /// The windows to hold `now`: the one with the focus, once Joel has
     /// stayed at it for [`STAY`] or at once if he was at it before, then
     /// those left within [`FOR`], latest first, [`MOST`] in all.
@@ -401,6 +416,12 @@ impl Following {
     pub fn kept(&self, now: Instant) -> Vec<Window> {
         let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
         heard.1.kept(now)
+    }
+
+    /// The session windows Joel is at `now` or left within `since`.
+    pub fn within(&self, now: Instant, since: Duration) -> Vec<Window> {
+        let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
+        heard.1.within(now, since)
     }
 }
 
@@ -595,6 +616,28 @@ mod tests {
             recent.held(at(42_500)),
             [pi(6), pi(2), pi(1)],
             "2 and 1 are still those he was at before"
+        );
+    }
+
+    #[test]
+    fn the_windows_he_was_at_within_a_while_include_the_one_hes_at() {
+        let start = Instant::now();
+        let at = |secs| start + Duration::from_secs(secs);
+        let mut recent = Recent::default();
+        recent.focus(Some(&pi(1)), at(0));
+        recent.focus(Some(&pi(2)), at(100));
+        recent.focus(Some(&pi(3)), at(1_900));
+        let half_hour = Duration::from_mins(30);
+        assert_eq!(
+            recent.within(at(1_950), half_hour),
+            [pi(3), pi(2)],
+            "1 was left 31 minutes before, 2 under a minute"
+        );
+        recent.focus(None, at(4_000));
+        assert_eq!(
+            recent.within(at(4_000), half_hour),
+            [pi(3)],
+            "none has the focus, and 2 was left 35 minutes before"
         );
     }
 

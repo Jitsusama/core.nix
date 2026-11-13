@@ -79,7 +79,7 @@
 //!        [--every 1000] [--split jobs.slice/jobs.service[=SLICE]]...
 //!        [--no-real-time jobs.slice/jobs-work.slice]...
 //!        [--by-quest jobs-work.slice]... [--quests FILE]
-//!        [--tiers FILE --parents FILE]
+//!        [--tiers FILE --parents FILE] [--tier-order NAME,NAME...]
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 //!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
 //!        [--orchestrators DIR] [--niri niri] [--hosts PREFIX]
@@ -127,6 +127,7 @@ struct Settings {
     quests: Option<PathBuf>,
     tiers: Option<PathBuf>,
     parents: Option<PathBuf>,
+    tier_order: tiers::Order,
     background: Option<PathBuf>,
     low_weight: u64,
     weigh: Vec<String>,
@@ -556,6 +557,9 @@ struct Ranks {
     hosts: hosts::Hosts,
     /// The orchestrators each pid holds, as the presences last said.
     orchestrating: HashMap<u32, usize>,
+    /// The windows Joel was at within [`keep::SPARED_FOR`], by unit, which
+    /// keep the account's adjustment for the OOM killer.
+    spared: HashSet<String>,
 }
 
 /// The windows a sorter before this one held, to give back those not
@@ -696,6 +700,14 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
         }
         kept.extend(known);
     }
+    ranks.spared = following
+        .within(now, keep::SPARED_FOR)
+        .iter()
+        .filter_map(|window| match ranks.found.get(&window.id) {
+            Some(Ok(scope)) => Some(scope.file_name()?.to_str()?.to_owned()),
+            _ => None,
+        })
+        .collect();
     set_holds(&held, &kept, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
@@ -1033,15 +1045,38 @@ fn memory_total() -> u64 {
         .unwrap_or(0)
 }
 
+/// What ranks a pi's quest: the tier each quest is in, and the tiers'
+/// order.
+struct Ranking<'a> {
+    weights: &'a quests::Weights,
+    order: &'a tiers::Order,
+}
+
+impl Ranking<'_> {
+    /// How many tiers below the first `quest` sits; a session on no quest
+    /// is unranked.
+    fn rank(&self, quest: Option<&str>) -> usize {
+        let tier = quest.and_then(|quest| self.weights.tier_of(quest));
+        self.order.rank(tier.unwrap_or(tiers::UNRANKED))
+    }
+}
+
 /// Keeps each window holding an orchestrator, as `dir`'s presences name
 /// them, gives back each that no longer holds one, and puts each pi at
-/// the adjustment it wants. A failure is said once, and tried again on
-/// the next look.
-fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, ranks: &mut Ranks) {
+/// the adjustment it wants, by its quest's tier as `ranking` says. A
+/// failure is said once, and tried again on the next look.
+fn keep_windows(
+    under: &[PathBuf],
+    prefixes: &[String],
+    dir: &Path,
+    ranking: &Ranking,
+    ranks: &mut Ranks,
+) {
     let Ranks {
         keeping,
         holding,
         orchestrating,
+        spared,
         ..
     } = ranks;
     let Ok(boot) = fs::read_to_string("/proc/sys/kernel/random/boot_id") else {
@@ -1051,6 +1086,7 @@ fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, ranks: &mut 
     let runs = |pid: u32| proc.join(pid.to_string()).exists();
     let presences = keep::read(dir);
     let orchestrators = keep::orchestrators(&presences, boot.trim(), runs);
+    let quests = keep::quests(&presences, boot.trim(), runs);
     // A host holds many sessions under its one pid, so it's counted by
     // each, for `rank_hosts`.
     *orchestrating = hosts::orchestrating(&presences, boot.trim(), runs);
@@ -1065,13 +1101,13 @@ fn keep_windows(under: &[PathBuf], prefixes: &[String], dir: &Path, ranks: &mut 
                 .filter(|sample| sample.comm == "pi")
                 .map(|sample| sample.pid)
                 .collect();
+            let joels = spared.contains(&unit);
             for &pid in &pis {
-                keep::adjust(
-                    proc,
-                    pid,
-                    keep::adjustment(pid, &orchestrators),
-                    &mut warned,
+                let wanted = keep::adjustment(
+                    joels || orchestrators.contains(&pid),
+                    ranking.rank(quests.get(&pid).map(String::as_str)),
                 );
+                keep::adjust(proc, pid, wanted, &mut warned);
             }
             Some((unit, pis.iter().any(|pid| orchestrators.contains(pid))))
         })
@@ -1332,6 +1368,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         quests: None,
         tiers: None,
         parents: None,
+        tier_order: tiers::Order::default(),
         background: None,
         low_weight: 10,
         weigh: Vec::new(),
@@ -1355,6 +1392,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--quests" => settings.quests = Some(PathBuf::from(value()?)),
             "--tiers" => settings.tiers = Some(PathBuf::from(value()?)),
             "--parents" => settings.parents = Some(PathBuf::from(value()?)),
+            "--tier-order" => settings.tier_order = tiers::Order::new(&value()?)?,
             "--background" => settings.background = Some(PathBuf::from(value()?)),
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
@@ -1475,6 +1513,40 @@ fn weights_from(settings: &Settings) -> quests::Weights {
     weights
 }
 
+/// What [`rank_for_memory`] looks over.
+struct Looking<'a> {
+    settings: &'a Settings,
+    root: &'a Path,
+    under: &'a [PathBuf],
+    windows: &'a [String],
+    weights: &'a quests::Weights,
+}
+
+/// Puts each pi and each piece of work where it goes for the kernel's
+/// OOM killer, by tier, keeping orchestrators' windows, and takes real
+/// time from work.
+fn rank_for_memory(looking: &Looking, ranks: &mut Ranks, warned: &mut bool) {
+    let settings = looking.settings;
+    if let Some(dir) = &settings.orchestrators {
+        let ranking = Ranking {
+            weights: looking.weights,
+            order: &settings.tier_order,
+        };
+        keep_windows(looking.under, looking.windows, dir, &ranking, ranks);
+    }
+    for cgroup in &settings.no_real_time {
+        real_time::take(&looking.root.join(cgroup), warned);
+        let work = real_time::processes_under(&looking.root.join(cgroup));
+        oom::raise(
+            Path::new("/proc"),
+            &work,
+            &settings.tier_order,
+            &settings.by_quest,
+            warned,
+        );
+    }
+}
+
 fn run() -> Result<(), String> {
     let settings = settings(std::env::args().skip(1))?;
     let own = fs::read_to_string("/proc/self/cgroup").map_err(|e| e.to_string())?;
@@ -1561,14 +1633,14 @@ fn run() -> Result<(), String> {
             split(&root, &manager, cgroup, holder, by_quest, &mut warned);
         }
         if pass.is_multiple_of(real_time::EVERY) {
-            if let Some(dir) = &settings.orchestrators {
-                keep_windows(&under, &windows, dir, &mut ranks);
-            }
-            for cgroup in &settings.no_real_time {
-                real_time::take(&root.join(cgroup), &mut warned);
-                let work = real_time::processes_under(&root.join(cgroup));
-                oom::raise(Path::new("/proc"), &work, &mut warned);
-            }
+            let looking = Looking {
+                settings: &settings,
+                root: &root,
+                under: &under,
+                windows: &windows,
+                weights: &weights,
+            };
+            rank_for_memory(&looking, &mut ranks, &mut warned);
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         pass = pass.wrapping_add(1);
@@ -1711,6 +1783,7 @@ mod tests {
             quests: None,
             tiers: None,
             parents: None,
+            tier_order: tiers::Order::default(),
             background: None,
             low_weight: 10,
             weigh: Vec::new(),
