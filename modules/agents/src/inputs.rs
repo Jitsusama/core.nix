@@ -31,6 +31,7 @@ use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
 use crate::talks;
 use crate::top;
+use crate::wants;
 use crate::windows;
 
 /// What each source last said.
@@ -443,30 +444,7 @@ impl Inputs {
         mark_answered(&mut rows, &answering, self.words.agents.word("answered"));
         let mut orchestrating = HashSet::new();
         orchestrators(&rows, &mut orchestrating);
-        let needs = |quest: &str| self.needs(quest);
-        let today = clock::today();
-        let drawn = drawer::Known {
-            needs: &needs,
-            spend: self.spend.as_ref(),
-            budgets: self.budgets.as_ref(),
-            sharing: self.sharing,
-            today: &today,
-        };
-        let called = |name: &str| session::called(&sessions, name);
-        let mut drawers: Vec<Value> = sessions
-            .iter()
-            .map(|one| {
-                let orchestrates = orchestrating.contains(one.address());
-                let mut drawn = drawer::drawer(*one, orchestrates, &self.words, &drawn);
-                if let Some(answer) = answers.iter().find(|said| said.address == one.address())
-                    && let Some(facts) = drawn["drawer"]["facts"].as_array_mut()
-                {
-                    facts.splice(0..0, answered::facts(answer, &self.words.names, &called));
-                }
-                drawn
-            })
-            .collect();
-        drawers.extend(top::drawers(&drawers));
+        let drawers = self.drawers(&sessions, &orchestrating, &answers);
         let closed = self.closed();
         let top = self.top(&sessions, &rows, &closed);
         served::made(
@@ -485,6 +463,42 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
+        .with_wants(wants::records(&sessions, &joel_can))
+    }
+
+    /// Each session's drawer, the facts of a talk it answered first, and
+    /// the top level's drawers made of them.
+    fn drawers(
+        &self,
+        sessions: &[Session],
+        orchestrating: &HashSet<&str>,
+        answers: &[Answer],
+    ) -> Vec<Value> {
+        let needs = |quest: &str| self.needs(quest);
+        let today = clock::today();
+        let drawn = drawer::Known {
+            needs: &needs,
+            spend: self.spend.as_ref(),
+            budgets: self.budgets.as_ref(),
+            sharing: self.sharing,
+            today: &today,
+        };
+        let called = |name: &str| session::called(sessions, name);
+        let mut drawers: Vec<Value> = sessions
+            .iter()
+            .map(|one| {
+                let orchestrates = orchestrating.contains(one.address());
+                let mut drawn = drawer::drawer(*one, orchestrates, &self.words, &drawn);
+                if let Some(answer) = answers.iter().find(|said| said.address == one.address())
+                    && let Some(facts) = drawn["drawer"]["facts"].as_array_mut()
+                {
+                    facts.splice(0..0, answered::facts(answer, &self.words.names, &called));
+                }
+                drawn
+            })
+            .collect();
+        drawers.extend(top::drawers(&drawers));
+        drawers
     }
 
     /// Agents' top level made of the `rows` laid out, with what each
@@ -616,6 +630,23 @@ mod tests {
             (&record["window"], &record["kitty"]["id"]),
             (&json!("window:7"), &json!("2")),
             "the window opened with its app id, in its kitty's pane"
+        );
+    }
+
+    #[test]
+    fn what_a_session_asks_joel_is_served_as_its_want() {
+        let mut inputs = inputs();
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "parked",
+             "presence": {"addresses": ["O"], "wants": {"kind": "question",
+                "said": "which tide?", "since": "2026-11-13T05:00:00Z"}}}
+        ]}));
+        let served = served(&inputs);
+        let record = served.get("want:agents:O").expect("its want");
+        assert_eq!(
+            (&record["asked"], &record["parked"]),
+            (&json!("which tide?"), &json!(true)),
+            "what it asked, and that it's parked waiting"
         );
     }
 

@@ -43,6 +43,7 @@ use agents::served::Served;
 use agents::session::Session;
 use agents::sources::{self, Heard, Paths};
 use agents::tell::{self, Routes};
+use agents::wants::Wants;
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Own, Shared};
 use serde_json::{Value, json};
@@ -66,6 +67,7 @@ const DOMAIN: Domain = Domain {
         "agent-window",
         "arrangement",
         "kept-places",
+        "want",
     ],
     sole: &[],
     named_only: &[],
@@ -123,12 +125,13 @@ fn args() -> Option<Args> {
 /// says, handed `told` to the daemon's loop, and a row's act, done by
 /// asking the node at `node`, refused where there's none, and a line Joel
 /// tells whoever `routes` says hears it. Joel's feedback on one of
-/// `landings` is kept in the file at `kept`.
+/// `landings` is kept in the file at `kept`. An answer goes to the one
+/// of `wants` its session asks.
 fn own(
     told: mpsc::Sender<Heard>,
     node: Option<PathBuf>,
     routes: Routes,
-    landings: Landings,
+    (landings, wants): (Landings, Wants),
     kept: PathBuf,
 ) -> Own {
     Box::new(move |said| {
@@ -209,6 +212,9 @@ fn own(
                 &kept,
                 at,
             ));
+        }
+        if let Some(answered) = wants.answer(said, node.as_deref(), now) {
+            return Some(answered);
         }
         acts::steer_of(said, now).map(|steer| match &node {
             Some(node) => acts::done(steer, node),
@@ -298,6 +304,7 @@ fn main() -> ExitCode {
     let (to, heard) = mpsc::channel();
     let routes = Routes::default();
     let landings = Landings::default();
+    let wants = Wants::default();
     // Kept beside what Joel has read, never rewritten, for the daily loop
     // that reads on from where it left off (80ECO2, 2026-11-11).
     let kept = args.landed.with_file_name("feedback.jsonl");
@@ -305,7 +312,7 @@ fn main() -> ExitCode {
         to.clone(),
         args.node.clone(),
         routes.clone(),
-        landings.clone(),
+        (landings.clone(), wants.clone()),
         kept,
     );
     let shared = Shared::new(DOMAIN, own);
@@ -358,6 +365,7 @@ fn main() -> ExitCode {
         }
         if !served.take(inputs.made()).is_empty() {
             landings.hold(served.all());
+            wants.hold(served.all());
             shared.change(served.all().cloned().collect(), json!({}));
         }
         // A quest can change whom a line reaches with no row moving.
