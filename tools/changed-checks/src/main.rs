@@ -68,7 +68,8 @@
 //!
 //! A check the net holds in quarantine on origin's main
 //! (`quarantine.rs` says what that is) is built on its own, after the
-//! rest, and its failure is said and blocks nothing.
+//! rest, and its failure is said and blocks nothing, unless its entry
+//! names subtests and its log names a failure outside them, or none.
 //!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
