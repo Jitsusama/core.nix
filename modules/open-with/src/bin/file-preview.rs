@@ -592,7 +592,7 @@ mod tests {
             folder.display()
         );
         let mut out = Vec::new();
-        assert!(serve(asked.as_bytes(), &mut out).is_ok());
+        serve(asked.as_bytes(), &mut out).expect("serving answers every line, even a wrong one");
         let said: Vec<Value> = String::from_utf8(out)
             .unwrap()
             .lines()
