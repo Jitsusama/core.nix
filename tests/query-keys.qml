@@ -416,18 +416,22 @@ QtObject {
             for (const window of windows)
                 window.verbs()[1].copies();
         };
+        // Twenty a batch and five batches each: the fastest of five is as
+        // steady as of twenty, and a busy builder's slowing of a thousand
+        // runs each took the whole case past its minute (80ECO2,
+        // 2026-11-13, b5e5f9c5: it ended on its timeout just after this).
         const batch = work => {
             const began = Date.now();
-            for (let at = 0; at < 50; at++)
+            for (let at = 0; at < 20; at++)
                 work();
-            return (Date.now() - began) / 50;
+            return (Date.now() - began) / 20;
         };
         // The fastest batch of `work` and of the walk, each batch of one
         // timed beside one of the other, so both see the same machine.
         const timed = work => {
             let fastest = Infinity;
             let walked = Infinity;
-            for (let at = 0; at < 20; at++) {
+            for (let at = 0; at < 5; at++) {
                 walked = Math.min(walked, batch(walk));
                 fastest = Math.min(fastest, batch(work));
             }
