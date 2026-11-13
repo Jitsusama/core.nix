@@ -43,11 +43,14 @@ case "$1" in
           "HEAD older") echo 1a96207100000000000a ;;
           "HEAD unpushed") echo abcdef0123456789abcd ;;
           "--is-ancestor 0123456789abcdef0123"|"--is-ancestor 1a96207100000000000a") ;;
+          "--is-ancestor 9876543210fedcba9876") ;;
           *) exit 1 ;;
         esac ;;
       ls-files) ;;
       rev-parse) cat "$STAND_IN/tree" 2>/dev/null || echo basetree ;;
-      diff) cat "$STAND_IN/diff" 2>/dev/null ;;
+      diff)
+        if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
+        else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
       cat-file) grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null ;;
       show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
     esac ;;
@@ -1338,7 +1341,7 @@ fn a_gate_gives_each_check_its_change_reaches_nothing_of_the_bases_derivation() 
     assert!(
         text(&ran.stderr).contains(
             "evaluates 0 of x86_64-linux's 3 other checks, since the change reaches nothing \
-             the other 3 read at 0123456789ab, which keep the base's derivations"
+             the other 3 read at 0123456789ab, which keep their derivations there"
         ),
         "{}",
         text(&ran.stderr)
@@ -1376,6 +1379,63 @@ fn a_gate_on_a_base_with_no_record_of_each_checks_reads_evaluates_them_all() {
         text(&ran.stdout),
         "changed  a\nchanged  b\nchanged  gone\n",
         "with no record, a check kept the base's derivation"
+    );
+}
+
+/// A head of main the base came after, whose checks' reads were recorded.
+const RECORDED: &str = "9876543210fedcba9876";
+
+/// Keep the base, then file what was kept as `head`'s, so the base is a
+/// head of main past it with nothing kept of its own; `between` is what main
+/// changed from `head` to the base, `diff` what changed from `head` to the
+/// working tree.
+fn kept_behind(test: &str, head: &str, between: &str, diff: &str) -> StandIn {
+    let stand_in = kept_alone(test, MOVED, diff);
+    for kept in ["json", "reads.json", "alone.reads.json"] {
+        let at = |commit: &str| {
+            stand_in.path(&format!(
+                "cache/changed-checks/{commit}-x86_64-linux.{kept}"
+            ))
+        };
+        fs::rename(at("0123456789abcdef0123"), at(head)).expect("filed as the head's");
+    }
+    fs::write(stand_in.path("diff.between"), between).expect("written");
+    stand_in
+}
+
+#[test]
+fn a_gate_on_a_base_past_a_recorded_head_evaluates_there_only_what_main_reached() {
+    let stand_in = kept_behind("alone-behind", RECORDED, "M\ta.nix\n", "M\ta.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  a\n",
+        "a check neither main nor the change reached was evaluated again"
+    );
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 1 of x86_64-linux's 3 other checks at the base 0123456789ab, since main \
+             from 9876543210fe reaches nothing the other 2 read"
+        ),
+        "the gate didn't say what it evaluated at the base: {}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_on_a_base_past_a_head_recorded_off_its_main_evaluates_them_all() {
+    let stand_in = kept_behind("alone-off-main", "5555555555555555aaaa", "", "M\ta.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  a\nchanged  b\nchanged  gone\n",
+        "a check took the derivation of a head the base didn't come from"
     );
 }
 

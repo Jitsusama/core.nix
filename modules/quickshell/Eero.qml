@@ -12,8 +12,8 @@ pragma Singleton
 // told the record as one `home-network` record on each change; nothing
 // here reads a file or polls. While the Home Network is open (`watching`),
 // it also watches the record ahead, which makes the daemon read eero
-// every 30 seconds rather than every five minutes, and `read` asks it to
-// read now. Through a gap the record held stays, as the daemon's file
+// every 30 seconds rather than every five minutes; after an act it does,
+// the daemon reads at once by itself. Through a gap the record held stays, as the daemon's file
 // would have.
 import Quickshell
 import QtQuick
@@ -33,12 +33,6 @@ Singleton {
         return typeof value === "object" && value !== null
             && typeof value.internet === "object" && Array.isArray(value.nodes)
             && Array.isArray(value.devices) ? value : null;
-    }
-
-    // Asks the daemon to read eero now, as after a speed test or a change
-    // of setting; nothing while it isn't answering.
-    function readNow() {
-        daemon.ask({ ask: "read" }, null);
     }
 
     Daemon {

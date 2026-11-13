@@ -10,8 +10,9 @@ row kind or a place, is answered with the records named as its third argument, t
 serves of that model, each row ordered and the place's own drawer beside them
 (modules/eero/tests/rows.json, which a cargo test holds to the daemon's), or only those it
 names. Each such watch is said on its output, with the words it asks in, so a test sees the
-shell watch them. It never changes, so nothing is told after a
-watch's answer.
+shell watch them. An act, a speed test or conferencing and gaming turned, is answered done and
+said on its output too, so a test sees the shell ask it of the daemon rather than run a
+program. It never changes, so nothing is told after a watch's answer.
 """
 
 import json
@@ -65,6 +66,10 @@ def answer(said: dict[str, object]) -> dict[str, object]:
         return {"id": said.get("id"), "unwatched": True}
     if asked == "read":
         return {"id": said.get("id")}
+    if asked == "act":
+        turned = "" if "on" not in said else " on" if said["on"] is True else " off"
+        print(f"acted {said.get('act')}{turned}", flush=True)
+        return {"id": said.get("id"), "done": True}
     return {"id": said.get("id"), "error": "the eero daemon doesn't know that ask"}
 
 

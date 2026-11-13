@@ -78,7 +78,10 @@ fn the_internet_comes_first_then_each_node_with_its_devices_then_the_profiles() 
         ["profile 1", "profile 2", "profile 3"],
         "the profiles last"
     );
-    let devices = rows.iter().filter(|row| row["depth"] == 1).count();
+    let devices = rows
+        .iter()
+        .filter(|row| row["kind"] == "device" && row["depth"] == 1)
+        .count();
     assert_eq!(devices, 15, "every device on now is a row inside its node");
 }
 
@@ -105,6 +108,69 @@ fn each_row_is_keyed_in_the_place_and_by_the_thing_it_is() {
         rows.iter()
             .all(|row| row["place"] == PLACE && row.get("order").is_none()),
         "every row is the place's, its order Kept's to give"
+    );
+}
+
+#[test]
+fn the_internet_holds_what_can_be_done_to_the_home_network() {
+    let rows = made(&model());
+    let inside: Vec<&Value> = rows
+        .iter()
+        .filter(|row| row["parent"] == "row:eero:internet")
+        .collect();
+    let names: Vec<&str> = inside
+        .iter()
+        .filter_map(|row| row["name"].as_str())
+        .collect();
+    assert_eq!(
+        names,
+        ["Run a Speed Test", "Optimize for Conferencing and Gaming"],
+        "a step into the internet, its speed test then its switch"
+    );
+    let test = inside[0];
+    assert_eq!(
+        (&test["thing"], &test["acts"]),
+        (
+            &json!("verb:eero:speedtest"),
+            &json!([{"key": "verb:eero:speedtest", "ask": {"ask": "act", "act": "speedtest"}}])
+        ),
+        "the speed test is asked of this daemon, by the verb's words"
+    );
+    assert_eq!(
+        joined(&test["note"]),
+        "eero measures the internet from the gateway node"
+    );
+}
+
+#[test]
+fn the_switch_says_how_it_stands_and_what_it_becomes() {
+    let rows = made(&model());
+    let switch = named(&rows, "Optimize for Conferencing and Gaming");
+    assert_eq!(
+        (&switch["key"], &switch["thing"], joined(&switch["side"])),
+        (&json!("row:eero:sqm"), &json!("eero:sqm"), "on".to_owned()),
+        "the switch is on, as eero says"
+    );
+    let act = &switch["acts"][0];
+    assert_eq!(
+        (&act["key"], &act["ask"]),
+        (
+            &json!("verb:eero:sqm-off"),
+            &json!({"ask": "act", "act": "sqm", "on": false})
+        ),
+        "on, its act turns it off"
+    );
+    assert_eq!(
+        (joined(&act["becomes"]["side"]), &act["becomes"]["acts"]),
+        ("off".to_owned(), &Value::Null),
+        "it becomes the switch off, drawn at once until eero says so"
+    );
+
+    let mut model = model();
+    model.internet.sqm = None;
+    assert!(
+        made(&model).iter().all(|row| row["key"] != "row:eero:sqm"),
+        "no switch is offered while eero hasn't said how it stands"
     );
 }
 
@@ -327,8 +393,14 @@ fn a_rate_is_said_in_whichever_unit_reads_it_in_three_digits() {
 fn a_vocabulary_without_a_word_says_which() {
     let mut vocabulary: Value =
         serde_json::from_str(include_str!("../tests/words.json")).expect("the words parse");
-    vocabulary["things"][1]["said"]
-        .as_object_mut()
+    vocabulary["things"]
+        .as_array_mut()
+        .and_then(|things| {
+            things
+                .iter_mut()
+                .find(|thing| thing["id"] == "eero:internet")
+        })
+        .and_then(|internet| internet["said"].as_object_mut())
         .expect("the internet says words")
         .remove("sqmOn");
     assert_eq!(

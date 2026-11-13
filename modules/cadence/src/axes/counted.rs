@@ -148,6 +148,26 @@ pub fn pained(s: &Sources) -> Reading {
     .his()
 }
 
+/// His programs' crashes today, as health splits them since 12 November:
+/// a core dump from his apps' or his desktop's slice is his, and any other
+/// ours, such as an agent's test that ran sway 39 times that day
+/// (80ECO2). Any crash of his is a pain point, so the bar is none; ours
+/// are said beside it, and judged on cadence's day as a stand-in.
+#[must_use]
+pub fn crashes(s: &Sources) -> Reading {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    Reading::new(
+        "{} crashes of his programs today",
+        figure("health.crashes.his"),
+        "",
+        "80ECO2",
+    )
+    .bar(Bar::AtMost(0.0))
+    .detail(figure("health.crashes.ours").map(|ours| format!("ours {}", shown(ours, ""))))
+    .from("health's day file, by the slice each ran in")
+    .his()
+}
+
 /// What the machine held, from health's day file: the fullest disk, held to
 /// the disk guard's nearly-full band, and the most pi and the shell held at
 /// once. The memory peaks carry no bar until the split of resources sets
@@ -478,6 +498,25 @@ mod tests {
                 "asks for an item and command already asked for today: no reading yet",
                 "of asks a minted token would have spared: no reading yet",
             ]
+        );
+    }
+
+    #[test]
+    fn only_his_programs_crashes_are_judged_his() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.crashes.his".to_owned(), 1.0),
+                ("health.crashes.ours".to_owned(), 69.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = crashes(&s);
+        assert_eq!(read.words(), "1 crash of his programs today, at most 0");
+        assert_eq!(read.detail.as_deref(), Some("ours 69"));
+        assert!(read.out() && read.his, "a crash of his is out, on his side");
+        assert!(
+            crashes(&Sources::default()).figure().is_none(),
+            "a day before the split reads unread, not as none"
         );
     }
 

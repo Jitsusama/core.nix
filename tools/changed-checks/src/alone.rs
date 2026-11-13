@@ -17,6 +17,15 @@
 //! when none was recorded in the last 20 minutes, so most keep as quickly
 //! as before.
 //!
+//! A gate's base is most often a head of main past the newest recorded one:
+//! in four hours on 12 November, 80 of 183 runs evaluated their base, 50 of
+//! them within three minutes of it landing. So a gate judges reach from the
+//! newest recorded head the base came after: at the base, it evaluates only
+//! the checks main's change from that head reaches, and in the tree only
+//! those the change from that head to the tree reaches. Each other check
+//! keeps the head's derivation, which is the same wherever nothing it read
+//! differs.
+//!
 //! Every check reads each file the flake gathers its checks from, so a
 //! change to any check's `checks.nix` still reaches every check.
 
@@ -71,9 +80,9 @@ pub fn keep(root: &str, base: &str, system: &str, noted: &mut Run) {
         return;
     }
     if let Err(why) = record(root, base, system, &at, noted) {
-        let short = base.get(..12).unwrap_or(base);
         eprintln!(
-            "changed-checks: couldn't record what {system}'s checks each read at {short}: {why}"
+            "changed-checks: couldn't record what {system}'s checks each read at {}: {why}",
+            short(base)
         );
     }
 }
@@ -262,67 +271,169 @@ fn from_kept(text: &str, tree: &str) -> Option<(Vec<String>, BTreeMap<String, Re
     Some((names, each))
 }
 
-/// The base's derivation of each of the tree's ordinary checks,
-/// `ordinary`, whose reads at the base the change from it reaches none of,
-/// and the checks left to evaluate: all of them when there's no record, it
-/// was made from another tree, the tree's checks, `named`, aren't the
-/// base's, or git can't say what changed.
-pub fn unreached(
+/// How many of the newest records a gate asks git about: one further back
+/// than these has more of main between it and the base, so reaches no fewer.
+const NEWEST: usize = 8;
+
+/// The newest head of main whose checks' reads were recorded alone, and
+/// its derivations: the base itself, or a head it came after.
+pub fn recorded(root: &str, base: &str, system: &str) -> Option<(String, Derivations)> {
+    let named = format!("-{system}.alone.reads.json");
+    let mut found: Vec<(SystemTime, String)> = fs::read_dir(crate::cache().join("changed-checks"))
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let head = entry
+                .file_name()
+                .to_string_lossy()
+                .strip_suffix(&named)?
+                .to_owned();
+            Some((entry.metadata().ok()?.modified().ok()?, head))
+        })
+        .collect();
+    found.sort_unstable_by(|one, other| other.cmp(one));
+    found.into_iter().take(NEWEST).find_map(|(_, head)| {
+        let asked = ["-C", root, "merge-base", "--is-ancestor", &head, base];
+        if head != base && crate::run("git", &asked).is_err() {
+            return None;
+        }
+        let derivations = checks::read_kept(&checks::keeping(&crate::cache(), &head, system));
+        Some((head, derivations.ok().flatten()?))
+    })
+}
+
+/// The checks of `ordinary` whose reads at `head` the change from it to
+/// `to`, a commit or, when none, the working tree, reaches none of, and the
+/// rest; nothing when there's no record, it was made from another tree, the
+/// checks `named` aren't the record's, or git can't say what changed.
+fn partitioned(
     root: &str,
-    base: &str,
+    (head, known): (&str, &Derivations),
+    to: Option<&str>,
     system: &str,
-    before: &Derivations,
     named: &[String],
-    ordinary: Vec<String>,
-) -> (Derivations, Vec<String>) {
-    let record = fs::read_to_string(keeping(&crate::cache(), base, system))
-        .ok()
-        .zip(reads::tree(root, base).ok())
-        .and_then(|(text, tree)| from_kept(&text, &tree));
+    ordinary: &[String],
+) -> Option<(Vec<String>, Vec<String>)> {
+    let text = fs::read_to_string(keeping(&crate::cache(), head, system)).ok()?;
+    let (kept, each) = from_kept(&text, &reads::tree(root, head).ok()?)?;
     let mut sorted: Vec<&String> = named.iter().collect();
     sorted.sort();
-    let (Some((kept, each)), Some(touched)) = (record, reads::touched_since(root, base)) else {
-        return (Derivations::new(), ordinary);
-    };
     if !kept.iter().eq(sorted) {
-        return (Derivations::new(), ordinary);
+        return None;
     }
+    let touched = reads::touched_since(root, head, to)?;
     // Each check asks of the same folders, so git is asked of each once.
     let seen: RefCell<HashMap<String, bool>> = RefCell::new(HashMap::new());
     let came_or_went = |folder: &str| {
         if let Some(said) = seen.borrow().get(folder) {
             return *said;
         }
-        let said = reads::came_or_went(root, base, folder);
+        let said = reads::came_or_went(root, head, to, folder);
         seen.borrow_mut().insert(folder.to_owned(), said);
         said
     };
-    let (unreached, left): (Vec<String>, Vec<String>) = ordinary.into_iter().partition(|name| {
-        before.contains_key(name)
+    Some(ordinary.iter().cloned().partition(|name| {
+        known.contains_key(name)
             && each.get(name).is_some_and(|reads| {
                 touched
                     .iter()
                     .all(|(file, how)| !reads.reached_by(file, *how, &came_or_went))
             })
-    });
+    }))
+}
+
+/// The derivations `known` gives of each of `names`.
+fn known_of<'a>(
+    known: &Derivations,
+    names: impl Iterator<Item = &'a String>,
+) -> impl Iterator<Item = (String, Option<String>)> {
+    names.filter_map(|name| Some((name.clone(), known.get(name)?.clone())))
+}
+
+/// The recorded head's derivation of each of the tree's ordinary checks,
+/// `ordinary`, whose reads there the change from it reaches none of, and the
+/// checks left to evaluate: all of them when there's no record, it was made
+/// from another tree, the tree's checks, `named`, aren't the record's, or
+/// git can't say what changed.
+pub fn unreached(
+    root: &str,
+    recorded: Option<&(String, Derivations)>,
+    system: &str,
+    named: &[String],
+    ordinary: Vec<String>,
+) -> (Derivations, Vec<String>) {
+    let Some((head, known)) = recorded else {
+        return (Derivations::new(), ordinary);
+    };
+    let Some((unreached, left)) = partitioned(root, (head, known), None, system, named, &ordinary)
+    else {
+        return (Derivations::new(), ordinary);
+    };
     if !unreached.is_empty() {
-        let short = base.get(..12).unwrap_or(base);
         eprintln!(
             "changed-checks: evaluates {} of {system}'s {} other checks, since the change \
-             reaches nothing the other {} read at {short}, which keep the base's derivations",
+             reaches nothing the other {} read at {}, which keep their derivations there",
             left.len(),
             unreached.len() + left.len(),
-            unreached.len()
+            unreached.len(),
+            short(head)
         );
     }
-    let unreached = unreached
-        .into_iter()
-        .filter_map(|name| {
-            before
-                .get(&name)
-                .cloned()
-                .map(|derivation| (name, derivation))
-        })
-        .collect();
-    (unreached, left)
+    (known_of(known, unreached.iter()).collect(), left)
+}
+
+/// The base's derivations when it came after the recorded head: each check
+/// main reached nothing of since keeps the head's, the VM tests too when
+/// main reached nothing they read, and only the rest are evaluated at the
+/// base. Nothing when the base is the head, or main's change can't be
+/// judged, so the whole base is evaluated.
+pub fn past(
+    root: &str,
+    base: &str,
+    system: &str,
+    recorded: Option<&(String, Derivations)>,
+    noted: &mut Run,
+) -> Option<Derivations> {
+    let (head, known) = recorded.filter(|(head, _)| head != base)?;
+    let flake = format!("git+file://{root}?rev={base}");
+    let named = evaluating::names(&flake, system).ok()?;
+    let (vm, ordinary): (Vec<String>, Vec<String>) = named
+        .iter()
+        .cloned()
+        .partition(|name| name.starts_with("vm-"));
+    let (unreached, left) =
+        partitioned(root, (head, known), Some(base), system, &named, &ordinary)?;
+    let vm_read = reads::keeping(&crate::cache(), head, system);
+    let vm_kept = vm.iter().all(|name| known.contains_key(name))
+        && reads::untouched(&vm_read, root, head, Some(base));
+    let mut asked = left.clone();
+    if !vm_kept {
+        asked.extend(vm.iter().cloned());
+    }
+    let mut evaluation = Run::evaluating("base");
+    let mut derivations = if asked.is_empty() {
+        Derivations::new()
+    } else {
+        evaluating::evaluated(&flake, system, &asked, &mut evaluation).ok()?
+    };
+    noted.evaluated(evaluation);
+    let wanted: BTreeSet<&String> = asked.iter().collect();
+    derivations.retain(|name, _| wanted.contains(name));
+    let vm_too = vm.iter().filter(|_| vm_kept);
+    derivations.extend(known_of(known, unreached.iter().chain(vm_too)));
+    eprintln!(
+        "changed-checks: evaluates {} of {system}'s {} other checks at the base {}, since main \
+         from {} reaches nothing the other {} read",
+        left.len(),
+        ordinary.len(),
+        short(base),
+        short(head),
+        unreached.len()
+    );
+    Some(derivations)
+}
+
+/// A commit by its first 12 characters, as changed-checks names one.
+fn short(commit: &str) -> &str {
+    commit.get(..12).unwrap_or(commit)
 }

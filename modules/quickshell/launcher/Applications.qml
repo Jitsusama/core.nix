@@ -1619,12 +1619,29 @@ Provider {
     }
 
     // The acts other providers opt in to being found from the top, each
-    // { program, key, from }, read again only as one's list changes, never
-    // on a key.
-    readonly property var optedIn: (provider.launcher?.sources ?? [])
-        .filter(other => other !== provider && (other.foundActs ?? []).length > 0)
-        .reduce((all, other) => all.concat(other.foundActs
-            .map(one => Object.assign({ from: other }, one))), [])
+    // { program, key, from }, and their rows (optedActs), made again only
+    // as one's list says another act, never on a key. Not as a provider's
+    // binding makes the same list anew, nor as what its acts read changes:
+    // bound, the rows asked each provider's acts inside the binding, so
+    // swayimg's galleries or Chrome's pages changing made every act found
+    // from the top again, on Joel's shut launcher about every 2.5 s, 1,216
+    // rows in two minutes (2026-11-12).
+    readonly property string optedSaid: JSON.stringify((provider.launcher?.sources ?? [])
+        .map(other => other === provider ? [] : other.foundActs ?? []))
+    property var optedIn: []
+    onOptedSaidChanged: optedAgain()
+    Component.onCompleted: optedAgain()
+    // And as the desktop entries are read, which a program's own acts are
+    // made again on, since an act's program is found by its entry.
+    onOwnActsChanged: optedAgain()
+
+    function optedAgain() {
+        optedIn = (provider.launcher?.sources ?? [])
+            .filter(other => other !== provider && (other.foundActs ?? []).length > 0)
+            .reduce((all, other) => all.concat(other.foundActs
+                .map(one => Object.assign({ from: other }, one))), []);
+        optedActs = optedMade();
+    }
 
     // Every program's acts found from the top: its desktop entry's own,
     // made again only as the entries are read, then those opted in, made
@@ -1639,9 +1656,9 @@ Provider {
     }
     // Each provider's acts for a program are asked once, however many of
     // them it opts in, as swayimg opts in a gallery a folder, and only
-    // those it finds from the top (Provider.foundActsOf), which write
-    // nothing this reads.
-    readonly property var optedActs: {
+    // those it finds from the top (Provider.foundActsOf).
+    property var optedActs: []
+    function optedMade() {
         const asked = new Map();
         return provider.optedIn.map(one => {
             const entry = DesktopEntries.byId(one.program);
@@ -1655,10 +1672,7 @@ Provider {
             return act ? provider.foundAct(entry, act) : null;
         }).filter(row => row !== null);
     }
-    // Those opted in may be read before their own binding has run, as
-    // Applications is made beside the program that opts them in, and
-    // concat would list undefined as a row.
-    readonly property var acts: ownActs.concat(optedActs ?? [])
+    readonly property var acts: ownActs.concat(optedActs)
 
     // One of a program's acts as a row found from the top, by its own name
     // only, so typing a program's name doesn't list every act it has. It

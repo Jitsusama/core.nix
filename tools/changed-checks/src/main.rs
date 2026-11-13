@@ -522,11 +522,6 @@ fn compare(
 ) -> Result<ExitCode, String> {
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
-    let kept = |noted: &mut Run| {
-        checks::kept(&checks::keeping(&cache(), base, system), || {
-            derivations(&format!("{flake}?rev={base}"), system, "base", noted)
-        })
-    };
     if options.keep_base {
         reads::keep_base(root, base, system, noted)?;
         alone::keep(root, base, system, noted);
@@ -534,7 +529,17 @@ fn compare(
         return Ok(ExitCode::SUCCESS);
     }
     eprintln!("comparing {system}'s checks at {short} with the working tree");
-    let before = kept(noted)?;
+    // What each check read at the newest head of main recorded, the base or
+    // one it came after, spares evaluating at the base and in the tree each
+    // check neither change reaches (`alone.rs`).
+    let recorded = alone::recorded(root, base, system);
+    let before = checks::kept(
+        &checks::keeping(&cache(), base, system),
+        || match alone::past(root, base, system, recorded.as_ref(), noted) {
+            Some(found) => Ok(found),
+            None => derivations(&format!("{flake}?rev={base}"), system, "base", noted),
+        },
+    )?;
     // A working tree git calls clean is its commit, whose derivations never
     // change, so they're kept by it as a base's are, and a run again on the
     // same commit, or one whose commit is a base kept already, evaluates
@@ -563,7 +568,8 @@ fn compare(
                 return derivations(flake, system, "tree", noted);
             }
             let mut evaluation = Run::evaluating("tree");
-            let (mut after, vm) = ordinarily(flake, root, base, system, &before, &mut evaluation)?;
+            let (mut after, vm) =
+                ordinarily(flake, root, system, recorded.as_ref(), &mut evaluation)?;
             let moved = checks::compare(&before, &after);
             let targets = if moved.broken.is_empty() {
                 unbuilt(&moved)
@@ -574,7 +580,7 @@ fn compare(
                 let derivations = after.clone();
                 scope.spawn(move || built(flake, system, held, &targets, &derivations))
             }));
-            match reads::unread(root, base, system, &before, &vm) {
+            match unread(root, base, system, (&before, recorded.as_ref()), &vm) {
                 Some(unread) => after.extend(unread),
                 None => after.extend(evaluated(flake, system, &vm, &mut evaluation)?),
             }
@@ -632,9 +638,8 @@ fn compare(
 fn ordinarily(
     flake: &str,
     root: &str,
-    base: &str,
     system: &str,
-    before: &Derivations,
+    recorded: Option<&(String, Derivations)>,
     evaluation: &mut runs::Evaluation,
 ) -> Result<(Derivations, Vec<String>), String> {
     let named = names(flake, system)?;
@@ -642,7 +647,7 @@ fn ordinarily(
         .iter()
         .cloned()
         .partition(|name| name.starts_with("vm-"));
-    let (unreached, ordinary) = alone::unreached(root, base, system, before, &named, ordinary);
+    let (unreached, ordinary) = alone::unreached(root, recorded, system, &named, ordinary);
     let mut after = if ordinary.is_empty() {
         Derivations::new()
     } else {
@@ -652,6 +657,21 @@ fn ordinarily(
     after.retain(|name, _| asked.contains(name));
     after.extend(unreached);
     Ok((after, vm))
+}
+
+/// The VM tests' derivations, `vm`, when the change reaches nothing they
+/// read at the base, or else at the head of main recorded before it.
+fn unread(
+    root: &str,
+    base: &str,
+    system: &str,
+    (before, recorded): (&Derivations, Option<&(String, Derivations)>),
+    vm: &[String],
+) -> Option<Derivations> {
+    reads::unread(root, base, system, before, vm).or_else(|| {
+        let (head, known) = recorded.filter(|(head, _)| head != base)?;
+        reads::unread(root, head, system, known, vm)
+    })
 }
 
 /// Name each check a comparison moved, a line each, and say how many.
