@@ -59,6 +59,45 @@ function laid(words) {
     return lines;
 }
 
+// The void's reply says first where his line went, as "→ Delta · undo
+// 22:54" when it can be undone, by the time its day file keeps the line
+// at (8GYNJ6, 2026-11-12 [e7d88599]); a to-do for him, or a line it kept,
+// can't be.
+const UNDOABLE = /^(→ .*?) · undo (\d{1,2}:\d{2})$/u;
+
+// A reply as the card says it, where it went kept and the undo taken off
+// it to be an act of the card's (VKCF3Z, 2026-11-12 [244ed4fd]), and the
+// time the void undoes it by, or "" where it can't.
+function went(reply) {
+    const lines = String(reply ?? "").split("\n");
+    const first = lines[0].trim().match(UNDOABLE);
+    if (first === null) {
+        return { reply: String(reply ?? ""), undo: "" };
+    }
+    return { reply: [first[1]].concat(lines.slice(1)).join("\n"), undo: first[2] };
+}
+
+// What the void is told, as Joel's own line, to take his line back.
+function undoing(time) {
+    return `undo ${time}`;
+}
+
+const UNDONE = /^undone\.?$/iu;
+
+// How the card stands once the void answers being asked to take it back:
+// taken, on its own "undone"; else told what it said instead, in the
+// words a side holds, so it's never a silent card.
+function takenBy(answer) {
+    const said = String(answer ?? "").trim();
+    if (UNDONE.test(said)) {
+        return { said: "taken", told: "" };
+    }
+    const words = said.split(SPACES).filter(word => word !== "");
+    const line = laid(words)[0] ?? [];
+    const told = line.join(" ");
+    return { said: "told", told: line.length < words.length ? `${told}...` : told };
+}
+
 // The harness stamps delivery by its own clock, which may run a little
 // behind the shell's.
 const SLACK_MS = 2000;
@@ -94,11 +133,15 @@ function plain(text) {
 // by, his line, how it stands and, once answered, the reply cut to the
 // card; low, so it never takes his eye or the keys, and in place of the
 // card it was given the id of. It waits for its default action, which
-// opens the talk, so it runs while the card is up.
+// opens the talk, and for Take It Back while the void can undo it, so it
+// runs while the card is up. Told, it carries what the void said.
 function command(card) {
     return ["notify-send", "--print-id", "--app-name=pi", "--urgency=low"]
         .concat(card.id > 0 ? [`--replace-id=${card.id}`] : [])
-        .concat([`--hint=string:x-from:${card.from}`, `--hint=string:x-said:${card.said}`,
-            `--action=default=${card.open}`, "--", card.line])
+        .concat([`--hint=string:x-from:${card.from}`, `--hint=string:x-said:${card.said}`])
+        .concat(card.said === "told" ? [`--hint=string:x-told:${card.told}`] : [])
+        .concat([`--action=default=${card.open}`])
+        .concat((card.undo ?? "") === "" ? [] : [`--action=take=${card.takes}`])
+        .concat(["--", card.line])
         .concat(card.reply === "" ? [] : [plain(card.reply)]);
 }

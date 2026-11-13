@@ -252,7 +252,11 @@
       "verb": "talk",
       "glyph": "reply",
       "ask": "what to talk about?",
-      "said": { "open": "read it in Agents", "more": "more in the talk" }
+      "said": {
+        "open": "read it in Agents",
+        "more": "more in the talk",
+        "take": "Take It Back"
+      }
     },
     {
       "id": "verb:agent:pause",
