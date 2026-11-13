@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
 
 /// What follows the week at a glance, for a person, to say what else to ask.
-const MORE: &str = "\nAsk for more: spend-watch report last week by quest; report today by model;\n\
-                    report waste; report caps; report outliers; report forecast.\n";
+const MORE: &str = "Ask for more: spend-watch report last week by quest; report today by model; \
+                    report waste; report caps; report outliers; report forecast.";
 
 /// The periods a report covers, in its own words.
 const PERIODS: [&str; 7] = [
@@ -272,9 +272,12 @@ fn give_report(
         }
         Format::Own(_) => wrote(context.say(&report::render(report, report::Format::Markdown))),
         Format::Text => {
-            let mut out = report::render(report, report::Format::Text);
+            let mut out = report::render_text_in(report, context.room);
             if glance {
-                out.push_str(MORE);
+                out.push('\n');
+                for line in terminal_kit::layout::paragraph(MORE, 0, context.room.for_prose()) {
+                    let _ = writeln!(out, "{line}");
+                }
             }
             wrote(context.say(&out))
         }
