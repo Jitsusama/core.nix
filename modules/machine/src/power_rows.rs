@@ -1577,7 +1577,9 @@ mod tests {
     /// Every row Power serves but a choice has a drawer giving a little
     /// more than its line (Joel, 2026-11-11 22:00): what the battery's
     /// folder keeps behind it, in its own units. The Charge's says the
-    /// energy now, full and designed, and the rate (Y2YBTS, 2026-11-11).
+    /// energy now and full, and the rate (Y2YBTS, 2026-11-11), six facts at
+    /// most, so the designed energy and where it's read go to the fold
+    /// (Y2YBTS, 2026-11-12).
     #[test]
     fn every_power_row_has_a_drawer_saying_more() {
         let mut b = battery();
@@ -1628,11 +1630,27 @@ mod tests {
                 "status=Charging",
                 "energy_now=20,000,000 \u{b5}Wh",
                 "energy_full=55,000,000 \u{b5}Wh",
+                "power_now=30,000,000 \u{b5}W"
+            ],
+            "the charge says how much is left and how fast it's going, in six facts"
+        );
+        let folded: Vec<String> = row(&ready, "row:power:charge")["drawer"]["nerd"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|bit| format!("{}={}", text(&bit["label"]), text(&bit["value"])))
+            .collect();
+        assert_eq!(
+            folded,
+            [
                 "energy_full_design=60,000,000 \u{b5}Wh",
-                "power_now=30,000,000 \u{b5}W",
                 "Read From=/sys/class/power_supply/BAT0"
             ],
-            "the charge says the energy now, full and designed, and the rate"
+            "what the six facts leave out is in the fold, the designed energy first"
+        );
+        assert!(
+            row(&ready, "row:power:temperature")["drawer"]["nerd"].is_null(),
+            "a drawer within six facts folds nothing away"
         );
         assert_eq!(
             facts("row:power:type"),
