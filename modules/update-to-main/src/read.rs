@@ -513,7 +513,7 @@ impl<'a> Host<'a> {
 
     /// Whether `newer` descends from `older`, by the host's word.
     fn descends(&self, older: &str, newer: &str) -> Result<bool, Failure> {
-        let compared = self.get_one(&format!("compare/{older}...{newer}"))?;
+        let compared = self.get_one(&compare(older, newer))?;
         match compared["status"].as_str() {
             Some("identical") => Ok(true),
             Some("ahead") => Ok(compared["merge_base_commit"]["sha"].as_str() == Some(older)),
@@ -525,6 +525,14 @@ impl<'a> Host<'a> {
             ))),
         }
     }
+}
+
+/// The host's comparison of `older` with `newer`, asked for what says how
+/// they stand alone. The whole answer lists every commit and file between
+/// them, which grows with each merge, while the second page of one commit
+/// carries the status and merge base with no files at all.
+fn compare(older: &str, newer: &str) -> String {
+    format!("compare/{older}...{newer}?per_page=1&page=2")
 }
 
 /// Writes `bytes` to a file only its owner reads or writes.
@@ -553,6 +561,19 @@ fn allowed(left: Duration) -> Option<(u64, u64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_comparison_asks_for_no_commit_or_file_it_doesnt_read() {
+        // 13 November: World's comparison since the last switch was 56 MB
+        // of commits and files by 16:07, and took past a minute twice, so
+        // the switch went without World. Its second page of one commit
+        // says how the two stand, with no files, in 15 KB.
+        assert_eq!(
+            compare("ba8d", "8dbb"),
+            "compare/ba8d...8dbb?per_page=1&page=2",
+            "a comparison asked for every commit and file between"
+        );
+    }
 
     #[test]
     fn an_ask_takes_no_longer_than_the_read_has_left() {
