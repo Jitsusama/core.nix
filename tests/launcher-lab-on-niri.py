@@ -324,6 +324,10 @@ def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) 
             found = drawer_said(shell, mark)
             if found is None:
                 unsaid += 1
+                # What the shell said of the drawer since the key, so one never said is read.
+                with capsys.disabled():
+                    for line in said_after(shell, mark, "drawer"):
+                        print(f"lab-drawer-unsaid {line.split('qml: ', 1)[-1]}", flush=True)
             else:
                 timed.append(int(found.group(2)))
                 came[found.group(3)] = came.get(found.group(3), 0) + 1
