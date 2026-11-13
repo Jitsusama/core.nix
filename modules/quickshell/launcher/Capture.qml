@@ -201,6 +201,7 @@ Provider {
             glyph: row.glyph,
             hue: "action",
             later: row.later,
+            changes: row.changes,
             run: () => row.run()
         }), thing({
             key: `${key}:${folder}`,
@@ -275,9 +276,15 @@ Provider {
         .reduce((shortest, one) => shortest === null || one.length < shortest.length ? one
             : shortest, null)
 
+    // Each picture's row says it changes nothing, so Return takes it from
+    // the find too, as a picture is only added: the key language's :take
+    // takes a line back from the void, and changes things, so a row
+    // whose verb is take would otherwise be landed on (Catalogue.js's
+    // changesState; #4004 broke three captures walks so).
     readonly property var wholeScreen: acting({
         key: "capture:screen",
         verb: "take",
+        changes: false,
         name: Words.name("capture:screen"),
         keywords: "screenshot picture",
         glyph: picture,
@@ -309,6 +316,7 @@ Provider {
         acting({
             key: "capture:window",
             verb: "take",
+            changes: false,
             name: Words.name("capture:window", "", { title: hereTitle }),
             keywords: "screenshot picture focused",
             glyph: picture,
@@ -401,6 +409,7 @@ Provider {
         return member({
             key: `capture:window:${window.app_id}`,
             verb: "take",
+            changes: false,
             name: provider.titled(window),
             // Its program by the name Joel knows, never its app id, so
             // one with no entry says none.
