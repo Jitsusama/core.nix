@@ -16,7 +16,10 @@ trap 'rm -rf "$work"' EXIT
 export DEVICE_CHECK_EXPECTED=$expected DEVICE_CHECK_NOTIFY=true DEVICE_CHECK_SUSPENDED=0
 
 # The seen paths, comments aside.
-mapfile -t paths < <(grep -v '^#' "$seen")
+paths=()
+while IFS= read -r path; do
+  [ "${path:0:1}" = "#" ] || paths+=("$path")
+done < "$seen"
 
 # What device-check finds missing in a sysfs of the seen paths but those
 # the given folder's pattern matches, a name a line.
