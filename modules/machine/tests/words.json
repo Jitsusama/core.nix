@@ -941,7 +941,8 @@
       "said": {
         "below": "{by} \u00b0C below high",
         "past": "{by} \u00b0C past high",
-        "note": "where it starts to warn"
+        "note": "where it starts to warn",
+        "means": "the chip counts itself hot"
       }
     },
     {
@@ -951,7 +952,9 @@
       "said": {
         "below": "{by} \u00b0C below critical",
         "past": "{by} \u00b0C past critical",
-        "note": "the most it's meant to reach"
+        "note": "the most it's meant to reach",
+        "means": "it's past the most it's made for",
+        "means-cores": "the processor slows its cores to cool"
       }
     },
     {
@@ -991,6 +994,49 @@
         "manual": "set by hand",
         "full": "full speed",
         "note": "what sets its speed"
+      }
+    },
+    { "id": "heat:now", "in": "heat", "name": "Now" },
+    { "id": "heat:lowest", "in": "heat", "name": "Lowest" },
+    { "id": "heat:highest", "in": "heat", "name": "Highest" },
+    { "id": "heat:top", "in": "heat", "name": "Top Speed" },
+    { "id": "heat:past-it", "in": "heat", "name": "Past It" },
+    { "id": "heat:below-it", "in": "heat", "name": "Below It" },
+    { "id": "heat:at-it", "in": "heat", "name": "At It" },
+    {
+      "id": "heat:reading",
+      "in": "heat",
+      "name": "Sensor",
+      "said": { "on": "{label}, on {chip}" }
+    },
+    { "id": "heat:in-all", "in": "heat:throttled", "name": "In All" },
+    { "id": "heat:longest", "in": "heat:throttled", "name": "Longest" },
+    {
+      "id": "heat:most",
+      "in": "heat:throttled",
+      "name": "Most",
+      "said": { "core": "core {n}, {times}" }
+    },
+    {
+      "id": "heat:counted",
+      "in": "heat:throttled",
+      "name": "Counted",
+      "said": { "since": "since the machine started" }
+    },
+    {
+      "id": "heat:speed",
+      "in": "heat",
+      "name": "Speed",
+      "said": { "of": "{speed} of {top}" }
+    },
+    {
+      "id": "heat:driven",
+      "in": "heat",
+      "name": "Driven By",
+      "said": {
+        "automatic": "its chip sets its speed",
+        "manual": "a program sets its speed, through Linux",
+        "full": "nothing slows it: it turns at full speed"
       }
     },
     {
