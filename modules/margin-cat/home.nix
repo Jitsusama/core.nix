@@ -63,6 +63,7 @@
       MarginCatScreen 1.0 MarginCatScreen.qml
     '';
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
+    xdg.configFile."quickshell/surfaces/MarginCatPaths.js".source = ./MarginCatPaths.js;
     xdg.configFile."quickshell/surfaces/MarginCatPlays.js".source = ./MarginCatPlays.js;
     # Its settings in its own file beside it, read as it starts.
     xdg.configFile."quickshell/surfaces/MarginCat.json".text = builtins.toJSON {
