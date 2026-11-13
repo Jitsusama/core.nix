@@ -567,7 +567,10 @@ fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
 /// already, once more after it, so the last change always counts. A list
 /// is read once more only if it's still due as the read ends: one asked
 /// for by a change the running read already took, as a watch beginning
-/// does a moment after the change that's read, would read it twice.
+/// does a moment after the change that's read, would read it twice. Nor
+/// is it read once more if nothing watches it now: its file changing
+/// after its watch went would have it read for nobody, and a get would
+/// read it again anyway. What Tabs has open reads kitty's list too, so it counts as watching.
 fn start(shared: &Arc<Shared>, at: usize, what: Run) {
     {
         let mut daemon = lock(&shared.daemon);
@@ -581,8 +584,12 @@ fn start(shared: &Arc<Shared>, at: usize, what: Run) {
         loop {
             read_source(&shared, at, what);
             let mut daemon = lock(&shared.daemon);
-            let again = daemon.again.remove(&(at, what))
-                && (what == Run::Opened || due(&shared, &daemon, at));
+            let asked = daemon.again.remove(&(at, what));
+            let again = asked
+                && (what == Run::Opened
+                    || (due(&shared, &daemon, at)
+                        && (watched(&daemon, &shared.sources[at].list_key())
+                            || tabs::wanted(&daemon))));
             if !again {
                 daemon.running.remove(&(at, what));
                 return;
