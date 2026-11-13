@@ -692,9 +692,11 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     fewest = 4
     desktop.launcher_until(lambda shown: len(marks_in(shown["glance"])) >= fewest)
     home = marks_in(desktop.showing()["glance"])
-    # A step's row with the most keys: Return, - and Tab in, and
-    # no other chord with Ctrl. Every mark stays beside them (Joel, 2026-10-28:
-    # "i want icons to be able to be there as much as possible").
+    # A step's row with the most keys: Return, - and its other act's own
+    # key, e, and no other chord with Ctrl. Every mark stays beside them (Joel,
+    # 2026-10-28: "i want icons to be able to be there as much as possible").
+    # Its acts are on its row with nothing under them, so Tab takes it in
+    # nowhere and isn't said (VKCF3Z, 2026-11-12).
     machine.send_chars("desktop ")
     desktop.launcher_until(
         lambda shown: shown["held"] == ["desktop"] and "Do Not Disturb" in shown["rows"]
@@ -704,7 +706,9 @@ def test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts(
     desktop.normal()
     shown = desktop.showing()
     told = shown["selected"]["told"]
-    assert told[1:2] == ["Tab in"], shown["selected"]
+    assert told[1:2] == ["- up"], shown["selected"]
+    assert "e until it's ended" in told, shown["selected"]
+    assert "Tab in" not in told, shown["selected"]
     assert not any(key.startswith("Ctrl") for key in told[2:]), shown["selected"]
     assert marks_in(shown["glance"]) == home, (shown["glance"], shown["selected"]["told"])
     desktop.close_launcher()

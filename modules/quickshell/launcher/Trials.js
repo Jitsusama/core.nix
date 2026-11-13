@@ -23,6 +23,9 @@ const STILL_MS = 100;
 // A frame later than this many of the screen's refreshes after the one
 // before it missed at least one, which is what Joel sees as a stutter.
 const LATE_REFRESHES = 1.5;
+// A drawer out this long on a row the arrows chose was read, not passed
+// over on the way: long enough to read its title and a fact.
+const READ_MS = 1000;
 // What a screen that doesn't say its rate is taken to refresh at.
 const SOME_HZ = 60;
 const A_SECOND = 1000;
@@ -34,7 +37,7 @@ function begun(at, home) {
         keys[kind] = 0;
     }
     return { at, home, keys, picked: "", kind: "", typed: "", depth: 0,
-        ms: -1, open: -1, missed: false, sought: [],
+        ms: -1, open: -1, missed: false, sought: [], looked: "", drawerAt: -1,
         timed: { count: 0, searched: 0, searchedMost: 0, drawn: 0, drawnMost: 0, felt: [] } };
 }
 
@@ -199,9 +202,35 @@ function ended(trial, at, typed) {
     if (!trial) {
         return trial;
     }
-    const missed = trial.picked === "" && trial.keys.letters > 0;
-    return Object.assign({}, trial, { open: at - trial.at, missed,
-        sought: missed ? soughtWith(trial.sought, String(typed ?? "")) : [] });
+    const seen = drawerShown(trial, at, false);
+    const missed = seen.picked === "" && seen.keys.letters > 0 && (seen.looked ?? "") === "";
+    return Object.assign({}, seen, { open: at - trial.at, missed,
+        sought: missed ? soughtWith(seen.sought, String(typed ?? "")) : [] });
+}
+
+// The trial once Joel looked, `how` saying how: "stepped" into a place or a
+// thing by a key of his, or read a "drawer". An opening that only looked and
+// left closes as a look, not a miss: health counts misses as the trial says
+// them, so this is their one definition (80ECO2, 2026-11-12). The first look
+// is the one kept.
+function looked(trial, how) {
+    if (!trial || (trial.looked ?? "") !== "") {
+        return trial;
+    }
+    return Object.assign({}, trial, { looked: String(how) });
+}
+
+// The trial as a drawer comes out for a row at `at` (`out`), or goes: the
+// one out before it was read if it stayed out READ_MS on a row the arrows
+// chose, since a drawer comes out for the top row of every search too.
+function drawerShown(trial, at, out) {
+    if (!trial) {
+        return trial;
+    }
+    const was = trial.drawerAt ?? -1;
+    const read = was >= 0 && at - was >= READ_MS && trial.keys.arrows > 0;
+    const kept = read ? looked(trial, "drawer") : trial;
+    return Object.assign({}, kept, { drawerAt: out ? at : -1 });
 }
 
 // The frames of an opening so far: how many were drawn while it moved,

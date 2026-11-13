@@ -3750,6 +3750,12 @@ Scope {
             run(row, false);
             return true;
         }
+        // One whose acts all lie on its row holds nothing to go into, so
+        // Ctrl+] goes where it lives, as a row holding nothing does, and
+        // never into a step of its acts (Joel, 2026-11-11: "if they have
+        // nothing under them, we shouldn't open a submenu for them").
+        if (row.actsOnly === true)
+            return false;
         return enter(row);
     }
     function toLastPlace() {
@@ -4678,6 +4684,12 @@ Scope {
             ask(row);
             return true;
         }
+        // A step in that Joel's key made is a look, so an opening that
+        // only looked inside and left isn't counted a miss (Trials.qml).
+        const went = () => {
+            trials.wentIn(pressed);
+            return true;
+        };
         // A step in from what's typed at the top says it was what was meant,
         // as doing it would, so "void" and a step into The Void lands on
         // it next time (VKCF3Z, 2026-11-12), however it was stepped into.
@@ -4690,10 +4702,10 @@ Scope {
             if (meant)
                 picks.picked(typed, row.key, knowing());
             intoCategory(row.category, typed);
-            return true;
+            return went();
         }
         if (steppedAsLed(row))
-            return true;
+            return went();
         const things = asThing(row, held.length === 0 || collecting);
         const into = inside(row, things);
         // A collection with nothing in it still holds the places its
@@ -4743,7 +4755,7 @@ Scope {
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
             ended: Date.now() });
         keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
-        return true;
+        return went();
     }
 
     // What the field is asking for words for, such as a password: the step
@@ -5144,7 +5156,7 @@ Scope {
         tellOnOpen(Becoming.told({
             mark: Theme.glyph.failed,
             what: what.replace("{object}", name)
-                .replace("{did}", (words.did ?? {})[act] ?? act),
+                .replace("{did}", Becoming.did(words.did, act, words.done ?? "")),
             why: why === "" ? words.noAnswer ?? "" : why
         }, { what: Theme.alert, why: Theme.muted }), true);
     }
@@ -7741,6 +7753,11 @@ Scope {
         });
     }
     property bool drawerOut: false
+    // A drawer put away ends the time it was read for (Trials.qml).
+    onDrawerOutChanged: {
+        if (!drawerOut)
+            trials.drawer(false);
+    }
     property var drawerShows: null
     onDrawerWantedChanged: {
         if (!open) {
@@ -7779,6 +7796,7 @@ Scope {
         drawerOut = drawerWanted !== null;
         if (!drawerOut)
             return;
+        trials.drawer(true);
         drawerShows = drawerActed(drawerWanted);
         // Timed with what working out its row's drawer took as it was
         // followed, but not the rest between, which is the drawer's pace.
@@ -8813,7 +8831,7 @@ Scope {
             lap("marking");
             freshen();
             lap("joining");
-            trials.opened();
+            trials.opened(KeyTimes.now());
             lap("trials");
             partingLater.stop();
             fading = false;
