@@ -105,7 +105,12 @@ Provider {
 
     // The manager whose browser extension fills sign-ins in, and that
     // browser, which the place offers while it's off; null where none has.
-    readonly property var offManager: managers.find(one => browserOf(one) !== null) ?? null
+    // Read from the entries as a binding, so one read before they're loaded
+    // is read again once they are, which DesktopEntries.byId isn't.
+    readonly property var offManager: {
+        const ids = DesktopEntries.applications.values.map(entry => entry.id);
+        return managers.find(one => (one.fills ?? "") !== "" && ids.includes(one.fills)) ?? null;
+    }
     readonly property var offBrowser: offManager === null ? null : browserOf(offManager)
 
     // What the off row's drawer, and Home's row's, say: why it's off, and
@@ -135,6 +140,9 @@ Provider {
                 : String(said.offNote ?? "").replace("{manager}", manager.called),
             hue: "alert",
             leads: true,
+            // An act with something to say beyond its name, so its drawer
+            // comes out (Launcher.qml's detailed).
+            thing: true,
             drawer: { title: name, body: offAbout },
             run: () => {
                 if (browser !== null)
