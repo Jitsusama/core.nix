@@ -162,7 +162,11 @@ Provider {
     // eyebrow as items and its facts as labels and values, not as
     // ready-rows.md's drawer, so read as one it said "[object" over blank
     // facts (finds-sessions, 2026-11-13). Its acts are named as served,
-    // Return's by ↵, except where they step into its members.
+    // Return's by ↵, except where they step into its members. What y takes
+    // is its quest, else its address, as the tree's session rows give it
+    // (sessionRow's operands): read for the foot from its acts instead,
+    // each row an arrow first chose made its four act rows, 89 in a frozen
+    // turn of 90 keys (keeps-up, 2026-11-13).
     function topDrawer(row) {
         const address = /^drawer:agents(?:-top)?:(.+)$/u.exec(String(row?.drawer ?? ""))?.[1];
         if (address === undefined)
@@ -172,6 +176,12 @@ Provider {
                 const acts = top.actsOf(row);
                 const steps = acts.some(one => one.step === "rows");
                 return top.actsNamed(provider.drawerOf(address), steps ? [] : acts, null);
+            },
+            operands: () => {
+                const owns = provider.sessionAt(address)?.presence?.owns ?? [];
+                const quest = owns.find(owned => /^QEST-/u.test(owned)) ?? "";
+                return [quest !== "" ? provider.copyOperand("fact:agent:quest", quest)
+                    : provider.copyOperand("fact:agent:address", address)];
             }
         };
     }
