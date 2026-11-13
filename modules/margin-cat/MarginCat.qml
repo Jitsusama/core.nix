@@ -194,6 +194,9 @@ Scope {
             property var shown: []
             property var costs: []
             property int unseen: 0
+            // How many frames had begun as it set off, so it can say how
+            // many it drew.
+            property int begunAt: 0
             // What it's drawn as: a pose of its walk, turned the way it
             // goes, or the scope's, sitting, asleep or stretching.
             readonly property var drawn: pose
@@ -257,6 +260,7 @@ Scope {
                     shown = [];
                     costs = [];
                     unseen = 0;
+                    begunAt = window.FramePresentation.framesBegun;
                 }
                 going = plan;
                 walker.restart();
@@ -269,14 +273,20 @@ Scope {
             function tell(): void {
                 if (!window.FramePresentation.available)
                     return;
-                const told = MarginCat.walked(shown, costs, unseen);
+                const told = MarginCat.walked(shown, costs, unseen,
+                    window.FramePresentation.framesBegun - begunAt);
                 console.info(told.line);
                 if (Options.reports)
                     Report.say(`walked cat ${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
             }
 
             // Each frame of a walk, as niri showed it or didn't, asking after
-            // the next until it sits.
+            // the next. Asked only here, once niri says the last was shown,
+            // the ask lands after the next frame has begun where frames come
+            // close together, so only every other frame was heard of: on a
+            // GPU at 60 Hz, and on Joel's screen at 120. Each step asks too
+            // (walker), before its frame is drawn. Asked only there, a GPU at
+            // 120 Hz drew every other frame, so both stay.
             FramePresentation.onPresented: (frame, at) => {
                 if (going === null)
                     return;
@@ -347,6 +357,10 @@ Scope {
                         window.pose = now.pose;
                     window.stepped = now;
                     window.place = { x: now.x, y: window.there?.y ?? window.place.y };
+                    // Asked as the step is taken, before its frame is drawn,
+                    // so the frame it moves is the one niri is asked about.
+                    if (window.FramePresentation.available)
+                        window.FramePresentation.ask();
                 }
             }
 
