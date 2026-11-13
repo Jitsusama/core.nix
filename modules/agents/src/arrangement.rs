@@ -38,13 +38,14 @@ pub const KIND: &str = "arrangement";
 pub const STILL: Duration = Duration::from_secs(2);
 
 /// Each lit screen's connector and what the screen is, from the windows
-/// daemon's Screens rows, each holding niri's record of its output. One
+/// daemon's Screens rows, each sent whole under `row` and holding niri's
+/// record of its output. One
 /// that's off, as the laptop's is while its lid is shut on the dock, has
 /// no place in the layout, so it's as gone as one unplugged.
 pub fn screens(rows: &Held) -> HashMap<String, String> {
     rows.records()
         .filter_map(|(_, row)| {
-            let held = &row["held"];
+            let held = &row["row"]["held"];
             let niri = &held["niri"];
             let output = held["output"].as_str()?;
             (niri.is_object() && !niri["logical"].is_null())
