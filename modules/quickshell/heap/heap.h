@@ -28,6 +28,12 @@ public:
     // collection, live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
+    // How many milliseconds Qt's collector has spent collecting since the
+    // module was made, its slices between other work included, so a key
+    // timed from one reading to the next says how much of it was the
+    // collector's (Joel's slowest keys waited on it, 2026-11-12).
+    Q_INVOKABLE double collected() const;
+
 private:
     QJSEngine *engine;
 };
