@@ -341,9 +341,13 @@ Provider {
 
     // Its windows but the one used last and those a row it has open
     // already stands for (`held`, window ids), so a window and its front
-    // tab or its file are never two rows.
+    // tab or its file are never two rows. An agent's window, kitty's though
+    // it is, is left to kitty's Agents row, as its tabs are (Kitty.qml):
+    // listed, Joel's 112 drew 114 rows and took 474 ms a step into kitty
+    // (2026-11-13, VKCF3Z [b31d7a90]).
     function windowsOf(entry, held) {
-        return (running[entry.id] ?? []).slice(1).filter(window => !(held ?? []).includes(window.id))
+        return (running[entry.id] ?? []).slice(1)
+            .filter(window => window.session !== true && !(held ?? []).includes(window.id))
             .map(window => windowRow(window, entry));
     }
 
