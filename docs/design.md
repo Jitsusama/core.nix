@@ -712,7 +712,8 @@ the caret. Glyph hues are held to the same contrast as text.
 A terminal program draws with the terminal's sixteen ANSI colours, which
 carry no meaning of their own, and something that draws in shades, such as a
 graph, takes the theme's eight shades from the background to the brightest
-text.
+text. A command of ours names the theme's roles instead, drawn in 24-bit
+colour where the terminal draws it, as [Commands][commands] sets them.
 
 ## Glyphs
 
@@ -3160,7 +3161,7 @@ by them isn't done.
 | Chat, passwords, calls                    | their own settings       | proportional   |        |        |           |         |          |
 | The terminal                              | kitty                    | monospace      |        |        |           |         |          |
 | The prompt                                | prompt, kitty            | monospace      | where Joel is, told from the nearest root (the root in text, the folders between muted, the folder he's in strong); the glyph where his keys go, in the accent, red after a failure, # in gold as root | another machine, @ and its name; a rebase, merge or pick under way, a rebase drawn as its steps, red while a conflict waits; a development shell and jobs as glyphs; a long command's time; the branch, muted, then git's notation: * not staged, + staged, ? untracked, together, then ↑N ahead and ↓N behind, together, and nothing when clean and in step; over ssh in kitty, the window a little towards the machine hue | git status, and a wider window | nothing | laid out per prompt, never per keystroke: a long run's time, the shell's glyphs, the branch's middle, the path's middle, the branch to its glyph, the right side, then what's under way to its glyph; what gives way goes without a trace; the left keeps to a third of the window; zsh clears the right side once typing reaches it |
-| Terminal programs                         | each tool's module       | monospace      |        |        |           |         |          |
+| Terminal programs                         | terminal-kit, each command's module | monospace | the answer on stdout, in the form `--format` asks for, as [Commands][commands] sets it | on stderr: a wait's line and meter, what changed, an error's three parts | `--help`, examples first; `--format json` for every fact | the shared flags, and zsh's completion for a command with subcommands | into a terminal a row's words give way, then its side, then its name at a whole word; into a pipe nothing gives way |
 | Neovim                                    | neovim                   | monospace      | the status line's one line at the bottom, on Neovim's own background: the file told from its root as the prompt tells a folder (the root in text, the folders between muted, the file strong), or a buffer's kind by name (help, terminal, quickfix, a plugin's window) | Vim's [+] while the buffer has edits not yet written, a padlock on a file that can't be changed; what git is in the middle of, drawn as the prompt draws it; the mode, in the accent, whenever it isn't Normal; what's selected, in lines or characters, or which match of a search; errors and warnings, each its mark and count; a language server at work; the agents' glyph while an agent is paired; the branch, muted, with the prompt's git notation; a tab line only with two tabs or more | the problems list, the outline, git's status | nothing | the language server's words, the branch's middle, the path's middle, the branch to its glyph, what's under way to its glyph, the path to the file's name, the right side but for the problems, then the name's own middle; what gives way goes without a trace |
 | pi                                        | its theme, its harness   | monospace      | the status line's one line at the bottom: where pi works, told from its root as the prompt tells a folder (the root in text, the folders between muted, the folder strong); the model, muted; context's mark and reading, and what the next turn costs | what git is in the middle of, drawn as the prompt draws it; how hard the model thinks, its mark in the level's colour and the word muted; each extension's mark while its state holds; the panel's height when it isn't the usual one; the session's total; the branch, muted, with the prompt's git notation | each mark's own command (`/guards`, `/jobs`), `/settings` | nothing | the total, the branch's middle, the path's middle, context to a share, the model to its short name, how hard it thinks, the branch to its glyph, what's under way to its glyph, the path to the folder's name, the model, then the name's own middle; the next turn's cost never; what gives way goes without a trace |
 
@@ -3747,6 +3748,7 @@ What each studio round settled, newest first, with the reason.
   so nothing in it changed.
 
 [surfaces]: #surfaces
+[commands]: commands.md
 [decisions]: #decisions
 [taste]: ../modules/theme/SKILL.md
 [pixel]: #every-pixel-accounted-for

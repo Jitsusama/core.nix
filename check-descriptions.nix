@@ -1135,7 +1135,8 @@
     finds the threads it watches by name, of niri only the one its socket names, names in a call
     the worst-waiting thread of Tuple's daemon and of Chrome apart, Chrome's only while a page
     records the microphone, and in an idle window nothing,
-    reads a stand-in's named thread from the kernel, and sums each generation by its load
+    reads a stand-in's named thread from the kernel, sums each generation by its load, and answers
+    now and report as text for Joel or as JSON named by its schema
   '';
   lately-follows-each-source = ''
     For You's Lately counts what's unread from the mail, Slack and the desktop's other notices,
@@ -2497,6 +2498,15 @@
   swayimg-says-the-picture-it-shows = ''
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
+  '';
+  terminal-kit-gives-every-command-one-shape = ''
+    the terminal kit takes the shared flags out of a command line and leaves the rest in order,
+    inks by --color, NO_COLOR, FORCE_COLOR and the terminal in that order, lays rows out giving way
+    by whole items, reads help examples first, says a failure in three parts with its exit code,
+    and makes a panic a bug
+  '';
+  terminal-kit-passes-clippy = ''
+    clippy finds nothing in terminal-kit, the library every command takes its shape from
   '';
   the-apple-silicon-stick-evaluates = ''
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,

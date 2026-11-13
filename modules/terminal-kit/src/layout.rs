@@ -1,0 +1,602 @@
+//! How an answer is laid out in cells (docs/commands.md, How It Reads):
+//! lists of rows, a mark's two cells, a name and its words, the side flush
+//! right at the widest row; facts, a label in one column and its value
+//! beside it; tables aligned by space under muted labels; and words
+//! wrapped at whole words. Into a terminal it fits the width, giving way
+//! least needed first; into a pipe nothing gives way. The launcher in a
+//! terminal set these first (modules/quickshell/in-a-terminal/src/layout.rs).
+
+use unicode_width::UnicodeWidthStr;
+
+use crate::environment::Environment;
+use crate::ink::Pen;
+
+/// How a run of items is joined on one line.
+pub const ITEMS: &str = " \u{b7} ";
+
+/// How a cut name ends, where the theme's `more` mark isn't to hand.
+const CUT: &str = "\u{2026}";
+
+/// The least room between columns, and between a row's text and its side.
+pub const GAP: usize = 2;
+
+/// The cells a mark and its space take.
+pub const MARK: usize = 2;
+
+/// The widest prose is set, a reading measure, however wide the terminal.
+pub const MEASURE: usize = 80;
+
+/// How wide a stream is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Room {
+    /// A terminal this many cells wide.
+    Cells(usize),
+    /// A pipe, where nothing gives way.
+    Unbounded,
+}
+
+impl Room {
+    /// Stdout's width: its terminal's, then `COLUMNS`, then eighty; into a
+    /// pipe, unbounded.
+    pub fn of_stdout(environment: &Environment) -> Self {
+        Self::of(1, environment.stdout, environment)
+    }
+
+    /// Stderr's width, as stdout's is found.
+    pub fn of_stderr(environment: &Environment) -> Self {
+        Self::of(2, environment.stderr, environment)
+    }
+
+    fn of(fd: i32, terminal: bool, environment: &Environment) -> Self {
+        if !terminal {
+            return Self::Unbounded;
+        }
+        let columns = environment
+            .var("COLUMNS")
+            .and_then(|columns| columns.parse().ok());
+        Self::Cells(
+            terminal_width(fd)
+                .or(columns)
+                .filter(|width| *width > 0)
+                .unwrap_or(80),
+        )
+    }
+
+    /// The cells there are, where they're counted.
+    pub fn cells(self) -> Option<usize> {
+        match self {
+            Self::Cells(cells) => Some(cells),
+            Self::Unbounded => None,
+        }
+    }
+
+    /// The measure prose is set to: the room, at most eighty, and eighty
+    /// into a pipe, since help is read by a person wherever it goes.
+    pub fn measure(self) -> usize {
+        self.cells().map_or(MEASURE, |cells| cells.min(MEASURE))
+    }
+}
+
+/// What the terminal on a file descriptor says its width is.
+fn terminal_width(fd: i32) -> Option<usize> {
+    #[repr(C)]
+    struct WindowSize {
+        rows: u16,
+        columns: u16,
+        across: u16,
+        down: u16,
+    }
+    unsafe extern "C" {
+        fn ioctl(fd: i32, request: std::ffi::c_ulong, ...) -> i32;
+    }
+    #[cfg(target_os = "macos")]
+    const TIOCGWINSZ: std::ffi::c_ulong = 0x4008_7468;
+    #[cfg(not(target_os = "macos"))]
+    const TIOCGWINSZ: std::ffi::c_ulong = 0x5413;
+    let mut size = WindowSize {
+        rows: 0,
+        columns: 0,
+        across: 0,
+        down: 0,
+    };
+    // SAFETY: TIOCGWINSZ writes one winsize, which WindowSize lays out as
+    // the kernel does, into memory this frame owns, and reads nothing else.
+    let done = unsafe { ioctl(fd, TIOCGWINSZ, &raw mut size) };
+    (done == 0 && size.columns > 0).then_some(usize::from(size.columns))
+}
+
+/// Words' width in cells, by Unicode's width.
+pub fn width(words: &str) -> usize {
+    UnicodeWidthStr::width(words)
+}
+
+/// Words padded with spaces to `cells`, on the right or, for a figure,
+/// on the left.
+fn padded(words: &str, inked: String, cells: usize, right: bool) -> String {
+    let pad = " ".repeat(cells.saturating_sub(width(words)));
+    if right { pad + &inked } else { inked + &pad }
+}
+
+/// Items less their last: "a · b · c" as "a · b", and one item as none.
+pub fn fewer(items: &str) -> String {
+    items
+        .rsplit_once(ITEMS)
+        .map(|(kept, _)| kept.to_owned())
+        .unwrap_or_default()
+}
+
+/// A name cut to `room` cells at a whole word, ending in an ellipsis. Its
+/// first word is kept whole however long, since a name is never cut
+/// inside a word.
+pub fn cut(name: &str, room: usize) -> String {
+    if width(name) <= room {
+        return name.to_owned();
+    }
+    let mut kept = String::new();
+    for word in name.split(' ') {
+        let longer = if kept.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{kept} {word}")
+        };
+        if !kept.is_empty() && width(&longer) + width(CUT) > room {
+            break;
+        }
+        kept = longer;
+    }
+    format!("{kept}{CUT}")
+}
+
+/// Words set after something `lead` cells wide: wrapped at whole words
+/// to the room, each further line under the first's words. Into a pipe
+/// they stay one line.
+pub fn hung(words: &str, lead: usize, room: Room) -> String {
+    match room.cells() {
+        None => words.to_owned(),
+        Some(cells) => wrapped(words, cells.saturating_sub(lead).max(1))
+            .join(&format!("\n{}", " ".repeat(lead))),
+    }
+}
+
+/// Words wrapped to `measure` cells: a run gives way at its items first,
+/// the dot going with the break, so no line ends or starts on one, and
+/// only an item too long for a line of its own breaks between its words,
+/// never parting what `held` keeps together. A piece longer than the
+/// measure stands on its own line, never broken.
+pub fn wrapped(words: &str, measure: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for item in words.split(ITEMS).map(str::trim) {
+        if width(&parted(&line, item, ITEMS)) <= measure {
+            line = parted(&line, item, ITEMS);
+        } else if width(item) <= measure {
+            lines.push(std::mem::replace(&mut line, item.to_owned()));
+        } else {
+            // An item's first piece is still parted from the line by its
+            // dot; the rest of its pieces by spaces.
+            let mut between = ITEMS;
+            for piece in held(item) {
+                if !line.is_empty() && width(&parted(&line, &piece, between)) > measure {
+                    lines.push(std::mem::take(&mut line));
+                }
+                line = parted(&line, &piece, between);
+                between = " ";
+            }
+        }
+    }
+    if !line.is_empty() || lines.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// `line` with `more` after it, `between` them where both say something.
+fn parted(line: &str, more: &str, between: &str) -> String {
+    match (line.is_empty(), more.is_empty()) {
+        (true, _) => more.to_owned(),
+        (false, true) => line.to_owned(),
+        (false, false) => format!("{line}{between}{more}"),
+    }
+}
+
+/// The longest a unit after a figure is, as `GB` and `ms` are, so a word
+/// after a figure that isn't its unit can part from it.
+const UNIT: usize = 3;
+
+/// What a break mustn't part: a figure and its unit (`412 GB`), and
+/// `\u{d7}` and what it joins (`1272 \u{d7} 768`), each as one piece.
+fn held(words: &str) -> Vec<String> {
+    let figure = |word: &str| word.starts_with(|first: char| first.is_ascii_digit());
+    let unit = |word: &str| !figure(word) && width(word) <= UNIT;
+    let mut pieces: Vec<String> = Vec::new();
+    let mut was: Option<&str> = None;
+    for word in words.split_whitespace() {
+        let joins = word == "\u{d7}"
+            || was.is_some_and(|was| was == "\u{d7}" || (figure(was) && unit(word)));
+        match pieces.last_mut() {
+            Some(last) if joins => {
+                last.push(' ');
+                last.push_str(word);
+            }
+            _ => pieces.push(word.to_owned()),
+        }
+        was = Some(word);
+    }
+    pieces
+}
+
+/// One row of a list: the mark it wears and in what role, its name, the
+/// words it holds after its name, and its side.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Row {
+    /// A mark by what it means, and the role it's drawn in.
+    pub mark: Option<(String, String)>,
+    pub name: String,
+    /// What it holds, in muted after its name; the first to give way.
+    pub words: String,
+    /// Its side, flush right, the next to give way.
+    pub side: String,
+    /// The side's role: muted, or alert or warning where it says so.
+    pub side_role: String,
+}
+
+impl Row {
+    /// A row by its name alone.
+    pub fn named(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            side_role: "muted".to_owned(),
+            ..Self::default()
+        }
+    }
+
+    /// The same, wearing a mark in a role.
+    #[must_use]
+    pub fn marked(mut self, mark: &str, role: &str) -> Self {
+        self.mark = Some((mark.to_owned(), role.to_owned()));
+        self
+    }
+
+    /// The same, holding words after its name.
+    #[must_use]
+    pub fn holding(mut self, words: impl Into<String>) -> Self {
+        self.words = words.into();
+        self
+    }
+
+    /// The same, with a side in muted.
+    #[must_use]
+    pub fn side(mut self, side: impl Into<String>) -> Self {
+        self.side = side.into();
+        self
+    }
+
+    /// The same, its side in a role of the state it says.
+    #[must_use]
+    pub fn side_in(mut self, role: &str) -> Self {
+        role.clone_into(&mut self.side_role);
+        self
+    }
+
+    fn needs(lead: usize, name: &str, words: &str, side: &str) -> usize {
+        let then = |words: &str| {
+            if words.is_empty() {
+                0
+            } else {
+                GAP + width(words)
+            }
+        };
+        lead + width(name) + then(words) + then(side)
+    }
+}
+
+/// Rows, each a line: its mark in its role in two cells of their own,
+/// held blank on a row with none where another wears one; its name; its
+/// words in muted after it; and its side flush right at the widest row,
+/// in one column for the list. Into a terminal a row's words give way
+/// first, then its side, each by whole items from its end, then its name
+/// at a whole word.
+pub fn list(rows: &[Row], pen: &Pen, room: Room) -> Vec<String> {
+    let lead = if rows.iter().any(|row| row.mark.is_some()) {
+        MARK
+    } else {
+        0
+    };
+    let natural = rows
+        .iter()
+        .map(|row| Row::needs(lead, &row.name, &row.words, &row.side))
+        .max()
+        .unwrap_or(0);
+    let across = room.cells().map_or(natural, |cells| natural.min(cells));
+    rows.iter()
+        .map(|row| line(row, lead, across, pen))
+        .collect()
+}
+
+fn line(row: &Row, lead: usize, across: usize, pen: &Pen) -> String {
+    let mut words = row.words.clone();
+    let mut side = row.side.clone();
+    let mut name = row.name.clone();
+    while Row::needs(lead, &name, &words, &side) > across && !words.is_empty() {
+        words = fewer(&words);
+    }
+    while Row::needs(lead, &name, &words, &side) > across && !side.is_empty() {
+        side = fewer(&side);
+    }
+    if Row::needs(lead, &name, &words, &side) > across {
+        name = cut(
+            &name,
+            across.saturating_sub(Row::needs(lead, "", &words, &side)),
+        );
+    }
+    let mut out = String::new();
+    if lead > 0 {
+        out.push_str(&match &row.mark {
+            Some((mark, role)) => pen.marked(mark, role),
+            None => " ".repeat(lead),
+        });
+    }
+    out.push_str(&pen.role("text", &name));
+    let mut used = lead + width(&name);
+    if !words.is_empty() {
+        out.push_str(&" ".repeat(GAP));
+        out.push_str(&pen.role("muted", &words));
+        used += GAP + width(&words);
+    }
+    if !side.is_empty() {
+        out.push_str(&" ".repeat(across.saturating_sub(used + width(&side)).max(GAP)));
+        out.push_str(&pen.role(&row.side_role, &side));
+    }
+    out
+}
+
+/// Facts, each a label in muted in one column and its value in text
+/// beside it, a value it can't know said as `unknown` in muted. Where the
+/// labels would take more than half the room, each value goes under its
+/// label, two cells in. A long value wraps under itself.
+pub fn facts(facts: &[(&str, Option<&str>)], unknown: &str, pen: &Pen, room: Room) -> Vec<String> {
+    let labels = facts
+        .iter()
+        .map(|(label, _)| width(label))
+        .max()
+        .unwrap_or(0);
+    let beside = room.cells().is_none_or(|cells| labels + GAP <= cells / 2);
+    let column = if beside { labels + GAP } else { GAP };
+    let mut lines = Vec::new();
+    for (label, value) in facts {
+        let (value, role) = value.map_or((unknown, "muted"), |value| (value, "text"));
+        let inset = " ".repeat(column);
+        let hung = hung(value, column, room);
+        let mut values = hung
+            .split('\n')
+            .map(|line| pen.role(role, line.trim_start()));
+        let first = values.next().unwrap_or_default();
+        if beside {
+            lines.push(padded(label, pen.role("muted", label), column, false) + &first);
+        } else {
+            lines.push(pen.role("muted", label));
+            lines.push(format!("{inset}{first}"));
+        }
+        lines.extend(values.map(|line| format!("{inset}{line}")));
+    }
+    lines
+}
+
+/// How a table's column is set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Align {
+    /// Words, flush left.
+    Left,
+    /// Figures, flush right, so their places line up.
+    Right,
+}
+
+/// A table: a label in muted capitals over each column, set apart by two
+/// cells at least, never ruled or boxed, figures flush right. Every line
+/// names its record in its first column, so a line read through `grep`
+/// stands alone; into a pipe the labels still head it, and nothing is
+/// cut.
+pub fn table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<String> {
+    let widths: Vec<usize> = columns
+        .iter()
+        .enumerate()
+        .map(|(at, (label, _))| {
+            rows.iter()
+                .filter_map(|row| row.get(at))
+                .map(|cell| width(cell))
+                .chain([width(label)])
+                .max()
+                .unwrap_or(0)
+        })
+        .collect();
+    let set = |cells: Vec<(String, String)>| {
+        let last = cells.len().saturating_sub(1);
+        let mut line = String::new();
+        for (at, (plain, inked)) in cells.into_iter().enumerate() {
+            let (_, align) = columns[at];
+            if at > 0 {
+                line.push_str(&" ".repeat(GAP));
+            }
+            // The last column on the left isn't padded, so no line ends in
+            // spaces.
+            if at == last && align == Align::Left {
+                line.push_str(&inked);
+            } else {
+                line.push_str(&padded(&plain, inked, widths[at], align == Align::Right));
+            }
+        }
+        line
+    };
+    let head = columns
+        .iter()
+        .map(|(label, _)| (label.to_uppercase(), pen.label(label)))
+        .collect();
+    let mut lines = vec![set(head)];
+    for row in rows {
+        let cells = columns
+            .iter()
+            .enumerate()
+            .map(|(at, _)| {
+                let cell = row.get(at).cloned().unwrap_or_default();
+                let inked = pen.role("text", &cell);
+                (cell, inked)
+            })
+            .collect();
+        lines.push(set(cells));
+    }
+    lines
+}
+
+/// Blocks as one answer: one empty line between each, ending with a
+/// newline where there's anything at all.
+pub fn joined(blocks: Vec<Vec<String>>) -> String {
+    let mut out = blocks
+        .into_iter()
+        .filter(|block| !block.is_empty())
+        .map(|block| block.join("\n"))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows() -> Vec<Row> {
+        vec![
+            Row::named("Now")
+                .marked("active", "voice")
+                .holding("2 need you"),
+            Row::named("Machine")
+                .marked("done", "success")
+                .holding("Disk \u{b7} Power \u{b7} Sound"),
+            Row::named("Disk").side("412 GB free \u{b7} nvme0n1"),
+        ]
+    }
+
+    #[test]
+    fn a_list_holds_a_marks_cells_on_every_row_and_its_side_flush_right() {
+        assert_eq!(
+            list(&rows(), &Pen::plain(), Room::Unbounded),
+            [
+                "\u{25c8} Now  2 need you",
+                "\u{2713} Machine  Disk \u{b7} Power \u{b7} Sound",
+                "  Disk    412 GB free \u{b7} nvme0n1",
+            ]
+        );
+    }
+
+    #[test]
+    fn its_words_give_way_first_then_its_side_by_whole_items() {
+        assert_eq!(
+            list(&rows(), &Pen::plain(), Room::Cells(24)),
+            [
+                "\u{25c8} Now  2 need you",
+                "\u{2713} Machine  Disk \u{b7} Power",
+                "  Disk       412 GB free",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_pipe_cuts_nothing() {
+        let long = [Row::named("A name far longer than any terminal is wide")];
+        assert_eq!(
+            list(&long, &Pen::plain(), Room::Unbounded),
+            ["A name far longer than any terminal is wide"]
+        );
+        assert_eq!(
+            list(&long, &Pen::plain(), Room::Cells(14)),
+            ["A name far\u{2026}"]
+        );
+    }
+
+    #[test]
+    fn a_name_gives_way_at_a_whole_word_and_says_so() {
+        // A word past the room keeps its first word whole, since what
+        // names a record is never cut mid-word.
+        assert_eq!(cut("switch the system now", 12), "switch the\u{2026}");
+        assert_eq!(cut("switch the system now", 3), "switch\u{2026}");
+        assert_eq!(cut("status", 6), "status");
+    }
+
+    #[test]
+    fn facts_set_their_values_in_one_column() {
+        let facts_ = [("Size", Some("1 TB")), ("Temperature", None)];
+        assert_eq!(
+            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(80)),
+            ["Size         1 TB", "Temperature  \u{2026}"]
+        );
+        assert_eq!(
+            facts(&facts_, "\u{2026}", &Pen::plain(), Room::Cells(20)),
+            ["Size", "  1 TB", "Temperature", "  \u{2026}"]
+        );
+    }
+
+    #[test]
+    fn a_long_value_wraps_under_itself() {
+        let facts_ = [("Note", Some("one two three four"))];
+        assert_eq!(
+            facts(&facts_, "", &Pen::plain(), Room::Cells(14)),
+            ["Note  one two", "      three", "      four"]
+        );
+    }
+
+    #[test]
+    fn a_table_aligns_by_space_and_sets_figures_flush_right() {
+        let columns = [
+            ("Machine", Align::Left),
+            ("Builds", Align::Right),
+            ("State", Align::Left),
+        ];
+        let rows = [
+            vec!["first".to_owned(), "3".to_owned(), "idle".to_owned()],
+            vec![
+                "second-one".to_owned(),
+                "120".to_owned(),
+                "building".to_owned(),
+            ],
+        ];
+        assert_eq!(
+            table(&columns, &rows, &Pen::plain()),
+            [
+                "MACHINE     BUILDS  STATE",
+                "first            3  idle",
+                "second-one     120  building",
+            ]
+        );
+    }
+
+    #[test]
+    fn words_wrap_at_items_first_and_hold_a_figure_to_its_unit() {
+        assert_eq!(
+            wrapped("412 GB free \u{b7} nvme0n1 \u{b7} Samsung", 22),
+            ["412 GB free \u{b7} nvme0n1", "Samsung"]
+        );
+        assert_eq!(
+            wrapped("a screen 1272 \u{d7} 768 wide", 12),
+            ["a screen", "1272 \u{d7} 768", "wide"]
+        );
+    }
+
+    #[test]
+    fn blocks_part_by_one_empty_line() {
+        assert_eq!(
+            joined(vec![vec!["a".into()], vec![], vec!["b".into(), "c".into()]]),
+            "a\n\nb\nc\n"
+        );
+        assert_eq!(joined(vec![]), "");
+    }
+
+    #[test]
+    fn a_pipe_has_no_width_to_fit() {
+        let environment = Environment::of([false; 3], &[("COLUMNS", "40")]);
+        assert_eq!(Room::of_stdout(&environment), Room::Unbounded);
+        assert_eq!(Room::Unbounded.measure(), MEASURE);
+        assert_eq!(Room::Cells(50).measure(), 50);
+    }
+}

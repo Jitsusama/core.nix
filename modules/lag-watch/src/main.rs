@@ -21,11 +21,13 @@
 //! window to a day's file under
 //! $XDG_STATE_HOME/lag-watch, kept two weeks.
 //!
-//! Usage: lag-watch run
-//!        lag-watch now
-//!        lag-watch report [--hours N]
+//! `lag-watch` and `lag-watch now` say what the last window was like, and
+//! `lag-watch report` sums up the history; each answers in the form
+//! `--format` asks for, as every command of ours does (docs/commands.md).
+//! `lag-watch run` is the watch itself, as its service runs it.
 
 mod kernel;
+mod now;
 mod report;
 mod window;
 
@@ -36,6 +38,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
 use window::{Answers, Snapshot, Window};
 
 const TICK: Duration = Duration::from_secs(2);
@@ -57,26 +60,95 @@ fn history() -> PathBuf {
     env_dir("XDG_STATE_HOME", ".local/state").join("lag-watch")
 }
 
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "lag-watch",
+        "whether what Joel uses waits, watched every ten seconds",
+    )
+    .example("lag-watch", "what the last ten seconds were like")
+    .example(
+        "lag-watch report --hours 4",
+        "the last four hours, by generation and load",
+    )
+    .example("lag-watch report --json", "the last day, for a script")
+    .command("now", "the last ten seconds, the same as a bare lag-watch")
+    .command("report", "the history summed up by generation and load")
+    .command("run", "the watch itself, as its service runs it")
+    .option("--hours N", "how far back report reads, 24 unless given")
+    .exit(Exit::BadInput, "its status can't be read")
+    .exit(
+        Exit::Unavailable,
+        "the watch isn't running, or has nothing to watch",
+    )
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.first().map(String::as_str) {
-        Some("run") => run(),
-        Some("now") => now(),
-        Some("report") => {
-            let hours = args
-                .iter()
-                .position(|a| a == "--hours")
-                .and_then(|i| args.get(i + 1))
-                .and_then(|h| h.parse().ok())
-                .unwrap_or(24);
-            print!("{}", report::render(&read_history(hours)));
-            ExitCode::SUCCESS
+    let help = help();
+    let commands = help.command_names();
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
+        let (command, rest) = match context.args.split_first() {
+            Some((command, rest)) => (command.as_str(), rest),
+            None => ("now", &[][..]),
+        };
+        match command {
+            "now" => none_after(rest).and_then(|()| now(context)),
+            "report" => hours(rest).and_then(|hours| answer_report(context, hours)),
+            "run" => none_after(rest).and_then(|()| run()),
+            word => Err(flags::unknown("command", word, &commands)),
         }
-        _ => {
-            eprintln!("usage: lag-watch run | now | report [--hours N]");
-            ExitCode::from(2)
-        }
+    })
+}
+
+/// Nothing more on the line, where a command takes nothing; `--verbose`
+/// is the kit's.
+fn none_after(rest: &[String]) -> Result<(), Failure> {
+    match rest
+        .iter()
+        .find(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
+    {
+        Some(arg) => Err(Failure::new(Exit::Usage, format!("{arg} isn't taken here"))
+            .because("now and run take nothing more")
+            .try_this("lag-watch --help")),
+        None => Ok(()),
     }
+}
+
+/// How far back `report` reads, from its `--hours N`: a day unless given.
+fn hours(rest: &[String]) -> Result<u64, Failure> {
+    let mut hours = 24;
+    let mut args = rest.iter();
+    while let Some(arg) = args.next() {
+        let given = match arg.as_str() {
+            "--verbose" | "-v" => continue,
+            "--hours" => args.next().map(String::as_str),
+            other => match other.strip_prefix("--hours=") {
+                Some(given) => Some(given),
+                None => return Err(flags::unknown("option", other, &["--hours"])),
+            },
+        };
+        hours = given.and_then(|given| given.parse().ok()).ok_or_else(|| {
+            Failure::new(Exit::Usage, "--hours takes a whole number of hours")
+                .because(format!("{} isn't one", given.unwrap_or("nothing")))
+                .try_this("lag-watch report --hours 4")
+        })?;
+    }
+    Ok(hours)
+}
+
+/// The failure for an answer that couldn't be written.
+fn unwritten(error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, "couldn't write the answer").because(error.to_string())
+}
+
+/// The history over the last `hours`, summed up in the form asked for.
+fn answer_report(context: &Context, hours: u64) -> Result<(), Failure> {
+    let generations = report::summary(&read_history(hours));
+    match context.format() {
+        Format::Text => context.say(&report::text(&generations, &context.out, context.room)),
+        _ => context.answer(&report::json(&generations, hours)),
+    }
+    .map_err(|error| unwritten(&error))
 }
 
 /// The account's manager this runs under, from its own cgroup: the
@@ -285,46 +357,36 @@ fn read_history(hours: u64) -> Vec<Window> {
     all
 }
 
-/// The latest window, in a few lines.
-fn now() -> ExitCode {
-    let Ok(text) = fs::read_to_string(runtime().join("status.json")) else {
-        eprintln!("lag-watch isn't running");
-        return ExitCode::FAILURE;
-    };
-    let Ok(w) = serde_json::from_str::<Window>(&text) else {
-        eprintln!("lag-watch's status can't be read");
-        return ExitCode::FAILURE;
-    };
-    let age = seconds_now().saturating_sub(w.ended);
-    println!("{:?} work behind, {age} s ago", w.band);
-    if w.trouble.is_empty() {
-        println!("nothing waited");
+/// The latest window, in the form asked for.
+fn now(context: &Context) -> Result<(), Failure> {
+    let status = runtime().join("status.json");
+    let text = fs::read_to_string(&status).map_err(|error| {
+        Failure::new(Exit::Unavailable, "lag-watch isn't running")
+            .because(format!("{} can't be read: {error}", status.display()))
+            .try_this("systemctl --user start lag-watch")
+    })?;
+    let window = serde_json::from_str::<Window>(&text).map_err(|error| {
+        Failure::new(Exit::BadInput, "lag-watch's status can't be read")
+            .because(format!("{}: {error}", status.display()))
+            .try_this("systemctl --user restart lag-watch")
+    })?;
+    let age = seconds_now().saturating_sub(window.ended);
+    match context.format() {
+        Format::Text => context.say(&now::text(&window, age, &context.out, context.room)),
+        _ => context.answer(&now::json(&window, age)),
     }
-    for line in &w.trouble {
-        println!("  {line}");
-    }
-    let wait = |l: &str| w.waits.get(l).map_or(0.0, |x| x.mean_us);
-    println!(
-        "niri answers in {:.1} ms (p99 {:.1}); niri waits {:.0} us a turn, sound {:.0} us",
-        w.niri.p50_ms,
-        w.niri.p99_ms,
-        wait("niri"),
-        wait("pipewire")
-    );
-    for (program, worst) in &w.call {
-        println!(
-            "in a call, {program}'s {} waits {:.0} us a turn",
-            worst.thread, worst.wait_us
-        );
-    }
-    ExitCode::SUCCESS
+    .map_err(|error| unwritten(&error))
 }
 
-fn run() -> ExitCode {
+/// The watch, a window every ten seconds until it's stopped.
+fn run() -> Result<(), Failure> {
     let cgroups = PathBuf::from("/sys/fs/cgroup");
     let Some(account) = account(&cgroups) else {
-        eprintln!("not under an account's manager, so no slices to watch");
-        return ExitCode::FAILURE;
+        return Err(
+            Failure::new(Exit::Unavailable, "there are no slices to watch")
+                .because("it isn't running under an account's manager")
+                .try_this("systemctl --user start lag-watch"),
+        );
     };
     let proc = PathBuf::from("/proc");
     started();
