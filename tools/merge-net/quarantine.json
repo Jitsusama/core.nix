@@ -241,7 +241,9 @@
     "reason": "failed twice at 1e356cd3a563, and at aefa56b98e80 after it",
     "subtests": [
       "test_a_session_sits_a_step_in_under_its_orchestrator_which_says_what_all_of_it_spent",
-      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back"
+      "test_an_unplugged_ergodox_is_shown_nowhere_until_its_back",
+      "test_the_budgets_stand_behind_one_row_at_each_scale",
+      "test_the_home_network_and_nearby_list_whats_around_at_each_scale"
     ],
     "test": "vm-desktop-looks"
   },
