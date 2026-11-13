@@ -133,9 +133,21 @@ impl Watch {
     /// Opens a watch of one kind on the daemon at `socket`, after the
     /// hello every client of the interface opens with.
     pub fn open(socket: &Path, kind: &str) -> io::Result<Self> {
+        Self::asking(socket, &json!({ "kind": kind }))
+    }
+
+    /// Opens a watch asking what `asked` says, such as a place's rows
+    /// alone (`{"kind": "row", "place": "displays"}`), after the hello.
+    pub fn asking(socket: &Path, asked: &Value) -> io::Result<Self> {
+        const STUB: bool = true;
         let mut stream = UnixStream::connect(socket)?;
         let hello = json!({"id": 1, "ask": "hello"});
-        let watch = json!({"id": 2, "ask": "watch", "kind": kind});
+        let mut watch = json!({"id": 2, "ask": "watch"});
+        if let (Some(watch), Some(asked), false) = (watch.as_object_mut(), asked.as_object(), STUB) {
+            for (field, value) in asked {
+                watch.entry(field.clone()).or_insert_with(|| value.clone());
+            }
+        }
         writeln!(stream, "{hello}\n{watch}")?;
         Ok(Self {
             lines: BufReader::new(stream),
@@ -195,9 +207,20 @@ pub fn follow<Heard: Send + 'static>(
     heard: fn(Value) -> Heard,
     to: Sender<Heard>,
 ) {
+    follow_asking(socket, json!({ "kind": kind }), heard, to);
+}
+
+/// Follows a daemon's watch asking what `asked` says, as [`follow`]
+/// follows one of a kind.
+pub fn follow_asking<Heard: Send + 'static>(
+    socket: PathBuf,
+    asked: Value,
+    heard: fn(Value) -> Heard,
+    to: Sender<Heard>,
+) {
     thread::spawn(move || {
         loop {
-            if let Ok(mut watch) = Watch::open(&socket, kind) {
+            if let Ok(mut watch) = Watch::asking(&socket, &asked) {
                 while let Ok(answer) = watch.answer() {
                     if to.send(heard(answer)).is_err() {
                         return;
@@ -318,6 +341,40 @@ mod tests {
         assert!(
             watch.heard().is_err(),
             "the daemon hanging up ends the watch"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_watch_asks_for_what_its_given_but_its_own_id() {
+        let folder =
+            std::env::temp_dir().join(format!("daemon-serve-asking-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the socket");
+        let socket = folder.join("windows.sock");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in daemon listens");
+        let daemon = thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("the watch connects");
+            let mut asks = BufReader::new(stream);
+            let mut said = Vec::new();
+            for _ in 0..2 {
+                let mut line = String::new();
+                asks.read_line(&mut line).expect("an ask");
+                said.push(line);
+            }
+            said
+        });
+        let _watch = Watch::asking(
+            &socket,
+            &json!({"kind": "row", "place": "displays", "id": 9}),
+        )
+        .expect("the watch opens");
+        let said = daemon.join().expect("the stand-in daemon ends");
+        let watch: Value = serde_json::from_str(&said[1]).expect("the watch is JSON");
+        assert_eq!(
+            watch,
+            json!({"id": 2, "ask": "watch", "kind": "row", "place": "displays"}),
+            "its place asked for, its id kept as the watch's"
         );
         let _ = std::fs::remove_dir_all(&folder);
     }
