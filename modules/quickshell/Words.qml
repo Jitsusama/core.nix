@@ -48,15 +48,34 @@ Singleton {
     }
 
     // A thing as it is in a state ("on", "off", "floating"), the state's
-    // own name, verb and glyph over its usual ones.
+    // own name, verb and glyph over its usual ones. A thing the vocabulary
+    // knows is made once a vocabulary and handed out frozen, since rows'
+    // bindings ask it about a thousand times a key, and made afresh each
+    // time it was the shell's most allocating function between keys: 369 KB
+    // a search in the keys lab, an eighth of all a key allocates. An id it
+    // doesn't know, as a row's key mostly is, is said as itself, made each
+    // time so the many keys asked never pile up here.
     function of(id, state) {
-        const entry = things[id] ?? { id: id, name: id };
-        const over = state ? (entry.states ?? {})[state] ?? {} : {};
-        return Object.assign({
-            parts: [],
-            answers: [],
+        const entry = things[id];
+        if (entry === undefined)
+            return { id: id, name: id, parts: none, answers: none, verb: "" };
+        const over = state ? (entry.states ?? {})[state] : undefined;
+        const key = over === undefined ? id : `${id}\u0000${state}`;
+        return made[key] ?? make(key, entry, over ?? {});
+    }
+    readonly property var none: Object.freeze([])
+    // What `of` has made, by id and state, emptied when the vocabulary is
+    // read again. Written in place, as nothing binds to it.
+    property var made: ({})
+    onThingsChanged: made = {}
+    function make(key, entry, over) {
+        const thing = Object.freeze(Object.assign({
+            parts: none,
+            answers: none,
             verb: ""
-        }, entry, over);
+        }, entry, over));
+        made[key] = thing;
+        return thing;
     }
 
     // Its name, with what's in braces filled in: "Sign in to {network}".
