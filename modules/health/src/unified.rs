@@ -263,6 +263,42 @@ mod tests {
     }
 
     #[test]
+    fn a_macs_kernel_line_is_named_by_what_it_speaks_of() {
+        let kernel = |message: &str| {
+            entry(&KERNEL.replace(
+                "vm_reclaim: [80186] Failed to free(reusable) err=1",
+                message,
+            ))
+        };
+        let mut day = Day::new("2026-11-12");
+        for message in [
+            "3 duplicate reports for Sandbox: ecosystemd(1997) deny(1) mach-lookup com.apple.bird",
+            "1 duplicate report for Sandbox: contactsd(912) deny(1) file-read-data /usr/bin",
+            "System Policy: disk-guard(54051) deny(1) file-read-metadata /Users",
+            "[AppleDCPAgileCDIDPDisplay.cpp::1043] link training failed",
+        ] {
+            day.take(&kernel(message));
+        }
+        let thing = |name: &str| day.things.get(name).map(|thing| (thing.kind, thing.errors));
+        assert_eq!(
+            thing("Sandbox"),
+            Some((Some(Kind::Security), 2)),
+            "a folded repeat is the sandbox's, not a count's: {:?}",
+            day.things.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            thing("System Policy"),
+            Some((Some(Kind::Security), 1)),
+            "System Policy refusing is security's, under its whole name"
+        );
+        assert_eq!(
+            thing("AppleDCPAgileCDIDPDisplay"),
+            Some((Some(Kind::Devices), 1)),
+            "a driver's line is named by its source file"
+        );
+    }
+
+    #[test]
     fn the_day_is_read_from_midnight_and_followed_from_now() {
         let asked = followed("2026-11-12 00:00:00", "2026-11-12 06:10:00");
         assert_eq!(asked[0][0], "stream", "one follows the log from now");

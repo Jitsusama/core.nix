@@ -475,18 +475,43 @@ fn is_device_event(message: &str) -> bool {
         .any(|words| words.iter().all(|word| message.contains(word)))
 }
 
+/// Who a kernel line is from, by what it opens with once the openings that
+/// say nothing of it are passed: a Mac's kernel folds repeats into
+/// `3 duplicate reports for Sandbox: ...`, and its display drivers open
+/// with their source file and line, `[AppleDCPDPTXController.cpp::371] ...`.
+fn kernel_speaker(message: &str) -> String {
+    let message = [" duplicate report for ", " duplicate reports for "]
+        .iter()
+        .find_map(|folded| message.split_once(folded))
+        .filter(|(count, _)| count.chars().all(|c| c.is_ascii_digit()))
+        .map_or(message, |(_, said)| said);
+    // A Mac's System Policy, refusing a program, is the one speaker whose
+    // name is two words.
+    if message.starts_with("System Policy:") {
+        return "System Policy".to_owned();
+    }
+    let opening = message.split_whitespace().next().unwrap_or("kernel");
+    let driver = opening
+        .strip_prefix('[')
+        .and_then(|place| place.split_once("::"))
+        .and_then(|(file, _)| file.rsplit_once('.'))
+        .map(|(driver, _)| driver);
+    sign::signature(driver.unwrap_or_else(|| opening.trim_end_matches(':')))
+}
+
 /// The thing an entry is about, and its kind: a crashed program by its
-/// name, a kernel line by the driver or device it opens with (the audit's
-/// and a Mac's sandbox's are security's), and anything else by what said
-/// it, a program's when it ran in a scope or a Mac's app.
+/// name, a kernel line by the driver or device it's from (the audit's and
+/// a Mac's refusals are security's), and anything else by what said it, a
+/// program's when it ran in a scope or a Mac's app.
 fn named(entry: &Entry) -> (String, Kind) {
     if let Some(program) = &entry.crashed {
         return (program.clone(), Kind::Programs);
     }
     if entry.kernel {
-        let opening = entry.message.split_whitespace().next().unwrap_or("kernel");
-        let device = sign::signature(opening.trim_end_matches(':'));
-        let kind = if matches!(device.as_str(), "audit" | "Sandbox") {
+        let device = kernel_speaker(&entry.message);
+        // Linux's kernel refuses through the audit log; a Mac's through its
+        // Sandbox and System Policy, which Linux's never open with.
+        let kind = if matches!(device.as_str(), "audit" | "Sandbox" | "System Policy") {
             Kind::Security
         } else {
             Kind::Devices
