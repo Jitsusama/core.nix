@@ -80,14 +80,14 @@ function leap(way, to, rises, name) {
 }
 
 // Straight down to `to`, gathering speed as a thing dropped does, up to
-// the fastest it falls.
-function falls(way, to) {
+// the fastest it falls; a beat named `name`, or falls.
+function falls(way, to, name) {
     const speed = falling(way.at);
     const ground = Math.abs(to.y - way.y);
     const seconds = ground <= speed.reaches ? Math.sqrt((2 * ground) / speed.gravity)
         : speed.until + (ground - speed.reaches) / speed.most;
     const ms = Math.max(LEAPS_AT_LEAST, seconds * MarginCat.MS);
-    leg(way, "falls", to, { name: "falls", pose: "leaping", speed, ms });
+    leg(way, "falls", to, { name: name ?? "falls", pose: "leaping", speed, ms });
 }
 
 // A fall's speed: its gravity and the fastest it falls, in pixels a

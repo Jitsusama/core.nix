@@ -110,6 +110,27 @@ function grabbed(place, cols, at) {
     return found;
 }
 
+// Where, falling beside a window from `x`, it pushes off the wall to
+// land: flush on the near edge of a column of `cols` that lies within
+// the reach it grabs across of its side, on the screen and where `free`
+// takes it, or null.
+function pushes(x, cols, at, free) {
+    const reach = GRABS_ACROSS * at.wide + 1e-6;
+    let found = null;
+    let far = Infinity;
+    for (const column of cols) {
+        for (const edge of [{ x: column.left, off: column.left - (x + at.wide) },
+            { x: column.right - at.wide, off: x - column.right }]) {
+            if (edge.off > -1e-6 && edge.off <= reach && edge.off < far
+                && Routes.onScreen(edge.x, at) && free(edge.x)) {
+                far = edge.off;
+                found = edge.x;
+            }
+        }
+    }
+    return found;
+}
+
 // What it lands on falling from `place`: the nearest ledge of `cols`
 // below it, a column's top or the gap between two of its windows, or
 // the screen's bottom; or one a little above it, which it scrambles up
