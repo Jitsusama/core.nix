@@ -138,17 +138,18 @@ mod tests {
     #[test]
     fn listing_adds_an_entry_or_extends_one_naming_subtests() {
         let mut entries = sample().as_array().unwrap().clone();
-        assert!(list(
-            &mut entries,
-            "vm-c",
-            &set("test_q"),
-            json!({"owner_pr": 3})
-        ));
+        assert!(
+            list(&mut entries, "vm-c", &set("test_q"), json!({"owner_pr": 3})),
+            "a test not listed wasn't added"
+        );
         assert_eq!(
             entries[2],
             json!({"test": "vm-c", "owner_pr": 3, "subtests": ["test_q"]})
         );
-        assert!(list(&mut entries, "vm-b", &set("test_z"), json!({})));
+        assert!(
+            list(&mut entries, "vm-b", &set("test_z"), json!({})),
+            "a new subtest didn't extend its test's entry"
+        );
         assert_eq!(
             subtests_of(&json!(entries), "vm-b"),
             set("test_x test_y test_z")
@@ -161,7 +162,10 @@ mod tests {
             !list(&mut entries, "vm-a", &set("test_q"), json!({})),
             "vm-a stays whole"
         );
-        assert!(list(&mut entries, "vm-d", &set(""), json!({})));
+        assert!(
+            list(&mut entries, "vm-d", &set(""), json!({})),
+            "a test with no failed subtest named wasn't added"
+        );
         assert!(
             whole(&json!(entries)).contains(&"vm-d".to_owned()),
             "vm-d is listed whole"

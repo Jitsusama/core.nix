@@ -2962,7 +2962,10 @@ mod tests {
             Round::Passed("h".into()),
             "test_b, which failed, is listed"
         );
-        assert!(world.reverted.lock().unwrap().is_empty());
+        assert!(
+            world.reverted.lock().unwrap().is_empty(),
+            "a run failing only in a listed subtest was reverted"
+        );
         assert!(
             world.built().iter().all(|(at, _)| at == "h"),
             "nothing is searched: {:?}",
