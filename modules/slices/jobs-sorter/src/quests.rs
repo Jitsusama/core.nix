@@ -147,6 +147,11 @@ impl Weights {
         self.tiers = Some(tiers);
     }
 
+    /// The tier `quest` is in, when ranking by tiers.
+    pub fn tier_of(&self, quest: &str) -> Option<&str> {
+        self.tiers.as_ref().map(|ranks| ranks.tier_of(quest))
+    }
+
     /// Where work for no weighed quest goes under `base`: the unranked
     /// tier's slice when ranking by tiers, so it never weighs as much as a
     /// whole tier beside them; otherwise nowhere but `base`.

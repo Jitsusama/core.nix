@@ -14,6 +14,15 @@
 # The map is a file the sorter reads again when it changes, so a switch
 # that moves a quest between tiers moves its work without restarting the
 # sorter, and the journal says each move once.
+#
+# When memory runs out, the kernel ends the last tier's first: work goes
+# 10 lower for each tier above the unranked one, and an agent's pi 25
+# higher for each tier below the first, so work always goes before any pi
+# (jobs-sorter/src/oom.rs, keep.rs). Past eight tiers, the first's work
+# waiting elsewhere would fall under the last's pi, so eight is the most.
+# systemd-oomd stays at its 80% everywhere: under its own ceiling, jobs'
+# worst minute stalled 55% with memory free, so a lower limit for a lower
+# tier would end builds that were only slowed.
 { config, lib, ... }:
 let
   tiers = config.jitsusama.slices.tiers;
@@ -70,6 +79,10 @@ in
       {
         assertion = lib.allUnique names && !(lib.elem "unranked" names);
         message = "jitsusama.slices.tiers needs names of its own, none of them unranked.";
+      }
+      {
+        assertion = lib.length names <= 8;
+        message = "jitsusama.slices.tiers holds at most 8, so every tier's work goes before any pi.";
       }
     ];
 

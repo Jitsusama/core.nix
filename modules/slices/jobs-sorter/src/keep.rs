@@ -14,13 +14,22 @@
 //! at the account's 200. A window that no longer holds one is given both
 //! back. Work is already at 900 or 1000, as `oom.rs` says.
 //!
+//! With tiers (src/tiers.rs), a pi gives way [`STEP`] more for each tier
+//! its quest, as its presence names it, sits below the first, so the
+//! kernel ends an unranked session before walgit's: with five tiers,
+//! walgit's at 500 and unranked's at 625, under all work still. A window
+//! Joel was at within [`SPARED_FOR`] keeps the account's 200, as an
+//! orchestrator's does, since a pi he was typing to minutes ago is one he
+//! is coming back to.
+//!
 //! Who orchestrates comes from the harness's mesh, as `--orchestrators`
 //! names its presence folder: a session another session running this boot
 //! names as its `orchestratedBy`, as cadence watches them too.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 use serde_json::Value;
 
@@ -38,11 +47,21 @@ pub const GIVES_WAY: i32 = 500;
 /// lowered back to.
 pub const ACCOUNT: i32 = 200;
 
+/// How much more a pi gives way for each tier its quest sits below the
+/// first: eight below stays under the first tier's work waiting
+/// elsewhere.
+pub const STEP: i32 = 25;
+
+/// How long after Joel was at a pi's window it keeps the account's
+/// adjustment, as P9R1KI set on 12 November.
+pub const SPARED_FOR: Duration = Duration::from_mins(30);
+
 /// What a session says of itself, as far as this reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Presence {
     pub addresses: Vec<String>,
     pub orchestrated_by: Option<String>,
+    pub quest: Option<String>,
     pub pid: Option<u32>,
     pub boot: Option<String>,
 }
@@ -61,6 +80,10 @@ pub fn presence(text: &str) -> Option<Presence> {
         addresses,
         orchestrated_by: value
             .get("orchestratedBy")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        quest: value
+            .get("quest")
             .and_then(Value::as_str)
             .map(str::to_owned),
         pid: owner
@@ -114,13 +137,34 @@ pub fn orchestrators(
         .collect()
 }
 
-/// The adjustment a pi wants: the account's for an orchestrator, and
-/// [`GIVES_WAY`] for any other.
-pub fn adjustment(pid: u32, orchestrators: &HashSet<u32>) -> i32 {
-    if orchestrators.contains(&pid) {
+/// The quest each session running in `boot` is on, by its pid.
+pub fn quests(
+    presences: &[Presence],
+    boot: &str,
+    runs: impl Fn(u32) -> bool,
+) -> HashMap<u32, String> {
+    presences
+        .iter()
+        .filter(|session| session.boot.as_deref() == Some(boot))
+        .filter_map(|session| {
+            Some((
+                session.pid.filter(|&pid| runs(pid))?,
+                session.quest.clone()?,
+            ))
+        })
+        .collect()
+}
+
+/// The adjustment a pi wants: the account's for one `spared`, an
+/// orchestrator or one Joel was at within [`SPARED_FOR`], and otherwise
+/// [`GIVES_WAY`] and [`STEP`] more for each of the `rank` tiers its
+/// quest sits below the first.
+pub fn adjustment(spared: bool, rank: usize) -> i32 {
+    if spared {
         ACCOUNT
     } else {
-        GIVES_WAY
+        let below = STEP.saturating_mul(i32::try_from(rank).unwrap_or(i32::MAX));
+        GIVES_WAY.saturating_add(below)
     }
 }
 
@@ -225,6 +269,7 @@ mod tests {
         Presence {
             addresses: vec![address.to_owned()],
             orchestrated_by: by.map(str::to_owned),
+            quest: Some(format!("QEST-{address}")),
             pid: Some(pid),
             boot: Some(boot.to_owned()),
         }
@@ -235,12 +280,13 @@ mod tests {
         let text = r#"{"session":"01a1","addresses":["WCJQSG","D1BE"],
             "worksOn":"a title saying \"orchestratedBy\" in passing",
             "owner":{"pid":7973,"startedAt":1794029159510,"bootId":"3c4d23d2"},
-            "orchestratedBy":"P9R1KI","state":"busy"}"#;
+            "orchestratedBy":"P9R1KI","quest":"QEST-20261007-WCJQSG","state":"busy"}"#;
         assert_eq!(
             presence(text),
             Some(Presence {
                 addresses: vec!["WCJQSG".into(), "D1BE".into()],
                 orchestrated_by: Some("P9R1KI".into()),
+                quest: Some("QEST-20261007-WCJQSG".into()),
                 pid: Some(7973),
                 boot: Some(BOOT.into()),
             })
@@ -277,11 +323,56 @@ mod tests {
     }
 
     #[test]
-    fn an_orchestrator_keeps_the_accounts_adjustment_and_any_other_pi_gives_way() {
-        let orchestrators = HashSet::from([1]);
-        assert_eq!(adjustment(1, &orchestrators), ACCOUNT);
-        assert_eq!(adjustment(2, &orchestrators), GIVES_WAY);
-        const { assert!(ACCOUNT < GIVES_WAY && GIVES_WAY < crate::oom::AFTER) };
+    fn a_spared_pi_keeps_the_accounts_adjustment_and_any_other_gives_way() {
+        assert_eq!(adjustment(true, 0), ACCOUNT);
+        assert_eq!(adjustment(true, 5), ACCOUNT, "spared in any tier");
+        assert_eq!(
+            adjustment(false, 0),
+            GIVES_WAY,
+            "the first tier, or no tiers"
+        );
+        const {
+            assert!(
+                ACCOUNT < GIVES_WAY && GIVES_WAY < crate::oom::AFTER,
+                "a spared pi must rank below the rest, and every pi below work"
+            );
+        };
+    }
+
+    #[test]
+    fn a_pi_in_a_lower_tier_gives_way_before_a_higher_tiers() {
+        assert_eq!(adjustment(false, 1), GIVES_WAY + STEP);
+        assert_eq!(
+            adjustment(false, 5),
+            625,
+            "unranked, after five tiers, goes first among pis"
+        );
+        assert!(
+            adjustment(false, 2) > adjustment(false, 1),
+            "a lower tier's pi must score above a higher tier's"
+        );
+    }
+
+    #[test]
+    fn a_running_sessions_quest_is_read_by_its_pid() {
+        let running = |pid: u32| pid != 4;
+        let mut none = session("NONE", None, 3, BOOT);
+        none.quest = None;
+        let found = quests(
+            &[
+                session("BLDR", None, 2, BOOT),
+                none,
+                session("DEAD", None, 4, BOOT),
+                session("OLD", None, 7, "another boot"),
+            ],
+            BOOT,
+            running,
+        );
+        assert_eq!(
+            found,
+            HashMap::from([(2, "QEST-BLDR".to_owned())]),
+            "one on no quest, one ended and one from another boot say nothing"
+        );
     }
 
     #[test]

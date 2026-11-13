@@ -255,10 +255,8 @@
   "modules/slack/src/search.rs" = 1;
   "modules/slack/src/unreads.rs" = 1;
   "modules/slack/tests/stand_in.rs" = 8;
-  "modules/slices/jobs-sorter/src/keep.rs" = 1;
   "modules/slices/jobs-sorter/src/low.rs" = 10;
   "modules/slices/jobs-sorter/src/main.rs" = 21;
-  "modules/slices/jobs-sorter/src/oom.rs" = 1;
   "modules/slices/jobs-sorter/src/quests.rs" = 3;
   "modules/slices/jobs-sorter/src/revive.rs" = 20;
   "modules/spend-watch/src/caps.rs" = 2;

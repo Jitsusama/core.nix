@@ -730,7 +730,8 @@ in
             "--orchestrators"
             "%h/.local/state/pi/agentic-harness.pi/mesh-workflow/presence"
           ]
-          # Each quest's slice inside its tier's, as tiers.nix says.
+          # Each quest's slice inside its tier's, and its work and its pi
+          # ended in the tiers' order, as tiers.nix says.
           + lib.optionalString (config.jitsusama.slices.tiers != [ ]) (
             " "
             + lib.escapeShellArgs [
@@ -738,6 +739,8 @@ in
               "/etc/jobs-sorter/tiers.json"
               "--parents"
               "%t/jobs/parents.json"
+              "--tier-order"
+              (lib.concatMapStringsSep "," (tier: tier.name) config.jitsusama.slices.tiers)
             ]
           )
           # The session window Joel is at, as niri says, and those he was at

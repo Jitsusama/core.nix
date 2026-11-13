@@ -20,6 +20,10 @@ use std::time::SystemTime;
 /// The tier of a quest no tier claims.
 pub const UNRANKED: &str = "unranked";
 
+/// The most tiers a machine names, as tiers.nix holds it to, so every
+/// tier's work stays above every pi for the OOM killer (`src/oom.rs`).
+pub const MOST: usize = 8;
+
 /// Reads a flat JSON object of strings to strings, as both files are.
 /// Anything else is no file at all, so a half-written one never moves a
 /// quest's work to the wrong tier.
@@ -46,6 +50,60 @@ pub fn named_plainly(tier: &str) -> bool {
 pub fn slice_for(base: &str, tier: &str) -> Option<String> {
     let base = base.strip_suffix(".slice")?;
     named_plainly(tier).then(|| format!("{base}-{tier}.slice"))
+}
+
+/// The tier `cgroup`'s work sits in under `base`, from the path
+/// /proc/PID/cgroup gives: builds for
+/// `.../jobs-work.slice/jobs-work-builds.slice/...`.
+pub fn tier_in<'a>(cgroup: &'a str, base: &str) -> Option<&'a str> {
+    let stem = base.strip_suffix(".slice")?;
+    let mut parts = cgroup.trim_end().split('/');
+    parts.find(|part| *part == base)?;
+    let tier = parts
+        .next()?
+        .strip_prefix(stem)?
+        .strip_prefix('-')?
+        .strip_suffix(".slice")?;
+    named_plainly(tier).then_some(tier)
+}
+
+/// The tiers in the order the machine ranks them, first to last, so the
+/// OOM killer can take what's lowest first.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Order(Vec<String>);
+
+impl Order {
+    /// Reads `--tier-order`'s names, first to last, split at commas,
+    /// refusing more than [`MOST`].
+    pub fn new(names: &str) -> Result<Self, String> {
+        let tiers: Vec<String> = names
+            .split(',')
+            .filter(|name| named_plainly(name) && *name != UNRANKED)
+            .map(str::to_owned)
+            .collect();
+        if tiers.len() > MOST {
+            return Err(format!(
+                "--tier-order names {} tiers, past the {MOST} that keep work above every pi",
+                tiers.len()
+            ));
+        }
+        Ok(Self(tiers))
+    }
+
+    /// How many ranks `tier` sits below the first: none for the first,
+    /// and one past the last for the unranked tier and any it doesn't
+    /// name. With no order, every tier is the first.
+    pub fn rank(&self, tier: &str) -> usize {
+        self.0
+            .iter()
+            .position(|named| named == tier)
+            .unwrap_or(self.0.len())
+    }
+
+    /// How many ranks `tier` sits above the unranked tier.
+    pub fn above_last(&self, tier: &str) -> usize {
+        self.0.len() - self.rank(tier)
+    }
 }
 
 /// One file as last read.
@@ -225,6 +283,56 @@ mod tests {
             assert_eq!(parse(text), None, "{text}");
         }
         assert_eq!(parse("{}").map(|m| m.len()), Some(0));
+    }
+
+    #[test]
+    fn an_order_ranks_its_tiers_first_to_last_and_every_other_after() {
+        let order = Order::new("builds,reviews,fleet").unwrap();
+        assert_eq!(order.rank("builds"), 0);
+        assert_eq!(order.rank("fleet"), 2);
+        assert_eq!(order.rank(UNRANKED), 3, "unranked comes after the last");
+        assert_eq!(order.rank("lab"), 3, "a tier it doesn't name is unranked");
+        assert_eq!(order.above_last("builds"), 3);
+        assert_eq!(order.above_last(UNRANKED), 0);
+        let none = Order::default();
+        assert_eq!(
+            (none.rank(UNRANKED), none.above_last("builds")),
+            (0, 0),
+            "with no tiers, all work ranks alike"
+        );
+        assert_eq!(
+            Order::new("builds,,Re-views,unranked,fleet"),
+            Order::new("builds,fleet"),
+            "a name that makes no slice, or unranked's, ranks nothing"
+        );
+        let too_many = "a,b,c,d,e,f,g,h,i";
+        assert!(
+            Order::new(too_many).is_err(),
+            "nine tiers would put work under a pi"
+        );
+        assert!(Order::new(&too_many[..15]).is_ok(), "eight is the most");
+    }
+
+    #[test]
+    fn the_tier_work_sits_in_is_read_from_its_cgroup() {
+        let account = "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice";
+        let work = format!(
+            "{account}/jobs-work.slice/jobs-work-builds.slice/\
+             jobs-work-builds-qestb.slice/work-7-8.scope\n"
+        );
+        assert_eq!(tier_in(&work, "jobs-work.slice"), Some("builds"));
+        let unranked = format!("{account}/jobs-work.slice/jobs-work-unranked.slice/work-7-8.scope");
+        assert_eq!(tier_in(&unranked, "jobs-work.slice"), Some(UNRANKED));
+        let untiered = format!("{account}/jobs-work.slice/jobs-work-qestb.slice/work-7-8.scope");
+        assert_eq!(
+            tier_in(&untiered, "jobs-work.slice"),
+            Some("qestb"),
+            "a quest's slice reads as a tier the order doesn't name, so unranked"
+        );
+        assert_eq!(
+            tier_in(&format!("{account}/jobs.service"), "jobs-work.slice"),
+            None
+        );
     }
 
     #[test]

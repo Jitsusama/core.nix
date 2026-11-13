@@ -459,7 +459,10 @@ def test_quests_share_the_cpu_by_weight(jobs: Account) -> None:
 
 
 def test_work_goes_in_the_tier_of_its_nearest_ranked_quest(ranked: Account) -> None:
-    """A quest's work goes in its tier, its nearest ranked ancestor's, or else unranked."""
+    """A quest's work goes in its tier, its nearest ranked ancestor's, or else unranked.
+
+    When memory runs out, the kernel ends the last tier's work first.
+    """
     ranked.weigh_quests(
         {"QEST-20261024-FIRST0": 100, "QEST-20261024-CHILD0": 100, "QEST-20261024-THIRD0": 100}
     )
@@ -488,6 +491,12 @@ def test_work_goes_in_the_tier_of_its_nearest_ranked_quest(ranked: Account) -> N
         "systemctl -M alice@ --user show -P CPUWeight jobs-work-second.slice"
     ).strip()
     assert second == "320", f"the second tier weighs {second}"
+    # Ten lower for each of the three tiers a piece of work sits above the unranked one.
+    for seconds, adjustment in [(1101, 970), (1102, 970), (1103, 990), (1104, 1000), (1105, 1000)]:
+        ranked.machine.wait_until_succeeds(
+            f"grep -qx {adjustment} /proc/{ranked.sleeping(seconds)}/oom_score_adj",
+            timeout=APPEARING,
+        )
 
 
 def test_a_quest_moving_tier_is_said_and_its_next_work_follows(ranked: Account) -> None:

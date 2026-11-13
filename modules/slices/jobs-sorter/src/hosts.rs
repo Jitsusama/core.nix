@@ -638,6 +638,7 @@ MemoryLow=10%
         let session = |address: &str, by: Option<&str>, pid: u32| keep::Presence {
             addresses: vec![address.to_owned()],
             orchestrated_by: by.map(str::to_owned),
+            quest: None,
             pid: Some(pid),
             boot: Some(boot.to_owned()),
         };
