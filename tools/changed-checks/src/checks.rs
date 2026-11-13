@@ -299,7 +299,7 @@ pub fn kept(
 }
 
 /// Give the derivations kept at the path, or none when nothing is kept.
-fn read_kept(path: &Path) -> Result<Option<Derivations>, String> {
+pub fn read_kept(path: &Path) -> Result<Option<Derivations>, String> {
     let unreadable = |error: &dyn std::fmt::Display| format!("{}: {error}", path.display());
     match fs::read_to_string(path) {
         Ok(text) => serde_json::from_str(&text)

@@ -19,7 +19,8 @@
 //! `changed-checks keep-main` does that for each head of origin's main, once
 //! it has stood 30 s, where runs are sent (`keep.rs` says why). A keep
 //! also keeps what the base's VM tests read, for gates to pass over those
-//! a change doesn't reach (`reads.rs`).
+//! a change doesn't reach (`reads.rs`), and then what each other check
+//! read alone, for the same (`alone.rs`).
 //!
 //! Usage: `changed-checks [--base REF] [--system SYSTEM] [--build] [--no-vm] [--name-only]
 //! [--keep-base] [--here]`, or `changed-checks keep-main`
@@ -73,6 +74,7 @@
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
 
+mod alone;
 mod building;
 mod checks;
 mod evaluating;
@@ -527,6 +529,7 @@ fn compare(
     };
     if options.keep_base {
         reads::keep_base(root, base, system, noted)?;
+        alone::keep(root, base, system, noted);
         eprintln!("kept {system}'s checks at {short}");
         return Ok(ExitCode::SUCCESS);
     }
@@ -560,11 +563,7 @@ fn compare(
                 return derivations(flake, system, "tree", noted);
             }
             let mut evaluation = Run::evaluating("tree");
-            let (vm, ordinary): (Vec<String>, Vec<String>) = names(flake, system)?
-                .into_iter()
-                .partition(|name| name.starts_with("vm-"));
-            let mut after = evaluated(flake, system, &ordinary, &mut evaluation)?;
-            after.retain(|name, _| !name.starts_with("vm-"));
+            let (mut after, vm) = ordinarily(flake, root, base, system, &before, &mut evaluation)?;
             let moved = checks::compare(&before, &after);
             let targets = if moved.broken.is_empty() {
                 unbuilt(&moved)
@@ -625,6 +624,34 @@ fn compare(
             ExitCode::FAILURE
         },
     )
+}
+
+/// Evaluate the tree's ordinary checks, giving the base's derivation to
+/// each its change reaches nothing of (`alone.rs`), and give them with the
+/// tree's VM tests by name.
+fn ordinarily(
+    flake: &str,
+    root: &str,
+    base: &str,
+    system: &str,
+    before: &Derivations,
+    evaluation: &mut runs::Evaluation,
+) -> Result<(Derivations, Vec<String>), String> {
+    let named = names(flake, system)?;
+    let (vm, ordinary): (Vec<String>, Vec<String>) = named
+        .iter()
+        .cloned()
+        .partition(|name| name.starts_with("vm-"));
+    let (unreached, ordinary) = alone::unreached(root, base, system, before, &named, ordinary);
+    let mut after = if ordinary.is_empty() {
+        Derivations::new()
+    } else {
+        evaluated(flake, system, &ordinary, evaluation)?
+    };
+    let asked: std::collections::BTreeSet<&String> = ordinary.iter().collect();
+    after.retain(|name, _| asked.contains(name));
+    after.extend(unreached);
+    Ok((after, vm))
 }
 
 /// Name each check a comparison moved, a line each, and say how many.

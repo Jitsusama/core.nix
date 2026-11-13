@@ -158,11 +158,20 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
 
 /// strace as changed-checks asks it: the trace it writes is `trace`, each
 /// SOURCE in it the flake's source, and it runs what it traces, leaving
-/// `traced` to say it began.
+/// `traced` to say it began. A check evaluated alone, NAME, is traced as
+/// `trace.NAME` says, once a test writes it.
 const STRACE: &str = r#"#!/bin/sh
 touch "$STAND_IN/traced"
+trace="$STAND_IN/trace"
+for word in "$@"; do
+  case "$word" in
+    *'checks: builtins.mapAttrs'*)
+      name=$(printf '%s' "$word" | sed -n 's/.*\["\([^" ]*\)"\].*/\1/p')
+      [ -n "$name" ] && [ -e "$STAND_IN/trace.$name" ] && trace="$STAND_IN/trace.$name" ;;
+  esac
+done
 while [ "$1" != -o ]; do shift; done
-sed "s|SOURCE|$STAND_IN/source|g" "$STAND_IN/trace" > "$2" 2>/dev/null || : > "$2"
+sed "s|SOURCE|$STAND_IN/source|g" "$trace" > "$2" 2>/dev/null || : > "$2"
 shift 2
 exec "$@"
 "#;
@@ -896,7 +905,7 @@ fn a_keep_on_a_builder_traces_the_vm_tests_beside_the_other_checks() {
     let runs = stand_in.runs();
     assert_eq!(
         evaluated(runs.last().expect("a keep's line")),
-        ["base", "reads"],
+        ["base", "reads", "alone"],
         "a keep's two halves are noted in order, whichever ends first"
     );
 }
@@ -933,7 +942,7 @@ fn a_keep_on_a_builder_traces_while_a_gate_holds_the_base_then_checks_it_against
     let runs = stand_in.runs();
     assert_eq!(
         evaluated(runs.last().expect("a keep's line")),
-        ["reads"],
+        ["reads", "alone"],
         "the gate's derivations were evaluated again"
     );
 }
@@ -997,7 +1006,7 @@ fn keeping_a_base_a_gate_kept_first_traces_only_its_vm_tests() {
         "a base kept from git alone got no record"
     );
     let runs = stand_in.runs();
-    assert_eq!(evaluated(&runs[0]), ["reads"], "{}", runs[0]);
+    assert_eq!(evaluated(&runs[0]), ["reads", "alone"], "{}", runs[0]);
 }
 
 #[test]
@@ -1017,7 +1026,7 @@ fn a_keep_whose_trace_fails_keeps_the_base_its_vm_tests_evaluated_from_git() {
     let runs = stand_in.runs();
     assert_eq!(
         evaluated(&runs[0]),
-        ["base", "base"],
+        ["base", "base", "alone"],
         "the ordinary checks, then the VM tests from git: {}",
         runs[0]
     );
@@ -1068,7 +1077,12 @@ fn keeping_a_base_keeps_what_its_vm_tests_read_and_how_long_reading_took() {
         })
     );
     let runs = stand_in.runs();
-    assert_eq!(evaluated(&runs[0]), ["base", "reads"], "{}", runs[0]);
+    assert_eq!(
+        evaluated(&runs[0]),
+        ["base", "reads", "alone"],
+        "{}",
+        runs[0]
+    );
 }
 
 #[test]
@@ -1182,6 +1196,203 @@ fn a_base_whose_trace_cant_be_read_or_whose_inputs_are_local_keeps_no_record() {
         );
         assert!(!stand_in.path(READS).exists(), "{test} kept a record");
     }
+}
+
+/// Where what each of the base's ordinary checks read alone is kept.
+const ALONE: &str = "cache/changed-checks/0123456789abcdef0123-x86_64-linux.alone.reads.json";
+
+/// The base's checks as the tree has them, each but the VM test moved.
+const MOVED: &str = r#"{"a": "a2.drv", "b": "b2.drv", "gone": "g2.drv", "vm-x": "v.drv"}"#;
+
+/// A stand-in whose base is kept with what each ordinary check read alone,
+/// its flake and a file named for it, whose tree's checks are `working`,
+/// and whose change is `diff`.
+fn kept_alone(test: &str, working: &str, diff: &str) -> StandIn {
+    let stand_in = traced_alone(test);
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    stand_in.checks("working", working);
+    fs::write(stand_in.path("diff"), diff).expect("written");
+    stand_in
+}
+
+/// A stand-in whose base's checks each read their own file alone.
+fn traced_alone(test: &str) -> StandIn {
+    let stand_in = StandIn::new(test);
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    for name in ["a", "b", "gone"] {
+        let trace = format!(
+            "openat(AT_FDCWD</tmp>, \"SOURCE/flake.nix\", O_RDONLY) = 7<SOURCE/flake.nix>\n\
+             openat(AT_FDCWD</tmp>, \"SOURCE/{name}.nix\", O_RDONLY) = 8<SOURCE/{name}.nix>\n"
+        );
+        fs::write(stand_in.path(&format!("trace.{name}")), trace).expect("written");
+    }
+    stand_in
+}
+
+/// Where another base's record of what each of its checks read is kept.
+const ANOTHERS: &str = "cache/changed-checks/fedcba9876543210fedc-x86_64-linux.alone.reads.json";
+
+/// Keep the stand-in's base with a record of what another base's checks
+/// each read already kept, written `age` ago, and give the keep's run.
+fn kept_after_another(test: &str, age: std::time::Duration) -> (StandIn, serde_json::Value) {
+    let stand_in = traced_alone(test);
+    let other = stand_in.path(ANOTHERS);
+    fs::create_dir_all(other.parent().expect("its folder")).expect("made");
+    fs::write(&other, "{}").expect("written");
+    fs::File::options()
+        .write(true)
+        .open(&other)
+        .expect("opened")
+        .set_modified(std::time::SystemTime::now() - age)
+        .expect("dated");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let run = stand_in.runs().remove(0);
+    (stand_in, run)
+}
+
+#[test]
+fn a_keep_traces_no_check_alone_while_another_bases_record_is_fresh() {
+    let (stand_in, run) = kept_after_another("alone-fresh", std::time::Duration::from_mins(5));
+
+    assert!(
+        !stand_in.path(ALONE).exists(),
+        "a keep traced each check though a record was five minutes old"
+    );
+    assert_eq!(evaluated(&run), ["base", "reads"], "{run}");
+}
+
+#[test]
+fn a_keep_traces_each_check_alone_once_the_newest_record_is_old() {
+    let (stand_in, run) = kept_after_another("alone-stale", std::time::Duration::from_mins(21));
+
+    assert!(
+        stand_in.path(ALONE).exists(),
+        "a keep traced no check though the newest record was 21 minutes old"
+    );
+    assert_eq!(evaluated(&run), ["base", "reads", "alone"], "{run}");
+}
+
+/// A gate, as merge-net runs one.
+const GATING: [&str; 4] = ["--system", "x86_64-linux", "--build", "--no-vm"];
+
+#[test]
+fn keeping_a_base_keeps_what_each_of_its_checks_read_alone() {
+    let stand_in = kept_alone("alone-kept", MOVED, "");
+
+    let kept: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(stand_in.path(ALONE)).expect("kept"))
+            .expect("JSON");
+    assert_eq!(
+        kept["names"],
+        serde_json::json!(["a", "b", "gone", "vm-x"]),
+        "the record names every check the base has"
+    );
+    let paths = kept["paths"].as_array().expect("the paths read");
+    let read = |name: &str| -> Vec<&str> {
+        kept["checks"][name]["read"]
+            .as_array()
+            .expect("what it read")
+            .iter()
+            .map(|at| {
+                paths[usize::try_from(at.as_u64().expect("a path's number")).expect("small")]
+                    .as_str()
+                    .expect("a path")
+            })
+            .collect()
+    };
+    assert_eq!(
+        read("b"),
+        ["b.nix", "flake.nix"],
+        "b read its own file: {kept}"
+    );
+    assert!(
+        kept["checks"]["vm-x"].is_null(),
+        "the VM tests' record is their own: {kept}"
+    );
+    let runs = stand_in.runs();
+    assert_eq!(
+        evaluated(&runs[0]),
+        ["base", "reads", "alone"],
+        "{}",
+        runs[0]
+    );
+}
+
+#[test]
+fn a_gate_gives_each_check_its_change_reaches_nothing_of_the_bases_derivation() {
+    // On 12 November a gate naming about 20 checks still spent 300 to 900
+    // s evaluating all of the tree's.
+    let stand_in = kept_alone("alone-untouched", MOVED, "M\tdocs/notes.md\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "",
+        "a check that read nothing the change touched was evaluated again"
+    );
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 0 of x86_64-linux's 3 other checks, since the change reaches nothing \
+             the other 3 read at 0123456789ab, which keep the base's derivations"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_evaluates_each_check_whose_read_file_its_change_moved() {
+    let stand_in = kept_alone("alone-touched", MOVED, "M\ta.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  a\n",
+        "only a read a.nix, so only a was evaluated again"
+    );
+    assert!(
+        text(&ran.stderr).contains("evaluates 1 of x86_64-linux's 3 other checks"),
+        "the gate didn't say how many it evaluated: {}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_on_a_base_with_no_record_of_each_checks_reads_evaluates_them_all() {
+    let stand_in = kept_alone("alone-unkept", MOVED, "M\tdocs/notes.md\n");
+    let _ = fs::remove_file(stand_in.path(ALONE));
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  a\nchanged  b\nchanged  gone\n",
+        "with no record, a check kept the base's derivation"
+    );
+}
+
+#[test]
+fn a_gate_whose_tree_names_other_checks_than_the_base_evaluates_them_all() {
+    let named_anew =
+        r#"{"a": "a2.drv", "b": "b2.drv", "gone": "g2.drv", "new": "n.drv", "vm-x": "v.drv"}"#;
+    let stand_in = kept_alone("alone-renamed", named_anew, "M\tdocs/notes.md\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "added    new\nchanged  a\nchanged  b\nchanged  gone\n",
+        "a check kept the base's derivation though the checks named differ"
+    );
 }
 
 #[test]
