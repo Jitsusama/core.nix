@@ -196,6 +196,22 @@ impl<'a> Settler<'a> {
         write()
     }
 
+    /// Run `write` unless a settle is writing the hold, for what a round
+    /// only tidies and asks again at its next test or round. A settle
+    /// writes the hold through its revert's runs and its landing, for half
+    /// an hour or more: on 13 November #3972's revert was settled from
+    /// 07:52 to 08:22, and earlier ones from 04:53 to 06:57, and every
+    /// test of the round that ended meanwhile waited on it before the next
+    /// could start, so a merge at 05:26 was found only at 07:56.
+    pub fn write_unless_busy<R>(&self, write: impl FnOnce() -> R) -> Option<R> {
+        let _writing = match self.writing.try_lock() {
+            Ok(writing) => writing,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return None,
+        };
+        Some(write())
+    }
+
     /// How many merges a search's next step tries: the room `AT_ONCE` names,
     /// shared among the searches under way, and never fewer than `SPLITS`.
     /// A search alone tries twelve merges a step, and leaves a thirteenth.

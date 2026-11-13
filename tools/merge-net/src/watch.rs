@@ -855,6 +855,15 @@ fn keep_revert(
     state.set_hold(hold)
 }
 
+/// What each round begins with: a revert tried again, switches let through
+/// a hold the machine already runs, and a hold cleared whose revert is on
+/// main.
+fn tidy_the_hold(world: &dyn World, state: &State) -> Result<(), String> {
+    revert_again(world, state)?;
+    running::let_through_once_it_runs(world, state)?;
+    clear_if_reverted(world, state)
+}
+
 /// Try again a revert whose checks no builder took, as each round begins:
 /// on 8 November the lent builders were down when the net blamed #2263,
 /// and its hold sat with no revert until one was landed by hand.
@@ -981,11 +990,11 @@ pub fn round_beside(
         Some(began) if passed.as_deref() != Some(began.as_str()) => began,
         _ => world.head()?,
     };
-    settler.write(|| {
-        revert_again(world, state)?;
-        running::let_through_once_it_runs(world, state)?;
-        clear_if_reverted(world, state)
-    })?;
+    // A settle under way writes the hold itself, so the round leaves its
+    // tidying to the next round rather than waiting on it.
+    settler
+        .write_unless_busy(|| tidy_the_hold(world, state))
+        .unwrap_or(Ok(()))?;
     let base = passed.clone().unwrap_or_else(|| start.to_owned());
     if seen.as_deref() == Some(head.as_str()) || base == head {
         return Ok(Round::Idle);
@@ -1204,9 +1213,9 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
     /// A failed test has its merge searched for at once, beside the round,
     /// unless one for it is under way from a round before.
     fn heard(&self, test: &str, outcome: Outcome) {
-        if let Err(why) = self
+        if let Some(Err(why)) = self
             .settler
-            .write(|| clear_if_reverted(self.world, self.state))
+            .write_unless_busy(|| clear_if_reverted(self.world, self.state))
         {
             self.state.say(&why);
         }
@@ -3345,6 +3354,45 @@ mod tests {
         });
         assert_eq!(*world.reverted.lock().unwrap(), names("h"));
         assert!(state.settling().is_empty(), "a job settled is still kept");
+    }
+
+    #[test]
+    fn a_round_runs_on_while_a_settle_writes_the_hold() {
+        // 13 November: #3972's revert was settled from 07:52 to 08:22, and
+        // the round's tests waited on it, one by one, as each ended.
+        let state = state("beside-a-settle");
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a vm-b"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[0])
+        .exits("h", "vm-b", &[0]);
+        let settler = Settler::new(&world, &state);
+        let (held, holding) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (ended, ending) = std::sync::mpsc::channel();
+        let writer = &settler;
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                writer.write(|| {
+                    held.send(()).unwrap();
+                    let _ = released.recv();
+                });
+            });
+            holding.recv().unwrap();
+            scope.spawn(|| {
+                let _ = ended.send(round_beside(&world, &state, "s", &settler));
+            });
+            let round = ending.recv_timeout(Duration::from_secs(5));
+            release.send(()).unwrap();
+            assert_eq!(
+                round.ok().and_then(Result::ok),
+                Some(Round::Passed("h".into())),
+                "the round waited on the settle writing the hold"
+            );
+        });
     }
 
     #[test]
