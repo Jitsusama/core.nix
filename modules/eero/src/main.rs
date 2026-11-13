@@ -24,6 +24,7 @@
 //! For the shell: `eero completion zsh` writes zsh's completion, and
 //! `eero names views|nodes|devices|profiles` what it offers of each.
 
+mod acts;
 mod api;
 mod called;
 mod cloud;
@@ -148,7 +149,7 @@ fn sign_in(login: &str) -> Result<(), String> {
 fn speedtest() -> Result<(), String> {
     let mut cloud = Cloud::signed_in()?;
     for url in api::networks(&cloud.get(api::ACCOUNT)?) {
-        cloud.post(&format!("{url}/speedtest"), None)?;
+        acts::done(&mut cloud, &url, acts::Act::SpeedTest)?;
     }
     println!("The eero is testing its internet; `eero speeds` shows the result in about a minute.");
     Ok(())
@@ -159,13 +160,8 @@ fn speedtest() -> Result<(), String> {
 fn conferencing(on: bool) -> Result<(), String> {
     let mut cloud = Cloud::signed_in()?;
     for url in api::networks(&cloud.get(api::ACCOUNT)?) {
-        let network = api::network(&url, &cloud.get(&url)?);
-        let settings = network
-            .settings_url
-            .ok_or_else(|| format!("eero names no settings for {}", network.name))?;
-        cloud.put(&settings, &api::conferencing(on))?;
+        acts::done(&mut cloud, &url, acts::Act::Conferencing(on))?;
         let now = api::network(&url, &cloud.get(&url)?);
-        api::taken(on, now.sqm)?;
         println!("{}", status::line(&now, None));
     }
     Ok(())
