@@ -149,6 +149,9 @@
     "reason": "failed, then passed, at 97b968eb6863",
     "subtests": [
       "test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder",
+      "test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer",
+      "test_capture_takes_a_window_found_by_its_title_on_any_workspace",
+      "test_print_opens_capture_where_return_takes_the_whole_screen",
       "test_quickshell_warned_of_nothing_it_drew_all_along"
     ],
     "test": "vm-desktop-captures"
