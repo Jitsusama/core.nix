@@ -407,8 +407,9 @@
     the whole run goes to `there --changed` naming this machine's system and a base as its merge
     base's commit; with a base origin's main doesn't hold, edits not yet committed, or nowhere
     taking it, it runs nothing and exits 75, and it runs here only with --here; a test main
-    quarantines is built alone, its failure blocking nothing unless its entry names subtests
-    and its log names a failure outside them, or none
+    quarantines is built alone, its failure blocking nothing unless its entries, read together,
+    name subtests and its log names a failure outside them, or none, an excused failure said
+    with each failed subtest's owner
   '';
   changed-checks-passes-clippy = ''
     clippy finds nothing in changed-checks or its tests
@@ -1314,7 +1315,8 @@
     one again where it passed, reverts the merge it finds broke a test that failed twice and
     holds switching until the revert is on main, runs a held test first at a new head and lifts
     the hold the moment it passes, quarantines one that failed then passed, or whose revert
-    won't apply with its breaker as owner, listing it by the subtests that failed, reverts
+    won't apply with its breaker as owner, listing it by the subtests that failed, a listed
+    test's new ones in an entry of their own under their own owner, reverts
     nothing for one quarantined at the round's head or main's newest, nor for a run failing
     only in subtests main lists, but searches one failing in another, starts nothing while
     the machine is held, says
@@ -1604,9 +1606,9 @@
     `lines` copies into root's files only the lender's lines whose URI, whole, key and host key
     a standing builder's settings give, or a lent builder's instance does, named by prefix and
     zone and its host key asked of the cloud once, each line of eight fields and the rest plain;
-    and a test main quarantines is built alone, its failure blocking nothing unless its entry
-    names subtests and the failed tests its log names aren't all among them, none named
-    included
+    and a test main quarantines is built alone, its failure blocking nothing unless its entries,
+    held as one naming each owner, name subtests and the failed tests its log names aren't all
+    among them, none named included
   '';
   nix-offload-lenders-outlive-a-switch = ''
     a switch that changes a lender's unit reloads it rather than restarting it, and a lender
@@ -2250,7 +2252,8 @@
     run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
     test whole with pytest picking the tests named, refusing a word pytest would read as more,
     refuses a check that isn't a VM test rather than letting the quarantine call it a pass, and
-    lets an entry naming subtests excuse only a run whose every failed test it names
+    lets a test's entries naming subtests excuse only a run whose every failed test they name
+    between them, saying each one's owner
   '';
   rust-programs-pass-clippy = ''
     clippy finds nothing in the single-file programs or their tests

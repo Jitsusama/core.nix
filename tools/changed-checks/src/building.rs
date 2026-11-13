@@ -82,15 +82,10 @@ pub fn built(
         let alone = build(flake, system, &[name], after)?;
         if let Some(entry) = quarantine::find(held, name).filter(|_| !alone.passed) {
             if entry.excuses(&alone.failed) {
-                let why = entry.said();
+                let why = entry.said(&alone.failed);
                 eprintln!("changed-checks: {name} failed, but {why}, so it blocks nothing");
             } else {
-                let unlisted: Vec<&str> = alone
-                    .failed
-                    .iter()
-                    .filter(|subtest| !entry.subtests.contains(*subtest))
-                    .map(String::as_str)
-                    .collect();
+                let unlisted = entry.unlisted(&alone.failed);
                 let which = if unlisted.is_empty() {
                     "no test its log names".to_owned()
                 } else {
