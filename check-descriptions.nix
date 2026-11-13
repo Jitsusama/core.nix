@@ -1926,6 +1926,13 @@
     there holds them, so another opening there reuses its modules, no two folders share one, a
     folder whose last conversation ended loads afresh and holds no place, and a reload loads afresh
   '';
+  pi-hosted-shares-only-keyed-packages = ''
+    pi built with the host's patches, applied exactly, evaluates a package declaring its per-session
+    state keyed once across folders and keeps it once their conversations end, while a package
+    without the declaration, one declaring something other than true and an extension in no package
+    keep a copy for each folder, so a pairing made in one folder never reaches another; a reload,
+    and a moved link, load afresh, and a load begun before a reload caches nothing
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers

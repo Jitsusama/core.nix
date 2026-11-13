@@ -389,6 +389,17 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi shares a package's extensions across folders only when the
+  # package declares its per-session state keyed, so a pairing another keeps
+  # in a module never crosses from one folder's conversation to another's.
+  pi-hosted-shares-only-keyed-packages =
+    pkgs.runCommandLocal "pi-hosted-shares-only-keyed-packages" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-shares-only-keyed-packages.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's conversations each read their keys and headers from their
   # own auth context and never from the process, while a pi given none
   # reads the process as ordinary pi does.

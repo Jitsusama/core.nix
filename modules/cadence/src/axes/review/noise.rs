@@ -51,6 +51,10 @@ struct Notice {
     app: String,
     #[serde(default)]
     summary: String,
+    /// What it said under its summary, which for a chat is only where it
+    /// came from, `[shop] in #channel`, so a repeat is both said again.
+    #[serde(default)]
+    body: String,
     /// In milliseconds.
     #[serde(default)]
     at: i64,
@@ -73,7 +77,7 @@ pub fn notices(text: &str, since: i64, tallies: &mut Tallies) {
         if notice.left.as_deref() == Some("expired") && !notice.read {
             tally.unacted += 1;
         }
-        if !seen.insert((notice.app, notice.summary)) {
+        if !seen.insert((notice.app, notice.summary, notice.body)) {
             tally.again += 1;
         }
     }
@@ -198,25 +202,28 @@ mod tests {
         let text = format!(
             r#"{{"next":5,"notices":[
             {{"app":"Slack","summary":"old","at":{old},"left":"expired"}},
-            {{"app":"Slack","summary":"a","at":{a},"left":"expired","read":false}},
-            {{"app":"Slack","summary":"a","at":{b},"left":"dismissed","read":true}},
-            {{"app":"Slack","summary":"b","at":{c},"left":"expired","read":true}}
+            {{"app":"Slack","summary":"a","body":"x","at":{a},"left":"expired","read":false}},
+            {{"app":"Slack","summary":"a","body":"x","at":{b},"left":"dismissed","read":true}},
+            {{"app":"Slack","summary":"b","body":"y","at":{c},"left":"expired","read":true}},
+            {{"app":"Slack","summary":"b","body":"z","at":{d},"left":"dismissed","read":true}}
             ]}}"#,
             old = ms - 1,
             a = ms + 1,
             b = ms + 2,
             c = ms + 3,
+            d = ms + 4,
         );
         let mut tallies = Tallies::new();
         notices(&text, SINCE, &mut tallies);
         assert_eq!(
             tally(&tallies, "notices", "Slack"),
             Tally {
-                said: 3,
+                said: 4,
                 unacted: 1,
                 again: 1
             },
-            "one expired unread and one repeat among the three of the week"
+            "one expired unread and one repeat among the four of the week; a channel's \
+             summary said again over another message isn't a repeat"
         );
     }
 

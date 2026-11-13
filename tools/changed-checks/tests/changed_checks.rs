@@ -1572,6 +1572,12 @@ fn a_gate_evaluates_each_check_whose_read_file_its_change_moved() {
         "the gate didn't say how many it evaluated: {}",
         text(&ran.stderr)
     );
+    let run = stand_in.runs().pop().expect("the gate's run");
+    assert_eq!(
+        run["recorded"],
+        serde_json::json!({ "head": "0123456789abcdef0123", "main": 0, "tree": 1 }),
+        "the run didn't say the record it judged from and what moved since: {run}"
+    );
 }
 
 #[test]
@@ -1587,6 +1593,8 @@ fn a_gate_on_a_base_with_no_record_of_each_checks_reads_evaluates_them_all() {
         "changed  a\nchanged  b\nchanged  gone\n",
         "with no record, a check kept the base's derivation"
     );
+    let run = stand_in.runs().pop().expect("the gate's run");
+    assert_eq!(run["recorded"], serde_json::Value::Null, "{run}");
 }
 
 /// A head of main the base came after, whose checks' reads were recorded.
@@ -1629,6 +1637,14 @@ fn a_gate_on_a_base_past_a_recorded_head_evaluates_there_only_what_main_reached(
         ),
         "the gate didn't say what it evaluated at the base: {}",
         text(&ran.stderr)
+    );
+    // On 13 November gates evaluated 425 to 890 checks, and their lines
+    // said neither the record they judged from nor how far main had moved.
+    let run = stand_in.runs().pop().expect("the gate's run");
+    assert_eq!(
+        run["recorded"],
+        serde_json::json!({ "head": RECORDED, "main": 1, "tree": 1 }),
+        "the run didn't say the record it judged from and what moved since: {run}"
     );
 }
 

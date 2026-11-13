@@ -535,6 +535,7 @@ fn compare(
     // one it came after, spares evaluating at the base and in the tree each
     // check neither change reaches (`alone.rs`).
     let recorded = alone::recorded(root, base, system);
+    alone::note(root, base, recorded.as_ref(), noted);
     let before = checks::kept(
         &checks::keeping(&cache(), base, system),
         || match alone::past(root, base, system, recorded.as_ref(), noted) {
