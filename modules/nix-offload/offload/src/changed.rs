@@ -336,6 +336,10 @@ pub fn held_on_main(folder: &Path) -> Vec<Held> {
     })
 }
 
+/// One entry of a test: why it is held, said with its owner, and the
+/// subtests it holds, none meaning the whole test.
+type Listing = (String, BTreeSet<String>);
+
 /// Read a quarantine list, each test with why it blocks nothing, said as
 /// changed-checks says it. A test may have an entry for each owner, each
 /// holding its own subtests (merge-net's quarantine.rs), so a test's
@@ -346,7 +350,7 @@ pub fn held(listed: &str) -> Result<Vec<Held>, String> {
         serde_json::from_str(listed).map_err(|error| error.to_string())?;
     let entries = list.as_array().ok_or("it isn't a list")?;
     // Each test's entries, in the order the list first names it.
-    let mut tests: Vec<(&str, Vec<(String, BTreeSet<String>)>)> = Vec::new();
+    let mut tests: Vec<(&str, Vec<Listing>)> = Vec::new();
     for entry in entries {
         let test = entry["test"]
             .as_str()
