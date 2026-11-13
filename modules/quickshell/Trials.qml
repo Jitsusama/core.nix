@@ -151,6 +151,12 @@ Scope {
         return Trials.answerCounted(answers, about);
     }
 
+    // Each key's time from its press to the screen, kept with the opening
+    // under way, and how many never reached it.
+    function presented(each, unpresented) {
+        trial = Trials.presented(trial, each, unpresented);
+    }
+
     function picked(row, typed, depth) {
         trial = Trials.picked(trial, Date.now(), row, { typed: typed, depth: depth });
     }

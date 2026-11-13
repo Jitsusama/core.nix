@@ -378,7 +378,9 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     """An opening ended by Return on a sum keeps it as a pick of a sum, not a miss.
 
     An answer's key is empty, so every Return on Ask, a sum or Memory was kept as a miss, and
-    what the trials said of them was wrong (1JQPPC, 2026-11-11).
+    what the trials said of them was wrong (1JQPPC, 2026-11-11). Each key typed is kept with
+    it too, as its milliseconds from its press to the screen, for health to pool a day's keys
+    for their 99th (1JQPPC, 2026-11-12).
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
 
@@ -402,6 +404,10 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     last = kept()[-1]
     assert last.get("picked") == "answer:sum", last
     assert last.get("missed") is False, last
+    presented = cast("list[int]", last.get("presented", []))
+    assert len(presented) + int(last.get("unpresented", 0)) >= len("6*7"), last
+    assert presented, last
+    assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
 
 
 def test_the_date_is_copied_and_the_power_acts_arm_before_they_act(shell: Shell) -> None:

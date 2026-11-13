@@ -336,6 +336,12 @@ QtObject {
             (_, at) => ({ from: 0, at: 200 - at })));
         check(failures, "a set's p99 is its nearest rank", hundreds.p99, 198);
         check(failures, "which for a few is the slowest", took.p99, 80);
+        // Each key's own time, in the order pressed and whole, is what
+        // health pools for the day's p99, since a p99 of each opening's
+        // can't be pooled (1JQPPC, 2026-11-12 [e1f448f2]).
+        check(failures, "each key's time is kept in the order pressed",
+            JSON.stringify(Presented.eachTook([{ from: 10, at: 60 }, { from: 0, at: 30.6 }])),
+            "[31,50]");
         const said = Presented.changesSaid([
             { place: "windows", from: 100, at: 130 },
             { place: "quests", from: 0, at: 70 },
