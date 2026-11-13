@@ -399,6 +399,7 @@ def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | N
         # A step's answer isn't the view, so only how it ends is read.
         for step in view.first:
             try:
+                # The program is the one the view runs, built from Nix.
                 done = subprocess.run(  # noqa: S603
                     [program, *(arg.replace(HERE, scratch) for arg in step)],
                     stdin=subprocess.DEVNULL,
