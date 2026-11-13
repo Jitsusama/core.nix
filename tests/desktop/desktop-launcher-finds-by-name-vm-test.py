@@ -839,15 +839,15 @@ def walk_the_rows_acts(desktop: Desktop) -> None:
             return (shown["held"], shown["typed"], shown["mode"], shown["saying"]) == wanted
 
         desktop.launcher_until(stands)
-    # Ctrl+] goes into an emoji's acts, which hold nothing more, so there
-    # it says so and stays.
+    # An emoji's acts are all on its row, so Ctrl+] opens no list of them
+    # (Joel, 2026-11-11), and it lives where it's listed: there it says so
+    # and stays.
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["held"] == ["emoji"])
-    desktop.follow()
-    desktop.launcher_until(lambda shown: len(shown["held"]) == 2)  # noqa: PLR2004
+    desktop.normal()
     machine.send_key("ctrl-bracket_right")
     desktop.launcher_until(
-        lambda shown: shown["saying"] == ["Ctrl+] not here"] and len(shown["held"]) == 2  # noqa: PLR2004
+        lambda shown: shown["saying"] == ["Ctrl+] not here"] and shown["held"] == ["emoji"]
     )
     desktop.close_launcher()
     desktop.answer("s")
