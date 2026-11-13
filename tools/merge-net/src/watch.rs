@@ -978,6 +978,9 @@ pub fn round_beside(
     }
     if let Some(why) = world.held() {
         state.say(&format!("held, starting nothing: {why}"));
+        if let Err(error) = state.held(&why) {
+            state.say(&error);
+        }
         return Ok(Round::Idle);
     }
     let (passed, seen) = state.heads();
@@ -4166,6 +4169,11 @@ mod tests {
         assert_eq!(
             world.built(),
             [] as [(std::string::String, std::string::String); 0]
+        );
+        let held = fs::read_to_string(state.root.join("held.json")).unwrap_or_default();
+        assert!(
+            held.contains("a reboot"),
+            "a held net didn't say so where cadence reads it: {held}"
         );
     }
 }

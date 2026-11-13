@@ -430,6 +430,14 @@ pub fn net_hold(hold: &str) -> Option<NetHold> {
     })
 }
 
+/// When the net last found a hold on the machine starting nothing, from
+/// its `held.json`, which it writes each time it looks and leaves once the
+/// hold ends, so its `at` is when the hold was last seen standing.
+#[must_use]
+pub fn net_held(held: &str) -> Option<i64> {
+    serde_json::from_str::<serde_json::Value>(held).ok()?["at"].as_i64()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,6 +465,12 @@ mod tests {
         let reverting = "{\"at\":1,\"bad_pr\":7,\"revert_commit\":\"ab\",\"test\":\"vm-a\"}";
         assert!(net_hold(reverting).is_some_and(|h| h.reverting));
         assert_eq!(net_hold(""), None);
+        assert_eq!(
+            net_held("{\"at\":1794602830,\"why\":\"a reboot\"}"),
+            Some(1_794_602_830),
+            "when the net last found the machine held wasn't read"
+        );
+        assert_eq!(net_held(""), None, "no hold seen was read as one");
     }
 
     #[test]
