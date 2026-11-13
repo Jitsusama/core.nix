@@ -22,6 +22,12 @@ const SUPPLIES: &str = "/sys/class/power_supply";
 /// move (2026-11-13).
 pub const SETTINGS_KEPT: Duration = Duration::from_secs(60);
 
+/// How soon a battery's setting is read again when its file is there but
+/// answered nothing, as when the kernel found no buffer for the call.
+/// Only once: a file that answers nothing twice waits `SETTINGS_KEPT`, so
+/// one that never answers isn't asked every few seconds.
+pub const SETTINGS_AGAIN: Duration = Duration::from_secs(5);
+
 /// What each battery's charging is set to, its charge types and its
 /// limit's ends, as last read, by its folder, with when it was made and
 /// its health, so a supply read each second asks the firmware once a
@@ -504,6 +510,49 @@ mod tests {
         );
         let moved = (json!("2025-03-08"), json!("Overheat"));
         assert_eq!(later, moved, "kept past a minute");
+    }
+
+    // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
+    // for it ("page allocation failure: order:4", six times on Joel's
+    // laptop overnight, 2026-11-13). The file is still there; it just
+    // answers nothing, as one this account can't read does here.
+    #[test]
+    fn a_firmware_read_that_fails_keeps_what_it_said_last() {
+        let root = std::env::temp_dir().join(format!("machine-missed-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let types = at.join("charge_types");
+        let readable = |yes: bool| {
+            let mode = if yes { 0o644 } else { 0o000 };
+            std::fs::set_permissions(&types, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        std::fs::write(&types, "Fast [Standard]\n").unwrap();
+        let held = Root::new(&root);
+        let mut settings = Settings::default();
+        let first = Instant::now();
+        let mut said = |at: Instant| {
+            let kept = record(&held, "BAT0", &Value::Null, &mut settings, at);
+            (kept["charge_type"].clone(), kept["charge_types"].clone())
+        };
+        let read = said(first);
+        readable(false);
+        let failed = said(first + SETTINGS_KEPT);
+        readable(true);
+        std::fs::write(&types, "[Fast] Standard\n").unwrap();
+        let again = said(first + SETTINGS_KEPT + SETTINGS_AGAIN);
+        std::fs::remove_dir_all(&root).unwrap();
+        let all = json!(["Fast", "Standard"]);
+        assert_eq!(read, (json!("Standard"), all.clone()));
+        assert_eq!(
+            failed,
+            (json!("Standard"), all.clone()),
+            "what it said last, not nothing"
+        );
+        assert_eq!(
+            again,
+            (json!("Fast"), all),
+            "read again soon, not a minute on"
+        );
     }
 
     #[test]
