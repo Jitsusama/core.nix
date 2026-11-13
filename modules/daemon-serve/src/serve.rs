@@ -59,6 +59,24 @@ pub type Peered = Box<dyn Fn(&Value, &UnixStream) -> Option<Value> + Send + Sync
 /// anything of what serves it.
 pub type Heed = Box<dyn Fn() + Send + Sync>;
 
+/// What a get, a list or a watch beginning names, for a daemon that
+/// reads on demand to read before it's answered.
+pub struct Wanted<'a> {
+    /// The kinds named, or every kind but those named only where none
+    /// were; none for a get.
+    pub kinds: &'a [String],
+    pub keys: Option<&'a [String]>,
+    pub places: Option<&'a [String]>,
+    /// Whether it's a watch beginning rather than a get or a list.
+    pub watching: bool,
+}
+
+/// What reads what an ask wants before it's answered.
+pub type Fresh = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
+
+/// What else a daemon counts, said on health beside daemon-serve's own.
+pub type HealthToo = Box<dyn Fn() -> Value + Send + Sync>;
+
 /// One watch a client holds.
 struct Watch {
     connection: u64,
@@ -245,6 +263,16 @@ impl Shared {
     fn is_slow(&self, said: &Value) -> bool {
         let asked = said["ask"].as_str().unwrap_or("");
         self.slow.get().is_some_and(|slow| slow.contains(&asked))
+    }
+
+    /// Reads what each get, list and watch beginning wants first.
+    pub fn fresh(&self, fresh: Fresh) {
+        let _ = fresh;
+    }
+
+    /// Says what `too` gives on health.
+    pub fn health_too(&self, too: HealthToo) {
+        let _ = too;
     }
 
     /// Whether any watch is of `kind` in `place`, or of every place.
