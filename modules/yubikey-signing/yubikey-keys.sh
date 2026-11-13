@@ -6,6 +6,31 @@
 # leave every register the old one is in holding a key nothing signs with.
 # It ends by printing the public keys, which belong in
 # jitsusama.signing.allowedSigners.
+#
+# It takes no words, and refuses any before it does anything, so --help or
+# a typo never makes a key or asks for the PIN and a touch.
+if [ "$#" -gt 0 ]; then
+  case $1 in
+    -h | --help)
+      cat << 'EOF'
+yubikey-keys  makes the signing keys, once, safe to run again
+
+EXAMPLES
+  yubikey-keys   make what's missing, then print the public keys
+
+EXIT
+  0   every key is there
+  1   a key couldn't be made or downloaded
+  64  asked wrongly
+EOF
+      exit 0
+      ;;
+    *)
+      printf '%s\n' "yubikey-keys takes no words" "  try  yubikey-keys --help" >&2
+      exit 64
+      ;;
+  esac
+fi
 
 # The YubiKey's own name for Joel's key, apart from the login key's spare,
 # which is plain ssh:.

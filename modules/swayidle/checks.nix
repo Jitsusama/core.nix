@@ -24,6 +24,18 @@
       touch $out
     '';
 
+  # lock-screen, lock-for-sleep and swayidle-away answer --help and refuse
+  # a word they don't know, asking nothing of the shell, niri or swayidle
+  # (asked-wrongly-test.sh), since lock-screen once took --help for its
+  # reason and locked the screen.
+  locking-asked-wrongly-does-nothing =
+    pkgs.runCommandLocal "locking-asked-wrongly-does-nothing" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./asked-wrongly-test.sh} ${./lock-screen.sh} ${./lock-for-sleep.sh} \
+          ${./away.sh} $PWD/stand-ins
+        touch $out
+      '';
+
   # Once the machine has woken, the screens it went down without come back
   # on, to the lock after a suspend. Only logind can say a sleep ended, so
   # the desktop's VM test runs what comes before it and this holds what

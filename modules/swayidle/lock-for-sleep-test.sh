@@ -17,7 +17,7 @@ fails() {
 }
 
 cat > "$stand_ins/bin/lock-screen" << 'EOF'
-echo lock >> "$STAND_IN_SAID"
+echo "lock $*" >> "$STAND_IN_SAID"
 exit "${LOCK_STATUS:-0}"
 EOF
 cat > "$stand_ins/bin/niri" << 'EOF'
@@ -29,7 +29,7 @@ for stand_in in lock-screen niri; do
 done
 export PATH=$stand_ins/bin:$PATH
 
-order="lock
+order="lock --reason the machine sleeps
 niri msg action power-off-monitors"
 
 LOCK_STATUS=0 "$BASH" "$script" || fails "failed though the lock was drawn"

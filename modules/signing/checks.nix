@@ -109,6 +109,32 @@ in
       (account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.yubikey-signing ]; } ]))
       .home.packages;
 
+  # The two key makers answer --help and refuse a word, before they make a
+  # key or ask the YubiKey for a touch: run with an empty home, nothing
+  # may appear in it. se-keys refuses before it reaches the Mac's tools,
+  # so a Linux build of it shows the same.
+  key-makers-asked-wrongly-make-nothing =
+    let
+      maker =
+        modules: name:
+        lib.getExe (
+          lib.findFirst (package: (package.name or "") == name) (throw "no ${name}")
+            (account (bareNixos [ { home-manager.sharedModules = modules; } ])).home.packages
+        );
+      makers = [
+        (maker [ self.homeModules.yubikey-signing ] "yubikey-keys")
+        (maker [
+          self.homeModules.secure-enclave-signing
+          { jitsusama.identity.name = "Someone O'Neill"; }
+        ] "se-keys")
+      ];
+    in
+    pkgs.runCommandLocal "key-makers-asked-wrongly-make-nothing" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/key-makers-asked-wrongly.sh} "$PWD/home" \
+        ${lib.escapeShellArgs makers}
+      touch $out
+    '';
+
   # The program picks whose key signs and takes back a signature that
   # doesn't verify, run against a stand-in ssh-keygen
   # (tests/signing-program.sh says each case).
