@@ -394,8 +394,8 @@ It gives:
   type;
 - the wait line and its meter, drawn only into a terminal.
 
-A command that isn't Rust keeps the convention by hand, which the check
-doesn't read yet: it reads the programs the crates build.
+A command that isn't Rust keeps the convention by hand, and the check
+holds a script to the points it can keep without the kit, below.
 
 ## When a Command Doesn't Agree Yet
 
@@ -412,6 +412,20 @@ reads every program a crate builds, and holds it to four points:
   its own name, says nothing on stderr and exits 0 within ten seconds, and
   `--version` answers one line. The check is given each command on the kit
   built, to run it.
+
+It reads every script a Nix file outside the tests wraps as a program,
+with `writeShellApplication` or `writeShellScriptBin`, too: the files its
+`text` reads or runs and the strings it spells. A script is held to three
+of the points by hand:
+
+- **exits:** every exit it spells with a number is the table's;
+- **inks:** it spells no escape sequence and sets no colour with `tput`;
+- **helps:** run with `--help`, it opens its answer on stdout with its own
+  name, says nothing on stderr and exits 0 within ten seconds, as the
+  check runs it when given its package.
+
+A script by a crate program's own name, telling it its settings, is that
+program as it's typed, so its exits and inks count as the program's.
 
 Commands written before this page wait in
 [`tests/rules/commands-agree-waiting.nix`][waiting], each with the points
