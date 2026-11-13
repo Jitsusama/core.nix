@@ -515,7 +515,7 @@
   '';
   code-health-finds-a-machines-programs-first = ''
     code-health finds a machine's own programs first on its PATH, such as a git that reads a
-    repository stock git refuses, with core's git after them
+    repository stock git refuses, with core's git and coreutils after them
   '';
   code-health-passes-clippy = ''
     clippy finds nothing in code-health or its tests

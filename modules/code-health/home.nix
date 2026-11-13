@@ -8,7 +8,8 @@
 # It runs before `cadence day`, which holds each figure against the days
 # before it, so a repository getting messier is named the day it does.
 # jitsusama.code-health.path puts a machine's own programs ahead of core's
-# git, for a repository kept by a git of its own that stock git refuses.
+# git, for a repository kept by a git of its own that stock git refuses;
+# core's coreutils come after, for such a git that is a script.
 {
   config,
   lib,
@@ -82,7 +83,17 @@ in
           ++ each "--ref" (repo: repo.ref)
           ++ each "--under" (repo: repo.under)
         );
-        Environment = [ "PATH=${lib.makeBinPath (cfg.path ++ [ pkgs.git ])}" ];
+        Environment = [
+          "PATH=${
+            lib.makeBinPath (
+              cfg.path
+              ++ [
+                pkgs.git
+                pkgs.coreutils
+              ]
+            )
+          }"
+        ];
         Slice = "background.slice";
       };
     };
