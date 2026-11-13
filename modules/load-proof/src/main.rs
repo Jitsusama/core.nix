@@ -43,7 +43,7 @@ use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
-use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
+use terminal_kit::{Context, Exit, Failure, Format, Help, Room, flags, layout};
 
 /// How long a signal is read for when it isn't told.
 const LENGTH: Duration = Duration::from_secs(10);
@@ -189,6 +189,22 @@ fn answered(schema: &str, facts: Value) -> Value {
     answer
 }
 
+/// A line for a person, its words set after `lead` and wrapped under
+/// themselves, so a reading or a failure never runs past the terminal.
+/// Into a pipe it stays one line, as a saved reading is read back.
+fn hung(lead: &str, words: &str, room: Room) -> String {
+    let words = layout::hung(words, layout::width(lead), room.for_prose());
+    format!("{lead}{words}\n")
+}
+
+/// A reading's line, after `inset`, hung after the word naming its signal.
+fn reading_line(inset: &str, line: &str, room: Room) -> String {
+    match line.split_once(' ') {
+        Some((name, figures)) => hung(&format!("{inset}{name} "), figures, room),
+        None => format!("{inset}{line}\n"),
+    }
+}
+
 fn said(result: io::Result<()>) -> Result<(), Failure> {
     result.map_err(|e| {
         Failure::new(Exit::Failed, "it couldn't write its answer").because(e.to_string())
@@ -203,7 +219,7 @@ fn one(context: &Context, signal: &str, length: Duration) -> Result<(), Failure>
     if context.format().is_json() {
         said(context.answer(&answered(&format!("load-proof.{signal}/1"), read.facts)))
     } else {
-        said(context.say(&format!("{}\n", read.line)))
+        said(context.say(&reading_line("", &read.line, context.room)))
     }
 }
 
@@ -217,8 +233,7 @@ fn all(context: &Context, length: Duration) -> Result<(), Failure> {
     for (signal, read) in signals::all(length) {
         match read {
             Ok(read) => {
-                lines.push_str(&read.line);
-                lines.push('\n');
+                lines.push_str(&reading_line("", &read.line, context.room));
                 answer[signal] = read.facts;
             }
             Err(why) => {
@@ -279,7 +294,7 @@ fn judged(context: &Context, idle: &str, loaded: &str) -> Result<(), Failure> {
     } else {
         let mut lines = String::new();
         for failure in &failed {
-            let _ = writeln!(lines, "fails: {failure}");
+            lines.push_str(&hung("fails: ", &failure.to_string(), context.room));
         }
         said(context.say(&lines))?;
     }
@@ -317,10 +332,10 @@ fn say_as_it_comes(context: &Context, said: run::Said<'_>) {
         _ => {
             let mut lines = format!("{what}:\n");
             for line in reading.lines() {
-                let _ = writeln!(lines, "  {line}");
+                lines.push_str(&reading_line("  ", line, context.room));
             }
             for failure in step.map(|step| step.failed.as_slice()).unwrap_or_default() {
-                let _ = writeln!(lines, "  fails: {failure}");
+                lines.push_str(&hung("  fails: ", &failure.to_string(), context.room));
             }
             let _ = context.say(&lines);
         }
@@ -401,6 +416,30 @@ mod tests {
             args,
             |context| act(context, &commands),
         )
+    }
+
+    const FRAMES: &str = "shown 3600 missed 0 late 0 discarded 0 longest 8.3 ms refresh 8.33 ms";
+
+    #[test]
+    fn a_reading_wraps_under_its_figures_in_a_narrow_terminal() {
+        let said = reading_line("  ", FRAMES, Room::Cells(40));
+        assert!(
+            said.lines().all(|line| layout::width(line) <= 40),
+            "a line ran past 40 cells:\n{said}"
+        );
+        assert!(
+            said.lines().skip(1).all(|line| line.starts_with("        ")),
+            "a wrapped line didn't sit under the figures:\n{said}"
+        );
+    }
+
+    #[test]
+    fn a_reading_stays_one_line_into_a_pipe() {
+        assert_eq!(
+            reading_line("", FRAMES, Room::Unbounded),
+            format!("{FRAMES}\n"),
+            "a reading saved through a pipe changed, so judge can't read it back"
+        );
     }
 
     #[test]
