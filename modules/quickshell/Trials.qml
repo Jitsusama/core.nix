@@ -122,11 +122,13 @@ Scope {
     // said in the journal as a slow key is, by the row it's for, so how soon
     // each place's drawer comes can be read from Joel's own use (2026-11-10:
     // "as fast as thought"). `parts` says how much of it was the launcher
-    // making it, then waiting for its frame to begin, then drawing it.
+    // making it, what of that went on which (Trials.makingSplit), then
+    // waiting for its frame to begin, then drawing it.
     function drawerTimed(key, drawn, parts) {
         if (Trials.felt(drawn))
             console.info(`launcher: drawer for "${key}" took ${drawn} ms to its frame,`
-                + ` ${parts.making} ms making, ${parts.waiting} waiting for its frame,`
+                + ` ${parts.making} ms making${Trials.makingSplit(parts.making, parts.split)},`
+                + ` ${parts.waiting} waiting for its frame,`
                 + ` ${parts.drawing} drawing it, ${parts.came}`);
     }
 
