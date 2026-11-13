@@ -1297,7 +1297,8 @@
     only in subtests main lists, but searches one failing in another, starts nothing while
     the machine is held, says
     which changes run their VM tests before merging, a file a test names passing on what it
-    names unless it builds a crate and which moved read from a run that passed at a clean head
+    names unless it builds a crate, a Rust file changed only in comments left out, and which
+    moved read from a run that passed at a clean head
     rather than evaluated again, and lets a head merge whose same change
     passed before a rebase that moved none of its files and no Rust crate its crates are in, read
     or are read by, and takes a net quiet 20 minutes, running nothing, every thread on a lock,
