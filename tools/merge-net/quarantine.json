@@ -4,6 +4,11 @@
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
     "owner_pr": 2855,
     "reason": "failed twice at 420e2aa35b28, and at 26852ce9a8ec after it",
+    "subtests": [
+      "test_capture_recent_finds_past_its_nine_by_name_then_by_what_a_screenshot_says",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_holds"
+    ],
     "test": "vm-desktop-launcher-goes-places"
   },
   {
@@ -11,6 +16,12 @@
     "commit": "26852ce9a8ec1e828c6d26df64581bccba210135",
     "owner_pr": 2880,
     "reason": "broken since #2880, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_a_closed_launcher_makes_nothing_of_the_machine_queue",
+      "test_dd_on_a_notice_shows_on_the_frame_after_its_key",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_foots_marks_never_give_way_and_are_there_as_the_shell_starts"
+    ],
     "test": "vm-desktop-launcher-draws-still"
   },
   {
@@ -18,14 +29,10 @@
     "commit": "a693826b5ecfa6c0a2d7dfd66671cbe93dbd8ee7",
     "owner_pr": null,
     "reason": "failed, then passed, at a693826b5ecf",
+    "subtests": [
+      "test_the_launcher_draws_each_key_soon_while_every_core_is_busy"
+    ],
     "test": "vm-desktop-keeps-pace"
-  },
-  {
-    "at": 1794349841,
-    "commit": "e253f525450f7b0af2a83b4811e3a9471eb52dc8",
-    "owner_pr": 2929,
-    "reason": "failed, then passed, at e253f525450f",
-    "test": "the-newest-surface-takes-the-keys-on-niri"
   },
   {
     "at": 1794346052,
@@ -39,55 +46,59 @@
     "commit": "405fff7e09e75f5f21857d710e1f02306a80664b",
     "owner_pr": null,
     "reason": "failed, then passed, at 405fff7e09e7",
+    "subtests": [
+      "test_a_wi_fi_network_is_joined_from_the_launcher_a_new_one_asking_its_password",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
     "test": "vm-desktop-opens-and-sets"
-  },
-  {
-    "at": 1794408473,
-    "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "owner_pr": 3201,
-    "reason": "failed, then passed, at 6e396fae765b",
-    "test": "the-desktop-finds-screenshots-by-their-words"
   },
   {
     "at": 1794409299,
     "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
     "owner_pr": 3176,
     "reason": "failed, then passed, at 6e396fae765b",
+    "subtests": [
+      "test_a_search_lists_each_thing_once_and_normal_moves_through_it",
+      "test_every_name_a_thing_had_still_finds_it",
+      "test_no_answer_raised_an_error",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
     "test": "vm-desktop-launcher-finds-by-name"
-  },
-  {
-    "at": 1794410568,
-    "commit": "6e396fae765b7bee38c3af3a418e0ff73ad7d294",
-    "owner_pr": 3176,
-    "reason": "failed, then passed, at 6e396fae765b",
-    "test": "vm-desktop-looks-plates"
   },
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "owner_pr": 3304,
     "reason": "failed, then passed, at 042387bc604a",
+    "subtests": [
+      "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart",
+      "test_no_answer_raised_an_error",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_time_here_says_how_the_clock_is_kept"
+    ],
     "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794425310,
-    "commit": "a8f3aaed8fa71b995456a37162b1b2a924dd3773",
-    "owner_pr": 3245,
-    "reason": "failed, then passed, at a8f3aaed8fa7",
-    "test": "the-desktop-reads-the-spend-watch"
-  },
-  {
-    "at": 1794429423,
-    "commit": "63b99b2e5874987ad6c126c75708b984795976e0",
-    "owner_pr": 3349,
-    "reason": "failed, then passed, at 63b99b2e5874",
-    "test": "vm-desktop-looks"
   },
   {
     "at": 1794433532,
     "commit": "5b1b2d0a9c9cf58e0e5885705ec2dcdd426c9fd7",
     "owner_pr": 3370,
     "reason": "failed, then passed, at 5b1b2d0a9c9c",
+    "subtests": [
+      "test_a_camera_opened_is_said_then_shows_in_the_margin_and_the_launcher_says_by_what",
+      "test_a_usb_cameras_stream_shows_in_the_margin_too_and_leaves_with_the_camera",
+      "test_caps_lock_shows_in_the_margin_while_its_on",
+      "test_caps_lock_still_shows_after_its_watcher_restarts",
+      "test_do_not_disturb_holds_a_notice_shows_it_held_and_ends_from_the_margin",
+      "test_keep_awake_shows_in_the_margin_and_now_says_it_and_lets_it_sleep",
+      "test_kept_awake_a_lid_shut_on_battery_locks_and_runs_on_and_let_go_it_sleeps",
+      "test_now_shows_the_notices_and_a_critical_one_unread_lights_for_yous_tray",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_copilot_key_starts_dictation",
+      "test_the_microphone_muted_shows_in_the_margin_and_return_unmutes_it",
+      "test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near",
+      "test_waiting_that_lasts_a_minute_shows_in_the_margin_quietly",
+      "test_whats_playing_shows_in_the_margin_and_a_media_key_shows_what_it_is"
+    ],
     "test": "vm-desktop-minds-the-margin"
   },
   {
@@ -95,6 +106,13 @@
     "commit": "461743399d56dac959e8e102cd6c137100886045",
     "owner_pr": 3363,
     "reason": "failed, then passed, at 461743399d56",
+    "subtests": [
+      "test_a_charge_told_in_batterys_step_is_said_there",
+      "test_a_key_is_presented_as_niri_first_shows_what_it_found",
+      "test_a_row_holding_only_a_copy_copies_on_return",
+      "test_no_answer_raised_an_error_and_quickshell_warned_of_nothing",
+      "test_the_shut_shell_sleeps_as_a_window_is_resized"
+    ],
     "test": "the-launcher-answers-whats-typed-on-niri"
   },
   {
@@ -102,6 +120,9 @@
     "commit": "dd21b75e8c65f6847ad9ff3a7e8a54a902417fa0",
     "owner_pr": 3542,
     "reason": "failed, then passed, at dd21b75e8c65",
+    "subtests": [
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went"
+    ],
     "test": "vm-screens-keep-the-launcher"
   },
   {
@@ -109,6 +130,12 @@
     "commit": "1c6f5f46964301dcd2d1889ccbbc127c00db041b",
     "owner_pr": 3596,
     "reason": "failed twice at 4e0cc018600f, and at 1c6f5f469643 after it",
+    "subtests": [
+      "test_a_daemon_whose_socket_is_missing_is_asked_only_once_it_appears",
+      "test_a_person_is_found_by_name_and_holds_the_ways_to_reach_them_and_their_recent",
+      "test_quickshell_warned_of_nothing_it_drew_all_along",
+      "test_the_mail_that_wants_joel_is_counted_in_now_and_return_lists_it_as_mail_does"
+    ],
     "test": "vm-desktop-launcher-reads-mail"
   },
   {
@@ -116,6 +143,10 @@
     "commit": "97b968eb686397074b9cd1695fba20e2c2ca4c2e",
     "owner_pr": 3737,
     "reason": "failed, then passed, at 97b968eb6863",
+    "subtests": [
+      "test_a_camera_is_a_thing_its_parts_a_step_in_and_return_its_viewfinder",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
     "test": "vm-desktop-captures"
   },
   {
@@ -123,6 +154,9 @@
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
     "owner_pr": 3757,
     "reason": "failed, then passed, at 1e94ca1cd67d",
+    "subtests": [
+      "test_unshaped"
+    ],
     "test": "vm-a-hidden-queue-is-taken-back"
   },
   {
@@ -130,6 +164,10 @@
     "commit": "1e94ca1cd67d2c73e02ea0d67f3d85a51f55ac53",
     "owner_pr": 3758,
     "reason": "failed, then passed, at 1e94ca1cd67d",
+    "subtests": [
+      "test_calendar_typed_lists_its_next_meetings_under_it",
+      "test_quickshell_warned_of_nothing_it_drew_all_along"
+    ],
     "test": "vm-desktop-launcher-holds-meetings"
   },
   {
@@ -137,6 +175,9 @@
     "commit": "b0e3be7a0f1bf6c0be687e741bc129afcbb83cd7",
     "owner_pr": 3794,
     "reason": "failed, then passed, at b0e3be7a0f1b",
+    "subtests": [
+      "test_y_flashes_its_rows_and_ds_ask_stands_on_the_line"
+    ],
     "test": "vm-desktop-looks-vi"
   },
   {
@@ -144,6 +185,9 @@
     "commit": "039909ee6f729f3c8d44e0ca2acb523133ce9be4",
     "owner_pr": 3827,
     "reason": "failed, then passed, at 039909ee6f72",
+    "subtests": [
+      "test_a_place_its_chord_opened_is_drawn_as_it_stood"
+    ],
     "test": "the-launcher-opens-on-what-it-kept-on-niri"
   },
   {
@@ -151,6 +195,9 @@
     "commit": "039909ee6f729f3c8d44e0ca2acb523133ce9be4",
     "owner_pr": 3827,
     "reason": "failed, then passed, at 039909ee6f72",
+    "subtests": [
+      "test_the_cat_is_drawn_in_whole_pixels"
+    ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
   },
   {
@@ -158,6 +205,9 @@
     "commit": "b2be6ae26c8fcb7f68b687145bafcbceec102640",
     "owner_pr": 3919,
     "reason": "failed, then passed, at b2be6ae26c8f",
+    "subtests": [
+      "test_a_list_kept_on_numbers_since_taken_comes_back_alone_moving_nothing"
+    ],
     "test": "vm-desktop-reopens-under-orchestrators"
   },
   {

@@ -36,6 +36,9 @@ let
     "modules/spend-watch/feeds/claude/tests/logins/pro.json"
     "modules/spend-watch/feeds/claude/tests/logins/ultra.json"
     "modules/spotify/spotify-recent/fixtures/token.json"
+    # Written by merge-net as serde lays JSON out, a subtest a line, so a
+    # quarantine it commits never leaves main unformatted.
+    "tools/merge-net/quarantine.json"
   ];
 in
 {

@@ -5,7 +5,7 @@
 //! is signed as theirs are, and they're found on the path rather than
 //! pinned.
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
@@ -160,6 +160,14 @@ impl Real {
             .arg("-C")
             .arg(self.checkout())
             .args(arguments))
+    }
+
+    /// The quarantine list at `commit`, empty where it doesn't read.
+    fn listed_at(&self, commit: &str) -> Value {
+        self.git(&["show", &format!("{commit}:{QUARANTINE}")])
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .unwrap_or_else(|| json!([]))
     }
 
     /// Make the checkout when there's none yet.
@@ -741,11 +749,11 @@ impl World for Real {
     }
 
     fn quarantined(&self, head: &str) -> Vec<String> {
-        self.git(&["show", &format!("{head}:{QUARANTINE}")])
-            .ok()
-            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-            .map(|list| tests_in(&list))
-            .unwrap_or_default()
+        crate::quarantine::whole(&self.listed_at(head))
+    }
+
+    fn listed_subtests(&self, head: &str, test: &str) -> BTreeSet<String> {
+        crate::quarantine::subtests_of(&self.listed_at(head), test)
     }
 
     // The newest merge to change the test's entry whose list lacks it took
@@ -763,9 +771,11 @@ impl World for Real {
                 QUARANTINE,
             ])
             .ok()?;
-        let commit = moved
-            .lines()
-            .find(|commit| !self.quarantined(commit).iter().any(|kept| kept == test))?;
+        let commit = moved.lines().find(|commit| {
+            !tests_in(&self.listed_at(commit))
+                .iter()
+                .any(|kept| kept == test)
+        })?;
         crate::watch::pr_of(&self.subject(commit))
     }
 
@@ -809,15 +819,24 @@ impl World for Real {
     fn quarantine(
         &self,
         test: &str,
+        subtests: &BTreeSet<String>,
         owner: Option<u64>,
         commit: &str,
         reason: &str,
     ) -> Result<Merged, String> {
         let path = self.checkout().join(QUARANTINE);
-        let body = quarantine_body(test, owner, commit, reason);
+        // An entry naming subtests excuses only them (quarantine.rs), so
+        // the description says which.
+        let what = if subtests.is_empty() {
+            test.to_owned()
+        } else {
+            let named: Vec<&str> = subtests.iter().map(String::as_str).collect();
+            format!("{test}'s {}", named.join(", "))
+        };
+        let body = quarantine_body(&what, owner, commit, reason);
         self.land(
             &format!("merge-net/quarantine-{test}"),
-            &format!("test(merge-net): quarantine a failing check\n\n{test} {reason}, so the net reverts nothing for it\nuntil its owner mends it."),
+            &format!("test(merge-net): quarantine a failing check\n\n{what} {reason}, so the net reverts nothing for it\nuntil its owner mends it."),
             &format!("Quarantine {test} Until Its Owner Mends It"),
             &body,
             &|_, _| Ok(true),
@@ -827,11 +846,8 @@ impl World for Real {
                     .and_then(|text| serde_json::from_str::<Value>(&text).ok())
                     .unwrap_or_else(|| json!([]));
                 let entries = list.as_array_mut().ok_or("the quarantine list isn't a list")?;
-                if !tests_in(&json!(entries.clone())).iter().any(|held| held == test) {
-                    entries.push(json!({
-                        "test": test, "reason": reason, "owner_pr": owner, "commit": commit, "at": now(),
-                    }));
-                }
+                let fields = json!({"reason": reason, "owner_pr": owner, "commit": commit, "at": now()});
+                crate::quarantine::list(entries, test, subtests, fields);
                 let written = serde_json::to_string_pretty(&list).map_err(|error| error.to_string())?;
                 fs::write(&path, written + "\n").map_err(|error| format!("writing {}: {error}", path.display()))?;
                 self.git(&["add", QUARANTINE]).map(|_| ())

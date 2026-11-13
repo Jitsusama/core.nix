@@ -1278,8 +1278,10 @@
     one again where it passed, reverts the merge it finds broke a test that failed twice and
     holds switching until the revert is on main, runs a held test first at a new head and lifts
     the hold the moment it passes, quarantines one that failed then passed, or whose revert
-    won't apply with its breaker as owner, reverts nothing for one quarantined at the round's
-    head or main's newest, starts nothing while the machine is held, says
+    won't apply with its breaker as owner, listing it by the subtests that failed, reverts
+    nothing for one quarantined at the round's head or main's newest, nor for a run failing
+    only in subtests main lists, but searches one failing in another, starts nothing while
+    the machine is held, says
     which changes run their VM tests before merging, a file a test names passing on what it
     names unless it builds a crate and which moved read from a run that passed at a clean head
     rather than evaluated again, and lets a head merge whose same change
