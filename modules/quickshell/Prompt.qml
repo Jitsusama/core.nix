@@ -269,8 +269,11 @@ Item {
     property bool wraps: false
     property real lineTall: height
     // TextInput says no count of its lines, so they're counted by its face's spacing.
+    // While nothing's typed the hint's lines count, since it wraps as typing would.
     readonly property int typedLines: wraps
-        ? Math.max(1, Math.round(input.contentHeight / typedFace.lineSpacing)) : 1
+        ? Math.max(1, Math.round((hintText.visible ? hintText.contentHeight : input.contentHeight)
+            / typedFace.lineSpacing))
+        : 1
     readonly property real wrapsTall: (typedLines - 1) * typedFace.lineSpacing
     // How far below the field's top its first capital's top stands, so a
     // surface sets the field's ink the inset under its frame.
@@ -1448,7 +1451,10 @@ Item {
             // padding, so the caret is at its start as at a typed word's.
             x: input.leftPadding
             width: Math.max(0, input.width - x - input.rightPadding)
-            elide: Text.ElideRight
+            // Where what's typed wraps, the hint wraps too, at a whole word, rather
+            // than being cut where a typed sentence wouldn't be.
+            wrapMode: prompt.wraps ? Text.Wrap : Text.NoWrap
+            elide: prompt.wraps ? Text.ElideNone : Text.ElideRight
             anchors.baseline: parent.baseline
             textFormat: Text.PlainText
             text: prompt.hint

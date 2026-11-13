@@ -171,6 +171,13 @@ ShellRoot {
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
             Prompt { id: voicedField; width: root.panel; hint: root.voice }
+            // Super+S's line: a field that wraps, its hint longer than a line.
+            Prompt {
+                id: wrappedHint
+                width: root.panel / 2
+                wraps: true
+                hint: "Say anything, and the void passes it to whoever owns it."
+            }
             // The launcher's head: its field the band from the frame to the
             // hairline over the rows, as tall as the rows' rhythm sets it.
             Prompt {
@@ -1353,6 +1360,13 @@ ShellRoot {
             expect("the caret stands at the hint's start, as at a typed word's",
                 Math.abs(startCaret - firstLetter) <= 0.5,
                 `caret at ${startCaret}, a typed letter at ${firstLetter}`);
+            // Where what's typed wraps, a hint too long for a line wraps as
+            // typing it would, whole, the field growing for it, rather than cut.
+            const wrapping = drawn(wrappedHint, []).find(t => t.text === wrappedHint.hint);
+            expect("a wrapping field's long hint wraps whole, the field grown for it",
+                wrapping !== undefined && !wrapping.truncated && wrappedHint.typedLines > 1
+                    && wrappedHint.wrapsTall > 0,
+                `${said(drawn(wrappedHint, []))}, ${wrappedHint.typedLines} lines`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.rung.inset, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined
