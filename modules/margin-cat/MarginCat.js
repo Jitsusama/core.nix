@@ -355,9 +355,12 @@ function quartered(drawing, turn) {
 // `drawing`, how long each took the shell to sync and render, its own
 // cost of a frame; `unseen`, how many niri never showed (Joel,
 // 2026-11-12: "we need proper smooth animations with character to them");
-// and `begun`, how many frames the shell began meanwhile, so a walk whose
-// frames went unasked of says so rather than reading slower than it ran.
-function walked(shown, drawing, unseen, begun) {
+// and as `counted`, its `begun`, how many frames the shell began
+// meanwhile, so a walk whose frames went unasked of says so rather than
+// reading slower than it ran, and `what` it was: a walk, or a hop, said
+// the same way.
+function walked(shown, drawing, unseen, counted) {
+    const begun = counted?.begun ?? 0;
     const gaps = shown.slice(1).map((at, i) => at - shown[i]).sort((a, b) => a - b);
     const tenths = ms => Math.round((ms ?? 0) * 10) / 10;
     const said = {
@@ -369,8 +372,8 @@ function walked(shown, drawing, unseen, begun) {
         unseen,
         begun
     };
-    const line = `cat: a walk presented ${said.frames} of its ${begun} frames a median `
-        + `${said.median} ms `
+    const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
+        + "a median "        + `${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn within `
         + `${said.drawn} ms, ${unseen} never shown`;
     return { said, line };
@@ -385,10 +388,13 @@ function turned(drawing, way) {
 // How lively the cat may be, from how engaged Joel is ("mild movements
 // when i'm active, increeeasing as I'm less engaged", 2026-11-12), as
 // `heard` says: `paused` ten seconds with no keys, `idle` a minute, `asleep`
-// at the doze, and `quiet` while Do Not Disturb holds, which keeps it still
-// whatever else is true, since being left alone means the cat too.
+// at the doze. It keeps still whatever else is true (VKCF3Z, eb64260b)
+// while Do Not Disturb holds (`quiet`), since being left alone means the
+// cat too; on a call, a camera in use (`onCamera`); with the screen
+// `locked`; and where it's drawn on no screen (`unseen`), fullscreen,
+// shared or in the overview, since a play there wakes for no one.
 function level(heard) {
-    if (heard.quiet) {
+    if (heard.quiet || heard.onCamera || heard.locked || heard.unseen) {
         return "still";
     }
     if (heard.asleep) {
@@ -400,12 +406,14 @@ function level(heard) {
     return heard.paused ? "paused" : "typing";
 }
 
-// The rest before its next scene at a level (`lively`), in ms, `chance` (0 to 1)
-// choosing where in its span: 45 to 75 s while he types, so a move is a
-// rare thing at the edge of his eye, and 20 to 40 s once he's paused or
-// left; null where nothing comes next, asleep or still.
+// The rest before its next scene at a level (`lively`), in ms, `chance` (0 to
+// 1) choosing where in its span: 45 to 75 s while he types, so a move is a
+// rare thing at the edge of his eye; 5 to 12 s once he's paused, and 3 to 8
+// s once he's left the keys (Joel, 2026-11-12: "play a bit more and not
+// wait too long"); null where nothing comes next, asleep or still. Each is
+// one timer, so nothing wakes between two plays.
 function rest(lively, chance) {
-    const spans = { typing: [45_000, 75_000], paused: [20_000, 40_000], idle: [20_000, 40_000] };
+    const spans = { typing: [45_000, 75_000], paused: [5000, 12_000], idle: [3000, 8000] };
     const span = spans[lively];
     return span ? Math.round(span[0] + (span[1] - span[0]) * chance) : null;
 }
@@ -413,73 +421,101 @@ function rest(lively, chance) {
 // What a single pose held while he types takes: long enough to be seen at
 // the edge of his eye, short of a word's typing.
 const GLANCE = 375;
+const GLANCES = ["earFlick", "tailSwish", "blinking"];
 
-// A pause's scenes: the sitting cat's own small moves, each at most a
-// second and a half, sitting again between them. No beat is quicker than
-// 125 ms, so it never moves more than eight poses a second.
-const MILD = [
-    [{ pose: "earFlick", ms: 250 }, { pose: "nothingHere", ms: 150 },
-        { pose: "earFlick", ms: 250 }],
-    [{ pose: "tailSwish", ms: 375 }, { pose: "nothingHere", ms: 250 },
-        { pose: "tailSwish", ms: 375 }],
-    [{ pose: "blinking", ms: 150 }, { pose: "nothingHere", ms: 200 },
-        { pose: "blinking", ms: 150 }],
-    [{ pose: "earFlick", ms: 375 }, { pose: "nothingHere", ms: 375 },
-        { pose: "tailSwish", ms: 500 }]
-];
+// How far each beat is drawn from its own length, a quarter either way, so
+// no two plays run alike; and the quickest any beat may be, so it never
+// moves more than eight poses a second.
+const VARIES = 0.25;
+const QUICKEST = 125;
+
+// Its plays in place, for while he's paused and reading (VKCF3Z,
+// eb64260b): the sitting cat's own small moves, each a pose and how long
+// it's held, sitting between them, and none over two seconds. Grooming
+// licks its paw, lowering it and raising it again.
+const IN_PLACE = {
+    tailFlick: [["tailSwish", 300], ["nothingHere", 220], ["tailSwish", 300]],
+    batting: [["batting", 260], ["nothingHere", 200], ["batting", 220], ["nothingHere", 240],
+        ["batting", 260]],
+    stretch: [["stretching", 600]],
+    lookingAbout: [["lookingAbout", 600], ["nothingHere", 350], ["lookingAbout", 450]],
+    grooming: [["grooming", 380], ["blinking", 180], ["grooming", 380], ["blinking", 180],
+        ["grooming", 380]]
+};
+
+// Its moves, for once he's left the keys, a quarter of its plays then so
+// it stays gentle: a hop a cell or two straight up from a crouch, landing
+// crouched; and a wander of 16 to 40 cells along the margin, a sit, and
+// back over its column, on the walk's own steps.
+const MOVES = 0.25;
+const HOP = { crouches: 220, rises: 380, lands: 160 };
+const WANDERS = [16, 40];
+const WANDER_SITS = 1500;
 
 // One of `list`, `chance` (0 to 1) choosing which.
 function pick(list, chance) {
     return list[Math.min(list.length - 1, Math.floor(chance * list.length))];
 }
 
-// A scene at a level (`lively`), `chance` (0 to 1) choosing which: its beats, each a
-// pose held `ms`, after which it sits again. While he types it's a single
-// pose, an ear flick, a tail swish or a blink; paused, one of the mild
-// scenes; idle, half the time a stroll to the gutter beside its column
-// and back (`walk`, its beats `to` where and a sit between), else a mild
-// scene; asleep or still, none.
-function scene(lively, chance) {
+// A scene at a level (`lively`), its chances drawn from `draw` (0 to 1, as
+// Math.random gives them), never the play named `last`: its `name` and its
+// beats, each a pose held `ms`, after which it sits again. While he types
+// it's a single pose, an ear flick, a tail swish or a blink; paused, one of
+// the plays in place; idle, those three times in four, else a move. A
+// hop's rise is a beat with `hop` and how many `cells` up; a wander's
+// walks are beats with `walk`, `to` "wander", its `cells` and `way`, or
+// "column", back. Asleep or still, none.
+function scene(lively, draw, last) {
+    const held = (pose, ms) => ({
+        pose,
+        ms: Math.max(QUICKEST, Math.round(ms * (1 - VARIES + 2 * VARIES * draw())))
+    });
     if (lively === "typing") {
-        return [{ pose: pick(["earFlick", "tailSwish", "blinking"], chance), ms: GLANCE }];
+        const pose = pick(GLANCES.filter(glance => glance !== last), draw());
+        return { name: pose, beats: [held(pose, GLANCE)] };
     }
-    if (lively === "paused") {
-        return pick(MILD, chance);
+    if (lively !== "paused" && lively !== "idle") {
+        return { name: "", beats: [] };
     }
-    if (lively === "idle") {
-        return chance < 0.5
-            ? [{ walk: true, to: "gutter" }, { pose: "nothingHere", ms: 6000 },
-                { walk: true, to: "column" }]
-            : pick(MILD, (chance - 0.5) * 2);
+    const moving = lively === "idle" && draw() >= 1 - MOVES;
+    const names = (moving ? ["hop", "wander"] : Object.keys(IN_PLACE)).filter(play => play !== last);
+    const name = pick(names, draw());
+    if (name === "hop") {
+        const rises = Object.assign(held("pouncing", HOP.rises), { hop: true, cells: 1 + draw() });
+        const crouched = held("pouncing", HOP.crouches);
+        return { name, beats: [crouched, rises, held("pouncing", HOP.lands)] };
     }
-    return [];
+    if (name === "wander") {
+        const cells = Math.round(WANDERS[0] + (WANDERS[1] - WANDERS[0]) * draw());
+        const off = { walk: true, to: "wander", cells, way: draw() < 0.5 ? -1 : 1 };
+        const sat = held("nothingHere", WANDER_SITS);
+        return { name, beats: [off, sat, { walk: true, to: "column" }] };
+    }
+    return { name, beats: IN_PLACE[name].map(([pose, ms]) => held(pose, ms)) };
 }
 
-// Where a stroll goes, from `at` as sits takes it: over the middle of the
-// gutter beside its column, the right one first, at the height it sits
-// at. niri leaves the theme's gap (`cell`) between two columns, so the
-// gutter's middle is half of it past the column's edge, which needs only
-// the column the shell hears, never its neighbours. Null where both
-// gutters are off the screen or under the margin's marks, since there it
-// would cover what's true or be nowhere.
-function gutter(at) {
-    const { column } = at;
-    if (!column || column.top < at.tall + at.air) {
+// Where a short wander goes, from `at` as sits takes it with the `seat` it
+// sits at: its `cells`, each `step` across, along the margin the `way` it
+// was drawn, or the other where that one's off the screen or on the
+// margin's marks, since there it would cover what's true or be nowhere;
+// null where neither fits.
+function wander(at) {
+    const { seat } = at;
+    if (!seat) {
         return null;
     }
-    const beside = [column.left + column.width + at.cell / 2, column.left - at.cell / 2];
     const reach = (at.marks * at.cell) / 2 + at.cell / 2;
     const fits = left => left >= 0 && left + at.wide <= at.across
         && (at.marks === 0 || left + at.wide <= at.across / 2 - reach
             || left >= at.across / 2 + reach);
-    const x = beside.map(middle => middle - at.wide / 2).find(fits);
-    return x === undefined ? null : { x, y: column.top - at.tall - at.air };
+    const x = [at.way, -at.way].map(way => seat.x + way * at.cells * at.step).find(fits);
+    return x === undefined ? null : { x, y: seat.y };
 }
 
-function wander(at) {
-    return null;
-}
-
+// How high a hop has it `t` ms into its rise of `lasts`, in its cells: a
+// thing thrown up and falling, none as it leaves and lands, `cells`
+// midway.
 function hopped(t, lasts, cells) {
-    return 0;
+    const p = Math.min(Math.max(t / lasts, 0), 1);
+    return cells * 4 * p * (1 - p);
 }

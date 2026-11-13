@@ -35,6 +35,8 @@
           "blinking"
           "curled"
           "earFlick"
+          "grooming"
+          "lookingAbout"
           "pouncing"
           "stretching"
           "tailSwish"

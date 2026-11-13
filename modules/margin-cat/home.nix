@@ -11,13 +11,13 @@
 
   options.jitsusama.quickshell.cat.dozes = lib.mkOption {
     type = lib.types.ints.positive;
-    default = 600;
+    default = 180;
     description = ''
       How many seconds with nothing typed or moved before the cat curls up
-      asleep: ten minutes, as long as the shell waits to count Joel away,
-      since it grows livelier the less he's engaged ("mild movements when
-      i'm active, increeeasing as I'm less engaged", 2026-11-12) and sleeps
-      only once he's gone.
+      asleep: three minutes, so it plays livelier for about two once he's
+      left the keys ("mild movements when i'm active, increeeasing as I'm
+      less engaged", 2026-11-12), then sleeps and draws nothing until a
+      key, rather than playing all night for an empty room.
     '';
   };
 
@@ -36,7 +36,7 @@
     default = 60;
     description = ''
       How many seconds with no keys before the cat counts Joel away from
-      the keys, and may stroll to the gutter beside its column.
+      the keys, and may hop or wander a few cells and back.
     '';
   };
 
@@ -45,9 +45,9 @@
     default = 1;
     description = ''
       How many times sooner than its own rests (MarginCat.js) each of the
-      cat's scenes comes: 45 to 75 s while Joel types, 20 to 40 s once he
-      pauses. A test sets it high to see scenes in seconds, or low to see
-      none.
+      cat's scenes comes: 45 to 75 s while Joel types, 5 to 12 s once he
+      pauses, 3 to 8 s once he's left the keys. A test sets it high to see
+      scenes in seconds, or low to see none.
     '';
   };
 

@@ -1030,7 +1030,16 @@ standstill; its crouch and its steps back are on the theme's curve, and
 all of it stretches with `motion.slowdown`. A walk takes about two
 seconds, an amble beside it and a hurry across the screen. Its column
 moving under it carries it at once, and a seat moved on the way has it
-walk on there without stopping. After ten
+walk on there without stopping. Between, it plays a little, gently and at
+random, more the less Joel is engaged (Joel, 2026-11-12: "play a bit more
+and not wait too long. it's play should be a bit random, gentle, but
+playful"): while he types, a single small move about once a minute; once
+he pauses, a play in place every 5 to 12 s, a tail flick, batting at
+nothing, a stretch, looking about or grooming; once he's left the keys a
+minute, every 3 to 8 s, one in four a hop or a short wander and back.
+Each beat is drawn a quarter either way, no play comes twice running, a
+key ends any at once, and it keeps still in Do Not Disturb, on a call,
+locked, and where no screen draws it. After three
 minutes with no keys (`jitsusama.quickshell.cat.dozes`), when Joel is
 away, it curls up asleep
 in a pose of its own, a z above it, one frame and then none; a key wakes

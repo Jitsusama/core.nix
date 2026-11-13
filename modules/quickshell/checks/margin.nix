@@ -231,7 +231,7 @@
   the-margin-cat-follows-the-keys-on-niri = launcherOnNiri {
     name = "the-margin-cat-follows-the-keys-on-niri";
     tests = ../../../tests/margin-cat-on-niri-test.py;
-    # Its doze in 45 s rather than the laptop's ten minutes, so a case
+    # Its doze in 45 s rather than the laptop's three minutes, so a case
     # sees it fall asleep; the tests wake it with a key before each case.
     # Its scenes come a hundred times later than its own rests, so none
     # lands in a case counting its frames; the next check sees them.

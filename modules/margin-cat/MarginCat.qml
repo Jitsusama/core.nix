@@ -8,15 +8,15 @@
 // two seconds on another column it walks there, a frame each time the
 // screen draws, with the beats MarginCat.js gives it; otherwise it draws a
 // frame only as the column under it changes, and none at rest, so the
-// closed shell draws nothing for it. After ten minutes with
+// closed shell draws nothing for it. After three minutes with
 // no keys it curls up asleep, one frame, and wakes as they come again; as
 // the screen unlocks it stretches, then sits. Between, it's livelier the
 // less Joel is engaged (MarginCat.js's level): while he types, one small
-// move held a moment, about once a minute; ten seconds with no keys, mild
-// scenes a little more often; a minute, sometimes a stroll to the gutter
-// beside its column and back, on the same walk. Each step comes from an
-// idle timer, never a poll, a key ends any scene at once, and it keeps
-// still in Do Not Disturb.
+// move held a moment, about once a minute; ten seconds with no keys,
+// gentle plays in place every few seconds, at random; a minute, sometimes
+// a hop or a short wander and back, on the same walk. Each wait is one
+// timer, never a poll, a key ends any play at once, and it keeps still in
+// Do Not Disturb, on a call, locked, and where no screen draws it.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -30,10 +30,12 @@ Scope {
     id: root
 
     // Asleep once nothing's been typed or moved for as long as its settings
-    // say, ten minutes on the laptop, since it's livelier the less Joel is
-    // engaged and sleeps only once he's gone ("mild movements when i'm
-    // active, increeeasing as I'm less engaged", 2026-11-12); whatever keeps
-    // the screen awake, since a video playing is still no keys.
+    // say, three minutes on the laptop, since it's livelier the less Joel is
+    // engaged ("mild movements when i'm active, increeeasing as I'm less
+    // engaged", 2026-11-12) and plays about two minutes once he's gone,
+    // then sleeps rather than playing for an empty room (VKCF3Z, eb64260b);
+    // whatever keeps the screen awake, since a video playing is still no
+    // keys.
     readonly property bool asleep: dozing.isIdle
     // Its settings, from its module (modules/margin-cat/home.nix), read once
     // as it starts.
@@ -59,18 +61,40 @@ Scope {
         : posed !== "" ? Theme.pixels[posed] ?? Theme.pixels.nothingHere
         : Theme.pixels.nothingHere) ?? []
     // How lively it may be, from how engaged Joel is: typing, paused ten
-    // seconds, idle a minute, asleep, or still in Do Not Disturb.
+    // seconds, idle a minute, or asleep; still in Do Not Disturb, on a
+    // call, locked, or drawn on no screen.
     readonly property string lively: MarginCat.level({
         paused: pausing.isIdle,
         idle: idling.isIdle,
         asleep: root.asleep,
-        quiet: Quiet.on
+        quiet: Quiet.on,
+        onCamera: root.onCamera,
+        locked: root.lockSaid === "locked",
+        unseen: root.placedOn === 0
     })
+    // How many screens draw it now, each window counting itself in and out.
+    property int placedOn: 0
+    // Whether a camera is in use, as on a call, from the machine daemon's
+    // camera records, which it tells only as a program comes or goes, so
+    // watching them wakes nothing in between.
+    readonly property bool onCamera: {
+        void cameras.revision;
+        return Object.values(cameras.held).some(camera => (camera.programs ?? []).length > 0);
+    }
     // The pose a scene holds now, by the theme's name, or "" for sitting.
     property string posed: ""
+    // The play under way or last played, so none comes twice running.
+    property string played: ""
     // What's left of the scene under way, each beat as MarginCat.scene says.
     property var beats: []
-    // Where a stroll asks the cat to walk, "gutter" or "column", or "" when
+    // A hop under way, its rise's `ms` and how many `cells` up, and how far
+    // up it is now, from none to its height (1), each frame the screen
+    // draws; null and 0 on the ground.
+    property var hop: null
+    property real lift: 0
+    // A wander's cells and way, for the screen whose cat takes it.
+    property var wandering: null
+    // Where a stroll asks the cat to walk, "wander" or "column", or "" when
     // none is under way; and whether a screen's cat took the walk, so a
     // stroll nothing could take moves on rather than waiting.
     property string strollTo: ""
@@ -82,6 +106,7 @@ Scope {
 
     function begin(): void {
         beating.stop();
+        land();
         beats = [];
         posed = "";
         strollTo = "";
@@ -103,19 +128,51 @@ Scope {
             begin();
             return;
         }
+        land();
         const next = beats[0];
         beats = beats.slice(1);
         if (next.walk === true) {
             posed = "";
             strollTaken = false;
+            if (next.to === "wander")
+                wandering = { cells: next.cells, way: next.way };
             strollTo = next.to;
             if (!strollTaken)
                 beat();
             return;
         }
         posed = next.pose;
+        if (next.hop === true) {
+            hop = { ms: next.ms, cells: next.cells };
+            hopper.restart();
+        }
         beating.interval = next.ms;
         beating.restart();
+    }
+
+    // Back on the ground, a hop over or cut short.
+    function land(): void {
+        hopper.stop();
+        hop = null;
+        lift = 0;
+    }
+
+    // A hop's rise each frame the screen draws, and none on the ground.
+    FrameAnimation {
+        id: hopper
+        onTriggered: {
+            if (root.hop !== null)
+                root.lift = MarginCat.hopped(hopper.elapsedTime * 1000, root.hop.ms, 1);
+        }
+    }
+
+    Daemon {
+        id: cameras
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/machine.sock`
+        kind: "camera"
+        keptThroughGap: false
+        answersWhole: true
     }
 
     IdleMonitor {
@@ -133,7 +190,9 @@ Scope {
     Timer {
         id: waiting
         onTriggered: {
-            root.beats = MarginCat.scene(root.lively, Math.random());
+            const next = MarginCat.scene(root.lively, Math.random, root.played);
+            root.played = next.name;
+            root.beats = next.beats;
             root.beat();
         }
     }
@@ -168,7 +227,7 @@ Scope {
 
     IdleMonitor {
         id: dozing
-        timeout: root.settings.dozes ?? 600
+        timeout: root.settings.dozes ?? 180
         respectInhibitors: false
     }
 
@@ -264,15 +323,15 @@ Scope {
             }
             readonly property real cell: MarginCat.cell(Theme.gap, ratio) / ratio
             readonly property real size: Math.max(1, root.drawing.length) * cell
-            // Where it'd sit over the keys' column, or in the gutter beside
-            // it while a stroll has it there, and where it's drawn: there, a
+            // Where it'd sit over the keys' column, or along the margin from
+            // it while a wander has it there, and where it's drawn: there, a
             // step of its walk, or still where it sat while it waits for the
             // keys to rest.
             // It reads nothing follow() writes, since a write there would
             // work it out again inside its own change, a binding loop.
             readonly property var there: column === null ? null
                 : strolled ?? seat(column)
-            // A stroll's: the gutter seat it walks to or sits at, or null for
+            // A stroll's: the seat it wanders to or sits at, or null for
             // its column; whether the walk under way is a scene's, which
             // hands the scene its next beat as it sits; and whether the next
             // move of its seat walks rather than carries it there, hurried
@@ -364,7 +423,7 @@ Scope {
                         walkFrom(true);
                 } else if (going !== null || !resting.running || wanted !== waitingOn) {
                     halt();
-                    // Its gutter forgotten a moment later, outside this
+                    // Its wander forgotten a moment later, outside this
                     // change of `there`, which forgetting it changes again.
                     Qt.callLater(endStroll);
                     place = { x: place.x, y: there.y };
@@ -474,7 +533,7 @@ Scope {
             // move up whose seat was too far to walk to at once, where it
             // stayed, until the keys rest and it walks there as ever.
             function arrive(): void {
-                tell();
+                tell("walk");
                 const rests = moving?.rests ?? false;
                 mover.stop();
                 moving = null;
@@ -502,27 +561,57 @@ Scope {
                     moveFrom(way);
             }
 
-            // How its walk reached the screen, in the journal, so a walk on
-            // Joel's screen says whether it kept to its rate.
-            function tell(): void {
+            // How its walk or hop (`what`) reached the screen, in the
+            // journal, so one on Joel's screen says whether it kept to its
+            // rate.
+            function tell(what: string): void {
                 if (!window.FramePresentation.available)
                     return;
                 const told = MarginCat.walked(shown, costs, unseen,
-                    window.FramePresentation.framesBegun - begunAt);
+                    { begun: window.FramePresentation.framesBegun - begunAt, what });
                 console.info(told.line);
                 if (Options.reports)
-                    Report.say(`walked cat ${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
+                    Report.say(`${what === "hop" ? "hopped" : "walked"} cat `
+                        + `${modelData?.name ?? ""} ${JSON.stringify(told.said)}`);
             }
 
-            // Each frame of a walk, as niri showed it or didn't, asking after
-            // the next. Asked only here, once niri says the last was shown,
-            // the ask lands after the next frame has begun where frames come
-            // close together, so only every other frame was heard of: on a
-            // GPU at 60 Hz, and on Joel's screen at 120. Each step asks too
-            // (walker), before its frame is drawn. Asked only there, a GPU at
-            // 120 Hz drew every other frame, so both stay.
+            // A hop drawn here, its frames counted as a walk's are; and how
+            // far up it has the cat, in logical pixels: its height in cells,
+            // or what room the gap leaves above it, if less.
+            readonly property bool hopping: root.hop !== null && !!place
+            readonly property real lifted: !place || root.hop === null ? 0
+                : root.lift * Math.min(root.hop.cells, Math.max(0, place.y / cell)) * cell
+            onHoppingChanged: {
+                if (hopping) {
+                    shown = [];
+                    costs = [];
+                    unseen = 0;
+                    begunAt = window.FramePresentation.framesBegun;
+                    if (window.FramePresentation.available)
+                        window.FramePresentation.ask();
+                } else if (going === null) {
+                    tell("hop");
+                }
+            }
+            // Counted among the screens that draw it, so a cat drawn on none
+            // keeps still.
+            readonly property bool placed: !!place
+            onPlacedChanged: root.placedOn += placed ? 1 : -1
+            Component.onDestruction: {
+                if (placed)
+                    root.placedOn -= 1;
+            }
+
+            // Each frame of a walk or a hop, as niri showed it or didn't,
+            // asking after the next until it sits. Asked only here, once niri
+            // says the last was shown, the ask lands after the next frame has
+            // begun where frames come close together, so only every other
+            // frame was heard of: on a GPU at 60 Hz, and on Joel's screen at
+            // 120. Each step asks too (walker, and a hop's lift), before its
+            // frame is drawn. Asked only there, a GPU at 120 Hz drew every
+            // other frame, so both stay.
             FramePresentation.onPresented: (frame, at) => {
-                if (going === null && moving === null)
+                if (going === null && moving === null && !hopping)
                     return;
                 shown.push(at);
                 const times = window.FramePresentation.timesOf(frame);
@@ -531,7 +620,7 @@ Scope {
                 window.FramePresentation.ask();
             }
             FramePresentation.onDiscarded: () => {
-                if (going === null && moving === null)
+                if (going === null && moving === null && !hopping)
                     return;
                 unseen += 1;
                 window.FramePresentation.ask();
@@ -553,7 +642,7 @@ Scope {
             }
 
             // A stroll ended by its column going or another's taking the
-            // keys: its gutter is forgotten, and the scene moves on rather
+            // keys: its wander is forgotten, and the scene moves on rather
             // than waiting on a walk that's gone.
             function endStroll(): void {
                 strolled = null;
@@ -562,8 +651,8 @@ Scope {
             }
 
             // A stroll's walk, where the scene says, taken only by the screen
-            // whose cat sits still over the column the keys are in: to the
-            // gutter beside it, then back over it, each with a thought and a
+            // whose cat sits still over the column the keys are in: a few
+            // cells along the margin, then back over it, each with a thought and a
             // crouch as any walk; or, as a key ends the scene (`to` ""),
             // straight back over its column, hurried.
             function stroll(to: string): void {
@@ -587,14 +676,15 @@ Scope {
                     strolled = null;
                     return;
                 }
-                const spot = MarginCat.gutter({
-                    column,
+                const spot = MarginCat.wander({
+                    seat: seat(column),
                     across: modelData.width,
                     marks: MarginMarks.drawn,
                     cell: Theme.gap,
                     wide: size,
-                    tall: size,
-                    air: cell
+                    step: cell,
+                    cells: root.wandering?.cells ?? 0,
+                    way: root.wandering?.way ?? 1
                 });
                 if (spot === null)
                     return;
@@ -648,7 +738,7 @@ Scope {
                 onTriggered: {
                     const now = MarginCat.step(window.going, walker.elapsedTime * 1000);
                     if (now.done) {
-                        window.tell();
+                        window.tell("walk");
                         window.halt();
                         window.sat = window.goingTo;
                         window.place = window.there ?? window.place;
@@ -766,6 +856,7 @@ Scope {
                     hue: `${Theme.voice}`,
                     pose: root.posed,
                     strolling: handsBack || strolled !== null,
+                    lift: Math.round(window.lifted * window.ratio),
                     window: sat,
                     asleep: root.asleep,
                     stretching: root.stretching,
@@ -799,6 +890,13 @@ Scope {
             // A scene's pose changes nothing of its place, so it says so too.
             readonly property string posed: root.posed
             onPosedChanged: say()
+            // Nor does a hop's height, which says each frame of it, and asks
+            // niri of the frame it moves, as a walk's step does.
+            onLiftedChanged: {
+                say();
+                if (hopping && window.FramePresentation.available)
+                    window.FramePresentation.ask();
+            }
             Component.onCompleted: {
                 follow();
                 say();
@@ -807,15 +905,16 @@ Scope {
             Item {
                 id: cat
 
-                // On the screen's own pixels, so every cell's edge is sharp.
+                // On the screen's own pixels, so every cell's edge is sharp,
+                // a hop's height too.
                 x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
-                // Held inside the margin, but on a move down, carried up off
-                // it and climbing back.
+                // Held inside the margin, lifted by a hop, but on a move down,
+                // carried up off it and climbing back.
                 y: !window.place ? 0
                     : window.moving !== null
                     ? Math.round(window.place.y * window.ratio) / window.ratio
-                    : Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
-                        * window.ratio) / window.ratio)
+                    : Math.max(0, Math.round((Math.min(window.place.y, window.height - window.size)
+                        - window.lifted) * window.ratio) / window.ratio)
                 width: window.size
                 height: window.size
 
