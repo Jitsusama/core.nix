@@ -1,0 +1,4 @@
+{"type":"session","id":"s2","timestamp":"@ISO-432300@","cwd":"@HERE@/src/thing"}
+{"type":"custom","customType":"quest-workflow","timestamp":"@ISO-432290@","data":{"questId":"QEST-20261108-DISK02"}}
+{"type":"message","timestamp":"@ISO-432280@","message":{"role":"assistant","provider":"openai","model":"gpt-5","usage":{"input":1200,"output":900,"cacheRead":0,"cacheWrite":30000,"cost":{"input":0.02,"output":0.07,"cacheRead":0,"cacheWrite":0.561,"total":0.41}}}}
+{"type":"message","timestamp":"@ISO-432200@","message":{"role":"assistant","provider":"openai","model":"gpt-5","usage":{"input":1200,"output":900,"cacheRead":30000,"cacheWrite":1500,"cost":{"input":0.02,"output":0.07,"cacheRead":0.045,"cacheWrite":0.0281,"total":0.09}}}}

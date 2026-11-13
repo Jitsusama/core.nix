@@ -1,0 +1,9 @@
+{
+  "sessions": "@HERE@/sessions",
+  "runs": "@HERE@/runs.db",
+  "registry": "@HERE@/registry",
+  "quests": "@HERE@/quests",
+  "state": "@HERE@/state/spend-watch",
+  "runtime": "@HERE@/runtime/spend-watch",
+  "zone": "UTC"
+}

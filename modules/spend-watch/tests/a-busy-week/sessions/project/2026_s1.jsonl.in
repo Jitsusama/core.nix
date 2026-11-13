@@ -1,0 +1,6 @@
+{"type":"session","id":"s1","timestamp":"@ISO-173400@","cwd":"@HERE@/src/thing"}
+{"type":"custom","customType":"quest-workflow","timestamp":"@ISO-173390@","data":{"questId":"QEST-20261111-LONG01"}}
+{"type":"message","timestamp":"@ISO-173380@","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-1","usage":{"input":1200,"output":900,"cacheRead":0,"cacheWrite":52000,"cost":{"input":0.02,"output":0.07,"cacheRead":0,"cacheWrite":0.9724,"total":1.08}}}}
+{"type":"message","timestamp":"@ISO-173320@","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-1","usage":{"input":1200,"output":900,"cacheRead":52000,"cacheWrite":3000,"cost":{"input":0.02,"output":0.07,"cacheRead":0.078,"cacheWrite":0.0561,"total":0.21}}}}
+{"type":"message","timestamp":"@ISO-172120@","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-1","usage":{"input":1200,"output":900,"cacheRead":0,"cacheWrite":56000,"cost":{"input":0.02,"output":0.07,"cacheRead":0,"cacheWrite":1.0472,"total":1.16}}}}
+{"type":"message","timestamp":"@ISO-172160@","message":{"role":"assistant","provider":"anthropic","model":"claude-opus-4-1","usage":{"input":1200,"output":900,"cacheRead":56000,"cacheWrite":2500,"cost":{"input":0.02,"output":0.07,"cacheRead":0.084,"cacheWrite":0.0467,"total":0.22}}}}
