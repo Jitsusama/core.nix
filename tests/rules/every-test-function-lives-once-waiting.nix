@@ -51,11 +51,9 @@
   "modules/pi/tests/pi-claude-keeps-to-the-plan.sh" = 1;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 1;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 1;
-  "modules/programs/src/interface.rs" = 1;
   "modules/programs/src/notify.rs" = 1;
   "modules/quickshell/whereabouts/src/notify.rs" = 1;
   "modules/quickshell/whereabouts/src/rows_tests.rs" = 1;
-  "modules/sound/src/interface.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/feed.rs" = 1;
   "modules/spend-watch/feeds/claude/tests/schedule.rs" = 1;
   "modules/spend-watch/src/collection.rs" = 1;
