@@ -1,3 +1,10 @@
+//! The command line's scenarios: what each command reads and says, run
+//! against a made-up machine's folders.
+//!
+//! Long because it holds the scenarios of `src/cli.rs`, one file per
+//! source module as this folder's README says, and every command's cases
+//! share the one `Machine` they run on.
+
 use disk_guard::band::Band;
 use disk_guard::cli::{Command, Env, parse, run};
 use disk_guard::units::{Size, Span};
@@ -407,6 +414,73 @@ fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
     assert!(out.contains("reclaimed") && !out.contains("begin"), "{out}");
     let (_, json, _) = machine.run("journal --json");
     assert_eq!(json.lines().count(), 2, "{json}");
+}
+
+#[test]
+fn the_journal_shows_the_machines_guard_beside_the_accounts_by_time() {
+    let machine = Machine::new();
+    let now = wall();
+    let line = |at: f64, path: &str| {
+        format!(
+            r#"{{"event":"action","at":{at},"band":"filling","path":"{path}","kind":"garbage","size":1048576,"outcome":"reclaimed"}}"#
+        )
+    };
+    fs::write(
+        machine.env.state.join("journal.jsonl"),
+        format!("{}\n", line(now - 120.0, "/home/u/app/target")),
+    )
+    .unwrap();
+    write_file(
+        &machine.env.system_state.join("journal.jsonl"),
+        &format!(
+            "{}\n{}\n",
+            line(now - 180.0, "/tmp/left"),
+            line(now - 60.0, "/nix/store/abc-thing")
+        ),
+    );
+    let (code, out, _) = machine.run("journal");
+    assert_eq!(code, 0);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines.len(), 3, "{out}");
+    for (said, (path, whose)) in lines.iter().zip([
+        ("/tmp/left", "machine"),
+        ("/home/u/app/target", "account"),
+        ("/nix/store/abc-thing", "machine"),
+    ]) {
+        assert!(
+            said.contains(path) && said.contains(whose),
+            "expected {path} from the {whose}'s guard in its place, the journal said:\n{out}"
+        );
+    }
+    let (_, json, _) = machine.run("journal --json --since 90s");
+    let entry: serde_json::Value = serde_json::from_str(json.trim()).unwrap();
+    assert_eq!(entry["guard"], "machine", "{json}");
+    assert_eq!(entry["path"], "/nix/store/abc-thing", "{json}");
+}
+
+#[test]
+fn a_machines_journal_it_cant_read_is_said_and_the_accounts_still_shown() {
+    use std::os::unix::fs::PermissionsExt;
+    let machine = Machine::new();
+    let now = wall();
+    fs::write(
+        machine.env.state.join("journal.jsonl"),
+        format!(
+            r#"{{"event":"pass","at":{},"band":"filling","end":"reached","freed":0,"seconds":1.0}}"#,
+            now - 60.0
+        ) + "\n",
+    )
+    .unwrap();
+    write_file(&machine.env.system_state.join("journal.jsonl"), "");
+    fs::set_permissions(&machine.env.system_state, fs::Permissions::from_mode(0o000)).unwrap();
+    let (code, out, err) = machine.run("journal");
+    fs::set_permissions(&machine.env.system_state, fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("pass reached"), "{out}");
+    assert!(
+        err.contains("machine's guard") && err.contains("var/lib/disk-guard"),
+        "an unreadable machine's journal should be said, not passed over: {err}"
+    );
 }
 
 #[test]

@@ -1,7 +1,7 @@
 use disk_guard::clock::Awake;
 use disk_guard::pass::Learned;
 use disk_guard::plan::{Candidate, Class};
-use disk_guard::state::{Memory, load, save};
+use disk_guard::state::{Memory, load, private, save, share};
 use disk_guard::surveyed::{self, Offered, Surveyed};
 use std::fs;
 
@@ -54,6 +54,77 @@ fn a_save_replaces_the_file_whole_and_leaves_nothing_beside_it() {
         0
     );
     assert!(load::<Memory>(&path).unwrap().is_some());
+}
+
+// The machine's guard keeps its state in a folder any account may pass
+// through to read its journal, so only what's meant to be read is.
+#[test]
+fn what_is_saved_is_the_owners_alone_and_what_is_shared_anyones() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (kept, shared) = (
+        dir.path().join("memory.json"),
+        dir.path().join("status.json"),
+    );
+    save(&kept, &remembered()).unwrap();
+    share(&shared, &remembered()).unwrap();
+    let mode = |path: &std::path::Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        mode(&kept),
+        0o600,
+        "a saved file should be its owner's alone"
+    );
+    assert_eq!(
+        mode(&shared),
+        0o644,
+        "a shared file should be readable by anyone"
+    );
+}
+
+// What an earlier guard saved under the umask, which a folder of root's
+// alone hid, is made its owner's alone before the folder opens: only the
+// journal stays readable.
+#[test]
+fn what_an_earlier_guard_left_readable_is_made_private_but_the_journal() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let open = |path: &std::path::Path, mode: u32| {
+        fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+    };
+    for name in ["memory.json", "journal.jsonl", "journal.jsonl.1"] {
+        fs::write(dir.path().join(name), "{}").unwrap();
+        open(&dir.path().join(name), 0o644);
+    }
+    fs::create_dir(dir.path().join(".writing")).unwrap();
+    open(&dir.path().join(".writing"), 0o755);
+    private(dir.path()).unwrap();
+    let mode = |name: &str| {
+        fs::metadata(dir.path().join(name))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777
+    };
+    assert_eq!(
+        mode("memory.json"),
+        0o600,
+        "an old memory file should be root's alone"
+    );
+    assert_eq!(
+        mode(".writing"),
+        0o700,
+        "the folder saves are made in should be root's alone"
+    );
+    assert_eq!(
+        mode("journal.jsonl"),
+        0o644,
+        "the journal should stay readable"
+    );
+    assert_eq!(
+        mode("journal.jsonl.1"),
+        0o644,
+        "the earlier journal should stay readable"
+    );
 }
 
 #[test]

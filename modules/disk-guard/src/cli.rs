@@ -13,7 +13,7 @@ use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -78,6 +78,8 @@ pub struct Env {
     /// The user daemon's status file.
     pub status: PathBuf,
     pub system_config: PathBuf,
+    /// The system daemon's memory and journal, in a folder any account may
+    /// pass through to read the journal alone.
     pub system_state: PathBuf,
     pub system_status: PathBuf,
     pub system_socket: PathBuf,
@@ -368,7 +370,7 @@ pub fn run(command: Command, env: &Env, out: &mut dyn Write, err: &mut dyn Write
     let done = match command {
         Command::CheckConfig { file } => read_config(&file).map(|_| FINE),
         Command::Status { json } => status(env, json, out),
-        Command::Journal { since, json } => journal(env, since, json, out),
+        Command::Journal { since, json } => journal(env, since, json, out, err),
         Command::Plan {
             config,
             band,
@@ -424,10 +426,7 @@ fn daemon(
         ));
     }
     let state = state.unwrap_or_else(|| default_state.clone());
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&state)
+    make_state(&state, scope)
         .map_err(|error| (REFUSED, format!("{}: {error}", state.display())))?;
     let Some(_held) = hold(&state).map_err(failed)? else {
         return Err((
@@ -746,7 +745,7 @@ fn marked(env: &Env) -> Result<(), (i32, String)> {
     crate::holders::mark(&mut holders, &keeps, &clearing, home.as_deref());
     status["holders"] =
         serde_json::to_value(holders).map_err(|error| refused(io::Error::other(error)))?;
-    crate::state::save(&env.status, &status).map_err(refused)
+    crate::state::share(&env.status, &status).map_err(refused)
 }
 
 /// Thaws whatever the account's guard froze, through the account's own
@@ -904,63 +903,145 @@ fn status(env: &Env, json: bool, out: &mut dyn Write) -> Done {
     Ok(FINE)
 }
 
-fn journal(env: &Env, since: Option<Span>, json: bool, out: &mut dyn Write) -> Done {
+/// Makes a daemon's state folder. The system daemon's lets any account
+/// through to its journal, but not list it: every other file there is
+/// saved as root's alone, and what an earlier guard saved readable is made
+/// so first. It's set on a folder that's there too, as a Mac's earlier
+/// guard left it root's alone. On NixOS systemd opens the folder as the
+/// unit starts, so what an earlier guard left is closed a moment after.
+fn make_state(state: &Path, scope: Scope) -> io::Result<()> {
+    let mode = match scope {
+        Scope::User => 0o700,
+        Scope::System => 0o711,
+    };
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(mode)
+        .create(state)?;
+    match scope {
+        Scope::User => Ok(()),
+        Scope::System => {
+            crate::state::private(state)?;
+            fs::set_permissions(state, fs::Permissions::from_mode(mode))
+        }
+    }
+}
+
+/// One line of a guard's journal, kept as it was written until it's said,
+/// so a long journal is held as its text rather than as parsed values.
+struct Written {
+    at: f64,
+    /// Whose guard wrote it: the account's or the machine's.
+    whose: &'static str,
+    line: String,
+}
+
+/// The lines of the account's guard's journal and the machine's, from
+/// `cut` on, oldest first, each guard's in the order it wrote them. The
+/// machine's guard owns the store and what lies outside every home, so
+/// the account's journal alone never said where most of a disk's room
+/// went. A machine's journal that can't be read is said on `err`, and the
+/// account's still shown.
+fn written(env: &Env, cut: f64, err: &mut dyn Write) -> Result<Vec<Written>, (i32, String)> {
+    let mut lines = Vec::new();
+    for (whose, state) in [("account", &env.state), ("machine", &env.system_state)] {
+        for name in ["journal.jsonl.1", "journal.jsonl"] {
+            let path = state.join(name);
+            let text = match fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) if whose == "machine" => {
+                    writeln!(
+                        err,
+                        "The machine's guard's journal, {}, can't be read: {error}",
+                        path.display()
+                    )
+                    .map_err(failed)?;
+                    break;
+                }
+                Err(error) => return Err(failed(error)),
+            };
+            for line in text.lines() {
+                // A line cut short by a crash says nothing.
+                let Ok(entry) = serde_json::from_str::<Value>(line) else {
+                    continue;
+                };
+                let at = entry["at"].as_f64().unwrap_or(0.0);
+                if at >= cut {
+                    lines.push(Written {
+                        at,
+                        whose,
+                        line: line.to_owned(),
+                    });
+                }
+            }
+        }
+    }
+    // A stable sort, so what one guard wrote at the same moment keeps its
+    // order, as a reclaim's beginning comes before its action.
+    lines.sort_by(|one, other| one.at.total_cmp(&other.at));
+    Ok(lines)
+}
+
+/// What a journal line says, after when, whose and in what band.
+fn said(entry: &Value) -> String {
+    match entry["event"].as_str() {
+        Some("action") => {
+            let mut said = format!(
+                "{:<9} {:<10} {:>10}  {}",
+                entry["outcome"].as_str().unwrap_or("?"),
+                entry["kind"].as_str().unwrap_or("?"),
+                size(entry["size"].as_u64().unwrap_or(0)),
+                entry["path"].as_str().unwrap_or("?"),
+            );
+            if let Some(reason) = entry["reason"].as_str() {
+                // Writing to a String can't fail.
+                _ = write!(said, " ({reason})");
+            }
+            said
+        }
+        Some("pass") => format!(
+            "pass {}, freed {}{}",
+            entry["end"].as_str().unwrap_or("?"),
+            size(entry["freed"].as_u64().unwrap_or(0)),
+            // A journal from before passes were timed says nothing.
+            entry["seconds"]
+                .as_f64()
+                .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
+        ),
+        _ => entry.to_string(),
+    }
+}
+
+fn journal(
+    env: &Env,
+    since: Option<Span>,
+    json: bool,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Done {
     let now = wall();
     let cut = since.map_or(f64::NEG_INFINITY, |since| now - since.0.as_secs_f64());
-    for name in ["journal.jsonl.1", "journal.jsonl"] {
-        let text = match fs::read_to_string(env.state.join(name)) {
-            Ok(text) => text,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(failed(error)),
+    for Written { at, whose, line } in written(env, cut, err)? {
+        let Ok(mut entry) = serde_json::from_str::<Value>(&line) else {
+            continue;
         };
-        for line in text.lines() {
-            // A line cut short by a crash says nothing.
-            let Ok(entry) = serde_json::from_str::<Value>(line) else {
-                continue;
-            };
-            let at = entry["at"].as_f64().unwrap_or(0.0);
-            if at < cut {
-                continue;
+        if json {
+            // Each line says whose guard wrote it, as the text does.
+            if let Some(fields) = entry.as_object_mut() {
+                fields.insert("guard".to_owned(), Value::from(whose));
             }
-            if json {
-                writeln!(out, "{line}").map_err(failed)?;
-                continue;
-            }
-            // What a reclaim began with is for a guard restarting after a
-            // crash; the action after it says what happened.
-            if entry["event"] == "begin" {
-                continue;
-            }
-            let when = format!("{} ago", span(now - at));
-            let band = entry["band"].as_str().unwrap_or("?");
-            let said = match entry["event"].as_str() {
-                Some("action") => {
-                    let mut said = format!(
-                        "{:<9} {:<10} {:>10}  {}",
-                        entry["outcome"].as_str().unwrap_or("?"),
-                        entry["kind"].as_str().unwrap_or("?"),
-                        size(entry["size"].as_u64().unwrap_or(0)),
-                        entry["path"].as_str().unwrap_or("?"),
-                    );
-                    if let Some(reason) = entry["reason"].as_str() {
-                        // Writing to a String can't fail.
-                        _ = write!(said, " ({reason})");
-                    }
-                    said
-                }
-                Some("pass") => format!(
-                    "pass {}, freed {}{}",
-                    entry["end"].as_str().unwrap_or("?"),
-                    size(entry["freed"].as_u64().unwrap_or(0)),
-                    // A journal from before passes were timed says nothing.
-                    entry["seconds"]
-                        .as_f64()
-                        .map_or_else(String::new, |seconds| format!(" in {}", span(seconds))),
-                ),
-                _ => line.to_owned(),
-            };
-            writeln!(out, "{when:>12}  {band:<8}  {said}").map_err(failed)?;
+            writeln!(out, "{entry}").map_err(failed)?;
+            continue;
         }
+        // What a reclaim began with is for a guard restarting after a
+        // crash; the action after it says what happened.
+        if entry["event"] == "begin" {
+            continue;
+        }
+        let when = format!("{} ago", span(now - at));
+        let band = entry["band"].as_str().unwrap_or("?");
+        writeln!(out, "{when:>12}  {whose}  {band:<8}  {}", said(&entry)).map_err(failed)?;
     }
     Ok(FINE)
 }

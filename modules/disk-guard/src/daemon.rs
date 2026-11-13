@@ -2625,7 +2625,7 @@ impl Guard {
                         .collect();
                     status.says = crate::words::machine(&rooms, home.as_deref());
                     mark(status, &state, home.as_deref());
-                    state::save(&path, status)
+                    state::share(&path, status)
                 }
             };
             if let Err(error) = saved {
@@ -2671,7 +2671,7 @@ impl Guard {
         }
         // One writer at a time, since a beat saves through the same file.
         let mut beaten = self.beaten.lock().unwrap_or_else(PoisonError::into_inner);
-        state::save(&path, &status)?;
+        state::share(&path, &status)?;
         *beaten = Some(status.clone());
         drop(beaten);
         self.written = Some((now, status));

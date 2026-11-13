@@ -28,6 +28,20 @@ fn lines(path: &Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
+// Any account reads the machine's guard's journal, through a folder it
+// may pass through but not list.
+#[test]
+fn a_journal_is_readable_by_anyone() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("journal.jsonl");
+    Journal::new(&path, 1 << 20)
+        .write(&reclaimed("/tmp/left"))
+        .unwrap();
+    let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o644, "a journal should be readable by every account");
+}
+
 #[test]
 fn each_line_is_one_json_record() {
     let dir = tempfile::tempdir().unwrap();

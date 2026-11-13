@@ -122,8 +122,11 @@ in
         RuntimeDirectory = "disk-guard";
         RuntimeDirectoryMode = "0755";
         RuntimeDirectoryPreserve = "yes";
+        # Any account may pass through to the journal, which it reads beside
+        # its own guard's, but not list the folder: the guard saves every
+        # other file there as root's alone.
         StateDirectory = "disk-guard";
-        StateDirectoryMode = "0700";
+        StateDirectoryMode = "0711";
         # The guard holds 35 MiB itself, but root's Nix lists and describes
         # the dead paths in this cgroup: on a workstation's store of 100,000
         # paths the listing held about 400 MiB, and under a 256 MiB high mark
