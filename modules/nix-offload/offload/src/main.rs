@@ -3105,7 +3105,10 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard, Arc<Mu
 /// 201 s against 67 s on one already warm. It keeps the time it was asked
 /// for, so it's priced whole, and the time the stop left it as its last
 /// use, so its idle time runs on. One that can't be held is given back by
-/// the first tick, as any left builder is.
+/// the first tick, as any left builder is. While it's taken back it's
+/// named as coming, as `lend` names one being made, so a build waiting on
+/// this lender waits for it rather than giving up: on 13 November one took
+/// 96 s, and 22 runs ended unsent at 30 s.
 fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<Lent> {
     if decide::past_deadline(settings.hours, into_day) {
         return None;
@@ -3118,7 +3121,11 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
     let ended = left.ended?;
     let name = left.name;
     eprintln!("nix-offload: taking back {name}, which the last stop left");
-    let (mut helper, said, place) = hear(settings, &["hold", &name])?;
+    machines.asking(Some(&name));
+    let Some((mut helper, said, place)) = hear(settings, &["hold", &name]) else {
+        machines.asking(None);
+        return None;
+    };
     let Heard {
         rate, store, line, ..
     } = said;
@@ -3132,6 +3139,7 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
         } else {
             eprintln!("nix-offload: {name} couldn't be taken back, so it's given back");
         }
+        machines.asking(None);
         end(&mut helper);
         return None;
     };
@@ -3140,6 +3148,8 @@ fn adopt(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<
         line,
         store: store.as_deref(),
     }));
+    // Only once Nix can see it, so a build waiting never sees neither.
+    machines.asking(None);
     let _ = journal::note(&settings.journal, now(), Event::Held, &name, None);
     eprintln!("nix-offload: {name} is taken back; Nix may send it builds");
     Some(Lent {
@@ -3682,6 +3692,40 @@ exit 1
         );
     }
 
+    /// A helper that holds `lend-5` as [`HOLDS`] does, first keeping what
+    /// `lending` said while it was asked.
+    const HOLDS_SEEING: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+if [ "$1 $2" = "hold lend-5" ]; then
+  cat "$here/lending" > "$here/seen"
+  echo "store ssh-ng://far?ssh-key=/k"
+  echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+  exec sleep 60
+fi
+exit 1
+"#;
+
+    #[test]
+    fn a_start_names_the_builder_it_takes_back_while_it_takes_it() {
+        // On 13 November a switch restarted both lenders, and taking back
+        // what the stop left took 96 s. A build waiting on a lender gives
+        // up once `lending` has named nothing for 30 s, so 22 runs ended
+        // unsent though a builder came.
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let (settings, mut machines) = holding(folder.path(), LEFT);
+        executable(&settings.helper, HOLDS_SEEING);
+        let mut lent = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let read = |name: &str| fs::read_to_string(folder.path().join(name)).unwrap_or_default();
+        assert_eq!(
+            read("seen"),
+            "lend-5\n",
+            "a build waiting while it was taken back heard nothing was coming"
+        );
+        assert_eq!(read("lending"), "", "it was still named once it stood");
+        end(&mut lent.helper);
+    }
+
     /// A helper that holds `lend-5`, saying where it is, and a fresh
     /// token after its line.
     const PLACES: &str = r#"#!/bin/sh
@@ -4071,6 +4115,11 @@ exit 1
             "a builder the helper refused was taken back"
         );
         let read = |name: &str| fs::read_to_string(folder.path().join(name)).unwrap_or_default();
+        assert_eq!(
+            read("lending"),
+            "",
+            "one it couldn't take back was still named as coming"
+        );
         let mut said = BTreeSet::new();
         assert_eq!(
             give_back_unreturned(&settings, None, &[], &mut said),
