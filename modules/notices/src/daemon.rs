@@ -89,8 +89,8 @@ pub struct State {
     pub asking: Vec<(u32, Asked, i64)>,
     /// Every notice's texts made ready for the launcher's searches.
     searched: Searched,
-    /// The notices place's rows its watch doesn't serve, by key, as last
-    /// made, which a search answers with where it finds their notices.
+    /// The paged places' rows their watches aren't served, by key, as
+    /// last made, which a search or a `rows` ask answers with.
     unserved: BTreeMap<String, Value>,
 }
 
@@ -109,24 +109,27 @@ impl State {
         }
     }
 
-    /// Takes the notices place's rows its watch doesn't serve now, each
-    /// row by its key, for the searches answered from then on.
+    /// Takes the paged places' rows their watches aren't served now, each
+    /// row by its key, for the searches and `rows` asks answered from then
+    /// on.
     pub fn unserved(&mut self, rows: BTreeMap<String, Value>) {
         self.unserved = rows;
     }
 
-    /// The keys of the `notices` place's rows in its order, every
-    /// notice's or those of `only`, with beside them, by key, each row its
-    /// watch doesn't serve.
-    fn rows(&self, only: Option<&[u32]>) -> Value {
+    /// The keys of a paged place's rows in its order, the `notices`
+    /// place's or History's, which has the read alone: every notice's
+    /// there or those of `only`, with beside them, by key, each row its
+    /// watch isn't served.
+    fn rows(&self, place: &str, only: Option<&[u32]>) -> Value {
         let only: Option<BTreeSet<u32>> = only.map(|ids| ids.iter().copied().collect());
+        let history = place == row::HISTORY;
         let keys: Vec<String> = self
             .holding
             .notices()
             .iter()
-            .filter(|notice| !notice.transient)
+            .filter(|notice| !notice.transient && (notice.read || !history))
             .filter(|notice| only.as_ref().is_none_or(|ids| ids.contains(&notice.id)))
-            .map(|notice| format!("row:{}:{}", row::PLACE, notice.id))
+            .map(|notice| format!("row:{place}:{}", notice.id))
             .collect();
         let rows: Map<String, Value> = keys
             .iter()
@@ -307,10 +310,16 @@ impl State {
                 self.sharing = said["sharing"].as_bool().unwrap_or(false);
                 done(false)
             }
-            "rows" => (
-                self.rows(said["notices"].is_array().then_some(many.as_slice())),
-                false,
-            ),
+            "rows" => match said["place"].as_str().unwrap_or(row::PLACE) {
+                place @ (row::PLACE | row::HISTORY) => {
+                    let only = said["notices"].is_array().then_some(many.as_slice());
+                    (self.rows(place, only), false)
+                }
+                other => {
+                    let why = format!("no paged place {other}");
+                    (refused("unknown-place", &why), false)
+                }
+            },
             "search" => (
                 self.searched.answer(
                     self.holding.notices(),
@@ -545,6 +554,25 @@ mod tests {
             json!({ "keys": [new_key], "rows": {} }),
             "those asked for"
         );
+    }
+
+    #[test]
+    fn historys_rows_are_answered_of_the_read_alone() {
+        let mut state = state("history-rows");
+        let old = state.notify(sent("Old and read", &[]), 10);
+        state.notify(sent("New", &[]), 11);
+        let marked = state.holding.mark(&[old], true, None, 12);
+        assert!(marked, "the old one was read");
+        let old_key = format!("row:notices-history:{old}");
+        let row = json!({ "key": old_key, "name": "Old and read" });
+        state.unserved(BTreeMap::from([(old_key.clone(), row.clone())]));
+        let asked = json!({ "ask": "rows", "place": "notices-history" });
+        let (history, _) = state.ask(&asked, 13);
+        let wanted = json!({ "keys": [old_key.clone()], "rows": { old_key: row } });
+        assert_eq!(history, wanted, "the read, and their rows unserved");
+        let desktop = json!({ "ask": "rows", "place": "notices-desktop" });
+        let (refused, _) = state.ask(&desktop, 13);
+        assert_eq!(refused["error"]["code"], "unknown-place", "{refused}");
     }
 
     #[test]

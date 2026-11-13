@@ -14,7 +14,9 @@
 //!   since Desktop's head says they're unread; one read while Joel looks
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).
-//! - `notices-history`, For You's History, the read, its age alone.
+//! - `notices-history`, For You's History, the read, its age alone,
+//!   served a page at a time as `notices` is, with its count beside, since
+//!   History keeps about a thousand (KP0L6A, 2026-11-13).
 //!
 //! Long because a row, its side and its drawer are one notice's one
 //! reading, which change together, and its cases, nearly half of it, show
@@ -34,16 +36,21 @@ pub const PLACE: &str = "notices";
 pub const DESKTOP: &str = "notices-desktop";
 pub const HISTORY: &str = "notices-history";
 
-/// How many read notices the `notices` place serves beside every unread
-/// and live one: the newest, which Notifications and a program's own row
-/// open on, the rest asked for by `rows` (daemon.rs). Serving all of a
-/// thousand cost the shell about 11 MB of its live heap in the lab, held
-/// whether anyone looked or not (LR3WMN, 2026-11-12).
+/// How many read notices the `notices` and `notices-history` places each
+/// serve beside every unread and live one: the newest, which
+/// Notifications, a program's own row and History open on, the rest asked
+/// for by `rows` (daemon.rs). Serving all of a thousand cost the shell
+/// about 11 MB of its live heap in the lab, held whether anyone looked or
+/// not (LR3WMN, 2026-11-12).
 pub const PAGE: usize = 100;
 
 /// The record beside the `notices` place's rows saying how many notices
 /// it has rows for, served or not, as Notifications counts them.
 pub const SUMMARY: &str = "summary:notices";
+
+/// The record beside History's rows saying how many read notices it has
+/// rows for, served or not, so History can count what it keeps.
+pub const HISTORY_SUMMARY: &str = "summary:notices-history";
 
 /// The minute a moment falls in, so two times said alike are known alike.
 const MINUTE: i64 = 60_000;
@@ -440,6 +447,11 @@ impl Rows {
         self.made.values().filter_map(|made| made.rows[0].as_ref())
     }
 
+    /// Each read notice's row in History, as last made, by notice.
+    pub fn history(&self) -> impl Iterator<Item = &Value> {
+        self.made.values().filter_map(|made| made.rows[2].as_ref())
+    }
+
     /// What a notice's card reads beside the notice: who sent it, signed
     /// as its row is, and what it said, plain and styled, and its links.
     pub fn card(&self, id: u32) -> Option<&Value> {
@@ -457,9 +469,26 @@ pub fn shown(desktop: &[Value]) -> BTreeSet<u32> {
         .collect()
 }
 
-/// The rows of the `notices` place it serves, of every one made, in their
+/// What each place serves of its rows as made, and the records beside
+/// them: the mixed place and History a page each (see [`paged`]) with the
+/// count it has rows for, and Desktop every row, since it holds only the
+/// unread and those read while Joel looks at it.
+pub fn served(made: [Vec<Value>; 3]) -> [(Vec<Value>, Vec<Value>); 3] {
+    let [mixed, desktop, history] = made;
+    let page = |key: &str, rows: Vec<Value>| {
+        let count = json!({ "key": key, "kind": "summary", "summary": { "count": rows.len() } });
+        (paged(rows), vec![count])
+    };
+    [
+        page(SUMMARY, mixed),
+        (desktop, Vec::new()),
+        page(HISTORY_SUMMARY, history),
+    ]
+}
+
+/// The rows of a paged place it serves, of every one made, in their
 /// order: each unread or live one, and the newest [`PAGE`] read.
-pub fn paged(rows: Vec<Value>) -> Vec<Value> {
+fn paged(rows: Vec<Value>) -> Vec<Value> {
     let mut read = 0;
     rows.into_iter()
         .filter(|row| {
@@ -649,6 +678,26 @@ mod tests {
             !served.contains(&"row:notices:98"),
             "the oldest read past the page isn't served: {served:?}"
         );
+    }
+
+    #[test]
+    fn history_serves_its_newest_page_saying_how_many_it_has_rows_for() {
+        // An unread one, then PAGE and two more read, newest first.
+        let mut notices = vec![notice(200, &json!({}))];
+        let read = u32::try_from(PAGE).expect("a page fits") + 2;
+        notices.extend((0..read).map(|at| notice(199 - at, &json!({ "read": true }))));
+        let [mixed, desktop, history] = served(making(&notices, &[]));
+        let rows = keys(&history.0);
+        assert_eq!(rows.len(), PAGE, "a page of the read: {rows:?}");
+        let newest = rows.first();
+        assert_eq!(newest, Some(&"row:notices-history:199"), "newest first");
+        let count = json!([{ "key": HISTORY_SUMMARY, "kind": "summary",
+            "summary": { "count": PAGE + 2 } }]);
+        assert_eq!(json!(history.1), count, "and how many it has rows for");
+        let mixed_count = &mixed.1[0]["summary"]["count"];
+        assert_eq!(mixed_count, PAGE + 3, "the mixed place counts every one");
+        let desktop = keys(&desktop.0);
+        assert_eq!(desktop, ["row:notices-desktop:200"], "its unread whole");
     }
 
     fn act_keys(row: &Value) -> Vec<&str> {

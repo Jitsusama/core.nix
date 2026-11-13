@@ -37,8 +37,8 @@ use serde_json::{Value, json};
 use windows::entries::{self, Entries};
 
 /// The daemon as the shell knows it: a record for each notice, its rows,
-/// and beside the mixed place's page the count it has rows for, sent
-/// only to a watch that names it, as the launcher's does.
+/// and beside the mixed place's page and History's the count each has
+/// rows for, sent only to a watch that names it, as the launcher's does.
 const DOMAIN: Domain = Domain {
     name: "notices",
     kinds: &["notice", "row", "summary"],
@@ -140,14 +140,11 @@ impl Served {
         } else {
             BTreeSet::new()
         };
-        let [mixed, desktop, history] = self.rows.make(holding.notices().iter(), signs, &looked);
-        self.looked = row::shown(&desktop);
-        // The mixed place serves a page, saying how many it has rows for.
-        let summary = json!({ "key": row::SUMMARY, "kind": "summary",
-            "summary": { "count": mixed.len() } });
-        self.places[0].take(row::paged(mixed), vec![summary]);
-        self.places[1].take(desktop, Vec::new());
-        self.places[2].take(history, Vec::new());
+        let made = self.rows.make(holding.notices().iter(), signs, &looked);
+        self.looked = row::shown(&made[1]);
+        for (kept, (rows, beside)) in self.places.iter_mut().zip(row::served(made)) {
+            kept.take(rows, beside);
+        }
         let mut records: Vec<Value> = holding
             .notices()
             .iter()
@@ -165,15 +162,17 @@ impl Served {
         records
     }
 
-    /// The mixed place's rows its watch doesn't serve, by key, for a
-    /// search or a `rows` ask to answer with: those read past its page.
+    /// The paged places' rows their watches aren't served, by key, for a
+    /// search or a `rows` ask to answer with: those read past each page,
+    /// the mixed place's and History's.
     fn unserved(&self) -> BTreeMap<String, Value> {
-        self.rows
-            .mixed()
-            .filter_map(|row| {
+        let mixed = self.rows.mixed().map(|row| (row, &self.places[0]));
+        let history = self.rows.history().map(|row| (row, &self.places[2]));
+        mixed
+            .chain(history)
+            .filter_map(|(row, kept)| {
                 let key = row["key"].as_str()?;
-                self.places[0]
-                    .get(key)
+                kept.get(key)
                     .is_none()
                     .then(|| (key.to_owned(), row.clone()))
             })
