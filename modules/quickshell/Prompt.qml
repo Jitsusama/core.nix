@@ -260,6 +260,21 @@ Item {
     // arrow, and an aside sized to each one moved where what's typed had to
     // end and so every chip's share of the line.
     property bool steady: false
+    // Whether what's typed wraps at a whole word onto the lines under the
+    // first, as the talk line's does, rather than scrolling along one: words
+    // to say are read back whole before they go, and a sentence or two
+    // scrolled off its start can't be (Joel, 2026-11-13: "no room to
+    // type"). The first line keeps its band, `lineTall` high, and the field
+    // grows by `wrapsTall` under it, which the surface holding it adds.
+    property bool wraps: false
+    property real lineTall: height
+    // TextInput says no count of its lines, so they're counted by its face's spacing.
+    readonly property int typedLines: wraps
+        ? Math.max(1, Math.round(input.contentHeight / typedFace.lineSpacing)) : 1
+    readonly property real wrapsTall: (typedLines - 1) * typedFace.lineSpacing
+    // How far below the field's top its first capital's top stands, so a
+    // surface sets the field's ink the inset under its frame.
+    readonly property real capsTop: lineBaseline - figureCaps.tightBoundingRect.height
     property real asideWidest: 0
     property alias text: input.text
 
@@ -430,7 +445,9 @@ Item {
     property real markFrom: 0
     property real shownFrom: 0
     function seeScrolled() {
-        scrolled = input.text !== "" && input.positionToRectangle(0).x < input.leftPadding - 0.5;
+        // Wrapped, nothing scrolls sideways: it grows down instead.
+        scrolled = !wraps && input.text !== ""
+            && input.positionToRectangle(0).x < input.leftPadding - 0.5;
         const letters = scrolled ? input.text.length : -1;
         let at = 0;
         while (at < letters && input.positionToRectangle(at).x < -0.5)
@@ -866,9 +883,9 @@ Item {
     // each reads centred, the line settling as a place opens and its name
     // arrives (docs/design.md: one baseline a line).
     readonly property real lineBaseline: chips.length > 0
-        ? Bands.baseline(height, titleCaps.tightBoundingRect.height,
+        ? Bands.baseline(lineTall, titleCaps.tightBoundingRect.height,
             titleSmall.tightBoundingRect.height)
-        : Bands.baseline(height, figureCaps.tightBoundingRect.height,
+        : Bands.baseline(lineTall, figureCaps.tightBoundingRect.height,
             figureSmall.tightBoundingRect.height)
     baselineOffset: lineBaseline
     // How far the line stands below the field's middle out of a place,
@@ -1299,6 +1316,7 @@ Item {
             ensureVisible(cursorPosition);
             prompt.seeScrolled();
         }
+        wrapMode: prompt.wraps ? TextInput.Wrap : TextInput.NoWrap
         y: prompt.lineBaseline - baselineOffset
         focus: true
         clip: true

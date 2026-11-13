@@ -131,6 +131,24 @@
       touch $out
     '';
 
+  # What Super+S's line sends with Joel's words, the quiet line naming who
+  # hears it, and its talk sent, answered and taken back inside the line, as
+  # tests/talk-line.qml holds TalkLine.js to in Qt's own engine.
+  the-talk-line-says-what-became-of-its-words =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-talk-line-says-what-became-of-its-words" { } ''
+      cp ${../../../tests/talk-line.qml} talk-line.qml
+      ${copied [ "TalkLine.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-line.qml
+      touch $out
+    '';
+
   # The machine queue is the harness's file as the node's record holds it,
   # and a write of only when it was written says nothing new, as
   # tests/jobs.qml holds Jobs.js to it in Qt's own engine.

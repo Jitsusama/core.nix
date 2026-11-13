@@ -808,32 +808,51 @@ Provider {
     // What the foot says once words have gone to a session.
     property string told: ""
 
-    // Who a line said from anywhere goes to (TalkLine.qml), `{ to, name }`: the session in
-    // `window`, as the daemon's tell answers without words (modules/agents/src/tell.rs), else
-    // the one standing at Agents' top, the void; null where neither is.
-    function hears(window, then) {
+    // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
+    // Agents' top, the void, which passes it to whoever owns it (QCXZEB, 2026-11-13
+    // [ae5dfdb6]); null while none stands there.
+    function voidOf() {
         const top = Sessions.running.concat(Sessions.parked)
             .find(one => !!one.presence?.standsAtTop?.name);
-        const atTop = top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
+        return top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
             : null;
-        if (!rowsKind || window === null || window === undefined) {
-            then(atTop);
-            return;
-        }
-        rowsKind.ask({ ask: "tell", window }, answer => then(typeof answer?.to === "string"
-            && answer.to !== "" ? { to: answer.to, name: String(answer.name || answer.to) }
-            : atTop));
     }
 
-    // Says `text` to whom a line goes, as a talk does, Told's card saying it went and then
-    // what came back.
+    // The session in `window`, `{ to, name }`, as the daemon's tell answers without words
+    // (modules/agents/src/tell.rs), or null where it's none's: what a line attaches of the
+    // window it's said over, for the void to route it by.
+    function sessionIn(window, then) {
+        if (!rowsKind || window === null || window === undefined) {
+            then(null);
+            return;
+        }
+        // tell says the window's session as `in` beside the void it answers (KP0L6A's #4043),
+        // and as the answer itself, `why` "window", before it.
+        rowsKind.ask({ ask: "tell", window }, answer => {
+            const session = answer?.in ?? (answer?.why === "window" ? answer : null);
+            then(typeof session?.to === "string" && session.to !== ""
+                ? { to: session.to, name: String(session.name || session.to) } : null);
+        });
+    }
+
+    // Says `text` to whom a line goes, as a talk does. The talk line says it went and what
+    // came back inside itself, never on a card elsewhere (VKCF3Z, 2026-11-13 [092d52ca]).
     function say(heard, text) {
         const said = { ask: "talk", address: heard.to, text };
         if (rowsKind)
             rowsKind.ask(said, answer => Sessions.steered(heard.to, answer));
         else
             Sessions.steered(heard.to, null);
-        toldCard.sent(heard.to, heard.name, text);
+    }
+
+    // Joel's talks with the session at `address`, as Orchestrators.qml folds them.
+    function talksOf(address) {
+        return provider.source("orchestrators")?.talks?.[String(address).toUpperCase()] ?? [];
+    }
+
+    // Says `text` to the session at `address` as Talk does: what Take It Back tells the void.
+    function talkTo(address, text) {
+        provider.actOn({ address }, "talk", { text });
     }
 
     // The card of Joel's line to the one standing at the top, sent and then
@@ -851,9 +870,8 @@ Provider {
         id: toldCard
 
         launcher: provider.launcher
-        talksOf: address => provider.source("orchestrators")?.talks
-            ?.[String(address).toUpperCase()] ?? []
-        talk: (address, text) => provider.actOn({ address }, "talk", { text })
+        talksOf: address => provider.talksOf(address)
+        talk: (address, text) => provider.talkTo(address, text)
     }
 
     // A session's own acts, in the one order every session keeps

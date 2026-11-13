@@ -1413,27 +1413,70 @@ def made_settled(shell: Shell) -> None:
             made, still_since = now, time.monotonic()
 
 
-def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shell: Shell) -> None:
-    """Super+S's line names who hears it, keeps its words through being put away, and says them.
+@pytest.fixture
+def shoot() -> Callable[[str], None]:
+    """Give what pictures niri's screen as it stands, by name, into the folder SHOTS names.
 
-    Talking to the void took over Joel's screen and lost his words to a switch (2026-11-12
-    16:00): the line is one band a step inside the top of the screen, over his window. No
-    window's session has the focus here, so the session standing at Agents' top hears it, as
-    tell answers without one (modules/agents/src/tell.rs proves the window's way).
+    A run that asks for pictures sets SHOTS to the build's output, as `--apply` can, and
+    SHOTS_SCALE to one of Joel's scales; a gate sets neither, and takes none.
     """
+
+    def shot(name: str) -> None:
+        folder = os.environ.get("SHOTS", "")
+        if folder == "":
+            return
+        Path(folder).mkdir(exist_ok=True)
+        subprocess.run(["grim", str(Path(folder) / f"{name}.png")], check=True)  # noqa: S603, S607
+
+    return shot
+
+
+@pytest.fixture(scope="module")
+def said_over(shell: Shell) -> Iterator[str]:
+    """Give the title of a window Super+S's line is said over, with the void standing at the top."""
+    if os.environ.get("SHOTS_SCALE"):
+        outputs = json.loads(shell.as_account("niri msg --json outputs"))
+        for name in outputs:
+            shell.as_account(f"niri msg output {name} scale {os.environ['SHOTS_SCALE']}")
     lay("VOID", "Void Quest", {"state": "listening", "standsAtTop": {"name": "The Void"}})
     # Only that Agents has heard of the void, whatever else earlier cases laid beside it.
     shell.as_account(shell.ipc("collection", "agents"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: "The Void" in shown["rows"])
     shell.close_launcher()
+    title = "\u03c0 - Bootstrap optimus to replace the work MacBook"
+    window = shell.opened(title, app="kitty")
+    # A window opened while a layer had the keys isn't always given them, as Joel's own is.
+    shell.as_account(f"niri msg action focus-window --id {window['id']}")
+    yield title
+    shell.close(window)
+
+
+def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
+    shell: Shell, said_over: str, shoot: Callable[[str], None]
+) -> None:
+    """Super+S's line wraps what's typed, keeps it put away, and sends it with its window.
+
+    Talking to the void took over Joel's screen and lost his words to a switch (2026-11-12
+    16:00), and its first line read as a badge with no room to type (2026-11-13 04:33). The
+    line is one frame a step inside the top of the screen, over his window: what's typed
+    wraps as it grows, the void hears it, named quietly beside the window it's said over,
+    which goes with the words, and Return keeps it up, saying they went (VKCF3Z, 2026-11-13
+    [092d52ca]).
+    """
     line = shell.ipc("line")
-    words = "is the tide in"
+    words = (
+        "is this the right fix for the cut title, or should the drawer give way first? "
+        "it reads fine at rest but twitches while it reads on"
+    )
     since = shell.mark()
     shell.as_account(line)
-    shell.launcher_until(
-        lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "The Void"
-    )
+    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "void")
+    # Quiet beside who hears it, the window it's said over, by its title, once niri has
+    # said it to the shell.
+    shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
+    about = shell.showing()["line"]["about"]
+    assert about.startswith("void \u00b7 "), about
     # It says how long it took to reach the screen, held to Joel's 50 ms (VKCF3Z, e8b4139e).
     deadline = time.monotonic() + 10
     while not (
@@ -1449,8 +1492,13 @@ def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shel
     assert shown["line"]["mode"] == "insert", shown["line"]
     # A step inside the top, as niri lays an overlay: the window under it keeps the rest.
     assert 0 < shown["line"]["top"] < 100, shown["line"]  # noqa: PLR2004
+    shoot("empty")
     shell.send_chars(words)
-    shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
+    # A sentence or two wraps at a whole word, never scrolling off its start.
+    shell.launcher_until(
+        lambda shown: shown["line"]["typed"] == words and shown["line"]["lines"] > 1
+    )
+    shoot("typed")
     # Escape gives normal, as the launcher's line does, and never puts it away.
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
@@ -1460,19 +1508,105 @@ def test_super_s_line_names_the_void_keeps_its_words_put_away_and_says_them(shel
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
+    # Return sends them, the window attached, and the line stays up saying they went.
     shell.send_key("ret")
-    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["up"]
+            and shown["line"]["typed"] == ""
+            and shown["line"]["standing"] == "sent"
+        )
+    )
     inbox = STEER / "VOID"
     deadline = time.monotonic() + 10
-    while not any(json.loads(one.read_text()).get("text") == words for one in inbox.glob("*.json")):
+    while not (
+        sent := [
+            text
+            for one in inbox.glob("*.json")
+            if (text := str(json.loads(one.read_text()).get("text", ""))).startswith(words)
+        ]
+    ):
         assert time.monotonic() < deadline, "the line never reached the void's inbox"
         time.sleep(0.1)
-    # Said, the line opens empty, its words kept by whom they went to until delivered.
-    shell.as_account(line)
-    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == "")
-    shell.as_account(line)
-    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    assert "\n\nAttached:\n- window: " in sent[0], sent
+    assert sent[0].endswith(said_over), sent
+    shoot("sent")
     times = re.findall(
         r"talk line: up (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
     )
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
+    shell: Shell, said_over: str, shoot: Callable[[str], None]
+) -> None:
+    """Super+S's line says the answer in sent's place, and :take takes it back, inside itself.
+
+    Its answer was a notice outside the line, which Joel found "fucking weird" (2026-11-13
+    04:33): the answer takes sent's place under his words, where it went first, while the
+    void can undo it the foot offers :take, and the void's undone reads taken back, all in
+    the line, kept for its next opening (VKCF3Z, 2026-11-13 [092d52ca]). It follows the line
+    the case before sent.
+    """
+
+    def steered(test: Callable[[str], bool]) -> str:
+        """Give the words of the first steer in the void's inbox the test holds for."""
+        deadline = time.monotonic() + 10
+        while True:
+            for one in sorted((STEER / "VOID").glob("*.json")):
+                text = str(json.loads(one.read_text()).get("text", ""))
+                if test(text):
+                    return text
+            assert time.monotonic() < deadline, "the void's inbox never had the words"
+            time.sleep(0.1)
+
+    def replied(asked: str, answer: str) -> None:
+        """Lay the void's talk of these words as delivered now, then replied to, as pi does."""
+        replies = STEER / "VOID" / "replies"
+        replies.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        lines = [
+            {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
+             "text": asked},
+            {"stage": "replied", "at": now.isoformat(), "text": answer},
+        ]  # fmt: skip
+        laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["talk"] == "sent")
+    sent = steered(lambda text: "\n\nAttached:\n- window: " in text and said_over in text)
+    # The answer takes sent's place, where it went first, its undo offered in the foot.
+    replied(sent, "\u2192 Delta \u00b7 undo 04:58\nFiled under the cut title's fix.")
+    shell.launcher_until(
+        lambda shown: shown["line"]["talk"] == "answered" and shown["line"]["takes"]
+    )
+    assert shell.showing()["line"]["standing"].startswith("\u2192 Delta\n"), shell.showing()
+    shoot("answered")
+    # :take in normal tells the void to undo it, and its undone reads taken back, in the line.
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    shell.send_chars(":take")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["line"]["talk"] == "taking")
+    replied(steered(lambda text: text == "undo 04:58"), "undone")
+    shell.launcher_until(lambda shown: shown["line"]["standing"] == "taken back")
+    assert not shell.showing()["line"]["takes"], shell.showing()["line"]
+    shoot("taken")
+    # Put away and opened again, the talk is still there, the field empty.
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+    shell.as_account(line)
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["keys"]
+            and shown["line"]["typed"] == ""
+            and shown["line"]["standing"] == "taken back"
+        )
+    )
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
