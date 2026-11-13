@@ -85,14 +85,24 @@ pub fn gating(lock: &Path) -> Option<fs::File> {
 /// gives it back at once, so a gate starting then waits only that long.
 /// A lock tried whole holds against every other open of it, this
 /// process's too, so a keep's threads ask one at a time: asking together,
-/// each took another's try for a gate and the keep stopped.
+/// each took another's try for a gate and the keep stopped. The try is let
+/// go of before the file closes: a program another thread starts holds a
+/// copy of the file until it runs, and the lock with it, which closing
+/// leaves held and letting go frees.
 fn a_gate_runs(lock: &Path) -> bool {
     static ASKING: Mutex<()> = Mutex::new(());
     let _alone = ASKING.lock().unwrap_or_else(PoisonError::into_inner);
     let Ok(tried) = fs::File::create(lock) else {
         return false;
     };
-    matches!(tried.try_lock(), Err(fs::TryLockError::WouldBlock))
+    match tried.try_lock() {
+        Ok(()) => {
+            let _ = tried.unlock();
+            false
+        }
+        Err(fs::TryLockError::WouldBlock) => true,
+        Err(fs::TryLockError::Error(_)) => false,
+    }
 }
 
 /// Where what each of a base's ordinary checks read is kept, beside its
@@ -301,7 +311,7 @@ fn alone(
     ]));
     let ran = reads::uncached(fresh, strace, &asked).ok()?;
     let mut said: Derivations = serde_json::from_str(&ran).ok()?;
-    let reads = Reads::traced(&fs::read_to_string(trace).ok()?, source)?;
+    let reads = Reads::traced(&fs::read_to_string(trace).ok()?, source).ok()?;
     // Every evaluation of the flake reads its flake.nix, so a trace
     // without it didn't see the evaluation.
     reads.read.contains("flake.nix").then_some(())?;
@@ -599,18 +609,28 @@ mod tests {
     fn a_keeps_threads_asking_together_never_take_one_another_for_a_gate() {
         // Each of a keep's 16 tracing threads asks before it begins a VM
         // test, and a lock tried whole is held, for that instant, against
-        // every other open of it, this process's too.
+        // every other open of it, this process's too. Meanwhile the others
+        // start nix, and a program started holds a copy of each file open
+        // until it runs, with any lock on it.
         let scratch = Scratch::new("gating-together");
         let lock = scratch.join("changed-checks/gating.lock");
         fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+        let asked = std::sync::atomic::AtomicBool::new(false);
         let seen = std::thread::scope(|scope| {
+            scope.spawn(|| {
+                while !asked.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = std::process::Command::new("changed-checks-starts-nothing").status();
+                }
+            });
             let asking: Vec<_> = (0..AT_ONCE)
                 .map(|_| scope.spawn(|| (0..200).filter(|_| a_gate_runs(&lock)).count()))
                 .collect();
-            asking
+            let seen = asking
                 .into_iter()
                 .map(|thread| thread.join().expect("asked"))
-                .sum::<usize>()
+                .sum::<usize>();
+            asked.store(true, std::sync::atomic::Ordering::Relaxed);
+            seen
         });
         assert_eq!(
             seen, 0,

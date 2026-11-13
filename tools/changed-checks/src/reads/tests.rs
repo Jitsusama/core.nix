@@ -13,7 +13,8 @@ fn read_by(check: &str) -> Reads {
         .split("== ")
         .find_map(|section| section.strip_prefix(&format!("{check}\n")))
         .unwrap_or_else(|| panic!("traced.txt traces no {check}"));
-    Reads::traced(section, SOURCE).unwrap_or_else(|| panic!("{check}'s trace wasn't read"))
+    Reads::traced(section, SOURCE)
+        .unwrap_or_else(|line| panic!("{check}'s trace wasn't read at {line}"))
 }
 
 /// Which of `files`, touched so, reach what `check` read, when no folder
@@ -145,7 +146,7 @@ fn the_flakes_own_files_reach_every_check() {
 }
 
 #[test]
-fn a_line_under_the_source_that_names_no_path_plainly_leaves_nothing_read() {
+fn a_line_under_the_source_that_names_no_path_plainly_is_said_and_nothing_read() {
     let source = format!("\"{SOURCE}");
     for line in [
         format!("chdir({source}/a\") = 0"),
@@ -153,8 +154,21 @@ fn a_line_under_the_source_that_names_no_path_plainly_leaves_nothing_read() {
         format!("openat(AT_FDCWD</tmp>, {source}/b\\303\\251.nix\", O_RDONLY) = 3"),
         format!("openat(AT_FDCWD</tmp>, {source}/a/../b.nix\", O_RDONLY) = 3"),
     ] {
-        assert_eq!(Reads::traced(&line, SOURCE), None, "{line} was read");
+        let trace = format!("openat(AT_FDCWD</tmp>, {source}/a.nix\", O_RDONLY) = 3\n{line}\n");
+        assert_eq!(
+            Reads::traced(&trace, SOURCE),
+            Err(line.clone()),
+            "{line} was read, or not said"
+        );
     }
+}
+
+#[test]
+fn a_long_line_that_cant_be_read_is_said_only_in_part() {
+    let line = format!("chdir(\"{SOURCE}/{}\") = 0", "a".repeat(400));
+    let said = Reads::traced(&line, SOURCE).expect_err("a chdir was read");
+    assert_eq!(said.chars().count(), LINE_SHOWN, "said: {said}");
+    assert!(line.starts_with(&said), "{said} isn't the line's start");
 }
 
 #[test]

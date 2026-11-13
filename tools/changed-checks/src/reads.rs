@@ -59,6 +59,10 @@ pub struct Reads {
 pub const TRACED: &str = "trace=openat,open,newfstatat,stat,lstat,statx,access,faccessat,\
                       faccessat2,readlink,readlinkat,getdents64,chdir,fchdir";
 
+/// How much of a line of a trace that can't be read is said, in characters:
+/// a path in the store and a call's first arguments.
+const LINE_SHOWN: usize = 300;
+
 /// Where strace is named, when it's run: a stand-in's, in the tests.
 const STRACE: &str = "CHANGED_CHECKS_STRACE";
 
@@ -81,14 +85,18 @@ pub enum Touched {
 
 impl Reads {
     /// What `trace`, strace's with `-y`, says was read under `source`, the
-    /// flake's store path; nothing when a line naming it can't be put to a
-    /// path.
-    pub fn traced(trace: &str, source: &str) -> Option<Self> {
+    /// flake's store path; or the first line naming it that can't be put to
+    /// a path, as far as [`LINE_SHOWN`] says, since one keep's trace in ten
+    /// held such a line on 13 November and the same commit traced again
+    /// held none.
+    pub fn traced(trace: &str, source: &str) -> Result<Self, String> {
         let mut reads = Self::default();
         for line in trace.lines().filter(|line| line.contains(source)) {
-            reads.take(line, source)?;
+            reads
+                .take(line, source)
+                .ok_or_else(|| line.chars().take(LINE_SHOWN).collect::<String>())?;
         }
-        Some(reads)
+        Ok(reads)
     }
 
     /// Take what one line of the trace read, or say it can't be read.
@@ -590,7 +598,7 @@ fn traced(
                 .map_err(|error| format!("nix gave the checks' derivations oddly: {error}"))?;
             let text = text.map_err(|error| format!("{}: {error}", trace.display()))?;
             let reads = Reads::traced(&text, &source)
-                .ok_or_else(|| "a line of the trace names no path it read".to_owned())?;
+                .map_err(|line| format!("a line of the trace names no path it read: {line}"))?;
             // Every evaluation of the flake reads its flake.nix, so a trace
             // without it didn't see the evaluation.
             if !reads.read.contains("flake.nix") {
