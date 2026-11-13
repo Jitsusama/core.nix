@@ -119,7 +119,7 @@ Scope {
                 told: card.told,
                 open: String(said.open ?? ""),
                 undo: card.undo,
-                takes: String(said.take ?? ""),
+                takes: String(Words.of("verb:agent:take-back").name ?? ""),
                 line: card.line,
                 reply: Told.cut(card.reply, String(said.more ?? ""))
             })

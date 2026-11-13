@@ -362,9 +362,14 @@
       "ask": "what to talk about?",
       "said": {
         "open": "read it in Agents",
-        "more": "more in the talk",
-        "take": "Take It Back"
+        "more": "more in the talk"
       }
+    },
+    {
+      "id": "verb:agent:take-back",
+      "in": "agents",
+      "name": "Take It Back",
+      "verb": "take back"
     },
     {
       "id": "verb:agent:pause",
