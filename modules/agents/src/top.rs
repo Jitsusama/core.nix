@@ -126,11 +126,6 @@ fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
         .collect()
 }
 
-/// The ask that does a session's act, as Agents' rows send it.
-fn act(id: &str, address: &str) -> Value {
-    json!({"key": format!("verb:agent:{id}"), "ask": {"ask": id, "address": address}})
-}
-
 fn peek() -> Value {
     json!({"key": "verb:details", "step": "drawer"})
 }
@@ -151,7 +146,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
     } else {
         self::side(&all, (known.spent)(address).as_deref(), said)
     };
-    let mut acts = vec![act("talk", address), peek()];
+    let mut acts = vec![row.act("talk"), peek()];
     if !members.is_empty() {
         acts.push(more());
     }
@@ -159,7 +154,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
         row.acts
             .iter()
             .filter(|id| **id != "talk")
-            .map(|id| act(id, address)),
+            .map(|id| row.act(id)),
     );
     json!({
         "key": key_of(address), "thing": row.key, "place": PLACE,
@@ -201,7 +196,7 @@ fn act_rows<'a>(
             "key": format!("{parent}:{id}"), "thing": format!("verb:agent:{id}"),
             "place": PLACE, "parent": parent, "kind": "act", "depth": depth,
             "name": words.acts.word(id), "glyph": words.act_glyphs.word(id),
-            "hue": "action", "side": [], "acts": [act(id, address)],
+            "hue": "action", "side": [], "acts": [row.act(id)],
         })
     })
     .collect()
@@ -252,7 +247,7 @@ fn talks_inside(head: &Row, members: &[&Row], known: &Known, words: &Words, rows
 fn member(row: &Row, parent: &str, depth: usize) -> Value {
     let address = address(row);
     let mut acts = vec![peek()];
-    acts.extend(member_acts(row).map(|id| act(id, address)));
+    acts.extend(member_acts(row).map(|id| row.act(id)));
     json!({
         "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
         "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
@@ -420,6 +415,7 @@ mod tests {
             state,
             returns: "switch",
             acts: acts.to_vec(),
+            leaves: format!("its folder stays ({address})."),
             ranked: Ranked {
                 note: String::new(),
                 side: String::new(),
@@ -653,6 +649,23 @@ mod tests {
         );
         assert_eq!(stop["depth"], 1, "each is a step in: {stop}");
         assert_eq!(stop["thing"], "verb:agent:stop", "each is its act: {stop}");
+        // Close is asked first, naming its session and saying what stays,
+        // from the row inside and from the orchestration's own acts alike.
+        let close = json!({"key": "verb:agent:close", "ask": {"ask": "close", "address": "O"},
+            "askedAs": "O", "leaves": "its folder stays (O)."});
+        let inside = found(&rows, "row:agents-top:O:close");
+        assert_eq!(
+            inside["acts"],
+            json!([close]),
+            "its Close says what stays: {inside}"
+        );
+        let own = found(&rows, "row:agents-top:O");
+        assert!(
+            own["acts"]
+                .as_array()
+                .is_some_and(|acts| acts.contains(&close)),
+            "the orchestration's own Close says what stays: {own}"
+        );
         let alone = top(&[row("L", "listening", 0, LIVE)]);
         assert_eq!(
             alone.len(),

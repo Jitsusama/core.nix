@@ -5,7 +5,7 @@
 //! and maps each act's id to what it does; it works nothing out.
 
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::figures::{self, Item};
 use crate::said::{Said, fill};
@@ -75,6 +75,9 @@ pub struct Known<'a> {
     pub windowed: &'a dyn Fn(Session) -> bool,
     /// Whether the screen is shared, so no amount is said.
     pub sharing: bool,
+    /// How many to-dos a quest waits on Joel for, which its session's
+    /// Close says stay.
+    pub needs: &'a dyn Fn(&str) -> usize,
 }
 
 /// Where a row is placed: how deep, and whether it orchestrates others.
@@ -107,6 +110,10 @@ pub struct Row {
     pub state: &'static str,
     pub returns: &'static str,
     pub acts: Vec<&'static str>,
+    /// What Close's ask says stays, where it has a Close, so the launcher
+    /// asks it as served rather than working it out from the session's
+    /// folder; "" where it has none.
+    pub leaves: String,
     pub ranked: Ranked,
 }
 
@@ -315,6 +322,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
             standing::returns(stands, windowed)
         },
         acts: standing::acts(stands, windowed, session.here()),
+        leaves: leaves(session, known, words),
         ranked: Ranked {
             note: joined(&[&under, &noted]),
             side: said_of(&ranked_items),
@@ -325,6 +333,21 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
 }
 
 impl Row {
+    /// The act `id` as the launcher's rows hold it: its verb's key and the
+    /// ask that does it, which the shell sends back as it is. Close says
+    /// too what its ask names and what stays, so the launcher asks it as
+    /// served ("Close 8IDU4E? Its worktree and 1 to-do stay.").
+    pub fn act(&self, id: &str) -> Value {
+        let address = self.key.trim_start_matches("agent:");
+        let mut act = json!({"key": format!("verb:agent:{id}"),
+            "ask": {"ask": id, "address": address}});
+        if id == "close" && !self.leaves.is_empty() {
+            act["askedAs"] = json!(address);
+            act["leaves"] = json!(self.leaves);
+        }
+        act
+    }
+
     /// Says first at its right that it answered a talk Joel hasn't read,
     /// given way last, flat or under its orchestrator alike (Joel,
     /// 2026-11-11: "how do i know when a sessions answers a talk?").
@@ -338,6 +361,24 @@ impl Row {
         self.ranked.side_items.insert(0, item);
         self.ranked.side = said_of(&self.ranked.side_items);
     }
+}
+
+/// What Close leaves of a session here: its worktree, where it works in a
+/// folder under a trees folder, as the harness's and World's trees both
+/// are cut, else its folder, and its quest's to-dos; "" for one
+/// elsewhere, which has no Close.
+fn leaves(session: Session, known: &Known, words: &Words) -> String {
+    if !session.here() {
+        return String::new();
+    }
+    let in_tree = text(session.presence(), "/cwd").is_some_and(|cwd| cwd.contains("/trees/"));
+    let quest = session.quest();
+    let needs = if quest.is_empty() {
+        0
+    } else {
+        (known.needs)(quest)
+    };
+    standing::leaves(in_tree, needs, &words.agents)
 }
 
 fn said_of(items: &[Item]) -> String {
@@ -450,6 +491,7 @@ mod tests {
             listed: &listed,
             windowed: &windowed,
             sharing: given.sharing,
+            needs: &|quest| usize::from(quest == "QEST-B"),
         };
         row(Session(record), place, &known, &words())
     }
@@ -552,6 +594,32 @@ mod tests {
     }
 
     #[test]
+    fn close_says_its_tree_or_folder_and_its_quests_to_dos_stay_and_elsewhere_has_none() {
+        let mut record = working();
+        let leaves = |record: &Value| made(record, Place::default(), &given()).leaves;
+        assert_eq!(leaves(&record), "its folder and 1 to-do stay.");
+        record["presence"]["cwd"] = json!("/src/trees/reef-mend");
+        record["presence"]["owns"] = json!([]);
+        assert_eq!(leaves(&record), "its worktree stays.");
+        record["here"] = json!(false);
+        assert_eq!(leaves(&record), "", "one elsewhere has no Close");
+    }
+
+    #[test]
+    fn its_close_is_asked_naming_it_and_saying_what_stays_and_its_other_acts_only_ask() {
+        let row = made(&working(), Place::default(), &given());
+        assert_eq!(
+            row.act("close"),
+            json!({"key": "verb:agent:close", "ask": {"ask": "close", "address": "P"},
+                "askedAs": "P", "leaves": "its folder and 1 to-do stay."})
+        );
+        assert_eq!(
+            row.act("pause"),
+            json!({"key": "verb:agent:pause", "ask": {"ask": "pause", "address": "P"}})
+        );
+    }
+
+    #[test]
     fn a_full_context_leads_and_warns() {
         let mut record = working();
         record["presence"]["usage"] = json!({"context": {"used": 842, "limit": 1000}});
@@ -587,6 +655,7 @@ mod tests {
             listed: &unlisted,
             windowed: &windowed,
             sharing: false,
+            needs: &|_| 0,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();
@@ -627,6 +696,7 @@ mod tests {
             listed: &unlisted,
             windowed: &windowed,
             sharing: false,
+            needs: &|_| 0,
         };
         let shown = rows(&sessions, &known, &words());
         let keys: Vec<_> = shown.iter().map(Shown::key).collect();

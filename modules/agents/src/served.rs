@@ -143,14 +143,7 @@ fn items(items: &[Item]) -> Value {
 /// Return does and itself ranked flat, held.
 fn session(row: &Row, fold: Option<&str>) -> Value {
     let address = row.key.trim_start_matches("agent:");
-    let acts: Vec<Value> = row
-        .acts
-        .iter()
-        .map(|act| {
-            json!({"key": format!("verb:agent:{act}"),
-                "ask": {"ask": act, "address": address}})
-        })
-        .collect();
+    let acts: Vec<Value> = row.acts.iter().map(|id| row.act(id)).collect();
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "gone": row.gone,
         "orchestrates": row.orchestrates,
@@ -363,6 +356,7 @@ mod tests {
             state: "working",
             returns: "switch",
             acts: vec!["switch", "talk"],
+            leaves: String::new(),
             ranked: Ranked {
                 note: String::new(),
                 side: side.to_owned(),

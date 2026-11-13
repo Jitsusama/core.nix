@@ -473,6 +473,13 @@ QtObject {
         Expect.same("a copy as well, inside a meeting",
             Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }, "act"), "verb:copy:copy");
         Expect.same("while a thing's row keeps its rule", Ready.wordsOf(stop, "row"), "");
+        // An act whose daemon says what stays is asked saying so, naming what it ends,
+        // as a session's Close is ("Close O? Its folder stays.").
+        const close = { key: "verb:agent:close", ask: { ask: "close", address: "O" },
+            askedAs: "O", leaves: "its folder stays." };
+        Expect.same("a served act's ask names it and says what stays", Ready.asking(close),
+            { askedAs: "O", leaves: "its folder stays." });
+        Expect.same("one saying neither is asked as any other", Ready.asking(stop), {});
         Expect.same("shutting it and saying what it becomes is refused", Ready.misformed(both),
             "closes and becomes");
         Expect.same("so it's no act at all", Ready.actForm(both), "");

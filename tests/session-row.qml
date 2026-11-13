@@ -82,26 +82,6 @@ QtObject {
                     + `not "${want}"`);
         }
 
-        // What Close's ask says stays: its worktree or its folder, and its
-        // quest's to-dos by their count.
-        const leaving = {
-            stays: "its {kept} stays.",
-            stay: "its {kept} stay.",
-            tree: "worktree",
-            folder: "folder",
-            and: "and",
-            toDo: "{count} to-do",
-            toDos: "{count} to-dos"
-        };
-        for (const [tree, needs, want] of [[true, 0, "its worktree stays."],
-            [true, 1, "its worktree and 1 to-do stay."],
-            [false, 2, "its folder and 2 to-dos stay."],
-            [false, 0, "its folder stays."]]) {
-            const got = SessionRow.leaves(tree, needs, leaving);
-            if (got !== want)
-                failures.push(`what Close leaves of ${tree ? "a tree" : "a folder"} with `
-                    + `${needs}: "${got}", not "${want}"`);
-        }
 
         // A row says how it stands and what it spent today at its right,
         // the spend kept longest, and nothing more: its address and folder

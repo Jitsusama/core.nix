@@ -372,6 +372,14 @@ function leaving(act) {
     };
 }
 
+// What an act's ask says of it, as Confirm asks it, where its daemon serves that: whom it names
+// (`askedAs`) and what stays once it's done (`leaves`), as Agents' Close says "Close 8IDU4E? Its
+// worktree and 1 to-do stay."; nothing for one that serves neither.
+function asking(act) {
+    const leaves = String(act?.leaves ?? "");
+    return leaves === "" ? {} : { askedAs: String(act.askedAs ?? ""), leaves };
+}
+
 // The words a row whose Return asks is read by in the key language, its act's (CommandBinding's
 // wordsFor), so Firmware's Install Now writes `install!` rather than running at the first Return;
 // "" for any other, and for an ask that shuts the launcher, done in Return's own turn as Super+V's
