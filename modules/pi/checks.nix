@@ -378,14 +378,14 @@ import ./host-checks.nix args
         touch $out
       '';
 
-  # A hosted pi keeps each folder's extensions, so a conversation opening or
-  # waking in a folder that loaded them doesn't evaluate their modules again,
-  # and no two folders share one.
-  pi-hosted-keeps-each-folders-extensions =
-    pkgs.runCommandLocal "pi-hosted-keeps-each-folders-extensions" { }
+  # A hosted pi keeps one factory for each extension file, so a conversation
+  # opening or waking in any folder doesn't evaluate modules another
+  # conversation's extensions still hold.
+  pi-hosted-shares-extensions-across-folders =
+    pkgs.runCommandLocal "pi-hosted-shares-extensions-across-folders" { }
       ''
         HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
-          ${./tests/pi-hosted-keeps-each-folders-extensions.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+          ${./tests/pi-hosted-shares-extensions-across-folders.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
 
