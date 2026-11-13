@@ -1638,9 +1638,11 @@ works the same way everywhere.
   bare count, its drawer naming the heaviest (VKCF3Z, 2026-11-09; Joel:
   "there is no to look at section"). To Look At holds what a session
   points him at, never opened for him; To Try, landings whose line asks
-  him to try something; and last, To Read, a look that asks nothing of
-  him, only to be seen, never lifted, nor counted in For You's run or
-  its tray, and put in History as expired 24 hours after it came
+  him to try something, each a day from when it landed, then put in
+  History as not tried, though Agents › Landed still lists it; and
+  last, To Read, a look that asks nothing of him, only to be seen,
+  never lifted, nor counted in For You's run or its tray, and put in
+  History as expired 24 hours after it came
   (VKCF3Z, 2026-11-12). Inside each, by weight, ties oldest first.
   Weight comes from what it holds up (a session parked on him counts
   most), a deadline near, its source's urgency and, slowly, how long

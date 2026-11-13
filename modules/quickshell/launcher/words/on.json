@@ -395,6 +395,7 @@
         "resolved": "resolved",
         "quiet": "went quiet",
         "expired": "expired",
+        "notTried": "not tried",
         "openedHow": "opened",
         "clearedHow": "cleared by you",
         "doneByYou": "done by you",

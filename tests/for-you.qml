@@ -477,6 +477,20 @@ QtObject {
             row: {}, done: { how: "", at: "2026-11-08T13:00:00Z" } }] }]).done[0].done.at,
         now - hour);
         expect("no sources give nothing", ForYou.given(undefined), { waiting: [], done: [] });
+        // A thing to try waits in To Try a day from when it landed, then
+        // goes to History as not tried (VKCF3Z, 2026-11-12: 265 waited,
+        // every one a day or older, stepped into 3 times in a week).
+        const tries = [{ forYou: [
+            { row: { name: "stale" }, thing: { kind: "try", since: now - 25 * hour } },
+            { row: { name: "fresh" }, thing: { kind: "try", since: now - hour } },
+            { row: { name: "to do" }, thing: { kind: "todo", since: now - 25 * hour } }
+        ] }];
+        const tried = ForYou.given(tries, now, "not tried");
+        expect("a try past a day leaves To Try, a to-do stays", tried.waiting.map(one =>
+            one.row.name), ["fresh", "to do"]);
+        expect("and is in History as not tried, a day after it landed", tried.done.map(one =>
+            [one.row.name, one.done.how, one.done.at]), [["stale", "not tried", now - hour]]);
+        expect("with no time given, every try waits", ForYou.given(tries).waiting.length, 3);
         // Ready to do and waiting seven hours, the to-do weighs less than a
         // session waiting on Joel, which blocks, and more than a look.
         const passwords = ForYou.weigh(todo.thing, now).weight;

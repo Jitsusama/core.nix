@@ -391,21 +391,36 @@ function figures(item, told, say) {
     };
 }
 
+// How long a thing to try waits in To Try from when it came.
+const TRY_KEEPS = 24 * 60 * 60 * 1000;
+
 // What the launcher's sources give For You beside its own, each source's
 // `forYou` a list, as Passwords gives its one to-do for what its last
 // check found: { waiting, done }, each still to do { row, thing } with the
 // thing weigh reads, and each done { row, done: { how, at } }, its time a
 // number. One saying neither, or a source giving no list, is left out.
-function given(sources) {
+// Given `now`, a thing to try that came a day or more before it is done
+// too, `notTried` saying how, a day after it came: To Try had held 265,
+// each a day or older, which Joel stepped into 3 times in a week, so its
+// count meant nothing (VKCF3Z, 2026-11-12).
+function given(sources, now, notTried) {
     // Qt's engine has no flatMap, so the lists are joined by concat.
     const lists = (sources ?? []).map(one => Array.isArray(one?.forYou) ? one.forYou : []);
     const each = [].concat(...lists)
         .filter(one => one !== null && typeof one === "object" && one.row);
+    const toDo = each.filter(one => !one.done && one.thing);
+    const lapses = one => {
+        const since = one.thing.kind === "try" ? when(one.thing.since) : null;
+        return since === null || typeof now !== "number" ? null : since + TRY_KEEPS;
+    };
+    const lapsed = toDo.filter(one => lapses(one) !== null && lapses(one) <= now);
     return {
-        waiting: each.filter(one => !one.done && one.thing),
+        waiting: toDo.filter(one => !lapsed.includes(one)),
         done: each.filter(one => one.done && when(one.done.at) !== null)
             .map(one => ({ row: one.row, done: { how: String(one.done.how ?? ""),
                 at: when(one.done.at) } }))
+            .concat(lapsed.map(one => ({ row: one.row,
+                done: { how: String(notTried ?? ""), at: lapses(one) } })))
     };
 }
 
