@@ -2,23 +2,16 @@
 //! one standing in a folder, one holding a file in it open, and none;
 //! and what counts as use once a process said what it loaded.
 
+mod running;
+
 use pi_packages::inuse::{self, Seen, in_use};
 use pi_packages::loaded::Said;
+use running::Running;
 use std::fs;
 use std::path::Path;
-use std::process::{Child, Command};
+use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
-
-/// A process that is stopped when the test ends, passed or failed.
-struct Running(Child);
-
-impl Drop for Running {
-    fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
-    }
-}
 
 /// A shell that runs `script` in `dir` and then waits to be stopped.
 fn shell(dir: &Path, script: &str) -> Running {

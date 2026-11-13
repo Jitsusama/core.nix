@@ -7,8 +7,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::config::{Config, Package};
 use crate::hold::{self, Hold};
-use crate::loaded;
 use crate::version::{self, Place};
+use crate::{jiti, loaded, warm};
 
 /// The least time between two swaps on this machine, across every package.
 ///
@@ -68,6 +68,9 @@ pub struct Outcome {
     /// Why the mirror could not be fetched, when it could not; the last
     /// commit it saw was used.
     pub unfetched: Option<String>,
+    /// Why each pi whose cache could not be warmed before the swap
+    /// wasn't (warm.rs); the swap went ahead.
+    pub unwarmed: Vec<String>,
 }
 
 /// Update each package in turn; one failing never stops the next.
@@ -144,11 +147,13 @@ pub fn update_one(
             done: Done::Busy,
             removed: 0,
             unfetched: None,
+            unwarmed: Vec::new(),
         });
     };
     let env = version::build_env(config);
     let (commit, unfetched) = version::fetch(config, package, &place, &env)?;
     let from = place.current_commit();
+    let mut unwarmed = Vec::new();
     let done = if from.as_deref() == Some(commit.as_str()) {
         Done::Current { commit }
     } else if let (Some(_), Some(wait)) = (&from, wait) {
@@ -164,19 +169,27 @@ pub fn update_one(
         }
     } else {
         match version::build(config, package, &place, &commit, &env) {
-            Ok(_) => {
-                version::swap(&place, &commit, now)?;
-                mark_swap(config, now)?;
-                Done::Moved { from, to: commit }
+            Ok(built) => {
+                unwarmed = warm::warm(config, package, &built, &warm::pis(config), &env);
+                // A hold put while the warm ran stands too; a package with
+                // no version is installed whatever holds, as before.
+                if let Some(hold) = hold::standing(config, now).filter(|_| from.is_some()) {
+                    Done::OnHold { commit, hold }
+                } else {
+                    version::swap(&place, &commit, now)?;
+                    mark_swap(config, now)?;
+                    Done::Moved { from, to: commit }
+                }
             }
             Err(why) => Done::Failed { commit, why },
         }
     };
-    let removed = version::sweep(&place, first_pi_started(config))?;
+    let removed = version::sweep(&place, first_pi_started(config), &caches(config))?;
     Ok(Outcome {
         done,
         removed,
         unfetched,
+        unwarmed,
     })
 }
 
@@ -193,7 +206,7 @@ pub fn sweep(config: &Config) -> Vec<(Package, Result<Option<usize>, String>)> {
         .map(|package| {
             let place = Place::of(config, package);
             let removed = hold(&place).and_then(|held| match held {
-                Some(_held) => version::sweep(&place, first_pi).map(Some),
+                Some(_held) => version::sweep(&place, first_pi, &caches(config)).map(Some),
                 None => Ok(None),
             });
             (package.clone(), removed)
@@ -210,6 +223,20 @@ fn first_pi_started(config: &Config) -> Option<SystemTime> {
         .iter()
         .filter_map(|package| loaded::read(&Place::of(config, package)).earliest())
         .min()
+}
+
+/// Each jiti cache a removed version's entries may be in: every live pi's,
+/// and this process's own temporary folder's, the one a pi that set no
+/// temporary folder used.
+fn caches(config: &Config) -> Vec<PathBuf> {
+    let mut caches: Vec<PathBuf> = warm::pis(config)
+        .iter()
+        .map(|pi| jiti::cache_of(&pi.tmp))
+        .chain([jiti::cache_of(&std::env::temp_dir())])
+        .collect();
+    caches.sort();
+    caches.dedup();
+    caches
 }
 
 /// The package's lock, or nothing when another run holds it.

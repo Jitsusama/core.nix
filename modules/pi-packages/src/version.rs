@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::check;
 use crate::config::{Config, Package};
-use crate::{inuse, loaded};
+use crate::{inuse, jiti, loaded};
 
 /// The variables a build keeps from the environment it was started in:
 /// who and where the account is, and how TLS is trusted. Everything else,
@@ -407,10 +407,17 @@ fn retire(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
 /// before that pi started was never where `current` led for any pi
 /// running now.
 ///
+/// What jiti transpiled from a version goes with it, from each of
+/// `caches` (jiti.rs): no pi reads an entry by a path that is gone.
+///
 /// # Errors
 ///
 /// Says which version could not be read or removed.
-pub fn sweep(place: &Place, first_pi: Option<SystemTime>) -> Result<usize, String> {
+pub fn sweep(
+    place: &Place,
+    first_pi: Option<SystemTime>,
+    caches: &[PathBuf],
+) -> Result<usize, String> {
     // By where `current` leads rather than its commit's name, since one
     // commit can sit in both folders.
     let current = fs::canonicalize(place.current()).ok();
@@ -423,12 +430,20 @@ pub fn sweep(place: &Place, first_pi: Option<SystemTime>) -> Result<usize, Strin
         .max_by_key(|version| version.since)
         .map(|version| version.path.clone());
     let said = loaded::read(place);
+    let gone: Vec<Left> = left
+        .into_iter()
+        .filter(|version| {
+            let resolved = first_pi.is_some_and(|started| version.since > started);
+            !(Some(&version.path) == last.as_ref()
+                || resolved
+                || inuse::in_use(&version.path, &said))
+        })
+        .collect();
+    // While the files are there to list; an entry left is only disk.
+    let paths: Vec<PathBuf> = gone.iter().map(|version| version.path.clone()).collect();
+    let _ = jiti::forget(&paths, caches);
     let mut removed = 0;
-    for version in left {
-        let resolved = first_pi.is_some_and(|started| version.since > started);
-        if Some(&version.path) == last.as_ref() || resolved || inuse::in_use(&version.path, &said) {
-            continue;
-        }
+    for version in gone {
         let path = &version.path;
         fs::remove_dir_all(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let _ = fs::remove_file(place.retired().join(&version.name));
