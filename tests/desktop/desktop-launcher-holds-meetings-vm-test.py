@@ -474,8 +474,17 @@ def test_a_meeting_writes_to_its_guests_and_copies_its_link_last(desktop: Deskto
     desktop.follow()
     # Writing to them comes straight after joining, and copying is last.
     desktop.launcher_until(lambda shown: (shown["rows"] or [""])[-1] == "Copy the Link")
-    rows = desktop.showing()["rows"]
+    shown = desktop.showing()
+    rows = shown["rows"]
     assert rows[rows.index("Join the Meeting") + 1] == "Write to the Guests", rows
+    # All three are the rows the google daemon serves inside Standup, not the shell's.
+    made = {thing["reads"].split(" \u00b7 ")[0]: thing["is"] for thing in shown["things"]}
+    for name, act in [
+        ("Join the Meeting", "join"),
+        ("Write to the Guests", "write"),
+        ("Copy the Link", "link"),
+    ]:
+        assert made.get(name) == f"calendar:meeting:standup:{act}", made
     desktop.down_to("Copy the Link")
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("side") == "its call")
     machine.send_key("ret")
