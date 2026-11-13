@@ -102,16 +102,27 @@ fn a_path_looked_up_and_not_found_is_reached_by_adding_it_or_under_it() {
 }
 
 #[test]
-fn a_folder_only_passed_through_is_reached_only_by_a_removal_in_it() {
-    // Importing imported/a.nix looks the folder up on the way, which
-    // a file added beside it can't move, but its last file removed would
-    // take the folder too.
+fn a_folder_only_passed_through_is_reached_only_by_its_going() {
+    // Importing imported/a.nix looks the folder up on the way, which a file
+    // added, changed or removed beside it can't move while the folder
+    // stays: on 13 November #4085 turned one file under modules/ into a
+    // folder, and every check, having looked modules/ up, was evaluated
+    // in each gate until a record came past it.
     let files = [
         ("imported/new.nix", Added),
         ("imported/b.nix", Changed),
         ("imported/old.nix", Removed),
     ];
-    assert_eq!(reaching("vm-imports", &files), ["imported/old.nix"]);
+    assert_eq!(
+        reaching("vm-imports", &files),
+        Vec::<String>::new(),
+        "a file removed beside one imported reached it, though the folder stayed"
+    );
+    let reads = read_by("vm-imports");
+    assert!(
+        reads.reached_by("imported/old.nix", Removed, &|folder| folder == "imported"),
+        "the last file removed from a folder looked up took the folder, unreached"
+    );
 }
 
 #[test]
