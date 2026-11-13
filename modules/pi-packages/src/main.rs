@@ -159,6 +159,15 @@ fn update(file: &Path, pace: Pace) -> Result<(), String> {
             }
         }
     }
+    // One line each age-out, which the daily disk figure counts.
+    if let Some(aged) = run::age_jiti(&config, now) {
+        println!(
+            "jiti: removed {} files, {} bytes, older than {} days",
+            aged.files,
+            aged.bytes,
+            run::JITI_KEEPS.as_secs() / (24 * 3600)
+        );
+    }
     if failed.is_empty() {
         Ok(())
     } else {
