@@ -113,14 +113,14 @@
       touch $out
     '';
 
-  # Joel's line to the one standing at Agents' top goes out as one quiet
-  # card, sent, then answered in its place with the reply cut to whole
-  # words, as tests/told.qml holds Told.js to in Qt's own engine.
-  the-void-answers-on-one-card =
+  # What became of Joel's line to the void, as the Super+S line reads it:
+  # its talk and reply, where the void says it went and how a take-back
+  # stands, as tests/told.qml holds Told.js to in Qt's own engine.
+  a-reply-to-the-void-says-where-it-went =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-void-answers-on-one-card" { } ''
+    pkgs.runCommandLocal "a-reply-to-the-void-says-where-it-went" { } ''
       cp ${../../../tests/told.qml} told.qml
       ${copied [ "Told.js" ]}
       cp ${../../../tests/lib/Expect.js} Expect.js
