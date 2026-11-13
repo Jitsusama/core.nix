@@ -3160,15 +3160,20 @@
     using the machine only once a part saying them is looked at
   '';
   the-margin-cat-follows-the-keys-on-niri = ''
-    on a nested niri, the margin's cat sits over the column the keys are in and moves when they
-    move to another; on the overlay layer taking no keys, it leaves while a window is fullscreen, draws nothing for 30 s with no keys, then curls up asleep in a frame and wakes at
+    on a nested niri, the margin's cat sits over the column the keys are in and, two seconds after
+    they move to another, walks there a step every frame with none dropped, its strides in step
+    with the ground it covers, never for h then l tapped; on the overlay layer taking no keys, it
+    leaves while a window is fullscreen, draws nothing for 30 s with no keys, then curls up
+    asleep in a frame and wakes at
     a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
     pixels of its hue at scales 1.5 and 2, each screen kept as its result
   '';
   the-margin-cat-sits-above-its-column = ''
     the margin's cat sits a cell above the focused column's top edge over the middle of what's
     seen of it, beside the margin's marks rather than on them, nowhere in fullscreen or a gap too
-    shallow, and is drawn in whole device pixels about two thirds of the gap tall
+    shallow, and is drawn in whole device pixels about two thirds of the gap tall; its walk turns,
+    thinks, crouches back, eases in and out with strides stepped by the ground covered,
+    overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces
