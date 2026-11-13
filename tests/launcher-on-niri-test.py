@@ -3592,10 +3592,14 @@ class StandIn:
     of what it watches, and any other ask with none.
     """
 
-    def __init__(self, path: Path) -> None:
-        """Listen on `path`, holding nothing yet."""
+    def __init__(self, path: Path, *, later: tuple[str, ...] = ()) -> None:
+        """Listen on `path`, holding nothing yet, answering a watch of each `later` once let."""
         self.path = path
         self.held: dict[str, Json] = {}
+        # The watches answered only once let (StandIn.let), as a connection of the shell's that
+        # comes back seconds after the others when its daemon's socket is made again (H6EDLC's
+        # traces, 2026-11-13, e02a43bf).
+        self.later = {watched: threading.Event() for watched in later}
         # Each client's watches, by the id it asked each with, and what each watches
         # (StandIn.theirs): a place's rows as "all", the keys it's about to draw as "ahead".
         self.clients: dict[socket.socket, dict[str, str]] = {}
@@ -3703,6 +3707,8 @@ class StandIn:
         A watch gets only what it watches (StandIn.theirs). Under the lock, so no change is told
         between a watch's records and its being told.
         """
+        if watching in self.later:
+            self.later[watching].wait(launcher_on_niri.WAITING.total_seconds())
         with self.lock:
             if watching is not None:
                 records = [record for record in self.held.values() if self.theirs(watching, record)]
@@ -3754,8 +3760,14 @@ class StandIn:
             time.sleep(launcher_on_niri.POLL)
         return False
 
+    def let(self, watched: str) -> None:
+        """Answer the watches of `watched` held back, as their connection comes back at last."""
+        self.later[watched].set()
+
     def close(self) -> None:
         """Stop listening, let every client go and take the socket away, as a daemon stopped."""
+        for held_back in self.later.values():
+            held_back.set()
         self.listening.close()
         with self.lock:
             for client in self.came:
@@ -4097,6 +4109,76 @@ def test_a_drawer_served_apart_is_watched_only_while_its_row_is_drawn(
     let_go = machine.ahead(key, deadline, watched=False)
     assert asked, "Charge's drawer, served apart, was never watched as it was drawn"
     assert let_go, "Charge's drawer was still watched once the launcher closed"
+
+
+def test_a_drawer_apart_told_as_its_daemon_comes_back_is_drawn(
+    shell: Shell, machine: StandIn
+) -> None:
+    """Battery, stepped into once Power's connection is back, holds the drawer Charge names.
+
+    Power told the launcher of a change only when its keys moved or while its own answer was
+    shown or stepped into, and Machine's Power, held as a place of Machine's, is neither. When
+    its connection came back after Machine's, as the machine daemon's socket made again brings
+    them back in two waves, Power's answer came with the same keys and was never said again,
+    so the step held kept the rows from before: Battery's Charge came without the drawer it
+    names, in KP0L6A's, XY9H5C's and H6EDLC's runs (2026-11-13, 1ee68dc5, 34235536,
+    e02a43bf), as it would after a switch.
+    """
+    walk = (("Machine", "Power"), ("Power", "Battery"), ("Battery", "Charge"))
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    for step, holding in walk[:1]:
+        shell.down_to(step)
+        shell.step_in()
+        shell.launcher_until(holds(holding))
+    shell.close_launcher()
+    machine.close()
+    key = "drawer:power:charge"
+    head, charge = battery(80)
+    drawer = {"title": "Charge", "facts": [{"name": "energy_now", "said": "40,000,000"}]}
+    back = StandIn(machine.path, later=("place:power",))
+    try:
+        back.told(
+            [
+                head,
+                {**charge, "row": {**charge["row"], "drawer": key}},
+                {"key": key, "kind": "drawer", "drawer": drawer},
+            ],
+            [],
+        )
+        # The first wave, every other connection, comes back at once on the socket made, and
+        # what it remakes it remakes within a moment; Power's comes in the second.
+        time.sleep(1)
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.type_in("machine", selecting="Machine")
+        for step, holding in walk[:2]:
+            shell.down_to(step)
+            shell.step_in()
+            shell.launcher_until(holds(holding))
+        back.let("place:power")
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        watched = back.watching("place:power", deadline)
+        # Its answer is written as its watch is heard, and read within a moment; only then
+        # is Battery stepped into, as it was in the runs that failed.
+        time.sleep(1)
+        for step, holding in walk[2:]:
+            shell.down_to(step)
+            shell.step_in()
+            shell.launcher_until(holds(holding))
+        shell.down_to("Charge")
+        try:
+            shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+            drawn = True
+        except AssertionError:
+            drawn = False
+        shown = shell.showing()["drawer"]
+        shell.close_launcher()
+    finally:
+        back.close()
+    assert watched, "Power's rows were never watched once its daemon came back"
+    assert drawn, f"Charge never drew the drawer apart it came to name: {shown}"
 
 
 def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
