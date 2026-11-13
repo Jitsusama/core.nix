@@ -661,6 +661,26 @@ QtObject {
         check(failures, "its journal line says which it took",
             [true, false].map(joined => Pacing.drawerCame(joined)).join("; "),
             "in the key's frame; the frame after");
+        resting(failures);
+    }
+
+    // A drawer a letter brought waits until the letters rest, longer than
+    // the 100 to 150 ms Joel types them apart, so the next letter never
+    // waits behind it: "calend" waited 272 ms behind Google Calendar's
+    // first (2026-11-13, 06:14).
+    function resting(failures) {
+        const rest = Pacing.lettersRest();
+        check(failures, "the rest outlasts the gap between Joel's letters", rest > 150, true);
+        check(failures, "a letter just typed is still coming",
+            Pacing.lettersComing(1000, 1000 + 150), true);
+        check(failures, "until the rest has passed",
+            Pacing.lettersComing(1000, 1000 + rest), false);
+        check(failures, "and none are once an arrow has moved",
+            Pacing.lettersComing(0, 100), false);
+        check(failures, "its line says how long it rested, apart from its making",
+            Pacing.drawerCame(false, 163.4), "after resting 163 ms for the letters");
+        check(failures, "one that never rested says its frame as before",
+            Pacing.drawerCame(true, 0), "in the key's frame");
     }
 
     function run() {

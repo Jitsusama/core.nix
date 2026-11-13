@@ -173,9 +173,31 @@ function drawerJoinsKey(makings, kind, held) {
     return median(made) < drawerJoinsUnder;
 }
 
+// How long letters rest before a drawer one of them brought is made, in
+// ms: longer than the 100 to 150 ms Joel types letters apart, since each
+// letter that moved the selection had its drawer made right after its
+// frame and the next letter waited behind it, "calend" 272 ms behind
+// Google Calendar's first (2026-11-13, 06:14). Each letter restarts it.
+const typingRests = 160;
+
+// The rest itself, for the timer that waits it out (Launcher.qml).
+function lettersRest() {
+    return typingRests;
+}
+
+// Whether the letters are still coming, the last typed at `typedAt` on
+// KeyTimes's clock (0 when an arrow has moved since), as `now` reads it.
+function lettersComing(typedAt, now) {
+    return typedAt > 0 && now - typedAt < typingRests;
+}
+
 // Which frame a drawer came in, as its journal line says it, so the lines
-// show whether coming in the key's frame pays.
-function drawerCame(joined) {
+// show whether coming in the key's frame pays, and how long it rested for
+// the letters first, apart from its making.
+function drawerCame(joined, restedFor) {
+    if (restedFor > 0) {
+        return `after resting ${Math.round(restedFor)} ms for the letters`;
+    }
     return joined ? "in the key's frame" : "the frame after";
 }
 
