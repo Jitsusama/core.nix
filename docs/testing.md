@@ -306,9 +306,10 @@ A failure already found fixed forward at a head isn't searched again when a
 restarted round hears it. A round ends with its tests: its searches, and the
 PRs that list its flaky tests, settle beside the rounds after it, each kept in
 `~/.local/state/net/settling` until done, so a restarted net takes them up
-again. A switch leaves the net running, since stopping it mid-round loses
-every run in flight; it starts its new build between rounds, once what it
-was settling is done.
+again. A search with no room asks there, not in the round, whether main's
+newest head fixed its test. A switch leaves the net running, since stopping
+it mid-round loses every run in flight; it starts its new build between
+rounds, which takes up what was settling.
 A round keeps one head for its VM tests, an hour or two, so beside it a quick
 look every five minutes runs the other checks main's newest head moved since
 the last head it looked at, and searches for and reverts a merge that breaks
