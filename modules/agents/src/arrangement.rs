@@ -339,14 +339,17 @@ mod tests {
             {"key": "workspace:1", "id": 1, "idx": 3, "output": "DP-4"},
             {"key": "workspace:2", "id": 2, "idx": 1, "output": "eDP-1"}
         ]));
+        // Each as the windows daemon sends it: the row whole, under `row`.
         let screens = screens(&held(&json!([
-            {"key": "row:displays:display:DP-4", "held": {"output": "DP-4",
-             "niri": {"make": "HP Inc.", "model": "HP Z27k G3", "serial": "CN41", "logical": {}}}},
-            {"key": "row:displays:display:eDP-1", "held": {"output": "eDP-1",
-             "niri": {"make": "LG Display", "model": "0x07C6", "serial": null, "logical": {}}}},
-            {"key": "row:displays:display:HDMI-1", "held": {"output": "HDMI-1",
-             "niri": {"make": "Dell", "model": "U2720", "logical": null}}},
-            {"key": "row:displays:off", "held": {}}
+            {"key": "row:displays:display:DP-4", "kind": "row", "row": {"held": {
+             "output": "DP-4",
+             "niri": {"make": "HP Inc.", "model": "HP Z27k G3", "serial": "CN41", "logical": {}}}}},
+            {"key": "row:displays:display:eDP-1", "kind": "row", "row": {"held": {
+             "output": "eDP-1",
+             "niri": {"make": "LG Display", "model": "0x07C6", "serial": null, "logical": {}}}}},
+            {"key": "row:displays:display:HDMI-1", "kind": "row", "row": {"held": {
+             "output": "HDMI-1", "niri": {"make": "Dell", "model": "U2720", "logical": null}}}},
+            {"key": "row:displays:off", "kind": "row", "row": {"held": {}}}
         ])));
         (windows, workspaces, screens)
     }
