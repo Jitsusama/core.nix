@@ -3090,6 +3090,38 @@ def test_the_home_network_draws_the_rows_the_eero_daemon_serves(shell: Shell) ->
     shell.close_launcher()
 
 
+def test_each_eero_heads_the_devices_on_it(shell: Shell) -> None:
+    """Each eero starts a group of its own in the Home Network, its devices a step in under it.
+
+    Joel (2026-11-13): "home network is confusing because endpoints are not obviously grouped
+    under their base station". The daemon serves each device a step in, and the place drew it
+    flush with its eero, with a gap above the first eero alone. The stand-in's nodes are Den,
+    Study and Hall, and every row between two of them is a device on the one above.
+    """
+    nodes = {"Den", "Study", "Hall"}
+    shell.answer("eero")
+    shell.launcher_until(functools.partial(selecting, "Home Network"))
+    shell.step_in()
+    shell.launcher_until(lambda shown: "Study" in shown["rows"])
+    rows = sorted(laid_out(shell)["rows"], key=lambda row: row["at"])
+    named = [(row["reads"].split(" \u00b7 ")[0], row) for row in rows]
+    under = [row for at, (name, row) in enumerate(named) if at > 0 and named[at - 1][0] in nodes]
+    assert under, f"no row follows an eero: {[name for name, _ in named]}"
+    assert all(row["depth"] == 1 for row in under), f"a device sits flush with its eero: {under}"
+    assert all(row["depth"] == 0 for name, row in named if name in nodes), str(named)
+    # A device follows a device a row's pitch down; an eero stands a beat further from the row
+    # above it, whichever eero it is.
+    steps = [
+        (name, row["band"] - named[at - 1][1]["band"])
+        for at, (name, row) in enumerate(named)
+        if at > 0
+    ]
+    pitch = min(step for _, step in steps)
+    apart = [name for name, step in steps if name in nodes and step <= pitch]
+    assert not apart, f"these eeros stand no further from the rows above than a row: {apart}"
+    shell.close_launcher()
+
+
 def test_the_home_networks_row_has_the_drawer_the_eero_daemon_serves(shell: Shell) -> None:
     """The Home Network's row in Network has its own drawer: whose, a lead, then its figures.
 
