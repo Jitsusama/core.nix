@@ -155,7 +155,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
     # holds only acts, so it has no step of its own (Joel, 2026-11-11: no menu of acts alone).
     known = {
         "Quest": r"QEST-20261022-TESTQA",
-        "Spent Today": r"\$12\.50",
+        # What its councils spent is a part of what it spent, so it shares the line (VKCF3Z,
+        # 2b03e43c).
+        "Spent Today": r"\$12\.50 \u00b7 councils \$4\.00",
         "Working On": r"Tidy the tests",
     }
 
@@ -168,6 +170,9 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
     acts = [act.removeprefix("\u21b5 ") for act in desktop.showing()["drawer"]["acts"]]
     assert acts[-1] == "Close", acts
     assert {"Go To", "Talk", "Pause", "Stop"} <= set(acts), acts
+    # The groups it hears are its wiring, so they're in the fold under z a, not the glance.
+    nerd = desktop.showing()["drawer"]["nerd"]
+    assert "Hears" in nerd, nerd
     desktop.shoot("launcher-agent-facts")
     desktop.as_account(
         "rm $XDG_RUNTIME_DIR/spend-watch/collection.json $XDG_RUNTIME_DIR/jobs/queue.json"
@@ -349,8 +354,9 @@ def test_an_orchestrators_earlier_talks_say_how_each_went(desktop: Desktop) -> N
     desktop.as_account(
         f"mkdir -p {INBOX}/replies && printf '%s\\n' '{lines}' > {INBOX}/replies/t1.jsonl"
     )
-    # Listed after its actions, saying how it went.
+    # Its talks are inside it, so it has a step: listed after its actions, saying how it went.
     into_lighthouse(desktop)
+    desktop.follow()
     desktop.launcher_until(lambda shown: "keep watch tonight" in shown["rows"])
     desktop.type_in("keep watch", selecting="keep watch tonight")
     assert desktop.showing()["selected"]["side"] == "replied", desktop.showing()["selected"]

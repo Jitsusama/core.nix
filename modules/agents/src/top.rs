@@ -6,25 +6,32 @@
 //! to It, since he steers a team through its orchestrator; a session
 //! inside one acts first with a look at its drawer, and is gone to only
 //! where it needs his own hands.
+//!
+//! Long because more than half of it is its tests, which read the private
+//! builders of each row they check; the rows themselves are under 400
+//! lines.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
 
 use crate::figures::Item;
 use crate::row::{Row, Shown, Words};
 use crate::said::Said;
+use crate::talks::{self, Talk};
 
 /// The launcher's place for the top level.
 pub const PLACE: &str = "agents-top";
 
 /// What the top level reads beyond the rows: what an orchestration and
 /// those under it spent today in all, by its orchestrator's address,
-/// none while the screen is shared; and the closed orchestrators'
-/// records, the one last live first (closed.rs).
+/// none while the screen is shared; the closed orchestrators' records,
+/// the one last live first (closed.rs); and Joel's talks with each
+/// session, by its address in capitals, the newest first (talks.rs).
 pub struct Known<'a> {
     pub spent: &'a dyn Fn(&str) -> Option<String>,
     pub closed: &'a [Value],
+    pub talks: &'a HashMap<String, Vec<Talk>>,
 }
 
 /// Each session's drawer again under the top level's place, so a watch
@@ -172,22 +179,70 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
 /// and marked as the launcher's words say, and an ending one is sure by
 /// its words, as the row's own act is.
 fn acts_inside(row: &Row, words: &Words) -> Vec<Value> {
-    let address = address(row);
-    let parent = key_of(address);
     let talks = row.acts.contains(&"talk");
     let ids = talks
         .then_some("talk")
         .into_iter()
         .chain(row.acts.iter().copied().filter(|id| *id != "talk"));
+    act_rows(row, ids, words, 1)
+}
+
+/// The acts `ids` of `row`'s session as rows inside it, `depth` steps in.
+fn act_rows<'a>(
+    row: &Row,
+    ids: impl Iterator<Item = &'a str>,
+    words: &Words,
+    depth: usize,
+) -> Vec<Value> {
+    let address = address(row);
+    let parent = key_of(address);
     ids.map(|id| {
         json!({
             "key": format!("{parent}:{id}"), "thing": format!("verb:agent:{id}"),
-            "place": PLACE, "parent": parent, "kind": "act", "depth": 1,
+            "place": PLACE, "parent": parent, "kind": "act", "depth": depth,
             "name": words.acts.word(id), "glyph": words.act_glyphs.word(id),
             "hue": "action", "side": [], "acts": [act(id, address)],
         })
     })
     .collect()
+}
+
+/// The acts a session inside an orchestration offers: Talk and Go To only
+/// where it needs Joel.
+fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
+    let needs = row.state == "needs";
+    row.acts
+        .iter()
+        .copied()
+        .filter(move |id| needs || !matches!(*id, "switch" | "talk"))
+}
+
+/// Joel's talks with each session of an orchestration that has any, as
+/// rows inside it, after its acts: the orchestrator's own acts are rows
+/// already where it has sessions, and any other's are made rows here, so
+/// stepping in to read its talks leaves its acts in reach.
+fn talks_inside(head: &Row, members: &[&Row], known: &Known, words: &Words, rows: &mut Vec<Value>) {
+    for row in std::iter::once(head).chain(members.iter().copied()) {
+        let Some(talks) = known.talks.get(&address(row).to_uppercase()) else {
+            continue;
+        };
+        let key = key_of(address(row));
+        let depth = rows
+            .iter()
+            .find(|one| one["key"] == key.as_str())
+            .and_then(|one| one["depth"].as_u64())
+            .and_then(|depth| usize::try_from(depth).ok())
+            .unwrap_or(0)
+            + 1;
+        if std::ptr::eq(row, head) {
+            if members.is_empty() {
+                rows.extend(acts_inside(row, words));
+            }
+        } else {
+            rows.extend(act_rows(row, member_acts(row), words, depth));
+        }
+        rows.extend(talks::rows(talks, &key, PLACE, depth, words));
+    }
 }
 
 /// A session inside an orchestration: a look at its drawer first, gone to
@@ -196,14 +251,8 @@ fn acts_inside(row: &Row, words: &Words) -> Vec<Value> {
 /// it.
 fn member(row: &Row, parent: &str, depth: usize) -> Value {
     let address = address(row);
-    let needs = row.state == "needs";
     let mut acts = vec![peek()];
-    acts.extend(
-        row.acts
-            .iter()
-            .filter(|id| needs || !matches!(**id, "switch" | "talk"))
-            .map(|id| act(id, address)),
-    );
+    acts.extend(member_acts(row).map(|id| act(id, address)));
     json!({
         "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
         "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
@@ -270,6 +319,7 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
                 rows.extend(acts_inside(head, words));
             }
             members(&entries[1..], &[(0, key_of(address(head)))], &mut rows);
+            talks_inside(head, &all, known, words, &mut rows);
             (needs, rows)
         })
         .collect();
@@ -288,7 +338,12 @@ pub fn rows(shown: &[Shown], known: &Known, words: &Words) -> Vec<Value> {
             && parents.contains(row["key"].as_str().unwrap_or(""))
             && let Some(acts) = row["acts"].as_array_mut()
         {
-            acts.insert(1, more());
+            // After the look at its drawer, as an orchestration's is.
+            let at = acts
+                .iter()
+                .position(|act| act["key"] == "verb:details")
+                .map_or(1, |peek| peek + 1);
+            acts.insert(at.min(acts.len()), more());
         }
     }
     rows.extend(closed(known.closed, words));
@@ -381,12 +436,46 @@ mod tests {
     }
 
     fn closing(shown: &[Shown], closed: &[Value]) -> Vec<Value> {
+        talking(shown, closed, &HashMap::new())
+    }
+
+    fn talking(
+        shown: &[Shown],
+        closed: &[Value],
+        talks: &HashMap<String, Vec<Talk>>,
+    ) -> Vec<Value> {
         let spent = |address: &str| (address == "O").then(|| "$604".to_owned());
         let known = Known {
             spent: &spent,
             closed,
+            talks,
         };
         rows(shown, &known, &words())
+    }
+
+    /// One talk to each of `addresses`, Joel's words naming it, replied.
+    fn talked(addresses: &[&str]) -> HashMap<String, Vec<Talk>> {
+        addresses
+            .iter()
+            .map(|address| {
+                let talk = Talk {
+                    id: format!("t-{address}"),
+                    words: format!("to {address}"),
+                    stage: "replied".into(),
+                    reply: "done".into(),
+                    ..Talk::default()
+                };
+                ((*address).to_owned(), vec![talk])
+            })
+            .collect()
+    }
+
+    /// The names of the rows inside `parent`, in their order.
+    fn inside<'a>(rows: &'a [Value], parent: &str) -> Vec<&'a str> {
+        rows.iter()
+            .filter(|row| row["parent"] == parent)
+            .filter_map(|row| row["name"].as_str())
+            .collect()
     }
 
     fn found<'a>(rows: &'a [Value], key: &str) -> &'a Value {
@@ -411,6 +500,75 @@ mod tests {
             .as_array()
             .map(|acts| acts.iter().filter_map(|act| act["key"].as_str()).collect())
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn an_orchestrators_talks_are_inside_it_after_its_acts_and_sessions() {
+        let shown = [row("O", "working", 0, LIVE), row("A", "working", 1, LIVE)];
+        let rows = talking(&shown, &[], &talked(&["O"]));
+        assert_eq!(
+            inside(&rows, "row:agents-top:O"),
+            ["Talk", "Go To", "Pause", "Close", "A's quest", "to O"],
+            "its acts, its session, then what Joel said to it"
+        );
+        let talk = found(&rows, "row:agents-top:O:talk:t-O");
+        assert_eq!(
+            (&talk["depth"], sides(talk)),
+            (&json!(1), vec!["replied"]),
+            "a step in, saying how it went: {talk}"
+        );
+        assert_eq!(
+            inside(&rows, "row:agents-top:O:talk:t-O"),
+            ["You Said", "How It Went"],
+            "it steps into its parts"
+        );
+    }
+
+    #[test]
+    fn a_session_talked_to_steps_into_its_acts_then_its_talks() {
+        let lone = [row("L", "working", 0, LIVE)];
+        let rows = talking(&lone, &[], &talked(&["L"]));
+        let head = found(&rows, "row:agents-top:L");
+        assert_eq!(
+            acts(head),
+            [
+                "verb:agent:talk",
+                "verb:details",
+                "verb:more",
+                "verb:agent:switch",
+                "verb:agent:pause",
+                "verb:agent:close"
+            ],
+            "a lone orchestrator steps in after its drawer, as one with sessions does"
+        );
+        assert_eq!(
+            inside(&rows, "row:agents-top:L"),
+            ["Talk", "Go To", "Pause", "Close", "to L"],
+            "its acts, still in reach, then its talk"
+        );
+        let shown = [row("O", "working", 0, LIVE), row("A", "working", 1, LIVE)];
+        let rows = talking(&shown, &[], &talked(&["A"]));
+        let member = found(&rows, "row:agents-top:A");
+        assert_eq!(
+            acts(member),
+            [
+                "verb:details",
+                "verb:more",
+                "verb:agent:pause",
+                "verb:agent:close"
+            ],
+            "a session inside steps in after its drawer"
+        );
+        assert_eq!(
+            inside(&rows, "row:agents-top:A"),
+            ["Pause", "Close", "to A"],
+            "the acts it offers inside, then its talk"
+        );
+        assert_eq!(
+            found(&rows, "row:agents-top:A:talk:t-A")["depth"],
+            json!(2),
+            "a step inside its session"
+        );
     }
 
     #[test]

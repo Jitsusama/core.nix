@@ -187,7 +187,7 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     }
     facts.extend(last(session, &title, words, known));
     let address = session.address();
-    json!({
+    let mut drawn = json!({
         "key": key(address),
         "kind": "drawer",
         "drawer": {
@@ -197,7 +197,30 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
             // What one standing at the top is for, so Joel needn't know it.
             "body": session.stands_for()
         }
-    })
+    });
+    let nerd = nerd(session, words);
+    if !nerd.is_empty() {
+        drawn["drawer"]["nerd"] = Value::Array(nerd);
+    }
+    drawn
+}
+
+/// Its wiring, folded under z a rather than in the glance (VKCF3Z,
+/// 2026-11-13): the groups it hears beside its own address, as the node
+/// says them.
+fn nerd(session: Session, words: &Words) -> Vec<Value> {
+    let hears: Vec<&str> = session
+        .presence()
+        .and_then(|presence| presence.get("groups"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if hears.is_empty() {
+        return Vec::new();
+    }
+    vec![json!({"label": words.names.word("hears"), "value": hears.join(", ")})]
 }
 
 /// What matters of it first: what it's doing, its step alone; what it
@@ -233,6 +256,14 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
                 .fill("allOf", &[("spent", text(Some(family), "/all"))])
         },
     );
+    // What went on its councils and fleets is a part of what it spent,
+    // so it shares that line rather than taking its own (VKCF3Z,
+    // 2026-11-13).
+    let spent = if spent.is_empty() {
+        spent
+    } else {
+        joined(&[&spent, &helpers(collection, id)], DOT)
+    };
     let (landed_items, landed_at) = landed(presence).unwrap_or_default();
     let landed_said = landed_items.join(DOT);
     let budget = if known.sharing {
@@ -281,6 +312,25 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
         said
     })
     .collect()
+}
+
+/// What of session `id`'s spend today went on its councils and fleets,
+/// each named by what it went on as spend-watch says it ("councils
+/// $4.00"), dotted.
+fn helpers(collection: Option<&Value>, id: &str) -> String {
+    let said: Vec<String> = collection
+        .and_then(|collection| collection.get("helpers"))
+        .and_then(|helpers| helpers.get(id))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|helper| {
+            let on = helper.get("on")?.as_str()?;
+            let spent = helper.get("spent")?.as_str()?;
+            Some(format!("{on} {spent}"))
+        })
+        .collect();
+    said.join(DOT)
 }
 
 /// Its hours today as Graph's spark, as spend-watch draws them. They
@@ -500,9 +550,35 @@ mod tests {
     }
 
     #[test]
+    fn it_says_what_its_councils_spent_and_which_groups_it_hears() {
+        let presence = json!({"addresses": ["A"], "session": "s-a",
+            "groups": ["#desk", "#quest/reef"]});
+        let spend = json!({"sessions": {"s-a": "$12.50"},
+            "helpers": {"s-a": [{"on": "councils", "spent": "$4.00"},
+                {"on": "fleets", "spent": "$1.10"}]}});
+        let drawn = drawer(
+            Session(&record(&presence)),
+            false,
+            &words(),
+            &known(Some(&spend), None),
+        );
+        assert_eq!(
+            facts(&drawn),
+            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10; Machine=skiff",
+            "what its helpers spent is a part of its spend"
+        );
+        assert_eq!(
+            drawn["drawer"]["nerd"],
+            json!([{"label": "Hears", "value": "#desk, #quest/reef"}]),
+            "what it hears is its wiring, folded"
+        );
+    }
+
+    #[test]
     fn sharing_the_screen_says_no_amount() {
         let presence = json!({"addresses": ["O"], "session": "s-o", "owns": ["QEST-O"]});
         let spend = json!({"sessions": {"s-o": "$3.10"},
+            "helpers": {"s-o": [{"on": "councils", "spent": "$4.00"}]},
             "families": {"QEST-O": {"all": "$14.20"}},
             "sessionsToday": {"s-o": {"rebuilt": "$1.20"}}});
         let budgets = json!({"sessions": {"s-o": "proxy"}, "budgets": [

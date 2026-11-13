@@ -29,6 +29,7 @@ use crate::row::{self, Known, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
+use crate::talks;
 use crate::top;
 use crate::windows;
 
@@ -467,26 +468,7 @@ impl Inputs {
             .collect();
         drawers.extend(top::drawers(&drawers));
         let closed = self.closed();
-        let quests: HashMap<&str, &str> = sessions
-            .iter()
-            .map(|one| (one.address(), one.quest()))
-            .collect();
-        let all_spent = |address: &str| {
-            let quest = quests
-                .get(address)
-                .copied()
-                .filter(|quest| !quest.is_empty())?;
-            if self.sharing {
-                None
-            } else {
-                self.family(quest)
-            }
-        };
-        let known_top = top::Known {
-            spent: &all_spent,
-            closed: &closed,
-        };
-        let top = top::rows(&rows, &known_top, &self.words);
+        let top = self.top(&sessions, &rows, &closed);
         served::made(
             &rows,
             &summary::summary(
@@ -503,6 +485,34 @@ impl Inputs {
         .with_landed(self.landed().0)
         .with_closed(closed)
         .with_windows(windows::records(&sessions, &self.windows, &orchestrating))
+    }
+
+    /// Agents' top level made of the `rows` laid out, with what each
+    /// orchestration spent in all, the `closed` orchestrators, and Joel's
+    /// talks with each session.
+    fn top(&self, sessions: &[Session<'_>], rows: &[Shown], closed: &[Value]) -> Vec<Value> {
+        let quests: HashMap<&str, &str> = sessions
+            .iter()
+            .map(|one| (one.address(), one.quest()))
+            .collect();
+        let all_spent = |address: &str| {
+            let quest = quests
+                .get(address)
+                .copied()
+                .filter(|quest| !quest.is_empty())?;
+            if self.sharing {
+                None
+            } else {
+                self.family(quest)
+            }
+        };
+        let talks = talks::by_address(self.talks.records().map(|(_, one)| one));
+        let known = top::Known {
+            spent: &all_spent,
+            closed,
+            talks: &talks,
+        };
+        top::rows(rows, &known, &self.words)
     }
 }
 

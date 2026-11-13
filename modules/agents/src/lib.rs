@@ -24,6 +24,7 @@
 //! - `closed`: the closed orchestrators, and what reopening each needs.
 //! - `top`: Agents' top level, one row for each orchestration.
 //! - `answered`: the sessions' answers to Joel's talks he hasn't read.
+//! - `talks`: Joel's talks with each session, as rows inside its step.
 //! - `windows`: which kitty pane and window each session here is in.
 //! - `arrangement`: where each session's window sat, kept to put it back.
 //! - `kept_places`: where a session moving onto pi's host sat, for its
@@ -52,6 +53,7 @@ pub mod session;
 pub mod sources;
 pub mod standing;
 pub mod summary;
+pub mod talks;
 pub mod tell;
 pub mod top;
 pub mod tree;

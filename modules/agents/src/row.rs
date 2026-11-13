@@ -32,6 +32,9 @@ pub struct Words {
     /// A session's acts' names and marks, by their ids (`talk` is Talk).
     pub acts: Said,
     pub act_glyphs: Said,
+    /// How a talk went, by its stage, and its parts' names (talks.rs).
+    pub talk_stages: Said,
+    pub talk_parts: Said,
 }
 
 impl Words {
@@ -48,6 +51,8 @@ impl Words {
             recent: Said::of_thing(text, "agents:recent")?,
             acts: Said::names_under(text, "verb:agent")?,
             act_glyphs: Said::glyphs_under(text, "verb:agent")?,
+            talk_stages: Said::of_thing(text, "orchestrators:talk")?,
+            talk_parts: Said::names_under(text, "orchestrators:talk")?,
         })
     }
 }
