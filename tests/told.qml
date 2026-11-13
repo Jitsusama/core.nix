@@ -12,6 +12,8 @@ import "Told.js" as Told
 QtObject {
     Component.onCompleted: {
         try {
+            Expect.same("no card is made for his line, his answer reading in Agents instead",
+                Told.carded(), false);
             const card = { id: 0, from: "The Void", said: "sent", open: "read it in Agents",
                 line: "is the beacon lit?", reply: "" };
             Expect.same("sent, it's a new low card signed by the void, his line its own",
