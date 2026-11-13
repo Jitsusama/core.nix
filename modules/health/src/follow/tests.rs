@@ -296,6 +296,38 @@ fn memory_is_minded_and_kept_through_a_restart() {
 }
 
 #[test]
+fn a_reported_crash_of_the_day_is_counted_once() {
+    let into = tempfile::tempdir().expect("a folder");
+    let reports = tempfile::tempdir().expect("a reports folder");
+    let report = |when: &str| {
+        format!(
+            "{{\"bug_type\":\"309\",\"name\":\"nix\",\"timestamp\":\"{when}\"}}\n\
+             {{\"procPath\":\"/nix/store/abc-nix/bin/nix\"}}"
+        )
+    };
+    fs::write(
+        reports.path().join("nix-1.ips"),
+        report("2026-11-12 07:00:00.00 -0500"),
+    )
+    .expect("the day's report");
+    fs::write(
+        reports.path().join("nix-2.ips"),
+        report("2026-11-11 07:00:00.00 -0500"),
+    )
+    .expect("the day before's");
+    let mut follower = Follower::new("2026-11-12", into.path(), TimeZone::UTC)
+        .reporting(vec![reports.path().to_owned()]);
+    follower.read_reports();
+    follower.read_reports();
+    follower.write().expect("the day is written");
+    assert_eq!(
+        read(into.path(), "2026-11-12").things["nix"].crashes,
+        1,
+        "the day's crash counted once, and the day before's not at all"
+    );
+}
+
+#[test]
 fn a_death_of_the_day_is_kept_though_its_presence_goes() {
     let into = tempfile::tempdir().expect("a folder");
     let proc = tempfile::tempdir().expect("a stand-in /proc");

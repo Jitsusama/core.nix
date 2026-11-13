@@ -96,7 +96,7 @@ pub fn parse(line: &str) -> Option<Entry> {
 
 /// The app a program ran from, when its image lies in a bundle: the
 /// bundle's path, which is to a Mac what a program's scope is to systemd.
-fn app_of(image: &str) -> Option<String> {
+pub fn app_of(image: &str) -> Option<String> {
     let end = image.find(".app/")? + ".app".len();
     Some(image[..end].to_owned())
 }
