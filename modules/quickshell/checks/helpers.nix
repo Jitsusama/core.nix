@@ -313,22 +313,74 @@ let
   # The account's whole shell on niri, its launcher typed into through
   # wtype, with a file of tests run through pytest against it
   # (tests/launcher_on_niri.py starts the shell and types).
+  #
+  # A long file runs in parts side by side, each on a shell of its own:
+  # `parts` names the case each part after the first starts at, and
+  # `every` the cases each part runs last (tests/cases_in_parts.py). The
+  # check is then the parts together, so it fails as any part does. On
+  # 13 November the launcher's 100 cases took 357 to 549 s in one run, the
+  # longest build on the merge path, built 44 times in 12 hours.
   launcherOnNiri =
     {
       name,
       tests,
       given ? [ ],
       shell ? { },
+      parts ? [ ],
+      every ? [ ],
     }:
     let
       python = pkgs.python3.withPackages (python: [ python.pytest ]);
       checked = pkgs.runCommandLocal "${name}-tests" { } ''
         install -D -m 644 ${../../../tests/launcher_on_niri.py} $out/launcher_on_niri.py
+        install -D -m 644 ${../../../tests/cases_in_parts.py} $out/cases_in_parts.py
         install -D -m 644 ${tests} $out/${baseNameOf tests}
       '';
+      # Each part's bounds: the case it starts at, and the next part's.
+      bounds = lib.zipListsWith (from: until: { inherit from until; }) ([ "" ] ++ parts) (
+        parts ++ [ "" ]
+      );
+      run = launcherRun {
+        inherit
+          tests
+          given
+          shell
+          checked
+          python
+          every
+          ;
+      };
+      part = number: bound: run "${name}-part-${toString number}" bound;
+      ran = lib.imap1 part bounds;
     in
+    if parts == [ ] then
+      run name {
+        from = "";
+        until = "";
+      }
+    else
+      pkgs.linkFarm name (
+        map (done: {
+          inherit (done) name;
+          path = done;
+        }) ran
+      );
+
+  # One run of launcherOnNiri's file, or of a part of it.
+  launcherRun =
+    {
+      tests,
+      given,
+      shell,
+      checked,
+      python,
+      every,
+    }:
+    runName:
+    { from, until }:
     shellOnNiri {
-      inherit name shell;
+      name = runName;
+      inherit shell;
       # Away only after an hour, since nobody types here but the check.
       away = 3600;
       # foot gives the launcher windows to find, drawn without a GPU,
@@ -365,13 +417,23 @@ let
         ]
         # What a file of tests is given besides, as a program it runs.
         ++ given
+        # And the part of it this run takes.
+        ++ [
+          "CASES_FROM=${from}"
+          "CASES_UNTIL=${until}"
+          "CASES_EVERY=${lib.concatStringsSep " " every}"
+        ]
         ++ [
           (lib.getExe python)
           "-m"
           "pytest"
           "-p"
           "no:cacheprovider"
+          "-p"
+          "cases_in_parts"
           "-v"
+          # Each case's time, which the parts are balanced by.
+          "--durations=0"
           "${checked}/${baseNameOf tests}"
         ]
       );
