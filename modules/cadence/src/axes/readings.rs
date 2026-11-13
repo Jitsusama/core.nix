@@ -82,8 +82,10 @@ pub fn read(s: &Sources) -> Vec<Axis> {
         axis(
             "polish",
             // Nothing counts how what he sees meets the design's bar yet,
-            // so polish says so rather than borrow another axis's figure.
+            // so polish says so rather than borrow another axis's figure;
+            // what it does count is how often the launcher fits his search.
             vec![
+                launcher::missed(&s.counted),
                 Reading::new(
                     "{} surfaces that failed the design's checks this week",
                     None,

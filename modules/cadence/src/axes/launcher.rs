@@ -107,6 +107,35 @@ pub fn readings(s: &Sources) -> Vec<Reading> {
     ]
 }
 
+/// How often he typed into the launcher and left with nothing picked, as
+/// health counts it from the trials (80ECO2, 12 November): his side, and
+/// polish and fit's first reading, since a search that finds nothing is
+/// the launcher not fitting what he asked of it. The bar of 5% is ours,
+/// set on the day the count began, leaving room for a search he changed
+/// his mind about; it only tightens.
+#[must_use]
+pub fn missed(s: &Sources) -> Reading {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let typed = figure("health.launcher.searches.typed").filter(|n| *n > 0.0);
+    let missed = figure("health.launcher.searches.missed");
+    Reading::new(
+        "the launcher's searches he left with nothing picked today {}",
+        typed
+            .zip(missed)
+            .map(|(typed, missed)| 100.0 * missed / typed),
+        "%",
+        "Y2YBTS",
+    )
+    .bar(Bar::AtMost(5.0))
+    .detail(
+        typed
+            .zip(missed)
+            .map(|(typed, missed)| format!("{} of {}", shown(missed, ""), shown(typed, ""))),
+    )
+    .from("health's day file, from the launcher's trials")
+    .his()
+}
+
 /// The keys' 99th: exact, and judged, where health pooled every key's
 /// time; otherwise only the slowest batch's, said and left unread.
 fn slowest_key(s: &Sources) -> Reading {
@@ -229,6 +258,25 @@ mod tests {
                 .iter()
                 .all(|r| r.figure().is_none()),
             "a day with no launcher reads as unread, not as fast"
+        );
+    }
+
+    #[test]
+    fn a_search_left_with_nothing_picked_counts_against_polish() {
+        let mut s = today();
+        let figures = s.health.as_mut().expect("today's figures");
+        figures.insert("health.launcher.searches.typed".to_owned(), 80.0);
+        figures.insert("health.launcher.searches.missed".to_owned(), 6.0);
+        let read = missed(&s);
+        assert_eq!(
+            read.words(),
+            "the launcher's searches he left with nothing picked today 7.5%, at most 5%"
+        );
+        assert_eq!(read.detail.as_deref(), Some("6 of 80"));
+        assert!(read.out() && read.his, "a miss is his, and past 5% is out");
+        assert!(
+            missed(&today()).figure().is_none(),
+            "a day before the count reads unread, not as none missed"
         );
     }
 
