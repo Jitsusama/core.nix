@@ -452,7 +452,8 @@ Scope {
                                 visible: told.modelData.answers.length > 0
                                 x: body.textAt
                                 y: (told.saidLines + 1) * told.pitch - baselineOffset
-                                width: told.width - x
+                                width: (by.text === "" ? told.width : by.x - Theme.space.rung.groups)
+                                    - x
                                 text: told.modelData.answers.join("\n")
                                 textFormat: Text.PlainText
                                 color: Theme.text
@@ -464,6 +465,20 @@ Scope {
                                 font.family: Theme.level.words.family
                                 font.pointSize: Theme.level.words.pointSize
                                 font.variableAxes: Theme.level.words.variableAxes
+                            }
+
+                            // Who answered, at the right of its first line as when he said it
+                            // stands at his words' right, so each side means one thing.
+                            Text {
+                                id: by
+                                visible: answers.visible && text !== ""
+                                x: told.width - width
+                                anchors.baseline: answers.baseline
+                                text: told.modelData.by
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                font.family: Theme.level.note.family
+                                font.pointSize: Theme.level.note.pointSize
                             }
 
                             Text {

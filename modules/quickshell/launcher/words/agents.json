@@ -98,7 +98,7 @@
       "in": "agents",
       "name": "Say to the Void",
       "glyph": "reply",
-      "ask": "Say anything, and the void passes it to whoever owns it.",
+      "ask": "Say anything, and the void passes it to its owner.",
       "said": {
         "hearer": "void",
         "nobody": "nobody to hear it",

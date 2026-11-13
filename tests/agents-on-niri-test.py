@@ -1697,7 +1697,10 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
     )
     talks = shell.showing()["line"]["talks"]
     assert [talk["waiting"] for talk in talks[:2]] == ["", ""], talks
-    assert talks[1]["side"] == "your orchestrator \u00b7 07:45", talks
+    # Its right says when he said it, the undo's time, however late the answer; who
+    # answered stands beside the answer (WCJQSG [e05f6231]).
+    assert [talk["by"] for talk in talks[:2]] == ["your orchestrator"] * 2, talks
+    assert all(re.fullmatch(r"\d\d:\d\d", talk["side"]) for talk in talks[:2]), talks
     shoot("answered-twice")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])

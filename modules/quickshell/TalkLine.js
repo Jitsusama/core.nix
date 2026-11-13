@@ -168,10 +168,11 @@ function ended(heard, words) {
 
 // How a kept talk reads under his words: `answers`, each in the words, or
 // else `waiting`, in the voice while someone has it, saying on whom, or how
-// it otherwise `stands`; and at its right, `side`, when he said it, or once
-// answered who answered and when.
+// it otherwise `stands`; at its right, `side`, when he said it, which is the
+// time its undo names, whatever came after; and at its answer's right, `by`,
+// who answered (WCJQSG [e05f6231], QCXZEB [5aab8439]).
 function exchange(talk, events, words) {
-    const shown = { line: talk.line, answers: [], waiting: "", stands: "",
+    const shown = { line: talk.line, answers: [], waiting: "", stands: "", by: "",
         side: clockOf(talk.since) };
     if (["taking", "taken", "told"].includes(talk.said)) {
         return Object.assign(shown, { stands: standing(talk, words) });
@@ -184,8 +185,7 @@ function exchange(talk, events, words) {
     return Object.assign(shown, { answers: heard.answers.map(answer => answer.text),
         waiting: heard.waiting === "" ? "" : worded(words, "waiting", heard.waiting),
         stands: ended(heard, words),
-        side: newest === null || newest.who === "" ? shown.side
-            : `${newest.who} \u00b7 ${newest.at}` });
+        by: newest === null ? "" : String(newest.who) });
 }
 
 // How a talk stands once its session's talks have moved, or null where

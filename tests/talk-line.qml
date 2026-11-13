@@ -84,7 +84,7 @@ QtObject {
                 new Date(2026, 10, 13, 7, 42, 10).getTime());
             Expect.same("sent, it waits on the void", Said.exchange(asking, [], told),
                 { line: "how is it going?", answers: [], waiting: "waiting on the void",
-                    stands: "", side: "07:42" });
+                    stands: "", by: "", side: "07:42" });
             const routed = Said.followed(asking, [{ words: "how is it going?",
                 at: new Date(2026, 10, 13, 7, 42, 20).toISOString(), stage: "replied",
                 reply: "Your orchestrator has it \u00b7 undo 07:42" }]);
@@ -108,9 +108,10 @@ QtObject {
                 who: "your orchestrator", event: "answered", at: "07:44",
                 text: "Eleven clean updates." };
             const answeredOnce = Said.exchange(routed, written.concat([eleven]), told);
-            Expect.same("answered, the answer shows and the wait ends, who answered at its right",
-                [answeredOnce.answers, answeredOnce.waiting, answeredOnce.side],
-                [["Eleven clean updates."], "", "your orchestrator \u00b7 07:44"]);
+            Expect.same("answered, the answer shows and the wait ends, who answered beside it, "
+                    + "and the line still says when he said it",
+                [answeredOnce.answers, answeredOnce.waiting, answeredOnce.by, answeredOnce.side],
+                [["Eleven clean updates."], "", "your orchestrator", "07:42"]);
             const thirteen = Object.assign({}, eleven, { msg: "m4", supersedes: "m3",
                 at: "07:45", text: "Thirteen clean updates." });
             const landed = { line: "2026-11-13 07:42", msg: "m5", who: "your orchestrator",
