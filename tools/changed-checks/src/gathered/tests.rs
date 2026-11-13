@@ -211,6 +211,155 @@ fn a_file_a_gathered_one_imports_for_every_check_is_kept_only_by_its_own() {
 }
 
 #[test]
+fn a_check_a_folders_own_file_gives_keeps_only_that_place_and_what_it_names() {
+    // modules/quickshell/checks.nix gathers 39 files under checks/, each a
+    // place's checks, and from 13 November a change to any of them reached
+    // all 338 of quickshell's, since the flake said only the folder's file.
+    let at = source(
+        "places",
+        &[
+            ("flake.nix", "{ }"),
+            ("checks.nix", "folders = [ ./x/checks.nix ./q/checks.nix ];"),
+            ("x/checks.nix", "{ }: { a = 1; }"),
+            (
+                "q/checks.nix",
+                "{ }: let given = import ./checks/helpers.nix; in map (file: import file given) \
+                 [ ./checks/one.nix ./checks/two.nix ./checks/three.nix ]",
+            ),
+            ("q/checks/helpers.nix", "{ }"),
+            ("q/checks/one.nix", "{ }: { o = 1; }"),
+            ("q/checks/two.nix", "{ }: { t = import ./one.nix; }"),
+            (
+                "q/checks/three.nix",
+                "{ }: { h = builtins.readFile ../../w/place.qml; }",
+            ),
+        ],
+    );
+    let read = [
+        "checks.nix",
+        "flake.nix",
+        "q/checks.nix",
+        "q/checks/helpers.nix",
+        "q/checks/one.nix",
+        "q/checks/three.nix",
+        "q/checks/two.nix",
+        "w/place.qml",
+        "x/checks.nix",
+    ];
+    let files = [
+        ("a", "x/checks.nix"),
+        ("o", "q/checks/one.nix"),
+        ("t", "q/checks/two.nix"),
+        ("h", "q/checks/three.nix"),
+    ];
+
+    let each = narrowed(&at, &files, &read);
+
+    let _ = fs::remove_dir_all(&at);
+    assert_eq!(
+        each["a"],
+        ["checks.nix", "flake.nix", "w/place.qml", "x/checks.nix"],
+        "a kept another folder's gathering, what it gives or what it imports for all"
+    );
+    let place = [
+        "checks.nix",
+        "flake.nix",
+        "q/checks.nix",
+        "q/checks/helpers.nix",
+    ];
+    let with = |these: &[&str]| {
+        let mut all: Vec<String> = place
+            .iter()
+            .chain(these)
+            .map(|it| (*it).to_owned())
+            .collect();
+        all.sort();
+        all
+    };
+    assert_eq!(
+        each["o"],
+        with(&["q/checks/one.nix", "w/place.qml"]),
+        "o kept a place's file it doesn't name, or lost its own, its gathering or what that imports"
+    );
+    assert_eq!(
+        each["t"],
+        with(&["q/checks/one.nix", "q/checks/two.nix", "w/place.qml"]),
+        "t lost the place's file its own imports"
+    );
+    assert_eq!(
+        each["h"],
+        with(&["q/checks/three.nix", "w/place.qml"]),
+        "h lost the file of another place it copies, or kept a place's it doesn't name"
+    );
+}
+
+#[test]
+fn a_place_its_folders_file_names_again_or_by_a_folder_is_kept_by_every_place() {
+    let at = source(
+        "places-named-again",
+        &[
+            ("flake.nix", "{ }"),
+            ("checks.nix", "folders = [ ./p/checks.nix ./q/checks.nix ];"),
+            (
+                "p/checks.nix",
+                "{ }: map import [ ./checks/one.nix ./checks/two.nix ] \
+                 // { s = builtins.readFile ./checks/two.nix; }",
+            ),
+            ("p/checks/one.nix", "{ o = 1; }"),
+            ("p/checks/two.nix", "{ t = 1; }"),
+            (
+                "q/checks.nix",
+                "{ x }: map import [ ./checks/one.nix ./checks/${x}.nix ]",
+            ),
+            ("q/checks/one.nix", "{ u = 1; }"),
+            ("q/checks/two.nix", "{ v = 1; }"),
+        ],
+    );
+    let read = [
+        "checks.nix",
+        "flake.nix",
+        "p/checks.nix",
+        "p/checks/one.nix",
+        "p/checks/two.nix",
+        "q/checks.nix",
+        "q/checks/one.nix",
+        "q/checks/two.nix",
+    ];
+    let files = [
+        ("o", "p/checks/one.nix"),
+        ("t", "p/checks/two.nix"),
+        ("u", "q/checks/one.nix"),
+        ("v", "q/checks/two.nix"),
+    ];
+
+    let each = narrowed(&at, &files, &read);
+
+    let _ = fs::remove_dir_all(&at);
+    assert_eq!(
+        each["o"],
+        [
+            "checks.nix",
+            "flake.nix",
+            "p/checks.nix",
+            "p/checks/one.nix",
+            "p/checks/two.nix"
+        ],
+        "o lost a place its folder's file reads beside importing it"
+    );
+    assert_eq!(
+        each["u"],
+        [
+            "checks.nix",
+            "flake.nix",
+            "q/checks.nix",
+            "q/checks/one.nix",
+            "q/checks/two.nix"
+        ],
+        "u lost a place its folder's file names by interpolation"
+    );
+}
+
+#[test]
 fn a_check_keeps_only_the_gathered_files_its_own_names() {
     let at = source(
         "narrowed",

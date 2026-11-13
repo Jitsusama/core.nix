@@ -9,7 +9,7 @@
 args@{ lib, onLinux, ... }:
 let
   given = args // import ./checks/helpers.nix args;
-  places = map (file: import file given) [
+  files = [
     ./checks/accessories.nix
     ./checks/agents.nix
     ./checks/askpass.nix
@@ -50,6 +50,10 @@ let
     ./checks/windows.nix
     ./checks/words.nix
   ];
+  places = map (file: {
+    inherit file;
+    checks = import file given;
+  }) files;
   # A name two places give stops the evaluation rather than one check
   # hiding the other.
   gathered = lib.foldl' (
@@ -61,9 +65,20 @@ let
       gathered // these
     else
       throw "More than one of quickshell's places gives ${lib.concatStringsSep ", " clashes}"
+  ) { } (map (place: place.checks) places);
+  # The place's file giving each check, from the repository's root, which
+  # checks.nix says for it rather than this one, so a change to one place's
+  # file reaches only its checks and those of a file naming it. Only the
+  # names are read, so no check is evaluated to say it.
+  checkFiles = lib.foldl' (
+    giving: place:
+    let
+      file = lib.removePrefix "./" (lib.path.removePrefix ../.. place.file);
+    in
+    giving // lib.mapAttrs (_: _: file) place.checks
   ) { } places;
 in
 # The shell runs only on Linux, so a Mac has none of its checks: most build
 # Quickshell or a program only Linux has, and the rest read a Linux machine,
 # which Linux's own checks already do.
-onLinux gathered
+onLinux gathered // { inherit checkFiles; }

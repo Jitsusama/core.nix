@@ -534,7 +534,9 @@ let
   # Every folder's checks, beside the repository's own, each told what it
   # proves, with the checks by their names and the file that gives each,
   # from the repository's root. A name two of them give stops the evaluation
-  # rather than one check hiding the other.
+  # rather than one check hiding the other. A folder gathering places of its
+  # own, as quickshell's does, says which file gives each of its checks as
+  # checkFiles, which is no check, so changed-checks keeps each to its place.
   gather =
     { these, folders }:
     let
@@ -544,11 +546,13 @@ let
           file:
           let
             relative = lib.removePrefix "./" (lib.path.removePrefix ./. file);
+            folder = import file given;
+            giving = folder.checkFiles or { };
           in
-          lib.mapAttrs (_: check: {
-            file = relative;
+          lib.mapAttrs (name: check: {
+            file = giving.${name} or relative;
             inherit check;
-          }) (import file given)
+          }) (removeAttrs folder [ "checkFiles" ])
         ) folders;
       entries = describe (
         lib.foldl' (

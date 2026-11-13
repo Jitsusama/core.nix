@@ -18,10 +18,14 @@
 //! their use of the checks makes others, so only their paths count.
 //!
 //! A gathered file may gather files of its own, as
-//! `modules/quickshell/checks.nix` imports 39 for its 182 checks, and those
+//! `modules/quickshell/checks.nix` imports 39 for its 338 checks, and those
 //! every check reads too. So a file every check read, which a gathered file
 //! names by path, is kept as a gathered one is: by the checks whose own
 //! files name it. One that `checks.nix` or `flake.nix` names stays in all.
+//! A folder's file gathering its places under `checks/` says which place
+//! gives each check, so a check keeps its own place's file and the
+//! folder's, whose list of its places names none, as the root's list of
+//! folders names none of theirs.
 //!
 //! Only the names `self` and `core` are seen: a file handed the flake as a
 //! function's argument of another name, which used its checks, would lose
@@ -54,10 +58,12 @@ pub fn files(source: &str, system: &str) -> Option<BTreeMap<String, String>> {
 /// `files` names and those they gather in turn, that neither give the check
 /// nor are named by a file it read, each read from `source`.
 pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeMap<&str, Reads>) {
+    let gatherings: BTreeSet<String> = files.values().filter_map(|file| gathering(file)).collect();
     let listed: BTreeSet<&str> = files
         .values()
         .map(String::as_str)
         .filter(|file| *file != ROOT)
+        .chain(gatherings.iter().map(String::as_str))
         .collect();
     let floor: BTreeSet<String> = each
         .values()
@@ -90,7 +96,8 @@ pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeM
         let Some(own) = files.get(*name).filter(|own| *own != ROOT) else {
             continue;
         };
-        let mut kept = BTreeSet::from([own.clone()]);
+        let mine = [Some(own.clone()), gathering(own)];
+        let mut kept: BTreeSet<String> = mine.iter().flatten().cloned().collect();
         let mut left: Vec<String> = reads
             .read
             .iter()
@@ -99,7 +106,7 @@ pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeM
                     && !gathered.contains(file.as_str())
             })
             .cloned()
-            .chain([own.clone()])
+            .chain(kept.iter().cloned())
             .collect();
         let mut looked = BTreeSet::new();
         while let Some(file) = left.pop() {
@@ -122,9 +129,21 @@ pub fn narrow(source: &Path, files: &BTreeMap<String, String>, each: &mut BTreeM
     }
 }
 
+/// The folder's file gathering the place's checks in `file`, when `file`
+/// is one under a folder's `checks/`, as `modules/quickshell/checks.nix`
+/// gathers each place's `checks/<place>.nix`.
+fn gathering(file: &str) -> Option<String> {
+    let (folder, _) = file.rsplit_once('/')?;
+    let place = folder.strip_suffix("/checks")?;
+    Some(format!("{place}/checks.nix"))
+}
+
 /// The files of `gathered` that `file` names by path, read from `source`,
-/// but those of `listed` the root names exactly, which is its gathering;
-/// none when it can't be read, or uses the whole source, so may need any.
+/// but those of `listed` the root names exactly, or a folder's file names
+/// exactly and only once among its places, which is its gathering; none
+/// when it can't be read, or uses the whole source, so may need any. A
+/// place reaches another's checks only through their names, and a name
+/// two give stops every evaluation of the folder's checks.
 fn named_by(
     source: &Path,
     file: &str,
@@ -137,15 +156,21 @@ fn named_by(
         return None;
     }
     let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
+    let named: Vec<String> = paths(&code)
+        .iter()
+        .filter_map(|path| resolved(here, path))
+        .collect();
     let mut found = BTreeSet::new();
-    for path in paths(&code) {
-        let Some(at) = resolved(here, &path) else {
-            continue;
-        };
+    for at in &named {
         for one in gathered {
             let under = at.is_empty() || one.starts_with(&format!("{at}/"));
-            // The root's list of files is the gathering itself.
-            if under || (*one == at && (file != ROOT || !listed.contains(one))) {
+            // The root's list of files, or a folder's of its places, is
+            // the gathering itself.
+            let gathers = listed.contains(one)
+                && (file == ROOT
+                    || (gathering(one).as_deref() == Some(file)
+                        && named.iter().filter(|it| *it == at).count() == 1));
+            if under || (*one == at && !gathers) {
                 found.insert((*one).to_owned());
             }
         }
@@ -194,7 +219,8 @@ fn is_named(character: char) -> bool {
 }
 
 /// Each relative path literal in `code` that copies or reads what it
-/// names: all but those that only place others.
+/// names, once for each time it's used: all but those that only place
+/// others.
 fn paths(code: &str) -> Vec<String> {
     let mut found = Vec::new();
     for (at, _) in code.match_indices("./") {
@@ -206,7 +232,7 @@ fn paths(code: &str) -> Vec<String> {
             .chars()
             .take_while(|character| is_named(*character) && *character != '\'')
             .collect();
-        if !places(&code[..start]) && !found.contains(&path) {
+        if !places(&code[..start]) {
             found.push(path);
         }
     }
