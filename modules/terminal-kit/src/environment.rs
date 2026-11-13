@@ -5,7 +5,10 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::fs::File;
 use std::io::{self, IsTerminal};
+use std::os::fd::AsFd;
+use std::os::unix::fs::MetadataExt;
 
 /// The variables the kit reads, and no others.
 const READ: [&str; 7] = [
@@ -20,6 +23,10 @@ const READ: [&str; 7] = [
 
 /// Where a command runs: its streams and the variables it draws by.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "each is a fact of its own about one stream, never a state of the others"
+)]
 pub struct Environment {
     /// Whether stdin is a terminal, so a question can be asked.
     pub stdin: bool,
@@ -27,6 +34,9 @@ pub struct Environment {
     pub stdout: bool,
     /// Whether stderr is a terminal.
     pub stderr: bool,
+    /// Whether stderr is the journal's stream, as a unit's is, so its
+    /// failures can say they're errors.
+    pub journal: bool,
     vars: HashMap<String, String>,
 }
 
@@ -37,6 +47,7 @@ impl Environment {
             stdin: io::stdin().is_terminal(),
             stdout: io::stdout().is_terminal(),
             stderr: io::stderr().is_terminal(),
+            journal: stderr_is_the_journal(),
             vars: READ
                 .iter()
                 .filter_map(|name| Some(((*name).to_owned(), env::var(name).ok()?)))
@@ -52,6 +63,7 @@ impl Environment {
             stdin,
             stdout,
             stderr,
+            journal: false,
             vars: vars
                 .iter()
                 .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
@@ -67,6 +79,24 @@ impl Environment {
             .map(String::as_str)
             .filter(|value| !value.is_empty())
     }
+}
+
+/// Whether stderr is the stream systemd names in `JOURNAL_STREAM`, by its
+/// device and inode, as systemd.exec(5) says to check: a child given the
+/// variable but another stderr, as a pipe's, isn't writing to the journal.
+fn stderr_is_the_journal() -> bool {
+    let Some((device, inode)) = env::var("JOURNAL_STREAM").ok().and_then(|stream| {
+        let (device, inode) = stream.split_once(':')?;
+        Some((device.to_owned(), inode.to_owned()))
+    }) else {
+        return false;
+    };
+    io::stderr()
+        .as_fd()
+        .try_clone_to_owned()
+        .map(File::from)
+        .and_then(|stream| stream.metadata())
+        .is_ok_and(|facts| facts.dev().to_string() == device && facts.ino().to_string() == inode)
 }
 
 #[cfg(test)]
