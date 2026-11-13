@@ -18,8 +18,9 @@
 //! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]
 //! [--socket SOCKET [--looks LOOKS] [--settled SETTLED] [--words
 //! WORDS]]`. SOCKET is where it answers, none served without it; LOOKS
-//! the harness's folder of looks, SETTLED the file of Joel's word, which
-//! it writes as he says it; WORDS the launcher's words.json, each to-do
+//! the harness's folder of looks, each of which it writes as Joel opens
+//! or clears it; SETTLED the file of Joel's word, which it writes as he
+//! says it; WORDS the launcher's words.json, each to-do
 //! worded in it for For You (worded.rs). WAITING is the folder of
 //! to-dos, SIGNINS the folder whose files each service's sign-in touches,
 //! CORE where core's bare clone is kept. ROOT, `/` by default, is where
@@ -46,6 +47,7 @@ mod acts;
 mod bounded;
 mod interface;
 mod judge;
+mod looked;
 mod pace;
 mod session;
 mod settle;
@@ -633,7 +635,7 @@ fn run(
     fixed.extend(told.iter().map(|t| t.watch.clone()));
     let shared = match socket {
         Some(socket) => {
-            let acts = Acts::new(paths.settled.clone());
+            let acts = Acts::new(paths.settled.clone(), paths.looks.clone());
             let shared = Shared::new(DOMAIN, acts.own());
             serve::accept(Arc::clone(&shared), serve::listen(&socket)?);
             Some((shared, acts))

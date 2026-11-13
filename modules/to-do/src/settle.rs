@@ -21,7 +21,7 @@ pub struct Refused {
     pub message: String,
 }
 
-fn refused(code: &'static str, message: impl Into<String>) -> Refused {
+pub fn refused(code: &'static str, message: impl Into<String>) -> Refused {
     Refused {
         code,
         message: message.into(),
@@ -62,7 +62,7 @@ pub fn settle(path: &Path, act: &str, item: &str, said: &str, at: u64) -> Result
 }
 
 /// Writes `text` whole beside `path`, then renames it into place.
-fn written(path: &Path, text: &str) -> io::Result<()> {
+pub fn written(path: &Path, text: &str) -> io::Result<()> {
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder)?;
     }
