@@ -293,6 +293,15 @@ QtObject {
             Confirm.actOf({ name: "Power" }, disconnect, "place"), disconnect);
         holds("and one held in nothing is asked of itself",
             Confirm.actOf(null, disconnect, ""), disconnect);
+        // A served act whose daemon says what stays is asked saying so,
+        // naming what it ends, as a session's Close is ("Close O? Its
+        // folder stays.").
+        const close = { key: "verb:agent:close", ask: { ask: "close", address: "O" },
+            askedAs: "O", leaves: "its folder stays." };
+        holds("a served act's ask names it and says what stays", Confirm.asking(close),
+            { askedAs: "O", leaves: "its folder stays." });
+        holds("and one saying neither is asked as any other",
+            Confirm.asking({ key: "verb:agent:stop", ask: { ask: "stop" } }), {});
         holds("and a window's Close names the window",
             Confirm.question([{ ends: "close", name: Confirm.actOf({ name: "Plover Notes" },
                 { name: "Close" }, "window").name }], asking), "Close Plover Notes? (y/n)");

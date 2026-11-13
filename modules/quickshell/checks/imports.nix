@@ -243,6 +243,7 @@
     "launcher/Interfaces.js"
   ];
   "launcher/ReadyRows.qml" = [
+    "Confirm.js"
     "Fuzzy.js"
     "launcher/Beneath.js"
     "launcher/Found.js"

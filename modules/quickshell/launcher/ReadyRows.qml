@@ -19,6 +19,7 @@ import "Found.js" as Found
 import "ReadyRows.js" as Ready
 import "Moved.js" as Moved
 import "Beneath.js" as Beneath
+import "../Confirm.js" as Confirm
 import "../Fuzzy.js" as Fuzzy
 
 Scope {
@@ -535,7 +536,7 @@ Scope {
             // saying what stays.
             row.kind !== "act" ? {}
                 : firstOwn ? { askedAs: firstOwn.askedAs, leaves: firstOwn.leaves }
-                : Ready.asking(first));
+                : Confirm.asking(first));
         // A row asking Joel to be sure, or that is an act (an orchestration's Stop), holds its
         // act alone, as the shell's own do, so the key language reads that act's command
         // (Catalogue.endsSomething) rather than a row of verbs; an act stepping into rows, as a
@@ -654,7 +655,7 @@ Scope {
             later: Ready.leaving(one).later,
             copies: typeof one.copy === "string" ? () => one.copy : undefined,
             run: () => act(key, one)
-        }, Ready.asking(one), said));
+        }, Confirm.asking(one), said));
     }
 
     // Does an act the row of `key` serves: copies its words, opens its link
