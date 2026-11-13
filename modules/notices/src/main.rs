@@ -133,8 +133,17 @@ struct Served {
 
 impl Served {
     /// Every record, its notices' and their rows, as they stand: each
-    /// notice's with its card's sender and words beside it.
-    fn records(&mut self, holding: &Holding, signs: &Signs, desktop_watched: bool) -> Vec<Value> {
+    /// notice's with its card's sender and words beside it, of those
+    /// still recent at `now` (notice.rs's recent), while the rows are of
+    /// every one. One passing a day done with goes at the next change, as
+    /// one comes or is read, rather than on a clock of its own.
+    fn records(
+        &mut self,
+        holding: &Holding,
+        signs: &Signs,
+        desktop_watched: bool,
+        now: i64,
+    ) -> Vec<Value> {
         let looked = if desktop_watched {
             std::mem::take(&mut self.looked)
         } else {
@@ -148,6 +157,7 @@ impl Served {
         let mut records: Vec<Value> = holding
             .notices()
             .iter()
+            .filter(|notice| notice.recent(now))
             .map(|notice| {
                 let mut record = notice.record();
                 if let Some(card) = self.rows.card(notice.id).and_then(Value::as_object) {
@@ -300,7 +310,8 @@ fn main() -> ExitCode {
             entries: &entries,
             words: &words,
         };
-        let told = served.records(&held.holding, &signs, shared.watches("row", row::DESKTOP));
+        let desktop_watched = shared.watches("row", row::DESKTOP);
+        let told = served.records(&held.holding, &signs, desktop_watched, now_ms());
         held.unserved(served.unserved());
         told
     };

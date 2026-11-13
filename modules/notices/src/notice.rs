@@ -12,6 +12,11 @@ use serde_json::{Map, Value, json};
 /// (launcher/Lately.js's LISTED).
 const LISTED: [&str; 2] = ["waiting", "pi"];
 
+/// How long one done with is still served as a record, in milliseconds:
+/// a day, past any launcher's opening, so one read while Joel looks still
+/// holds still in For You (launcher/Lately.js's holdingStill).
+const RECENT: i64 = 86_400_000;
+
 /// How urgent its sender said it is, in the specification's three levels.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -160,6 +165,16 @@ impl Notice {
         self.read && !self.transient && !LISTED.contains(&self.app.as_str())
     }
 
+    /// Whether it's served as a record at `now`: while it's unread, open
+    /// or missed, and for a day once it's done with. The shell reads only
+    /// those (Notices.qml), and History the daemon's own rows of the rest
+    /// (row.rs's notices-history), so the shell holds about fifty rather
+    /// than every one kept (BXNMUC, 2026-11-13: 1.26 MB of 1,000).
+    pub fn recent(&self, now: i64) -> bool {
+        let _ = now;
+        true
+    }
+
     /// When it was done with, for History: when it was read, else when it
     /// left, else when it came, as Now's History said it (launcher/
     /// Lately.js's done).
@@ -259,6 +274,38 @@ mod tests {
         let kept = all.map(Notice::in_history);
         let wanted = [true, true, false, false];
         assert_eq!(kept, wanted, "the read, not the shell's own");
+    }
+
+    #[test]
+    fn it_is_served_while_it_stands_and_for_a_day_once_done_with() {
+        let now = 10 * RECENT;
+        let old = now - RECENT - 1;
+        let done = Notice {
+            read: true,
+            read_at: Some(old),
+            at: old,
+            ..Notice::default()
+        };
+        let unread = Notice {
+            read: false,
+            ..done.clone()
+        };
+        let open = Notice {
+            live: true,
+            ..done.clone()
+        };
+        let missed = Notice {
+            missed: true,
+            ..done.clone()
+        };
+        let lately = Notice {
+            read_at: Some(now - RECENT + 1),
+            ..done.clone()
+        };
+        let all = [&done, &unread, &open, &missed, &lately];
+        let served = all.map(|notice| notice.recent(now));
+        let wanted = [false, true, true, true, true];
+        assert_eq!(served, wanted, "all but the one done with a day ago");
     }
 
     #[test]

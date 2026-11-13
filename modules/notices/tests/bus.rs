@@ -321,6 +321,40 @@ fn desktop_keeps_a_notice_read_while_its_watched_then_lets_it_go() {
 }
 
 #[test]
+fn one_done_with_a_day_ago_is_historys_row_but_no_record_the_shell_watches() {
+    let folder = folder("recent");
+    let bus = Bus::start(&folder);
+    let connection = bus.connect();
+    // Kept from two days ago: one read then, and one still unread.
+    let then = notices::bus::now_ms() - 2 * 86_400_000;
+    let kept = json!({"next": 3, "notices": [
+        {"id": 1, "at": then, "app": "mail", "summary": "Old", "read": true,
+            "readAt": then},
+        {"id": 2, "at": then, "app": "mail", "summary": "Waiting"},
+    ]});
+    std::fs::create_dir_all(folder.join("state")).expect("the state folder is made");
+    std::fs::write(folder.join("state/notices.json"), kept.to_string())
+        .expect("the history is written");
+    let daemon = Daemon::start(
+        &mut notices(&folder, &bus),
+        folder.join("notices.sock"),
+        folder.join("state"),
+    );
+    until("the daemon never took the name", || {
+        owner(&connection).is_some()
+    });
+    let mut client = daemon.client();
+    client.ask(&json!({"id": 1, "ask": "hello"}));
+    let watched = client.ask(&json!({"id": 2, "ask": "watch", "kind": "notice"}));
+    let records = &watched["records"];
+    let count = records.as_array().map(Vec::len);
+    assert_eq!(count, Some(1), "the unread alone: {watched}");
+    assert_eq!(records[0]["key"], "notice:2");
+    let history = got(&mut client, 3, "row:notices-history:1");
+    assert!(!history.is_null(), "the read one is still History's");
+}
+
+#[test]
 fn the_name_is_never_taken_from_another_server() {
     let folder = folder("owned");
     let bus = Bus::start(&folder);
