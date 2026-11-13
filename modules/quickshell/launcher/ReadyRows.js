@@ -372,13 +372,13 @@ function leaving(act) {
     };
 }
 
-// The words a row whose Return asks is read by in the key language, its act's
-// (CommandBinding.wordsFor), so Firmware's Install Now writes `install!` rather
-// than running at the first Return; "" for any other, and for an ask that
-// shuts the launcher, done in Return's own turn as Super+V's paste is, since
-// read by its words, Return from the find would land on it.
-function wordsOf(act) {
-    return actForm(act) === "ask" && !closes(act) ? act.key : "";
+// The words a row whose Return asks is read by in the key language, its act's (CommandBinding's
+// wordsFor), so Firmware's Install Now writes `install!` rather than running at the first Return;
+// "" for any other, and for an ask that shuts the launcher, done in Return's own turn as Super+V's
+// paste is, since read by its words, Return from the find would land on it. A row that is an act,
+// as an orchestration's Stop, is its act's whatever the form, as actRow's are (RTOIMQ, 2026-11-12).
+function wordsOf(act, kind) {
+    return (kind === "act" && act) || (actForm(act) === "ask" && !closes(act)) ? act.key : "";
 }
 
 // A row's mark as drawn: words.json's glyph role it names (`roles`, the theme's glyphs),

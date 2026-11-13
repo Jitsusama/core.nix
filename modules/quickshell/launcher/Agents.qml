@@ -68,7 +68,41 @@ Provider {
     // are held by key as the daemon tells each change (rowsKind), each
     // wrapped with its acts and drawer only as it changes, and laid out
     // only while they're wanted (Provider.qml's wanted).
-    readonly property var all: opened() && provider.wanted ? laidOut() : []
+    readonly property var all: opened() && provider.wanted ? (topServed ? top.rows() : laidOut())
+        : []
+
+    // The tree's rows as they were before the daemon served the top level:
+    // laid out only while wanted and open, so a shut launcher makes none.
+    function treeRows() {
+        return opened() && provider.wanted ? laidOut() : [];
+    }
+
+    // Agents' top level as the agents daemon serves it, ready: one row per
+    // orchestration, named for its quest, saying how its sessions stand
+    // and what they spent, what needs Joel first and then the newest, with
+    // Closed one row at the end; Talk to It first, then Peek, then a step
+    // in to its members, each served under it (VKCF3Z, 2026-11-11
+    // [3a742b67], after Joel drove the mock: "for agents, definitely
+    // improvement"; KP0L6A's place "agents-top"). While the daemon serves
+    // none, as before its half is switched in, the tree below stands as
+    // it was. Typing still finds every session, leaves included, from the
+    // tree's rows, until the daemon serves those ranked too. Shut, it's
+    // watched at the same pace as the tree's rows.
+    ReadyRows {
+        id: top
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        place: "agents-top"
+        beside: ["drawer"]
+        watching: provider.opened() ? ({}) : ({ every: provider.shutPace })
+        ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
+        make: (row, key) => top.thing(row, key, provider.topReopens(row))
+        actMade: (key, one, row) => provider.topTalk(key, one, row)
+            ?? provider.topCloses(one)
+        maker: provider
+        drawn: provider.launcher?.open ?? false
+    }
+    readonly property bool topServed: top.keys.length > 0
 
     // Yet its sessions' rows are wrapped as the shell starts, in Agents'
     // turn of it (Launcher.qml's warmNext), and kept by key (wrapped), so
@@ -79,6 +113,62 @@ Provider {
     onWarmingChanged: {
         if (provider.warming)
             laidOut();
+    }
+
+    // Talk to It on a served row, asking for Joel's words as the tree's
+    // Talk does, then sending the daemon's ask with them; null for any
+    // other act, which is served whole.
+    function topTalk(key, one, row) {
+        if (one.key !== "verb:agent:talk" || !one.ask)
+            return null;
+        return thing({
+            key: one.key,
+            verb: Words.verb(one.key),
+            name: Words.name(one.key),
+            glyph: Words.glyph(one.key),
+            hue: "action",
+            ask: Words.of(one.key).ask ?? "",
+            chip: row.name ?? "",
+            state: () => provider.told,
+            given: words => {
+                const text = words.trim();
+                if (text === "")
+                    return;
+                top.asked(key, Object.assign({}, one, {
+                    ask: Object.assign({}, one.ask, { text })
+                }));
+                provider.told = (Words.of("orchestrators").said ?? {}).sent
+                    ?.replace("{name}", row.name ?? "") ?? "";
+            }
+        });
+    }
+
+    // Close on a served orchestration, asked first saying what stays, as a
+    // session's own Close is (sessionAct), since what it leaves is worked
+    // out here from the session's folder: a stopgap until the agents
+    // daemon serves what Close leaves with the act (KP0L6A). Null for any
+    // other act, or a session not here.
+    function topCloses(one) {
+        const session = one.key === "verb:agent:close" ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, "close") : null;
+    }
+
+    // A closed orchestrator the daemon serves under Closed, with no acts
+    // of its own: reopened as the tree's are (closedRow), from the record
+    // it holds, until the daemon reopens through the node (KP0L6A,
+    // 2026-11-11 [155d2b08]).
+    function topReopens(row) {
+        const one = row?.held?.closed;
+        if (row?.kind !== "closed-orchestrator" || !one)
+            return {};
+        const orchestrators = source("orchestrators");
+        const acts = () => provider.closedActs(one, orchestrators);
+        return {
+            verb: Words.verb("verb:orchestrator:reopen"),
+            run: () => provider.reopenNow(one, orchestrators),
+            verbs: acts,
+            targets: acts
+        };
     }
 
     function opened() {
@@ -363,6 +453,11 @@ Provider {
     // order, read from the daemon's rows, never from what's made of them,
     // so Home names them without laying any out.
     function memberNames() {
+        if (topServed)
+            return top.keys.filter(key => !top.served(key)?.parent)
+                .map(key => top.served(key).name)
+                .concat([toReopen, landed, recent].filter(row => row !== null)
+                    .map(row => row.name));
         void placings;
         const held = rowsKind?.held ?? {};
         return placing.keys.filter(key => !held[key]?.row?.held?.fold)
@@ -918,7 +1013,7 @@ Provider {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of sessionRows(all)) {
+        for (const row of sessionRows(topServed ? treeRows() : all)) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
             const byWord = (row.also.mask & need) === need
@@ -1485,7 +1580,10 @@ Provider {
     // Asked while they aren't wanted, as a step into Agents asks before it's
     // held, its rows are laid out as asked, from the daemon's rows held.
     function everything() {
-        const sessions = provider.wanted || !opened() ? all : laidOut();
+        // Its search looks through the tree's rows, so their texts are
+        // made ready from those (Provider.qml's looksThrough).
+        const tree = provider.wanted || !opened() ? treeRows() : laidOut();
+        const sessions = topServed && opened() && !provider.lookingThrough.now ? top.rows() : tree;
         return sessions.concat([toReopen, landed, recent, start].filter(row => row !== null));
     }
 
