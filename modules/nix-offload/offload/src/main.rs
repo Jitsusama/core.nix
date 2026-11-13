@@ -165,7 +165,6 @@ mod progress;
 mod proof;
 mod queue;
 mod relay;
-mod replay;
 mod running;
 mod sleep;
 mod standing;
@@ -684,7 +683,7 @@ fn there(arguments: &[String]) -> ExitCode {
     if let [first, rest @ ..] = arguments
         && first == "--changed"
     {
-        return changed_there(rest, waiting, true);
+        return changed_there(rest, waiting);
     }
     if let [first, rest @ ..] = arguments
         && first == "--run"
@@ -1355,11 +1354,8 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
 /// `there --changed`: changed-checks run for the tree here on the lent
 /// builder, else a warm VM builder, else an evaluator with its builds
 /// sent on, else a builder waited for as `waiting` says (`changed.rs` says why). It exits with the
-/// run's status, or `NOT_TAKEN` when nowhere else took it. With `replays`, a
-/// change whose base no lent builder keeps evaluated runs replayed onto a
-/// main one does (`replay.rs`), and again on its own base should that fail,
-/// so a replay never fails a run that would have passed.
-fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -> ExitCode {
+/// run's status, or `NOT_TAKEN` when nowhere else took it.
+fn changed_there(arguments: &[String], waiting: there::Waiting) -> ExitCode {
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let scratch = scratch();
     let not_taken = |why: &str| {
@@ -1378,18 +1374,9 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     let Ok(folder) = env::current_dir() else {
         return not_taken("this folder can't be read");
     };
-    let given = arguments;
-    let arguments = with_system(arguments);
-    let arguments = arguments.as_slice();
-    let more_dir = more_dir();
     let source = match there::source(&folder, &scratch, None, there::Sends::Changes) {
         Ok(source) => source,
         Err(why) => return not_taken(&why),
-    };
-    let (source, replayed) = if replays {
-        replay_kept(arguments, &folder, &scratch, source, [&dir, &more_dir])
-    } else {
-        (source, None)
     };
     let bundle = match &source {
         there::Source::Bundled { bundle, .. } => Some(bundle.clone()),
@@ -1400,6 +1387,14 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
             let _ = fs::remove_file(bundle);
         }
     };
+    // Given no system, the far side would name its own, and the VM tests
+    // sent apart need one, so it's this machine's. It's named before the
+    // run is looked for, so a run kept is found either way.
+    let mut arguments = arguments.to_vec();
+    if changed::wanted(&arguments).system.is_none() {
+        arguments.extend(["--system".to_owned(), this_system()]);
+    }
+    let arguments = arguments.as_slice();
     // The same run at a commit where it passed passes again, so it's said
     // again rather than evaluated and built anew (`passed.rs`).
     let passed = passed::Passed::here(&state());
@@ -1448,6 +1443,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     let _running = at.as_ref().and_then(|at| {
         running::Running::start(&state(), std::process::id(), &at.commit, &folder, started)
     });
+    let more_dir = more_dir();
     let finished = sent.somewhere(arguments, [&dir, &more_dir], &vm_dirs(&vm_dir), vm_apart);
     forget();
     let Some(finished) = finished else {
@@ -1467,128 +1463,7 @@ fn changed_there(arguments: &[String], waiting: there::Waiting, replays: bool) -
     if let (0, Some(at), Some(printed)) = (finished.status, &at, &finished.printed) {
         kept_passing(&passed, at, arguments, printed, started);
     }
-    if runs_again(replayed.as_deref(), finished.status) {
-        return changed_there(given, waiting, false);
-    }
     ExitCode::from(u8::try_from(finished.status).unwrap_or(1))
-}
-
-/// `arguments`, naming this machine's system when they name none: given
-/// none, the far side would name its own, and the VM tests sent apart need
-/// one. It's named before the run is looked for, so a run kept is found
-/// either way.
-fn with_system(arguments: &[String]) -> Vec<String> {
-    let mut arguments = arguments.to_vec();
-    if changed::wanted(&arguments).system.is_none() {
-        arguments.extend(["--system".to_owned(), this_system()]);
-    }
-    arguments
-}
-
-/// Whether a run that ended with `status`, of the change `replayed` as
-/// said, runs again on the change's own base: when it failed, other than
-/// by finding the builders busy, since a replay mustn't fail a run that
-/// would have passed. It says which, either way.
-fn runs_again(replayed: Option<&str>, status: i32) -> bool {
-    let Some(replayed) = replayed else {
-        return false;
-    };
-    if status != 0 && status != there::BUSY {
-        eprintln!("nix-offload: {replayed} failed, so the change runs again on its own base");
-        return true;
-    }
-    eprintln!("nix-offload: what passed is {replayed}, and its pass is kept under that");
-    false
-}
-
-/// `source`, or, when no lent builder keeps its base's checks evaluated,
-/// the same change replayed onto the newest main one does (`replay.rs`),
-/// with what it was replayed as. Anything that keeps it from being
-/// replayed is said, and the run goes as it was.
-fn replay_kept(
-    arguments: &[String],
-    folder: &Path,
-    scratch: &Path,
-    source: there::Source,
-    lenders: [&Path; 2],
-) -> (there::Source, Option<String>) {
-    let (there::Source::Pushed { commit, .. } | there::Source::Bundled { commit, .. }) = &source;
-    let (Some(base), Some(system)) = (
-        changed::base_of(arguments, folder, commit),
-        changed::wanted(arguments).system,
-    ) else {
-        return (source, None);
-    };
-    let lent: Vec<there::Builder> = lenders
-        .into_iter()
-        .filter_map(standing)
-        .filter_map(|store| there::builder(store.lines().next()?.trim()))
-        .collect();
-    let listing = there::Sending {
-        command: replay::LISTING.to_owned(),
-        bundle: None,
-    };
-    let listed: Vec<String> = thread::scope(|scope| {
-        let asked: Vec<_> = lent
-            .iter()
-            .map(|builder| scope.spawn(|| there::printed_on(builder, &listing, scratch, "ssh")))
-            .collect();
-        asked
-            .into_iter()
-            .filter_map(|asked| match asked.join() {
-                Ok(Ok((ran, listed))) if ran.status == 0 => Some(listed),
-                _ => None,
-            })
-            .collect()
-    });
-    // With no lent builder answering, the run finds its way as it would have.
-    if listed.is_empty() {
-        return (source, None);
-    }
-    let kept: std::collections::HashSet<String> = listed
-        .iter()
-        .flat_map(|listed| replay::kept_in(listed, &system))
-        .collect();
-    let short = |commit: &str| commit.get(..12).unwrap_or(commit).to_owned();
-    let not_kept = format!("no lent builder keeps {}'s checks evaluated", short(&base));
-    let theirs = changed::theirs(arguments);
-    let replayed = match replay::replayed(folder, &base, commit, theirs, &kept, scratch) {
-        Ok(None) => return (source, None),
-        Ok(Some(replayed)) => replayed,
-        Err(why) => {
-            eprintln!(
-                "nix-offload: {not_kept}, and the change can't go onto a main one does: {why}"
-            );
-            return (source, None);
-        }
-    };
-    match there::source(
-        folder,
-        scratch,
-        Some(&replayed.commit),
-        there::Sends::Changes,
-    ) {
-        Ok(sent) => {
-            let said = format!(
-                "{}'s change replayed as {} onto {}",
-                short(commit),
-                short(&replayed.commit),
-                short(&replayed.onto)
-            );
-            // A bundle of the replay took the original's place, as each
-            // run bundles into one file of its own.
-            eprintln!("nix-offload: {not_kept}, so this checks {said}, which one keeps");
-            (sent, Some(said))
-        }
-        Err(why) => {
-            eprintln!("nix-offload: {not_kept}, and the change replayed couldn't be sent: {why}");
-            // Its bundle may have gone over the original's, so that's made
-            // again, and the run goes as it would have.
-            let commit = commit.clone();
-            let again = there::source(folder, scratch, Some(&commit), there::Sends::Changes);
-            (again.unwrap_or(source), None)
-        }
-    }
 }
 
 /// Keeps that the changed-checks run with `arguments`, started at
