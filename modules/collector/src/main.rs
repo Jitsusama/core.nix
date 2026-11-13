@@ -311,10 +311,9 @@ fn row(span: &Span, depth: usize, zone: &TimeZone, room: Room) -> String {
         };
         (if n == 0 { "  " } else { " " }, said)
     }));
-    let whole: String = pieces
+    let whole = pieces
         .iter()
-        .map(|(gap, piece)| format!("{gap}{piece}"))
-        .collect();
+        .fold(String::new(), |whole, (gap, piece)| whole + gap + piece);
     let line = format!("{head}{indent}{whole}");
     let Some(cells) = room.cells().filter(|cells| layout::width(&line) > *cells) else {
         return line;
