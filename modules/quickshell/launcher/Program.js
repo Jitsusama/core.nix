@@ -61,12 +61,20 @@ function percent(share, marks) {
 // share of the processors, the memory they hold and how many there are,
 // summed; null while it says nothing. A window's process started from
 // another's is in that one's tree, its `pids`, so it's counted there
-// alone rather than twice.
+// alone rather than twice. Each process another holds is found once, in
+// one pass, rather than every tree looking through every other's: kitty's
+// 41 processes on Joel's laptop made that some 84,000 looks a drawer.
 function usage(trees) {
     const known = trees.filter(tree => tree !== null && tree !== undefined);
-    const within = (tree, other) => other !== tree && other.pid !== tree.pid
-        && Array.from(other.pids ?? []).includes(tree.pid);
-    const said = known.filter(tree => !known.some(other => within(tree, other)));
+    const held = new Set();
+    for (const tree of known) {
+        for (const pid of Array.from(tree.pids ?? [])) {
+            if (pid !== tree.pid) {
+                held.add(pid);
+            }
+        }
+    }
+    const said = known.filter(tree => !held.has(tree.pid));
     if (said.length === 0) {
         return null;
     }
@@ -169,7 +177,10 @@ function facts(known, named, said) {
         : { label: named(id), value: known.asking ? null : "" });
     return [
         figure("processor", one => percent(one.processor, known.marks)),
-        figure("memory", one => FileFacts.weighed(one.memory)),
+        // Whole, as Machine says it, with the agents' windows' share beside
+        // it where it holds theirs, as kitty does (VKCF3Z [b31d7a90]).
+        figure("memory", one => FileFacts.weighed(one.memory) + (one.agents > 0
+            ? DOT + filled(said.agents ?? "", { memory: FileFacts.weighed(one.agents) }) : "")),
         figure("processes", one => String(one.count)),
         own("playing")(known.playing ?? "")
     ].concat((known.given ?? []).map(fact => ({ label: fact.label,
