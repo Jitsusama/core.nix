@@ -35,11 +35,8 @@ Provider {
 
     readonly property string socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/notices.sock`
 
-    // Every notice, the unread saying so, for search, Notifications, a
-    // program's own row (Applications.qml) and For You's History, which
-    // holds a notice its sender withdrew unread beside those read, so the
-    // daemon's own history place, the read alone, isn't watched. The
-    // daemon serves a page of it, the unread, the live and the newest read
+    // Every notice, the unread saying so, for search, Notifications and a
+    // program's own row (Applications.qml). The daemon serves a page of it, the unread, the live and the newest read
     // (row.rs's paged), with beside it how many it has rows for; the rest
     // are asked for by those that list them (every).
     ReadyRows {
@@ -67,6 +64,28 @@ Provider {
         maker: provider
         make: (row, key) => provider.made(desktop, row, key)
         drawn: provider.launcher?.open ?? false
+    }
+    // For You's History, the read, each saying how and when it was done
+    // with, "read here 14:02", newest done first, a page at a time as the
+    // mixed place is, with beside it how many it keeps of each source, so
+    // History counts and orders them as the daemon says rather than
+    // working it out from every notice (2RCBOJ, 2026-11-13).
+    ReadyRows {
+        id: past
+
+        socket: provider.socket
+        place: "notices-history"
+        beside: ["summary"]
+        paced: provider.launcher
+        maker: provider
+        make: (row, key) => provider.made(past, row, key)
+        drawn: provider.launcher?.open ?? false
+    }
+    Connections {
+        target: past
+        function onHeard() {
+            provider.changed();
+        }
     }
     Connections {
         target: mixed
@@ -111,6 +130,11 @@ Provider {
         });
         if (one === null)
             return null;
+        // History's says when it was done with and which source it's
+        // History's for, as the daemon holds them.
+        if (ready === past)
+            Object.assign(one, { doneAt: held.readAt ?? held.at ?? 0,
+                pastSource: held.source ?? "" });
         // With nothing to open or go to, the daemon serves its details
         // first, which a launcher with no drawer to step into can't show,
         // so Return steps in among its acts, as the right arrow does,
@@ -199,9 +223,11 @@ Provider {
             }
             provider.parting = [];
             // The rows past the page go, kept only while they're listed.
-            provider.whole.kept = null;
-            provider.whole.of = null;
-            provider.whole.rows = [];
+            for (const state of [provider.whole, provider.pastWhole]) {
+                state.kept = null;
+                state.of = null;
+                state.rows = [];
+            }
         }
     }
 
@@ -223,61 +249,101 @@ Provider {
     // Every notice's row, those past the page too, in the daemon's order:
     // the page alone while the daemon has nothing past it, and until it's
     // answered the `rows` it's asked for once it's needed, as
-    // Notifications, a program's own row and For You's History list them.
-    // It's asked again only once the notices changed past what the answer
-    // can list, a notice new to it or one it didn't bring that the page no
-    // longer serves, rather than at every change, each answer being about
+    // Notifications and a program's own row list them, and History's own
+    // as History lists them (pastRows). It's asked again only once the
+    // notices changed past what the answer can list, a notice new to it or
+    // one it didn't bring that the page no longer serves, rather than at every change, each answer being about
     // 1.3 MB of Joel's. Those past the page are made once and let go as
     // the launcher closes: held while it's closed, all 1,000 of Joel's
     // cost the shell about 8 MB of its live heap in the lab, of 45
     // (2026-11-12).
     readonly property string summaryKey: "summary:notices"
-    readonly property var whole: ({ kept: null, asking: false, of: null, at: -1, rows: [] })
-    signal wholeHeard
+    readonly property var whole: ({ ready: mixed, summary: "summary:notices",
+        ask: { ask: "rows" }, kept: null, asking: false, of: null, at: -1, rows: [] })
+    // History's, asked of its own place, in its order.
+    readonly property var pastWhole: ({ ready: past, summary: "summary:notices-history",
+        ask: { ask: "rows", place: "notices-history" },
+        kept: null, asking: false, of: null, at: -1, rows: [] })
     function every() {
-        const page = all();
-        const count = mixed.held[summaryKey]?.summary?.count ?? page.length;
+        return paged(whole, all());
+    }
+
+    // A paged place's every row, `state` its whole or History's, `page`
+    // the rows its watch serves.
+    function paged(state, page) {
+        const ready = state.ready;
+        const count = ready.held[state.summary]?.summary?.count ?? page.length;
         if (count <= page.length)
             return page;
-        const kept = whole.kept;
+        const kept = state.kept;
         if (kept === null) {
-            wholeAsked();
+            wholeAsked(state);
             return page;
         }
-        if (whole.of !== kept || whole.at !== mixed.placings) {
-            const rows = kept.keys.map(key => foundRow(kept, key));
-            whole.rows = rows.filter(row => row !== null);
-            whole.of = kept;
-            whole.at = mixed.placings;
+        if (state.of !== kept || state.at !== ready.placings) {
+            const rows = kept.keys.map(key => foundRow(kept, key, ready));
+            state.rows = rows.filter(row => row !== null);
+            state.of = kept;
+            state.at = ready.placings;
             if (!kept.listed)
                 kept.listed = new Set(kept.keys);
-            const listed = row => kept.listed.has(`row:${mixed.place}:${row.notice}`);
-            if (whole.rows.length < rows.length || !page.every(listed))
-                wholeAsked();
+            const listed = row => kept.listed.has(`row:${ready.place}:${row.notice}`);
+            if (state.rows.length < rows.length || !page.every(listed))
+                wholeAsked(state);
         }
-        return whole.rows;
+        return state.rows;
     }
 
-    // Asks the daemon for every notice's row, unless it's being asked.
-    function wholeAsked() {
-        const link = mixed.link;
-        if (whole.asking || !link || link.wire === null)
+    // Asks the daemon for every row of a paged place, unless it's being
+    // asked.
+    function wholeAsked(state) {
+        const link = state.ready.link;
+        if (state.asking || !link || link.wire === null)
             return;
-        whole.asking = true;
-        link.find({ ask: "rows" }, answer => provider.wholeAnswered(answer));
+        state.asking = true;
+        link.find(state.ask, answer => provider.wholeAnswered(state, answer));
     }
 
-    // Every notice's row answered is kept, and what lists them told, so
-    // a list shown from the page alone fills in; one come once the
-    // launcher closed is let go at once.
-    function wholeAnswered(answer) {
-        whole.asking = false;
+    // Every row answered is kept, and what lists them told, so a list
+    // shown from the page alone fills in; one come once the launcher
+    // closed is let go at once.
+    function wholeAnswered(state, answer) {
+        state.asking = false;
         if (!Array.isArray(answer?.keys) || provider.launcher?.open === false)
             return;
-        whole.kept = { keys: answer.keys, rows: answer.rows ?? {}, made: {}, listed: null };
-        provider.wholeHeard();
+        // A row past the page that reads as it did is kept as made, so a
+        // notice read, which History asks again for, remakes none of the
+        // rest it already held.
+        const rows = answer.rows ?? {};
+        const was = state.kept;
+        const made = {};
+        for (const key of Object.keys(rows)) {
+            if (was !== null && key in was.made
+                && JSON.stringify(was.rows[key]) === JSON.stringify(rows[key]))
+                made[key] = was.made[key];
+        }
+        state.kept = { keys: answer.keys, rows: rows, made: made, listed: null };
         provider.changed();
     }
+
+    // History's rows of `sources` (Lately.js's pastSources), every one, in
+    // the order each was done with, newest first, as the daemon orders
+    // them.
+    readonly property var pastPage: ({ at: -1, rows: [] })
+    function pastRows(sources) {
+        if (pastPage.at !== past.placings) {
+            pastPage.rows = past.rows();
+            pastPage.at = past.placings;
+        }
+        const wanted = new Set(sources);
+        return lined(paged(pastWhole, pastPage.rows)
+            .filter(row => wanted.has(row.pastSource)), []);
+    }
+
+    // How many History keeps, as the daemon counts them, by source; told
+    // again each time its rows move.
+    readonly property var pastSummary: past.placings >= 0
+        ? past.held["summary:notices-history"]?.summary ?? null : null
 
     // Every notice's row, one list until the daemon's places move, since
     // the daemon's rows() gives a new list each time, for the program's
@@ -298,11 +364,9 @@ Provider {
         return everyRow.rows;
     }
 
-    // The notices of `ids`, in the daemon's order, as For You's Desktop
-    // (Now.qml) holds the unread and its History those done with,
-    // `where` saying which: each read one in Desktop says so, as one read
-    // while Joel looks stays where it was (VKCF3Z, 2026-11-09), as the
-    // daemon words it.
+    // The notices of `ids`, as For You's Desktop (Now.qml) holds the
+    // unread: each read one says so, as one read while Joel looks stays
+    // where it was (VKCF3Z, 2026-11-09), as the daemon words it.
     // Desktop's are in the order of `ids`, each its own place's row once
     // that's told of it, and until then, while unread, the one every
     // notice has: Desktop is watched again only as the launcher opens, so
@@ -310,17 +374,13 @@ Provider {
     // it, then put at its end once told, rather than where it belongs. A
     // read one is Desktop's only once it's been watched, so it's told.
     // Whether Desktop holds the notice of `id` as its own watch told it,
-    // rather than rowsOf taking it from every notice while that watch
+    // rather than desktopRows taking it from every notice while that watch
     // hasn't told it yet, as it waits on a frame drawn.
     function desktopHolds(id) {
         return `row:${desktop.place}:${id}` in desktop.held;
     }
 
-    function rowsOf(ids, where) {
-        if (where !== "desktop") {
-            const wanted = new Set(ids);
-            return lined(every().filter(row => wanted.has(row.notice)), []);
-        }
+    function desktopRows(ids) {
         return lined(ids.map(id => desktop.rowAt(`row:${desktop.place}:${id}`)
             ?? [mixed.rowAt(`row:${mixed.place}:${id}`)].find(row => row?.unread === true))
             .filter(row => !!row), []);
@@ -395,12 +455,12 @@ Provider {
     // The row of `key` a kept answer found: the place's where it serves
     // one, else the answer's own, made as the place makes one the first
     // time it's listed and let go with the answer; null for neither.
-    function foundRow(kept, key) {
-        if (key in mixed.held)
-            return mixed.rowAt(key);
+    function foundRow(kept, key, ready = mixed) {
+        if (key in ready.held)
+            return ready.rowAt(key);
         if (!(key in kept.made)) {
             const row = kept.rows[key];
-            kept.made[key] = row ? mixed.make(row, key) : null;
+            kept.made[key] = row ? ready.make(row, key) : null;
         }
         return kept.made[key];
     }

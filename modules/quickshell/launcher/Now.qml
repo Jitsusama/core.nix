@@ -1188,12 +1188,9 @@ Provider {
         const now = Date.now();
         const came = from === undefined ? cameDone
             : cameDone.filter(one => one.source === from);
-        // Notices' rows of every notice done with, asked for at once, each
-        // by its notice's id.
-        const ids = came.map(one => one.of.id);
-        const notices = {};
-        for (const row of source("notices")?.rowsOf(ids, "history") ?? [])
-            notices[row.notice] = row;
+        // The notices done with, as the notices daemon serves History's.
+        const past = (source("notices")?.pastRows(pastOf(from)) ?? [])
+            .map(one => ({ at: one.doneAt, row: () => provider.pastRow(one) }));
         const say = forYouSaid(now);
         const ours = from === undefined ? looks.history.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
@@ -1202,7 +1199,7 @@ Provider {
                     row: () => provider.givenDone(one, say) })))
             : [];
         const rows = ours.concat(came.map(one => ({ at: one.at,
-            row: () => provider.cameDoneRow(one, notices) })));
+            row: () => provider.cameDoneRow(one) })), past);
         return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
     }
     // What a source gave that's done, in History as its source made it,
@@ -1213,7 +1210,19 @@ Provider {
             resolved: one.done.at, since: null }, say), later: true });
     }
     readonly property int resolvedCount: looks.history.length + doneItems.length
-        + cameDone.length + given.done.length
+        + cameDone.length + given.done.length + pastKept()
+
+    // Whose notices History holds (Lately.js's pastSources), narrowed to
+    // `from`, one of them, as a source's own History is.
+    readonly property var pastSources: Lately.pastSources(finishedOf("slack"))
+    function pastOf(from) {
+        return from === undefined ? pastSources : pastSources.filter(one => one === from);
+    }
+    // How many notices done with History keeps of `from`, or of all it
+    // holds, as the notices daemon counts them.
+    function pastKept(from) {
+        return Lately.pastCount(source("notices")?.pastSummary ?? null, pastOf(from));
+    }
     readonly property var historyRow: whileWanted("history", () => resolvedCount === 0
         ? null : member({
         key: "on:waiting:history",
@@ -1246,7 +1255,7 @@ Provider {
     // holding only it says it holds nothing above it (Showing.js's
     // saysNothing).
     function historyOf(from) {
-        const count = cameDone.filter(one => one.source === from).length;
+        const count = cameDone.filter(one => one.source === from).length + pastKept(from);
         const row = member({
             key: `on:waiting:history:${from}`,
             verb: "more",
@@ -1836,7 +1845,7 @@ Provider {
     // all it and what it holds of its own say.
     function keptNoticesRow(from, senders, forYou) {
         const ids = (noticesOf[from] ?? []).map(notice => notice.id).join(" ");
-        const done = cameDone.filter(one => one.source === from).length;
+        const done = cameDone.filter(one => one.source === from).length + pastKept(from);
         return keptAlike(latelyKept, `notices:${from}`, [ids, senders.join("\u241f"), done],
             () => noticesRow(from, senders, forYou));
     }
@@ -1879,7 +1888,7 @@ Provider {
                 stays: true,
                 run: () => Notices.markRead(ids)
             })]).concat([provider.historyOf(from)]));
-        const listed = () => (ids.length > 0 ? (source("notices")?.rowsOf(ids, "desktop") ?? [])
+        const listed = () => (ids.length > 0 ? (source("notices")?.desktopRows(ids) ?? [])
             : []).concat(owned());
         const row = member({
             key: `on:waiting:${from}`,
@@ -1919,21 +1928,19 @@ Provider {
         return Facts.all.find(fact => fact.piece?.lately === source && fact.piece.present)
             ?.piece.finished ?? null;
     }
-    readonly property var cameDone: Lately.done({ notices: latelyNotices,
+    readonly property var cameDone: Lately.done({
         messages: finishedOf("slack"), finished: finishedOf("mail") ?? [] },
         { mail: Words.of("mail:message").said ?? {},
-            slack: Words.of("slack:message").said ?? {},
-            notice: Words.of("for-you:source:desktop").said ?? {} })
+            slack: Words.of("slack:message").said ?? {} })
 
     // A done one's row in History: the row its piece gives it, as a piece
-    // of mail's or a Slack message's, or a notice's row in Notices, with
-    // how and when it was done with at its side. `rows` are Notices' rows
-    // of every notice done with, by its id, asked for at once (historyRows).
-    function cameDoneRow(one, rows) {
+    // of mail's or a Slack message's, with how and when it was done with
+    // at its side.
+    function cameDoneRow(one) {
         const side = ForYou.historySide({ how: one.how, resolved: one.at, since: null },
             forYouSaid(Date.now()));
         const given = typeof one.of.row === "function" ? one.of.row(thing) : null;
-        const row = given ?? (one.source === "mail" ? null : rows[one.of.id]) ?? member({
+        const row = given ?? member({
             key: `on:waiting:came:${one.source}:${one.at}`,
             name: one.title,
             glyph: Words.glyph("for-you:source:desktop"),
@@ -1942,6 +1949,12 @@ Provider {
         // Its side is how it went and when, never the notice's own items.
         return Object.assign({}, row, { side: side, sideItems: [], hue: "muted",
             forYou: { kind: "notice", source: one.source } });
+    }
+    // A notice done with, its row as the notices daemon serves History's,
+    // whose side already says how and when, "read here 14:02".
+    function pastRow(row) {
+        return Object.assign({}, row, { hue: "muted",
+            forYou: { kind: "notice", source: row.pastSource } });
     }
     readonly property var waiting: whileWanted("waiting", () => {
         const glyph = Theme.glyph[ForYou.markOf(provider.waitsNow, WaitingOnYou.later.length)];

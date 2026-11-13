@@ -3,7 +3,9 @@
 // as the shell's history holds one ({ id, at, app, summary, body, read,
 // live, entry }), as ready rows over the daemon interface, in the places the
 // daemon serves them (row.rs): every one in `notices`, the unread saying
-// so, and the unread in `notices-desktop`. Each time `notices` is said
+// so, the unread in `notices-desktop`, and the read in `notices-history`,
+// newest done with first, each holding when, how and which source, with
+// beside them how many it keeps of each source. Each time `notices` is said
 // anew, it tells each watch only the rows that read otherwise and those
 // gone, as the daemon does, so a test sees what a change remakes. A test
 // waits for `told` to count up before reading what the change made. A
@@ -15,7 +17,9 @@
 // while there are any, `notices` says beside its rows how many it has rows
 // for, as the daemon's summary does, and a `rows` ask is answered as a
 // search is, every notice's key in order with the unserved rows beside
-// them, each counted in `rowsAsked`. A watch gets only the kinds it
+// them, each counted in `rowsAsked`; History's count holds its unserved
+// too, and its `rows` ask answers every one it keeps, those of the unserved
+// with their rows. A watch gets only the kinds it
 // names, and is refused, as daemon-serve refuses it, when it names one
 // the daemon doesn't keep, so a launcher asking for a kind the daemon
 // lacks fails here rather than only against the daemon itself.
@@ -46,6 +50,23 @@ Scope {
     property var unserved: []
     // How many `rows` asks were answered.
     property int rowsAsked: 0
+    // The programs whose notices History leaves out, since For You lists
+    // them as what they ask (modules/notices' notice.rs, LISTED).
+    readonly property var listed: ["waiting", "pi"]
+
+    // Which of For You's sources a notice is from, as notice.rs says it.
+    function sourceOf(notice) {
+        const slack = name => String(name ?? "").toLowerCase() === "slack";
+        return slack(notice.app) || slack(notice.entry) ? "slack" : "desktop";
+    }
+
+    // The notices History keeps of `from`, newest done with first, of
+    // `source` where it's given.
+    function history(source, from = notices) {
+        return from.filter(notice => notice.read && !listed.includes(notice.app))
+            .filter(notice => source === undefined || sourceOf(notice) === source)
+            .sort((one, other) => (other.readAt ?? other.at) - (one.readAt ?? one.at));
+    }
 
     // The kinds a watch's `kind` asks for, as daemon-serve's Domain reads
     // them: every kind but those named only, when it names none, or
@@ -83,6 +104,14 @@ Scope {
     function row(notice, place, standing) {
         const body = String(notice.body ?? "");
         const words = notice.summary === "" ? body : `${notice.summary}\n${body}`;
+        const held = { id: notice.id, app: notice.app, entry: notice.entry ?? "",
+            read: notice.read === true,
+            at: notice.at, live: notice.live === true, said: words };
+        // History's rows say when and how each was done with, and which
+        // source it's from (row.rs).
+        if (place === "notices-history")
+            Object.assign(held, { readAt: notice.readAt ?? notice.at, how: "read",
+                source: sourceOf(notice) });
         return {
             key: `row:${place}:${notice.id}`,
             kind: "row",
@@ -104,9 +133,7 @@ Scope {
                         glyph: notice.read ? "unread" : "read",
                         ask: { ask: "mark", notices: [notice.id], read: !notice.read } },
                     { key: "verb:notice:copy", copy: words }],
-                held: { id: notice.id, app: notice.app, entry: notice.entry ?? "",
-                    read: notice.read === true,
-                    at: notice.at, live: notice.live === true, said: words }
+                held: held
             }
         };
     }
@@ -120,6 +147,16 @@ Scope {
                     notice.read ? "" : "unread");
             else if (place === "notices-desktop" && !notice.read)
                 rows[`row:${place}:${notice.id}`] = row(notice, place, "");
+        }
+        if (place === "notices-history") {
+            for (const notice of history())
+                rows[`row:${place}:${notice.id}`] = row(notice, place, "");
+            // Counted with those past the page, as `unserved` stands for.
+            const every = notices.concat(unserved);
+            rows["summary:notices-history"] = { key: "summary:notices-history",
+                kind: "summary", summary: { count: history(undefined, every).length, sources: {
+                    desktop: history("desktop", every).length,
+                    slack: history("slack", every).length } } };
         }
         if (place === "notices" && unserved.length > 0) {
             rows["summary:notices"] = { key: "summary:notices", kind: "summary",
@@ -184,6 +221,18 @@ Scope {
                         answer = { id: ask.id, keys: keys, rows: served.unservedOf(keys),
                             grade: keys.length > 0 ? 0 : 3, words: ask.words };
                         served.searches = served.searches.concat([ask.words]);
+                    } else if (ask.ask === "rows" && ask.place === "notices-history") {
+                        // Every one History keeps, with the rows of those
+                        // past the page beside.
+                        const place = "notices-history";
+                        const keys = served.history(ask.source,
+                            served.notices.concat(served.unserved))
+                            .map(notice => `row:${place}:${notice.id}`);
+                        const rows = {};
+                        for (const notice of served.history(ask.source, served.unserved))
+                            rows[`row:${place}:${notice.id}`] = served.row(notice, place, "").row;
+                        answer = { id: ask.id, keys: keys, rows: rows };
+                        served.rowsAsked += 1;
                     } else if (ask.ask === "rows") {
                         const keys = served.notices.concat(served.unserved)
                             .sort((one, other) => other.at - one.at)
