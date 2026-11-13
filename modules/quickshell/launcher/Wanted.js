@@ -102,3 +102,19 @@ function wakingOrder(home, place, source, all) {
     }
     return order;
 }
+
+// The source an id names, by the name `provider(id)` gives it, the first in
+// `all` whose `nameOf` is that, or null: each source's name read once, and
+// each id's asked once. Searched for each id and each source, an opening
+// asked the vocabulary about 2,100 times as it filled (H6EDLC's profile,
+// 2026-11-12).
+function sourceNamed(all, nameOf, provider) {
+    const byName = new Map();
+    for (const one of all) {
+        const name = nameOf(one);
+        if (!byName.has(name)) {
+            byName.set(name, one);
+        }
+    }
+    return id => byName.get(provider(id)) ?? null;
+}

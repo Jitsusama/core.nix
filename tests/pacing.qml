@@ -282,6 +282,27 @@ QtObject {
             order.map(one => one.name).join(" "), "on power disk people quests");
     }
 
+    // The source an id names is found asking the vocabulary once for the
+    // id, never once for each source it's held against.
+    function naming(failures) {
+        const all = [{ name: "power" }, { name: "disk" }, { name: "power", late: true }];
+        let asked = 0;
+        let read = 0;
+        const named = Wanted.sourceNamed(all, one => {
+            read += 1;
+            return one.name;
+        }, id => {
+            asked += 1;
+            return id === "battery" ? "power" : id;
+        });
+        const found = ["battery", "disk", "gone"].map(id => named(id));
+        check(failures, "each id names its source, the first of that name, or none",
+            found.map(one => one === null ? "none" : one.name + (one.late ? " late" : ""))
+                .join(" "), "power disk none");
+        check(failures, "asking the vocabulary once for each id", asked, 3);
+        check(failures, "and reading each source's name once", read, 3);
+    }
+
     // A key's acts are each said shown by the first frame begun after its
     // refresh. At 7b2252da0 dd marked a notice read, and a source no row
     // showed changed just after, was taken for the key's, and refreshed as
@@ -730,6 +751,7 @@ QtObject {
         presenting(failures);
         wanting(failures);
         waking(failures);
+        naming(failures);
         opening(failures);
         felt(failures);
         weighing(failures);
