@@ -13,10 +13,10 @@ if [ "$#" -gt 0 ]; then
   case $1 in
     -h | --help)
       cat << 'EOF'
-yubikey-keys  makes the signing keys, once, safe to run again
+yubikey-keys  makes the signing keys, safe to run again
 
 EXAMPLES
-  yubikey-keys   make what's missing, then print the public keys
+  yubikey-keys  make what's missing, print the public keys
 
 EXIT
   0   every key is there

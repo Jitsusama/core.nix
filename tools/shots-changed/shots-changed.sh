@@ -19,12 +19,12 @@
 case ${1:-} in
 -h | --help)
   cat << 'EOF'
-shots-changed  what changed on screen between two runs of a VM test
+shots-changed  what changed on screen between two VM runs
 
 EXAMPLES
-  shots-changed BEFORE AFTER         names each changed picture, and draws
-                                     it in shots-changed/
-  shots-changed BEFORE AFTER DRAWN   draws them in DRAWN instead
+  shots-changed BEFORE AFTER        what changed, drawn in
+                                    shots-changed/
+  shots-changed BEFORE AFTER DRAWN  drawn in DRAWN instead
 
 EXIT
   0   done

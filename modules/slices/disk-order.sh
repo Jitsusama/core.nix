@@ -9,11 +9,12 @@
 case ${1:-} in
 -h | --help)
   cat << 'EOF'
-disk-order  shares a disk by the slices' io.weight, or stops sharing it
+disk-order  shares a disk by the slices' io.weight
 
 EXAMPLES
-  disk-order on DISK MODEL QOS   share it, with io.cost's measured settings
-  disk-order off DISK            first come, first served again
+  disk-order on DISK MODEL QOS  share it, with io.cost's
+                                measured settings
+  disk-order off DISK           first come, first served
 
 EXIT
   0   done

@@ -17,7 +17,7 @@ case $mode in
   picture | video) ;;
   -h | --help)
     cat << 'EOF'
-camera  shows the camera in a window, to take a picture or a video with
+camera  shows the camera, to take a picture or a video
 
 EXAMPLES
   camera                     a picture

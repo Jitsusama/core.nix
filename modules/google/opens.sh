@@ -18,11 +18,12 @@ url=${3:-}
 case "$url" in
 -h | --help)
   cat << 'EOF'
-google-opens  opens a link from the calendar the way it's meant to be opened
+google-opens  opens a calendar link as it's meant to open
 
 EXAMPLES
-  google-opens URL           a Tuple call in Tuple, Google's pages in a
-                             window of their own, the rest in the browser
+  google-opens URL   a Tuple call in Tuple, Google's pages
+                     in their own window, the rest in the
+                     browser
 
 EXIT
   0   done

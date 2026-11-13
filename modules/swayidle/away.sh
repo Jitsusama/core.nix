@@ -18,7 +18,7 @@
 case ${1-} in
   -h | --help)
     cat << 'EOF'
-swayidle-away  marks Joel away, locks, then turns screens off
+swayidle-away  marks Joel away, locks, and turns screens off
 
 EXAMPLES
   swayidle-away 120 300 600   each step's seconds idle

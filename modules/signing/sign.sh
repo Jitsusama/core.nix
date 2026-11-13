@@ -82,11 +82,12 @@ check_signature() {
 
 help() {
   cat << EOF
-$name  signs for git with Joel's key, or the agents' when a harness drives it
+$name  signs for git as Joel, or as the agents
 
 EXAMPLES
-  git commit -S              signs as whoever is at the keyboard
-  SIGN_AS=agent git commit   signs with the agents' key, which asks nothing
+  git commit -S             as whoever is at the keyboard
+  SIGN_AS=agent git commit  with the agents' key, which asks
+                            nothing
 
 EXIT
   0   done
