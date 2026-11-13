@@ -1549,6 +1549,50 @@ mod tests {
         );
     }
 
+    /// The headline's drawer keeps to six facts as the Charge's does, so a
+    /// battery that says its designed energy, as Joel's does, folds it and
+    /// where it's read away rather than saying eight (Y2YBTS, 2026-11-12).
+    #[test]
+    fn the_headlines_drawer_says_six_facts_and_folds_the_rest() {
+        let words = words();
+        let say = Say { words: &words };
+        let drawer = say.head_drawer(
+            &json!({ "name": "BAT0", "status": "Discharging", "capacity_pct": 80,
+                "energy_wh": 40.0, "energy_full_wh": 50.0, "energy_design_wh": 60.0,
+                "watts": 12.0,
+                "upower": { "state": "discharging", "time_to_empty_s": 11_400.0 } }),
+            1_762_000_000_000,
+        );
+        let said = |part: &str, name: &str, value: &str| -> Vec<String> {
+            drawer[part]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|fact| format!("{}={}", text(&fact[name]), text(&fact[value])))
+                .collect()
+        };
+        assert_eq!(
+            said("facts", "name", "said"),
+            [
+                "Status=on battery",
+                "Empty={time}, in 3 h 10 min",
+                "status=Discharging",
+                "energy_now=40,000,000 \u{b5}Wh",
+                "energy_full=50,000,000 \u{b5}Wh",
+                "power_now=12,000,000 \u{b5}W"
+            ],
+            "how it stands, when it's empty, and how much is left and how fast it goes"
+        );
+        assert_eq!(
+            said("nerd", "label", "value"),
+            [
+                "energy_full_design=60,000,000 \u{b5}Wh",
+                "Read From=/sys/class/power_supply/BAT0"
+            ],
+            "what the six leave out is in the fold, the designed energy first"
+        );
+    }
+
     #[test]
     fn the_energy_is_as_the_battery_counts_it_or_from_its_charge() {
         let words = words();
