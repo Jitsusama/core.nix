@@ -140,7 +140,58 @@ pub struct Stored {
 /// object naming its method, which a derivation's own text, the one kind
 /// that isn't fixed, names `text`.
 pub fn described(info: &Value) -> BTreeMap<String, Stored> {
-    let stored_as = |info: &Value| Stored {
+    each(info)
+        .into_iter()
+        .map(|(path, info)| (path, stored_as(info)))
+        .collect()
+}
+
+/// Whether every valid path `nix path-info --json` printed may come into a
+/// store that checks signatures and trusts the keys `trusted`, each
+/// `NAME:KEY` as `trusted-public-keys` names them: content-addressed, or
+/// signed by a key of one of those names. It says so of none printed.
+pub fn trusted_by(info: &Value, trusted: &[&str]) -> bool {
+    let names: Vec<&str> = trusted
+        .iter()
+        .filter_map(|key| key.split_once(':').map(|(name, _)| name))
+        .collect();
+    let paths = each(info);
+    !paths.is_empty()
+        && paths.iter().all(|(_, info)| {
+            info.get("ca").is_some_and(|ca| !ca.is_null())
+                || info
+                    .get("signatures")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .filter_map(|signature| signature.split_once(':'))
+                    .any(|(name, _)| names.contains(&name))
+        })
+}
+
+/// Each valid path `nix path-info --json` printed, with what it said of
+/// it, in either of the formats [`described`] reads.
+fn each(info: &Value) -> Vec<(String, &Value)> {
+    if let Some(listed) = info.as_array() {
+        return listed
+            .iter()
+            .filter(|info| info.get("valid").and_then(Value::as_bool) != Some(false))
+            .filter_map(|info| Some((stored(info.get("path")?.as_str()?), info)))
+            .collect();
+    }
+    let all = info.get("info").unwrap_or(info);
+    all.as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(_, info)| info.is_object())
+        .map(|(path, info)| (stored(path), info))
+        .collect()
+}
+
+/// What `nix path-info --json` said of one path, as [`described`] keeps it.
+fn stored_as(info: &Value) -> Stored {
+    Stored {
         size: info.get("narSize").and_then(Value::as_u64).unwrap_or(0),
         fixed: match info.get("ca") {
             Some(Value::String(ca)) => ca.starts_with("fixed:"),
@@ -153,21 +204,7 @@ pub fn described(info: &Value) -> BTreeMap<String, Stored> {
                 .get("signatures")
                 .and_then(Value::as_array)
                 .is_some_and(|signatures| !signatures.is_empty()),
-    };
-    if let Some(listed) = info.as_array() {
-        return listed
-            .iter()
-            .filter(|info| info.get("valid").and_then(Value::as_bool) != Some(false))
-            .filter_map(|info| Some((stored(info.get("path")?.as_str()?), stored_as(info))))
-            .collect();
     }
-    let all = info.get("info").unwrap_or(info);
-    all.as_object()
-        .into_iter()
-        .flatten()
-        .filter(|(_, info)| info.is_object())
-        .map(|(path, info)| (stored(path), stored_as(info)))
-        .collect()
 }
 
 /// The fixed outputs of the derivations `nix derivation show` printed, by

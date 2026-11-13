@@ -2226,8 +2226,10 @@ pub enum Bring<'a> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Signatures {
     Checked,
-    /// Taken as it comes, as only an account Nix here trusts may: a
-    /// machine nearby signs nothing it builds.
+    /// Taken as it comes, as only an account Nix here trusts may: what a
+    /// lent builder built while its lender names no key it signs with.
+    /// A machine nearby's work is never taken so; it comes back checked
+    /// or not at all.
     Unchecked,
 }
 
@@ -2485,25 +2487,74 @@ const COPY_TRIES: u32 = 3;
 /// a caller never reads a path this store lacks. Its status is the build's,
 /// or 1 when every copy fails. Each path comes signed or, `Unchecked`,
 /// however it comes, which this machine's daemon allows only an account
-/// it trusts.
+/// it trusts. A machine nearby's paths go through [`signed_for_here`]
+/// and [`copied_back`] instead, checked always.
 fn brought_from(
     command: &mut Command,
     store: &str,
     nix: &str,
     signatures: Signatures,
 ) -> std::io::Result<std::process::ExitStatus> {
-    use std::os::unix::process::ExitStatusExt;
+    let (built, paths) = built_paths(command)?;
+    if !built.success() {
+        return Ok(built);
+    }
+    copied_back(built, &paths, store, nix, signatures)
+}
+
+/// Runs `command`, a build that prints its output paths, and gives its
+/// status and the paths it printed.
+fn built_paths(command: &mut Command) -> std::io::Result<(std::process::ExitStatus, Vec<String>)> {
     // output() would capture stderr too, and drop the builder's log and
     // why a build failed, so it goes on to the caller as it comes.
     let built = command
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .output()?;
-    if !built.status.success() {
-        return Ok(built.status);
-    }
-    let printed = String::from_utf8_lossy(&built.stdout).into_owned();
-    let paths: Vec<&str> = printed.split_whitespace().collect();
+    let paths = String::from_utf8_lossy(&built.stdout)
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    Ok((built.status, paths))
+}
+
+/// Whether what `paths` on `store` are signed with is a key Nix here
+/// trusts, or they're content-addressed, so they may come back checked. A
+/// machine nearby signs what it builds as it builds it or never, so this
+/// is asked once rather than waited for, as a lent builder's push is.
+fn signed_for_here(nix: &str, store: &str, paths: &[String]) -> bool {
+    let said = |command: &mut Command| {
+        command
+            .env("TMPDIR", "/tmp")
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|said| said.status.success())
+            .map(|said| String::from_utf8_lossy(&said.stdout).into_owned())
+    };
+    let Some(trusted) = said(Command::new(nix).args(["config", "show", "trusted-public-keys"]))
+    else {
+        return false;
+    };
+    said(
+        Command::new(nix)
+            .args(["path-info", "--json", "--store", store])
+            .args(paths),
+    )
+    .and_then(|info| serde_json::from_str(&info).ok())
+    .is_some_and(|info| held::trusted_by(&info, &trusted.split_whitespace().collect::<Vec<_>>()))
+}
+
+/// Copies `paths`, which a build ending `built` printed, from `store` into
+/// this machine's, as [`brought_from`] says.
+fn copied_back(
+    built: std::process::ExitStatus,
+    paths: &[String],
+    store: &str,
+    nix: &str,
+    signatures: Signatures,
+) -> std::io::Result<std::process::ExitStatus> {
+    use std::os::unix::process::ExitStatusExt;
     let mut tries = 1;
     loop {
         // ssh's control socket goes in TMPDIR, and a long one is past what
@@ -2515,7 +2566,7 @@ fn brought_from(
                 Signatures::Unchecked => &["--no-check-sigs"][..],
             })
             .args(["--from", store])
-            .args(&paths)
+            .args(paths)
             .env("TMPDIR", "/tmp")
             .status()?;
         if copied.success() {
@@ -2548,7 +2599,7 @@ fn brought_from(
     for path in paths {
         let _ = writeln!(stdout, "{path}");
     }
-    Ok(built.status)
+    Ok(built)
 }
 
 /// How a build waits for a builder when none stands: how long the lender
@@ -3599,18 +3650,31 @@ fn sent_nearby(
     eprintln!("nix-offload: building on {}, {}", machine.host, asked.flake);
     let mut reached = reaching(ssh, &said);
     reached.arg(&machine.host).arg(far(&command));
+    let unrun = |error: std::io::Error| format!("couldn't run {ssh}: {error}");
     let status = if asked.print {
-        // A machine nearby signs nothing it builds.
-        brought_from(
-            &mut reached,
-            &format!("ssh-ng://{}", machine.host),
-            nix,
-            Signatures::Unchecked,
-        )
+        // What a machine nearby built comes here only signed by a key Nix
+        // here trusts, never unchecked, so an account Nix doesn't trust
+        // (ISXEG8's N5) brings nothing it can't check. One that signs
+        // with no such key is left there, and what it took goes the
+        // other way, to be built where it's signed or here.
+        let store = format!("ssh-ng://{}", machine.host);
+        let (built, paths) = built_paths(&mut reached).map_err(unrun)?;
+        if built.success() && !signed_for_here(nix, &store, &paths) {
+            counted(&mut sent, &said);
+            return Err(format!(
+                "{} signed what it built with no key Nix here trusts, so it isn't taken \
+                 unchecked",
+                machine.host
+            ));
+        }
+        if built.success() {
+            copied_back(built, &paths, &store, nix, Signatures::Checked).map_err(unrun)?
+        } else {
+            built
+        }
     } else {
-        reached.status()
-    }
-    .map_err(|error| format!("couldn't run {ssh}: {error}"))?;
+        reached.status().map_err(unrun)?
+    };
     counted(&mut sent, &said);
     Ok(Ran {
         on: Some(machine.host.clone()),
