@@ -1,0 +1,101 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] io/fileview: keep one watcher for a FileView's life
+
+A FileView watching changes made a new QFileSystemWatcher each time its
+path or watchChanges changed, and dropped the old one. Each watcher holds
+an inotify descriptor of its own, and closing one waits out the kernel's
+grace period, about a millisecond on the GUI thread. A shell of many
+FileViews whose paths settle, or whose watching is turned off once a
+socket answers, dropped 130 as it started, 145 ms before its
+configuration had loaded.
+
+A FileView now makes its watcher once and keeps it, changing only what
+it watches: the file and nearest directory of its new path, or nothing
+while it isn't watching. What the watcher heard just before it stopped
+watching is taken as no change of the file's. What a FileView hears is
+what it heard before.
+
+---
+diff --git a/src/io/fileview.cpp b/src/io/fileview.cpp
+index bd9fb1a..12688d9 100644
+--- a/src/io/fileview.cpp
++++ b/src/io/fileview.cpp
+@@ -524,19 +524,27 @@ void FileView::updatePath() {
+ 	this->updateWatchedFiles();
+ }
+ 
++// A watcher, once made, is kept for the FileView's life, and only what it watches changes. Each
++// holds an inotify descriptor of its own, and closing one waits out the kernel's grace period,
++// about a millisecond on the GUI thread: a shell whose many FileViews settle their paths as it
++// starts dropped over a hundred before it had loaded.
+ void FileView::updateWatchedFiles() {
+-	// If inotify events are sent to the watcher after deletion and deleteLater
+-	// isn't used, a use after free in the QML engine will occur.
++	auto watching = !this->targetPath.isEmpty() && this->bWatchChanges;
++
+ 	if (this->watcher) {
+-		QObject::disconnect(this->watcher, nullptr, this, nullptr);
+-		this->watcher->deleteLater();
+-		this->watcher = nullptr;
++		QStringList stale;
++		for (const auto& file: this->watcher->files()) {
++			if (!watching || file != this->targetPath) stale.append(file);
++		}
++		if (!watching) stale.append(this->watcher->directories());
++		if (!stale.isEmpty()) this->watcher->removePaths(stale);
+ 	}
+ 
+-	if (!this->targetPath.isEmpty() && this->bWatchChanges) {
++	if (!watching) return;
++
++	if (!this->watcher) {
+ 		qCDebug(logFileView) << "Creating watcher for" << this << "at" << this->targetPath;
+ 		this->watcher = new QFileSystemWatcher(this);
+-		this->watchNearest();
+ 
+ 		QObject::connect(
+ 		    this->watcher,
+@@ -552,6 +560,13 @@ void FileView::updateWatchedFiles() {
+ 		    &FileView::onWatchedDirectoryChanged
+ 		);
+ 	}
++
++	this->watchNearest();
++}
++
++// What a watcher not watching now heard just before is no change of the file's.
++bool FileView::watchingNow() const {
++	return this->watcher && !this->targetPath.isEmpty() && this->bWatchChanges.value();
+ }
+ 
+ // Watches the file, when it exists, and the nearest directory above it that does. A removed
+@@ -580,6 +595,8 @@ void FileView::watchNearest() {
+ }
+ 
+ void FileView::onWatchedFileChanged() {
++	if (!this->watchingNow()) return;
++
+ 	if (!this->watcher->files().contains(this->targetPath)) {
+ 		this->watcher->addPath(this->targetPath);
+ 	}
+@@ -588,6 +605,8 @@ void FileView::onWatchedFileChanged() {
+ }
+ 
+ void FileView::onWatchedDirectoryChanged(const QString& path) {
++	if (!this->watchingNow()) return;
++
+ 	auto watching = [this] {
+ 		return this->watcher->files().contains(this->targetPath)
+ 		    || this->watcher->directories().contains(this->targetPath);
+diff --git a/src/io/fileview.hpp b/src/io/fileview.hpp
+index 3e16c1c..5593c54 100644
+--- a/src/io/fileview.hpp
++++ b/src/io/fileview.hpp
+@@ -380,6 +380,7 @@ private:
+ 	void updatePath();
+ 	void updateWatchedFiles();
+ 	void watchNearest();
++	[[nodiscard]] bool watchingNow() const;
+ 	void onWatchedFileChanged();
+ 	void onWatchedDirectoryChanged(const QString& path);
+ 
