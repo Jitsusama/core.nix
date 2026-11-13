@@ -76,6 +76,20 @@ expect dimmer "" 8400
 status=$(exited layer sideways)
 [ "$status" = "$usage" ] || fail "An unknown layer exited $status, not $usage."
 
+# Asked for help after a command, or given a word too many or too few, it
+# sends the board nothing: flash would have sent its restart first.
+: > "$root/dev/hidraw2"
+help=$("$ergodox" flash --help) || fail "ergodox flash --help didn't answer its help."
+[[ $help == Usage:* ]] || fail "ergodox flash --help said $help, not its help."
+for words in "bootloader now" "flash x" "brighter 2" "layer" "layer numb x" "lights"; do
+  # Each word stays its own.
+  # shellcheck disable=SC2086
+  status=$(exited $words)
+  [ "$status" = "$usage" ] || fail "ergodox $words exited $status, not $usage."
+done
+written=$(sent hidraw2)
+[ -z "$written" ] || fail "Asked wrongly, ergodox wrote to the board."
+
 rm -r "$root/sys/class/hidraw/hidraw2" "$root/dev/hidraw2"
 status=$(exited bootloader)
 [ "$status" = "$unavailable" ] || fail "With no board, bootloader exited $status, not $unavailable."

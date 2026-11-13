@@ -39,7 +39,41 @@ const PATIENCE: Duration = Duration::from_secs(10);
 /// How many times a page that didn't load is tried again.
 const RETRIES: u32 = 5;
 
+const HELP: &str = "\
+wifid-sign-in  opens the sign-in page of the network that wants one
+
+EXAMPLES
+  wifid-sign-in   what the shell runs when Joel asks
+
+EXIT
+  0   closed, or no network wants a sign-in
+  64  asked wrongly
+";
+
+/// What the command line asks for: the window, its help, or a refusal of
+/// words it doesn't take. It takes none, so --help or a typo never opens
+/// the window onto a page.
+fn asked(words: &[String]) -> Result<bool, String> {
+    match words {
+        [] => Ok(false),
+        [word] if word == "-h" || word == "--help" => Ok(true),
+        [word, ..] => Err(format!("wifid-sign-in takes no words, not {word}")),
+    }
+}
+
 fn main() -> glib::ExitCode {
+    let words: Vec<String> = std::env::args().skip(1).collect();
+    match asked(&words) {
+        Ok(false) => {}
+        Ok(true) => {
+            print!("{HELP}");
+            return glib::ExitCode::SUCCESS;
+        }
+        Err(wrong) => {
+            eprintln!("{wrong}\n  try  wifid-sign-in --help");
+            return glib::ExitCode::new(64);
+        }
+    }
     // bubblewrap refuses to start WebKit's sandbox for a process holding
     // capabilities, and WebKit then gives up. A session can hand its
     // programs some, as a compositor run from a system service does, and
@@ -248,6 +282,24 @@ fn connect(card: &str, target: &Target) -> io::Result<TcpStream> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_no_words_opens_the_window() {
+        let words = |said: &[&str]| {
+            said.iter()
+                .map(|word| (*word).to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(asked(&words(&[])), Ok(false));
+        assert_eq!(asked(&words(&["--help"])), Ok(true));
+        assert_eq!(asked(&words(&["-h"])), Ok(true));
+        for wrong in [&["flsh"][..], &["--halp"], &["--help", "x"]] {
+            assert!(
+                asked(&words(wrong)).is_err(),
+                "{wrong:?} would have opened the window"
+            );
+        }
+    }
 
     fn inn(reach: &str) -> Value {
         json!({"cards": [{

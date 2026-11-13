@@ -11,6 +11,31 @@
 # no shell has answered for 20 seconds the askpass refuses. Otherwise the
 # program would wait on it forever, and ssh-tpm-agent every key with it.
 
+# A prompt is never --help, so that answers its help, and anything but one
+# prompt is refused, so a person trying it never puts a prompt on the
+# screen. Its help and refusals take docs/commands.md's shape, by hand.
+case ${1-} in
+  -h | --help)
+    cat << 'EOF'
+ssh-askpass  asks for a secret or a yes through the shell
+
+EXAMPLES
+  ssh-askpass "PIN for the key:"   what ssh runs to ask
+
+EXIT
+  0   answered, on standard output
+  1   refused, or no shell answered
+  64  asked wrongly
+EOF
+    exit 0
+    ;;
+  *) ;;
+esac
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' "ssh-askpass needs one prompt" "  try  ssh-askpass --help" >&2
+  exit 64
+fi
+
 kind=${SSH_ASKPASS_PROMPT:-secret}
 # qs finds the shell by the display it draws on, and a program started
 # before the desktop, as linux-id's service is at sign-in, was never

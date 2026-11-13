@@ -1091,6 +1091,10 @@
   key-counts-passes-clippy = ''
     clippy finds nothing in key-counts or its tests
   '';
+  key-makers-asked-wrongly-make-nothing = ''
+    yubikey-keys and se-keys answer --help and refuse any word with 64, making nothing in an empty
+    home
+  '';
   keys-speak-the-language = ''
     every surface naming its kinds has each act they hold, by the key language's keys, binds no
     key the language gives to another act and no act by a key not its own, in each mode its acts
@@ -1228,6 +1232,10 @@
     the boot step gives the loader an entry of its own on the ESP, never taking a past install's
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
+  '';
+  locking-asked-wrongly-does-nothing = ''
+    lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
+    64, asking nothing of the shell, niri or swayidle
   '';
   m4-pro-kernel-describes-both-external-screens = ''
     the 14-inch M4 Pro's device tree describes both external screens' coprocessors, their firmware
@@ -2547,7 +2555,8 @@
   '';
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
-    s after the shell goes unless it comes back
+    s after the shell goes unless it comes back; it answers --help and refuses anything but one
+    prompt with 64, asking nothing
   '';
   the-askpass-says-who-asks-for-what = ''
     the askpass names the program and the key, passkey or host behind each prompt, and whether it
@@ -2640,7 +2649,8 @@
     meets it with a square foot and region, its top and the card's foot staying round
   '';
   the-ergodox-command-reaches-the-board = ''
-    `ergodox` writes each command whole to the board's channel alone
+    `ergodox` writes each command whole to the board's channel alone, and nothing for --help or a
+    word too many or too few
   '';
   the-ergodox-layout-builds = ''
     the layout fits the board and answers with its own serial

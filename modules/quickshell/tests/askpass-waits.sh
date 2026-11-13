@@ -123,4 +123,22 @@ check "a shell back within that is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
 check "and its answer taken" exited 0
+
+# Asked for its help, or given anything but one prompt, it puts nothing on
+# the screen.
+: > said
+echo up > mode
+./askpass --help > out 2> err
+echo $? > status
+check "--help is answered" exited 0
+check "opening with its name" grep -q '^ssh-askpass ' out
+check "and asks nothing" asked 0
+for words in "" "one two"; do
+  # Each word stays its own, and none is none.
+  # shellcheck disable=SC2086
+  ./askpass $words > out 2> err
+  echo $? > status
+  check "'$words' is refused as asked wrongly" exited 64
+  check "and asks nothing" asked 0
+done
 exit "$failed"

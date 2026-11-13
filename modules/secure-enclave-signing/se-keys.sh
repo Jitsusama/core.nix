@@ -9,6 +9,32 @@
 # $identities: one a line, each its label, protection, name and email, separated by tabs, the
 # email empty when there's none. SE_KEYS_CMD chooses what it does: ensure
 # (the default) or status.
+#
+# It takes no words, and refuses any before it does anything, so --help or
+# a typo never makes an enclave key.
+if [ "$#" -gt 0 ]; then
+  case $1 in
+    -h | --help)
+      cat << 'EOF'
+se-keys  brings the Secure Enclave to the signing identities
+
+EXAMPLES
+  se-keys                     make what's missing
+  SE_KEYS_CMD=status se-keys  list what the enclave holds
+
+EXIT
+  0   every identity is there
+  1   one couldn't be made or exported
+  64  asked wrongly
+EOF
+      exit 0
+      ;;
+    *)
+      printf '%s\n' "se-keys takes no words" "  try  se-keys --help" >&2
+      exit 64
+      ;;
+  esac
+fi
 
 readonly sc=/usr/sbin/sc_auth
 readonly kg=/usr/bin/ssh-keygen
