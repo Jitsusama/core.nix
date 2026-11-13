@@ -49,7 +49,7 @@ Provider {
             return;
         selected = "";
         selectionSaid = false;
-        asked = {};
+        posed = {};
     }
 
     Daemon {
@@ -106,12 +106,13 @@ Provider {
 
     // What each row's Return asked, by its key: the message Ask was given
     // and the record's result, so its answer is found as Ask gives it.
-    property var asked: ({})
-    readonly property var ask: (launcher?.sources ?? []).find(one => one.settings.name === "ask")
-        ?? null
+    property var posed: ({})
+    // Ask's place, whose warm pi answers each, as it answers the field.
+    readonly property var asker: (launcher?.sources ?? [])
+        .find(one => one.settings.name === "ask") ?? null
 
     Connections {
-        target: provider.ask
+        target: provider.asker
         ignoreUnknownSignals: true
         function onAnswered() {
             provider.answerHeard();
@@ -120,12 +121,12 @@ Provider {
 
     // An answer that replaces the selection is copied once it's whole.
     function answerHeard() {
-        for (const key of Object.keys(asked)) {
-            const one = asked[key];
-            if (ask?.posed === one.message && ask.stage === "answered" && one.result === "replace"
-                && !one.copied) {
+        for (const key of Object.keys(posed)) {
+            const one = posed[key];
+            if (asker?.posed === one.message && asker.stage === "answered"
+                && one.result === "replace" && !one.copied) {
                 one.copied = true;
-                Quickshell.clipboardText = ask.said.trim();
+                Quickshell.clipboardText = asker.said.trim();
                 verbs.tell({ id: `told-${key}`, ask: "told", use: one.use, outcome: "accepted" });
             }
         }
@@ -139,13 +140,13 @@ Provider {
             if (!here || answer === null)
                 return;
             if (answer.ok !== true) {
-                asked[record.key] = { refused: String(answer.refused ?? "") };
+                posed[record.key] = { refused: String(answer.refused ?? "") };
                 changed();
                 return;
             }
             const message = `${answer.system ?? ""}\n\n${answer.prompt ?? ""}`.trim();
-            asked[record.key] = { message, result: record.result, use: answer.use, copied: false };
-            ask?.pose(message);
+            posed[record.key] = { message, result: record.result, use: answer.use, copied: false };
+            asker?.pose(message);
             changed();
         });
     }
@@ -153,16 +154,17 @@ Provider {
     function asking(question) {
         const message = (said.asks ?? "{question}\n\n{selection}").replace("{question}", question)
             .replace("{selection}", selected);
-        asked["verb:selection:ask"] = { message, result: "say", use: "", copied: false };
-        ask?.pose(message);
+        posed["verb:selection:ask"] = { message, result: "say", use: "", copied: false };
+        asker?.pose(message);
         changed();
     }
 
     // A record's row: its served words, or, once asked, its answer.
     function rowOf(record) {
-        const one = asked[record.key] ?? null;
-        const answering = one !== null && one.message !== undefined && ask?.posed === one.message;
-        return answering ? answered(record.key, one) : member({
+        const one = posed[record.key] ?? null;
+        const answering = one !== null && one.message !== undefined
+            && asker?.posed === one.message;
+        return answering ? answerRow(record.key, one) : member({
             key: record.key,
             name: String(record.words ?? record.id ?? ""),
             note: one?.refused ? one.refused : String(record.says ?? ""),
@@ -177,17 +179,17 @@ Provider {
 
     // An answer in its row's place: its first sentence as the name, the
     // whole in the drawer, and Return copying it.
-    function answered(key, one) {
-        const whole = String(ask.said ?? "").trim();
+    function answerRow(key, one) {
+        const whole = String(asker.said ?? "").trim();
         const first = OnSelection.firstSentence(whole);
-        const done = ask.stage === "answered";
+        const done = asker.stage === "answered";
         return member({
             key: key,
             name: whole === "" ? "\u2026" : first,
             reads: first === whole ? "" : whole,
-            note: OnSelection.noted(ask.stage, one.result, said),
+            note: OnSelection.noted(asker.stage, one.result, said),
             glyph: Words.glyph("verb:selection:act"),
-            hue: ask.stage === "failed" ? "alert" : "voice",
+            hue: asker.stage === "failed" ? "alert" : "voice",
             verb: done ? "copy" : Words.verb("verb:selection:act"),
             stays: !done,
             changes: false,
@@ -204,9 +206,9 @@ Provider {
 
     // Ask, last: what's typed asked about the selection.
     function askRow(typed) {
-        const one = asked["verb:selection:ask"] ?? null;
-        if (one !== null && ask?.posed === one.message && typed === "")
-            return answered("verb:selection:ask", one);
+        const one = posed["verb:selection:ask"] ?? null;
+        if (one !== null && asker?.posed === one.message && typed === "")
+            return answerRow("verb:selection:ask", one);
         return member({
             key: "verb:selection:ask",
             name: Words.name("verb:selection:ask"),

@@ -2,6 +2,7 @@
   "things": [
     {
       "id": "verb:selection:act",
+      "act": "do",
       "in": "selection",
       "name": "Do It",
       "verb": "ask",
@@ -9,6 +10,7 @@
     },
     {
       "id": "verb:selection:ask",
+      "act": "do",
       "in": "selection",
       "name": "Ask",
       "verb": "ask",
