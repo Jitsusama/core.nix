@@ -425,8 +425,9 @@ for other people's programs.
   what he typed, such as its words when nothing is shown. A field's hint
   isn't: it's set as typed letters are, muted, the caret at its start, so
   it reads as something he could have typed (Joel, 13 November). Upright,
-  at the Title level below, it names a place and the thing a launcher's drawer is about. Joel, 2 November: "i love
-  serif, i'm willing to give fraunces a try".
+  at the Title level below, it names a place and the thing a launcher's
+  drawer is about. Joel, 2 November: "i love serif, i'm willing to give
+  fraunces a try".
   It's sized by capitals, not by its em: Monaspace's stand 0.730 of an em
   and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large and sits on the
   line Monaspace would, aligned by baseline.
