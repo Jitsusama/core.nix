@@ -173,14 +173,17 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
 }
 
 /// The day as written: its tally, and its figures beside it under
-/// `figures` and each one's side under `sides`, which a day read back
-/// passes over, since they're worked out again from the tally.
+/// `figures` and each one's side under `sides`, and the services whose
+/// restarts said no ready line under `unstamped`, for cadence day to name
+/// to their owners; a day read back passes over all three, since they're
+/// worked out again from the tally.
 pub fn written(day: &Day) -> serde_json::Result<Vec<u8>> {
     let mut whole = serde_json::to_value(day)?;
     let figures = of(day);
     let sides: BTreeMap<&String, Side> = figures.keys().map(|name| (name, side(name))).collect();
     whole["sides"] = serde_json::to_value(sides)?;
     whole["figures"] = serde_json::to_value(&figures)?;
+    whole["unstamped"] = serde_json::to_value(day.launches.unstamped())?;
     serde_json::to_vec(&whole)
 }
 
@@ -188,8 +191,10 @@ pub fn written(day: &Day) -> serde_json::Result<Vec<u8>> {
 mod tests {
     use super::*;
     use crate::agents::Died;
+    use crate::day::tests::entry;
     use crate::day::{Kind, Thing};
     use crate::disk::Filesystem;
+    use crate::journal::{Entry, Job};
     use crate::launches;
     use crate::memory::Memory;
     use crate::typing::Sample;
@@ -434,5 +439,24 @@ mod tests {
         );
         let back: Day = serde_json::from_slice(&bytes).expect("the written day doesn't read back");
         assert_eq!(back, day, "the day read back isn't the day written");
+    }
+
+    #[test]
+    fn the_day_is_written_with_its_services_that_said_no_ready_line() {
+        let mut day = Day::new("2026-11-13");
+        for (at, job) in [(1_000_000, Job::Stopping), (1_064_000, Job::Started)] {
+            day.take(&Entry {
+                at,
+                job: Some(job),
+                ..entry("google.service", 6, "")
+            });
+        }
+        let bytes = written(&day).expect("the day wasn't written");
+        let read: serde_json::Value = serde_json::from_slice(&bytes).expect("not JSON");
+        assert_eq!(
+            read["unstamped"],
+            serde_json::json!({"google.service": 1}),
+            "a restart with no ready line wasn't written by its service: {read}"
+        );
     }
 }
