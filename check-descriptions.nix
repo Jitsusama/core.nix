@@ -220,7 +220,8 @@
   '';
   a-watched-file-comes-back = ''
     the shell's status file hears a status once its folder is made, after the shell starts and again
-    after it's removed, and says nothing while it's gone
+    after it's removed, and says nothing while it's gone; a view moved to another file, or watching
+    again, hears as it should with the one watcher it first made
   '';
   a-yubikey-touch-types-nothing = ''
     a YubiKey's keyboard interface is refused in the running system and in the initrd, so a touch

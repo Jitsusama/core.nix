@@ -343,7 +343,11 @@
   # drives it, in the Quickshell the machine runs
   # (fileview-watch-nearest.patch): a guard's runtime folder goes each time
   # systemd restarts the guard. A view of the folder itself hears a file
-  # renamed into it or removed (fileview-hears-a-folder.patch).
+  # renamed into it or removed (fileview-hears-a-folder.patch). A view moved
+  # to another file, or watching again, keeps the one watcher it made
+  # (fileview-keeps-its-watcher.patch), counted from Quickshell's log: each
+  # one dropped cost the shell's thread a millisecond, 130 of them as it
+  # started.
   a-watched-file-comes-back = pkgs.runCommandLocal "a-watched-file-comes-back" { } ''
     mkdir runtime && chmod 700 runtime
     cp ${../pieces/StatusFile.qml} StatusFile.qml
@@ -351,7 +355,14 @@
     export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
     export FONTCONFIG_FILE=${noFonts}
     ${shellFolderLint}
-    timeout 60 ${qs} -p shell.qml
+    timeout 60 ${qs} -p shell.qml --log-rules 'quickshell.io.fileview.debug=true' \
+      > said 2>&1 || { cat said; exit 1; }
+    grep -av 'quickshell.io.fileview' said || true
+    made=$(grep -c 'Creating watcher for' said || true)
+    [ "$made" = 3 ] || {
+      echo "$made watchers were made for the 3 views that watch"
+      exit 1
+    }
     touch $out
   '';
 

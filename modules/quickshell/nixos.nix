@@ -25,7 +25,11 @@
 # of a folder never said it changed, so the launcher's looks each held a
 # watch of their own, and an open file, 406 of them past the shell's limit
 # as it started; fileview-hears-a-folder.patch says a folder changed as a
-# file in it is made, renamed in or removed. An IPC call's connection was deleted as soon
+# file in it is made, renamed in or removed. A FileView made a watcher anew
+# each time its path or watching changed, and closing the one dropped held
+# the shell's thread a millisecond, 130 times as it started, so
+# fileview-keeps-its-watcher.patch keeps one and moves what it watches.
+# An IPC call's connection was deleted as soon
 # as its reply was handed over, cutting off a reply longer than the
 # socket's buffer, so ipc-replies-whole.patch closes it only once the reply
 # is written. The desktop entries were read again whenever anything changed
@@ -159,6 +163,7 @@ in
             ./fileview-watch-nearest.patch
             ./fileview-reads-again.patch
             ./fileview-hears-a-folder.patch
+            ./fileview-keeps-its-watcher.patch
             ./frame-presentation.patch
             ./ipc-replies-whole.patch
             ./pipewire-node-state-and-format.patch

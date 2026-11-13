@@ -7,8 +7,11 @@
 // was, so nothing reading it runs again. A view of the folder itself hears
 // a file renamed into it or removed, after the folder came and went, with
 // one watch for the whole folder, as the launcher's looks are heard
-// (fileview-hears-a-folder.patch). It exits 0 once every case holds, and
-// otherwise 1, saying which case didn't.
+// (fileview-hears-a-folder.patch). A view moved to another file hears that
+// one, hears nothing once it stops watching, and hears again once it
+// watches again, keeping one watcher throughout, which the check counts
+// from Quickshell's log (fileview-keeps-its-watcher.patch). It exits 0 once
+// every case holds, and otherwise 1, saying which case didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -33,6 +36,25 @@ ShellRoot {
     }
     property int folderHeard: 0
     property int folderHeardBefore: 0
+
+    // A view moved between files, and how many times it's been heard.
+    function beside(name) {
+        return `${Quickshell.env("XDG_RUNTIME_DIR")}/${name}`;
+    }
+    FileView {
+        id: moved
+        path: root.beside("first")
+        preload: false
+        printErrors: false
+        watchChanges: true
+        onFileChanged: root.movedHeard += 1
+    }
+    property int movedHeard: 0
+    property int movedHeardBefore: 0
+    function movedWrites(name) {
+        root.movedHeardBefore = root.movedHeard;
+        return `echo ${Date.now()} >> ${root.beside(name)}`;
+    }
 
     // How many times what's said has changed, and the heartbeat last written.
     property int told: 0
@@ -99,6 +121,32 @@ ShellRoot {
             return `rm ${root.folder}/status.json`;
         },
         holds: () => root.folderHeard > root.folderHeardBefore
+    }, {
+        what: "a view heard as its file is made",
+        does: () => root.movedWrites("first"),
+        holds: () => root.movedHeard > root.movedHeardBefore
+    }, {
+        what: "a view moved to another file heard as that one is made",
+        does: () => {
+            moved.path = root.beside("next");
+            return root.movedWrites("next");
+        },
+        holds: () => root.movedHeard > root.movedHeardBefore
+    }, {
+        what: "a view no longer watching hears nothing written",
+        does: () => {
+            moved.watchChanges = false;
+            return root.movedWrites("next");
+        },
+        quiet: true,
+        holds: () => root.movedHeard === root.movedHeardBefore
+    }, {
+        what: "a view watching again heard as its file is written",
+        does: () => {
+            moved.watchChanges = true;
+            return root.movedWrites("next");
+        },
+        holds: () => root.movedHeard > root.movedHeardBefore
     }]
 
     property int at: 0
@@ -123,27 +171,45 @@ ShellRoot {
         }
     }
 
+    function next() {
+        if (++root.at === root.cases.length) {
+            console.log("PASS every case holds");
+            Qt.exit(0);
+        } else {
+            root.begin();
+        }
+    }
+
+    function fail(step) {
+        console.warn(`FAIL ${step.what}: said ${JSON.stringify(status.said)}, `
+            + `changed ${root.told - root.toldBefore} times since, `
+            + `the moved view heard ${root.movedHeard - root.movedHeardBefore} times`);
+        Qt.exit(1);
+    }
+
     // Quickshell hears the files in the background, so each case waits for
-    // the status to hold, for five seconds at most.
+    // the status to hold, for five seconds at most. A quiet case is judged
+    // half a second on, by when a write is heard if it's heard at all.
     Timer {
         id: waiting
         interval: 50
         repeat: true
         onTriggered: {
             const step = root.cases[root.at];
-            if (step.holds()) {
+            if (step.quiet === true) {
+                if (--root.left > 90)
+                    return;
                 stop();
-                if (++root.at === root.cases.length) {
-                    console.log("PASS every case holds");
-                    Qt.exit(0);
-                } else {
-                    root.begin();
-                }
+                if (step.holds())
+                    root.next();
+                else
+                    root.fail(step);
+            } else if (step.holds()) {
+                stop();
+                root.next();
             } else if (--root.left === 0) {
                 stop();
-                console.warn(`FAIL ${step.what}: said ${JSON.stringify(status.said)}, `
-                    + `changed ${root.told - root.toldBefore} times since`);
-                Qt.exit(1);
+                root.fail(step);
             }
         }
     }
