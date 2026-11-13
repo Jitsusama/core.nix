@@ -94,6 +94,42 @@ QtObject {
         expect("as where it's drawn on no screen, fullscreen or shared",
             Plays.level(heard({ paused: true, unseen: true })), "still");
 
+        // Five minutes with no keys, as MarginCat.qml's timers take them:
+        // paused at 10 s, idle at a minute and asleep at three, each change
+        // drawing what comes next afresh, and each scene played out before
+        // the next rest. Its chances are drawn the same way every run.
+        const alone = more => {
+            let seed = 7;
+            const draw = () => {
+                seed = (seed * 16_807) % 2_147_483_647;
+                return seed / 2_147_483_647;
+            };
+            const changes = [10_000, 60_000, 180_000];
+            const played = [];
+            let t = 0;
+            while (t < 300_000) {
+                const level = Plays.level(heard(Object.assign({
+                    paused: t >= changes[0], idle: t >= changes[1], asleep: t >= changes[2]
+                }, more)));
+                const coming = Plays.next(level, draw, played[played.length - 1] ?? "");
+                const change = changes.find(when => when > t) ?? 300_000;
+                if (coming === null || t + coming.after >= change) {
+                    t = change;
+                } else {
+                    played.push(coming.scene.name);
+                    t += coming.after
+                        + coming.scene.beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
+                }
+            }
+            return played;
+        };
+        const fullscreen = MarginCat.sits(at(column(0, 0, 1000)));
+        expect("left five minutes it plays, then dozes", alone({}).length > 5, true);
+        expect("but none in them with a camera in use", alone({ onCamera: true }), []);
+        expect("nor under a fullscreen window, which leaves it on no screen",
+            alone({ unseen: fullscreen === null }), []);
+        expect("nor in Do Not Disturb", alone({ quiet: true }), []);
+
         // The rest before each scene: about a minute while he types, since
         // the keys are his; a few seconds once he pauses, and fewer once
         // he's left them, each drawn at random.
@@ -181,7 +217,9 @@ QtObject {
         expect("a hop crouches, rises and lands crouched",
             hop.map(beat => [beat.pose, beat.hop === true]),
             [["pouncing", false], ["pouncing", true], ["pouncing", false]]);
-        expect("a cell or two up", hop[1].cells >= 1 && hop[1].cells <= 2, true);
+        expect("a cell up, never so high it reads as a leap",
+            moved.filter(played => played.name === "hop").map(played => played.beats[1].cells),
+            moved.filter(played => played.name === "hop").map(() => 1));
         const wander = moved.find(played => played.name === "wander").beats;
         expect("a wander walks off, sits a moment, and walks back",
             [wander[0].to, wander[1].pose, wander[2].to], ["wander", "nothingHere", "column"]);
