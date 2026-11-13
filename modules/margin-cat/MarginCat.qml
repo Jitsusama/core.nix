@@ -4,11 +4,9 @@
 // "something that crawls around the screen, unobtrusive and cute"). It
 // lives on a layer of its own that takes no keys and no pointer and moves no
 // window, gone while the screen is shared, and gone where the
-// gap can't hold it, as in fullscreen or the overview. Once the keys rest
-// two seconds on another column it walks there, a frame each time the
-// screen draws, with the beats MarginCat.js gives it; otherwise it draws a
-// frame only as the column under it changes, and none at rest, so the
-// closed shell draws nothing for it. After ten minutes with
+// gap can't hold it, as in fullscreen or the overview. It's
+// still: it draws a frame only as the column under it changes, and none at
+// rest, so the closed shell draws nothing for it. After ten minutes with
 // no keys it curls up asleep, one frame, and wakes as they come again; as
 // the screen unlocks it stretches, then sits.
 pragma ComponentBehavior: Bound
@@ -139,19 +137,17 @@ Scope {
                     return null;
                 return tile(Niri.current) === null ? null : Niri.current;
             }
-            // The window whose column the cat sits over, or last sat over
-            // while it walks or waits to: the one the keys rested in for two
-            // seconds, so tapping h and l along the columns never sets it
-            // walking.
-            property var sat: null
-            // The column of the window the keys are in, as niri says its tile
-            // will come to rest, so it moves with the column as niri lays
-            // them out again. The shell hears that tile alone, so where the
-            // cat walks from is where it's drawn, never the column it left.
+            // The window whose column the cat sits over: the one the keys
+            // are in, at once. It walks nowhere until a walk moves smoothly
+            // at the display's rate, with character (Joel, 2026-11-12: "the
+            // cat is not animated, it just jerkily moves").
+            readonly property var sat: wanted
+            // Its column, as niri says its tile will come to rest, so it
+            // moves with the column as niri lays them out again.
             readonly property var column: {
                 void root.settled;
                 void Niri.revision;
-                return root.shared || Niri.overview ? null : tile(wanted);
+                return root.shared || Niri.overview ? null : tile(sat);
             }
             // Each cell in whole device pixels, and the cat's size from them.
             // The window's own ratio, which a fractional scale sets, rather
@@ -169,186 +165,8 @@ Scope {
             }
             readonly property real cell: MarginCat.cell(Theme.gap, ratio) / ratio
             readonly property real size: Math.max(1, root.drawing.length) * cell
-            // Where it'd sit over the keys' column, and where it's drawn:
-            // there, a step of its walk, or still where it sat while it
-            // waits for the keys to rest.
-            readonly property var there: seat(column)
-            property var place: null
-            // The walk under way, the window it walks to, and the step it's
-            // on: its pose, by the theme's name, and the way it faces.
-            property var going: null
-            property var goingTo: null
-            // The window it waits on the keys to rest in.
-            property var waitingOn: null
-            property var stepped: null
-            // Its pose and the way it faces, set only as they change, so
-            // its cells are laid again a few times a walk rather than on
-            // every frame, which dropped five of a walk's frames on a
-            // builder.
-            property string pose: ""
-            property int facing: 0
-            // When niri showed each frame of the walk under way, how long the
-            // shell took to draw each, and how many niri never showed, said
-            // once it sits (MarginCat.walked). Kept as plain arrays, pushed
-            // to, so a frame's answer notifies nothing.
-            property var shown: []
-            property var costs: []
-            property int unseen: 0
-            // What it's drawn as: a pose of its walk, turned the way it
-            // goes, or the scope's, sitting, asleep or stretching.
-            readonly property var drawn: pose
-                ? MarginCat.turned(Theme.pixels[pose] ?? root.drawing, facing)
-                : root.drawing
-
-            // Where the keys' column now has it: nowhere, once it's held
-            // nowhere a moment (leaving); from
-            // nowhere, there at once, since nothing walks in from nowhere;
-            // over the same window, carried as its column moves, or, on
-            // the way there, on from where it is where its seat moved a
-            // pixel; and over another, still where it is until the keys rest
-            // there two seconds. niri says the layout again for any window's
-            // change, a title's too, so the same seat neither sets a walk off
-            // again nor restarts its rest.
-            function follow(): void {
-                if (there === null) {
-                    if (place !== null)
-                        leaving.restart();
-                    return;
-                }
-                leaving.stop();
-                if (place === null || (going === null && wanted === sat)) {
-                    resting.stop();
-                    sat = wanted;
-                    place = there;
-                } else if (going !== null && wanted === goingTo) {
-                    if (Math.round(there.x * ratio) !== Math.round(going.to * ratio))
-                        walkFrom(true);
-                } else if (going !== null || !resting.running || wanted !== waitingOn) {
-                    halt();
-                    place = { x: place.x, y: there.y };
-                    waitingOn = wanted;
-                    resting.restart();
-                }
-            }
-
-            // Sets off from where it's drawn to where it'd sit: `hurried`,
-            // its seat moved on the way, without turning, thinking or
-            // crouching again, or, setting off, after a thought of 150 to
-            // 450 ms, so no two walks begin alike.
-            function walkFrom(hurried: bool): void {
-                if (place === null || there === null)
-                    return;
-                const plan = MarginCat.walk(place.x, there.x, {
-                    cell,
-                    ratio,
-                    pause: 150 + Math.random() * 300,
-                    slowdown: Theme.motion.slowdown,
-                    hurried,
-                    facing: stepped?.facing ?? 0
-                });
-                goingTo = wanted;
-                if (plan === null) {
-                    halt();
-                    sat = wanted;
-                    place = there;
-                    return;
-                }
-                if (going === null) {
-                    shown = [];
-                    costs = [];
-                    unseen = 0;
-                }
-                going = plan;
-                walker.restart();
-                if (window.FramePresentation.available)
-                    window.FramePresentation.ask();
-            }
-
-            // How its walk reached the screen, in the journal, so a walk on
-            // Joel's screen says whether it kept to its rate.
-            function tell(): void {
-                if (!window.FramePresentation.available)
-                    return;
-                const told = MarginCat.walked(shown, costs, unseen);
-                console.info(told.line);
-                if (Options.reports)
-                    Report.say(`walked cat ${modelData.name} ${JSON.stringify(told.said)}`);
-            }
-
-            // Each frame of a walk, as niri showed it or didn't, asking after
-            // the next until it sits.
-            FramePresentation.onPresented: (frame, at) => {
-                if (going === null)
-                    return;
-                shown.push(at);
-                const times = window.FramePresentation.timesOf(frame);
-                if (times.rendered > 0 && times.synchronizing > 0)
-                    costs.push(times.rendered - times.synchronizing);
-                window.FramePresentation.ask();
-            }
-            FramePresentation.onDiscarded: () => {
-                if (going === null)
-                    return;
-                unseen += 1;
-                window.FramePresentation.ask();
-            }
-
-            function halt(): void {
-                walker.stop();
-                going = null;
-                stepped = null;
-                pose = "";
-            }
-
-            onThereChanged: follow()
-
-            // Nowhere, once it's held a moment: niri can say a column moving
-            // to the keys' as nowhere between two of its events, which gone at
-            // once had it vanish and land on the new one with no walk (a
-            // builder, 2026-11-12, 2 of 4 runs), and a column truly gone, to
-            // fullscreen or another workspace, takes it a moment later.
-            Timer {
-                id: leaving
-                interval: MarginCat.LEAVES
-                onTriggered: {
-                    if (window.there !== null)
-                        return;
-                    window.halt();
-                    resting.stop();
-                    window.sat = window.wanted;
-                    window.place = null;
-                }
-            }
-
-            // Until the keys rest on the column, so a tap along them never
-            // sets it walking.
-            Timer {
-                id: resting
-                interval: MarginCat.RESTS
-                onTriggered: window.walkFrom(false)
-            }
-
-            // A step each time the screen draws, at whatever rate it draws,
-            // and none once it sits.
-            FrameAnimation {
-                id: walker
-                onTriggered: {
-                    const now = MarginCat.step(window.going, walker.elapsedTime * 1000);
-                    if (now.done) {
-                        window.tell();
-                        window.halt();
-                        window.sat = window.goingTo;
-                        window.place = window.there ?? window.place;
-                        return;
-                    }
-                    if (now.facing !== window.facing)
-                        window.facing = now.facing;
-                    if (now.pose !== window.pose)
-                        window.pose = now.pose;
-                    window.stepped = now;
-                    window.place = { x: now.x, y: window.there?.y ?? window.place.y };
-                }
-            }
+            // Where it sits over its column.
+            readonly property var place: seat(column)
 
             // A window's tile, as niri says it will come to rest, where it's on
             // this screen's shown workspace; null where it isn't.
@@ -396,9 +214,7 @@ Scope {
             // Where it sits, or that it's nowhere, for a test to read.
             // It says the column it saw too, so a test that finds it nowhere
             // says why, and its cells in device pixels and its hue, so one
-            // can count them on the screen. On a walk it says each frame's
-            // step, its time since it set off, beat and pose, so a test can
-            // see a frame dropped or a stride out of step.
+            // can count them on the screen.
             function say(): void {
                 if (!Options.reports)
                     return;
@@ -408,20 +224,12 @@ Scope {
                     size: window.size,
                     air: window.cell,
                     cell: Math.round(window.cell * window.ratio),
-                    cells: window.drawn.length,
-                    lit: window.drawn.join("").split("#").length - 1,
+                    cells: root.drawing.length,
+                    lit: root.drawing.join("").split("#").length - 1,
                     hue: `${Theme.voice}`,
                     window: sat,
                     asleep: root.asleep,
-                    stretching: root.stretching,
-                    walk: going === null || stepped === null ? null : {
-                        t: Math.round(walker.elapsedTime * 10000) / 10,
-                        beat: stepped.beat,
-                        pose: stepped.pose,
-                        facing: stepped.facing,
-                        stride: going.stride,
-                        to: going.to
-                    }
+                    stretching: root.stretching
                 });
                 Report.say(`sits cat ${modelData.name} ${at} over ${JSON.stringify(column)}`);
             }
@@ -434,10 +242,7 @@ Scope {
             onAsleepChanged: say()
             readonly property bool stretching: root.stretching
             onStretchingChanged: say()
-            Component.onCompleted: {
-                follow();
-                say();
-            }
+            Component.onCompleted: say()
 
             Item {
                 id: cat
@@ -452,7 +257,7 @@ Scope {
                 height: window.size
 
                 Repeater {
-                    model: Pixels.runs(window.drawn)
+                    model: Pixels.runs(root.drawing)
 
                     Rectangle {
                         required property var modelData
