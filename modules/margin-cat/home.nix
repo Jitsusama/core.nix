@@ -44,7 +44,7 @@
     type = lib.types.numbers.positive;
     default = 1;
     description = ''
-      How many times sooner than its own rests (MarginCat.js) each of the
+      How many times sooner than its own rests (MarginCatPlays.js) each of the
       cat's scenes comes: 45 to 75 s while Joel types, 5 to 12 s once he
       pauses, 3 to 8 s once he's left the keys. A test sets it high to see
       scenes in seconds, or low to see none.
@@ -54,6 +54,7 @@
   config = {
     jitsusama.quickshell.surfaces.MarginCat = ./MarginCat.qml;
     xdg.configFile."quickshell/surfaces/MarginCat.js".source = ./MarginCat.js;
+    xdg.configFile."quickshell/surfaces/MarginCatPlays.js".source = ./MarginCatPlays.js;
     # Its settings in its own file beside it, read as it starts.
     xdg.configFile."quickshell/surfaces/MarginCat.json".text = builtins.toJSON {
       inherit (config.jitsusama.quickshell.cat)

@@ -18,6 +18,7 @@ onLinux {
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
       cp ${./tests/margin-cat.qml} margin-cat.qml
       cp ${./MarginCat.js} MarginCat.js
+      cp ${./MarginCatPlays.js} MarginCatPlays.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

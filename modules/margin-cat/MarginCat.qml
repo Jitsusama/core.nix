@@ -24,6 +24,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatPlays.js" as Plays
 import "../Pixels.js" as Pixels
 
 Scope {
@@ -63,7 +64,7 @@ Scope {
     // How lively it may be, from how engaged Joel is: typing, paused ten
     // seconds, idle a minute, or asleep; still in Do Not Disturb, on a
     // call, locked, or drawn on no screen.
-    readonly property string lively: MarginCat.level({
+    readonly property string lively: Plays.level({
         paused: pausing.isIdle,
         idle: idling.isIdle,
         asleep: root.asleep,
@@ -85,7 +86,7 @@ Scope {
     property string posed: ""
     // The play under way or last played, so none comes twice running.
     property string played: ""
-    // What's left of the scene under way, each beat as MarginCat.scene says.
+    // What's left of the scene under way, each beat as Plays.scene says.
     property var beats: []
     // A hop under way, its rise's `ms` and how many `cells` up, and how far
     // up it is now, from none to its height (1), each frame the screen
@@ -110,7 +111,7 @@ Scope {
         beats = [];
         posed = "";
         strollTo = "";
-        const wait = MarginCat.rest(lively, Math.random());
+        const wait = Plays.rest(lively, Math.random());
         if (wait === null) {
             waiting.stop();
         } else {
@@ -162,7 +163,7 @@ Scope {
         id: hopper
         onTriggered: {
             if (root.hop !== null)
-                root.lift = MarginCat.hopped(hopper.elapsedTime * 1000, root.hop.ms, 1);
+                root.lift = Plays.hopped(hopper.elapsedTime * 1000, root.hop.ms, 1);
         }
     }
 
@@ -190,7 +191,7 @@ Scope {
     Timer {
         id: waiting
         onTriggered: {
-            const next = MarginCat.scene(root.lively, Math.random, root.played);
+            const next = Plays.scene(root.lively, Math.random, root.played);
             root.played = next.name;
             root.beats = next.beats;
             root.beat();
@@ -676,7 +677,7 @@ Scope {
                     strolled = null;
                     return;
                 }
-                const spot = MarginCat.wander({
+                const spot = Plays.wander({
                     seat: seat(column),
                     across: modelData.width,
                     marks: MarginMarks.drawn,
