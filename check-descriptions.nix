@@ -3224,12 +3224,20 @@
     a key, stretches for about half a second as the lock lets go, and is drawn in whole screen
     pixels of its hue at scales 1.5 and 2, each screen kept as its result
   '';
+  the-margin-cat-plays-more-the-less-he-types-on-niri = ''
+    on a nested niri, the margin's cat makes a single small move in place while keys come, held
+    a moment in a frame each way, plays in place once they pause, and once they're gone hops,
+    rising and landing where it sat, and wanders a few cells along the margin, a key bringing it
+    straight back
+  '';
   the-margin-cat-sits-above-its-column = ''
     the margin's cat sits a cell above the focused column's top edge over the middle of what's
     seen of it, beside the margin's marks rather than on them, nowhere in fullscreen or a gap too
     shallow, and is drawn in whole device pixels about two thirds of the gap tall; its walk turns,
     thinks, crouches back, eases in and out with strides stepped by the ground covered,
-    overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown
+    overshoots, steps back and crouches as it stops, hurries far and stretches with the slowdown;
+    it's livelier the less Joel is engaged and still on a call, locked or drawn nowhere, its waits
+    and plays at random, no play twice running, and its wander and hop kept to the margin
   '';
   the-margin-takes-its-pieces = ''
     a machine moves, cuts, retunes and adds the margin's pieces

@@ -1,10 +1,11 @@
 // Where the margin's cat sits and how big it's drawn, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-margin-cat-sits-above-its-column` check copies
-// modules/margin-cat/MarginCat.js beside this file and runs
+// modules/margin-cat/MarginCat.js and MarginCatPlays.js beside this file and runs
 // `qml -platform offscreen margin-cat.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatPlays.js" as Plays
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -62,10 +63,182 @@ QtObject {
         expect("a gap too small still draws it", MarginCat.cell(4, 1), 1);
 
         walks(expect);
+        plays(expect, at, column);
 
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // How lively the cat is, from how engaged Joel is, and what it plays
+    // (Joel, 2026-11-12: "mild movements when i'm active, increeeasing as
+    // I'm less engaged"; 2026-11-12: "play a bit more and not wait too
+    // long. it's play should be a bit random, gentle, but playful").
+    function plays(expect, at, column) {
+        const heard = more => Object.assign({
+            paused: false, idle: false, asleep: false, quiet: false
+        }, more ?? {});
+        expect("while he types it's mild", Plays.level(heard()), "typing");
+        expect("ten seconds with no keys, a little more",
+            Plays.level(heard({ paused: true })), "paused");
+        expect("a minute with none, livelier",
+            Plays.level(heard({ paused: true, idle: true })), "idle");
+        expect("asleep it does nothing",
+            Plays.level(heard({ paused: true, idle: true, asleep: true })), "asleep");
+        expect("in Do Not Disturb it keeps still at any level",
+            Plays.level(heard({ paused: true, idle: true, quiet: true })), "still");
+        expect("as on a call, with a camera in use",
+            Plays.level(heard({ paused: true, idle: true, onCamera: true })), "still");
+        expect("as with the screen locked",
+            Plays.level(heard({ paused: true, locked: true })), "still");
+        expect("as where it's drawn on no screen, fullscreen or shared",
+            Plays.level(heard({ paused: true, unseen: true })), "still");
+
+        // Five minutes with no keys, as MarginCat.qml's timers take them:
+        // paused at 10 s, idle at a minute and asleep at three, each change
+        // drawing what comes next afresh, and each scene played out before
+        // the next rest. Its chances are drawn the same way every run.
+        const alone = more => {
+            let seed = 7;
+            const draw = () => {
+                seed = (seed * 16_807) % 2_147_483_647;
+                return seed / 2_147_483_647;
+            };
+            const changes = [10_000, 60_000, 180_000];
+            const played = [];
+            let t = 0;
+            while (t < 300_000) {
+                const level = Plays.level(heard(Object.assign({
+                    paused: t >= changes[0], idle: t >= changes[1], asleep: t >= changes[2]
+                }, more)));
+                const coming = Plays.next(level, draw, played[played.length - 1] ?? "");
+                const change = changes.find(when => when > t) ?? 300_000;
+                if (coming === null || t + coming.after >= change) {
+                    t = change;
+                } else {
+                    played.push(coming.scene.name);
+                    t += coming.after
+                        + coming.scene.beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
+                }
+            }
+            return played;
+        };
+        const fullscreen = MarginCat.sits(at(column(0, 0, 1000)));
+        expect("left five minutes it plays, then dozes", alone({}).length > 5, true);
+        expect("but none in them with a camera in use", alone({ onCamera: true }), []);
+        expect("nor under a fullscreen window, which leaves it on no screen",
+            alone({ unseen: fullscreen === null }), []);
+        expect("nor in Do Not Disturb", alone({ quiet: true }), []);
+
+        // The rest before each scene: about a minute while he types, since
+        // the keys are his; a few seconds once he pauses, and fewer once
+        // he's left them, each drawn at random.
+        expect("typing rests 45 s at the least", Plays.rest("typing", 0), 45000);
+        expect("and 75 s at the most", Plays.rest("typing", 1), 75000);
+        expect("a pause rests 5 to 12 s",
+            [Plays.rest("paused", 0), Plays.rest("paused", 1)], [5000, 12000]);
+        expect("a minute with no keys rests 3 to 8 s",
+            [Plays.rest("idle", 0), Plays.rest("idle", 1)], [3000, 8000]);
+        expect("asleep there's no next scene", Plays.rest("asleep", 0.5), null);
+        expect("nor in Do Not Disturb", Plays.rest("still", 0.5), null);
+
+        scenes(expect);
+
+        // Where a short wander goes: along the margin from its seat, the
+        // way it was drawn, or the other where that one's off the screen or
+        // on the marks; nowhere where neither fits.
+        const seat = { x: 296, y: 3 };
+        const wanders = more => Plays.wander(at(column(100, 12, 400),
+            Object.assign({ seat, step: 1, cells: 20, way: 1 }, more)));
+        expect("it wanders its cells the way drawn", wanders(), { x: 316, y: 3 });
+        expect("or the other way", wanders({ way: -1 }), { x: 276, y: 3 });
+        expect("each cell its own", wanders({ step: 2 }), { x: 336, y: 3 });
+        expect("the other way where the screen ends",
+            wanders({ seat: { x: 980, y: 3 } }), { x: 960, y: 3 });
+        expect("the other way where the marks are",
+            wanders({ seat: { x: 460, y: 3 }, marks: 3 }), { x: 440, y: 3 });
+        expect("nowhere where neither way fits",
+            wanders({ seat: { x: 10, y: 3 }, across: 30 }), null);
+        expect("nor with no seat", wanders({ seat: null }), null);
+
+        // A hop's rise, in its cells: none as it leaves and lands, its
+        // height midway, as a thing thrown up falls.
+        expect("a hop leaves and lands on the ground",
+            [Plays.hopped(0, 400, 2), Plays.hopped(400, 400, 2)], [0, 0]);
+        expect("and is highest midway", Plays.hopped(200, 400, 2), 2);
+        expect("rising as it falls", Plays.hopped(100, 400, 2), Plays.hopped(300, 400, 2));
+        expect("and never below the ground",
+            [Plays.hopped(-10, 400, 2), Plays.hopped(410, 400, 2)], [0, 0]);
+    }
+
+    // Each scene, drawn from a run of chances (`draws`), as Math.random
+    // would give them: what it is, its beats, each a pose held, and that
+    // it sits again after.
+    function scenes(expect) {
+        const draws = (...chances) => {
+            let i = 0;
+            return () => chances[i++ % chances.length];
+        };
+        const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
+        const inPlace = ["tailFlick", "batting", "stretch", "lookingAbout", "grooming"];
+        const moves = ["hop", "wander"];
+        const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
+
+        const typed = chances.map(chance => Plays.scene("typing", draws(chance), ""));
+        expect("while he types it's one pose and back",
+            typed.map(played => played.beats.length), [1, 1, 1, 1, 1, 1]);
+        expect("an ear flick, a tail swish or a blink",
+            Array.from(new Set(typed.map(played => played.beats[0].pose))).sort(),
+            ["blinking", "earFlick", "tailSwish"]);
+        expect("held about 375 ms",
+            typed.every(played => played.beats[0].ms >= 281 && played.beats[0].ms <= 469), true);
+
+        const paused = chances.map(chance => Plays.scene("paused", draws(chance), ""));
+        expect("paused, it plays in place, each of them",
+            Array.from(new Set(paused.map(played => played.name))).sort(),
+            inPlace.slice().sort());
+        expect("never walking or hopping while he reads",
+            paused.every(played => played.beats.every(beat => typeof beat.pose === "string"
+                && beat.walk !== true && beat.hop !== true)), true);
+        expect("each play short, under two and a half seconds",
+            paused.every(played => long(played.beats) > 0 && long(played.beats) <= 2500), true);
+
+        const again = inPlace.every(name => chances.every(chance =>
+            Plays.scene("paused", draws(chance), name).name !== name));
+        expect("never the same play twice running", again, true);
+
+        const idle = chances.map(chance => Plays.scene("idle", draws(0.7, chance), ""));
+        expect("idle, three in four of its plays are in place",
+            idle.every(played => inPlace.includes(played.name)), true);
+        const moved = chances.map(chance => Plays.scene("idle", draws(0.8, chance), ""));
+        expect("and one in four a move",
+            Array.from(new Set(moved.map(played => played.name))).sort(), moves);
+        const hop = moved.find(played => played.name === "hop").beats;
+        expect("a hop crouches, rises and lands crouched",
+            hop.map(beat => [beat.pose, beat.hop === true]),
+            [["pouncing", false], ["pouncing", true], ["pouncing", false]]);
+        expect("a cell up, never so high it reads as a leap",
+            moved.filter(played => played.name === "hop").map(played => played.beats[1].cells),
+            moved.filter(played => played.name === "hop").map(() => 1));
+        const wander = moved.find(played => played.name === "wander").beats;
+        expect("a wander walks off, sits a moment, and walks back",
+            [wander[0].to, wander[1].pose, wander[2].to], ["wander", "nothingHere", "column"]);
+        expect("16 to 40 cells, either way",
+            wander[0].cells >= 16 && wander[0].cells <= 40 && Math.abs(wander[0].way) === 1,
+            true);
+
+        // Each beat drawn a quarter shorter or longer than its own.
+        const low = Plays.scene("paused", draws(0.1, 0, 0, 0, 0, 0, 0), "").beats;
+        const high = Plays.scene("paused", draws(0.1, 0.999, 0.999, 0.999, 0.999, 0.999,
+            0.999), "").beats;
+        expect("its beats vary a quarter either way",
+            low.every((beat, i) => Math.abs(high[i].ms / beat.ms - 1.25 / 0.75) < 0.05), true);
+        // Eight poses a second at the most: no beat under 125 ms.
+        expect("no beat is quicker than an eighth of a second",
+            [...typed, ...paused, ...idle, ...moved].every(played => played.beats.every(beat =>
+                beat.walk === true || beat.ms >= 125)), true);
+        expect("asleep there's no scene", Plays.scene("asleep", draws(0), "").beats, []);
+        expect("nor in Do Not Disturb", Plays.scene("still", draws(0), "").beats, []);
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,
@@ -145,14 +318,18 @@ QtObject {
         expect("near, it ambles, its stride half its body", near.stride, 8);
 
         const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
-            7);
+            { begun: 7 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
             shown.said,
             { frames: 5, median: 16.7, p99: 50, slowest: 50, drawn: 3, unseen: 1, begun: 7 });
         expect("as the journal says them", shown.line, "cat: a walk presented 5 of its 7 frames "
             + "a median 16.7 ms apart, the p99 50 ms, the slowest 50 ms, each drawn within 3 ms, "
             + "1 never shown");
-        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, 0).said,
+        expect("a hop's frames are said as a walk's",
+            MarginCat.walked([100, 116.7], [1], 0, { begun: 2, what: "hop" }).line
+                .split(" of its")[0],
+            "cat: a hop presented 2");
+        expect("a walk nothing showed says so", MarginCat.walked([], [], 0, { begun: 0 }).said,
             { frames: 0, median: 0, p99: 0, slowest: 0, drawn: 0, unseen: 0, begun: 0 });
 
         // niri's own spring, as Joel's niri rides it between workspaces.

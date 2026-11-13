@@ -1,4 +1,4 @@
-// Where the margin's cat sits and how big it's drawn (MarginCat.qml): on
+// Where the margin's cat sits and how big it's drawn (MarginCatScreen.qml): on
 // the top edge of the column Joel is in, in the gap the windows leave above
 // them, so it covers nothing of his and moves only where he already looks;
 // and how it walks from one column to another, where it is at each moment
@@ -355,9 +355,12 @@ function quartered(drawing, turn) {
 // `drawing`, how long each took the shell to sync and render, its own
 // cost of a frame; `unseen`, how many niri never showed (Joel,
 // 2026-11-12: "we need proper smooth animations with character to them");
-// and `begun`, how many frames the shell began meanwhile, so a walk whose
-// frames went unasked of says so rather than reading slower than it ran.
-function walked(shown, drawing, unseen, begun) {
+// and as `counted`, its `begun`, how many frames the shell began
+// meanwhile, so a walk whose frames went unasked of says so rather than
+// reading slower than it ran, and `what` it was: a walk, or a hop, said
+// the same way.
+function walked(shown, drawing, unseen, counted) {
+    const begun = counted?.begun ?? 0;
     const gaps = shown.slice(1).map((at, i) => at - shown[i]).sort((a, b) => a - b);
     const tenths = ms => Math.round((ms ?? 0) * 10) / 10;
     const said = {
@@ -369,8 +372,8 @@ function walked(shown, drawing, unseen, begun) {
         unseen,
         begun
     };
-    const line = `cat: a walk presented ${said.frames} of its ${begun} frames a median `
-        + `${said.median} ms `
+    const line = `cat: a ${counted?.what ?? "walk"} presented ${said.frames} of its ${begun} frames `
+        + "a median "        + `${said.median} ms `
         + `apart, the p99 ${said.p99} ms, the slowest ${said.slowest} ms, each drawn within `
         + `${said.drawn} ms, ${unseen} never shown`;
     return { said, line };

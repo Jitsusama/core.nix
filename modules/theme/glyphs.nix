@@ -1146,6 +1146,41 @@ in
       "#######."
     ];
   };
+  # The sitting cat at play while Joel pauses (VKCF3Z, eb64260b), its body
+  # and tail as nothingHere's so it never shifts: looking about, its head
+  # turned in profile away from its tail, one eye and its ears drawn
+  # together as stretching's; and grooming, eyes shut, a forepaw raised
+  # to its cheek, which blinking between two lowers as it licks.
+  lookingAbout = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      ".#.#...."
+      "####...."
+      "#.###..."
+      "#####..."
+      ".###...."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+  };
+  grooming = {
+    glyph = nerd "f03e9";
+    console = "m";
+    means = "the margin's cat, in one of its own poses";
+    pixels = [
+      "#...#..."
+      "#####..."
+      "#####.#."
+      "######.."
+      ".###.#.."
+      "#####..#"
+      "#####..#"
+      "#######."
+    ];
+  };
   # The margin cat's ball of yarn, a thing of its own rather than the cat:
   # a ball four cells across on the ground line, its loose strand curling
   # up, so it rolls on its own cells. The icon font has no yarn, so its

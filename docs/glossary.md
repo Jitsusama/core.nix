@@ -261,7 +261,7 @@ or a copy, can be opened, copied or forgotten.
 | question | what the desktop asks Joel: a centred box for a password or a yes, or the file chooser's which file, or where to save | | `Polkit.qml`, `Askpass.qml`, the file chooser's `said` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |
-| margin's cat | the small cat sitting in the gap above the column Joel is in, which says nothing | | `modules/margin-cat`, `MarginCat.qml` |
+| margin's cat | the small cat sitting in the gap above the column Joel is in, which says nothing | | `modules/margin-cat`, `MarginCat.qml`, `MarginCatScreen.qml` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
 | card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
 | drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |
