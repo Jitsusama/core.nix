@@ -11,13 +11,15 @@ cd "${tree}"
 
 # The launcher's colour answers, and the colours they're tested on, name
 # colours because colours are what's asked, and eero's views and cadence's
-# axes are tested on a theme's terminal colours; none is a look. checks.nix beside this lists the
+# axes and the terminal kit's ink are tested on a theme's terminal colours;
+# none is a look. checks.nix beside this lists the
 # faces looked for, which is no look either. ripgrep answers 0 for a match, 1
 # for none and 2 when it can't search, and only none passes.
 status=0
 rg --line-number --no-heading --hidden --glob '!modules/theme/**' \
   --glob '!modules/quickshell/launcher/Colours.js' --glob '!tests/colour-cases.js' \
   --glob '!modules/eero/tests/osaka-jade.json' --glob '!modules/cadence/tests/theme.json' \
+  --glob '!modules/terminal-kit/tests/osaka-jade.json' \
   --glob '!tests/repository/checks.nix' \
   -e "${pattern}" modules roles hardware tests examples flake.nix ||
   status=$?

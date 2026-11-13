@@ -1013,8 +1013,10 @@ def every_hint_changes(desktop: Desktop, depth: int) -> None:
 
     told = opened()
     assert told[0].startswith("\u21b5"), told
-    # Tab in comes first after Return, on a row Return opens that holds parts, as an emoji.
-    assert ("Tab in" in told[1:2]) == bool(depth), told
+    # No Tab in at either depth: Return steps into Emoji itself, and an emoji's acts are all
+    # the keys', so it holds nothing to go into (Joel, 2026-11-11: "if they have nothing under
+    # them, we shouldn't open a submenu for them"). Kitty's Tab in is proven from the find.
+    assert "Tab in" not in told, told
     assert told[-1] == "Space ? keys", told
     for at, hint in enumerate(told):
         mark = hint.rsplit(" ", 1)[0]
