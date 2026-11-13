@@ -2668,6 +2668,12 @@ in
         # The launcher's open mark says nothing once the shell is gone, so a
         # switch waiting on it never waits on a shell that died.
         ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher";
+        # The launcher's socket goes before the shell is told to stop, so a
+        # chord said as it stops finds no socket and waits for the next shell
+        # (launcher-say/src/main.rs), rather than being heard by one that
+        # dies before it opens: in the lab, a chord said as the stop began
+        # was taken by the stopping shell and never opened (2026-11-12).
+        ExecStop = "${lib.getExe' pkgs.coreutils "rm"} -f %t/launcher.sock";
         # Inside session.slice, first beside the compositor, ahead of the
         # portals and the bus at their tenth: the launcher is how Joel drives
         # the machine. Its floor is hard, so a build filling memory never

@@ -22,7 +22,10 @@ from __future__ import annotations
 import json
 import os
 import statistics
+import subprocess
+import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import launcher_on_niri
@@ -248,3 +251,78 @@ def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) ->
                 f"{round(statistics.median(spans))} ms, p90 {p90(spans)}",
                 flush=True,
             )
+
+
+def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+    """Restart the shell as a switch does, say a toggle a while after its stop, and print it.
+
+    Each round's chord is said by launcher-say the given seconds after the old shell is told
+    to stop, as Joel's Super+Space may come at any moment of a switch, and the round says how
+    launcher-say ended, whether the launcher opened for the chord and how long after it, and
+    when the new shell answered. The socket goes first, as the unit's ExecStop takes it
+    (modules/quickshell/home.nix), unless LAB_UNLINK is 0, as before it did.
+    """
+    spaced = os.environ.get("LAB_OFFSETS", "0 0.1 0.2 0.4 0.8 1.2 1.6 2 3 5")
+    unlinks = os.environ.get("LAB_UNLINK", "1") == "1"
+    # How long a round waits once the new shell has kept home for the chord's
+    # opening, before it says the chord was lost.
+    kept_long_enough = 3
+    for offset in [float(each) for each in spaced.split()]:
+        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+        if shell.process is None:
+            pytest.fail("the lab's shell isn't running")
+        heard: dict[str, object] = {}
+        stopping = time.monotonic()
+
+        def chorded(heard: dict[str, object] = heard) -> None:
+            heard["at"] = time.monotonic()
+            said = subprocess.run(  # noqa: S603, the launcher-say the check gives
+                [os.environ["LAUNCHER_SAY"], "toggle"], capture_output=True, check=False
+            )
+            heard["path"] = f"launcher-say exited {said.returncode}"
+
+        chord = threading.Timer(offset, chorded)
+        chord.start()
+        if unlinks:
+            (Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock").unlink(missing_ok=True)
+        shell.process.terminate()
+        shell.process.wait(timeout=10)
+        stopped = time.monotonic()
+        given = os.environ.get("QS_GIVEN", "").split()
+        with shell.log.open("ab") as log:
+            shell.process = subprocess.Popen(  # noqa: S603, the check's own shell folder
+                ["qs", "-p", str(shell.folder), *given],  # noqa: S607, qs from the check's PATH
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+        answering = opened_at = kept = None
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            status, said = shell.execute(shell.ipc("showing"))
+            now = time.monotonic()
+            if status == 0:
+                shown = json.loads(said)
+                answering = answering or now
+                opened_at = opened_at or (now if shown["open"] else None)
+                kept = kept or (now if shown.get("kept") else None)
+            if opened_at is not None or (kept is not None and now - kept > kept_long_enough):
+                break
+            time.sleep(launcher_on_niri.POLL)
+        chord.join()
+
+        def since(moment: float | None, start: float) -> str:
+            return "never" if moment is None else f"{round((moment - start) * 1000)} ms"
+
+        chord_at = cast("float", heard["at"])
+        timed = openings(shell) if opened_at is not None else []
+        with capsys.disabled():
+            print(
+                f"lab-restart chord {offset} s after the stop began: {heard['path']}; "
+                f"stopped in {since(stopped, stopping)}; answering {since(answering, stopped)} "
+                f"and kept {since(kept, stopped)} after; opened {since(opened_at, chord_at)} "
+                f"after the chord, presented {timed[-1].get('presented') if timed else 'never'}",
+                flush=True,
+            )
+        if opened_at is not None:
+            shell.close_launcher()
+            shell.launcher_until(lambda shown: not shown["open"])
