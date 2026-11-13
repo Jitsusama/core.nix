@@ -817,15 +817,18 @@ def test_the_launchers_catalogue_opens_places_does_actions_and_offers_what_ends_
     assert not [e for e in entries if e["in"].startswith("Desktop \u203a Windows \u203a ")]
     assert not [e for e in entries if "keyboard:key:" in e["id"]]
     # A collection's own rows are listed, as a step into it shows them:
-    # Agents' tree, a closed orchestrator at its end.
+    # Agents' tree, a closed orchestrator inside the Closed row at its end,
+    # as the agents daemon serves the top level. Waited for by its place,
+    # since a program's name holds the word too.
     lighthouse_listed(desktop)
-    machine.wait_until_succeeds(
-        desktop.in_session("qs ipc call launcher list | grep -q Lighthouse"),
+    closed_in = "Agents \u203a Closed"
+    retry(
+        lambda _: any(e["words"] == "Lighthouse" and e["in"] == closed_in for e in listed()),
         timeout=dt.timedelta(seconds=10),
     )
     # Run, it does what its Return does, going to its window or opening it
     # again where it's closed (#1069), so the launcher doesn't open on it.
-    lighthouse = one(listed(), "Lighthouse", "Agents")
+    lighthouse = one(listed(), "Lighthouse", closed_in)
     assert lighthouse["kind"] == "action", lighthouse
     assert ran(lighthouse)["done"]
     machine.fail(closed)
