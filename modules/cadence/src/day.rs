@@ -298,6 +298,15 @@ pub const KINDS: &[Kind] = &[
         says: "a failure of",
         floor: None,
     },
+    // A service that says no ready line has its restarts timed only to
+    // its start, so its owner is told once, as it's new, to add one.
+    Kind {
+        key: "unstamped",
+        axis: "polish",
+        evidence: "health's ~/.local/state/health/<date>.json, its unstamped",
+        says: "restarts with no ready line from",
+        floor: None,
+    },
     Kind {
         key: "flaky",
         axis: "quality",

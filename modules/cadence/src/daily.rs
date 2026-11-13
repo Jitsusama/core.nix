@@ -239,9 +239,11 @@ fn read(state_home: &Path, from: i64, to: i64) -> Day {
     ));
     // health writes its day as it goes, so it's read as far as it's got.
     let machine = state_home.join(format!("health/{}.json", day.date));
-    day.figures.extend(machine::figures(
-        &fs::read_to_string(machine).unwrap_or_default(),
-    ));
+    if let Ok(json) = fs::read_to_string(machine) {
+        day.figures.extend(machine::figures(&json));
+        day.named
+            .insert("unstamped".to_owned(), machine::unstamped(&json));
+    }
     day
 }
 

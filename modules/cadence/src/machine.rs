@@ -2,7 +2,8 @@
 //! (modules/health): its boots and shutdowns, its errors by kind, what pi
 //! and the shell held, the agents that died and the moments that went
 //! worst, so a machine getting worse to use is judged with the rest of
-//! the day. Health judges nothing; the day does, here.
+//! the day, and the services whose restarts said no ready line, named.
+//! Health judges nothing; the day does, here.
 
 use std::collections::BTreeMap;
 
@@ -200,6 +201,22 @@ pub fn figures(json: &str) -> BTreeMap<String, f64> {
         .collect()
 }
 
+/// Each service whose restarts said no ready line, with how often it
+/// restarted, from health's day file: a kind of the day's by name, so
+/// each is said once to its owner as it's new, who adds the line that
+/// times its restarts to what it serves.
+#[must_use]
+pub fn unstamped(json: &str) -> BTreeMap<String, u32> {
+    #[derive(Default, Deserialize)]
+    #[serde(default)]
+    struct Written {
+        unstamped: BTreeMap<String, u32>,
+    }
+    serde_json::from_str::<Written>(json)
+        .unwrap_or_default()
+        .unstamped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,6 +252,33 @@ mod tests {
         assert!(
             off.is_empty(),
             "asks were judged on another axis than security's readings of them: {off:?}"
+        );
+    }
+
+    #[test]
+    fn a_service_with_no_ready_line_is_named_to_its_owner_once_new() {
+        let day = |named: &str| Day {
+            named: BTreeMap::from([("unstamped".to_owned(), unstamped(named))]),
+            ..Day::default()
+        };
+        let today = day(r#"{"unstamped": {"google.service": 2, "sound.service": 1}}"#);
+        let before = [
+            day(r#"{"unstamped": {"sound.service": 1}}"#),
+            day(r#"{"unstamped": {}}"#),
+            day(r#"{"unstamped": {"sound.service": 3}}"#),
+        ];
+        let named: Vec<(String, String)> = judge(&today, &before)
+            .worse
+            .into_iter()
+            .map(|finding| (finding.key, finding.words))
+            .collect();
+        assert_eq!(
+            named,
+            [(
+                "unstamped:google.service".to_owned(),
+                "restarts with no ready line from google.service, new, 2 times".to_owned()
+            )],
+            "a service new to saying no ready line wasn't named, or one named before was again"
         );
     }
 

@@ -15,7 +15,7 @@
 //! for it, and an end from the window gone, since niri never says the key
 //! that asked a window to close.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -85,6 +85,9 @@ pub struct Launches {
     /// until it says it's ready.
     #[serde(skip)]
     restarting: BTreeMap<String, (i64, i64)>,
+    /// Each service that said it was ready soon after a restart.
+    #[serde(skip)]
+    stamped: BTreeSet<String>,
 }
 
 /// How one of the two went over the day.
@@ -157,6 +160,7 @@ impl Launches {
         if let Some(gone) = self.restarted.get_mut(unit).and_then(|all| all.last_mut()) {
             *gone = millis(entry.at.saturating_sub(stopped));
         }
+        self.stamped.insert(unit.clone());
     }
 
     /// Take one line `thing` said, saying whether it was one of these: an
@@ -235,6 +239,18 @@ impl Launches {
     #[must_use]
     pub fn restarts(&self) -> Option<Spread<'_>> {
         spread(&self.restarted, RESTARTED_MS)
+    }
+
+    /// Each service a restart timed only to its start, since it said no
+    /// ready line after any of the day's, with how often it restarted:
+    /// what its owner adds a line to, so its restarts time what it serves.
+    #[must_use]
+    pub fn unstamped(&self) -> BTreeMap<&str, u64> {
+        self.restarted
+            .iter()
+            .filter(|(unit, _)| !self.stamped.contains(*unit))
+            .map(|(unit, gone)| (unit.as_str(), u64::try_from(gone.len()).unwrap_or(u64::MAX)))
+            .collect()
     }
 
     /// How many ends the daemon stopped waiting for.
@@ -538,6 +554,31 @@ mod tests {
             Launches::default().said(),
             None,
             "a day with none said something"
+        );
+    }
+
+    #[test]
+    fn a_service_saying_no_ready_line_after_its_restarts_is_named() {
+        let mut day = Day::new("2026-11-13");
+        let job = |unit: &str, at, job| Entry {
+            at,
+            job: Some(job),
+            ..entry(unit, 6, "")
+        };
+        for at in [1_000_000, 9_000_000] {
+            day.take(&job("google.service", at, Job::Stopping));
+            day.take(&job("google.service", at + 64_000, Job::Started));
+        }
+        day.take(&job("dictation.service", 2_000_000, Job::Stopping));
+        day.take(&job("dictation.service", 2_200_000, Job::Started));
+        day.take(&Entry {
+            at: 3_300_000,
+            ..entry("dictation", 6, "dictation: ready in 1065 ms")
+        });
+        assert_eq!(
+            day.launches.unstamped(),
+            BTreeMap::from([("google.service", 2)]),
+            "a service with no ready line wasn't named, or one that said it was"
         );
     }
 
