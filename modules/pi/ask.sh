@@ -66,12 +66,25 @@ else
   arguments+=(--no-tools)
 fi
 
+# Told to stop, pi winds its extensions down, which took 0.7 to 2.5 s on a
+# work machine (2026-11-13), and systemd starts the shell again only once
+# every process of its service has gone, so each restart of the shell waited
+# on it. With no session there's nothing of pi's to keep, so a stop ends it
+# at once. Its stdin is the launcher's, given on, since a command run in the
+# background reads nothing otherwise.
+asks() {
+  "$@" <&0 &
+  asking=$!
+  trap 'kill -KILL "$asking" 2> /dev/null || true' TERM
+  wait "$asking"
+}
+
 case $PLAN in
-  claude) exec "$PI_CLAUDE" --no-extensions "${arguments[@]}" "$@" ;;
+  claude) asks "$PI_CLAUDE" --no-extensions "${arguments[@]}" "$@" ;;
   *)
     if pi --no-extensions --version > /dev/null 2>&1; then
       arguments=(--no-extensions "${arguments[@]}")
     fi
-    exec pi "${arguments[@]}" "$@"
+    asks pi "${arguments[@]}" "$@"
     ;;
 esac
