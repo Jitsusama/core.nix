@@ -24,8 +24,10 @@ public:
 
     // The heap as it stands, in megabytes: `live`, what its items take;
     // `held`, the chunks and large items it keeps for them; and `outside`,
-    // what its strings and objects hold beyond the heap. Read after a
-    // collection, live is what survived it.
+    // what its strings and objects hold beyond the heap; and `free`, of what
+    // it holds, the resident pages with nothing in them, which could go
+    // back to the kernel without moving anything. Read after a collection,
+    // live is what survived it.
     Q_INVOKABLE QVariantMap weigh() const;
 
     // How many milliseconds Qt's collector has spent collecting since the

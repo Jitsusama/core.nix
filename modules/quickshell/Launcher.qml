@@ -9610,8 +9610,10 @@ Scope {
     // there, with what the collection left live against what the heap
     // holds: from outside the shell only the held pages show, which Qt
     // gives back only once a chunk is empty, so what's cut is chosen by
-    // which of the two grows. Weighing walks the heap's chunks, and how
-    // long it took is said too.
+    // which of the two grows. Of what's held, the resident pages with
+    // nothing in them are said too, which is what giving free pages back
+    // could save. Weighing walks the heap's chunks, and how long it took
+    // is said too.
     property bool collectDue: false
     function collectClosed() {
         if (open || opening || parting !== "")
@@ -9625,9 +9627,11 @@ Scope {
         const live = Math.round(weight.live);
         const held = Math.round(weight.held);
         const outside = Math.round(weight.outside);
+        const free = Math.round(weight.free);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${outside} MB outside, weighed in ${weighing} ms`);
+            + ` held, ${free} MB of it in free pages, ${outside} MB outside, weighed in`
+            + ` ${weighing} ms`);
     }
 
     // The rows the card shows, by what each is, what each says at its
