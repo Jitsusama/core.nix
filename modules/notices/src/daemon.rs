@@ -123,12 +123,19 @@ impl State {
     fn rows(&self, place: &str, only: Option<&[u32]>) -> Value {
         let only: Option<BTreeSet<u32>> = only.map(|ids| ids.iter().copied().collect());
         let history = place == row::HISTORY;
-        let keys: Vec<String> = self
+        let mut notices: Vec<&Notice> = self
             .holding
             .notices()
             .iter()
             .filter(|notice| !notice.transient && (notice.read || !history))
             .filter(|notice| only.as_ref().is_none_or(|ids| ids.contains(&notice.id)))
+            .collect();
+        // History's are in its rows' order, newest done with first.
+        if history {
+            notices.sort_by_key(|notice| std::cmp::Reverse(notice.done_at()));
+        }
+        let keys: Vec<String> = notices
+            .iter()
             .map(|notice| format!("row:{place}:{}", notice.id))
             .collect();
         let rows: Map<String, Value> = keys
@@ -554,6 +561,21 @@ mod tests {
             json!({ "keys": [new_key], "rows": {} }),
             "those asked for"
         );
+    }
+
+    #[test]
+    fn historys_rows_come_the_last_read_first() {
+        let mut state = state("history-order");
+        let first = state.notify(sent("First", &[]), 10);
+        let second = state.notify(sent("Second", &[]), 11);
+        let second_read = state.holding.mark(&[second], true, None, 12);
+        let first_read = state.holding.mark(&[first], true, None, 13);
+        assert!(second_read && first_read, "both were read");
+        let asked = json!({ "ask": "rows", "place": "notices-history" });
+        let (history, _) = state.ask(&asked, 14);
+        let key = |id: u32| format!("row:notices-history:{id}");
+        let wanted = json!([key(first), key(second)]);
+        assert_eq!(history["keys"], wanted, "the last read first");
     }
 
     #[test]

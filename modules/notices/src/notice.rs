@@ -138,6 +138,28 @@ impl Notice {
             && !self.entry.eq_ignore_ascii_case("slack")
     }
 
+    /// When it was done with, for History: when it was read, else when it
+    /// left, else when it came, as Now's History said it (launcher/
+    /// Lately.js's done).
+    pub fn done_at(&self) -> i64 {
+        self.read_at.or(self.left_at).unwrap_or(self.at)
+    }
+
+    /// How it was done with, for History, as launcher/Lately.js's readHow
+    /// says it: withdrawn, by its sender or the shell; read where it came
+    /// from, as `readInSlack`; read here, where it's known when; or read
+    /// before the history kept when, `earlier`.
+    pub fn done_how(&self) -> &str {
+        if self.withdrawn || self.left.as_deref() == Some("withdrawn") {
+            return "withdrawn";
+        }
+        match self.read_how.as_deref() {
+            Some(how) if !how.is_empty() => how,
+            _ if self.read_at.is_some() => "read",
+            _ => "earlier",
+        }
+    }
+
     /// The record served for it: `{ key, kind: "notice", notice }`, its
     /// fields with the two the shell's history read beside them, `low` and
     /// the to-do it `waits` on.
@@ -188,6 +210,38 @@ mod tests {
             (desktop.awaits(), slack.awaits(), read.awaits()),
             (true, false, false)
         );
+    }
+
+    #[test]
+    fn its_history_says_how_and_when_it_was_done_with() {
+        let here = Notice {
+            read: true,
+            read_at: Some(5),
+            left_at: Some(3),
+            at: 1,
+            ..Notice::default()
+        };
+        let done = (here.done_how(), here.done_at());
+        assert_eq!(done, ("read", 5), "read here, when it was read");
+        let slack = Notice {
+            read_how: Some("readInSlack".into()),
+            ..here.clone()
+        };
+        assert_eq!(slack.done_how(), "readInSlack");
+        let gone = Notice {
+            left: Some("withdrawn".into()),
+            read_at: None,
+            ..here.clone()
+        };
+        let done = (gone.done_how(), gone.done_at());
+        assert_eq!(done, ("withdrawn", 3), "withdrawn, when it left");
+        let before = Notice {
+            read_at: None,
+            left_at: None,
+            ..here
+        };
+        let done = (before.done_how(), before.done_at());
+        assert_eq!(done, ("earlier", 1), "read untimed, when it came");
     }
 
     #[test]

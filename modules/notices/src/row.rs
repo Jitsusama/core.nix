@@ -14,7 +14,9 @@
 //!   since Desktop's head says they're unread; one read while Joel looks
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).
-//! - `notices-history`, For You's History, the read, its age alone,
+//! - `notices-history`, For You's History, the read, newest done with
+//!   first, each saying how and when it was, "read here 14:02", as Now's
+//!   History says it, and holding the two, `readAt` and `how`;
 //!   served a page at a time as `notices` is, with its count beside, since
 //!   History keeps about a thousand (KP0L6A, 2026-11-13).
 //!
@@ -308,8 +310,22 @@ fn stands(notice: &Notice, words: &Words) -> String {
     }
 }
 
+/// How and when a notice was done with, as History's side says it, "read
+/// here 14:02" (VKCF3Z, 2026-11-08): its source's word for how, or the
+/// how itself where that has none, as Now's History said it.
+fn done(notice: &Notice, words: &Words) -> Value {
+    let how = notice.done_how();
+    let word = match words.said("for-you:source:desktop", how) {
+        "" => how,
+        word => word,
+    };
+    let said = words.said("on:waiting", "history").replace("{how}", word);
+    json!({ "said": said, "at": notice.done_at(), "as": "moment" })
+}
+
 /// A notice's row in `place`, not yet given its `order`, its side saying
-/// its standing where `standing` holds words, then its age.
+/// its standing where `standing` holds words, then its age; History's
+/// saying how and when it was done with alone, and holding the two.
 fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &str) -> Value {
     let read = body::read(&notice.body);
     let (name, note) = named(&notice.summary, &read.plain);
@@ -328,13 +344,18 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
     } else {
         json!({ "at": notice.at, "as": "moment" })
     };
-    let side: Vec<Value> = (!standing.is_empty())
-        .then(|| json!({ "said": standing }))
-        .into_iter()
-        .chain((!stood.is_empty()).then(|| json!({ "said": stood })))
-        .chain(folds)
-        .chain(std::iter::once(when))
-        .collect();
+    let history = place == HISTORY;
+    let side: Vec<Value> = if history {
+        vec![done(notice, words)]
+    } else {
+        (!standing.is_empty())
+            .then(|| json!({ "said": standing }))
+            .into_iter()
+            .chain((!stood.is_empty()).then(|| json!({ "said": stood })))
+            .chain(folds)
+            .chain(std::iter::once(when))
+            .collect()
+    };
     // Its words styled as its card draws them where they carry markup or
     // a link, and plain otherwise, so a long log keeps its own lines; its
     // sender a name from the world, set as it's written (VKCF3Z,
@@ -345,15 +366,20 @@ fn row(notice: &Notice, sender: &Sender, words: &Words, place: &str, standing: &
         "body": if marked { &read.styled } else { &read.plain }, "styled": marked,
         "prose": true, "picture": notice.picture, "facts": facts(notice, words),
     });
+    let mut held = json!({
+        "id": notice.id, "app": notice.app, "entry": sender.entry, "read": notice.read,
+        "at": notice.at, "live": notice.live, "said": said,
+    });
+    if history {
+        held["readAt"] = json!(notice.done_at());
+        held["how"] = json!(notice.done_how());
+    }
     json!({
         "key": format!("row:{place}:{}", notice.id), "thing": notice.key(), "place": place,
         "kind": "notice", "name": name, "note": note, "glyph": sender.glyph,
         "hue": if notice.urgency == Urgency::Low { "muted" } else { sender.hue.as_str() },
         "side": side, "drawer": drawer, "acts": acts(notice, sender, &read, &said, words),
-        "held": {
-            "id": notice.id, "app": notice.app, "entry": sender.entry, "read": notice.read,
-            "at": notice.at, "live": notice.live, "said": said,
-        },
+        "held": held,
     })
 }
 
@@ -438,6 +464,9 @@ impl Rows {
             }
             made.insert(notice.id, one);
         }
+        // History is in the order each was done with, newest first, as
+        // Now's History is, rather than the order each came in.
+        places[2].sort_by_key(|row| std::cmp::Reverse(row["held"]["readAt"].as_i64()));
         self.made = made;
         places
     }
@@ -544,7 +573,35 @@ mod tests {
         let [mixed, _, history] = making(&[folded], &[]);
         let side = json!([{ "said": "3 in all" }, { "at": 4_000, "as": "came" }]);
         assert_eq!(mixed[0]["side"], side, "the two it took over and itself");
-        assert_eq!(history[0]["side"], side, "and so in History");
+        let done = json!([{ "said": "read {time}", "at": 4_000, "as": "moment" }]);
+        assert_eq!(history[0]["side"], done, "History, how it went alone");
+    }
+
+    #[test]
+    fn history_says_how_and_when_each_was_done_with_newest_done_first() {
+        // Newest come first, but the oldest was read last, in Slack.
+        let withdrawn = json!({ "read": true, "withdrawn": true, "readAt": 4_000 });
+        let slack = json!({ "read": true, "readHow": "readInSlack", "readAt": 9_000 });
+        let notices = [
+            notice(3, &json!({ "read": true, "readAt": 5_000 })),
+            notice(2, &withdrawn),
+            notice(1, &slack),
+        ];
+        let [_, _, history] = making(&notices, &[]);
+        let order = keys(&history);
+        let wanted = [
+            "row:notices-history:1",
+            "row:notices-history:3",
+            "row:notices-history:2",
+        ];
+        assert_eq!(order, wanted, "newest done first");
+        let side = |at: i64, said: &str| json!([{ "said": said, "at": at, "as": "moment" }]);
+        assert_eq!(history[0]["side"], side(9_000, "read in Slack {time}"));
+        assert_eq!(history[1]["side"], side(5_000, "read here {time}"));
+        assert_eq!(history[2]["side"], side(4_000, "withdrawn {time}"));
+        let held = &history[0]["held"];
+        let told = json!([held["readAt"], held["how"]]);
+        assert_eq!(told, json!([9_000, "readInSlack"]), "and held says so");
     }
 
     #[test]
