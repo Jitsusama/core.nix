@@ -400,17 +400,7 @@ fn join(
     if let Some(running) = current.as_ref() {
         let mut said = running.state.lock().expect("the answer's lock");
         if said.ended.is_none() {
-            if said.at != *at {
-                let runs = if said.at.is_empty() {
-                    " at its inputs' heads".to_owned()
-                } else {
-                    at_said(&said.at)
-                };
-                return Err(format!(
-                    "an update{runs} is running, and an ask joins only one asked at the \
-                     same commits; `update-to-main {STOP}` ends it"
-                ));
-            }
+            joins(&said, at)?;
             said.following &= following;
             return Ok(Arc::clone(running));
         }
@@ -426,6 +416,24 @@ fn join(
     let growing = Arc::clone(&heard);
     thread::spawn(move || run(&config, &growing));
     Ok(heard)
+}
+
+/// Whether an ask at these commits may hear the update running: only
+/// one asked at the same commits, so neither asker hears a switch to
+/// what it didn't ask for.
+fn joins(running: &Said, at: &Followed) -> Result<(), String> {
+    if running.at == *at {
+        return Ok(());
+    }
+    let runs = if running.at.is_empty() {
+        " at its inputs' heads".to_owned()
+    } else {
+        at_said(&running.at)
+    };
+    Err(format!(
+        "an update{runs} is running, and an ask joins only one asked at the \
+         same commits; `update-to-main {STOP}` ends it"
+    ))
 }
 
 fn run(config: &Config, heard: &Answer) {
@@ -594,6 +602,39 @@ mod tests {
         for ask in ["update /nix/store/something", "follow", "stop"] {
             assert_eq!(asked_at(ask), None, "{ask:?} was taken as an update");
         }
+    }
+
+    #[test]
+    fn an_ask_joins_only_an_update_asked_at_the_same_commits() {
+        let at = |commit: &str| Followed::from([("core".to_owned(), commit.repeat(40))]);
+        let running = |asked: Followed| Said {
+            at: asked,
+            ..Said::default()
+        };
+        assert!(
+            joins(&running(Followed::new()), &Followed::new()).is_ok(),
+            "a plain ask didn't join a plain update"
+        );
+        assert!(
+            joins(&running(at("a")), &at("a")).is_ok(),
+            "an ask at a commit didn't join one asked at the same"
+        );
+        let heads = joins(&running(Followed::new()), &at("a"))
+            .expect_err("an ask at a commit joined an update at the heads");
+        assert!(
+            heads.contains("at its inputs' heads") && heads.contains("update-to-main stop"),
+            "the refusal didn't say what runs and how to end it: {heads}"
+        );
+        let other = joins(&running(at("a")), &at("b"))
+            .expect_err("an ask at one commit joined an update at another");
+        assert!(
+            other.contains("with core at aaaaaaaa"),
+            "the refusal didn't name the commit running: {other}"
+        );
+        assert!(
+            joins(&running(at("a")), &Followed::new()).is_err(),
+            "a plain ask joined an update at a named commit"
+        );
     }
 
     #[test]

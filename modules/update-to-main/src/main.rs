@@ -79,7 +79,7 @@ fn main() -> ExitCode {
         ["ask", "--at", at] => {
             at_args(at).map_or_else(usage, |at| asked(Path::new(SOCKET), Some(at)))
         }
-        ["ask", "--at", at, "--socket", file] => {
+        ["ask", "--at", at, "--socket", file] | ["ask", "--socket", file, "--at", at] => {
             at_args(at).map_or_else(usage, |at| asked(Path::new(file), Some(at)))
         }
         ["stop"] => stopped(Path::new(SOCKET)),
