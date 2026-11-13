@@ -372,11 +372,6 @@
     "exits"
     "helps"
   ];
-  spend-watch = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   spotify-recent = [
     "kit"
     "exits"

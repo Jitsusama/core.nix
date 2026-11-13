@@ -32,7 +32,6 @@ use crate::history::{History, sql as fail};
 use crate::money::whole;
 use crate::time::{HOUR, Zone, hour_of, hour_start};
 use serde::Serialize;
-use std::fmt::Write as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -614,37 +613,48 @@ pub fn outlook(inputs: &Inputs, before: Option<Level>, zone: &Zone, now: f64) ->
     })
 }
 
+/// What the warning said from one instant of a replay until its words
+/// changed: its level, hint and context, or nothing where it had nothing
+/// to say.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Said {
+    pub at: f64,
+    pub level: Option<Level>,
+    pub hint: Option<String>,
+    pub context: Option<String>,
+}
+
 /// What the warning would have said every five minutes from `from` to
-/// `to`, as the history stood each time, one line a change of words.
+/// `to`, as the history stood each time, one a change of words.
 pub fn replay(
     history: &History,
     budgets: &Budgets,
     zone: &Zone,
     from: f64,
     to: f64,
-) -> Result<String, String> {
-    let mut out = String::new();
+) -> Result<Vec<Said>, String> {
+    let mut changes: Vec<Said> = Vec::new();
     let mut before = None;
-    let mut said = String::new();
     let mut at = from;
     while at <= to {
         let tokens = read(history, budgets, at, Rate::Replay)?
             .and_then(|inputs| outlook(&inputs, before, zone, at));
         before = tokens.as_ref().map(|tokens| tokens.level);
-        let line = tokens.as_ref().map_or_else(
-            || "nothing to say".to_owned(),
-            |tokens| {
-                let level = serde_json::to_string(&tokens.level).unwrap_or_default();
-                format!("{level} {}: {}", tokens.hint, tokens.context)
-            },
-        );
-        if line != said {
-            writeln!(out, "{} {line}", zone.clock(at, to)).map_err(|error| error.to_string())?;
-            said = line;
+        let said = Said {
+            at,
+            level: before,
+            hint: tokens.as_ref().map(|tokens| tokens.hint.clone()),
+            context: tokens.as_ref().map(|tokens| tokens.context.clone()),
+        };
+        let same = changes.last().is_some_and(|last| {
+            (&last.level, &last.hint, &last.context) == (&said.level, &said.hint, &said.context)
+        });
+        if !same {
+            changes.push(said);
         }
         at += 300.0;
     }
-    Ok(out)
+    Ok(changes)
 }
 
 #[cfg(test)]

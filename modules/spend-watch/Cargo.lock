@@ -1512,6 +1512,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "terminal-kit",
  "zbus",
 ]
 
@@ -1574,6 +1575,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8c27177b12a6399ffc08b98f76f7c9a1f4fe9fc967c784c5a071fa8d93cf7e1"
 dependencies = [
  "windows-sys",
+]
+
+[[package]]
+name = "terminal-kit"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "unicode-width",
 ]
 
 [[package]]
@@ -1747,6 +1756,12 @@ name = "unicode-ident"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "uuid"

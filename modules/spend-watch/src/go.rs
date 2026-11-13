@@ -17,9 +17,46 @@ pub struct Place {
     pub scope: String,
 }
 
+/// Why a session couldn't be brought forward, told apart so the command
+/// line can say whether it was asked wrongly, the session is gone, or the
+/// terminal failed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Unbrought {
+    /// No open session's id starts so, or the one that did has ended.
+    Gone(String),
+    /// Several open sessions' ids start so: how many, and the start.
+    Several(usize, String),
+    Broke(String),
+}
+
+impl std::fmt::Display for Unbrought {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Gone(why) | Self::Broke(why) => write!(out, "{why}"),
+            Self::Several(count, session) => {
+                write!(out, "{count} open sessions' ids start {session}")
+            }
+        }
+    }
+}
+
+// The daemon brings one forward as the shell asks and says why it
+// couldn't in words, as it says every other failure.
+impl From<Unbrought> for String {
+    fn from(unbrought: Unbrought) -> Self {
+        unbrought.to_string()
+    }
+}
+
+impl From<String> for Unbrought {
+    fn from(why: String) -> Self {
+        Self::Broke(why)
+    }
+}
+
 /// Where a session is, from its registry entry, by its id or the start of
 /// one.
-pub fn find(registry: &Path, session: &str) -> Result<Place, String> {
+pub fn find(registry: &Path, session: &str) -> Result<Place, Unbrought> {
     let entries = std::fs::read_dir(registry).map_err(|error| {
         format!(
             "reading the session registry {}: {error}",
@@ -40,23 +77,25 @@ pub fn find(registry: &Path, session: &str) -> Result<Place, String> {
     let path = match found.as_slice() {
         [one] => one.clone(),
         [] => {
-            return Err(format!(
+            return Err(Unbrought::Gone(format!(
                 "no open session's id starts {session}: it may have ended"
-            ));
+            )));
         }
-        _ => {
-            return Err(format!(
-                "{} open sessions' ids start {session}",
-                found.len()
-            ));
-        }
+        _ => return Err(Unbrought::Several(found.len(), session.to_owned())),
     };
     let text = std::fs::read_to_string(&path)
         .map_err(|error| format!("reading {}: {error}", path.display()))?;
     if closed(&text) {
-        return Err("that session has ended: its log is all that's left".into());
+        return Err(Unbrought::Gone(
+            "that session has ended: its log is all that's left".into(),
+        ));
     }
-    parse(&text).ok_or_else(|| format!("{} doesn't say where its session is", path.display()))
+    parse(&text).ok_or_else(|| {
+        Unbrought::Broke(format!(
+            "{} doesn't say where its session is",
+            path.display()
+        ))
+    })
 }
 
 pub fn parse(text: &str) -> Option<Place> {
@@ -125,13 +164,13 @@ fn run(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-pub fn go(registry: &Path, session: &str) -> Result<(), String> {
+pub fn go(registry: &Path, session: &str) -> Result<(), Unbrought> {
     let place = find(registry, session)?;
     if place.driver != "kitty" {
-        return Err(format!(
+        return Err(Unbrought::Broke(format!(
             "the session is in {}, which can't be brought forward",
             place.driver
-        ));
+        )));
     }
     run(
         "kitty",
@@ -175,5 +214,25 @@ mod tests {
         assert!(closed(
             r#"{"openedAt":"2026-10-07T05:14:13Z","closedAt":"2026-10-10T18:39:44Z"}"#
         ));
+    }
+
+    #[test]
+    fn a_session_not_open_is_gone_and_a_start_two_share_is_several() {
+        let registry = tempfile::tempdir().expect("the registry is made");
+        let entry = r#"{"process":{"pid":1},
+            "terminal":{"driverId":"kitty","value":"7","scope":"unix:@kitty-2"}}"#;
+        for name in ["01a1.json", "01a2.json"] {
+            std::fs::write(registry.path().join(name), entry).expect("an entry is written");
+        }
+        let gone = find(registry.path(), "ff");
+        assert!(
+            matches!(gone, Err(Unbrought::Gone(_))),
+            "ff wasn't gone: {gone:?}"
+        );
+        assert_eq!(
+            find(registry.path(), "01a"),
+            Err(Unbrought::Several(2, "01a".into()))
+        );
+        assert_eq!(find(registry.path(), "01a1").map(|place| place.pid), Ok(1));
     }
 }

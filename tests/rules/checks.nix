@@ -175,6 +175,7 @@
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
