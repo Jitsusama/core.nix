@@ -404,7 +404,8 @@ reads every program a crate builds, and holds it to four points:
 
 - **kit:** its crate builds on the terminal kit;
 - **exits:** its own code never ends the process, with `process::exit`
-  or an `ExitCode` made from a number, so its codes are the table's;
+  or an `ExitCode` made from a number, so its codes are the table's; a
+  thread that hears a signal ends it with the kit's `Exit::end_now`;
 - **inks:** its own code spells no escape sequence and takes no colour
   crate, so its colour is the kit's decision;
 - **helps:** run with `--help --format json`, it answers `help/1` under
