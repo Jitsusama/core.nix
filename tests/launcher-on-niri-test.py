@@ -635,6 +635,27 @@ def test_keep_awake_is_one_row_beside_power_found_by_awake_and_sleep(shell: Shel
         shell.close_launcher()
 
 
+def test_power_profiles_drawer_still_unread_has_a_terminal_ask_again(shell: Shell) -> None:
+    """Power Profile's drawer, not yet read, says so, so a terminal asks again for it.
+
+    Its drawer reads sysfs a turn after it's first asked for and is none until then
+    (Session.qml's profileDrawer), and the launcher forgets that reading as it shuts. A
+    terminal's first ask after that met no drawer and no word that one was coming, so a
+    walk of the launcher took it as a row with no drawer (Y2YBTS, 301f106d). The sandbox has
+    no profile files to read, so the drawer itself never comes here; on a laptop it's what
+    the next ask is shown.
+    """
+    steps = ("machine", "power", "power profile")
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    # Asked while open, so it's read and then forgotten as the launcher shuts.
+    shown_to_terminal(shell, *steps)
+    shell.close_launcher()
+    first = shown_to_terminal(shell, *steps)
+    drawn = "drawer" in (first["row"] or {})
+    assert drawn or first["reading"], f"an unread drawer was said as none: {first}"
+
+
 def test_do_not_disturb_says_until_when_in_its_drawer(shell: Shell) -> None:
     """Do Not Disturb, off, has a drawer saying until when Return holds notices.
 
