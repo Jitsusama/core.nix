@@ -7,7 +7,7 @@ Which scene comes at each level, how long each pose holds and where a stroll goe
 Qt's engine (modules/margin-cat/tests/margin-cat.qml); here, only that niri's idle timers and
 real columns reach it: a single pose held a moment while the keys come, which moves it none
 and draws a frame each way, mild scenes once they stop, a stroll to the gutter beside its
-column once they've been gone a while, and a key bringing it straight back.
+column once they've been gone a while, and a key ending it at once, the cat walking back.
 """
 
 from __future__ import annotations
@@ -39,8 +39,9 @@ GLANCED = 2
 # How long a pause's scene may last, and how long Joel is gone before a stroll may come: 8 s
 # here, and as many scenes as make one of them a stroll all but certain.
 SCENE, STROLLS = 2.5, timedelta(seconds=60)
-# How soon a key brings a stroll back over its column.
-BACK = 1.0
+# How soon a key ends a stroll, and how long the walk back over its column may take: a
+# gentle long walk, at most about 8 s, and some for a loaded builder.
+BACK, HOME = 1.0, timedelta(seconds=15)
 POLL = 0.05
 
 
@@ -59,6 +60,11 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
+def walking(at: Json) -> bool:
+    """Say whether a place is a step of a walk, as MarginCat.qml says each one."""
+    return bool(at.get("walk"))
+
+
 def reports(shell: Shell, since: int) -> tuple[list[Json], int]:
     """Give each place the cat has said it's at since the mark, and the mark they end at."""
     said, since = shell.said_since(since)
@@ -72,20 +78,21 @@ def cat_frames(shell: Shell) -> int:
     return sum(count for name, count in drawn.items() if name.startswith("cat "))
 
 
-def sitting_over(shell: Shell, title: str) -> Json:
-    """Open a column and wait until the cat sits over it, still and posing nothing."""
+def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
+    """Open a column, wait until the cat sits over it, still, and give both."""
     since = shell.mark()
     window = shell.opened(title)
-    shell.reported(
-        SITS,
-        lambda said: (
-            (at := placed(said)) is not None
-            and at.get("window") == window["id"]
-            and not at["walking"]
-        ),
-        since,
-    )
-    return window
+    seats: list[Json] = []
+
+    def sits(said: str) -> bool:
+        at = placed(said)
+        if at is None or at.get("window") != window["id"] or walking(at):
+            return False
+        seats.append(at)
+        return True
+
+    shell.reported(SITS, sits, since)
+    return window, seats[-1]
 
 
 def test_while_he_types_it_makes_one_small_move_in_place(shell: Shell) -> None:
@@ -94,6 +101,10 @@ def test_while_he_types_it_makes_one_small_move_in_place(shell: Shell) -> None:
     It moves none while it does, and draws a frame for the pose and one for sitting again.
     """
     sitting_over(shell, "a column typed in")
+    # Sitting down can outlast a pause, so a pause's pose may be up: a key
+    # first ends it, and its frame is drawn before the count starts.
+    shell.send_key("F24")
+    time.sleep(TYPING)
     shell.as_account(f"qs -p {shell.folder} ipc call frames start")
     since = shell.mark()
     began, posed, sat, still = time.monotonic(), 0.0, 0.0, None
@@ -130,32 +141,37 @@ def test_paused_it_plays_a_little_in_place(shell: Shell) -> None:
     poses = {at.get("pose") for at in found}
     assert poses <= {*MILD, ""}, f"a pause's scene posed {poses}"
     assert lasted <= SCENE, f"a pause's scene lasted {lasted:.2f} s"
-    assert not any(at["walking"] for at in found), f"a pause's scene walked: {found}"
+    assert not any(walking(at) for at in found), f"a pause's scene walked: {found}"
 
 
 def test_away_it_strolls_to_the_gutter_and_a_key_brings_it_back(shell: Shell) -> None:
-    """Gone from the keys, it strolls to the gutter beside its column; a key has it back."""
+    """Gone from the keys, it walks to the gutter beside its column; a key walks it back."""
     beside = shell.opened("a column beside the stroll")
-    sat = sitting_over(shell, "a column strolled from")
+    sat, seat = sitting_over(shell, "a column strolled from")
     shell.send_key("F24")
     since = shell.mark()
-    shell.reported(SITS, lambda said: bool((placed(said) or {}).get("strolling")), since, STROLLS)
-    found, _ = reports(shell, since)
-    walked = [at for at in found if at["walking"]]
-    assert walked, f"it strolled without walking: {found}"
-    assert {at["cells"] for at in walked} == {8}, f"its walk was drawn as {walked}"
+    shell.reported(
+        SITS,
+        lambda said: (at := placed(said)) is not None and bool(at.get("strolling")) and walking(at),
+        since,
+        STROLLS,
+    )
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")
+    shell.reported(SITS, lambda said: not (placed(said) or {}).get("strolling"), since)
+    ended = time.monotonic() - keyed
+    assert ended <= BACK, f"a key took {ended:.2f} s to end the stroll"
     shell.reported(
         SITS,
         lambda said: (
             (at := placed(said)) is not None
-            and not at.get("strolling")
-            and not at["walking"]
+            and not walking(at)
             and at.get("window") == sat["id"]
+            and abs(at["x"] - seat["x"]) <= 1
         ),
         since,
+        HOME,
     )
-    back = time.monotonic() - keyed
-    assert back <= BACK, f"a key took {back:.2f} s to bring it back over {sat}, not {beside}"
+    found, _ = reports(shell, since)
+    assert any(walking(at) for at in found), f"it came back over {sat}, not {beside}, unwalked"

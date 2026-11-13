@@ -455,38 +455,23 @@ function scene(lively, chance) {
     return [];
 }
 
-// Where a stroll goes, from `at` as sits takes it with the other columns
-// on the screen (`others`): over the middle of the gutter beside its
-// column, between it and its neighbour, the right one first, at the
-// height it sits at; null where neither side has a neighbour, or the
-// gutter is off the screen or under the margin's marks, since there it
+// Where a stroll goes, from `at` as sits takes it: over the middle of the
+// gutter beside its column, the right one first, at the height it sits
+// at. niri leaves the theme's gap (`cell`) between two columns, so the
+// gutter's middle is half of it past the column's edge, which needs only
+// the column the shell hears, never its neighbours. Null where both
+// gutters are off the screen or under the margin's marks, since there it
 // would cover what's true or be nowhere.
 function gutter(at) {
     const { column } = at;
     if (!column || column.top < at.tall + at.air) {
         return null;
     }
-    const right = column.left + column.width;
-    const beside = [
-        (at.others ?? []).filter(other => other.left >= right)
-            .map(other => (right + other.left) / 2).sort((a, b) => a - b)[0],
-        (at.others ?? []).filter(other => other.left + other.width <= column.left)
-            .map(other => (other.left + other.width + column.left) / 2)
-            .sort((a, b) => b - a)[0]
-    ];
-    const middle = beside.find(found => found !== undefined);
-    if (middle === undefined) {
-        return null;
-    }
-    const x = middle - at.wide / 2;
-    if (x < 0 || x + at.wide > at.across) {
-        return null;
-    }
-    if (at.marks > 0) {
-        const reach = (at.marks * at.cell) / 2 + at.cell / 2;
-        if (x + at.wide > at.across / 2 - reach && x < at.across / 2 + reach) {
-            return null;
-        }
-    }
-    return { x, y: column.top - at.tall - at.air };
+    const beside = [column.left + column.width + at.cell / 2, column.left - at.cell / 2];
+    const reach = (at.marks * at.cell) / 2 + at.cell / 2;
+    const fits = left => left >= 0 && left + at.wide <= at.across
+        && (at.marks === 0 || left + at.wide <= at.across / 2 - reach
+            || left >= at.across / 2 + reach);
+    const x = beside.map(middle => middle - at.wide / 2).find(fits);
+    return x === undefined ? null : { x, y: column.top - at.tall - at.air };
 }
