@@ -150,6 +150,15 @@ QtObject {
                 if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
                     wrong.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
                         + `walking at ${walks.map(Math.round).join(", ")}`);
+            // Down a workspace only by the ways a cat could go, a fall
+            // straight down from the edge it let go of onto what's under
+            // it, never over across the air between them (Joel, 2026-11-13
+            // 17:22, by WCJQSG fc3f716a: "it would not be able to drop
+            // down near the center of a window below").
+            for (const beat of journey.beats.filter(one => one.name === "drops"))
+                if (Math.abs(beat.to.x - beat.from.x) > 0.01)
+                    wrong.push(`${said} drops from ${Math.round(beat.from.x)} `
+                        + `to ${Math.round(beat.to.x)}`);
             let before = null;
             for (let t = 0; t <= journey.ends && wrong.length < 5; t += 1000 / 120) {
                 const one = Paths.frame(journey, t);
