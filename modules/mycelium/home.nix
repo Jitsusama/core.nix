@@ -69,6 +69,11 @@ let
   cfg = config.jitsusama.mycelium;
   inherit (config.jitsusama.signing) signer;
   package = mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  # The swarm's teams completed by the names a person types, which only the
+  # node knows (completion.zsh).
+  completion = pkgs.runCommandLocal "mycelium-zsh-completion" { } ''
+    install -D -m 444 ${./completion.zsh} $out/share/zsh/site-functions/_mycelium
+  '';
   inherit (pkgs.stdenv.hostPlatform) isDarwin isLinux;
   linking = cfg.links != [ ];
   serving = cfg.realm != null;
@@ -528,7 +533,10 @@ in
           message = "jitsusama.mycelium.alsoJoins names a realm in other than lowercase letters, digits and dashes.";
         }
       ];
-      home.packages = [ package ];
+      home.packages = [
+        package
+        completion
+      ];
     }
     (lib.mkIf (cfg.realm != null) {
       home.sessionVariables = {
