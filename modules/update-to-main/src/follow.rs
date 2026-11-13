@@ -20,6 +20,7 @@
 
 use crate::config::{Config, Hosted};
 use crate::follows::Followed;
+use crate::git;
 use crate::hosted;
 use crate::line::Line;
 use crate::tell::Telling;
@@ -358,9 +359,10 @@ fn remote_head(config: &Config, repository: &str, branch: &str) -> Result<String
 /// November: "everytime i boot it asks me for a delta git login"). Git
 /// asks an askpass whether or not terminal prompts are off, so both go,
 /// with git told not to ask at all; a look that gets no answer is taken
-/// again in `LOOK_EVERY`, once the broker can give one.
+/// again in `LOOK_EVERY`, once the broker can give one. A look whose host
+/// stops answering ends once it has stalled, and is taken again too.
 fn asking_nobody(command: &mut Command) -> &mut Command {
-    command
+    git::ending_stalls(command)
         .env_remove("SSH_ASKPASS")
         .env_remove("GIT_ASKPASS")
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -393,6 +395,7 @@ pub(crate) mod tests {
             ("GIT_TERMINAL_PROMPT", "0"),
             ("GIT_CONFIG_KEY_0", "credential.interactive"),
             ("GIT_CONFIG_VALUE_0", "false"),
+            ("GIT_HTTP_LOW_SPEED_TIME", "60"),
         ] {
             assert!(
                 envs.contains(&(OsStr::new(key), Some(OsStr::new(value)))),

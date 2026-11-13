@@ -3761,7 +3761,8 @@
     from its flake's folder with root reading the account's checkout, fetched there first when it
     lacks main and a read of the host's API fails, saying what the read said, its private inputs
     fetched by their locks, refused when rewritten, and builds
-    nothing without a token; and a followed input is built at its own signed main past the lock,
+    nothing without a token, each git it runs over HTTP ending a transfer stalled for a minute;
+    and a followed input is built at its own signed main past the lock,
     builds again when only it moved, and is refused unsigned or behind its lock; and building
     elsewhere sends only the heavy pieces away, to the builders named when some are, builds nothing
     here without a builder, sends a kept piece only to its own builders, and none at all when it
