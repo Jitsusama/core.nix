@@ -3309,10 +3309,10 @@
     the notices' stack puts a critical one in front and the rest in the order they came, one unheard
     at the back, and turns and brings one forward as the keys and a click ask
   '';
-  the-void-answers-on-one-card = ''
-    Joel's line to the session standing at Agents' top goes out as one quiet card signed by its
-    name, sent, then answered in that card's place, the reply cut to whole words and its last line
-    saying the rest is in the talk
+  a-reply-to-the-void-says-where-it-went = ''
+    Joel's line to the void is found in the talk it began and read once replied whole, where the
+    void says it went is told apart from the time it can be undone by, and a take-back stands
+    taken on the void's own undone, else told what it said in a line's few words
   '';
   the-talk-line-says-what-became-of-its-words = ''
     Super+S's line sends Joel's words with the window they're said over attached for the void,

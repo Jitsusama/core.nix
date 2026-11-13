@@ -889,8 +889,6 @@ Provider {
         provider.actOn({ address }, "talk", { text });
     }
 
-    // The card of Joel's line to the one standing at the top, sent and then
-    // answered in place (Told.qml).
     // Words a talk delivered, or anything after, are let go of the field's
     // keeping (Drafts.qml); one that failed stays, for Joel to send again.
     Connections {
@@ -898,14 +896,6 @@ Provider {
         function onTalksChanged() {
             provider.launcher?.drafts?.settle(provider.source("orchestrators").talks);
         }
-    }
-
-    Told {
-        id: toldCard
-
-        launcher: provider.launcher
-        talksOf: address => provider.talksOf(address)
-        talk: (address, text) => provider.talkTo(address, text)
     }
 
     // A session's own acts, in the one order every session keeps

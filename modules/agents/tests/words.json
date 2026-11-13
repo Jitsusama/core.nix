@@ -284,8 +284,7 @@
       "term": "Agents/talk",
       "verb": "talk",
       "glyph": "reply",
-      "ask": "what to talk about?",
-      "said": { "open": "read it in Agents", "more": "more in the talk" }
+      "ask": "what to talk about?"
     },
     {
       "id": "verb:agent:pause",
