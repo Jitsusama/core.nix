@@ -3686,6 +3686,11 @@
     loads it from a unit after multi-user.target rather than while the system starts, with no step
     after the load to fail a switch, and gives its axes the panel's size in millimetres
   '';
+  the-surface-names-each-device-it-misses = ''
+    every device the Surface Laptop 4 expects is one its sysfs was seen to hold, and `device-check`
+    names each missing, and only it, once what its path matches is taken from a stand-in of that
+    sysfs
+  '';
   the-surface-offers-its-firmware-through-fwupd = ''
     fwupd, given the Surface Laptop 4's ESRT with its UEFI at 4.355.140 and its TPM at 7.2.2.0,
     offers the UEFI's capsule from the remote the module writes, at the version the capsule itself
