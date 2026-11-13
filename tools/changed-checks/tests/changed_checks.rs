@@ -92,6 +92,9 @@ case "$1" in
     exit 0 ;;
 esac
 if [ "$2" = --raw ]; then echo "$STAND_IN/source"; exit 0; fi
+case "$3" in
+  *'.checkFiles') [ -e "$STAND_IN/files.json" ] || exit 1; cat "$STAND_IN/files.json"; exit 0 ;;
+esac
 case "$5" in
   builtins.mapAttrs*)
     cat "$STAND_IN/systems.json" 2>/dev/null || echo '{"x86_64-linux": 4}'
@@ -1285,6 +1288,74 @@ fn a_keep_traces_each_check_alone_once_the_newest_record_is_old() {
         "a keep traced no check though the newest record was 21 minutes old"
     );
     assert_eq!(evaluated(&run), ["base", "reads", "alone"], "{run}");
+}
+
+/// A stand-in whose base's checks each read every folder's checks.nix, as
+/// checks.nix gathers them: a from x/checks.nix, b from y/checks.nix, and
+/// gone from checks.nix itself; and whose change is `diff`.
+fn gathered_alone(test: &str, diff: &str) -> StandIn {
+    use std::fmt::Write as _;
+    let stand_in = StandIn::new(test);
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    let files = [
+        ("flake.nix", "{ }"),
+        ("checks.nix", "folders = [ ./x/checks.nix ./y/checks.nix ];"),
+        ("x/checks.nix", "{ }: { a = 1; }"),
+        ("y/checks.nix", "{ }: { b = 1; }"),
+    ];
+    let mut trace = String::new();
+    for (file, text) in files {
+        let path = stand_in.path(&format!("source/{file}"));
+        fs::create_dir_all(path.parent().expect("its folder")).expect("made");
+        fs::write(path, text).expect("written");
+        writeln!(
+            trace,
+            "openat(AT_FDCWD</tmp>, \"SOURCE/{file}\", O_RDONLY) = 7<SOURCE/{file}>"
+        )
+        .expect("written");
+    }
+    for name in ["a", "b", "gone"] {
+        fs::write(stand_in.path(&format!("trace.{name}")), &trace).expect("written");
+    }
+    fs::write(
+        stand_in.path("files.json"),
+        r#"{"a": "x/checks.nix", "b": "y/checks.nix", "gone": "checks.nix", "vm-x": "checks.nix"}"#,
+    )
+    .expect("written");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    stand_in.checks("working", MOVED);
+    fs::write(stand_in.path("diff"), diff).expect("written");
+    stand_in
+}
+
+#[test]
+fn a_change_to_another_folders_checks_reaches_none_it_doesnt_give() {
+    let stand_in = gathered_alone("gathered-other", "M\ty/checks.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  b\nchanged  gone\n",
+        "y/checks.nix gives only b, and checks.nix gives gone, yet others were evaluated again"
+    );
+}
+
+#[test]
+fn a_change_to_a_checks_own_file_reaches_it() {
+    let stand_in = gathered_alone("gathered-own", "M\tx/checks.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  a\nchanged  gone\n",
+        "x/checks.nix gives a, and checks.nix gives gone, so both are evaluated again"
+    );
 }
 
 #[test]
