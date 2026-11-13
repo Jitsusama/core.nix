@@ -9119,6 +9119,28 @@ Scope {
     // nothing kept (10:16).
     property int warmed: -1
     property real warmedTook: 0
+    // Where the pass's time went between its turns, said as it ends: at a
+    // switch its 83 turns made rows for 350 ms but ended 10 s after the
+    // configuration loaded, against 4 s at the switches before, and
+    // nothing said what the shell did meanwhile (2026-11-13, 00:52).
+    property real warmedFrom: -1
+    property real warmedLast: -1
+    property real warmedWaited: 0
+    property string warmedWaitedAfter: ""
+    property string warmedTurn: ""
+    property int warmedPutOff: 0
+    function warmedTurnBegins(began) {
+        if (warmedFrom < 0)
+            warmedFrom = began;
+        if (warmedLast >= 0 && began - warmedLast > warmedWaited) {
+            warmedWaited = began - warmedLast;
+            warmedWaitedAfter = warmedTurn;
+        }
+    }
+    function warmedTurnEnds(turn) {
+        warmedLast = KeyTimes.now();
+        warmedTurn = turn;
+    }
     Timer {
         id: warmingBegins
 
@@ -9139,14 +9161,19 @@ Scope {
         if (open || opening) {
             warmingOn.stop();
             warmingBegins.restart();
+            warmedPutOff += 1;
+            // A wait an opening made is the opening's, not the shell's.
+            warmedLast = -1;
             return;
         }
         const began = KeyTimes.now();
+        warmedTurnBegins(began);
         warmed += 1;
         if (warmed < sources.length) {
             sources[warmed].warming = true;
             sources[warmed].warming = false;
             warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(sources[warmed].settings?.name ?? "a source");
             warmingOn.start();
             return;
         }
@@ -9158,6 +9185,7 @@ Scope {
         if (place < chordPlaces.length) {
             warmPlace(chordPlaces[place]);
             warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(`${chordPlaces[place]} kept`);
             warmingOn.start();
             return;
         }
@@ -9178,7 +9206,10 @@ Scope {
         const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
         console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
             + ` shell started, ${rows} rows made in ${Math.round(warmedTook)} ms over`
-            + ` ${warmed} turns`);
+            + ` ${warmed} turns, spread over ${Math.round(KeyTimes.now() - warmedFrom)} ms,`
+            + ` the longest wait between them ${Math.round(warmedWaited)} ms after`
+            + ` ${warmedWaitedAfter || "none"}`
+            + (warmedPutOff > 0 ? `, put off ${warmedPutOff} times by an opening` : ""));
     }
 
     // The places a chord opens straight into, as the desktop's binds say
