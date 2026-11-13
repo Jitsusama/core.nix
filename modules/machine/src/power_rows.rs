@@ -51,6 +51,8 @@ const STOPS: [i64; 5] = [60, 70, 80, 90, 100];
 const MINUTE_MS: u64 = 60_000;
 /// The parts of a run said in one, as "45.0 W · 15.0 V".
 const DOT: &str = " \u{b7} ";
+/// The most facts a drawer says; the rest go to its fold (docs/design.md).
+const FACTS: usize = 6;
 
 /// The reads kept between one and the next while Power is watched: the
 /// watts drawn or charging at, and the volts, with when they were last
@@ -367,21 +369,40 @@ impl Say<'_> {
     /// A row's drawer, where it has none, saying what the supply's folder
     /// keeps behind it by the kernel's names, those it says, then the
     /// folder (Joel, 2026-11-11: every row's drawer says a little more).
+    /// A drawer says six facts at most, most decisive first, so past six
+    /// the folder goes to the fold, then what the first six leave out
+    /// before it (Y2YBTS, 2026-11-12).
     fn kernel(&self, mut row: Made, supply: &Value, kept: &[(&str, String)]) -> Made {
         if row.drawer.is_some() {
             return row;
         }
-        let mut facts: Vec<Value> = kept
+        let given: Vec<(&str, &String)> = kept
             .iter()
             .filter(|(_, said)| !said.is_empty())
+            .map(|(name, said)| (*name, said))
+            .collect();
+        let from_name = self.words.name("machine:read-from", &[]);
+        let from = format!("/sys/class/power_supply/{}", text(&supply["name"]));
+        let shown = given.len().min(FACTS);
+        let mut facts: Vec<Value> = given[..shown]
+            .iter()
             .map(|(name, said)| json!({ "name": name, "said": said }))
             .collect();
-        facts.push(json!({ "name": self.words.name("machine:read-from", &[]),
-            "said": format!("/sys/class/power_supply/{}", text(&supply["name"])),
-            "identifies": true }));
-        row.drawer = Some(json!({
+        let mut drawer = json!({
             "eyebrow": self.words.said("machine:read-from", "power", &[]),
-            "eyebrowNames": true, "title": row.name, "facts": facts }));
+            "eyebrowNames": true, "title": row.name });
+        if given.len() < FACTS {
+            facts.push(json!({ "name": from_name, "said": from, "identifies": true }));
+        } else {
+            let mut nerd: Vec<Value> = given[shown..]
+                .iter()
+                .map(|(name, said)| json!({ "label": name, "value": said }))
+                .collect();
+            nerd.push(json!({ "label": from_name, "value": from }));
+            drawer["nerd"] = json!(nerd);
+        }
+        drawer["facts"] = json!(facts);
+        row.drawer = Some(drawer);
         row
     }
 
@@ -455,8 +476,11 @@ impl Say<'_> {
                     ("capacity_level", self.plain(&b["capacity_level"])),
                     ("status", self.plain(&b["status"])),
                 ];
-                kept.extend(self.held(b));
+                let mut held = self.held(b);
+                let designed = held.pop();
+                kept.extend(held);
                 kept.push(self.drawn(b));
+                kept.extend(designed);
                 kept
             }
             "rate" => vec![
