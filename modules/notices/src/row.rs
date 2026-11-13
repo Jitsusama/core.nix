@@ -14,7 +14,9 @@
 //!   since Desktop's head says they're unread; one read while Joel looks
 //!   stays in place saying "read", until he no longer does (VKCF3Z,
 //!   2026-11-09).
-//! - `notices-history`, For You's History, the read, its age alone.
+//! - `notices-history`, For You's History, the read, its age alone,
+//!   served a page at a time as `notices` is, with its count beside, since
+//!   History keeps about a thousand (KP0L6A, 2026-11-13).
 //!
 //! Long because a row, its side and its drawer are one notice's one
 //! reading, which change together, and its cases, nearly half of it, show
@@ -480,7 +482,7 @@ pub fn served(made: [Vec<Value>; 3]) -> [(Vec<Value>, Vec<Value>); 3] {
     [
         page(SUMMARY, mixed),
         (desktop, Vec::new()),
-        (history, Vec::new()),
+        page(HISTORY_SUMMARY, history),
     ]
 }
 
