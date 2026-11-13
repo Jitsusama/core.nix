@@ -3153,8 +3153,8 @@ def test_the_internet_holds_the_acts_the_eero_daemon_does(shell: Shell) -> None:
     shell.step_in()
     acts = ["Run a Speed Test", "Optimize for Conferencing and Gaming"]
     shell.launcher_until(lambda shown: shown["rows"][:2] == acts)
-    # Its step lists every figure, past the six its drawer holds.
-    shell.launcher_until(lambda shown: "Port Randomization" in shown["rows"])
+    # Its step lists every figure, Provider among them, past the six its drawer holds.
+    shell.launcher_until(lambda shown: "Provider" in shown["rows"])
     for row, line, acted, reads in [
         (acts[0], "speedtest", "acted speedtest", "Run a Speed Test · testing"),
         (acts[1], "set nosqm", "acted sqm off", "Optimize for Conferencing and Gaming · off"),
