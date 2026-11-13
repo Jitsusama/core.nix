@@ -101,9 +101,113 @@ pub fn hang(hung: &Hung) -> Breach {
     }
 }
 
+/// A merge the net found broke a test but couldn't revert, so it listed the
+/// test in quarantine naming the merge's PR its owner: the owner fixes it
+/// forward, and only it can, yet the net tells no one. On 12 November two
+/// tests sat quarantined for #3884 for an hour, its owner never told.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unreverted {
+    pub at: i64,
+    pub test: String,
+    pub owner_pr: u64,
+    pub quarantine_pr: u64,
+}
+
+/// The merges the net couldn't revert since `since`, read from its
+/// findings named for then or later.
+#[must_use]
+pub fn unreverted(findings: &Path, since: i64) -> Vec<Unreverted> {
+    let Ok(entries) = fs::read_dir(findings) else {
+        return Vec::new();
+    };
+    let mut read: Vec<Unreverted> = entries
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            name.split('-')
+                .next()
+                .and_then(|at| at.parse::<i64>().ok())
+                .is_some_and(|at| at >= since)
+        })
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        // A revert the net made ends the break itself; only a quarantine
+        // waits on the owner.
+        .filter(|finding| finding["kind"] == "failed" && finding["revert_pr"].is_null())
+        .filter_map(|finding| {
+            Some(Unreverted {
+                at: finding["at"].as_i64()?,
+                test: finding["test"].as_str()?.to_owned(),
+                owner_pr: finding["owner_pr"].as_u64()?,
+                quarantine_pr: finding["quarantine_pr"].as_u64()?,
+            })
+        })
+        .collect();
+    read.sort_by_key(|one| one.at);
+    read
+}
+
+/// What the watcher is told of a merge the net couldn't revert, once, so
+/// it tells the owner.
+#[must_use]
+pub fn owed(unreverted: &Unreverted) -> Breach {
+    Breach {
+        key: format!("unreverted:{}:{}", unreverted.at, unreverted.test),
+        text: format!(
+            "the net couldn't revert #{owner} for {test}, so it quarantined the test in #{held} \
+             naming #{owner} its owner, and told no one: tell #{owner}'s owner to fix it forward \
+             and take its subtests off the entry",
+            owner = unreverted.owner_pr,
+            test = unreverted.test,
+            held = unreverted.quarantine_pr,
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_merge_the_net_quarantined_for_rather_than_reverted_is_read_once() {
+        let findings =
+            std::env::temp_dir().join(format!("cadence-net-unreverted-{}", std::process::id()));
+        fs::create_dir_all(&findings).expect("the folder wasn't made");
+        let keep = |name: &str, finding: serde_json::Value| {
+            fs::write(findings.join(name), finding.to_string()).expect("a finding wasn't kept");
+        };
+        let failed = |at: i64, revert_pr: serde_json::Value| {
+            serde_json::json!({
+                "kind": "failed", "at": at, "test": "vm-a", "owner_pr": 3884,
+                "quarantine_pr": 3977, "revert_pr": revert_pr,
+                "revert_error": "git failed: could not revert",
+            })
+        };
+        keep("90-aaaa-vm-a.json", failed(90, serde_json::Value::Null));
+        keep("200-aaaa-vm-a.json", failed(200, serde_json::Value::Null));
+        keep("300-aaaa-vm-a.json", failed(300, serde_json::json!(3990)));
+        keep(
+            "400-aaaa-vm-a.json",
+            serde_json::json!({"kind": "failed-before", "at": 400, "test": "vm-a"}),
+        );
+        let read = unreverted(&findings, 100);
+        fs::remove_dir_all(&findings).expect("the folder wasn't cleared");
+        assert_eq!(
+            read,
+            [Unreverted {
+                at: 200,
+                test: "vm-a".to_owned(),
+                owner_pr: 3884,
+                quarantine_pr: 3977,
+            }],
+            "only the quarantine since 100 whose revert failed was read"
+        );
+        assert_eq!(
+            owed(&read[0]).key,
+            "unreverted:200:vm-a",
+            "it isn't said once"
+        );
+    }
 
     #[test]
     fn the_nets_newest_hang_since_is_read_from_its_findings_alone() {
