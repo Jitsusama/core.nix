@@ -21,6 +21,7 @@ use crate::arrangement::{self, Arrangement, Desk};
 use crate::clock;
 use crate::closed;
 use crate::drawer;
+use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
 use crate::recent;
 use crate::reopen::{self, Kept};
@@ -77,6 +78,9 @@ pub struct Inputs {
     pub screens: Held,
     /// Where each session's window sat, as kept.
     pub arrangement: Arrangement,
+    /// Where the windows of sessions moving onto pi's host sat, as the
+    /// shell said last.
+    pub kept_places: KeptPlaces,
 }
 
 impl Inputs {
@@ -410,6 +414,7 @@ impl Inputs {
         // boot's sessions, which the shell puts them back by.
         reopens.push(reopen::restoring(self.restore.as_ref()));
         reopens.push(self.arrangement.record());
+        reopens.push(self.kept_places.record());
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(

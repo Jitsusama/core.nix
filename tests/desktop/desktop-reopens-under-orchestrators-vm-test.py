@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import ARRANGED, PI_PRESENCE, kept
+from desktop_session import ARRANGED, KEPT_PLACES, PI_PRESENCE, kept
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
@@ -615,11 +615,6 @@ def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) 
         },
         "hosted": {"host": "harbour-attended", "conversation": session, "view": ["sleep", "607"]},
     }
-    machine.wait_until_succeeds(
-        desktop.in_session("ls -d ~/.local/state/quickshell/by-shell/*"),
-        timeout=dt.timedelta(seconds=60),
-    )
-    shell = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
     try:
         kept(desktop, f"{PI_PRESENCE}/keptvw.json", presence)
         machine.wait_until_succeeds(
@@ -627,12 +622,13 @@ def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) 
             timeout=dt.timedelta(seconds=60),
         )
         desktop.as_account("systemctl --user stop quickshell")
-        # Kept on a workspace since gone, as both were at 13:41:38.
+        # Kept on a workspace since gone, as both were at 13:41:38, by the agents daemon, which
+        # serves it to the shell as it starts.
         at = int(desktop.as_account("date +%s%3N"))
         kept(
             desktop,
-            f"{shell}/kept-places.json",
-            {session: {"workspace": 999, "column": 1, "at": at}},
+            KEPT_PLACES,
+            {"v": 1, "places": {session: {"workspace": 999, "column": 1, "at": at}}},
         )
         desktop.as_account("systemctl --user start quickshell")
         machine.wait_until_succeeds(
@@ -646,10 +642,10 @@ def test_a_shell_started_again_opens_no_viewer_kept_before_it(desktop: Desktop) 
             viewers = [w for w in desktop.windows() if w["app_id"] == f"pi-hosted.{session}"]
             assert viewers == [], f"a viewer opened as the shell started: {viewers}"
             time.sleep(0.5)
-        still = json.loads(desktop.as_account(f"cat {shell}/kept-places.json"))
-        assert session in still, still
+        still = json.loads(desktop.as_account(f"cat {KEPT_PLACES}"))
+        assert session in still["places"], still
     finally:
-        kept(desktop, f"{shell}/kept-places.json", {})
+        kept(desktop, KEPT_PLACES, {"v": 1, "places": {}})
         desktop.as_account(f"rm -f {PI_PRESENCE}/keptvw.json; pkill -f 'sleep 60[678]'; true")
 
 
