@@ -3482,8 +3482,9 @@ class StandIn:
         """Listen on `path`, holding nothing yet."""
         self.path = path
         self.held: dict[str, Json] = {}
-        # Each client watching, by what it watches (StandIn.theirs).
-        self.clients: dict[socket.socket, str] = {}
+        # Each client's watches, by the id it asked each with, and what each watches
+        # (StandIn.theirs): a place's rows as "all", the keys it's about to draw as "ahead".
+        self.clients: dict[socket.socket, dict[str, str]] = {}
         # Every client that came, watching or not, so each is let go when it stops: one left
         # open, as a connection that only said hello, kept the shell talking to a stand-in
         # whose socket was gone, and the next case's never heard its watch (RCTRF8, 2026-11-12).
@@ -3528,11 +3529,14 @@ class StandIn:
 
     @staticmethod
     def watched(asked: Json) -> str:
-        """Give what a watch asks for: its one kind, "place:" a place's served rows, "" all.
+        """Give what a watch asks for: "keys:" its keys, its one kind, "place:" a place's, "" all.
 
         A place's ready rows watch a list of kinds, its rows and those beside them, narrowed to
         the place (ReadyRows.qml), as Power's rows and headline are watched of the machine daemon.
+        Keys named narrow it to them whatever the kind, as the machine daemon's watch does.
         """
+        if "keys" in asked:
+            return "keys:" + " ".join(asked["keys"])
         kind = asked.get("kind")
         if isinstance(kind, str):
             return kind
@@ -3541,9 +3545,14 @@ class StandIn:
     @staticmethod
     def theirs(watching: str, record: Json) -> bool:
         """Give whether a client watching `watching` is told of `record`."""
+        key = str(record["key"])
+        if watching.startswith("keys:"):
+            return key in watching.removeprefix("keys:").split(" ")
         if watching.startswith("place:"):
-            # A served record's key names its place second, "row:power:charge", "head:power".
-            key = str(record["key"])
+            # A served record's key names its place second, "row:power:charge", "head:power",
+            # and a drawer is told only to a watch naming it (the machine daemon's APART).
+            if record.get("kind") == "drawer":
+                return False
             return key.split(":")[1] == watching.removeprefix("place:")
         return watching in ("", record.get("kind"))
 
@@ -3565,8 +3574,12 @@ class StandIn:
                 asked = json.loads(line)
                 if asked.get("ask") == "hello":
                     self.write(client, {"id": "hello", "version": 1, "state": "answering"})
-                elif asked.get("ask") == "watch" and asked.get("id") == "all":
-                    self.write(client, {"id": "all"}, watching=self.watched(asked))
+                elif asked.get("ask") == "watch" and asked.get("id") in ("all", "ahead"):
+                    self.write(client, {"id": asked["id"]}, watching=self.watched(asked))
+                elif asked.get("ask") == "unwatch":
+                    with self.lock:
+                        self.clients.get(client, {}).pop(str(asked.get("id")), None)
+                    self.write(client, {"id": asked.get("id")})
                 else:
                     self.write(client, {"id": asked.get("id"), "records": []})
 
@@ -3580,7 +3593,7 @@ class StandIn:
             if watching is not None:
                 records = [record for record in self.held.values() if self.theirs(watching, record)]
                 said = {**said, "records": records}
-                self.clients[client] = watching
+                self.clients.setdefault(client, {})[str(said["id"])] = watching
             client.sendall((json.dumps(said) + "\n").encode())
 
     def told(self, changed: list[Json], gone: list[str]) -> float:
@@ -3591,22 +3604,39 @@ class StandIn:
             for key in gone:
                 self.held.pop(key, None)
             at = time.monotonic() * 1000
-            for client, watched in list(self.clients.items()):
-                theirs = [record for record in changed if self.theirs(watched, record)]
-                said = {"id": "all", "changed": theirs, "gone": gone}
-                try:
-                    client.sendall((json.dumps(said) + "\n").encode())
-                except OSError:
-                    # A connection the shell let go, as Daemon.qml does once it's refused.
-                    del self.clients[client]
+            for client, watches in list(self.clients.items()):
+                for ident, watched in list(watches.items()):
+                    theirs = [record for record in changed if self.theirs(watched, record)]
+                    said = {"id": ident, "changed": theirs, "gone": gone}
+                    try:
+                        client.sendall((json.dumps(said) + "\n").encode())
+                    except OSError:
+                        # A connection the shell let go, as Daemon.qml does once it's refused.
+                        del self.clients[client]
+                        break
         return at
 
     def watching(self, watched: str, deadline: float) -> bool:
         """Give whether a client watches `watched` by `deadline`, so what it's told is heard."""
         while time.monotonic() < deadline:
             with self.lock:
-                if watched in self.clients.values():
+                if any(watched in watches.values() for watches in self.clients.values()):
                     return True
+            time.sleep(launcher_on_niri.POLL)
+        return False
+
+    def ahead(self, key: str, deadline: float, *, watched: bool = True) -> bool:
+        """Give whether a client watches `key` ahead by `deadline`, or none, if not `watched`."""
+        while time.monotonic() < deadline:
+            with self.lock:
+                asked = [
+                    watching.removeprefix("keys:").split(" ")
+                    for watches in self.clients.values()
+                    for watching in watches.values()
+                    if watching.startswith("keys:")
+                ]
+            if any(key in keys for keys in asked) == watched:
+                return True
             time.sleep(launcher_on_niri.POLL)
         return False
 
@@ -3903,6 +3933,172 @@ def test_a_charge_told_in_batterys_step_is_said_there(shell: Shell, machine: Sta
     shell.close_launcher()
     assert watched, "Power's rows were never watched in Battery's step"
     assert selected["side"] == "77%", selected
+
+
+def holds(name: str) -> Callable[[Json], bool]:
+    """Give a test of what the launcher shows: whether a row named `name` is listed."""
+    return lambda shown: name in shown["rows"]
+
+
+def test_a_drawer_served_apart_is_watched_only_while_its_row_is_drawn(
+    shell: Shell, machine: StandIn
+) -> None:
+    """A drawer the daemon serves apart from its row is asked for as it's drawn, and let go.
+
+    A drawer's kernel counts move on every read, so the machine daemon tells a row's drawer only
+    to a watch naming its key (VKCF3Z, 2026-11-12, d136b0dd): the launcher watches it ahead once
+    its row is drawn, draws what it's told, and lets it go once the launcher closes, so nothing
+    keeps the daemon reading for a drawer no one can see.
+    """
+    key = "drawer:power:charge"
+    drawer = {
+        "title": "Charge",
+        "body": "The battery's own files, as Linux keeps them.",
+        "facts": [{"name": "energy_now", "said": "40,000,000"}],
+    }
+    charge = battery(80)[1]
+    machine.told(
+        [
+            {**charge, "row": {**charge["row"], "drawer": key}},
+            {"key": key, "kind": "drawer", "drawer": drawer},
+        ],
+        [],
+    )
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    for step, holding in (("Machine", "Power"), ("Power", "Battery"), ("Battery", "Charge")):
+        shell.down_to(step)
+        shell.step_in()
+        shell.launcher_until(holds(holding))
+    shell.down_to("Charge")
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    asked = machine.ahead(key, deadline)
+    if asked:
+        shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+        moved = [{"name": "energy_now", "said": "39,000,000"}]
+        machine.told([{"key": key, "kind": "drawer", "drawer": {**drawer, "facts": moved}}], [])
+        shell.launcher_until(lambda shown: "39,000,000" in shown["drawer"]["values"])
+    shell.close_launcher()
+    let_go = machine.ahead(key, deadline, watched=False)
+    assert asked, "Charge's drawer, served apart, was never watched as it was drawn"
+    assert let_go, "Charge's drawer was still watched once the launcher closed"
+
+
+def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
+    shell: Shell, machine: StandIn
+) -> None:
+    """A drawer served apart for the row beside the one drawn is held before a key reaches it.
+
+    Watched only for the row drawn, a key to the next row left the row before's drawer out
+    beside it a round trip, and its coming was never timed from the key (VKCF3Z, 2026-11-12,
+    bcbe9a24). So the drawers of the rows beside it are watched too, and a key to one brings
+    its own drawer, said presented from that key.
+    """
+    on_charge(shell, machine)
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    beside = machine.ahead("drawer:power:rate", deadline)
+    shell.normal()
+    said = said_once(shell, walked_to_rate(shell), DRAWER_SAID)
+    lines = [line for line in said.splitlines() if "drawer for" in line]
+    shown = shell.showing()["drawer"]
+    shell.close_launcher()
+    assert beside, "Rate's drawer, beside the one drawn, wasn't watched before a key reached it"
+    assert any('drawer for "power:rate" presented' in line for line in lines), (
+        f"Rate's drawer was never said presented from the key that reached it: {lines}"
+    )
+    assert shown["title"] == "Rate", f"the drawer beside Rate's row was {shown['title']!r}"
+
+
+def test_a_drawer_apart_is_held_again_as_the_launcher_opens_again(
+    shell: Shell, machine: StandIn
+) -> None:
+    """Opened again on Charge, the launcher shows its drawer, still watched ahead from before.
+
+    Each opening watches the place and its drawers ahead again, and a whole answer to the place
+    that came after the drawers' let them go, so Charge's drawer never showed again until it
+    changed (2026-11-12).
+    """
+    on_charge(shell, machine)
+    shell.close_launcher()
+    on_charge(shell, machine)
+    shell.close_launcher()
+
+
+def walked_to_rate(shell: Shell) -> int:
+    """Walk down from Charge to Rate by letter, and give the log's mark at the key reaching it.
+
+    By a letter, as Joel walks rows, since an arrow sent here comes with no press time to say
+    its drawer from. Battery's own Copy row lands before or after Rate as Rate is placed.
+    """
+
+    def named(shown: Json) -> object:
+        return (shown["selected"] or {}).get("name")
+
+    def left(was: object, shown: Json) -> bool:
+        return named(shown) != was
+
+    for _ in range(3):
+        since = shell.mark()
+        was = named(shell.showing())
+        shell.send_chars("j")
+        shell.launcher_until(functools.partial(left, was))
+        if named(shell.showing()) == "Rate":
+            return since
+    unreached = f"three keys down from Charge never reached Rate: {shell.showing()}"
+    raise AssertionError(unreached)
+
+
+def on_charge(shell: Shell, machine: StandIn) -> None:
+    """Serve Charge and Rate with drawers apart, and step through Machine to Charge.
+
+    It leaves the launcher open on Charge with its drawer out.
+    """
+    charge = battery(80)[1]
+    drawn = {
+        "charge": {"title": "Charge", "facts": [{"name": "energy_now", "said": "40,000,000"}]},
+        "rate": {"title": "Rate", "facts": [{"name": "power_now", "said": "9,000,000"}]},
+    }
+    rows = [
+        {
+            **charge,
+            "key": f"row:power:{part}",
+            "row": {
+                **charge["row"],
+                "thing": f"power:{part}",
+                "name": drawer["title"],
+                "order": 2 + nth,
+                "drawer": f"drawer:power:{part}",
+            },
+        }
+        for nth, (part, drawer) in enumerate(drawn.items())
+    ]
+    apart = [
+        {"key": f"drawer:power:{part}", "kind": "drawer", "drawer": drawer}
+        for part, drawer in drawn.items()
+    ]
+    machine.told(rows + apart, [])
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("machine", selecting="Machine")
+    for step, holding in (
+        ("Machine", "Power"),
+        ("Power", "Battery"),
+        ("Battery", "Charge"),
+    ):
+        shell.down_to(step)
+        shell.step_in()
+        shell.launcher_until(holds(holding))
+    shell.down_to("Charge")
+    try:
+        shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
+    except AssertionError as failed:
+        with machine.lock:
+            watches = [sorted(watches.values()) for watches in machine.clients.values()]
+        said, _ = shell.said_since(0)
+        drawers = [report for report in said if "drawer" in report][-12:]
+        message = f"{failed}\nwatched of the stand-in: {watches}\nsaid of drawers: {drawers}"
+        raise AssertionError(message) from failed
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:

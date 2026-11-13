@@ -9,7 +9,7 @@ pub const VERSION: u64 = 1;
 
 /// The kinds of record this daemon keeps: what it reads, then what it
 /// makes of them, a place's ready rows and its headline (`MADE`).
-pub const KINDS: [&str; 29] = [
+pub const KINDS: [&str; 30] = [
     "processor",
     "memory",
     "disk",
@@ -39,11 +39,18 @@ pub const KINDS: [&str; 29] = [
     "link",
     "row",
     "head",
+    "drawer",
 ];
 
 /// The kinds made of what's read rather than read themselves, each
-/// keyed by its place: `row:heat:processor:0`, `head:heat`.
-pub const MADE: [&str; 2] = ["row", "head"];
+/// keyed by its place: `row:heat:processor:0`, `head:heat`, and the
+/// drawer a row names, `drawer:heat:processor:0`.
+pub const MADE: [&str; 3] = ["row", "head", "drawer"];
+
+/// The kind told only to a watch naming its key, never to one of its
+/// kind or place: a drawer's kernel counts move on every read, and only
+/// the row the launcher rests on shows them (VKCF3Z, 2026-11-12).
+pub const APART: &str = "drawer";
 
 /// The place a made record's key names: `heat` for `row:heat:fan:1`.
 pub fn place_of(key: &str) -> Option<&str> {
@@ -249,8 +256,14 @@ mod tests {
             (vec!["row".into(), "head".into()], Some(vec!["heat".into()]))
         );
         assert_eq!(
-            ["row:heat:fan:dell_smm:1", "head:heat", "sensor:coretemp"].map(place_of),
-            [Some("heat"), Some("heat"), None]
+            [
+                "row:heat:fan:dell_smm:1",
+                "head:heat",
+                "drawer:heat:fan:dell_smm:1",
+                "sensor:coretemp"
+            ]
+            .map(place_of),
+            [Some("heat"), Some("heat"), Some("heat"), None]
         );
     }
 

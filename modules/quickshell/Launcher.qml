@@ -7560,8 +7560,21 @@ Scope {
     // arrow's is from when it was heard where it came with no press time,
     // as a glide is (arrowed).
     property real drawerKeyAt: 0
+    // Whether the drawer followed last is served apart and wasn't told yet,
+    // so it's timed from its key as it comes, a round trip on, rather than
+    // never (VKCF3Z, 2026-11-12, bcbe9a24).
+    property bool drawerAwaited: false
+    function drawerUnread(row) {
+        return typeof row?.drawerUnread === "function" && row.drawerUnread();
+    }
     onSelectedChanged: {
-        drawerKeyAt = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
+        // A row its daemon tells again while its drawer is still to follow,
+        // or still to come, is selected anew with no key being handled, and
+        // keeps the key that reached it: Every Count, told each second, lost
+        // 2 of 131 drawers' times in the lab (2026-11-12).
+        const keyed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
+        if (keyed > 0 || !(drawerFollowDue || drawerAwaited))
+            drawerKeyAt = keyed;
         // Once the event that selected it has run, since a step selects
         // its first row and again the row its arriving rows put first, and
         // the first read was thrown away: 4 to 7 ms a step into Desktop in
@@ -7590,8 +7603,10 @@ Scope {
         const out = drawerOut;
         drawerRow = selected;
         drawerAsked = Math.round(KeyTimes.now() - began);
-        // A row with none keeps no key for a drawer its row brings later.
-        if (drawerWanted === null)
+        // A row with none keeps no key for a drawer its row brings later,
+        // but one whose drawer apart is still to come keeps it.
+        drawerAwaited = drawerWanted === null && drawerUnread(drawerRow);
+        if (drawerWanted === null && !drawerAwaited)
             drawerKeyAt = 0;
         // A drawer already out is made again for the row at once; one
         // coming out is made as it settles.
@@ -7632,12 +7647,12 @@ Scope {
     // One a key brought is timed too from that key to the frame niri
     // presented with it, said as it's presented and by its place as the
     // launcher closes (Presented.js), as a daemon's change is.
-    function drawerMade(began, making) {
+    function drawerMade(began, making, cameAs) {
         if (!open)
             return;
         const key = drawerRow?.key ?? "";
         const made = KeyTimes.now();
-        const came = Pacing.drawerCame(drawerJoined);
+        const came = cameAs ?? Pacing.drawerCame(drawerJoined);
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
             place: drawerPlaceOf(drawerRow), came } : null;
         drawerKeyAt = 0;
@@ -7676,6 +7691,10 @@ Scope {
             const acted = drawerActed(drawerWanted);
             if (!root.sameMoment(drawerShows, acted))
                 drawerShows = acted;
+            if (drawerAwaited) {
+                drawerAwaited = false;
+                drawerMade(KeyTimes.now(), 0, "a round trip after its row");
+            }
         } else if (drawerWanted !== null && drawerKeyAt > 0) {
             // One a key brought comes with the row it followed, unrested:
             // only its going rests, so walking past rows with none to
@@ -7695,6 +7714,7 @@ Scope {
             && JSON.stringify(shows) === JSON.stringify(wanted);
     }
     function drawerSettled() {
+        drawerAwaited = false;
         const began = KeyTimes.now();
         drawerOut = drawerWanted !== null;
         if (!drawerOut)

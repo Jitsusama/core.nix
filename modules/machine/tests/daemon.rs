@@ -629,6 +629,71 @@ fn machines_rows_are_made_for_its_watch_and_say_the_programs_once_read() {
 }
 
 #[test]
+fn a_rows_drawer_is_told_apart_and_only_to_a_watch_naming_it() {
+    let words = launchers();
+    let running = Running::worded("drawers-apart", &words);
+    let mut client = running.client();
+    let said =
+        client.ask(&json!({"id": "machine", "ask": "watch", "kind": "row", "place": "machine"}));
+    let records = &said["records"];
+    // A drawer's kernel counts move on every read, and told in the row
+    // they'd make every row a change heard by every watcher of Machine
+    // (VKCF3Z, 2026-11-12): the row names its drawer, served apart.
+    assert_eq!(
+        record(records, "row:machine:memory:used")["row"]["drawer"],
+        "drawer:machine:memory:used",
+        "a row names its drawer by key"
+    );
+    let drawers: Vec<&Value> = records
+        .as_array()
+        .map(|all| all.iter().filter(|one| one["kind"] == "drawer").collect())
+        .unwrap_or_default();
+    assert!(
+        drawers.is_empty(),
+        "drawers told to a watch of the place: {drawers:?}"
+    );
+    let mut ahead = running.client();
+    let drawn = ahead.ask(&json!({
+        "id": "ahead", "ask": "watch", "kind": "row", "keys": ["drawer:machine:memory:used"]
+    }));
+    let drawer = &record(&drawn["records"], "drawer:machine:memory:used")["drawer"];
+    assert_eq!(drawer["title"], "Used", "the drawer, to a watch naming it");
+    let meminfo = |free: u64, available: u64| {
+        std::fs::write(
+            running.root().join("proc/meminfo"),
+            format!(
+                "MemTotal:       16000000 kB\nMemFree:         {free} kB\n\
+                 MemAvailable:    {available} kB\nActive(anon):    3000000 kB\n\
+                 Zswap:            100000 kB\nZswapped:         400000 kB\n\
+                 HugePages_Total:       0\n"
+            ),
+        )
+        .unwrap();
+    };
+    // What's free moves only Used's drawer, never its side.
+    meminfo(2_100_000, 8_000_000);
+    let moved = ahead.changed("drawer:machine:memory:used");
+    let free = moved["drawer"]["facts"]
+        .as_array()
+        .and_then(|facts| facts.iter().find(|fact| fact["name"] == "MemFree"))
+        .map(|fact| fact["said"].clone());
+    assert_eq!(
+        free,
+        Some(json!("2,100,000 kB")),
+        "the drawer as it moved: {moved}"
+    );
+    // What's available moves its side, and the first change the place's
+    // watch hears of Used is that one, since the drawer's moved no row.
+    meminfo(2_100_000, 7_000_000);
+    let row = client.changed("row:machine:memory:used");
+    let side = row["row"]["side"][0]["said"].as_str().unwrap_or_default();
+    assert!(
+        side.starts_with("9.22 GB"),
+        "the place's watch heard Used change though only its drawer moved: {row}"
+    );
+}
+
+#[test]
 fn the_disks_rows_are_a_place_of_their_own_each_still_machines() {
     let words = launchers();
     let running = Running::worded("disk-rows", &words);

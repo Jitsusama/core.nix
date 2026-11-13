@@ -86,7 +86,9 @@ use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
-use machine::interface::{Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of, refused};
+use machine::interface::{
+    APART, Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of, refused,
+};
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
@@ -229,7 +231,8 @@ impl Watch {
     fn wants(&self, key: &str) -> bool {
         let named = match &self.keys {
             Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key).is_some_and(|kind| self.kinds.iter().any(|k| k == kind)),
+            None => kind_of(key)
+                .is_some_and(|kind| kind != APART && self.kinds.iter().any(|k| k == kind)),
         };
         named && placed(key, self.places.as_deref())
     }
@@ -924,15 +927,17 @@ fn ready(daemon: &mut Daemon, place: Place) -> rows::Ready {
 /// Makes a place's rows and headline again from what's held, keeps them,
 /// and says those that changed and the keys of those gone.
 fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
-    let ready = ready(daemon, place);
+    let mut ready = ready(daemon, place);
     let head = ready
         .head
         .map(|head| json!({"key": place.head(), "kind": "head", "head": head}));
+    let mut beside: Vec<Value> = head.into_iter().collect();
+    beside.extend(ready.rows.iter_mut().filter_map(drawn_apart));
     let moved = daemon
         .kept
         .entry(place.name)
         .or_default()
-        .take(ready.rows, head.into_iter().collect());
+        .take(ready.rows, beside);
     for key in &moved.gone {
         daemon.held.remove(key);
     }
@@ -942,6 +947,21 @@ fn made(daemon: &mut Daemon, place: Place) -> (Vec<Value>, Vec<String>) {
         }
     }
     (moved.changed, moved.gone)
+}
+
+/// A row's drawer as a record of its own, `drawer:<place>:<id>`, the row
+/// left naming it by that key (ReadyRows.js's drawerServed), so a read
+/// that moves only a drawer's counts changes no row and is told only to
+/// a watch naming the drawer (`APART`); none where the row has no drawer.
+fn drawn_apart(row: &mut Value) -> Option<Value> {
+    let id = row["key"].as_str()?.strip_prefix("row:")?;
+    let key = format!("{APART}:{id}");
+    let fields = row.as_object_mut()?;
+    if !fields.get("drawer").is_some_and(Value::is_object) {
+        return None;
+    }
+    let drawer = fields.insert("drawer".to_owned(), json!(key))?;
+    Some(json!({"key": key, "kind": APART, "drawer": drawer}))
 }
 
 /// Asks the processor's telemetry at `path` while it's asked
@@ -2145,7 +2165,9 @@ fn held(
         None => daemon
             .held
             .iter()
-            .filter(|(key, _)| kind_of(key).is_some_and(|kind| wanted.contains(kind)))
+            .filter(|(key, _)| {
+                kind_of(key).is_some_and(|kind| kind != APART && wanted.contains(kind))
+            })
             .filter(|(key, _)| placed(key, places))
             .map(|(_, record)| record.clone())
             .collect(),

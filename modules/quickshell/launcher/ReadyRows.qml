@@ -9,7 +9,9 @@ pragma ComponentBehavior: Bound
 // watches beside its rows, a summary, a head or a drawer served apart, are held by key and never
 // placed. A row is made as every place's are by `thing`, its served acts its verbs, which ask
 // back on the same socket, copy, open a link or step within the launcher, so a place moving
-// onto it keeps no act of its own.
+// onto it keeps no act of its own. Long because holding, placing, making and acting all read
+// the one map of what's held, as a change remakes only the rows it touched: split, each part
+// would be handed the others' state and a change would cross them all.
 import QtQuick
 import Quickshell
 import qs
@@ -32,6 +34,13 @@ Scope {
     // The keys of rows the place is about to draw more of, its selected row's, so the daemon
     // reads their drawers and inside rows only while they're ahead (ready-rows.md's Notes).
     property var ahead: []
+    // The keys of the drawers served apart rather than in their rows that are watched ahead
+    // while the place is live: those of the rows beside the one last drawn and inside it. Their
+    // kernel counts move on every read, so they're told only while they can be reached, never to
+    // every watcher of the place (VKCF3Z, 2026-11-12, d136b0dd), and a key to the next row, or a
+    // step into it, finds its drawer held, so it comes in its own frame rather than a round trip
+    // after its row (bcbe9a24).
+    property var drawersAhead: []
     // Whether it's watched: false where there's no runtime folder, as in
     // a test with no session, so nothing is asked of a socket never made.
     property bool active: !!Quickshell.env("XDG_RUNTIME_DIR")
@@ -106,7 +115,8 @@ Scope {
             keptThroughGap: ready.keptThroughGap
             live: ready.live
             paced: ready.paced
-            ahead: ready.ahead
+            ahead: ready.live && ready.drawersAhead.length > 0
+                ? ready.ahead.concat(ready.drawersAhead) : ready.ahead
             onHeard: (changed, gone) => ready.took(changed, gone)
         }
     }
@@ -449,8 +459,20 @@ Scope {
     }
 
     // A row's drawer as Drawer.qml draws one, its times said as of now, its
-    // own or the one served beside it.
-    function drawerOf(row) {
+    // own or the one served beside it. With `key`, its row's, the drawers
+    // apart of the rows inside it are watched ahead too.
+    function drawerOf(row, key) {
+        const near = Ready.inside(keys, held, row?.parent ?? "")
+            .concat(key === undefined ? [] : Ready.inside(keys, held, key))
+            .map(one => Ready.rowOf(held[one])?.drawer)
+            .filter(drawer => typeof drawer === "string" && drawer !== "");
+        // Asked once drawn, not while it's made, so a row only passed
+        // over asks nothing; one not yet told comes a round trip on,
+        // remaking its row.
+        if (near.join("\n") !== drawersAhead.join("\n"))
+            Qt.callLater(() => {
+                ready.drawersAhead = near;
+            });
         return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
     }
 
@@ -549,8 +571,11 @@ Scope {
             // Only a row serving a drawer holds one, so a row without, as
             // Power's Charger is, isn't taken for a thing missing its say
             // (goes-places' undrawn, KP0L6A's 439b18d9).
-            drawer: row.drawer ? () => actsNamed(drawerOf(row), acting.verbs && !steps ? acts : [],
-                firstOwn) : undefined
+            drawer: row.drawer ? () => actsNamed(drawerOf(row, key),
+                acting.verbs && !steps ? acts : [], firstOwn) : undefined,
+            // One served apart is asked as it's drawn and in a round trip on,
+            // so a terminal's show asks again (Launcher.qml's drawerOf).
+            drawerUnread: typeof row.drawer === "string" ? () => !(row.drawer in held) : undefined
         }, acting, asking, copying, fields ?? {}, {
             // The words it's found by beyond its name, the daemon's and the
             // place's, made ready to match as the search reads them

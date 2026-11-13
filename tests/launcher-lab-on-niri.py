@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import statistics
 import subprocess
 import threading
@@ -251,6 +252,102 @@ def test_each_step_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) ->
                 f"{round(statistics.median(spans))} ms, p90 {p90(spans)}",
                 flush=True,
             )
+
+
+# The row of Machine whose rows the drawer walk steps between, by its name, unless the run says
+# otherwise: Memory's parts, whose drawers say kernel counts that move on every read.
+DRAWN = "Memory"
+
+# A drawer's line as the shell says it once niri presented it (launcher/Presented.js).
+DRAWER_PRESENTED = re.compile(
+    r'launcher: drawer for "([^"]+)" presented (\d+) ms from the key: .*, ([^,]+)$'
+)
+
+
+def drawer_said(shell: Shell, mark: int) -> re.Match[str] | None:
+    """Give the first drawer said presented since the mark, waiting a while for niri's frame."""
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        for line in said_after(shell, mark, "drawer for "):
+            found = DRAWER_PRESENTED.search(line)
+            if found:
+                return found
+        time.sleep(launcher_on_niri.POLL)
+    return None
+
+
+def test_each_drawer_is_timed(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
+    """Walk the rows inside one of Machine's by letter, down and up, and print each drawer's line.
+
+    A drawer served apart once came a round trip after its row, the row before's out meanwhile
+    and never timed (VKCF3Z, 2026-11-12, bcbe9a24). So each key's drawer is said from the key,
+    with how it came, and whether the drawer seen first once the selection moved was another
+    row's: on both sides, as the frame before a drawer follows shows the last one on either.
+    """
+    within = os.environ.get("LAB_DRAWN", DRAWN)
+    rounds = int(os.environ.get("LAB_ROUNDS", str(ROUNDS)))
+    opened(shell, "home")
+    shell.close_launcher()
+    stepped(shell, "Machine")
+    shell.down_to(within)
+    shell.step_in()
+    shell.normal()
+    # Its own rows, each with a drawer, not the acts that follow them, as Copy, which have none.
+    things = cast("list[Json]", shell.showing()["things"])
+    drawn = [thing for thing in things if not str(thing["is"]).startswith("return:")]
+    walk = "j" * (len(drawn) - 1) + "k" * (len(drawn) - 1)
+    timed: list[int] = []
+    others = unsaid = 0
+    came: dict[str, int] = {}
+    for round_ in range(rounds):
+        for letter in walk:
+            was = (shell.showing()["selected"] or {}).get("name")
+            mark = shell.mark()
+            shell.send_chars(letter)
+            first: list[object] = []
+
+            def reached(shown: Json, was: object = was, first: list[object] = first) -> bool:
+                selected = (shown["selected"] or {}).get("name")
+                drawer = shown["drawer"] or {}
+                if selected != was and not first:
+                    first.append(drawer.get("title") if drawer.get("shown") else None)
+                return (
+                    selected != was
+                    and bool(drawer.get("shown"))
+                    and (drawer.get("title") == selected)
+                )
+
+            shell.launcher_until(reached)
+            name = (shell.showing()["selected"] or {}).get("name")
+            other = first[0] not in {None, name}
+            others += other
+            found = drawer_said(shell, mark)
+            if found is None:
+                unsaid += 1
+                # What the shell said of the drawer since the key, so one never said is read.
+                with capsys.disabled():
+                    for line in said_after(shell, mark, "drawer"):
+                        print(f"lab-drawer-unsaid {line.split('qml: ', 1)[-1]}", flush=True)
+            else:
+                timed.append(int(found.group(2)))
+                came[found.group(3)] = came.get(found.group(3), 0) + 1
+            with capsys.disabled():
+                print(
+                    f"lab-drawer {within} round {round_}: {name}, "
+                    f"{found.group(2) + ' ms, ' + found.group(3) if found else 'never said'}"
+                    f"{', first showing ' + repr(first[0]) if other else ''}",
+                    flush=True,
+                )
+    shell.close_launcher()
+    shell.launcher_until(lambda shown: not shown["open"])
+    with capsys.disabled():
+        print(
+            f"lab-drawer {within}: {len(timed)} presented a median "
+            f"{round(statistics.median(timed)) if timed else 0} ms, "
+            f"p90 {p90(timed) if timed else 0}; {unsaid} never said; {others} showed another "
+            f"row's drawer first; came {json.dumps(came)}",
+            flush=True,
+        )
 
 
 def test_a_chord_through_a_restart(shell: Shell, capsys: pytest.CaptureFixture[str]) -> None:
