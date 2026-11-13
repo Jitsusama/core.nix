@@ -44,7 +44,7 @@ use crate::runs::{Evaluation, Run};
 
 /// What evaluating the VM tests read, each by its path from the
 /// repository's root.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Reads {
     /// Files and folders opened, looked up or followed, which were there.
     pub(crate) read: BTreeSet<String>,
