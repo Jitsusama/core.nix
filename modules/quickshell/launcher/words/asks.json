@@ -36,7 +36,10 @@
       "in": "asks",
       "name": "Release It",
       "verb": "release",
-      "glyph": "passwords"
+      "glyph": "passwords",
+      "said": {
+        "arms": "releases"
+      }
     },
     {
       "id": "verb:refuse",
@@ -45,7 +48,8 @@
       "in": "asks",
       "name": "Refuse It",
       "verb": "refuse",
-      "glyph": "passwords"
+      "glyph": "passwords",
+      "key": "r"
     }
   ]
 }

@@ -4,8 +4,9 @@
 // tests have (modules/secret-asks/tests/daemon.rs), and two asks put up
 // before it starts, as an agent puts one up. Asks lists both as they're
 // served, says how many wait in the daemon's words, and gives For You each
-// as a thing to do that blocks its agent. Return on one is Release It, the
-// right arrow's verbs Release It and Refuse It: while the screen is locked
+// as a thing to do that blocks its agent. Return on one is Release It, armed
+// by a first Return as it waits and by nothing once it's answered, and r is
+// Refuse It, the right arrow's verbs both: while the screen is locked
 // the yes is refused, said in the daemon's words, and op never runs;
 // unlocked, it releases the item to the checker once, and For You lets
 // that ask go. Refuse It on the other refuses it, op still having run
@@ -145,6 +146,10 @@ ShellRoot {
         same("Return releases, and the verbs are Release It and Refuse It",
             [row.verb, row.verbs().map(one => one.name)],
             ["release", ["Release It", "Refuse It"]]);
+        same("a waiting ask's first Return arms it, saying a second releases", row.arms,
+            "releases");
+        same("r refuses, and Release It is Return's alone",
+            row.verbs().map(one => one.actKey), ["", "r"]);
         locked.setText("yes");
         row.run();
         waits.until("a locked yes refused", () => asking.refusals.length > 0, lockedOut);
@@ -163,6 +168,7 @@ ShellRoot {
     function released() {
         same("the yes ran the checker", answerOf(ran).exit, 0);
         same("op ran once", lines(opRan), 1);
+        same("an answered ask arms nothing", rowOf(root.yes).arms, "");
         same("For You holds only the ask still waiting",
             asks.forYou.map(one => one.row.key), [`ask:${root.no}`]);
         rowOf(root.no).verbs()[1].run();

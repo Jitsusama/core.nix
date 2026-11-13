@@ -341,10 +341,13 @@ QtObject {
         const worded = { name: "Open the Link", glyph: "L" };
         Expect.same("an act is said in its key's words where it's served none",
             Ready.actWorded(acts[0], worded, roles),
-            { name: "Open the Link", glyph: "L", side: "" });
+            { name: "Open the Link", glyph: "L", side: "", actKey: "" });
         Expect.same("and in its sender's where it is", Ready.actWorded({
             key: "verb:notice:reply", name: "Reply", glyph: "agent" }, worded, roles),
-            { name: "Reply", glyph: "A", side: "" });
+            { name: "Reply", glyph: "A", side: "", actKey: "" });
+        Expect.same("an act takes the key its words give it", Ready.actWorded({
+            key: "verb:refuse" }, { name: "Refuse It", glyph: "L", actKey: "r" }, roles),
+            { name: "Refuse It", glyph: "L", side: "", actKey: "r" });
         const reads = { ask: "mark", notices: [7], read: true };
         Expect.same("an act the shell does sends its also once done", [
             { key: "verb:notice:goTo", go: "slack", also: reads },
@@ -357,7 +360,7 @@ QtObject {
             { key: "verb:copy", copy: "hi" }].map(Ready.alsoOf), [null, null, null]);
         Expect.same("a link says its host at its side", Ready.actWorded({
             key: "verb:notice:link", side: "github.com" }, worded, roles),
-            { name: "Open the Link", glyph: "L", side: "github.com" });
+            { name: "Open the Link", glyph: "L", side: "github.com", actKey: "" });
         const linkTo = href => ({ key: "verb:notice:link", open: href });
         const repeated = {};
         Expect.same("a key a row holds once stays bare, and two alike go by their targets",
