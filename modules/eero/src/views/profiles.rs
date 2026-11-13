@@ -25,6 +25,7 @@ struct One<'a> {
 pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
     super::json::slice(
         model,
+        "eero.profiles/1",
         Every {
             profiles: &model.profiles,
         },
@@ -38,7 +39,7 @@ pub fn one_json(model: &HomeNetwork, profile: &Profile) -> Result<String, String
             .iter()
             .any(|mac| mac.eq_ignore_ascii_case(&device.mac))
     });
-    super::json::slice(model, One { profile, devices })
+    super::json::slice(model, "eero.profile/1", One { profile, devices })
 }
 
 /// What the profile names the device with hardware address `mac`.

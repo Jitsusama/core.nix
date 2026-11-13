@@ -35,6 +35,7 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
         .collect();
     super::json::slice(
         model,
+        "eero.traffic/1",
         Figures {
             usage: &model.internet.usage,
             nodes,

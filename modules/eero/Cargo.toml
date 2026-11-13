@@ -16,6 +16,9 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tz-syste
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
+# The shape every command of ours takes: help, the answer's form, the
+# terminal's colours and the shared exits (../terminal-kit).
+terminal-kit = { path = "../terminal-kit" }
 ureq = { version = "3", features = ["json"] }
 # The notices, over D-Bus, without a runtime to install, as disk-guard has it.
 zbus = "5"

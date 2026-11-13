@@ -403,6 +403,33 @@ fn a_slice_carries_when_it_was_read_and_whether_eero_answered() {
 }
 
 #[test]
+fn each_slice_names_its_view_as_its_schema() {
+    let views = [
+        (View::Status, "status"),
+        (View::Nodes, "nodes"),
+        (View::Node("Study".into()), "node"),
+        (View::Mesh, "mesh"),
+        (View::Devices, "devices"),
+        (View::Device("tablet 1".into()), "device"),
+        (View::Internet, "internet"),
+        (View::Speeds, "speeds"),
+        (View::Firmware, "firmware"),
+        (View::Radio, "radio"),
+        (View::Traffic, "traffic"),
+        (View::Profiles, "profiles"),
+        (View::Profile("3002".into()), "profile"),
+        (View::Events, "events"),
+    ];
+    for (view, word) in views {
+        assert_eq!(
+            slice(&view)["schema"],
+            format!("eero.{word}/1"),
+            "{view:?} names another schema"
+        );
+    }
+}
+
+#[test]
 fn the_devices_slice_holds_each_device_whole() {
     let model = model();
     let devices = slice(&View::Devices);

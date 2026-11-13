@@ -104,17 +104,19 @@ fn theme_file() -> Option<PathBuf> {
     Some(config.join("jitsusama/theme.json"))
 }
 
-/// The ink for standard output: the theme's on a terminal, unless `NO_COLOR`
-/// asks for none, and plain text anywhere else. The theme's marks are
-/// taken either way, since they're the text's own.
-pub fn ink(terminal: bool) -> Ink {
+/// The ink for standard output: the theme's when it's coloured, and plain
+/// text otherwise. Whether it's coloured is the terminal kit's to decide,
+/// from `--color`, `NO_COLOR`, `FORCE_COLOR` and whether it's a terminal,
+/// as every command's is. The theme's marks are taken either way, since
+/// they're the text's own.
+pub fn ink(coloured: bool) -> Ink {
     let theme = theme_file()
         .and_then(|file| std::fs::read_to_string(file).ok())
         .and_then(|text| serde_json::from_str::<Value>(&text).ok());
     if let Some(theme) = &theme {
         super::marks::take(theme);
     }
-    if !terminal || std::env::var_os("NO_COLOR").is_some_and(|value| !value.is_empty()) {
+    if !coloured {
         return Ink::plain();
     }
     Ink {

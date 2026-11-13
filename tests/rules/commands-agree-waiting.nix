@@ -118,11 +118,7 @@
   ];
   disk-guard-merged-on-github = [ "helps" ];
   disk-order = [ "helps" ];
-  eero = [
-    "kit"
-    "inks"
-    "helps"
-  ];
+  eero = [ "inks" ];
   ergodox = [ "helps" ];
   git-engine = [
     "kit"

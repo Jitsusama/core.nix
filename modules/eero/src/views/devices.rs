@@ -25,6 +25,7 @@ struct One<'a> {
 pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
     super::json::slice(
         model,
+        "eero.devices/1",
         Every {
             devices: &model.devices,
             devices_off: &model.devices_off,
@@ -33,7 +34,7 @@ pub fn all_json(model: &HomeNetwork) -> Result<String, String> {
 }
 
 pub fn one_json(model: &HomeNetwork, device: &Device) -> Result<String, String> {
-    super::json::slice(model, One { device })
+    super::json::slice(model, "eero.device/1", One { device })
 }
 
 pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {

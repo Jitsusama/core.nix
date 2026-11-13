@@ -25,6 +25,7 @@ struct Figures<'a> {
 pub fn json(model: &HomeNetwork) -> Result<String, String> {
     super::json::slice(
         model,
+        "eero.events/1",
         Figures {
             events: &model.events,
             told: &model.told,

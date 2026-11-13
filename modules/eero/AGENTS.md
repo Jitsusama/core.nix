@@ -177,7 +177,13 @@ The command line's views (`src/views/`) read the record and never eero's
 cloud, so each is instant and opens with how old what it shows is, and
 says so when eero isn't answering or the daemon has stopped renewing it.
 Each is a pure function of the record, the time and the ink, set as text
-for a person or, with `--json`, as the record's own slice of it.
+for a person or, with `--json`, as the record's own slice of it, which
+names its schema, `eero.<view>/1`, first. The command line is on the
+terminal kit (docs/commands.md): it gives the help, the shared flags,
+whether to ink and the exits, 69 when the daemon isn't keeping the
+record, 77 when eero needs signing in and 66 for a name the network
+hasn't got. The ink is still eero's own (`src/views/theme.rs`), set by
+the kit's choice; drawing it with the kit's pen waits.
 `eero watch <view>` ([`src/watch.rs`][watch]) listens on the socket and
 draws the view again with each model, and when its reading's age next
 reads differently. Every page is held to a golden one drawn from
