@@ -177,6 +177,7 @@ pub fn drawer(session: Session, orchestrates: bool, words: &Words, known: &Known
     let (title, folder) = session.named();
     let usage = presence.and_then(|presence| presence.get("usage"));
     let mut facts = first(session, orchestrates, words, known);
+    facts.extend(helpers(session, known));
     for figure in figures::figures(usage, known.today, &words.agents, &named) {
         let mut said = json!({"label": figure.label, "value": figure.value});
         if let Some(stroke) = figure.stroke {
@@ -283,6 +284,34 @@ fn first(session: Session, orchestrates: bool, words: &Words, known: &Known) -> 
     .collect()
 }
 
+/// What of its spend today went on its councils and fleets, each named by
+/// what it went on, as spend-watch says them ("Councils", "$4.00"), and
+/// said only where its spend is.
+fn helpers(session: Session, known: &Known) -> Vec<Value> {
+    let id = text(session.presence(), "/session");
+    let collection = known.spend.filter(|_| !known.sharing);
+    if id.is_empty() || text(collection, &format!("/sessions/{id}")).is_empty() {
+        return Vec::new();
+    }
+    collection
+        .and_then(|collection| collection.get("helpers"))
+        .and_then(|helpers| helpers.get(id))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|helper| {
+            let on = helper.get("on")?.as_str()?;
+            let spent = helper.get("spent")?.as_str()?;
+            let mut name = on.chars();
+            let first = name.next()?;
+            Some(
+                json!({"label": format!("{}{}", first.to_uppercase(), name.as_str()),
+                "value": spent}),
+            )
+        })
+        .collect()
+}
+
 /// Its hours today as Graph's spark, as spend-watch draws them. They
 /// carry no dollars, and its busiest hour nears no limit, so the spark
 /// never wears the warning (VKCF3Z, 2026-11-07).
@@ -328,6 +357,17 @@ fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Valu
     .filter(|(_, value)| !value.is_empty())
     .map(|(fact, value)| json!({"label": words.names.word(fact), "value": value}))
     .collect();
+    // The groups it hears beside its own address, as the node says them.
+    let hears: Vec<&str> = presence
+        .and_then(|presence| presence.get("groups"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if !hears.is_empty() {
+        facts.push(json!({"label": words.names.word("hears"), "value": hears.join(", ")}));
+    }
     let summary = about(said("/worksOn"), &[title, said("/questInfo/title")]);
     if !summary.is_empty() {
         facts.push(json!({"label": words.names.word("works"), "value": summary, "words": true}));
@@ -500,9 +540,30 @@ mod tests {
     }
 
     #[test]
+    fn it_says_what_its_councils_spent_and_which_groups_it_hears() {
+        let presence = json!({"addresses": ["A"], "session": "s-a",
+            "groups": ["#desk", "#quest/reef"]});
+        let spend = json!({"sessions": {"s-a": "$12.50"},
+            "helpers": {"s-a": [{"on": "councils", "spent": "$4.00"},
+                {"on": "fleets", "spent": "$1.10"}]}});
+        let drawn = drawer(
+            Session(&record(&presence)),
+            false,
+            &words(),
+            &known(Some(&spend), None),
+        );
+        assert_eq!(
+            facts(&drawn),
+            "Spent Today=$12.50; Councils=$4.00; Fleets=$1.10; Machine=skiff; \
+             Hears=#desk, #quest/reef"
+        );
+    }
+
+    #[test]
     fn sharing_the_screen_says_no_amount() {
         let presence = json!({"addresses": ["O"], "session": "s-o", "owns": ["QEST-O"]});
         let spend = json!({"sessions": {"s-o": "$3.10"},
+            "helpers": {"s-o": [{"on": "councils", "spent": "$4.00"}]},
             "families": {"QEST-O": {"all": "$14.20"}},
             "sessionsToday": {"s-o": {"rebuilt": "$1.20"}}});
         let budgets = json!({"sessions": {"s-o": "proxy"}, "budgets": [
