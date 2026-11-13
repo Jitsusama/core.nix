@@ -262,7 +262,11 @@ ShellRoot {
         watching: root.repacedShut ? ({ every: 10000 }) : ({})
         paced: pacer
     }
-    readonly property var repacedSaid: repaced.held["meeting:one"]?.every
+    // The pace its record says its watch asked for, read as each step
+    // polls, since what's held changes in place.
+    function repacedSaid() {
+        return repaced.held["meeting:one"]?.every;
+    }
 
     // Watching a kind with no records.
     Daemon {
@@ -381,7 +385,7 @@ ShellRoot {
         },
         {
             what: "a watch paced as a shut launcher's is asks for its pace",
-            holds: () => root.repacedSaid === 10000
+            holds: () => root.repacedSaid() === 10000
         },
         {
             // Asked at once, its answer would land before the opening's
@@ -391,7 +395,7 @@ ShellRoot {
                 root.repacedShut = false;
             },
             holds: () => root.left <= 195 && pacer.queued.length === 1
-                && root.repacedSaid === 10000
+                && root.repacedSaid() === 10000
         },
         {
             // Agents' top level stayed paced, told at most every ten
@@ -399,7 +403,7 @@ ShellRoot {
             // woken read as closed for seconds (2026-11-13).
             what: "and once that frame is drawn it's told unpaced",
             run: () => pacer.drawn(),
-            holds: () => root.repacedSaid === null && pacer.queued.length === 0
+            holds: () => root.repacedSaid() === null && pacer.queued.length === 0
         },
         {
             what: "a search's answer is given to it and never held",
