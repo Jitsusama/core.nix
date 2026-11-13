@@ -1,3 +1,10 @@
+//! The command line's scenarios: what each command reads and says, run
+//! against a made-up machine's folders.
+//!
+//! Long because it holds the scenarios of `src/cli.rs`, one file per
+//! source module as this folder's README says, and every command's cases
+//! share the one `Machine` they run on.
+
 use disk_guard::band::Band;
 use disk_guard::cli::{Command, Env, parse, run};
 use disk_guard::units::{Size, Span};
