@@ -81,6 +81,7 @@
 //! ending wakes what reads for it (`heard_watches`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -579,9 +580,15 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
     }
+    answered(&shared, listener);
+}
+
+/// Every record held handed over, so how the sources stand is said from
+/// the first hello, then each connection to `listener` answered, for
+/// good, while the threads read.
+fn answered(shared: &Shared, listener: UnixListener) -> ! {
     let served = {
         let daemon = lock(&shared.daemon);
-        // How the sources stand is said from the first hello.
         hand_over(&daemon);
         Arc::clone(&daemon.served)
     };
