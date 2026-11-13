@@ -75,6 +75,23 @@ QtObject {
         expect("what needs him now is the alert", Marks.tone(piece("wants", true)), "alert");
         expect("left on but needed now is the alert too",
             Marks.tone(piece("leftOn", true)), "alert");
+        // A want of the many, as Slack's unread channel posts, is muted,
+        // and lights strong only once something in it is to Joel himself.
+        expect("a hushed want is muted",
+            Marks.tone({ kind: "wants", now: false, hushed: true }), "muted");
+        expect("a hushed want needed now is still the alert",
+            Marks.tone({ kind: "wants", now: true, hushed: true }), "alert");
+        // A program's want is hushed but for a notice of its to Joel, one the
+        // notices daemon says chimes, unread since he was last in its window.
+        const notice = (at, more) => Object.assign({ app: "Slack", at: at, chimes: true,
+            read: false }, more);
+        expect("one to him, unread since he was in its window, waits",
+            Marks.toHim([notice(200)], "slack", 100), true);
+        expect("nor one read, one from before he was there, nor one only counted",
+            Marks.toHim([notice(200, { read: true }), notice(50),
+                notice(200, { chimes: false })], "slack", 100), false);
+        expect("nor another program's",
+            Marks.toHim([notice(200, { app: "Mail" })], "slack", 100), false);
 
         // Something on air that goes stays a while, muted, where it was, so
         // a camera let go is still seen to have been on; left on or

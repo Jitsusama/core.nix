@@ -43,33 +43,8 @@
       "glyph": "copy"
     },
     {
-      "id": "kitty:tab",
-      "in": "kitty:tabs",
-      "name": "Tab",
-      "verb": "go to",
-      "glyph": "windows"
-    },
-    {
-      "id": "verb:kitty:tab:go",
-      "command": "buffer",
-      "in": "kitty:tab",
-      "name": "Go To",
-      "verb": "go to",
-      "glyph": "windows"
-    },
-    {
-      "id": "verb:kitty:tab:close",
-      "command": "close",
-      "in": "kitty:tab",
-      "name": "Close It",
-      "verb": "close",
-      "glyph": "close",
-      "act": "ending",
-      "ends": "close"
-    },
-    {
       "id": "kitty:pane",
-      "in": "kitty:tab",
+      "in": "kitty:tabs",
       "name": "Pane",
       "verb": "go to",
       "glyph": "windows",

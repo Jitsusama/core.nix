@@ -432,6 +432,14 @@ QtObject {
         check("many agents' windows", Kitty.agentsDrawer(85, agents, tells).title,
             "85 agents' windows");
 
+        // A kitty tab is Tabs' one tab, said in its words as Chrome's is, with its title to
+        // copy (VKCF3Z, 2026-11-12 [f56eec6d]); a pane keeps kitty's own.
+        check("a tab is said in Tabs' words", Kitty.wordsOf("tab"), { thing: "tabs:tab",
+            go: "verb:tabs:go", close: "verb:tabs:close", copy: "verb:tabs:title" });
+        check("a pane in kitty's own, with nothing to copy", Kitty.wordsOf("pane"), {
+            thing: "kitty:pane", go: "verb:kitty:pane:go", close: "verb:kitty:pane:close",
+            copy: "" });
+
         for (const failure of failures)
             console.warn(failure);
         console.log(`${asked - failures.length} of ${asked} held`);

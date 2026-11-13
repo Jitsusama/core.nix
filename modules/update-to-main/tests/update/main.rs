@@ -1492,6 +1492,36 @@ fn a_hosted_main_is_read_from_its_hosts_api_unfetched() {
     assert!(!world.checkout_has(&two), "the checkout was fetched");
 }
 
+/// A folder read from the host where it was needs no word on how main
+/// moved, since the machine stays where it is: on 12 November the host
+/// refused that ask with 429 and 422, and each time main was fetched for
+/// minutes though its folder hadn't moved.
+#[test]
+fn a_folder_read_from_the_host_where_it_was_never_asks_how_main_moved() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one));
+    let elsewhere = world.unsigned("outside the folder");
+    world.answer();
+    let compare = world.root.join("api").join("compare");
+    fs::remove_dir_all(&compare).unwrap();
+    fs::create_dir_all(&compare).unwrap();
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: one.clone(),
+            followed: BTreeMap::new()
+        }
+    );
+    assert!(
+        !world.checkout_has(&elsewhere),
+        "main was fetched though its folder hadn't moved"
+    );
+    assert_eq!(world.builds(), 1);
+}
+
 /// Main moving outside the folder read from the host builds nothing, as
 /// with a folder the account says hasn't moved.
 #[test]

@@ -164,6 +164,19 @@ ShellRoot {
             Expect.expect("Tabs holding none names both programs",
                 tabs.collection?.empty === "No tabs open in Kitty or Chrome.",
                 tabs.collection?.empty);
+            // A tab is said to be one wherever it's listed, never a site (RTOIMQ, be11f67c).
+            const whats = tabs.everything().map(made => made.what).join(", ");
+            Expect.expect("each tab, Chrome's and kitty's, is a tab",
+                whats === "tab, tab, tab, tab", whats);
+            // A program whose tabs can't be read, its window open, is named under Tabs' row
+            // while it's picked, until it answers (src/tab_rows.rs's head).
+            tabs.served.link.took([{ key: "head:tabs", kind: "head", head: {
+                key: "head:tabs", place: "tabs", said: "Chrome isn't answering",
+                silent: [{ in: "google-chrome", said: "Chrome isn't answering" }] } }], []);
+            Expect.expect("Tabs' row names a program not answering",
+                tabs.noted() === "Chrome isn't answering", tabs.noted());
+            tabs.served.link.took([], ["head:tabs"]);
+            Expect.expect("and says nothing once it answers", tabs.noted() === "", tabs.noted());
             const kittys = tabs.everything()[3].verbs().map(made => made.name).join(", ");
             Expect.expect("a kitty tab goes to, closes and copies the tab",
                 kittys === "Go to the Tab, Close the Tab, Copy the Title", kittys);

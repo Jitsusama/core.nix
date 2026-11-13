@@ -799,7 +799,14 @@ fn trusted(
 ) -> Vec<Trusted> {
     let mut trusted = settings.standing.clone();
     for lent in &settings.lent {
-        let wanted = wanted.get(&lent.uri).map_or(&[][..], Vec::as_slice);
+        // A builder no line root reads names could pass nothing, and asking
+        // the cloud of it cost a gcloud or two every 30 s each: on 12
+        // November, 8 of 9 lent builders were named only to Joel's own
+        // Nix, and the service spent half a core on them. A line naming it
+        // later changes what's wanted, so it's asked of at once then.
+        let Some(wanted) = wanted.get(&lent.uri) else {
+            continue;
+        };
         if let Some(host_key) = keys.of(lent, settings, wanted) {
             trusted.push(Trusted {
                 uri: lent.uri.clone(),
@@ -1612,6 +1619,37 @@ mod tests {
         assert_eq!(
             machines, "",
             "a builder no instance vouches for was named to root"
+        );
+    }
+
+    #[test]
+    fn a_builder_no_line_names_is_never_asked_of_until_one_does() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        let asked = dir.path().join("asked");
+        let elsewhere = "ssh-ng://hook@elsewhere?compress=true";
+        fs::write(
+            dir.path().join("from/machines"),
+            format!("{}\n", line(elsewhere, KEY, HOST)),
+        )
+        .expect("the lender's machines");
+        for _ in 0..3 {
+            copy_once(&settings, &mut keys);
+            due(&mut keys);
+        }
+        assert!(
+            !asked.exists(),
+            "the cloud was asked of a builder no line root reads names"
+        );
+        fs::write(
+            dir.path().join("from/machines"),
+            format!("{}\n", line(URI, KEY, HOST)),
+        )
+        .expect("the lender's machines");
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            format!("{}\n", line(URI, KEY, HOST)),
+            "a line naming the builder waited to be vouched for"
         );
     }
 

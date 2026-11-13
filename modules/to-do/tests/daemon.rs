@@ -525,12 +525,14 @@ fn a_watch_is_told_each_to_do_look_and_word_of_joels_as_it_changes() {
     let standing = loop {
         let line = client.heard();
         take(&mut held, &line);
-        if line["sources"]["settled"]["state"] == "failing" {
+        // By its word, as every line but health says a source
+        // (docs/daemons.md), and with its reason only in health.
+        if line["sources"]["settled"] == "failing" {
             break line;
         }
     };
     assert_eq!(
-        standing["sources"]["waiting"]["state"], "answering",
+        standing["sources"]["waiting"], "answering",
         "a watch is told how every source stands: {standing}"
     );
     assert_eq!(

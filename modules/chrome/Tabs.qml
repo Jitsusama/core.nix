@@ -25,7 +25,9 @@ import "../Fuzzy.js" as Fuzzy
 Provider {
     id: provider
 
-    what: "site"
+    // A tab, kitty's or Chrome's, is what it is in Tabs' words, never a site, so one word
+    // says it wherever it's listed (RTOIMQ's be11f67c).
+    what: Words.of("tabs:tab").said?.kind ?? ""
     collection: Words.collection("tabs")
 
     // Watched whether or not the launcher's open, so it opens on rows
@@ -35,6 +37,8 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR") ?? ""}/daemons/programs.sock`
         place: "tabs"
+        // Its head, served while a program has a window open and its tabs can't be read.
+        beside: ["head"]
         maker: provider
         drawn: provider.launcher?.open ?? false
         // A page whose Return goes to its program is gone to here, to the
@@ -42,7 +46,7 @@ Provider {
         // which goes to the tab itself (modules/programs/src/kitty_tabs.rs),
         // where the program's newest window could be another tab's.
         make: (row, key) => ready.thing(row, key, Object.assign({
-            what: "site",
+            what: provider.what,
             component: "site",
             hue: row.hue || "program",
             later: true
@@ -83,6 +87,12 @@ Provider {
 
     function everything() {
         return ready.rows();
+    }
+
+    // Which program isn't answering, said under Tabs' row while it's picked, so a list missing
+    // a program's tabs says why (VKCF3Z, 2026-11-12 [98fe0553]); nothing once each answers.
+    function noted() {
+        return ready.held["head:tabs"]?.head?.said ?? "";
     }
 
     // Its tabs, as the programs daemon ranks them for what's typed. While

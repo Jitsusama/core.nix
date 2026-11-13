@@ -59,7 +59,9 @@ pub fn found(config: &Config, commit: &str) -> Option<Found> {
 /// Reads the folder at `head` from the host's API at `api`, asked with
 /// `token`, into root's copy, and keeps what it found, with whether `head`
 /// descends from `from`. Earlier reads are let go, but for `from`'s, which
-/// the next update compares its folder with.
+/// the next update compares its folder with. A folder where it was at
+/// `from` is given back unkept and unasked how main moved, as not
+/// descending: the machine stays at `from` then, so nothing reads it.
 pub fn read(
     config: &Config,
     hosted: &Hosted,
@@ -70,6 +72,17 @@ pub fn read(
 ) -> Result<Found, Failure> {
     let host = Host::new(config, api, token)?;
     let folder = folder(&host, hosted, head)?;
+    // On 12 November the host refused how main moved twice, with 429 and
+    // 422, and main was fetched for minutes though its folder hadn't.
+    if let Some(from) = from
+        && crate::hosted::folder(config, hosted, from).as_ref() == Some(&folder)
+    {
+        return Ok(Found {
+            folder,
+            from: Some(from.to_owned()),
+            descends: false,
+        });
+    }
     let descends = match from {
         Some(from) => host.descends(from, head)?,
         None => true,
