@@ -8,8 +8,9 @@ only that niri's real layout reaches it, that it rests two seconds before walkin
 every frame with none dropped, and never for a tap along the columns, each walk's steps kept as
 the check's result, that its layer is one taking no keys, that it goes in fullscreen, where the
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
-screen unlocks, and that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
-check's result.
+screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
+check's result, and that a move between workspaces has it ride off and climb to its new seat,
+unless a second move cuts it short.
 """
 
 from __future__ import annotations
@@ -611,3 +612,90 @@ def test_the_cat_is_drawn_in_whole_pixels(shell: Shell, scale: float) -> None:
         picture(shell, kept / f"cat-at-{scale}.png")
     finally:
         shell.as_account("niri msg output winit scale 1")
+
+
+def moved(shell: Shell, since: int) -> list[Json]:
+    """Give each step of a move between workspaces the cat said since the mark, in order."""
+    said, _ = shell.said_since(since)
+    reports = [placed(report[len(SITS) :]) for report in said if report.startswith(SITS)]
+    return [at for at in reports if at is not None and at.get("move")]
+
+
+def moving(said: str) -> bool:
+    """Say whether a report is a step of a move between workspaces."""
+    at = placed(said)
+    return at is not None and bool(at.get("move"))
+
+
+def climbed(shell: Shell, since: int, way: int, beats: list[str]) -> list[Json]:
+    """Give a move's steps once it sits, held to its beats and to its climb's one way."""
+    took = moved(shell, since)
+    said = [step["move"]["beat"] for step in took]
+    assert [beat for at, beat in enumerate(said) if at == 0 or beat != said[at - 1]] == beats, (
+        f"the cat's move came as {said}"
+    )
+    assert {step["move"]["way"] for step in took} == {way}, f"it moved {took[:3]}"
+    climbing = [step for step in took if step["move"]["beat"] == "climbs"]
+    gone = [(after["y"] - before["y"]) * way for before, after in itertools.pairwise(climbing)]
+    assert min(gone, default=0) >= 0, f"it climbed back: {[s['y'] for s in climbing]}"
+    turns = {step["move"]["turn"] for step in climbing}
+    assert turns <= {-way}, f"it climbed {climbing[:3]}"
+    return took
+
+
+def test_the_cat_rides_up_with_its_workspace_and_stays_as_it_falls_away(shell: Shell) -> None:
+    """Between workspaces, it moves with what goes up and stays where things fall away.
+
+    Its ride, climb and stay are MarginCat.js's, frame by frame in Qt's engine; here, only
+    that niri's workspaces reach it: up one, its old column falls away and it stays in the
+    margin as the new one comes down under it, its seat there the same, and down one, it
+    rides up and climbs down onto its seat, head first (VKCF3Z, 294b73a0). Each move's steps
+    are kept as the check's result, for a strip of it.
+    """
+    since = shell.mark()
+    upper = shell.opened("a workspace to climb up to")
+    sits_over(shell, upper, since)
+    shell.as_account("niri msg action focus-workspace-down")
+    since = shell.mark()
+    lower = shell.opened("a workspace to climb down to")
+    sits_over(shell, lower, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-workspace-up")
+    heard(shell, moving, since)
+    sits_over(shell, upper, since)
+    up = climbed(shell, since, -1, ["stays"])
+    stayed = {(step["x"], step["y"]) for step in up}
+    assert len(stayed) == 1, f"it moved as it stayed: {sorted(stayed)}"
+    since = shell.mark()
+    shell.as_account("niri msg action focus-workspace-down")
+    heard(shell, moving, since)
+    sits_over(shell, lower, since)
+    down = climbed(shell, since, 1, ["rides", "climbs", "lands"])
+    kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
+    kept.mkdir(exist_ok=True)
+    (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
+
+
+def test_a_second_move_seats_it_at_once(shell: Shell) -> None:
+    """A move between workspaces as it climbs from the last seats it at once, moving no more.
+
+    A step of the first move said as the second is made may come after the mark, so only a
+    step the other way, of a second move, fails it.
+    """
+    since = shell.mark()
+    upper = shell.opened("a workspace moved back to")
+    sits_over(shell, upper, since)
+    shell.as_account("niri msg action focus-workspace-down")
+    since = shell.mark()
+    lower = shell.opened("a workspace moved back from")
+    sits_over(shell, lower, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-workspace-up")
+    sits_over(shell, upper, since)
+    shell.as_account("niri msg action focus-workspace-down")
+    heard(shell, lambda said: moving(said) and '"climbs"' in said, since)
+    since = shell.mark()
+    shell.as_account("niri msg action focus-workspace-up")
+    sits_over(shell, upper, since)
+    again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
+    assert not again, f"the second move moved it again: {again[:3]}"
