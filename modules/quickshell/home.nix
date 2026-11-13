@@ -2710,6 +2710,14 @@ in
         # rather than in app.slice beside Chrome and Slack, where a build's
         # pressure reaches them first.
         Slice = "session.slice";
+        # Each file the shell watches is an inotify of its own, so Joel's lit
+        # shell held 617 files, 430 of them watches, against systemd's soft
+        # limit of 1024. Past the limit the kernel drops the files niri sends
+        # along with its messages, and a shell 3 s after loading read a
+        # format table with no file, lost its Wayland connection and died
+        # (switch848, 2026-11-12, 21:41:35). Qt waits by poll, never select,
+        # so a file past 1024 is safe in it.
+        LimitNOFILE = "16384:524288";
         # The launcher's open mark says nothing once the shell is gone, so a
         # switch waiting on it never waits on a shell that died.
         ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher";
