@@ -1127,8 +1127,8 @@ fn render_markdown(report: &Report) -> String {
 }
 
 /// A report as plain text, its rows in columns, set to `room`. In a
-/// terminal its prose wraps, a name too long for its column is shortened
-/// in its middle, and a row that says a sentence hangs it under itself;
+/// terminal its prose wraps, a name too long for its column is cut at a
+/// whole word, or shortened in its middle where it's one word, and a row that says a sentence hangs it under itself;
 /// into a pipe, or a file the daemon keeps, nothing gives way.
 pub fn render_text_in(report: &Report, room: Room) -> String {
     const NAME: usize = 60;
@@ -1182,7 +1182,7 @@ pub fn render_text_in(report: &Report, room: Room) -> String {
     for row in &report.rows {
         let name: String = match room {
             Room::Unbounded => row.name.chars().take(NAME).collect(),
-            Room::Cells(_) => layout::shortened(&row.name, width),
+            Room::Cells(_) => layout::cut(&row.name, width),
         };
         let share = if row.share > 0.0 {
             format!("  {:>4}", percent(row.share))
@@ -1261,8 +1261,8 @@ mod tests {
         let said = render_text_in(&a_wide_report("last week", 0.5, "$12.50"), Room::Cells(60));
         assert!(past(&said, 60).is_empty(), "lines ran past 60:\n{said}");
         assert!(
-            said.contains("QEST-") && said.contains("Machines"),
-            "the long name lost an end, rather than its middle:\n{said}"
+            said.contains("  QEST-20261112-0TUD09 Exquisite Command") && said.contains('…'),
+            "the long name wasn't cut at a whole word:\n{said}"
         );
     }
 
