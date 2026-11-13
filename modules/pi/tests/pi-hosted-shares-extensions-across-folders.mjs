@@ -171,7 +171,7 @@ const missing = await loadExtensionsCached([entry], folder("d"));
 assert.equal(missing.extensions.length, 0, "a missing file loaded");
 assert.match(
   String(missing.errors[0]?.error),
-  /^Failed to load extension: ENOENT/,
+  /^Failed to load extension: ENOENT/u,
   "a missing file didn't fail as a load",
 );
 
