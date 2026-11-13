@@ -81,3 +81,15 @@ function low(devices, standing) {
             };
         });
 }
+
+function halted(text) {
+    return [];
+}
+
+function restart(adapter) {
+    return "";
+}
+
+function stopped(adapters, own) {
+    return [];
+}

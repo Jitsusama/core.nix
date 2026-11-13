@@ -39,7 +39,7 @@
 mod hci;
 mod reply;
 
-use hci::{Radio, Seen};
+use hci::{Radio, Seen, Unanswered};
 use reply::{Adapter, Connection, Version};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
@@ -168,7 +168,7 @@ fn kept<T>(history: &mut Vec<T>, read: T) {
 /// What the controller is asked, by `Watch`: a stand-in in the tests.
 trait Controller {
     fn look(&mut self) -> Seen;
-    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>>;
+    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered>;
 }
 
 /// The radio, saying each kind of trouble once rather than every tick.
@@ -194,13 +194,12 @@ impl Controller for Asked {
         })
     }
 
-    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
+    fn ask(&mut self, adapter: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
         self.radio
             .ask(adapter, opcode, handle)
-            .map_err(|error| {
+            .inspect_err(|error| {
                 self.complain(format!("Couldn't ask hci{adapter} {opcode:#06x}: {error}"));
             })
-            .ok()
     }
 }
 
@@ -234,6 +233,11 @@ fn per_second(now: u32, before: u32, over: Duration) -> u64 {
 }
 
 impl Watch {
+    /// The adapters that have stopped answering, by name.
+    fn stopped(&self) -> Vec<String> {
+        vec![]
+    }
+
     /// One look, at `at` seconds since 1970 and `clock` on a clock that
     /// only goes forward: what to write, or nothing when it would say what
     /// the file already does.
@@ -298,7 +302,7 @@ impl Watch {
         clock: Duration,
     ) -> Told {
         if adapter.up && !self.versions.contains_key(&adapter.id) {
-            let said = controller.ask(adapter.id, reply::READ_LOCAL_VERSION, 0);
+            let said = controller.ask(adapter.id, reply::READ_LOCAL_VERSION, 0).ok();
             if let Some(version) = said.as_deref().and_then(reply::version) {
                 self.versions.insert(adapter.id, version);
             }
@@ -348,7 +352,7 @@ impl Watch {
 /// filled in by `Watch`.
 fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection) -> Link {
     let handle = connection.handle;
-    let mut asked = |opcode| controller.ask(adapter, opcode, handle);
+    let mut asked = |opcode| controller.ask(adapter, opcode, handle).ok();
     let rssi = asked(reply::READ_RSSI).and_then(|said| reply::rssi(&said, handle));
     let power = asked(reply::READ_TRANSMIT_POWER).and_then(|said| reply::power(&said, handle));
     let (quality, map) = if connection.le {
@@ -373,6 +377,23 @@ fn link(controller: &mut impl Controller, adapter: u16, connection: &Connection)
             security: Security::of(connection),
         },
         history: History::default(),
+    }
+}
+
+const HEARD_EVERY: u64 = 6;
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+struct Halted {
+    name: String,
+    device: Option<String>,
+    driver: Option<String>,
+}
+
+fn sits_on(_sysfs: &Path, name: &str) -> Halted {
+    Halted {
+        name: name.into(),
+        device: None,
+        driver: None,
     }
 }
 
@@ -414,6 +435,7 @@ fn main() {
     let mut watch = Watch::default();
     let started = Instant::now();
     loop {
+        let _ = watch.stopped();
         if let Some(report) = watch.tick(&mut asked, now(), started.elapsed())
             && let Err(error) = write(&file, &report)
         {
@@ -430,13 +452,15 @@ mod tests {
     use super::*;
 
     /// A controller that lists what it's given and answers what it has a
-    /// reply for, by opcode and handle.
+    /// reply for, by opcode and handle, refusing the rest; or, `silent`,
+    /// answers nothing, as one wedged in its firmware.
     #[derive(Default)]
     struct StandIn {
         adapters: Vec<Adapter>,
         listed: Vec<(u16, Connection)>,
         replies: HashMap<(u16, u16), Vec<u8>>,
         asked: Vec<u16>,
+        silent: bool,
     }
 
     impl Controller for StandIn {
@@ -447,9 +471,15 @@ mod tests {
             }
         }
 
-        fn ask(&mut self, _: u16, opcode: u16, handle: u16) -> Option<Vec<u8>> {
+        fn ask(&mut self, _: u16, opcode: u16, handle: u16) -> Result<Vec<u8>, Unanswered> {
             self.asked.push(opcode);
-            self.replies.get(&(opcode, handle)).cloned()
+            if self.silent {
+                return Err(Unanswered::Silent);
+            }
+            self.replies
+                .get(&(opcode, handle))
+                .cloned()
+                .ok_or(Unanswered::Refused(0x01))
         }
     }
 
@@ -667,6 +697,134 @@ mod tests {
             .filter(|step| watch.tick(&mut controller, 1, seconds(step * 5)).is_some())
             .count();
         assert_eq!(written, KEPT + 1, "traffic was written {written} times");
+    }
+
+    /// Ticks the watch over `looks` more looks, five seconds apart from
+    /// look `from`, saying after each which adapters have stopped.
+    fn watched(
+        watch: &mut Watch,
+        controller: &mut StandIn,
+        from: u64,
+        looks: u64,
+    ) -> Vec<Vec<String>> {
+        (from..from + looks)
+            .map(|step| {
+                watch.tick(controller, step * 5, seconds(step * 5));
+                watch.stopped()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_controller_answering_nothing_has_stopped_after_three_looks() {
+        let mut watch = Watch::default();
+        let mut controller = StandIn {
+            adapters: vec![radio(0, 0)],
+            listed: vec![(0, mouse())],
+            ..StandIn::default()
+        };
+        watched(&mut watch, &mut controller, 0, 4);
+        controller.silent = true;
+        let said = watched(&mut watch, &mut controller, 4, 3);
+        assert_eq!(
+            said,
+            vec![vec![], vec![], vec!["hci0".to_string()]],
+            "three looks unanswered weren't said, or fewer were"
+        );
+        controller.asked.clear();
+        watched(&mut watch, &mut controller, 7, HEARD_EVERY - 1);
+        assert!(
+            controller.asked.is_empty(),
+            "one that stopped was asked its link's commands each look"
+        );
+        controller.silent = false;
+        let back = watched(&mut watch, &mut controller, 7 + HEARD_EVERY - 1, 1);
+        assert_eq!(back, vec![Vec::<String>::new()], "its answering again went unheard");
+    }
+
+    #[test]
+    fn an_idle_controller_is_asked_now_and_then() {
+        let mut watch = Watch::default();
+        let version = vec![0x00, 0x0e, 0x00, 0x01, 0x0e, 0x02, 0x00, 0x00, 0x01];
+        let mut controller = StandIn {
+            adapters: vec![radio(0, 0)],
+            replies: HashMap::from([((reply::READ_LOCAL_VERSION, 0), version)]),
+            ..StandIn::default()
+        };
+        watched(&mut watch, &mut controller, 0, 1 + 6 * HEARD_EVERY);
+        assert_eq!(
+            controller.asked.len(),
+            7,
+            "an idle controller wasn't asked its version, then once every thirty seconds"
+        );
+        controller.silent = true;
+        let said = watched(&mut watch, &mut controller, 1 + 6 * HEARD_EVERY, 9);
+        assert_eq!(
+            said.iter().position(|stopped| !stopped.is_empty()),
+            Some(7),
+            "an idle controller that stopped answering wasn't found within 45 s"
+        );
+    }
+
+    #[test]
+    fn an_adapter_down_or_gone_has_not_stopped() {
+        let mut watch = Watch::default();
+        let mut controller = StandIn {
+            adapters: vec![radio(0, 0)],
+            listed: vec![(0, mouse())],
+            silent: true,
+            ..StandIn::default()
+        };
+        watched(&mut watch, &mut controller, 0, 3);
+        assert_eq!(watch.stopped(), vec!["hci0".to_string()]);
+        controller.adapters[0].up = false;
+        controller.listed.clear();
+        assert_eq!(
+            watched(&mut watch, &mut controller, 3, 1),
+            vec![Vec::<String>::new()],
+            "an adapter taken down was still said to have stopped"
+        );
+        controller.adapters.clear();
+        assert_eq!(
+            watched(&mut watch, &mut controller, 4, 1),
+            vec![Vec::<String>::new()]
+        );
+    }
+
+    #[test]
+    fn what_an_adapter_sits_on_is_read_from_sysfs() {
+        use std::os::unix::fs::symlink;
+        let sysfs = std::env::temp_dir().join(format!("bluetooth-sysfs-{}", std::process::id()));
+        let chip = sysfs.join("devices/pci0000:00/0000:00:14.7");
+        fs::create_dir_all(chip.join("bluetooth/hci0")).unwrap();
+        fs::create_dir_all(sysfs.join("bus/pci/drivers/btintel_pcie")).unwrap();
+        fs::create_dir_all(sysfs.join("class/bluetooth")).unwrap();
+        symlink(
+            "../../devices/pci0000:00/0000:00:14.7/bluetooth/hci0",
+            sysfs.join("class/bluetooth/hci0"),
+        )
+        .unwrap();
+        symlink("../../../0000:00:14.7", chip.join("bluetooth/hci0/device")).unwrap();
+        symlink("../../../bus/pci/drivers/btintel_pcie", chip.join("driver")).unwrap();
+        let driver = fs::canonicalize(sysfs.join("bus/pci/drivers/btintel_pcie")).unwrap();
+        assert_eq!(
+            sits_on(&sysfs, "hci0"),
+            Halted {
+                name: "hci0".into(),
+                device: Some("0000:00:14.7".into()),
+                driver: driver.to_str().map(String::from),
+            }
+        );
+        assert_eq!(
+            sits_on(&sysfs, "hci1"),
+            Halted {
+                name: "hci1".into(),
+                device: None,
+                driver: None,
+            },
+            "an adapter sysfs doesn't know sat on something"
+        );
+        fs::remove_dir_all(&sysfs).unwrap();
     }
 
     #[test]
