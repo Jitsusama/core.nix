@@ -1361,12 +1361,13 @@ def test_for_yous_filter_lists_what_is_there_and_steps_into_a_kind(desktop: Desk
             if scale != "1":
                 desktop.shoot(f"launcher-for-you-filtered-at-{named}")
             else:
-                # Its drawer names its quest by its title from the index, once, and says the
-                # quest's standing beside its session (VKCF3Z, 2026-11-08).
+                # Its drawer names its quest by its title from the index, once, and says how
+                # the quest stands in its eyebrow, with no Session fact saying it again
+                # (VKCF3Z, 2026-11-08; Y2YBTS, 2026-11-12).
                 desktop.launcher_until(
                     lambda shown: (
                         looks_drawer(shown)
-                        == ("from Reef Quest \u00b7 to look at", "pi-reef \u00b7 paused", False)
+                        == ("from Reef Quest \u00b7 paused \u00b7 to look at", None, False)
                     )
                 )
             desktop.machine.send_chars("-")

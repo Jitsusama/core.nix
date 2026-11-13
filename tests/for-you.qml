@@ -445,6 +445,25 @@ QtObject {
                 ForYou.sessionSaid("pi \u00b7 core", "paused"),
                 ForYou.sessionSaid("pi \u00b7 core", undefined), ForYou.sessionSaid("", "paused")],
             ["pi \u00b7 core", "pi \u00b7 core \u00b7 paused", "pi \u00b7 core", ""]);
+        // What a look points at, short enough for one line, its whole
+        // address in the drawer's nerdy bits (Y2YBTS, 2026-11-12: "i hate
+        // gross line wraps").
+        const pointing = { review: "{at} review", diff: "{at} diff" };
+        expect("a change reads as its repository and number",
+            [ForYou.pointsAt("pr", "https://github.com/shop/world/pull/2396409", pointing),
+                ForYou.pointsAt("pr", "https://github.com/shop/world/pull/2396409/files",
+                    pointing),
+                ForYou.pointsAt("diff", "https://github.com/shop/world/pull/12/files", pointing)],
+            ["world#2396409 review", "world#2396409 review", "world#12 diff"]);
+        expect("a page reads as its site and its last step",
+            [ForYou.pointsAt("page", "http://sites.localhost:8484/web/", pointing),
+                ForYou.pointsAt("page", "https://example.org/a/b/report.html?x=1#top", pointing),
+                ForYou.pointsAt("page", "https://example.org", pointing)],
+            ["sites.localhost:8484/web", "example.org/report.html", "example.org"]);
+        expect("a file reads as its name, and nothing as nothing",
+            [ForYou.pointsAt("diff", "/home/skiff/notes/plan.md", pointing),
+                ForYou.pointsAt("page", "", pointing)],
+            ["plan.md diff", ""]);
         expect("one a person says is done has no check",
             figures({ doneWhen: { by: "person" } }).check, "");
 
