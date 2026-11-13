@@ -47,7 +47,7 @@ use dictation::microphone;
 use dictation::openvino::Priority;
 use dictation::speech::Speech;
 
-use crate::mode;
+use crate::{kept, mode};
 
 const UNUSED: Duration = Duration::from_mins(10);
 // A chord let go sooner than this was a tap, which leaves it listening.
@@ -113,6 +113,8 @@ enum Event {
     Sounding(u64),
     Full(u64),
     Heard(Result<String, String>),
+    /// The model loaded, in this many ms.
+    Ready(u128),
 }
 
 enum Job {
@@ -254,15 +256,21 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
     let mut generation = 0_u64;
     // The listening a held chord started, by its generation.
     let mut held: Option<u64> = None;
+    // What's said beside the state, for the launcher's row: when a take
+    // last typed, kept across restarts, and how long the model last took
+    // to load.
+    let file = kept::here();
+    let mut last = file.as_deref().and_then(kept::read);
+    let mut ready: Option<u128> = None;
     for event in heard {
         let before = state;
         let told = shown(state, sounding);
         match event {
             Event::Watch(mut stream) => {
-                if stream
-                    .write_all(format!("{}\n", told.word()).as_bytes())
-                    .is_ok()
-                {
+                let mut said = format!("{}\n", told.word());
+                said.extend(ready.map(|ms| format!("{}\n", kept::ready(ms))));
+                said.extend(last.map(|at| format!("{}\n", kept::last_take(at))));
+                if stream.write_all(said.as_bytes()).is_ok() {
                     watchers.push(stream);
                 }
             }
@@ -303,13 +311,26 @@ fn coordinate(heard: &Receiver<Event>, events: &Sender<Event>, jobs: &Sender<Job
                 match result {
                     Ok(text) if !text.is_empty() => {
                         let text = mode::shaped(&text, mode::focused());
-                        if let Err(error) = type_out(&text) {
-                            notice("Dictation can't type", &error);
+                        match type_out(&text) {
+                            Ok(()) => {
+                                let at = kept::now();
+                                last = Some(at);
+                                if let Some(Err(error)) = file.as_deref().map(|f| kept::keep(f, at))
+                                {
+                                    eprintln!("dictation: {error}");
+                                }
+                                tell(&kept::last_take(at), &mut watchers);
+                            }
+                            Err(error) => notice("Dictation can't type", &error),
                         }
                     }
                     Ok(_) => say(Said::Word(Nothing::Unclear.word()), &mut watchers),
                     Err(error) => notice("Dictation failed", &error),
                 }
+            }
+            Event::Ready(ms) => {
+                ready = Some(ms);
+                tell(&kept::ready(ms), &mut watchers);
             }
         }
         let now = shown(state, sounding);
@@ -557,10 +578,9 @@ fn worker(
                 let mut loaded =
                     Speech::load(&model, &device, cache.as_deref(), &words, Priority::Waited)?;
                 loaded.warm()?;
-                eprintln!(
-                    "dictation: loaded and warmed in {} ms",
-                    started.elapsed().as_millis()
-                );
+                let ms = started.elapsed().as_millis();
+                eprintln!("dictation: loaded and warmed in {ms} ms");
+                let _ = events.send(Event::Ready(ms));
                 *whisper = Some(loaded);
             }
             Ok(())
@@ -588,10 +608,11 @@ fn worker(
                             &words,
                             Priority::Waited,
                         ) {
-                            Ok(_) => eprintln!(
-                                "dictation: ready in {} ms",
-                                started.elapsed().as_millis()
-                            ),
+                            Ok(_) => {
+                                let ms = started.elapsed().as_millis();
+                                eprintln!("dictation: ready in {ms} ms");
+                                let _ = events.send(Event::Ready(ms));
+                            }
                             Err(error) => eprintln!("dictation: {error}"),
                         }
                     }

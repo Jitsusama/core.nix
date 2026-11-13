@@ -22,5 +22,15 @@ ShellRoot {
             report.write(`state ${Dictation.state}\n`);
             report.flush();
         }
+
+        function onLastTakeChanged() {
+            report.write(`last ${Dictation.lastTake}\n`);
+            report.flush();
+        }
+
+        function onReadyMsChanged() {
+            report.write(`ready ${Dictation.readyMs}\n`);
+            report.flush();
+        }
     }
 }
