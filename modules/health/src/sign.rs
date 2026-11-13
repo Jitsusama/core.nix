@@ -89,9 +89,45 @@ pub fn is_trace(message: &str) -> bool {
     TRACES.iter().any(|start| message.contains(start))
 }
 
+/// Whether the message is sudo refusing a probe, `sudo -n true` asking
+/// whether a password is needed. It never prompts and runs nothing, so it's
+/// no error: 42 of 12 November's 48 sudo errors were probes. A refusal of
+/// any other command, or a wrong password, still is.
+#[must_use]
+pub fn is_probe(message: &str) -> bool {
+    message.contains(" a password is required ;")
+        && message
+            .rsplit_once("COMMAND=")
+            .is_some_and(|(_, command)| command.trim() == "true" || command.ends_with("/true"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_sudo_refusing_true_is_a_probe() {
+        let refused = |command: &str| {
+            format!(
+                "jitsusama : a password is required ; PWD=/home/jitsusama ; USER=root ; \
+                 COMMAND={command}"
+            )
+        };
+        assert!(
+            is_probe(&refused("/run/current-system/sw/bin/true")),
+            "a refused sudo -n true wasn't taken for a probe"
+        );
+        assert!(
+            !is_probe(&refused(
+                "/run/current-system/sw/bin/systemctl restart nix-daemon"
+            )),
+            "a refusal of a real command was taken for a probe"
+        );
+        assert!(
+            !is_probe("jitsusama : 3 incorrect password attempts ; COMMAND=/bin/true"),
+            "a wrong password was taken for a probe"
+        );
+    }
 
     #[test]
     fn what_changes_between_repeats_is_taken_out() {

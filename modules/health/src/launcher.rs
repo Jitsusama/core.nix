@@ -9,7 +9,8 @@
 //! exactly. The largest batch's p99 is never below it, though: by nearest
 //! rank at most one in a hundred of each batch is past its p99, so at most
 //! one in a hundred of the day's are past the largest. That is the p99 the
-//! day keeps, a ceiling, and exact where each was timed alone.
+//! day keeps, a ceiling, and exact where each was timed alone or where the
+//! launcher's trials gave every key's time (`trials.rs` pools them).
 
 use std::collections::BTreeMap;
 
@@ -69,6 +70,9 @@ pub struct Timed {
     pub slowest_ms: u64,
     /// The largest of the batches' p99s.
     pub p99_ms: u64,
+    /// Each time the trials gave, in milliseconds, counted once for each
+    /// it was, so the day's p99 can be told exactly.
+    pub pooled: BTreeMap<u64, u64>,
 }
 
 impl Timed {
@@ -81,32 +85,43 @@ impl Timed {
         self.p99_ms = self.p99_ms.max(p99);
     }
 
+    /// Pool one time the trials gave, in milliseconds.
+    pub fn pool(&mut self, took: u64) {
+        *self.pooled.entry(took).or_default() += 1;
+    }
+
+    /// How many times were pooled.
+    #[must_use]
+    pub fn pooled_count(&self) -> u64 {
+        self.pooled.values().sum()
+    }
+
+    /// Whether the p99 is exact: from every one pooled, or each timed alone.
+    #[must_use]
+    pub fn exact(&self) -> bool {
+        !self.pooled.is_empty() || self.batches == self.count
+    }
+
     /// The day's median, in milliseconds.
     #[must_use]
     pub fn median(&self) -> Option<u64> {
-        self.ranked(self.count.div_ceil(2))
+        ranked(&self.medians, self.count.div_ceil(2))
     }
 
-    /// The day's p99, in milliseconds: by nearest rank where each was
-    /// timed alone, and otherwise the ceiling the batches give.
+    /// The day's p99, in milliseconds: by nearest rank of those pooled, or
+    /// where each was timed alone, and otherwise the ceiling the batches
+    /// give.
     #[must_use]
     pub fn p99(&self) -> Option<u64> {
-        if self.count == 0 {
+        if !self.pooled.is_empty() {
+            ranked(&self.pooled, (self.pooled_count() * 99).div_ceil(100))
+        } else if self.count == 0 {
             None
         } else if self.batches == self.count {
-            self.ranked((self.count * 99).div_ceil(100))
+            ranked(&self.medians, (self.count * 99).div_ceil(100))
         } else {
             Some(self.p99_ms)
         }
-    }
-
-    /// The batches' medians' value at `rank`, counting from one.
-    fn ranked(&self, rank: u64) -> Option<u64> {
-        let mut seen = 0;
-        self.medians.iter().find_map(|(&median, &count)| {
-            seen += count;
-            (seen >= rank.max(1)).then_some(median)
-        })
     }
 
     /// The share past the bar, in percent.
@@ -211,11 +226,7 @@ impl Launcher {
                         percent(timed.late_percent())
                     ),
                 };
-                let ceiling = if timed.batches == timed.count {
-                    ""
-                } else {
-                    "at most "
-                };
+                let ceiling = if timed.exact() { "" } else { "at most " };
                 format!(
                     "{} {}: a median {} ms, the p99 {ceiling}{} ms, the slowest {} ms; {late}",
                     timed.count,
@@ -269,6 +280,15 @@ const SHOWN_MS: u64 = 50;
 
 /// An opening's, from the chord to the launcher taking the keys.
 const USABLE_MS: u64 = 30;
+
+/// The value at `rank` of times counted in `each`, counting from one.
+fn ranked(each: &BTreeMap<u64, u64>, rank: u64) -> Option<u64> {
+    let mut seen = 0;
+    each.iter().find_map(|(&took, &count)| {
+        seen += count;
+        (seen >= rank.max(1)).then_some(took)
+    })
+}
 
 /// One opening, from "N ms from the chord".
 fn once(part: &mut Timed, rest: &str, bar: u64) -> bool {
@@ -366,6 +386,24 @@ mod tests {
         assert!(
             !Launcher::default().took(SAID[8]),
             "a line that times nothing was taken"
+        );
+    }
+
+    #[test]
+    fn the_keys_p99_is_exact_once_the_trials_gave_every_key() {
+        let mut launcher = read();
+        for took in 1..=100 {
+            launcher.keys.pool(took);
+        }
+        assert_eq!(
+            launcher.keys.p99(),
+            Some(99),
+            "the keys' p99 is still the batches' ceiling though every key was pooled"
+        );
+        assert!(
+            launcher.said()[0].contains(", the p99 99 ms,"),
+            "an exact p99 was said as a ceiling: {:?}",
+            launcher.said()
         );
     }
 

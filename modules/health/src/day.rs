@@ -280,7 +280,7 @@ impl Day {
             return;
         }
         thing.lines += 1;
-        if entry.priority <= 3 {
+        if entry.priority <= 3 && !sign::is_probe(&entry.message) {
             thing.errors += 1;
         }
         if entry.crashed.is_some() {
