@@ -424,7 +424,7 @@ pub struct Guard {
 }
 
 /// What holds the disks, as a thread of its own measured it.
-type Measured = Arc<Mutex<Option<(f64, Vec<(crate::holders::Place, u64)>, crate::ledger::Grown)>>>;
+type Measured = Arc<Mutex<Option<crate::ledger::Measure>>>;
 
 /// Why a path stays or would go.
 #[derive(Clone, Debug, PartialEq)]
@@ -656,6 +656,9 @@ impl Guard {
         let home = matches!(config.scope, crate::config::Scope::User)
             .then(|| std::env::var_os("HOME").map(PathBuf::from))
             .flatten();
+        // Started again, it says what held the disks when it last measured
+        // until its own first measure ends, rather than nothing for minutes.
+        let measured = crate::ledger::last(state, crate::holders::places(&config));
         Ok(Guard {
             config,
             processes: places.processes.clone(),
@@ -707,7 +710,7 @@ impl Guard {
             kept: Vec::new(),
             offered: None,
             remeasure: false,
-            measured: Arc::new(Mutex::new(None)),
+            measured: Arc::new(Mutex::new(measured)),
             measuring: None,
             began: None,
         })

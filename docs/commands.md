@@ -493,9 +493,13 @@ reads every program a crate builds, and holds it to five points:
   wide, runs no line past the edge, keeps each line's inset when it wraps,
   parts no figure from its unit across lines, and reads at 100 and 140 as
   at 80, as [Width and What Gives Way](#width-and-what-gives-way) says.
-  What a command answers from a machine's state is held to the same rules
-  by its crate's own tests, which set it at 60 and 100 from made-up state,
-  as disk-guard's status tests do.
+  Its views, what it answers a person from a machine's state, such as its
+  bare run, its status and its lists, are set at the same widths from
+  stand-in state the check is given beside it, and held to the same rules
+  but the last, since a table may take the room: each has to exit 0, so
+  a stand-in too thin to show the view fails rather than passing on an
+  error. A stand-in's times are written as `@NOW-N@`, set as it runs, so
+  what it says happened lately reads that way.
 
 It reads every script a Nix file outside the tests wraps as a program,
 with `writeShellApplication` or `writeShellScriptBin`, too: the files its
