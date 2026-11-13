@@ -287,17 +287,11 @@ fn says_read(word: &str) -> bool {
 }
 
 /// How a notice says it stands, its `x-said` key worded, or "" for none
-/// or a key there's no word for: "sent" or "answered" of a talk, "taken"
-/// once what it filed is taken back, or "told" with what its sender said
-/// instead in `x-told`, so a card asked to take it back is never silent
-/// (VKCF3Z, 2026-11-12 [244ed4fd]).
-fn stands(notice: &Notice, words: &Words) -> String {
+/// or a key there's no word for, as "sent" or "answered" of a talk.
+fn stands<'w>(notice: &Notice, words: &'w Words) -> &'w str {
     match notice.hint("x-said") {
-        key @ ("sent" | "answered" | "taken") => words.said(PLACE, key).to_owned(),
-        "told" => words
-            .said(PLACE, "told")
-            .replace("{told}", notice.hint("x-told")),
-        _ => String::new(),
+        key @ ("sent" | "answered") => words.said(PLACE, key),
+        _ => "",
     }
 }
 
@@ -579,25 +573,6 @@ mod tests {
         };
         making_into(&mut rows, &[answered], &[]);
         assert_eq!(rows.card(10).expect("its card")["said"], "answered");
-        // Taken back, it says so; anything else the void answers to that
-        // is said as it said it (VKCF3Z, 2026-11-12 [244ed4fd]).
-        let hinted = |hints: Value| Notice {
-            hints: hints.as_object().cloned().unwrap_or_default(),
-            ..sent.clone()
-        };
-        making_into(&mut rows, &[hinted(json!({ "x-said": "taken" }))], &[]);
-        assert_eq!(
-            rows.card(10).expect("its card")["said"],
-            "taken back",
-            "what was filed, taken back"
-        );
-        let told = hinted(json!({ "x-said": "told", "x-told": "nothing filed then" }));
-        let [mixed, _, _] = making_into(&mut rows, &[told], &[]);
-        assert_eq!(
-            mixed[0]["side"],
-            json!([{ "said": "nothing filed then" }, { "at": 10_000, "as": "moment" }]),
-            "what the void said instead, before its moment"
-        );
         let unknown = Notice {
             hints: json!({ "x-said": "thinking" })
                 .as_object()
