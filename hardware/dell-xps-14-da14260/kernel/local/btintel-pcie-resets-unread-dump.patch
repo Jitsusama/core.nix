@@ -1,0 +1,104 @@
+Bluetooth: btintel_pcie: reset a halted controller whose dump is unread
+
+When the controller raises a hardware exception it halts, and the
+driver sets BTINTEL_PCIE_CORE_HALTED and reads the exception dump from
+device memory. Only an HCI event found in that dump leads to a reset:
+the stack's error reset calls btintel_pcie_hw_error(), which requests
+an FLR. When the dump can't be used (its signature is wrong, the read
+fails, the CNVi isn't one the dump is read for, or it holds no event),
+nothing is passed on. Every frame sent after fails at once with -ENODEV
+while the core is halted, so hci_cmd_timeout() never resets it either,
+and the controller stays dead until the driver is bound again.
+
+The XPS 14 DA14260 (8086:e476, firmware 19-36.26) did so after "Failed
+to get mac access: (-62)" and then "Invalid exception dump signature:
+0x665c9494", and Bluetooth was gone, mouse and all, for 20 hours until
+a reboot. Two reports on linux-bluetooth show the same: a BE201 on 7
+October 2026 and a Panther Lake BE211 on 7 November 2026, both brought
+back by unbinding and binding the driver.
+
+When no event was passed on, pass the stack a Hardware Error event of
+the driver's own, so the same reset runs as for a readable dump, within
+btintel_pcie_hw_error()'s retry limit.
+
+Link: https://lore.kernel.org/linux-bluetooth/CAMuQ30-uAH1aYbU9yCJXw_9LPJ1Gsn97kVhLG6pu07QnYYPpsQ@mail.gmail.com/
+Link: https://lore.kernel.org/linux-bluetooth/CAFC7XimOGvQUgXzg24vfDZ4q=9obX0yCYrrijus3RwigGOVSQw@mail.gmail.com/
+
+diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
+--- a/drivers/bluetooth/btintel_pcie.c
++++ b/drivers/bluetooth/btintel_pcie.c
+@@ -1296,11 +1296,39 @@ exit_error:
+ 	return ret;
+ }
+ 
++/* A halted controller whose exception dump gave no HCI event is left with
++ * BTINTEL_PCIE_CORE_HALTED set, so every frame sent fails at once with
++ * -ENODEV and hci_cmd_timeout() never resets it either: it stays dead until
++ * the driver is bound again. Pass the stack a Hardware Error event of our
++ * own, as a readable dump would, so its error reset runs
++ * btintel_pcie_hw_error() and the controller is reset within that
++ * function's retry limit.
++ */
++static void btintel_pcie_hwexp_unread(struct btintel_pcie_data *data)
++{
++	const u8 evt[] = { HCI_EV_HARDWARE_ERROR, 1, 0x00 };
++	u32 type = BTINTEL_PCIE_HCI_EVT_PKT;
++	struct sk_buff *skb;
++
++	bt_dev_err(data->hdev, "No hardware error event in the exception dump");
++
++	skb = bt_skb_alloc(sizeof(evt), GFP_KERNEL);
++	if (!skb)
++		return;
++	hci_skb_pkt_type(skb) = HCI_EVENT_PKT;
++	skb_put_data(skb, evt, sizeof(evt));
++	memcpy(skb_push(skb, BTINTEL_PCIE_HCI_TYPE_LEN), &type,
++	       BTINTEL_PCIE_HCI_TYPE_LEN);
++
++	btintel_pcie_recv_frame(data, skb);
++}
++
+ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+ {
+ 	int len, err, offset, pending;
+ 	struct sk_buff *skb;
+-	u8 *buf, prefix[64];
++	u8 *buf = NULL, prefix[64];
++	bool told = false;
+ 	u32 addr, val;
+ 	u16 pkt_len;
+ 
+@@ -1317,7 +1345,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+ 	case BTINTEL_CNVI_BLAZARIW:
+ 		/* only from step B0 onwards */
+ 		if (INTEL_CNVX_TOP_STEP(data->dmp_hdr.cnvi_top) != 0x01)
+-			return;
++			goto exit_on_error;
+ 		len = BTINTEL_PCIE_BLZR_HWEXP_SIZE; /* exception data length */
+ 		addr = BTINTEL_PCIE_BLZR_HWEXP_DMP_ADDR;
+ 		break;
+@@ -1332,7 +1360,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+ 		break;
+ 	default:
+ 		bt_dev_err(data->hdev, "Unsupported cnvi 0x%8.8x", data->dmp_hdr.cnvi_top);
+-		return;
++		goto exit_on_error;
+ 	}
+ 
+ 	buf = kzalloc(len, GFP_KERNEL);
+@@ -1397,11 +1425,14 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+ 		print_hex_dump(KERN_DEBUG, prefix, DUMP_PREFIX_OFFSET, 16, 1,
+ 			       tlv->val, pkt_len, false);
+ 
+-		btintel_pcie_recv_frame(data, skb);
++		if (!btintel_pcie_recv_frame(data, skb))
++			told = true;
+ 	} while (offset < len);
+ 
+ exit_on_error:
+ 	kfree(buf);
++	if (!told)
++		btintel_pcie_hwexp_unread(data);
+ }
+ 
+ static int btintel_pcie_dump_fwtrigger_event(struct btintel_pcie_data *data)
