@@ -601,6 +601,93 @@ mod tests {
         assert_eq!(follow.lux(), None);
     }
 
+    /// As steep near 12 lux as the curve Joel's picks had made by 12
+    /// November, where a lux was worth 4% of the screen.
+    fn steep() -> Curve {
+        Curve::through([
+            Point {
+                lux: 10.0,
+                level: 0.5,
+            },
+            Point {
+                lux: 20.0,
+                level: 0.9,
+            },
+        ])
+    }
+
+    #[test]
+    fn a_lux_either_way_moves_nothing() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        for lux in [11.0, 12.0, 13.0, 14.0, 11.0, 10.0] {
+            let _ = follow.heard(lux, shown, start);
+            assert_eq!(
+                follow.wake(start),
+                None,
+                "{lux} lux moved the screen from 12's"
+            );
+        }
+    }
+
+    #[test]
+    fn light_a_fifth_away_is_followed() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(15.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + BRIGHTENING));
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(9.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + DIMMING));
+    }
+
+    #[test]
+    fn light_drifting_a_lux_at_a_time_is_followed_once_it_has_gone_a_fifth() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        for lux in [11.0, 10.0] {
+            let _ = follow.heard(lux, shown, start);
+        }
+        assert_eq!(
+            follow.wake(start),
+            None,
+            "10 lux moved the screen from 12's"
+        );
+        let _ = follow.heard(9.0, shown, start);
+        assert_eq!(follow.wake(start), Some(start + DIMMING));
+        let arrived = moved(&mut follow, shown, start + DIMMING).unwrap();
+        let wanted = steep().level_at(9.0);
+        assert!(
+            (arrived - wanted).abs() < 1e-9,
+            "arrived at {arrived}, not {wanted}"
+        );
+    }
+
+    #[test]
+    fn a_pick_holds_through_a_lux_either_way() {
+        let start = Instant::now();
+        let shown = steep().level_at(12.0);
+        let mut follow = Follow::new(steep(), true);
+        let _ = follow.heard(12.0, shown, start);
+        let _ = follow.heard(11.0, shown, start);
+        let _ = follow.chose(0.6);
+        for lux in [12.0, 11.0, 13.0] {
+            let _ = follow.heard(lux, 0.6, start);
+            assert_eq!(
+                follow.wake(start),
+                None,
+                "{lux} lux moved the screen from Joel's pick"
+            );
+        }
+    }
+
     #[test]
     fn light_heard_mid_move_is_weighed_against_where_the_move_goes() {
         let start = Instant::now();
