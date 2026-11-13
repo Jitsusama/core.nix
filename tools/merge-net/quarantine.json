@@ -253,5 +253,15 @@
     "owner_pr": 4014,
     "reason": "failed, then passed, at b7a81d60bf21",
     "test": "vm-guide-installs"
+  },
+  {
+    "at": 1794610340,
+    "commit": "81d294e5c2e51e5fdfa62d4d0db1d66b46a05c0b",
+    "owner_pr": 4129,
+    "reason": "failed, then passed, at 81d294e5c2e5",
+    "subtests": [
+      "test_each_track_is_full_once_the_image_is_read"
+    ],
+    "test": "vm-boot-says-it-wakes-from-hibernation"
   }
 ]
