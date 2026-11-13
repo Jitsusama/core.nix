@@ -470,7 +470,7 @@ Singleton {
         id: reopenKind
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-        kind: ["reopen", "restoring", "to-reopen", "arrangement", "kept-places"]
+        kind: ["reopen", "restoring", "to-reopen", "arrangement"]
         watching: ({ place: "agents" })
         answersWhole: true
     }
@@ -1944,29 +1944,26 @@ Singleton {
     // session id, so each one's viewer opens there once it runs hosted,
     // rather than nowhere until Joel goes to it (OSPHT4's cutover; 2QZBX9,
     // [906a6c10]). The cutover asks for each (keepPlace) just before it
-    // tells the session to move, which closes its window. Held here, so
-    // the cutover is answered at once, and kept by the agents daemon
-    // (kept_places.rs), told the whole of them as they change, so a shell
-    // started again between the two still opens it: it takes what the
-    // daemon kept once, as it first hears it, under any kept since.
-    property var keptPlaces: ({})
-    property bool keptPlacesTaken: false
-    readonly property var keptPlacesServed: {
-        void reopenKind.revision;
-        return reopenKind.held["kept-places:agents"]?.places ?? null;
+    // tells the session to move, which closes its window. Kept in a file,
+    // so a shell started again between the two still opens it.
+    property var keptPlaces: keptPlacesOf(keptPlacesFile.text())
+    function keptPlacesOf(text) {
+        try {
+            const kept = JSON.parse(text);
+            return kept !== null && typeof kept === "object" && !Array.isArray(kept) ? kept : {};
+        } catch (_error) {
+            return {};
+        }
     }
-    onKeptPlacesServedChanged: {
-        if (keptPlacesTaken || keptPlacesServed === null)
-            return;
-        keptPlacesTaken = true;
-        const keptSince = Object.keys(keptPlaces).length > 0;
-        keptPlaces = Object.assign({}, keptPlacesServed, keptPlaces);
-        if (keptSince)
-            keepPlaces(keptPlaces);
+    FileView {
+        id: keptPlacesFile
+        path: Quickshell.statePath("kept-places.json")
+        blockLoading: true
+        printErrors: false
     }
     function keepPlaces(kept) {
         keptPlaces = kept;
-        reopenKind.ask({ ask: "keep-places", places: kept });
+        keptPlacesFile.setText(JSON.stringify(kept));
     }
     // Keeps where the window of the session here that pi knows as `id`
     // sits, answering "kept", or "no window to keep" for one with no

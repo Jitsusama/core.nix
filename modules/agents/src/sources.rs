@@ -196,12 +196,7 @@ impl Inputs {
                     eprintln!("agents: can't say {} was read: {why}", answer.talk);
                 }
             }
-            Heard::KeepPlaces(kept) => {
-                if let Err(why) = kept.write(&paths.kept_places) {
-                    eprintln!("agents: can't keep {}: {why}", paths.kept_places.display());
-                }
-                self.kept_places = kept;
-            }
+            Heard::KeepPlaces(_) => {}
         }
     }
 
