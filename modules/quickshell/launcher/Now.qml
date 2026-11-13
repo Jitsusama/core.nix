@@ -1405,7 +1405,10 @@ Provider {
     // made as its figures change (ForYou.js's given), as Passwords gives
     // its one to-do for what its last check found: read once as each
     // changes, those to do weighed beside the rest, those done in History.
-    readonly property var given: ForYou.given(provider.launcher?.sources ?? [])
+    // A thing to try a day old is done as not tried, judged at the looks'
+    // hour (looksHour), so it goes within the hour and never on a minute.
+    readonly property var given: ForYou.given(provider.launcher?.sources ?? [],
+        looksHour * 3600000, (Words.of("on:waiting").said ?? {}).notTried)
     // What the sources give, as Now reads them, counted with the rest where
     // the tray counts them too; and the looks, which the tray hears from the
     // to-do daemon instead wherever it runs (ForYouHolds.qml), both read
