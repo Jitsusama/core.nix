@@ -13,9 +13,10 @@
 //! load if free memory falls too far, so it can't push Joel's own
 //! programs out.
 
+use crate::judge::{self, Failed};
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -104,21 +105,31 @@ impl Plan {
 #[derive(Debug)]
 pub struct Step {
     pub builds: usize,
-    pub failed: Vec<String>,
+    pub failed: Vec<Failed>,
 }
 
 /// What a run found.
 #[derive(Debug)]
 pub struct Run {
     pub steps: Vec<Step>,
-    /// Why the load was stopped early, if it was.
-    pub stopped: Option<String>,
+    /// The free memory, in bytes, that the machine fell under, when that
+    /// stopped the load early.
+    pub stopped_under: Option<u64>,
+}
+
+/// What a run says as it goes.
+#[derive(Clone, Copy)]
+pub enum Said<'a> {
+    /// The idle reading, as `load-proof all` printed it.
+    Idle(&'a str),
+    /// A step's reading, and what the step found.
+    Step(&'a Step, &'a str),
 }
 
 impl Run {
     /// Whether every step felt as idle did, and the load ran to the end.
     pub fn passed(&self) -> bool {
-        self.stopped.is_none() && self.first_failed().is_none()
+        self.stopped_under.is_none() && self.first_failed().is_none()
     }
 
     /// How many builds the first step that failed ran.
@@ -164,9 +175,14 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Runs `plan`, reading every signal with `program`, and says each step's
-/// lines as they come on `out`.
-pub fn run(plan: &Plan, program: &Path, folder: &Path, out: &mut dyn Write) -> Result<Run, String> {
+/// Runs `plan`, reading every signal with `program`, and says each
+/// reading to `said` as it comes.
+pub fn run(
+    plan: &Plan,
+    program: &Path,
+    folder: &Path,
+    said: &mut dyn FnMut(Said<'_>),
+) -> Result<Run, String> {
     let now = free()?;
     if now < plan.start_free {
         return Err(format!(
@@ -176,7 +192,7 @@ pub fn run(plan: &Plan, program: &Path, folder: &Path, out: &mut dyn Write) -> R
         ));
     }
     let idle = reading(program, plan.reading)?;
-    say(out, "idle", &idle);
+    said(Said::Idle(&idle));
     let load = Load::new(program, folder);
     let stopped = Arc::new(Mutex::new(None));
     let done = Arc::new(AtomicBool::new(false));
@@ -195,15 +211,14 @@ pub fn run(plan: &Plan, program: &Path, folder: &Path, out: &mut dyn Write) -> R
                     );
                     *stopped
                         .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                        Some(format!("free memory fell under {} GiB", stop_free / GIB));
+                        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(stop_free);
                     return;
                 }
                 thread::sleep(Duration::from_secs(1));
             }
         })
     };
-    let result = steps(plan, program, &load, &idle, &stopped, out);
+    let result = steps(plan, program, &load, &idle, &stopped, said);
     done.store(true, Ordering::Relaxed);
     let _ = guard.join();
     drop(load);
@@ -213,7 +228,7 @@ pub fn run(plan: &Plan, program: &Path, folder: &Path, out: &mut dyn Write) -> R
         .take();
     Ok(Run {
         steps: result?,
-        stopped,
+        stopped_under: stopped,
     })
 }
 
@@ -222,8 +237,8 @@ fn steps(
     program: &Path,
     load: &Load,
     idle: &str,
-    stopped: &Mutex<Option<String>>,
-    out: &mut dyn Write,
+    stopped: &Mutex<Option<u64>>,
+    said: &mut dyn FnMut(Said<'_>),
 ) -> Result<Vec<Step>, String> {
     let left = plan.length().saturating_sub(plan.reading);
     load.line(left)?;
@@ -262,21 +277,12 @@ fn steps(
                 "line {link} up {up:.1} Mbit/s down {down:.1} Mbit/s"
             );
         }
-        let failed = crate::judge::judge(&crate::judge::read(idle), &crate::judge::read(&reading));
-        say(out, &format!("{builds} builds"), &reading);
-        for failure in &failed {
-            let _ = writeln!(out, "  fails: {failure}");
-        }
-        steps.push(Step { builds, failed });
+        let failed = judge::judge(&judge::read(idle), &judge::read(&reading));
+        let step = Step { builds, failed };
+        said(Said::Step(&step, &reading));
+        steps.push(step);
     }
     Ok(steps)
-}
-
-fn say(out: &mut dyn Write, what: &str, reading: &str) {
-    let _ = writeln!(out, "{what}:");
-    for line in reading.lines() {
-        let _ = writeln!(out, "  {line}");
-    }
 }
 
 /// The link the default route leaves by, from `/proc/net/route`: the one
@@ -424,13 +430,15 @@ fn stop(units: &mut Vec<String>) {
 
 /// One build of the load: load-proof's own source copied into `folder`
 /// and built for release from clean, again and again until `length` has
-/// passed.
+/// passed. The source is the folder holding load-proof and the terminal
+/// kit it takes its shape from, so the kit is built beside it.
 pub fn build(folder: &Path, length: Duration) -> Result<(), String> {
     let (Some(source), Some(vendor), Some(tools)) = (SOURCE, VENDOR, TOOLS) else {
         return Err("this load-proof wasn't built knowing its source".to_owned());
     };
-    let crate_folder = folder.join("src");
-    copy(Path::new(source), &crate_folder).map_err(|e| format!("copying the source: {e}"))?;
+    let copied = folder.join("src");
+    copy(Path::new(source), &copied).map_err(|e| format!("copying the source: {e}"))?;
+    let crate_folder = copied.join("load-proof");
     fs::create_dir_all(crate_folder.join(".cargo"))
         .and_then(|()| fs::write(crate_folder.join(".cargo/config.toml"), offline(vendor)))
         .map_err(|e| format!("writing Cargo's settings: {e}"))?;
@@ -608,18 +616,23 @@ mod tests {
 
     #[test]
     fn a_run_passes_only_when_every_step_did_and_nothing_stopped_it() {
-        let step = |builds, failed: &[&str]| Step {
-            builds,
-            failed: failed.iter().map(|&f| f.to_owned()).collect(),
+        let save = Failed {
+            signal: "save",
+            missing: None,
+            figures: vec![("p99_ms", "p99 40.0 ms against 9.0 ms idle".to_owned())],
         };
-        let run = |steps, stopped: Option<&str>| Run {
+        let step = |builds, failed: &[Failed]| Step {
+            builds,
+            failed: failed.to_vec(),
+        };
+        let run = |steps, stopped_under: Option<u64>| Run {
             steps,
-            stopped: stopped.map(str::to_owned),
+            stopped_under,
         };
         assert!(run(vec![step(4, &[]), step(8, &[])], None).passed());
-        let failed = run(vec![step(4, &[]), step(8, &["save: p99"])], None);
+        let failed = run(vec![step(4, &[]), step(8, &[save])], None);
         assert!(!failed.passed());
         assert_eq!(failed.first_failed(), Some(8));
-        assert!(!run(vec![step(4, &[])], Some("free memory fell")).passed());
+        assert!(!run(vec![step(4, &[])], Some(8 * GIB)).passed());
     }
 }

@@ -169,6 +169,7 @@
         github-broker = pkgs.callPackage ../../modules/github-broker/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+        load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
         open-now = recentFiles;
         open-with = pkgs.callPackage ../../modules/open-with/package.nix { };

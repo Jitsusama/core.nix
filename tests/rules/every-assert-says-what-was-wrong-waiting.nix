@@ -179,7 +179,6 @@
   "modules/lid/docked/src/main.rs" = 11;
   "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
-  "modules/load-proof/src/main.rs" = 9;
   "modules/load-proof/src/run.rs" = 4;
   "modules/load-proof/src/save.rs" = 1;
   "modules/load-proof/src/sound.rs" = 1;
