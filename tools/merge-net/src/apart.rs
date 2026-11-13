@@ -387,7 +387,8 @@ fn apart_read(
 }
 
 /// The paths of the keys at which `after` differs from `before`. An array
-/// whose items are objects each with its own `id` is read as keyed by it,
+/// whose items are objects each with its own `id`, or `test`, is read as
+/// keyed by it,
 /// since adding one moves every index after it, and its order counts as
 /// one change to the whole; any other array is read by index, and one
 /// that changes length is changed whole.
@@ -462,11 +463,24 @@ fn find<'a>(items: &[(&str, &'a Value)], id: &str) -> Option<&'a Value> {
         .map(|(_, item)| *item)
 }
 
-/// An array's items by their `id`, when each is an object with its own.
+/// The fields an array's items may be told apart by, the first all of
+/// them have, each its own, winning. The quarantine list keys its
+/// entries by `test`: on 13 November each entry the net added to it made
+/// a change that only took subtests off another entry gate again, for
+/// the list's length had moved.
+const KEYS: [&str; 2] = ["id", "test"];
+
+/// An array's items by their `id`, or their `test`, when each is an
+/// object with its own.
 fn by_id(items: &[Value]) -> Option<Vec<(&str, &Value)>> {
+    KEYS.iter().find_map(|key| keyed_by(items, key))
+}
+
+/// An array's items by `key`, when each is an object with its own.
+fn keyed_by<'a>(items: &'a [Value], key: &str) -> Option<Vec<(&'a str, &'a Value)>> {
     let keyed: Vec<(&str, &Value)> = items
         .iter()
-        .map(|item| item["id"].as_str().map(|id| (id, item)))
+        .map(|item| item[key].as_str().map(|id| (id, item)))
         .collect::<Option<_>>()?;
     let mut ids: Vec<&str> = keyed.iter().map(|(id, _)| *id).collect();
     ids.sort_unstable();
@@ -521,6 +535,37 @@ mod tests {
         assert!(
             !apart(WORDS, &branch, "{", &head),
             "main's side doesn't read"
+        );
+    }
+
+    const HELD: &str = r#"[
+        {"test": "vm-a", "subtests": ["test_one", "test_two"]},
+        {"test": "vm-b", "subtests": ["test_three"]}]"#;
+
+    #[test]
+    fn a_list_keyed_by_test_changed_at_different_tests_is_apart() {
+        // #4031's case: the branch took a subtest off one test's entry, and
+        // main quarantined another test meanwhile.
+        let branch = HELD.replace(", \"test_two\"", "");
+        let main = HELD.replace("]}]", "]},\n{\"test\": \"vm-c\", \"subtests\": []}]");
+        let head = main.replace(", \"test_two\"", "");
+        assert!(
+            apart(HELD, &branch, &main, &head),
+            "main quarantined another test"
+        );
+        let main = HELD.replace("test_three", "test_four");
+        let head = main.replace(", \"test_two\"", "");
+        assert!(
+            apart(HELD, &branch, &main, &head),
+            "another test's entry changed"
+        );
+        let twice = HELD.replace("vm-b", "vm-a");
+        let branch = twice.replace(", \"test_two\"", "");
+        let main = twice.replace("]}]", "]},\n{\"test\": \"vm-c\", \"subtests\": []}]");
+        let head = main.replace(", \"test_two\"", "");
+        assert!(
+            !apart(&twice, &branch, &main, &head),
+            "a list naming one test twice was keyed by it"
         );
     }
 

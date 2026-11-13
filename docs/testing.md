@@ -202,11 +202,13 @@ moved none of its files. A file either side moved that names a path the
 other renamed or deleted counts as one of them, since a list naming a
 script the branch renamed breaks main as surely as a shared edit. A JSON
 file both changed at different keys counts as two files, as though split
-by key: an array of objects each with its own `id` is read by it, a change
-of its order or of any other array's length changes it whole, and the
-rebased head may differ from each side only where the other changed it.
-The launcher's `words.json` is the one this is for, which a quarter of
-main's merges change. When main moved some, `changed-checks` runs again at
+by key: an array of objects each with its own `id`, or else its own
+`test`, is read by it, a change of its order or of any other array's
+length changes it whole, and the rebased head may differ from each side
+only where the other changed it. The launcher's `words.json` is the one
+this is for, which a quarter of main's merges change, and the net's
+`quarantine.json`, keyed by test, which each quarantine changes.
+When main moved some, `changed-checks` runs again at
 the rebased head, never a single check chosen by hand, since which checks
 read a file shows only in their derivations; Nix builds only what the
 rebase moved and takes the rest from the builders. The one exception is a
