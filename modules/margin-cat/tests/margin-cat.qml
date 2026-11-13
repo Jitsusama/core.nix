@@ -135,6 +135,21 @@ QtObject {
             const last = Paths.frame(journey, journey.ends);
             if (Math.abs(last.x - to.x) > 0.01 || Math.abs(last.y - to.y) > 0.01)
                 wrong.push(`${said} ends at ${last.x},${last.y}`);
+            // Up or down a side at about the pace it walks a top (Joel,
+            // 2026-11-13 17:22, by WCJQSG fc3f716a: "Going up the side of
+            // a window should be at the same speed roughly as walking on
+            // top, it seems accelerated in the video"), each pace its
+            // cells a second, of the beats seen.
+            const seenOn = beat => Math.max(beat.from.y, beat.to.y) + at.tall > 0
+                && Math.min(beat.from.y, beat.to.y) < at.height;
+            const pace = beat => (Math.abs(beat.to.x - beat.from.x)
+                + Math.abs(beat.to.y - beat.from.y)) / at.cell / ((beat.ends - beat.begins) / 1000);
+            const walks = journey.beats.filter(beat => beat.kind === "goes" && seenOn(beat)
+                && pace(beat) > 0).map(pace);
+            for (const beat of journey.beats.filter(one => one.kind === "climbs" && seenOn(one)))
+                if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
+                    wrong.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
+                        + `walking at ${walks.map(Math.round).join(", ")}`);
             let before = null;
             for (let t = 0; t <= journey.ends && wrong.length < 5; t += 1000 / 120) {
                 const one = Paths.frame(journey, t);
