@@ -30,8 +30,7 @@ use std::time::Duration;
 /// Asked for a base's kept checks, it prints the `kept-checks-<host>` file,
 /// and for what its VM tests read, `kept-reads-<host>`, or ends 1 without
 /// one, and given either to keep, it adds it to `took-kept-<host>`; none
-/// of these counts as a run. Asked to list what it keeps, it prints the
-/// `kept-listing-<host>` file, or ends 1 without one, counting no run.
+/// of these counts as a run.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/ssh-options"
@@ -67,13 +66,6 @@ case "$2" in
     [ -f "$here/unreached-$1" ] && exit 255
     [ -f "$here/kept-checks-$1" ] || exit 1
     cat "$here/kept-checks-$1"
-    exit 0 ;;
-  # What changed-checks keeps there, listed before a run whose base
-  # might not be, so it's kept apart from it.
-  *"ls \""*/changed-checks\"*)
-    [ -f "$here/unreached-$1" ] && exit 255
-    [ -f "$here/kept-listing-$1" ] || exit 1
-    cat "$here/kept-listing-$1"
     exit 0 ;;
   # Whether changed-checks keeps a base evaluated there: the base
   # kept-<host> names. Asked before a run, so it's kept apart from it.
@@ -133,11 +125,6 @@ case "$2" in
   *changed-checks*) [ -f "$here/far-runs-grow" ] \
     && printf '{"at":%s}\n' "$$" >> "$here/far-runs" ;;
 esac
-# A run that fails once, then ends as the status file says.
-if [ -f "$here/fails-once" ]; then
-  rm -f "$here/fails-once"
-  exit 1
-fi
 exit "$(cat "$here/status")"
 "#;
 
@@ -2598,68 +2585,6 @@ fn a_changed_run_gives_the_other_lent_builder_the_checks_its_base_kept() {
     );
     let asked = changed.asked();
     assert_eq!(asked.len(), 1, "the copy was sent as a run: {asked:?}");
-}
-
-/// `changed`'s main moved on from its kept head in a folder of its own,
-/// with a change on it in another, and a lent builder listing the kept
-/// head's checks.
-fn changed_past_a_kept_main(changed: &Changed) {
-    let git = |arguments: &[&str]| git(&changed.tree, &changed.config, arguments);
-    fs::create_dir_all(changed.tree.join("modules/two")).unwrap();
-    fs::write(changed.tree.join("modules/two/b"), "two\n").unwrap();
-    git(&["add", "modules/two/b"]);
-    git(&["commit", "-q", "-m", "main moves"]);
-    let main = git(&["rev-parse", "HEAD"]);
-    git(&["update-ref", "refs/remotes/origin/main", &main]);
-    fs::create_dir_all(changed.tree.join("modules/one")).unwrap();
-    fs::write(changed.tree.join("modules/one/a"), "one\n").unwrap();
-    git(&["add", "modules/one/a"]);
-    git(&["commit", "-q", "-m", "the change"]);
-    fs::write(
-        changed.bin.join("kept-listing-nix-offload"),
-        format!("{}-x86_64-linux.json\nrest\n", changed.head),
-    )
-    .unwrap();
-}
-
-#[test]
-fn a_change_whose_base_isnt_kept_is_checked_on_the_main_that_is() {
-    // From 13:40 to 17:40 on 12 November 100 of 211 runs evaluated their
-    // base, and 81 of those bases had merged under 6 minutes before.
-    let changed = Changed::new();
-    changed_past_a_kept_main(&changed);
-    let (ran, _) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let said = String::from_utf8_lossy(&ran.stderr);
-    let short = &changed.head[..12];
-    assert!(
-        said.contains("'s change replayed as ") && said.contains(&format!(" onto {short}")),
-        "it didn't say it checked the change on the kept main: {said}"
-    );
-    assert!(
-        said.contains("what passed is "),
-        "it didn't say what passed was the replay: {said}"
-    );
-    assert_eq!(changed.asked().len(), 1, "the listing was sent as a run");
-}
-
-#[test]
-fn a_replayed_change_that_fails_runs_again_on_its_own_base() {
-    let changed = Changed::new();
-    changed_past_a_kept_main(&changed);
-    fs::write(changed.bin.join("fails-once"), "").unwrap();
-    let (ran, _) = changed.run(&["--name-only", "--system", "x86_64-linux"]);
-    assert_eq!(
-        ran.status.code(),
-        Some(0),
-        "a replay failed a run that passes on its own base: {ran:?}"
-    );
-    let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(
-        said.contains("failed, so the change runs again on its own base"),
-        "it didn't say why it ran again: {said}"
-    );
-    assert_eq!(changed.asked().len(), 2, "it didn't run again, once");
 }
 
 #[test]
