@@ -174,9 +174,13 @@ function rides(way, cols, at) {
             { wide: Math.abs(to.x - way.x) + at.wide, tall: Math.abs(to.y - way.y) + at.tall }))) {
         return;
     }
+    // Told of the resize `ahead` ms after niri set its edge going, it
+    // starts as far in (MarginCat.behind).
     const spring = Object.assign({}, at.spring, { slowdown: at.slowdown ?? 1 });
-    Ways.leg(way, "rides", to, { ms: MarginCat.slides(spring),
-        slide: t => MarginCat.slid(t, spring) });
+    const ms = MarginCat.slides(spring);
+    const ahead = Math.min(at.ahead ?? 0, ms);
+    Ways.leg(way, "rides", to, { ms: ms - ahead,
+        slide: t => MarginCat.slid(t + ahead, spring) });
 }
 
 // From wherever it is on a way, onto something that holds it on

@@ -246,6 +246,7 @@ PanelWindow {
             cols: Paths.columns(tilesOf(space?.id), 0),
             before: saw ? Paths.columns(saw, 0) : null,
             spring: Theme.motion.spring,
+            ahead: MarginCat.behind(frameMs),
             marks: marksLit
         });
         goingTo = wanted;
