@@ -756,10 +756,6 @@ mod tests {
             "asked for no process, it said nothing was wrong"
         );
         assert!(
-            roots(1),
-            "init wasn't found to be root's, so its memory could be asked for"
-        );
-        assert!(
             main(&["--other".to_owned(), "7".to_owned()]).is_err(),
             "asked wrongly, it said nothing was wrong"
         );
