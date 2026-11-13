@@ -47,8 +47,9 @@ Scope {
         trial = Trials.counted(trial, kind);
     }
 
-    function retyped(was, now) {
-        trial = Trials.retyped(trial, was, now);
+    // `asking` while the field holds words asked for, which are never kept.
+    function retyped(was, now, asking) {
+        trial = Trials.retyped(trial, was, now, asking);
     }
 
     // One key's search and the time to the frame that drew it, and what the
@@ -168,7 +169,8 @@ Scope {
         trial = Trials.picked(trial, Date.now(), row, { typed: typed, depth: depth });
     }
 
-    function closed() {
+    // `typed` is what the field held as it closed, "" where it was asked for.
+    function closed(typed) {
         if (!trial)
             return;
         // An opening that stuttered is said in the journal, as a slow key
@@ -176,7 +178,7 @@ Scope {
         if (pace.late > 0)
             console.info(`launcher: ${pace.late} of ${pace.drawn} frames came late while`
                 + ` it moved, the longest ${pace.longest} ms after the one before`);
-        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now()));
+        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now(), typed));
         if (piped)
             keeping.write(said);
         else

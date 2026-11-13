@@ -46,6 +46,8 @@ QtObject {
             JSON.stringify(slack));
         expect("how long it was open", slack.open === 1000, slack.open);
         expect("a pick isn't a miss", !slack.missed, slack.missed);
+        expect("a pick keeps no words it was sought by", slack.sought.length === 0,
+            JSON.stringify(slack.sought));
         expect("the home it opened on", slack.home === "today", slack.home);
 
         // Each trial its own: counting one leaves the one before as it was.
@@ -59,6 +61,30 @@ QtObject {
         expect("typed and closed is a miss", typedAway.missed, typedAway.missed);
         const lookedAway = Trials.ended(Trials.counted(Trials.begun(0, "four"), "arrows"), 5);
         expect("looked and closed isn't", !lookedAway.missed, lookedAway.missed);
+
+        // A miss keeps what each search was before Joel gave up on it, so the next one says
+        // what wasn't found: two searches of 12 November gave up after 51 and 62 s, and their
+        // trials held only counts (1JQPPC, 77f84121). Erasing letter by letter is one search.
+        let sought = Trials.begun(0, "today");
+        for (const [was, now] of [["", "agnets"], ["agnets", "agnet"], ["agnet", "ag"],
+            ["ag", "agents x"], ["agents x", ""], ["", "chrom"]])
+            sought = Trials.retyped(sought, was, now, false);
+        const gaveUp = Trials.ended(sought, 9, "chrom");
+        expect("a miss keeps each search given up",
+            JSON.stringify(gaveUp.sought) === JSON.stringify(["agnets", "agents x", "chrom"]),
+            JSON.stringify(gaveUp.sought));
+        // Never what's typed for an ask, which may be a talk's words or a password.
+        let told = Trials.retyped(Trials.begun(0, "today"), "", "dear joel", true);
+        told = Trials.ended(Trials.retyped(told, "dear joel", "", true), 9, "");
+        expect("an ask's words are never kept", told.missed && told.sought.length === 0,
+            JSON.stringify(told));
+        // At most the last five, each cut to 60 letters.
+        let searches = Trials.begun(0, "today");
+        for (const one of ["a", "b", "c", "d", "e", "f", "g".repeat(80)])
+            searches = Trials.retyped(Trials.retyped(searches, "", one, false), one, "", false);
+        const kept = Trials.ended(searches, 9, "").sought;
+        expect("the last five, each cut", kept.length === 5 && kept[0] === "c"
+            && kept[4] === "g".repeat(60), JSON.stringify(kept));
 
         // An answer is counted by its kind, never its empty key, so Return on
         // one is a pick and not a miss: Ask by its source's word, Memory by
