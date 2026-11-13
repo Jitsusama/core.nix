@@ -56,6 +56,7 @@ KEYS = {
     "down": ["-k", "Down"],
     "ctrl-left": ["-M", "ctrl", "-k", "Left", "-m", "ctrl"],
     "ctrl-r": ["-M", "ctrl", "-k", "r", "-m", "ctrl"],
+    "ctrl-u": ["-M", "ctrl", "-k", "u", "-m", "ctrl"],
     "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
     "ctrl-bracketright": ["-M", "ctrl", "-k", "bracketright", "-m", "ctrl"],
     # The notices read a letter by what it types (NoticeKeys.js), so Shift and g come as the

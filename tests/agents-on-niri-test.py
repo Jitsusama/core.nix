@@ -353,6 +353,37 @@ def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
     assert not shell.showing()["asking"], shell.showing()
 
 
+def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> None:
+    """What Joel was typing to a session is in its field again once a switch restarts the shell.
+
+    A switch took his words with the shell (Joel, 2026-11-12 16:00: "had it disappear through a
+    quickshell switch losing what i was typing"). They're written a quarter second after he
+    stops, and a switch waits half a minute past the launcher closing, so the shell ends once
+    they're written. What each change keeps, and when sent words go, is tests/drafts.qml's.
+    """
+    words = "is the harbour light lit"
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    shell.send_chars(words)
+    shell.launcher_until(lambda shown: shown["typed"] == words)
+    caret = shell.showing()["caret"]
+    shells = STATE / "quickshell/by-shell"
+    deadline = time.monotonic() + 10
+    while not any(words in kept.read_text() for kept in shells.glob("*/launcher-drafts.json")):
+        assert time.monotonic() < deadline, f"his words were never kept in {shells}"
+        time.sleep(0.05)
+    shell.restart()
+    found(shell, "listening quest", "Listening Quest")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["asking"])
+    shown = shell.showing()
+    assert (shown["typed"], shown["caret"]) == (words, caret), shown
+    # Emptied, the field keeps nothing for the next time it opens.
+    shell.send_key("ctrl-u")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+
+
 def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell: Shell) -> None:
     """The drawer's eyebrow says the repo a record names, not the folder it works in."""
     found(shell, "listening quest", "Listening Quest")

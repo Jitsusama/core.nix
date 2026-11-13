@@ -179,6 +179,11 @@
     a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
   '';
+  a-talks-words-outlive-the-shell = ''
+    what's typed to talk to a session is kept by its address with its caret for a week and read
+    back as a shell starts; words sent are kept until their talk is delivered or replied to, and
+    kept when it fails; a week-old file, or one not written by the shell, gives nothing back
+  '';
   a-theme-changes-everything = ''
     another theme leaves none of the first's colours behind, but in the web kit's other look
   '';

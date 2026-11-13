@@ -683,6 +683,15 @@ Provider {
 
     // The card of Joel's line to the one standing at the top, sent and then
     // answered in place (Told.qml).
+    // Words a talk delivered, or anything after, are let go of the field's
+    // keeping (Drafts.qml); one that failed stays, for Joel to send again.
+    Connections {
+        target: provider.source("orchestrators")
+        function onTalksChanged() {
+            provider.launcher?.drafts?.settle(provider.source("orchestrators").talks);
+        }
+    }
+
     Told {
         id: toldCard
 
@@ -813,6 +822,8 @@ Provider {
             talk: () => act("talk", {
                 ask: Words.of("verb:agent:talk").ask ?? "",
                 chip: session.title,
+                // Kept by whom it goes to until its talk is delivered.
+                draft: String(session.address).toUpperCase(),
                 state: () => provider.told,
                 given: words => {
                     const text = words.trim();
