@@ -97,11 +97,18 @@ function afresh(was, now) {
 // by its place can say something new (Copies.qml's made).
 const LATELY = 4;
 
-// `was` with `rows` first, keeping what was worked out of it, and only
-// the few newest.
-function lately(was, rows) {
+// `was` with `rows` first, keeping what was worked out of it: the few
+// newest, and any older that a place is kept on (`kept`, Launcher.qml's
+// placesKept and home), while it's kept. Only the newest, warming keeps
+// Emoji and then four more lists before Joel presses its chord, so its
+// first opening worked out its 1,914 rows' keys and pacing again: 78 to
+// 144 ms of showing against 31 to 48 for the next, software-rendered on
+// a builder (2026-11-13).
+function lately(was, rows, kept = []) {
     const known = was.find(one => one.rows === rows) ?? { rows, said: bare() };
-    return [known].concat(was.filter(one => one !== known)).slice(0, LATELY);
+    const rest = was.filter(one => one !== known);
+    return [known].concat(rest.slice(0, LATELY - 1),
+        rest.slice(LATELY - 1).filter(one => kept.includes(one.rows)));
 }
 
 // The list shown lately that holds `now`'s rows, the same rows in the same

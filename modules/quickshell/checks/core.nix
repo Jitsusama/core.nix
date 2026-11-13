@@ -108,8 +108,9 @@ in
           keys-lab = launcherOnNiri {
             name = "the-launcher-keys-lab-on-niri";
             tests = ../../../tests/launcher-keys-lab-on-niri.py;
-            # The profiler of the Qt the shell runs on.
-            given = [
+            # The profiler of the Qt the shell runs on, beside what the lab
+            # is given, without which Emoji and Copies have no rows.
+            given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
             ];
           };
