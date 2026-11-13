@@ -20,7 +20,26 @@ const MAIN: &str = "refs/heads/main";
 /// and the whole update failed on that one answer, while merges waited for
 /// a switch. Fetches change nothing until they succeed, so trying again is
 /// safe, and a minute and a quarter is little beside a build.
-const FETCH_AGAIN: [Duration; 2] = [Duration::from_secs(15), Duration::from_secs(60)];
+pub const FETCH_AGAIN: [Duration; 2] = [Duration::from_secs(15), Duration::from_secs(60)];
+
+/// The bytes a second under which a transfer over HTTP has stalled, once
+/// it has stayed under them for `STALLED_FOR` seconds. On 13 November at
+/// 01:06 a host whose writing server was wedged took an `ls-remote` for
+/// main and never answered it, and the update waited 7.5 minutes until it
+/// was stopped by hand, while the same read from elsewhere took a second.
+/// Git has no time limit of its own, so a stall ends the read, and the
+/// read is tried again like a refused fetch.
+const STALLED_UNDER: &str = "1000";
+/// How long a transfer stays under `STALLED_UNDER` before git ends it.
+const STALLED_FOR: &str = "60";
+
+/// `command`, a git, told to end a transfer over HTTP that has stalled
+/// rather than wait on it for good.
+pub fn ending_stalls(command: &mut Command) -> &mut Command {
+    command
+        .env("GIT_HTTP_LOW_SPEED_LIMIT", STALLED_UNDER)
+        .env("GIT_HTTP_LOW_SPEED_TIME", STALLED_FOR)
+}
 
 /// The one signature state that counts: good, by a key trusted. For SSH
 /// that's a signer in the allowed-signers file, and `U` is a good signature
@@ -72,7 +91,7 @@ impl<'a> Repo<'a> {
 /// Root's git, in root's copy, with nothing of anyone's configuration.
 pub fn git(repo: &Repo) -> Command {
     let mut command = run::command(&repo.config.tools.git, &repo.config.state);
-    command
+    ending_stalls(&mut command)
         .env("GNUPGHOME", &repo.keyring)
         .arg("-C")
         .arg(&repo.copy);
@@ -123,7 +142,7 @@ pub fn fetch(repo: &Repo) -> Result<String, Failure> {
 
 /// What `attempt` gives, tried again after each of `waits` while it fails,
 /// with the last failure once they run out.
-fn retried<T>(
+pub fn retried<T>(
     waits: &[Duration],
     wait: impl Fn(Duration),
     mut attempt: impl FnMut() -> Result<T, Failure>,
@@ -358,6 +377,22 @@ mod tests {
             tried(&[Err("first"), Err("second"), Err("third")]),
             (Err(Failure::new("third")), 3, vec![15, 60])
         );
+    }
+
+    #[test]
+    fn a_transfer_that_stalls_a_minute_is_ended() {
+        let mut command = Command::new("git");
+        ending_stalls(&mut command);
+        let envs: Vec<_> = command.get_envs().collect();
+        for (key, value) in [
+            ("GIT_HTTP_LOW_SPEED_LIMIT", "1000"),
+            ("GIT_HTTP_LOW_SPEED_TIME", "60"),
+        ] {
+            assert!(
+                envs.contains(&(key.as_ref(), Some(value.as_ref()))),
+                "{key} isn't {value}: {envs:?}"
+            );
+        }
     }
 
     #[test]

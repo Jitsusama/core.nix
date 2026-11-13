@@ -310,23 +310,26 @@ pub fn is_commit(name: &str) -> bool {
     matches!(name.len(), 40 | 64) && name.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// Main's head as the host names it. The token goes to git in its
-/// environment, which only root reads, rather than in its arguments.
+/// Main's head as the host names it, asked again like a fetch when the
+/// host refuses or stalls. The token goes to git in its environment,
+/// which only root reads, rather than in its arguments.
 fn ask(config: &Config, token: &str) -> Result<String, Failure> {
-    let mut command = git::git(&Repo::main(config));
-    command
-        .env("GIT_CONFIG_COUNT", "1")
-        .env("GIT_CONFIG_KEY_0", "http.extraHeader")
-        .env(
-            "GIT_CONFIG_VALUE_0",
-            format!("Authorization: Bearer {token}"),
-        );
     let main = format!("refs/heads/{}", config.branch);
-    let said = run::output(
-        command,
-        "asking the host for main",
-        ["ls-remote", "--refs", &config.repository, &main],
-    )?;
+    let said = git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+        let mut command = git::git(&Repo::main(config));
+        command
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "http.extraHeader")
+            .env(
+                "GIT_CONFIG_VALUE_0",
+                format!("Authorization: Bearer {token}"),
+            );
+        run::output(
+            command,
+            "asking the host for main",
+            ["ls-remote", "--refs", &config.repository, &main],
+        )
+    })?;
     said.lines()
         .find_map(|line| {
             let (commit, name) = line.split_once('\t')?;
@@ -365,18 +368,21 @@ fn borrow(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Fai
 /// fetch adds to the refs it moves then walks back to that, not through
 /// every ref, which in a large repository took 2 minutes rather than 10 s.
 fn fetch(config: &Config, hosted: &Hosted, account: &Account) -> Result<(), Failure> {
-    let command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
-    run::output(
-        command,
-        "fetching main into the checkout",
-        [
-            "fetch",
-            "--quiet",
-            "--no-tags",
-            &config.repository,
-            &format!("+refs/heads/{0}:refs/update-to-main/{0}", config.branch),
-        ],
-    )?;
+    git::retried(&git::FETCH_AGAIN, std::thread::sleep, || {
+        let mut command = run::command_as("git".as_ref(), account, &hosted.path, &hosted.checkout);
+        git::ending_stalls(&mut command);
+        run::output(
+            command,
+            "fetching main into the checkout",
+            [
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                &config.repository,
+                &format!("+refs/heads/{0}:refs/update-to-main/{0}", config.branch),
+            ],
+        )
+    })?;
     Ok(())
 }
 
