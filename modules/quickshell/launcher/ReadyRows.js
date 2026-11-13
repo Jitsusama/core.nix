@@ -8,6 +8,7 @@
 .import "../When.js" as When
 .import "Ago.js" as Ago
 .import "Interfaces.js" as Interfaces
+.import "ActForms.js" as Forms
 
 const SECOND = 1000;
 const MINUTE = 60_000;
@@ -287,7 +288,7 @@ function drawerServed(row, held) {
 // "step", into the row's drawer or the rows inside it; or "" for a form
 // the shell doesn't know, which is never guessed at, and so never offered.
 function actForm(act) {
-    if (typeof act?.key !== "string" || act.key === "" || misformed(act) !== "") {
+    if (typeof act?.key !== "string" || act.key === "" || Forms.misformed(act) !== "") {
         return "";
     }
     if (act.ask !== null && typeof act.ask === "object") {
@@ -342,12 +343,6 @@ function opened(act, commandOf, words) {
         return { run, why: "" };
     }
     return { run: null, why: (words.missing ?? "").replace("{program}", act.program ?? "") };
-}
-
-// Why an act can't be done as it's served, or "" where it can: one that
-// shuts the launcher holds nothing drawn, so it can't say what its row becomes.
-function misformed(act) {
-    return act?.closes === true && act.becomes !== undefined ? "closes and becomes" : "";
 }
 
 // Whether an ask shuts the launcher as it's asked, as a paste does, so the
@@ -431,13 +426,15 @@ function tokened(act, token) {
 // the vocabulary: a `name`, as a notice's offer in its sender's words, a `side`, as a link's
 // host, and a `glyph`, a role or `{ code }`. A verb whose words are the launcher's has a key
 // of its own instead (Y2YBTS, 2026-11-11, a9bce629). `roles` are the theme's glyphs.
+// A note, served or in its words, says what it does under its name, as Trust It's (2026-11-13).
 function actWorded(act, worded, roles) {
-    return {
+    const note = typeof act.note === "string" ? act.note : worded.note;
+    return Object.assign({
         name: typeof act.name === "string" && act.name !== "" ? act.name : worded.name,
         glyph: act.glyph === undefined ? worded.glyph : glyphOf(act.glyph, roles),
         side: typeof act.side === "string" ? act.side : "",
         actKey: worded.actKey ?? ""
-    };
+    }, typeof note === "string" && note !== "" ? { note } : {});
 }
 
 // What each of a row's acts is kept by as a row of its own, since the launcher

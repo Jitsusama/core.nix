@@ -239,12 +239,14 @@
   ];
   "launcher/ReadyRows.js" = [
     "When.js"
+    "launcher/ActForms.js"
     "launcher/Ago.js"
     "launcher/Interfaces.js"
   ];
   "launcher/ReadyRows.qml" = [
     "Confirm.js"
     "Fuzzy.js"
+    "launcher/ActForms.js"
     "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
@@ -304,6 +306,13 @@
     "launcher/HeldWindows.js"
     "launcher/KeyLayers.js"
     "launcher/Order.js"
+  ];
+  "launcher/Wireless.qml" = [
+    "Fuzzy.js"
+    "launcher/ActForms.js"
+    "launcher/Order.js"
+    "launcher/ReadyRows.js"
+    "launcher/WirelessPlate.js"
   ];
   "pieces/Disk.qml" = [
     "FileFacts.js"

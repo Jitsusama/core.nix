@@ -17,6 +17,7 @@ import Quickshell
 import qs
 import "Found.js" as Found
 import "ReadyRows.js" as Ready
+import "ActForms.js" as Forms
 import "Moved.js" as Moved
 import "Beneath.js" as Beneath
 import "../Confirm.js" as Confirm
@@ -65,6 +66,21 @@ Scope {
     // A place's own make of an act, `(key, act, row)` to its row, else null: Agents' Talk
     // asks for words before its ask is sent, which no served act form says.
     property var actMade: null
+    // Whether a row's acts come before the rows inside it among its verbs, the first of those
+    // set apart, as a Wi-Fi network's Connect It and Forget It come before its Signal, so it
+    // always holds its parts (2026-11-13); otherwise a row stepping into rows holds only those.
+    property bool insideAfterActs: false
+    // What each row's streamed ask last said of how it's going, by its served key, so the row
+    // says it in the foot (ready-rows.md's `streams`), let go as the launcher closes; and the
+    // words a row's act asks for under way, `{ key, sent }`, so a step out of them before the
+    // last is sent lets every answer go and says so (ready-rows.md's `fields`). `refilling` is
+    // set while one field gives way to the next, so that step is never taken for leaving.
+    property var saying: ({})
+    property var filling: null
+    property bool refilling: false
+    // How many streamed asks each row has made, so the answers of one given way to a newer
+    // are let go, as the daemon gives it way.
+    readonly property var asksMade: ({})
     // The place's provider, which makes its rows as every place's are (`thing`) and holds what
     // an act asks drawn until it's done. Not named `provider`, which would hide the place's own
     // id of that name inside its ReadyRows.
@@ -85,7 +101,7 @@ Scope {
     // again with only its order moved keeps what was made (Moved.js).
     readonly property var madeFrom: ({})
     // The acts served in a form the launcher refuses, by key, each
-    // journalled once (ReadyRows.js's misformed).
+    // journalled once (ActForms.js's misformed).
     readonly property var misformed: ({})
     // Which row names each drawer served apart, by the drawer's key, so
     // the row is made again once its drawer changes.
@@ -508,7 +524,7 @@ Scope {
         // again makes none; a row made again makes its acts again.
         let acted = null;
         const verbs = () => {
-            if (steps)
+            if (steps && !insideAfterActs)
                 return Beneath.led(inside(key), first?.into ? rowAt(first.into) : null);
             if (acted === null) {
                 repeats[key] = repeats[key] ?? {};
@@ -516,7 +532,12 @@ Scope {
                 acted = acts.map((one, at) => (at === 0 ? firstOwn : own(one))
                     ?? actRow(key, one, kept[at]));
             }
-            return acted;
+            if (!insideAfterActs)
+                return acted;
+            const parts = inside(key);
+            if (parts.length > 0)
+                parts[0].gap = true;
+            return acted.concat(parts);
         };
         // How a Return leaves the launcher is ReadyRows.js's leaving's. A row whose Return asks
         // is that act's for the key language, so its command is read from the act's words
@@ -530,8 +551,11 @@ Scope {
         const acting = acts.length === 0 ? {} : Object.assign({
             verb: verbOf(first),
             run: () => act(key, first),
-            actsOnly: Beneath.actsOnly(acts, row.actsOnly)
+            actsOnly: !insideAfterActs && Beneath.actsOnly(acts, row.actsOnly)
         }, Ready.leaving(first), firstOwn ? { returns: firstOwn } : {},
+            // Return's act asking for words asks the first in the field, the row its chip.
+            firstOwn || Forms.fieldsOf(first).length === 0 ? {}
+                : fieldOf(key, first, 0, first.ask, row.name ?? ""),
             // A row that is an act is asked as the place makes it, else as it's served, Close
             // saying what stays.
             row.kind !== "act" ? {}
@@ -566,7 +590,7 @@ Scope {
             // Its bar, strip or spark, { shape, values, warn }, as served.
             graph: row.graph ?? null,
             reads: row.reads ?? "",
-            state: Ready.stateOf(row),
+            state: sayingOf(key, acts, Ready.stateOf(row), noteOf(row)),
             unfinished: row.unfinished === true,
             // A row a step in that asks Joel to be sure, so its Return does
             // its act (Launcher.lands), as an act that can't be taken back is.
@@ -594,6 +618,96 @@ Scope {
         }));
     }
 
+    // How a row stands in the foot: as the daemon serves it, or, where one of its acts says how
+    // it goes or asks for words, what that last said, until the launcher closes.
+    function sayingOf(key, acts, served, note) {
+        if (!acts.some(one => one.streams === true || Forms.fieldsOf(one).length > 0))
+            return served;
+        return () => saying[key] ?? (served ? served() : note);
+    }
+
+    function said(key, words) {
+        const now = Object.assign({}, saying);
+        if (words === undefined)
+            delete now[key];
+        else
+            now[key] = words;
+        saying = now;
+    }
+
+    // What makes a row ask the `at`th of the words `one` asks for, in the field, the prompt its
+    // words key's `ask`, typed as Prompt draws a secret where it's one, `chip` said beside it
+    // (ready-rows.md's `fields`). Each answer is set in `ask` at its `into`, held only here.
+    function fieldOf(key, one, at, ask, chip) {
+        const field = Forms.fieldsOf(one)[at];
+        return {
+            ask: Words.of(field.ask).ask ?? "",
+            secret: field.secret === true,
+            chip: chip,
+            fills: { ready: ready, key: key },
+            given: answer => fieldAnswered(key, one, at,
+                Forms.answeredInto(ask, field.into, answer),
+                field.secret === true ? chip : answer)
+        };
+    }
+
+    // An answer given: the next field asked in this one's place, so one step out leaves them
+    // all, or, after the last, the ask sent. The chip of the next is the answer before it,
+    // never a secret.
+    function fieldAnswered(key, one, at, ask, chip) {
+        const fields = Forms.fieldsOf(one);
+        if (at + 1 >= fields.length) {
+            if (filling?.key === key)
+                filling.sent = true;
+            asked(key, one, ask);
+            return;
+        }
+        const launcher = maker?.launcher;
+        const next = maker.thing(Object.assign({
+            key: `${key}:${fields[at + 1].into}`,
+            what: "",
+            verb: at + 2 >= fields.length ? verbOf(one) : "next",
+            name: served(key)?.name ?? "",
+            stays: true,
+            state: () => saying[key] ?? ""
+        }, fieldOf(key, one, at + 1, ask, chip)));
+        refilling = true;
+        if (fillsHere(launcher?.asking, key))
+            launcher.back();
+        launcher?.ask(next);
+        refilling = false;
+        filling = { key: key, sent: false };
+    }
+
+    function fillsHere(row, key) {
+        return row?.fills?.ready === ready && (key === undefined || row.fills.key === key);
+    }
+
+    // The field asking or let go: a row of these asking is the words under way, said anew; a
+    // step out of them before the last was sent lets every answer go, and the foot says so.
+    function askingMoved() {
+        if (refilling)
+            return;
+        const asking = maker?.launcher?.asking ?? null;
+        if (filling !== null && !fillsHere(asking, filling.key)) {
+            if (!filling.sent)
+                said(filling.key, (Words.field.becoming ?? {}).dropped ?? "");
+            filling = null;
+        }
+        if (filling === null && fillsHere(asking)) {
+            filling = { key: asking.fills.key, sent: false };
+            said(filling.key, undefined);
+        }
+    }
+    Connections {
+        target: ready.maker?.launcher ?? null
+        ignoreUnknownSignals: true
+
+        function onAskingChanged() {
+            ready.askingMoved();
+        }
+    }
+
     function keywordsMade(words) {
         return words === "" ? null : Fuzzy.kept(words);
     }
@@ -606,7 +720,7 @@ Scope {
     function actsOf(row) {
         const launcher = maker?.launcher;
         for (const one of row?.acts ?? []) {
-            const why = Ready.misformed(one);
+            const why = Forms.misformed(one);
             if (why !== "" && !(one.key in misformed)) {
                 misformed[one.key] = true;
                 console.info(`launcher: ${one.key} refused: ${why}`);
@@ -639,23 +753,39 @@ Scope {
 
     // An act as a row of its own, among a row's verbs, kept by `kept`
     // (ReadyRows.js's actKeys), its words by its own key.
+    // Its words are read in the state it's served in (`wordState`), as Trust It reads once
+    // trusted, so the : line names the command for it too; one its words say ends something in
+    // use, as Disconnect It does, is d's or carries `ends`, as the shell's own are
+    // (Words.ending), so Return found on it writes its command rather than doing it. One served
+    // with an `undo`, an ask of its own, is one u takes back by asking that, as Disconnect It's
+    // joins again (2026-11-13).
     function actRow(key, one, kept) {
-        const said = Ready.actWorded(one, { name: Words.name(one.key),
-            glyph: Words.glyph(one.key), actKey: Words.actKey(one.key) }, Theme.glyph);
-        // `said` gives its name, glyph and side, and the key normal does it
+        const state = typeof one.wordState === "string" ? one.wordState : "";
+        const worded = Ready.actWorded(one, { name: Words.name(one.key, state),
+            glyph: Words.glyph(one.key, state), actKey: Words.actKey(one.key, state),
+            note: Words.of(one.key, state).note }, Theme.glyph);
+        // `worded` gives its name, glyph, side and note, and the key normal does it
         // by on its row, as Asks' r refuses (Launcher.qml's doKeyed).
+        const asks = Forms.fieldsOf(one).length === 0 ? {}
+            : fieldOf(key, one, 0, one.ask, served(key)?.name ?? "");
+        const stands = sayingOf(key, [one], undefined, worded.note ?? "");
         return maker.thing(Object.assign({
             key: kept ?? one.key,
             wordsId: one.key,
+            wordState: state,
+            state: stands,
             what: "",
-            verb: verbOf(one),
+            verb: Ready.verbOf(one, Words.verb(one.key, state)),
             hue: "action",
-            stays: one.step === "rows",
+            // An ask stays open, as a row's first act does, so its row shows what it changed
+            // and the foot how it goes (ready-rows.md; 2026-11-13).
+            stays: Ready.leaving(one).stays,
             now: Ready.leaving(one).now,
             later: Ready.leaving(one).later,
             copies: typeof one.copy === "string" ? () => one.copy : undefined,
+            undo: Ready.actForm(one.undo) === "ask" ? () => act(key, one.undo) : undefined,
             run: () => act(key, one)
-        }, Confirm.asking(one), said));
+        }, Confirm.asking(one), Words.ending(one.key), worded, asks));
     }
 
     // Does an act the row of `key` serves: copies its words, opens its link
@@ -756,8 +886,14 @@ Scope {
     // says it becomes, made as the place makes its rows, until the daemon serves it so. An act
     // that says nothing of how its row reads holds the row as it is until it's answered. Either
     // is taken back with the daemon's words if it's refused, or the launcher's if it isn't
-    // answered, so nothing fails silently (launcher/Becoming.js).
-    function asked(key, one) {
+    // answered, so nothing fails silently (launcher/Becoming.js). `given` is the ask with the
+    // words its fields asked for set in it, else the act's own is sent.
+    function asked(key, one, given) {
+        const ask = given ?? one.ask;
+        if (one.streams === true) {
+            streamed(key, one, ask);
+            return;
+        }
         const row = served(key);
         if (!row || !link)
             return;
@@ -779,18 +915,50 @@ Scope {
                 maker?.refused(shown, why);
         });
         if (one.token !== true) {
-            send(one.ask);
+            send(ask);
             return;
         }
         // Asked as the act is done, never ahead, since niri gives a token
         // only for the input just made; without one it isn't sent, as its
         // sender couldn't come forward, and says so.
         Quickshell.activationToken(token => {
-            const ask = Ready.tokened(one, token);
-            if (ask === null)
+            const tokened = Ready.tokened(Object.assign({}, one, { ask: ask }), token);
+            if (tokened === null)
                 maker?.refused(shown, words.couldNot ?? "");
             else
-                send(ask);
+                send(tokened);
+        });
+    }
+
+    // Asks an act whose daemon says how it goes as it goes, as a Wi-Fi join's stages: nothing
+    // is held drawn, and its row says in the foot each step's `said`, then how it ended, a
+    // refusal in the daemon's words or the launcher's, never a card (ready-rows.md's
+    // `streams`). Done, the words it asked for are put away, back to the row that asked. The
+    // journal names the act and why, never what was asked, which may hold a password.
+    function streamed(key, one, ask) {
+        const words = Words.field.becoming ?? {};
+        if (!link) {
+            said(key, Ready.refusal(null, words));
+            return;
+        }
+        asksMade[key] = (asksMade[key] ?? 0) + 1;
+        const mine = asksMade[key];
+        said(key, undefined);
+        link.ask(ask, answer => {
+            if (asksMade[key] !== mine)
+                return;
+            const why = Ready.refusal(answer, words);
+            if (why !== "") {
+                const code = answer?.error?.refused ?? answer?.error?.code ?? "no answer";
+                console.info(`launcher: ${one.key} refused: ${code}`);
+                said(key, why);
+                return;
+            }
+            if (typeof answer.said === "string" && answer.said !== "")
+                said(key, answer.said);
+            const launcher = maker?.launcher;
+            if (answer.done !== false && fillsHere(launcher?.asking, key))
+                launcher.back();
         });
     }
 
@@ -808,8 +976,12 @@ Scope {
         }
     }
     onDrawnChanged: {
-        if (drawn)
+        if (drawn) {
             turned();
+            return;
+        }
+        saying = {};
+        filling = null;
     }
 
     // The rows whose words the clock has moved on since they were made,

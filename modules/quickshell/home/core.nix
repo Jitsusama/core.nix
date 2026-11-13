@@ -69,6 +69,7 @@
   "launcher/Trials.js"
   "launcher/Traces.js"
   "launcher/ReadyRows.js"
+  "launcher/ActForms.js"
   "launcher/Moved.js"
   "launcher/Beneath.js"
   "launcher/Found.js"

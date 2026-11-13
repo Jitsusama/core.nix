@@ -9,6 +9,7 @@
 import QtQuick
 import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
+import "launcher/ActForms.js" as Forms
 import "launcher/Moved.js" as Moved
 import "launcher/Beneath.js" as Beneath
 import "Expect.js" as Expect
@@ -473,12 +474,54 @@ QtObject {
         Expect.same("a copy as well, inside a meeting",
             Ready.wordsOf({ key: "verb:copy:copy", copy: "a" }, "act"), "verb:copy:copy");
         Expect.same("while a thing's row keeps its rule", Ready.wordsOf(stop, "row"), "");
-        Expect.same("shutting it and saying what it becomes is refused", Ready.misformed(both),
+        Expect.same("shutting it and saying what it becomes is refused", Forms.misformed(both),
             "closes and becomes");
         Expect.same("so it's no act at all", Ready.actForm(both), "");
         Expect.same("and isn't offered", Ready.actsOf({ acts: [both, paste] }).map(act => act.key),
             ["verb:copy:paste"]);
-        Expect.same("a well-formed act says nothing", Ready.misformed(paste), "");
+        Expect.same("a well-formed act says nothing", Forms.misformed(paste), "");
+        fields();
+    }
+
+    // An ask that asks for words first, in order, each set at its place in the ask, a dotted
+    // one in an object along it, the ask served left as it was (ready-rows.md's fields).
+    function fields() {
+        const account = [{ ask: "wifi:asks:identity", into: "account.identity" },
+            { ask: "wifi:asks:password", into: "password", secret: true }];
+        const join = { key: "verb:wifi-join", streams: true, fields: account,
+            ask: { ask: "act", act: "join", network: "Campus", account: { method: "peap" } } };
+        Expect.same("an ask's fields are asked in the order served",
+            Forms.fieldsOf(join).map(field => field.ask), ["wifi:asks:identity",
+                "wifi:asks:password"]);
+        Expect.same("an act asking for none has none", Forms.fieldsOf(paste()), []);
+        const named = Forms.answeredInto(join.ask, "account.identity", "ada");
+        Expect.same("a dotted into sets the answer inside, keeping what's beside it",
+            named.account, { method: "peap", identity: "ada" });
+        Expect.same("and leaves the ask served as it was", join.ask.account, { method: "peap" });
+        Expect.same("a plain into sets it at the top", Object.keys(Forms.answeredInto(named,
+            "password", "x")), ["ask", "act", "network", "account", "password"]);
+        Expect.same("one along a path not there yet makes it",
+            Forms.answeredInto({}, "a.b", "c"), { a: { b: "c" } });
+        Expect.same("a well-formed ask asking for words says nothing", Forms.misformed(join), "");
+        Expect.same("fields or streaming on an act that isn't an ask are refused", [
+            Forms.misformed({ key: "verb:copy", copy: "a", fields: account }),
+            Forms.misformed({ key: "verb:copy", copy: "a", streams: true })],
+            ["fields without an ask", "streams without an ask"]);
+        Expect.same("a field missing its words or its place is refused", [
+            Forms.misformed(Object.assign({}, join, { fields: [{ into: "password" }] })),
+            Forms.misformed(Object.assign({}, join, { fields: [{ ask: "wifi:asks:password" }] }))],
+            ["a field without its ask or into", "a field without its ask or into"]);
+        Expect.same("so is one that shuts the launcher, which would hold no field",
+            Forms.misformed(Object.assign({ closes: true }, join)), "closes and asks for words");
+        Expect.same("an act's note is served or its words'", [
+            Ready.actWorded({ key: "verb:wifi-trust", note: "served" }, { note: "words" }, {}).note,
+            Ready.actWorded({ key: "verb:wifi-trust" }, { note: "words" }, {}).note,
+            "note" in Ready.actWorded({ key: "verb:wifi-forget" }, {}, {})],
+            ["served", "words", false]);
+    }
+
+    function paste() {
+        return { key: "verb:copy:paste", ask: { ask: "paste", copy: 3 }, closes: true };
     }
 
     // Whether a row holds nothing beneath its Return but what the keys do,
