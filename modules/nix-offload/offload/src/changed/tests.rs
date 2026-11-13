@@ -403,17 +403,19 @@ fn those_added_and_changed_are_built_and_vm_tests_only_when_wanted() {
 #[test]
 fn a_list_says_why_each_test_it_holds_blocks_nothing() {
     let listed = r#"[{"test": "vm-a", "reason": "failed then passed at abc", "owner_pr": 12},
-        {"test": "vm-b", "reason": "flaky", "owner_pr": null}]"#;
+        {"test": "vm-b", "reason": "flaky", "owner_pr": null, "subtests": ["test_b"]}]"#;
     assert_eq!(
         held(listed),
         Ok(vec![
             Held {
                 test: "vm-a".to_owned(),
                 why: "main quarantines it (failed then passed at abc; #12 owns it)".to_owned(),
+                subtests: BTreeSet::new(),
             },
             Held {
                 test: "vm-b".to_owned(),
                 why: "main quarantines it (flaky)".to_owned(),
+                subtests: named(&["test_b"]),
             },
         ])
     );
@@ -432,33 +434,91 @@ fn a_tree_without_main_holds_nothing() {
 
 #[test]
 fn held_tests_and_their_parts_are_parted_from_those_that_block() {
-    let held = [Held {
-        test: "vm-a".to_owned(),
-        why: "main quarantines it (flaky)".to_owned(),
-    }];
+    let held = [whole("vm-a")];
     let targets = words("formatting vm-a vm-a.gallery vm-ab");
     let (blocking, alone) = apart(targets, &held);
     assert_eq!(blocking, ["formatting", "vm-ab"]);
-    let why = "main quarantines it (flaky)".to_owned();
     assert_eq!(
         alone,
         [
-            ("vm-a".to_owned(), why.clone()),
-            ("vm-a.gallery".to_owned(), why)
+            ("vm-a".to_owned(), whole("vm-a")),
+            ("vm-a.gallery".to_owned(), whole("vm-a"))
         ]
     );
 }
 
+fn whole(test: &str) -> Held {
+    Held {
+        test: test.to_owned(),
+        why: "main quarantines it (flaky)".to_owned(),
+        subtests: BTreeSet::new(),
+    }
+}
+
+fn named(subtests: &[&str]) -> BTreeSet<String> {
+    subtests.iter().map(|&subtest| subtest.to_owned()).collect()
+}
+
 #[test]
-fn each_held_test_is_built_alone_and_its_failure_blocks_nothing() {
+fn each_held_test_is_built_alone_and_a_whole_tests_failure_blocks_nothing() {
     let held = [
-        ("vm-a".to_owned(), "flaky".to_owned()),
-        ("vm-b".to_owned(), "flaky".to_owned()),
+        ("vm-a".to_owned(), whole("vm-a")),
+        ("vm-b".to_owned(), whole("vm-b")),
     ];
     let mut asked = Vec::new();
-    built_alone(&held, &mut |names| {
+    let status = built_alone(&held, &mut |names| {
         asked.push(names.to_vec());
-        i32::from(names[0] == "vm-a")
+        (i32::from(names[0] == "vm-a"), BTreeSet::new())
     });
     assert_eq!(asked, [vec!["vm-a".to_owned()], vec!["vm-b".to_owned()]]);
+    assert_eq!(status, 0, "a whole test's failure blocked");
+}
+
+#[test]
+fn an_entry_naming_subtests_excuses_only_a_failure_in_them() {
+    let held = Held {
+        subtests: named(&["test_a", "test_b"]),
+        ..whole("vm-a")
+    };
+    assert!(
+        excuses(&held, &named(&["test_a"])),
+        "a listed subtest blocked"
+    );
+    assert!(
+        !excuses(&held, &named(&["test_a", "test_c"])),
+        "an unlisted subtest was excused"
+    );
+    assert!(
+        !excuses(&held, &BTreeSet::new()),
+        "a failure naming no subtest was excused"
+    );
+    assert!(
+        !excuses(&held, &named(&["test_a_more"])),
+        "a subtest was excused by a name it begins with"
+    );
+    let built = built_alone(&[("vm-a".to_owned(), held)], &mut |_| {
+        (1, named(&["test_c"]))
+    });
+    assert_eq!(built, 1, "an unlisted subtest's failure blocked nothing");
+}
+
+#[test]
+fn a_failed_subtest_is_read_from_its_line_of_the_log() {
+    let line = "vm-test-run-vm-a> FAILED vm-pytest-a/a-vm-test.py::test_one[two] - boom";
+    assert_eq!(failed_on(line), Some("test_one"));
+    assert_eq!(failed_on("vm-test-run-vm-a> 3 passed, 1 FAILED"), None);
+    assert_eq!(failed_on("FAILED a.py::helper - boom"), None);
+}
+
+#[test]
+fn a_build_is_heard_line_by_line_for_the_subtests_it_failed() {
+    let said = "echo 'x> FAILED a.py::test_b - boom' >&2; echo ok >&2; exit 3";
+    let (mut child, failed) = hearing(Command::new("sh").args(["-c", said])).expect("sh starts");
+    let code = child.wait().expect("sh ends").code();
+    assert_eq!(code, Some(3), "the build's status was lost");
+    assert_eq!(
+        failed,
+        named(&["test_b"]),
+        "the failed subtest wasn't heard"
+    );
 }

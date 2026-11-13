@@ -2001,16 +2001,18 @@ impl Sent<'_> {
                 eprintln!("nix-offload: changed-checks names its system when it builds elsewhere");
                 return Some(Finished::of(USAGE, None));
             };
-            let mut build = |names: &[String]| built_evaluated(folder, system, names);
             // What main holds in quarantine is built alone after the rest,
-            // as changed-checks builds it, so its failure blocks nothing.
+            // as changed-checks builds it, so its failure blocks nothing
+            // but in a subtest its entry doesn't list.
             let (blocking, held) = changed::apart(targets, &changed::held_on_main(folder));
             let status = if blocking.is_empty() {
                 0
             } else {
-                build(&blocking)
+                built_evaluated(folder, system, &blocking)
             };
-            changed::built_alone(&held, &mut build);
+            let alone =
+                changed::built_alone(&held, &mut |names| built_heard(folder, system, names));
+            let status = if status == 0 { alone } else { status };
             return Some(Finished::of(status, Some(printed)));
         }
         // Asked for and waited on, as any `there` waits, while a lender
@@ -2079,7 +2081,8 @@ impl Apart<'_> {
             .collect();
         // The VM tests main holds in quarantine go alone once the rest are
         // done, as changed-checks builds them, so their failure blocks
-        // nothing; the lent builder's own run splits those it builds.
+        // nothing but in a subtest their entry doesn't list; the lent
+        // builder's own run splits those it builds.
         let (vm, held) = changed::apart(vm, &changed::held_on_main(self.sent.folder));
         let testing = if vm.is_empty() {
             None
@@ -2096,22 +2099,22 @@ impl Apart<'_> {
         rest.push("--no-vm".to_owned());
         let built = self.run(&rest);
         let vm_tested = testing.map(|testing| tested(testing, vm.len()));
-        changed::built_alone(&held, &mut |names| {
-            let building = changed::building(self.sent.folder, self.system, names).spawn();
+        let alone = changed::built_alone(&held, &mut |names| {
+            let building =
+                changed::hearing(&mut changed::building(self.sent.folder, self.system, names));
             building.map_or_else(
                 |error| {
                     eprintln!("nix-offload: couldn't send {} on: {error}", names.join(" "));
-                    1
+                    (1, BTreeSet::new())
                 },
-                |testing| tested(testing, names.len()),
+                |(testing, failed)| (tested(testing, names.len()), failed),
             )
         });
         // The first that failed says how the whole did.
-        let status = if built == 0 {
-            vm_tested.unwrap_or(0)
-        } else {
-            built
-        };
+        let status = [built, vm_tested.unwrap_or(0), alone]
+            .into_iter()
+            .find(|status| *status != 0)
+            .unwrap_or(0);
         Some(Finished::of(status, Some(printed)))
     }
 
@@ -2133,21 +2136,37 @@ impl Apart<'_> {
 /// `folder` did.
 fn built_evaluated(folder: &Path, system: &str, names: &[String]) -> i32 {
     let built = changed::building(folder, system, names).status();
-    built.map_or(1, |built| {
-        match built.code() {
-            // Never `NOT_TAKEN`, which would have changed-checks do it all
-            // here, the build it was just refused included.
-            Some(there::UNSENT) => {
-                eprintln!(
-                    "nix-offload: {} checks were named, but no builder took their build, \
-                     so nothing was built",
-                    names.len()
-                );
-                i32::from(changed::UNBUILT)
-            }
-            code => code.unwrap_or(1),
+    built.map_or(1, |built| evaluated_ended(built.code(), names.len()))
+}
+
+/// How building `names` did, as `built_evaluated` says, with the subtests
+/// its log says failed.
+fn built_heard(folder: &Path, system: &str, names: &[String]) -> changed::Heard {
+    let heard = changed::hearing(&mut changed::building(folder, system, names));
+    heard.map_or_else(
+        |_| (1, BTreeSet::new()),
+        |(mut building, failed)| {
+            let code = building.wait().ok().and_then(|built| built.code());
+            (evaluated_ended(code, names.len()), failed)
+        },
+    )
+}
+
+/// What a build of `named` checks an evaluator named ended with, said as
+/// the run's own status.
+fn evaluated_ended(code: Option<i32>, named: usize) -> i32 {
+    match code {
+        // Never `NOT_TAKEN`, which would have changed-checks do it all
+        // here, the build it was just refused included.
+        Some(there::UNSENT) => {
+            eprintln!(
+                "nix-offload: {named} checks were named, but no builder took their build, \
+                 so nothing was built"
+            );
+            i32::from(changed::UNBUILT)
         }
-    })
+        code => code.unwrap_or(1),
+    }
 }
 
 /// How the `there` sending `named` VM tests on did, once it ends: never

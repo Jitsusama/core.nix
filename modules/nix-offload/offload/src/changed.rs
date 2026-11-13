@@ -34,12 +34,13 @@
 //! it named and goes nowhere; another is told, as `CHANGED_CHECKS_PASSED`,
 //! which checks passed at the commit, so the far side builds none again.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread;
 use std::time::Duration;
@@ -304,11 +305,13 @@ pub fn to_build(printed: &str, vm: bool) -> Vec<String> {
 /// same input, whose failure says nothing about a change.
 pub const QUARANTINE: &str = "tools/merge-net/quarantine.json";
 
-/// A test main holds in quarantine, and why its failure blocks nothing.
-#[derive(Debug, PartialEq, Eq)]
+/// A test main holds in quarantine, why its failure blocks nothing, and
+/// the subtests it holds, none when it holds the whole test.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Held {
     pub test: String,
     pub why: String,
+    pub subtests: BTreeSet<String>,
 }
 
 /// The quarantine list as origin's main holds it in the tree at `folder`,
@@ -349,9 +352,16 @@ pub fn held(listed: &str) -> Result<Vec<Held>, String> {
             let owner = entry["owner_pr"]
                 .as_u64()
                 .map_or_else(String::new, |pr| format!("; #{pr} owns it"));
+            let subtests = entry["subtests"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|subtest| subtest.as_str().map(str::to_owned))
+                .collect();
             Ok(Held {
                 test: test.to_owned(),
                 why: format!("main quarantines it ({reason}{owner})"),
+                subtests,
             })
         })
         .collect()
@@ -360,30 +370,97 @@ pub fn held(listed: &str) -> Result<Vec<Held>, String> {
 /// `targets` parted into those whose failure blocks and those main holds,
 /// each with why. A test's part, such as its gallery, `vm-a.gallery`, is
 /// held with its test, since it fails as its test does.
-pub fn apart(targets: Vec<String>, held: &[Held]) -> (Vec<String>, Vec<(String, String)>) {
+pub fn apart(targets: Vec<String>, held: &[Held]) -> (Vec<String>, Vec<(String, Held)>) {
     let mut blocking = Vec::new();
     let mut alone = Vec::new();
     for target in targets {
         let test = target.split('.').next().unwrap_or(&target);
         match held.iter().find(|held| held.test == test) {
-            Some(held) => alone.push((target, held.why.clone())),
+            Some(held) => alone.push((target, held.clone())),
             None => blocking.push(target),
         }
     }
     (blocking, alone)
 }
 
+/// How a build ended, with the subtests its log says failed.
+pub type Heard = (i32, BTreeSet<String>);
+
 /// Build each held test alone with `build`, after the rest, so a failure is
 /// known for the test it was, and say of each that failed that it blocks
-/// nothing: changed-checks' own run does the same, and without it every
+/// nothing, unless its entry doesn't excuse it, when it says so and the
+/// run fails: changed-checks' own run does the same, and without it every
 /// run sent to an evaluator failed on a test main holds, and left no
 /// record of passing for the gate (9 November).
-pub fn built_alone(held: &[(String, String)], build: &mut dyn FnMut(&[String]) -> i32) {
-    for (name, why) in held {
-        if build(std::slice::from_ref(name)) != 0 {
-            eprintln!("nix-offload: {name} failed, but {why}, so it blocks nothing");
+pub fn built_alone(held: &[(String, Held)], build: &mut dyn FnMut(&[String]) -> Heard) -> i32 {
+    let mut status = 0;
+    for (name, held) in held {
+        let (ended, failed) = build(std::slice::from_ref(name));
+        if ended == 0 {
+            continue;
+        }
+        if excuses(held, &failed) {
+            eprintln!(
+                "nix-offload: {name} failed, but {}, so it blocks nothing",
+                held.why
+            );
+        } else {
+            let unlisted: Vec<&str> = failed
+                .iter()
+                .filter(|subtest| !held.subtests.contains(*subtest))
+                .map(String::as_str)
+                .collect();
+            let which = if unlisted.is_empty() {
+                "no test its log names".to_owned()
+            } else {
+                unlisted.join(", ")
+            };
+            eprintln!(
+                "nix-offload: {name} failed in {which}, which main's quarantine doesn't excuse, \
+                 so it blocks"
+            );
+            if status == 0 {
+                status = ended;
+            }
         }
     }
+    status
+}
+
+/// Whether `held` excuses a build that failed in the subtests `failed`
+/// names: a whole test's entry excuses any failure, and one naming
+/// subtests only a failure in some of them, as the net judges one, so a
+/// failure naming none, such as a build that timed out, blocks.
+pub fn excuses(held: &Held, failed: &BTreeSet<String>) -> bool {
+    held.subtests.is_empty() || (!failed.is_empty() && failed.is_subset(&held.subtests))
+}
+
+/// The subtest a line of a VM test's log says failed, as pytest says it:
+/// `FAILED vm-pytest-x/x-vm-test.py::test_y - why`, a parametrized case
+/// by its function's name.
+pub fn failed_on(line: &str) -> Option<&str> {
+    let (_, rest) = line.split_once("FAILED ")?;
+    let (_, name) = rest.split_whitespace().next()?.rsplit_once("::")?;
+    let name = name.split('[').next().unwrap_or(name);
+    (name.starts_with("test_") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .then_some(name)
+}
+
+/// Start `command`, passing on every line it says on stderr, where a
+/// build's log comes, and gathering the subtests those lines say failed,
+/// for `built_alone` to judge. A log that can't be read names none.
+pub fn hearing(command: &mut Command) -> io::Result<(Child, BTreeSet<String>)> {
+    let mut child = command.stderr(Stdio::piped()).spawn()?;
+    let mut failed = BTreeSet::new();
+    if let Some(said) = child.stderr.take() {
+        let mut here = io::stderr();
+        for line in BufReader::new(said).split(b'\n').map_while(Result::ok) {
+            let line = String::from_utf8_lossy(&line);
+            let _ = writeln!(here, "{line}");
+            failed.extend(failed_on(&line).map(str::to_owned));
+        }
+    }
+    Ok((child, failed))
 }
 
 /// The two lent builders in the order run `run` tries them: every other
