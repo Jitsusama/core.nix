@@ -730,7 +730,8 @@ mod tests {
         // Past any pid_max, so no process is ever there to be read.
         let gone = main(&["4194305".to_owned()]);
         assert!(
-            gone.as_ref().is_ok_and(|said| said.starts_with("Read nothing back: ")),
+            gone.as_ref()
+                .is_ok_and(|said| said.starts_with("Read nothing back: ")),
             "a window it couldn't find failed its unit, and with it a switch: {gone:?}"
         );
         assert!(
