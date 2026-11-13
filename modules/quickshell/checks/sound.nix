@@ -18,7 +18,9 @@
   # headset plays music, and makes a device's parts and drawer
   # (tests/sound.qml), over stand-in devices, with niri and the music stood
   # in for; and it lists the rows the sound daemon serves, from a stand-in
-  # serving them on its socket (tests/sound-served.qml).
+  # serving them on its socket (tests/sound-served.qml); and a microphone's
+  # Noise Cancelling offers to start noise-cancelled once its socket's gone,
+  # though it answered before (tests/noise-gap.qml).
   sound-hears-only-what-can-be-heard =
     let
       niri = singleton "Niri.qml" ''
@@ -53,6 +55,7 @@
       cp ${watchers} Watchers.qml
       cp ${../../../tests/sound.qml} shell.qml
       cp ${../../../tests/sound-served.qml} served.qml
+      cp ${../../../tests/noise-gap.qml} noise-gap.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
@@ -64,6 +67,7 @@
       # A binding loop only warns, and Sound's on `all` warned only in a gate
       # under load (2026-11-11), so one warned of here fails the check.
       if grep -a 'Binding loop' said; then exit 1; fi
+      timeout 60 ${qs} -p noise-gap.qml
       touch $out
     '';
 
