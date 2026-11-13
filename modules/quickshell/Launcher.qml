@@ -3281,7 +3281,10 @@ Scope {
         // never move what d would take from what's tinted.
         if (visualFrom >= 0)
             visualFrom = Operators.heldFrom(matches, visualId, visualFrom, Rank.identity);
-        listedLately = RowsKept.lately(listedLately, matches);
+        // Each kept place's rows and home's stay worked out while they're
+        // kept, so a chord opening one never works them out again.
+        listedLately = RowsKept.lately(listedLately, matches,
+            Object.values(placesKept).map(kept => kept.matches).concat([homeKept]));
         rowsMade += 1;
         noteKeys();
         noteFigures();

@@ -155,6 +155,21 @@ QtObject {
         Expect.same("only a few lists are kept", RowsKept.again(lately, back, first) === whole,
             false);
 
+        // A list a place is kept on stays, however many come after it, as
+        // warming keeps Emoji and then four more lists before its chord.
+        lately = RowsKept.lately(RowsKept.lately([], first), whole, [whole]);
+        RowsKept.said(lately, whole, "keys", counting);
+        made = 0;
+        for (let more = 0; more < 8; more += 1) {
+            lately = RowsKept.lately(lately, rowsOf([`${more}`]), [whole]);
+        }
+        RowsKept.said(lately, whole, "keys", counting);
+        Expect.same("a kept place's list is kept past the few newest", made, 0);
+        Expect.same("and only it, beside the few newest", lately.length, 5);
+        lately = RowsKept.lately(lately, rowsOf(["after"]), []);
+        Expect.same("until no place is kept on it", lately.some(one => one.rows === whole),
+            false);
+
         // Keys named as Object's own are rows like any other.
         const own = ["__proto__", "constructor", "toString", "hasOwnProperty", "0"];
         Expect.same("keys named as Object's own end where they're listed",

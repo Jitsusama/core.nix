@@ -134,17 +134,7 @@
     "exits"
     "helps"
   ];
-  gcloud-broker = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   git-engine = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  github-broker = [
     "kit"
     "exits"
     "helps"
@@ -395,11 +385,6 @@
     "helps"
   ];
   secure-boot-signed-check = [ "helps" ];
-  session-backup = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   shaper = [
     "kit"
     "exits"

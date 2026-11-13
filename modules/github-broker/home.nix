@@ -10,7 +10,8 @@
 # the TPM identity at ~/.config/age/tpm.txt, which asks for no PIN.
 #
 # `github-broker` on PATH asks the socket and prints a token, for gh by
-# hand: GH_TOKEN=$(github-broker) gh ...
+# hand: GH_TOKEN=$(github-broker) gh ... What follows it reaches the
+# binary, so `github-broker --help` and `github-broker --json` answer too.
 {
   config,
   lib,
@@ -22,7 +23,7 @@ let
   socket = "%t/github-broker.sock";
   held = "${config.xdg.dataHome}/github-broker";
   asking = pkgs.writeShellScriptBin "github-broker" ''
-    exec ${lib.getExe package} token --socket "$XDG_RUNTIME_DIR/github-broker.sock"
+    exec ${lib.getExe package} token --socket "$XDG_RUNTIME_DIR/github-broker.sock" "$@"
   '';
 in
 lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
