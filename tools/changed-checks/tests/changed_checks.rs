@@ -157,8 +157,10 @@ echo "{\"flake\":\"$4\",\"on\":\"lent\",\"sent\":4321}" \
 "#;
 
 /// strace as changed-checks asks it: the trace it writes is `trace`, each
-/// SOURCE in it the flake's source, and it runs what it traces.
+/// SOURCE in it the flake's source, and it runs what it traces, leaving
+/// `traced` to say it began.
 const STRACE: &str = r#"#!/bin/sh
+touch "$STAND_IN/traced"
 while [ "$1" != -o ]; do shift; done
 sed "s|SOURCE|$STAND_IN/source|g" "$STAND_IN/trace" > "$2" 2>/dev/null || : > "$2"
 shift 2
@@ -896,6 +898,43 @@ fn a_keep_on_a_builder_traces_the_vm_tests_beside_the_other_checks() {
         evaluated(runs.last().expect("a keep's line")),
         ["base", "reads"],
         "a keep's two halves are noted in order, whichever ends first"
+    );
+}
+
+#[test]
+fn a_keep_on_a_builder_traces_while_a_gate_holds_the_base_then_checks_it_against_the_gates() {
+    // On 12 November three keeps waited 119 to 704 s on the base's lock
+    // while a gate evaluated the same base, and only then began tracing.
+    let stand_in = StandIn::new("keeps-while-locked");
+    stand_in.checks("base", BASE);
+    fs::write(stand_in.path("trace"), TRACE).expect("written");
+    let cache = stand_in.path("cache/changed-checks");
+    fs::create_dir_all(&cache).expect("made");
+    let lock = fs::File::create(cache.join("0123456789abcdef0123-x86_64-linux.lock"))
+        .expect("the base's lock");
+    lock.lock().expect("held as a gate holds it");
+
+    let keep = stand_in.started(&KEEPING, &[("CHANGED_CHECKS_HERE", "1")]);
+    let began = (0..200).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        stand_in.path("traced").exists()
+    });
+    fs::write(cache.join("0123456789abcdef0123-x86_64-linux.json"), BASE).expect("written");
+    drop(lock);
+    let ran = keep.wait_with_output().expect("changed-checks runs");
+
+    assert!(began, "the trace waited for the base's lock");
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        stand_in.path(READS).exists(),
+        "a trace that matched the gate's derivations was dropped: {}",
+        text(&ran.stderr)
+    );
+    let runs = stand_in.runs();
+    assert_eq!(
+        evaluated(runs.last().expect("a keep's line")),
+        ["reads"],
+        "the gate's derivations were evaluated again"
     );
 }
 

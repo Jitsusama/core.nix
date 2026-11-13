@@ -526,10 +526,7 @@ fn compare(
         })
     };
     if options.keep_base {
-        let kept = checks::kept(&checks::keeping(&cache(), base, system), || {
-            reads::evaluated_base(root, base, system, noted)
-        })?;
-        reads::keep(root, base, system, &kept, noted);
+        reads::keep_base(root, base, system, noted)?;
         eprintln!("kept {system}'s checks at {short}");
         return Ok(ExitCode::SUCCESS);
     }
