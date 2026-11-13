@@ -470,12 +470,9 @@ Singleton {
         id: reopenKind
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
-        kind: ["reopen", "restoring", "to-reopen"]
+        kind: ["reopen", "restoring", "to-reopen", "arrangement"]
         watching: ({ place: "agents" })
         answersWhole: true
-        // Told as it answers which sessions the boot being restored kept a
-        // place of, since only the shell keeps the arrangement.
-        onStateChanged: root.tellArranged()
     }
     readonly property var offered: {
         void reopenKind.revision;
@@ -499,20 +496,6 @@ Singleton {
     readonly property var restoring: {
         void reopenKind.revision;
         return { boot: String(reopenKind.held["restoring:agents"]?.restoring?.boot ?? "") };
-    }
-
-    // Which sessions the boot being restored kept a place of, said to the
-    // daemon, since one pi's host runs counts as back only once its viewer
-    // is open where a place of its window was kept: its host brings the
-    // conversation back before Joel asks, so counting it back by that
-    // alone offered no viewer (2026-11-11, 430 and 457 after the 11:06
-    // boot). Said as text, so it's told again only as the ids change.
-    readonly property string arrangedSaid: JSON.stringify(
-        Object.keys(arrangement[restoring.boot] ?? {}))
-    onArrangedSaidChanged: tellArranged()
-    function tellArranged() {
-        if (reopenKind.state === "answering")
-            reopenKind.ask({ ask: "arranged", ids: JSON.parse(arrangedSaid) });
     }
 
     // The last boot's sessions not back here. After a boot they wait for
@@ -600,88 +583,29 @@ Singleton {
         reopenKind.ask({ ask: "put-off" });
     }
 
-    // Where each session's window sits, kept so Reopen Them All puts every
-    // one back on its workspace in its order after a cold boot (Joel,
-    // 2026-10-29, after a restore: "every session is all over the place on
-    // one workspace, out of order"). Each is kept by the session's own id,
-    // which pi keeps as a session is reopened: the screen, by what it is
-    // and by its connector, and the workspace as niri numbers it there,
-    // then its column and its tile in that column. One's kept after it ends, since a boot's end ends them
-    // one by one, and only this boot's and the one before it are kept
-    // (arrangedBefore). Every other window's place is kept beside them, by
-    // its program and title (`others`), so Reopen Them All can put back
-    // those that reopen themselves. It's written once the windows have
-    // been still a moment, never for each change.
-    FileView {
-        id: arrangementFile
-        path: Quickshell.statePath("session-arrangement.json")
-        blockLoading: true
-        printErrors: false
-        // Read again whenever it's written, by this shell or another hand.
-        watchChanges: true
-        onFileChanged: reload()
-    }
+    // Where each session's window sat, by the session's own id, each boot's
+    // (this one's and the one before), and every other window's place beside
+    // them by its program and title (`others`), kept by the agents daemon
+    // once the windows have been still a moment (modules/agents's
+    // arrangement.rs), so Reopen Them All puts every one back on its
+    // workspace in its order after a cold boot.
     readonly property var arrangementRead: {
-        try {
-            const read = JSON.parse(arrangementFile.text());
-            return read?.v === 1 && read.boots && typeof read.boots === "object" ? read : {};
-        } catch (error) {
-            return {};
-        }
+        void reopenKind.revision;
+        const read = reopenKind.held["arrangement:agents"]?.arrangement;
+        return read?.v === 1 && read.boots && typeof read.boots === "object" ? read : {};
     }
     readonly property var arrangement: arrangementRead.boots ?? {}
     readonly property var arrangedOthers: arrangementRead.others
         && typeof arrangementRead.others === "object" ? arrangementRead.others : {}
-    // Every tiled window but kitty's, whose windows are sessions or a
-    // terminal of Joel's own, oldest first: Chrome's, Slack's and the like.
-    function othersNow() {
-        return Object.values(Niri.windows)
-            .filter(window => window.app_id !== "kitty" && window.layout?.pos_in_scrolling_layout
-                && Niri.workspace(window.workspace_id))
-            .sort((a, b) => a.id - b.id)
-            .map(window => {
-                const workspace = Niri.workspace(window.workspace_id);
-                const at = window.layout.pos_in_scrolling_layout;
-                return { app: window.app_id ?? "", title: window.title ?? "",
-                    screen: screens[workspace.output] ?? "", output: workspace.output ?? "",
-                    workspace: workspace.idx, column: at[0], tile: at[1] };
-            });
-    }
-    // The boot kept beside this one: the boot being restored when its places
-    // are kept, else the one before this. Not only while restore.json names
-    // it, since that moves on once its sessions are back: on 2026-11-02 it
-    // named another boot at 18:41, and the places Reopen Them All had just
-    // used were dropped at 18:43, so nobody could see which it misplaced.
-    // This boot's is written first, so the first other is the one before.
+    // The boot kept beside this one, as the daemon keeps it: the boot being
+    // restored when its places are kept, else the other kept.
     function arrangedBefore() {
         if (restoring.boot !== "" && restoring.boot !== bootId && arrangement[restoring.boot])
             return restoring.boot;
         return Object.keys(arrangement).find(boot => boot !== bootId) ?? "";
     }
-    // Each kept place says whether its session `leads`, orchestrating one
-    // of the others as it was kept, so Reopen Them All begins it first
-    // (Places.js's leadersFirst).
-    function arrangedNow() {
-        const now = {};
-        const leaders = running.concat(parked)
-            .map(session => String(session.presence?.orchestratedBy ?? "").toUpperCase())
-            .filter(address => address !== "");
-        running.forEach(session => {
-            const id = session.presence.session;
-            const at = typeof session.window?.column === "number"
-                ? [session.window.column, session.window.down] : null;
-            const workspace = session.window ? Niri.workspace(session.window.workspace) : null;
-            const leads = (session.presence.addresses ?? [session.address])
-                .some(address => leaders.includes(String(address).toUpperCase()));
-            if (session.here && typeof id === "string" && at && workspace)
-                now[id] = { screen: screens[workspace.output] ?? "",
-                    output: workspace.output ?? "", workspace: workspace.idx,
-                    column: at[0], tile: at[1], leads };
-        });
-        return now;
-    }
     // Each connector's screen as niri describes it (Places.js), asked for
-    // as places are kept and as they're reopened, since a dock or a boot
+    // as the windows settle and as they're reopened, since a dock or a boot
     // can move a screen to another connector. Kept as last said when niri
     // doesn't answer. niri never answers a request it refused, nor one
     // sent on a connection that closed, so Reopen Them All waits no more
@@ -710,28 +634,12 @@ Singleton {
         interval: 2000
         onTriggered: root.screensLooked()
     }
-    function keepArrangement() {
-        if (bootId === "")
-            return;
-        const boots = { [bootId]: Object.assign({}, arrangement[bootId] ?? {}, arrangedNow()) };
-        const others = { [bootId]: root.othersNow() };
-        const before = root.arrangedBefore();
-        if (before !== "") {
-            boots[before] = arrangement[before];
-            if (Array.isArray(arrangedOthers[before]))
-                others[before] = arrangedOthers[before];
-        }
-        const text = JSON.stringify({ v: 1, boots, others });
-        if (text !== arrangementFile.text())
-            arrangementFile.setText(text);
-    }
     Timer {
         id: arranging
         interval: 2000
         onTriggered: root.lookAtScreens(() => {
             root.comeHome();
             root.putBackOpen();
-            root.keepArrangement();
         })
     }
     // A session's window found, as when a kitty has said which of its
