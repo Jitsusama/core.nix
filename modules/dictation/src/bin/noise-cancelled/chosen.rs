@@ -302,4 +302,4 @@ fn saying(path: &Path, why: &std::io::Error) -> String {
 
 #[cfg(test)]
 #[path = "chosen_tests.rs"]
-mod tests;
+pub mod tests;

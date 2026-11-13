@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use serde_json::json;
 
 use super::*;
+use crate::chosen::tests::spot;
 
 const MV7: &str = "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono";
 const LAPTOP: &str = "alsa_input.pci-0000_00_1f.3.analog-stereo";
@@ -18,13 +19,6 @@ fn folder(name: &str) -> PathBuf {
     let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).expect("the test's folder can be made");
     folder
-}
-
-fn spot(key: &str) -> Spot {
-    Spot {
-        key: key.to_owned(),
-        name: key.to_owned(),
-    }
 }
 
 /// Every way's marks, each overall as given and the rest at 3.

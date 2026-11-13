@@ -15,8 +15,8 @@ fn folder(name: &str) -> PathBuf {
     folder
 }
 
-/// A spot by its key, named for it.
-fn spot(key: &str) -> Spot {
+/// A spot by its key, named for it; choosing's tests take it too.
+pub fn spot(key: &str) -> Spot {
     Spot {
         key: key.to_owned(),
         name: key.to_owned(),
