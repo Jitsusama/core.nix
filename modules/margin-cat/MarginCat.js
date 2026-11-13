@@ -158,6 +158,15 @@ function slides(spring) {
     return t * slow;
 }
 
+// How far into niri's slide the cat's first frame of it shows, in ms, on
+// a screen drawn every `frame` ms: niri sets the slide off before the
+// shell hears of it, and the cat's frames reach the screen a frame after
+// niri's own. A GPU's nested niri had the window two and a half frames
+// ahead of a cat told nothing of it, at 60 Hz and at 120.
+function behind(frame) {
+    return Math.round(2.5 * frame);
+}
+
 // A drawing given a quarter turn, clockwise for `turn` 1 and back for -1,
 // cell for cell, so a climbing cat stays as sharp as a walking one.
 function quartered(drawing, turn) {
