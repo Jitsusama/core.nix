@@ -25,6 +25,12 @@
 //!
 //! With Chrome closed, or the extension not answering in time, it prints
 //! nothing and succeeds, so the launcher lists what was open lately alone.
+//!
+//! Run by hand, it takes the shape every command of ours does
+//! (docs/commands.md), through the terminal kit. `list`'s lines are read by
+//! the launcher, so they stay as they are; with `--json`, it answers as
+//! JSON instead, with RFC 3339 times. Chrome's own words, as
+//! `--parent-window=0`, pass through the kit to the host untouched.
 
 use std::collections::HashMap;
 use std::env;
@@ -42,6 +48,7 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{Value as Json, json};
+use terminal_kit::{Context, Exit, Failure, Help, time};
 
 /// The socket's name in the account's runtime folder.
 const SOCKET: &str = "chrome-open-tabs.sock";
@@ -268,49 +275,123 @@ fn answer(stream: &UnixStream, asks: &Waiting, output: &Mutex<impl Write>, next:
     }
 }
 
-/// Asks the host on `socket` and prints its answer; with no host there, it
-/// prints nothing.
-fn ask(socket: &Path, ask: &Ask) -> io::Result<()> {
+/// Asks the host on `socket` and gives back its answer; with no host
+/// there, nothing.
+fn ask(socket: &Path, ask: &Ask) -> io::Result<String> {
     let Ok(mut stream) = UnixStream::connect(socket) else {
-        return Ok(());
+        return Ok(String::new());
     };
     stream.set_read_timeout(Some(WAITING + Duration::from_secs(1)))?;
     stream.write_all(format!("{}\n", ask.line()).as_bytes())?;
     stream.shutdown(std::net::Shutdown::Write)?;
     let mut said = String::new();
     let _ = stream.read_to_string(&mut said);
-    io::stdout().write_all(said.as_bytes())
+    Ok(said)
+}
+
+/// `list`'s lines as JSON: each tab with its fields named, and when it was
+/// looked at as a time, null where Chrome didn't say.
+fn tabs(said: &str) -> Json {
+    let tabs: Vec<Json> = said
+        .lines()
+        .filter_map(|line| {
+            let [id, window, front, looked, address, title] =
+                line.splitn(6, '\t').collect::<Vec<_>>()[..]
+            else {
+                return None;
+            };
+            let looked_at = looked
+                .parse::<i64>()
+                .ok()
+                .filter(|millis| *millis > 0)
+                .map(|millis| time::rfc3339(millis.div_euclid(1000)));
+            Some(json!({
+                "id": id.parse::<u64>().ok()?,
+                "window": window.parse::<u64>().ok()?,
+                "front": front == "true",
+                "looked_at": looked_at,
+                "address": address,
+                "title": title,
+            }))
+        })
+        .collect();
+    json!({ "schema": "chrome-open-tabs.list/1", "tabs": tabs })
 }
 
 fn socket() -> Option<PathBuf> {
     env::var_os("XDG_RUNTIME_DIR").map(|runtime| PathBuf::from(runtime).join(SOCKET))
 }
 
+fn help() -> Help {
+    Help::new("chrome-open-tabs", "Chrome's open tabs, for the launcher")
+        .command(
+            "list",
+            "each tab: id, window, front, looked at, address, title",
+        )
+        .command("go ID", "brings that tab to the front of its window")
+        .command("close ID", "closes it")
+        .example("chrome-open-tabs list", "a tab a line, apart by tabs")
+        .example("chrome-open-tabs list --json", "the same, as JSON")
+        .exit(
+            Exit::Failed,
+            "the host couldn't serve, or the answer be said",
+        )
+        .exit(Exit::Unavailable, "the host's socket broke off")
+        .exit(Exit::Config, "there's no runtime folder for the socket")
+}
+
+fn asked_wrongly(what: &str) -> Failure {
+    Failure::new(Exit::Usage, what).try_this("chrome-open-tabs --help")
+}
+
 fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let Some(socket) = socket() else {
-        eprintln!("chrome-open-tabs: there's no runtime folder for the socket");
-        return ExitCode::FAILURE;
-    };
-    // Chrome names the extension's origin first.
-    let hosting = args
-        .first()
-        .is_some_and(|origin| origin.starts_with("chrome-extension://"));
-    let done = if hosting {
-        host(io::stdin().lock(), io::stdout(), &socket)
-    } else if let Some(asked) = Ask::from_line(&args.join(" ")) {
-        ask(&socket, &asked)
-    } else {
-        eprintln!("usage: chrome-open-tabs list | go ID | close ID");
-        return ExitCode::from(2);
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("chrome-open-tabs: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let socket = socket().ok_or_else(|| {
+            Failure::new(Exit::Config, "there's no runtime folder for the socket")
+                .because("XDG_RUNTIME_DIR isn't set")
+        })?;
+        // Chrome names the extension's origin first.
+        let hosting = context
+            .args
+            .first()
+            .is_some_and(|origin| origin.starts_with("chrome-extension://"));
+        if hosting {
+            return host(io::stdin().lock(), io::stdout(), &socket).map_err(|error| {
+                Failure::new(Exit::Failed, "it couldn't host the extension")
+                    .because(error.to_string())
+            });
         }
+        asked(context, &socket)
+    })
+}
+
+/// Asks the host what the command line says, and says its answer.
+fn asked(context: &Context, socket: &Path) -> Result<(), Failure> {
+    let Some(asked) = Ask::from_line(&context.args.join(" ")) else {
+        return Err(match context.args.first().map(String::as_str) {
+            Some("list") => asked_wrongly("list takes nothing more"),
+            Some("go" | "close") => asked_wrongly("go and close take a tab's ID, a number"),
+            Some(word) => terminal_kit::flags::unknown("command", word, &["list", "go", "close"]),
+            None => asked_wrongly("chrome-open-tabs needs a command: list, go or close"),
+        });
+    };
+    let said = ask(socket, &asked).map_err(|error| {
+        Failure::new(Exit::Unavailable, "the host's socket broke off").because(error.to_string())
+    })?;
+    let unsaid = |error: io::Error| {
+        Failure::new(Exit::Failed, "its answer couldn't be said").because(error.to_string())
+    };
+    if !context.format().is_json() {
+        return io::stdout().write_all(said.as_bytes()).map_err(unsaid);
     }
+    let answer = match asked {
+        Ask::List => tabs(&said),
+        Ask::Go(tab) => json!({ "schema": "chrome-open-tabs.asked/1", "ask": "go", "tab": tab }),
+        Ask::Close(tab) => {
+            json!({ "schema": "chrome-open-tabs.asked/1", "ask": "close", "tab": tab })
+        }
+    };
+    context.answer(&answer).map_err(unsaid)
 }
 
 #[cfg(test)]
@@ -467,6 +548,24 @@ mod tests {
     #[test]
     fn asking_with_no_host_says_nothing_and_succeeds() {
         let socket = env::temp_dir().join("chrome-open-tabs-nobody.sock");
-        assert!(ask(&socket, &Ask::List).is_ok());
+        assert_eq!(ask(&socket, &Ask::List).unwrap(), "");
+    }
+
+    #[test]
+    fn a_list_answers_as_json_with_its_fields_named() {
+        let said = "7\t2\ttrue\t1794556320000\thttps://a.example/\tA title\n\
+                    8\t2\tfalse\t0\tabout:blank\t\n";
+        let answer = tabs(said);
+        assert_eq!(answer["schema"], "chrome-open-tabs.list/1");
+        assert_eq!(
+            answer["tabs"][0],
+            json!({
+                "id": 7, "window": 2, "front": true,
+                "looked_at": "2026-11-13T07:52:00Z",
+                "address": "https://a.example/", "title": "A title",
+            })
+        );
+        assert_eq!(answer["tabs"][1]["looked_at"], Json::Null);
+        assert_eq!(answer["tabs"][1]["front"], false);
     }
 }
