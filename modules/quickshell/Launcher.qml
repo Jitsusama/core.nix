@@ -5595,6 +5595,11 @@ Scope {
 
     property string typed: ""
     property var matches: []
+    // How many more a held place's daemon found for what's typed than it
+    // listed, as the notices list 60 of the 971 Joel's "s" finds
+    // (modules/notices' search.rs), so the field says so rather than
+    // "60 found".
+    property int foundPast: 0
     property int current: 0
     property var pending: null
 
@@ -5720,6 +5725,7 @@ Scope {
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
+        foundPast = 0;
         const wordedAt = Date.now();
         // A step whose line holds its words is told each change to them.
         if (holdsWords)
@@ -5779,9 +5785,12 @@ Scope {
             let found = [];
             if (from && words.length === 0)
                 found = listedWhole(from);
-            else if (from)
+            else if (from) {
+                const searched = from.search(letters);
                 found = within(partsOf(from), letters)
-                        .concat(learnedFirst(from.search(letters).rows, letters));
+                        .concat(learnedFirst(searched.rows, letters));
+                foundPast = Math.max(0, (searched.found ?? 0) - searched.rows.length);
+            }
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first, and with them the
             // choices of a part that offers them (a display's Scale), so
@@ -10988,9 +10997,12 @@ Scope {
                         aside: ""
                         // A find narrowing the rows says how many it found,
                         // in normal.
-                        narrowed: root.typed !== "" && root.matches.length > 0
-                            ? (Words.field.found ?? "").replace("{count}",
-                                String(root.matches.length)) : ""
+                        narrowed: root.typed === "" || root.matches.length === 0 ? ""
+                            : root.foundPast > 0 ? (Words.field.foundOf ?? "")
+                                .replace("{count}", String(root.matches.length))
+                                .replace("{all}", String(root.matches.length + root.foundPast))
+                            : (Words.field.found ?? "").replace("{count}",
+                                String(root.matches.length))
                         onPressing: root.filled("key")
                         // A talk's caret is kept with its words, moved by
                         // a vi motion as much as by typing.
