@@ -357,7 +357,9 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
     if meeting.link.is_some() {
         acts.push(json!({"key": "verb:calendar:transcript", "step": "transcript"}));
     }
-    if meeting.answer.is_some() {
+    if let Some(taken) = meeting.answer {
+        // His the moment he asks it, the foot saying how Google has him.
+        let given = meeting.given.unwrap_or(taken);
         for (said, answer) in [
             ("yes", Answer::Yes),
             ("maybe", Answer::Maybe),
@@ -367,7 +369,8 @@ fn acts(meeting: &Meeting, words: &Words) -> Vec<Value> {
                 &format!("verb:calendar:{said}"),
                 &json!({"answer": {"id": id, "with": said}}),
             );
-            act["given"] = json!(meeting.answer == Some(answer));
+            act["given"] = json!(given == answer);
+            act["state"] = json!(words.answer(taken));
             acts.push(act);
         }
     }
@@ -783,3 +786,7 @@ mod move_tests;
 #[cfg(test)]
 #[path = "calendar_rows_lent_tests.rs"]
 mod lent_tests;
+
+#[cfg(test)]
+#[path = "calendar_rows_answers_tests.rs"]
+mod answers_tests;

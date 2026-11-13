@@ -430,11 +430,12 @@ def test_an_invitation_is_answered_from_its_acts_and_the_launcher_stays(
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Standup")
     desktop.follow()
     # Its acts: seeing it, Return's own, and joining first, then the three
-    # answers, each by its value, the one Joel gave noted as his.
+    # answers the google daemon serves, each by its value, the one Joel gave
+    # noted as his.
     desktop.launcher_until(lambda shown: "Not Going" in shown["rows"])
     sides = {thing["is"]: thing["reads"] for thing in desktop.showing()["things"]}
-    assert sides["verb:calendar:yes"] == "Going \u00b7 your answer", sides
-    assert sides["verb:calendar:maybe"] == "Maybe", sides
+    assert sides["calendar:meeting:standup:yes"] == "Going \u00b7 your answer", sides
+    assert sides["calendar:meeting:standup:maybe"] == "Maybe", sides
     desktop.down_to("Maybe")
     desktop.launcher_until(
         lambda shown: (

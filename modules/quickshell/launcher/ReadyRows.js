@@ -151,15 +151,13 @@ function noteSaid(note, now, said) {
     return typeof note === "string" ? note : sideSaid([].concat(note), now, said);
 }
 
-// A side's items as one line, each said and joined by a dot, those saying
-// nothing left out.
+// A side's items as one line, each said and joined by a dot, those saying nothing left out.
 function sideSaid(items, now, said) {
     return sideJoined(sideItems(items, now, said));
 }
 
 // A side's items as a row draws them apart, each said, with the width it
-// keeps and the role it warns in where it says them, those saying nothing
-// left out.
+// keeps and the role it warns in where it says them, those saying nothing left out.
 function sideItems(items, now, said) {
     return (items ?? []).map(item => {
         const drawn = { said: itemSaid(item, now, said) };
@@ -170,6 +168,11 @@ function sideItems(items, now, said) {
         }
         return drawn;
     }).filter(one => one.said !== "");
+}
+
+// How a row stands, said in the foot while the cursor's on it, as the daemon words it.
+function stateOf(row) {
+    return typeof row?.state === "string" ? () => row.state : undefined;
 }
 
 // Side items said, as one line joined by a dot.
@@ -235,9 +238,8 @@ function drawerOf(drawer, now, said) {
 // date and a day. Every other one can as the minute does.
 const DAILY = new Set(["moment", "dated", "day", "on"]);
 
-// How often a row says something new of the clock, at its side or in its
-// drawer, so it's said again only then while it's drawn: "minute", "day",
-// or "" for a row that says no time.
+// How often a row says something new of the clock, at its side or in its drawer, so it's
+// said again only then while it's drawn: "minute", "day", or "" for a row that says no time.
 function ticks(row) {
     const note = row?.note && typeof row.note === "object" ? [].concat(row.note) : [];
     const times = (row?.side ?? []).concat(row?.drawer?.facts ?? [], note).filter(timed);
@@ -257,8 +259,7 @@ function inside(keys, held, parent) {
 // What the row of `key` and its parts are made of, as text: its record,
 // the drawer it names apart, and the records of the rows inside it, which
 // are its parts where it steps in. The same text says its parts are as they
-// were, so a closing keeps their spots (Spots.js); null where it holds no
-// row.
+// were, so a closing keeps their spots (Spots.js); null where it holds no row.
 function stampOf(keys, held, key) {
     const row = rowOf(held[key]);
     if (row === null) {
@@ -344,8 +345,7 @@ function opened(act, commandOf, words) {
 }
 
 // Why an act can't be done as it's served, or "" where it can: one that
-// shuts the launcher holds nothing drawn, so it can't say what its row
-// becomes.
+// shuts the launcher holds nothing drawn, so it can't say what its row becomes.
 function misformed(act) {
     return act?.closes === true && act.becomes !== undefined ? "closes and becomes" : "";
 }

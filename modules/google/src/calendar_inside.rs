@@ -106,6 +106,7 @@ pub(crate) fn inside(
             }
             "verb:calendar:yes" | "verb:calendar:maybe" | "verb:calendar:no" => {
                 row["acts"] = json!([{"key": verb, "ask": act["ask"]}]);
+                row["state"] = act["state"].clone();
                 if act["given"] == true {
                     row["side"] = json!([{"said": words.word("yourAnswer")}]);
                 }
