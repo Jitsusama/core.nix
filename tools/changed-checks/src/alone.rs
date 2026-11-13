@@ -307,6 +307,22 @@ pub fn recorded(root: &str, base: &str, system: &str) -> Option<(String, Derivat
     })
 }
 
+/// Note in the run the head `recorded` judges from and how many files moved
+/// from it to the base and to the working tree, so a gate that evaluated
+/// many checks can be traced to a record main had left behind.
+pub fn note(root: &str, base: &str, recorded: Option<&(String, Derivations)>, noted: &mut Run) {
+    let Some((head, _)) = recorded else {
+        return;
+    };
+    let moved = |to| reads::touched_since(root, head, to).map(|touched| touched.len());
+    let main = if head == base {
+        Some(0)
+    } else {
+        moved(Some(base))
+    };
+    noted.recorded(head, main, moved(None));
+}
+
 /// The checks of `ordinary` whose reads at `head` the change from it to
 /// `to`, a commit or, when none, the working tree, reaches none of, and the
 /// rest; nothing when there's no record, it was made from another tree, or

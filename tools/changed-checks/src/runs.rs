@@ -1,7 +1,9 @@
 //! What each run took, kept as a line of JSON in `changed-checks/runs.jsonl`
 //! under XDG's state folder, so the time from a change to its proof is
 //! measured run after run rather than remembered: each side's evaluation
-//! chunk by chunk, what the comparison named, and the build: where it ran,
+//! chunk by chunk, the record of each check's reads it judged from and how
+//! far main and the tree had moved from it, what the comparison named, and
+//! the build: where it ran,
 //! and, on a lent builder, what it sent up, so a build sent there is seen
 //! to cost the upload nothing bulky.
 
@@ -19,6 +21,7 @@ pub struct Run {
     base: String,
     system: String,
     evaluations: Vec<Value>,
+    recorded: Option<Value>,
     named: Option<usize>,
     built: Option<Value>,
 }
@@ -48,6 +51,7 @@ impl Run {
             base: base.to_owned(),
             system: system.to_owned(),
             evaluations: Vec::new(),
+            recorded: None,
             named: None,
             built: None,
         }
@@ -69,6 +73,14 @@ impl Run {
             "seconds": seconds(evaluation.began.elapsed()),
             "chunks": Value::Array(evaluation.chunks),
         }));
+    }
+
+    /// Note the head of main whose record of each check's reads the run
+    /// judged from, and how many files moved from it to the base, `main`,
+    /// and to the tree, each when git could say: the further they moved,
+    /// the more checks a change reaches.
+    pub fn recorded(&mut self, head: &str, main: Option<usize>, tree: Option<usize>) {
+        self.recorded = Some(json!({ "head": head, "main": main, "tree": tree }));
     }
 
     /// Note how many checks the comparison named.
@@ -102,6 +114,7 @@ impl Run {
             "system": self.system,
             "seconds": seconds(self.began.elapsed()),
             "evaluated": self.evaluations,
+            "recorded": self.recorded,
             "named": self.named,
             "built": self.built,
         })
