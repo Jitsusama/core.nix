@@ -1932,6 +1932,36 @@ fn a_run_evaluating_here_waits_its_turn_while_another_holds_it() {
 }
 
 #[test]
+fn a_keep_on_a_builder_waits_for_another_keeping_the_same_base() {
+    // Two keeps of one base trace into the same files, and one took
+    // another's trace on 13 November: a keep cut off by a reboot ran on
+    // through its grace while the next keep of that base began beside it.
+    let stand_in = StandIn::new("keeps-one-at-a-time");
+    stand_in.checks("base", BASE);
+    let lock = stand_in.path("cache/changed-checks/0123456789abcdef0123-x86_64-linux.keeping.lock");
+    fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+    let held = fs::File::create(&lock).expect("the lock");
+    held.lock().expect("held");
+
+    let mut running = stand_in.started(&KEEPING, &[("CHANGED_CHECKS_HERE", "1")]);
+    let mut said = std::io::BufReader::new(running.stderr.take().expect("its stderr"));
+    let mut line = String::new();
+    while !line.contains("another keep of 0123456789ab runs here, so this waits for it") {
+        line.clear();
+        let read = std::io::BufRead::read_line(&mut said, &mut line).expect("read");
+        assert_ne!(read, 0, "it ended without waiting for the other keep");
+    }
+    let kept = stand_in.path("cache/changed-checks/0123456789abcdef0123-x86_64-linux.json");
+    assert!(!kept.exists(), "nothing is kept while the other keeps it");
+    drop(held);
+
+    let ran = running.wait_with_output().expect("it runs");
+    let rest = std::io::read_to_string(said).expect("read");
+    assert!(ran.status.success(), "{rest}");
+    assert!(kept.exists(), "kept once the other let go: {rest}");
+}
+
+#[test]
 fn keeping_a_base_elsewhere_never_asks_for_a_builder_nor_goes_where_it_must() {
     let stand_in = StandIn::elsewhere("keeps-elsewhere");
     stand_in.checks("base", BASE);

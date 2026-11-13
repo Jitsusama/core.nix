@@ -660,14 +660,22 @@ fn ordinarily(
 }
 
 /// Keep the base's checks, what its VM tests read, and what each check read
-/// alone, as keep-main asks.
+/// alone, as keep-main asks, one keep of a base at a time. Two trace into
+/// the same files, each taking the other's away, as on 13 November, when a
+/// keep cut off from its machine by a reboot ran on through its grace and
+/// the next keep of that base began beside it; the one waiting then finds
+/// what the first kept.
 fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<ExitCode, String> {
+    let short = base.get(..12).unwrap_or(base);
+    let lock = cache()
+        .join("changed-checks")
+        .join(format!("{base}-{system}.keeping.lock"));
+    let _alone = turn::taken(&lock, || {
+        eprintln!("changed-checks: another keep of {short} runs here, so this waits for it");
+    })?;
     reads::keep_base(root, base, system, noted)?;
     alone::keep(root, base, system, noted);
-    eprintln!(
-        "kept {system}'s checks at {}",
-        base.get(..12).unwrap_or(base)
-    );
+    eprintln!("kept {system}'s checks at {short}");
     Ok(ExitCode::SUCCESS)
 }
 
