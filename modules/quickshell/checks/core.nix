@@ -109,6 +109,12 @@ in
       name = "the-launcher-opens-on-what-it-kept-on-niri";
       tests = ../../../tests/opening-on-niri-test.py;
       inherit given;
+      parts = [
+        "test_a_first_letter_after_a_restart_is_drawn_on_the_rows_it_lets_go"
+        "test_home_kept_with_a_word_typed_fills_in_where_it_stood"
+        "test_the_closed_launcher_draws_nothing_as_it_lets_its_closing_go"
+        "test_for_you_makes_only_the_rows_whose_source_changed"
+      ];
     }).overrideAttrs
       (old: {
         passthru = old.passthru or { } // {
