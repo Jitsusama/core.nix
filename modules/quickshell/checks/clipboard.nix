@@ -15,7 +15,8 @@
   # Super+V's paste lands in the terminal under within 50 ms of Return
   # though the shell is held stopped once it has asked, a stand-in for its
   # thread busy after an opening: the clipboard's history serves the copy
-  # and presses the paste keys (tests/pastes-on-niri-test.py).
+  # and presses the paste keys; and it reads the text highlighted as a get
+  # asks for it, never keeping it (tests/pastes-on-niri-test.py).
   a-paste-lands-while-the-shell-is-busy-on-niri = launcherOnNiri {
     name = "a-paste-lands-while-the-shell-is-busy-on-niri";
     tests = ../../../tests/pastes-on-niri-test.py;

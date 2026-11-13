@@ -1,7 +1,10 @@
 //! What a daemon that reads on demand is handed, as the programs daemon
-//! makes a preview only once it's got, and what else it says on health:
-//! opt-in, so a daemon that hands every record over as it changes is
-//! answered from what's held alone.
+//! makes a preview only once it's got, what it reads as a get asks and
+//! never holds, as the clipboard's history reads the text highlighted,
+//! and what else it says on health: opt-in, so a daemon that hands every
+//! record over as it changes is answered from what's held alone.
+
+use std::collections::BTreeMap;
 
 use serde_json::Value;
 
@@ -31,6 +34,10 @@ pub type Fresh = Box<dyn Fn(&Wanted<'_>) + Send + Sync>;
 /// outside the lock.
 pub type HealthToo = Box<dyn Fn() -> Value + Send + Sync>;
 
+/// What reads a record a get names as it's asked, rather than holding it:
+/// its key, and the record, or none when there's nothing to say of it.
+pub type Read = Box<dyn Fn(&str) -> Option<Value> + Send + Sync>;
+
 impl Shared {
     /// Hands `fresh` what each get, list and watch asks for before it's
     /// answered, from then on, a watch asked again under its id
@@ -44,6 +51,29 @@ impl Shared {
     /// daemon gives is kept.
     pub fn health_too(&self, too: HealthToo) {
         let _ = self.health_too.set(too);
+    }
+
+    /// Reads the records of these kinds with `read` as a get names their
+    /// keys, from then on, rather than answering from what's held; only
+    /// the first a daemon gives is kept. Each is read on its connection's
+    /// thread, before the records held are locked, and never held.
+    pub fn read_on_get(&self, kinds: &'static [&'static str], read: Read) {
+        let _ = self.read.set((kinds, read));
+    }
+
+    /// The records of the kinds read on a get, by key, for these keys.
+    pub(super) fn read_now(&self, keys: &[String]) -> BTreeMap<String, Value> {
+        let Some((kinds, read)) = self.read.get() else {
+            return BTreeMap::new();
+        };
+        keys.iter()
+            .filter(|key| {
+                self.domain
+                    .kind_of(key)
+                    .is_some_and(|kind| kinds.contains(&kind))
+            })
+            .filter_map(|key| read(key).map(|record| (key.clone(), record)))
+            .collect()
     }
 
     /// Has the daemon read what `asked` wants, when it reads on demand.
