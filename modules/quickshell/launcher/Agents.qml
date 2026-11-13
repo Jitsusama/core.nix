@@ -101,7 +101,7 @@ Provider {
         make: (row, key) => top.thing(row, key,
             Object.assign(provider.topReopens(row), provider.topDrawer(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
-            ?? provider.topCloses(one)
+            ?? provider.topSessionActs(one)
         maker: provider
         drawn: provider.launcher?.open ?? false
     }
@@ -149,11 +149,15 @@ Provider {
     // Close on a served orchestration, asked first saying what stays, as a
     // session's own Close is (sessionAct), since what it leaves is worked
     // out here from the session's folder: a stopgap until the agents
-    // daemon serves what Close leaves with the act (KP0L6A). Null for any
-    // other act, or a session not here.
-    function topCloses(one) {
-        const session = one.key === "verb:agent:close" ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, "close") : null;
+    // daemon serves what Close leaves with the act (KP0L6A). Go To is the
+    // shell's too, since only the shell moves niri's focus (acts.rs): asked
+    // of the daemon, it answered nothing and said it couldn't
+    // (moves-keep-their-window, 2026-11-13). Null for any other act, or a
+    // session not here.
+    function topSessionActs(one) {
+        const id = { "verb:agent:close": "close", "verb:agent:switch": "switch" }[one.key];
+        const session = id ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, id) : null;
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
