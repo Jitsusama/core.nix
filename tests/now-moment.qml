@@ -314,8 +314,9 @@ ShellRoot {
         const held = now.leadsTo("notices")[1].verbs();
         return { held: held, history: held[held.length - 1].verbs() };
     }
-    function served(id, read) {
-        return pastNotices.rowsOf([id], "history")[0]?.unread === !read;
+    // Whether History holds notice `id`, as it holds only the read.
+    function inHistory(id) {
+        return pastNotices.pastRows(["desktop", "slack"]).some(row => row.notice === id);
     }
     function noticesServed() {
         const told = [];
@@ -332,10 +333,10 @@ ShellRoot {
     }
     function heardNotices() {
         if (waiting === "the notices served" && pastNotices.desktopHolds(1)
-            && served(30, true))
+            && inHistory(30))
             firstNotices();
-        else if (waiting === "one read" && pastNotices.rowsOf([2], "desktop").length === 0
-            && served(2, true))
+        else if (waiting === "one read" && pastNotices.desktopRows([2]).length === 0
+            && inHistory(2))
             oneRead();
     }
     // The daemon's answer to a search come, the words it answered.
