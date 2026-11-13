@@ -1,7 +1,8 @@
-//! Joel's word on a to-do, the one ask the to-do daemon answers itself:
-//! kept in settled.json (settle.rs), which the daemon's watch on it then
-//! tells every watch as it tells any write. Everything else asked is
-//! answered by daemon-serve from the records the daemon's loop hands it.
+//! Joel's word, the two asks the to-do daemon answers itself: on a to-do,
+//! kept in settled.json (settle.rs), and on a look, kept in its own file
+//! (looked.rs). The daemon's watches on them then tell every watch as they
+//! tell any write, after the act is answered done. Everything else asked
+//! is answered by daemon-serve from the records the daemon's loop hands it.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -12,7 +13,8 @@ use daemon_serve::asks::error;
 use daemon_serve::serve::Own;
 use serde_json::{Value, json};
 
-use crate::interface::{DOMAIN, act_of};
+use crate::interface::{DOMAIN, LookSettled, act_of, look_settled_of};
+use crate::looked::settle_look;
 use crate::settle::settle;
 use crate::stream::said;
 
@@ -21,15 +23,18 @@ use crate::stream::said;
 /// while it holds them, so they're kept again here.
 pub struct Acts {
     settled: Option<PathBuf>,
+    looks: Option<PathBuf>,
     to_dos: Mutex<BTreeMap<String, Value>>,
 }
 
 impl Acts {
-    /// What answers acts, keeping Joel's word in `settled`, or refusing
-    /// each where there's nowhere to keep it.
-    pub fn new(settled: Option<PathBuf>) -> Arc<Self> {
+    /// What answers acts, keeping Joel's word on a to-do in `settled` and
+    /// on a look in its file in `looks`, or refusing each where there's
+    /// nowhere to keep it.
+    pub fn new(settled: Option<PathBuf>, looks: Option<PathBuf>) -> Arc<Self> {
         Arc::new(Acts {
             settled,
+            looks,
             to_dos: Mutex::new(BTreeMap::new()),
         })
     }
@@ -46,11 +51,28 @@ impl Acts {
         *self.to_dos.lock().unwrap_or_else(PoisonError::into_inner) = to_dos;
     }
 
-    /// What answers the daemon's own asks for daemon-serve: an act, and
-    /// no other.
+    /// What answers the daemon's own asks for daemon-serve: an act on a
+    /// to-do or a look settled, and no other.
     pub fn own(self: &Arc<Self>) -> Own {
         let acts = Arc::clone(self);
-        Box::new(move |said| act_of(said).map(|act| acts.acted(&act.act, &act.item)))
+        Box::new(move |said| {
+            act_of(said)
+                .map(|act| acts.acted(&act.act, &act.item))
+                .or_else(|| look_settled_of(said).map(|settled| acts.looked(&settled)))
+        })
+    }
+
+    /// What a look settled is answered with, once its file is renamed into
+    /// place, so no watch hears the look as it was after Joel is told done.
+    fn looked(&self, settled: &LookSettled) -> Value {
+        let Some(folder) = &self.looks else {
+            return error(&Value::Null, "refused", "no looks folder here");
+        };
+        let at = i64::try_from(now_ms()).unwrap_or(i64::MAX);
+        match settle_look(folder, &settled.look, &settled.state, &settled.how, at) {
+            Ok(()) => json!({"done": true}),
+            Err(refused) => error(&Value::Null, refused.code, &refused.message),
+        }
     }
 
     /// What an act on a to-do is answered with, once Joel's word is kept:
@@ -80,4 +102,48 @@ fn now_ms() -> u64 {
         .map_or(0, |since| {
             u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn a_look_settled_is_kept_in_its_file_and_answered_done() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("a1.json");
+        fs::write(&path, r#"{"v":1,"id":"a1","state":"waiting"}"#).unwrap();
+        let acts = Acts::new(None, Some(folder.path().to_owned()));
+        let own = acts.own();
+        let asked = |look: &str| {
+            own(
+                &json!({"id": 3, "ask": "settle-look", "look": look, "state": "cleared",
+                "how": "cleared from For You"}),
+            )
+        };
+        assert_eq!(asked("a1"), Some(json!({"done": true})), "a look there");
+        let kept: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            (&kept["state"], &kept["how"], &kept["id"]),
+            (
+                &json!("cleared"),
+                &json!("cleared from For You"),
+                &json!("a1")
+            ),
+            "already in its file when answered: {kept}"
+        );
+        assert_eq!(
+            asked("gone").map(|answer| answer["error"]["code"].clone()),
+            Some(json!("unknown-item")),
+            "a look not there is refused"
+        );
+        let nowhere = Acts::new(None, None).own()(&json!({"id": 4, "ask": "settle-look",
+            "look": "a1", "state": "opened", "how": ""}));
+        assert_eq!(
+            nowhere.map(|answer| answer["error"]["code"].clone()),
+            Some(json!("refused")),
+            "with no folder of looks there's nowhere to keep it"
+        );
+    }
 }
