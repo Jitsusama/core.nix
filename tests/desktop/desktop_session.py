@@ -1358,6 +1358,8 @@ HARNESS = "~/.local/state/pi/agentic-harness.pi"
 # kept a window's shell busy past a minute, so a subtest run on its own waited it out.
 SHELL_STARTS = timedelta(seconds=120)
 INBOX = f"{HARNESS}/steer/TESTQA"
+# Where each session's window sat, by boot, which the agents daemon keeps and follows.
+ARRANGED = "~/.local/state/agents/arrangement.json"
 
 
 def lighthouse_listed(desktop: Desktop) -> None:
@@ -1467,7 +1469,8 @@ MISSION = "$HOME/.local/state/mission"
 def kept(desktop: Desktop, path: str, read: dict[str, Any]) -> None:
     """Write a file the agents keep, whole, as they do."""
     desktop.as_account(
-        f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}"
+        f"mkdir -p $(dirname {path}) && printf %s {shlex.quote(json.dumps(read))} > {path}.q"
+        f" && mv {path}.q {path}"
     )
 
 

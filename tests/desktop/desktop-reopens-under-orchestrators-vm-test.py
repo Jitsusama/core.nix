@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import desktop_session
 import pytest
-from desktop_session import PI_PRESENCE, kept
+from desktop_session import ARRANGED, PI_PRESENCE, kept
 
 if TYPE_CHECKING:
     from desktop_session import Desktop
@@ -112,15 +112,14 @@ def kept_before(
     """Keep these sessions as the boot before left them, and start the shell anew to read them.
 
     restore.json says what that boot left, as the harness writes it, those `hosted` ran in pi's
-    host, and the shell's own arrangement where each sat and whether it led others. The shell is
-    stopped while they're written, so its own keeping can't write over them, then started, as
-    after a boot.
+    host, and the agents daemon's arrangement where each sat and whether it led others. The
+    shell is stopped while they're written, so nothing it opens moves a window before they're
+    read, then started, as after a boot.
     """
     desktop.machine.wait_until_succeeds(
         desktop.in_session("ls -d ~/.local/state/quickshell/by-shell/*"),
         timeout=dt.timedelta(seconds=60),
     )
-    shell = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
     desktop.as_account("systemctl --user stop quickshell")
     kept(
         desktop,
@@ -141,7 +140,7 @@ def kept_before(
     )
     kept(
         desktop,
-        f"{shell}/session-arrangement.json",
+        ARRANGED,
         {"v": 1, "boots": {"a-boot-before": places}},
     )
     desktop.as_account("systemctl --user start quickshell")
@@ -708,12 +707,11 @@ def reopen_them_all(desktop: Desktop) -> float:
 
 
 def kept_this_boot(desktop: Desktop, sessions: list[str]) -> None:
-    """Wait for the shell to keep where each of these sits this boot, by its session."""
+    """Wait for the agents daemon to keep where each of these sits this boot, by its session."""
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
-    shell = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
     deadline = time.monotonic() + 60
     while not set(sessions) <= set(
-        (arranged := json.loads(desktop.as_account(f"cat {shell}/session-arrangement.json")))
+        (arranged := json.loads(desktop.as_account(f"cat {ARRANGED} 2>/dev/null || echo {{}}")))
         .get("boots", {})
         .get(boot, {})
     ):

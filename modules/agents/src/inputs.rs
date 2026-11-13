@@ -11,11 +11,13 @@
 //! at once to show how they meet in one record, which only this file can.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use daemon_serve::watch::Held;
 use serde_json::Value;
 
 use crate::answered::{self, Answer};
+use crate::arrangement::{self, Arrangement, Desk};
 use crate::clock;
 use crate::closed;
 use crate::drawer;
@@ -68,9 +70,13 @@ pub struct Inputs {
     /// The account's home folder, which a folder to reopen in is said
     /// from.
     pub home: String,
-    /// The sessions the boot being restored kept a place of, by pi's id,
-    /// as the shell keeps its arrangement and says it.
-    pub arranged: HashSet<String>,
+    /// The windows daemon's `workspace` records, which say where each
+    /// window's workspace is.
+    pub workspaces: Held,
+    /// The windows daemon's Screens rows, which say what each screen is.
+    pub screens: Held,
+    /// Where each session's window sat, as kept.
+    pub arrangement: Arrangement,
 }
 
 impl Inputs {
@@ -161,6 +167,50 @@ impl Inputs {
         waiting.into_iter().map(|(_, _, title)| title).collect()
     }
 
+    /// The boot restore.json names, whose places are kept beside this
+    /// boot's.
+    fn restoring(&self) -> &str {
+        self.restore
+            .as_ref()
+            .and_then(|said| said["boot"].as_str())
+            .unwrap_or("")
+    }
+
+    /// Keeps where each session's window sits now (arrangement.rs),
+    /// writing it to `path` when it moved and saying when it can't. Nothing's kept on a boot
+    /// Linux doesn't name, nor before the windows daemon has said a window.
+    pub fn keep_places(&mut self, path: &Path) {
+        if self.boot.is_empty() || self.windows.records().next().is_none() {
+            return;
+        }
+        let sessions: Vec<Session> = self
+            .sessions
+            .records()
+            .map(|(_, one)| Session(one))
+            .collect();
+        let paired = windows::records(&sessions, &self.windows, &HashSet::<&str>::new());
+        let screens = arrangement::screens(&self.screens);
+        let desk = Desk {
+            windows: &self.windows,
+            workspaces: &self.workspaces,
+            screens: &screens,
+        };
+        let now = arrangement::now(sessions.iter().copied(), &paired, &desk);
+        let kept = self.arrangement.kept(
+            &self.boot,
+            self.restoring(),
+            now,
+            arrangement::others(&desk),
+        );
+        if kept == self.arrangement {
+            return;
+        }
+        if let Err(why) = kept.write(path) {
+            eprintln!("agents: can't keep {}: {why}", path.display());
+        }
+        self.arrangement = kept;
+    }
+
     /// Every session there is to reopen, by the sessions running or
     /// parked here now, each worded as its row says it, with Sessions to
     /// Reopen's own record last while any is. One pi's host runs
@@ -168,6 +218,7 @@ impl Inputs {
     /// being restored kept no place of its window (`arranged`), since it
     /// had none to bring back.
     fn reopens(&self) -> Vec<Value> {
+        let arranged = self.arrangement.arranged(self.restoring());
         let viewing: HashSet<&str> = self
             .windows
             .records()
@@ -183,7 +234,7 @@ impl Inputs {
                     !one["presence"]["hosted"].is_null() && one["presence"]["hosted"] != false;
                 one["here"] == true
                     && matches!(standing, Some("running" | "parked"))
-                    && (!hosted || viewing.contains(id) || !self.arranged.contains(id))
+                    && (!hosted || viewing.contains(id) || !arranged.contains(id))
             })
             .filter_map(|(_, one)| {
                 let presence = &one["presence"];
@@ -355,8 +406,10 @@ impl Inputs {
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
-        // With them, the boot they're of, which the shell keeps places by.
+        // With them, the boot they're of, and the places kept of every
+        // boot's sessions, which the shell puts them back by.
         reopens.push(reopen::restoring(self.restore.as_ref()));
+        reopens.push(self.arrangement.record());
         let used = self.used();
         let last_used = |address: &str| used.get(address).copied().unwrap_or(0);
         let sessions = session::in_order(
@@ -723,7 +776,8 @@ mod tests {
             Some(json!({"boot": "the-last"})),
             "the boot being restored, for its places"
         );
-        inputs.arranged = HashSet::from(["s-viewed".to_owned()]);
+        inputs.arrangement =
+            Arrangement::of(&json!({"v": 1, "boots": {"the-last": {"s-viewed": {}}}}));
         assert!(
             served_of(&inputs).get("reopen:agents:s-viewed").is_some(),
             "one pi's host runs, with a place kept, waits for its viewer"

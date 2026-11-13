@@ -139,11 +139,10 @@ impl Watch {
     /// Opens a watch asking what `asked` says, such as a place's rows
     /// alone (`{"kind": "row", "place": "displays"}`), after the hello.
     pub fn asking(socket: &Path, asked: &Value) -> io::Result<Self> {
-        const STUB: bool = true;
         let mut stream = UnixStream::connect(socket)?;
         let hello = json!({"id": 1, "ask": "hello"});
         let mut watch = json!({"id": 2, "ask": "watch"});
-        if let (Some(watch), Some(asked), false) = (watch.as_object_mut(), asked.as_object(), STUB) {
+        if let (Some(watch), Some(asked)) = (watch.as_object_mut(), asked.as_object()) {
             for (field, value) in asked {
                 watch.entry(field.clone()).or_insert_with(|| value.clone());
             }
