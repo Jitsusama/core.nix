@@ -147,20 +147,72 @@
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
-    views = {
-      # A guard whose disk is nearly full, with the longest holders and
-      # clears it says, which is when its status is read.
-      disk-guard =
-        let
-          state = ../../modules/disk-guard/tests/a-full-disk;
-        in
-        [
-          { inherit state; }
+    views =
+      let
+        # A stand-in a script builds, where kept files would be folders a
+        # dozen deep with no note each.
+        built =
+          name: script:
+          pkgs.runCommand name { } ''
+            ${pkgs.runtimeShell} ${script} $out
+          '';
+      in
+      {
+        # A laptop with a failed device, a missing one and a disk's fault.
+        device-check = [
           {
-            args = [ "status" ];
-            inherit state;
+            state = built "a-failing-laptop" ../../modules/device-check/tests/a-failing-laptop.sh;
+            env = {
+              DEVICE_CHECK_ROOT = "@HERE@/root";
+              DEVICE_CHECK_EXPECTED = "@HERE@/expected";
+              DEVICE_CHECK_STATE = "@HERE@/found";
+              DEVICE_CHECK_NOTIFY = "true";
+              DEVICE_CHECK_SUSPENDED = "0";
+            };
           }
         ];
-    };
+        # Firmware off two of its declared settings, which a bare run names
+        # and exits 1 for, as diff does.
+        firmware-settings = [
+          {
+            state = built "a-laptop-off-its-settings" ../../modules/firmware-settings/tests/a-laptop-off-its-settings.sh;
+            env = {
+              FIRMWARE_ATTRIBUTES = "@HERE@/fw";
+              FIRMWARE_SETTINGS = "@HERE@/declared";
+              FIRMWARE_SETTINGS_WAITING = "@HERE@/waiting";
+            };
+            exits = 1;
+          }
+        ];
+        # A machine with logs still to send, and logs sent with no row.
+        session-backup = [
+          {
+            args = [
+              "status"
+              "--config"
+              "@HERE@/settings.json"
+            ];
+            state = ../../modules/session-backup/tests/a-machine-behind;
+          }
+        ];
+        # A guard whose disk is nearly full, with the longest holders and
+        # clears it says, which is when its status is read, and the long
+        # paths its journal names.
+        disk-guard =
+          let
+            state = ../../modules/disk-guard/tests/a-full-disk;
+          in
+          [
+            { inherit state; }
+            {
+              args = [ "status" ];
+              inherit state;
+            }
+            {
+              args = [ "journal" ];
+              inherit state;
+            }
+          ];
+      };
   };
 }

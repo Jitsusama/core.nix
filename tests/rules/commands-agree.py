@@ -121,6 +121,10 @@ NOW = re.compile(r"@NOW(?:([+-])(\d+))?@")
 # What a stand-in file's name ends with when it holds times to set.
 SET = ".in"
 
+# Where a view's words and variables name the folder its stand-in state is
+# put in, which is only made as it renders.
+HERE = "@HERE@"
+
 # How the terminal is told what to draw, which takes no cells: a CSI
 # sequence, an OSC one ending in BEL or ST, and the carriage return a
 # terminal adds before each newline.
@@ -318,6 +322,12 @@ class View:
 
     args: tuple[str, ...]
     state: Path | None = None
+    # Variables of its own, as a program reads the machine from more than
+    # its XDG folders: a stand-in sysfs, or a declared config.
+    env: tuple[tuple[str, str], ...] = ()
+    # What it ends with: 0, or 1 where its answer is that something differs,
+    # as `diff` says.
+    exits: int = 0
 
     @property
     def typed(self) -> str:
@@ -338,18 +348,21 @@ class Run:
 
 
 def stood_in(state: Path, into: Path) -> None:
-    """Copy a view's stand-in state into a folder it may write, setting each file's times."""
-    shutil.copytree(state, into, dirs_exist_ok=True)
+    """Copy a view's stand-in state into a folder it may write, setting its times and place."""
+    # A stand-in sysfs names a device's driver by a link, which is kept.
+    shutil.copytree(state, into, symlinks=True, dirs_exist_ok=True)
     # Copied from the store, it's read-only, and the command may write its
     # state as it would at home.
     for path in [into, *into.rglob("*")]:
+        if path.is_symlink():
+            continue
         path.chmod(path.stat().st_mode | stat.S_IWUSR)
     now = int(time.time())
     for path in sorted(into.rglob(f"*{SET}")):
         text = NOW.sub(
             lambda found: str(now + (-1 if found[1] == "-" else 1) * int(found[2] or 0)),
             path.read_text(),
-        )
+        ).replace(HERE, str(into))
         path.with_name(path.name.removesuffix(SET)).write_text(text)
         path.unlink()
 
@@ -371,10 +384,11 @@ def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | N
             # Colour is the inks point's; this one reads only the words.
             "NO_COLOR": "1",
             **{variable: str(Path(scratch) / folder) for variable, folder in XDG.items()},
+            **{variable: value.replace(HERE, scratch) for variable, value in view.env},
         }
         # The program is one the check was given built, from Nix.
         child = subprocess.Popen(  # noqa: S603
-            [program, *view.args],
+            [program, *(arg.replace(HERE, scratch) for arg in view.args)],
             stdin=subprocess.DEVNULL,
             stdout=follower,
             stderr=subprocess.DEVNULL,
@@ -443,8 +457,11 @@ def fits(program: str, views: tuple[View, ...] = ()) -> list[str]:
                 break
             text, code = seen
             # A view that fails shows its failure, not what it's for.
-            if code != 0 and view != HELP:
-                wrong.append(f"{whose}exited {code} at {width}, so its stand-in isn't enough")
+            if code != view.exits and view != HELP:
+                wrong.append(
+                    f"{whose}exited {code} at {width}, not {view.exits}, "
+                    "so its stand-in isn't enough"
+                )
                 break
             # Nothing said would fit any width, so it's a fault, not a pass.
             if not text.strip():
@@ -607,7 +624,12 @@ def main() -> int:
     waiting = json.loads(waiting_file.read_text())
     views = {
         name: tuple(
-            View(tuple(view.get("args", [])), view.get("state") and Path(view["state"]))
+            View(
+                tuple(view.get("args", [])),
+                view.get("state") and Path(view["state"]),
+                tuple(sorted(view.get("env", {}).items())),
+                view.get("exits", 0),
+            )
             for view in given
         )
         for name, given in json.loads(views_file.read_text()).items()

@@ -1,0 +1,11 @@
+{
+  "sessions": "@HERE@/sessions",
+  "ledger": "@HERE@/ledger.jsonl",
+  "index": "@HERE@/index.jsonl",
+  "folder": "a-drive-folder",
+  "machine": "a-laptop",
+  "recipients": [
+    "age1standin"
+  ],
+  "credentials": "@HERE@/credentials.json"
+}
