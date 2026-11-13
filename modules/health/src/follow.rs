@@ -316,7 +316,7 @@ impl Follower {
             return;
         };
         let day = &mut self.day;
-        self.changed |= reader.pool(&mut day.launcher.keys, &day.date, &self.zone);
+        self.changed |= reader.pool(&mut day.launcher, &day.date, &self.zone);
     }
 
     /// Judge a look at the lid, taken at `at`. A lid gone wrong counts once

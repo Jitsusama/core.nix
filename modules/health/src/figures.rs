@@ -130,6 +130,15 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
             }
         }
     }
+    // The searches he typed and those he gave up on, never what he sought.
+    let searches = &day.launcher.searches;
+    if searches.typed > 0 {
+        figures.insert("launcher.searches.typed".to_owned(), searches.typed as f64);
+        figures.insert(
+            "launcher.searches.missed".to_owned(),
+            searches.missed as f64,
+        );
+    }
     // Our side's: an opening from its process's start, an end from its
     // window gone, neither from Joel's ask; a daemon's ready and a pi's
     // start as each said it; and a service gone in a restart, from systemd
@@ -275,6 +284,8 @@ mod tests {
         for took in [38, 41, 52] {
             day.launcher.keys.pool(took);
         }
+        day.launcher.searches.typed = 20;
+        day.launcher.searches.missed = 11;
         day.typing = vec![
             Sample {
                 keys: 400,
@@ -301,6 +312,10 @@ mod tests {
                 ),
                 figure("launcher.drawers.pooled"),
                 figure("typing.worst-p99-ms"),
+                (
+                    figure("launcher.searches.typed"),
+                    figure("launcher.searches.missed")
+                ),
             ),
             (
                 Some(42.0),
@@ -309,7 +324,8 @@ mod tests {
                 Some(25.0),
                 (Some(52.0), Some(3.0)),
                 None,
-                Some(21.0)
+                Some(21.0),
+                (Some(20.0), Some(11.0)),
             ),
             "the launcher's parts or typing in pi weren't figured from the day: {figures:?}"
         );
