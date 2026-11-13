@@ -39,6 +39,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 
 use crate::checks::{self, Derivations};
+use crate::evaluating;
 use crate::runs::{Evaluation, Run};
 
 /// What evaluating the VM tests read, each by its path from the
@@ -282,13 +283,13 @@ pub fn evaluated_base(
     noted: &mut Run,
 ) -> Result<Derivations, String> {
     let flake = format!("git+file://{root}?rev={base}");
-    let (vm, ordinary): (Vec<String>, Vec<String>) = crate::names(&flake, system)?
+    let (vm, ordinary): (Vec<String>, Vec<String>) = evaluating::names(&flake, system)?
         .into_iter()
         .partition(|name| name.starts_with("vm-"));
     let at = keeping(&crate::cache(), base, system);
     let ordinarily = |at_once| {
         let mut evaluation = Run::evaluating("base");
-        crate::evaluated_by(&flake, system, &ordinary, &mut evaluation, at_once)
+        evaluating::evaluated_by(&flake, system, &ordinary, &mut evaluation, at_once)
             .map(|found| (found, evaluation))
     };
     let tracing = |at_once| {
@@ -339,7 +340,7 @@ pub fn evaluated_base(
                  they're evaluated from git: {why}"
             );
             let mut evaluation = Run::evaluating("base");
-            found.extend(crate::evaluated(&flake, system, &vm, &mut evaluation)?);
+            found.extend(evaluating::evaluated(&flake, system, &vm, &mut evaluation)?);
             noted.evaluated(evaluation);
         }
     }
@@ -444,8 +445,8 @@ fn traced(
     let tree = tree(root, base)?;
     let flake = format!("git+file://{root}?rev={base}");
     let expression = format!("(builtins.getFlake \"{flake}\").outPath");
-    let asked = ["eval", "--raw", "--expr", &expression, crate::UNCACHED];
-    let source = crate::run("nix", &crate::pure(&asked))?;
+    let asked = ["eval", "--raw", "--expr", &expression, evaluating::UNCACHED];
+    let source = crate::run("nix", &evaluating::pure(&asked))?;
     if let Some(input) = local_input(&Path::new(&source).join("flake.lock"))? {
         return Err(format!(
             "{input}, a flake input, is a local path, which a trace of the source wouldn't follow"
@@ -475,13 +476,13 @@ fn traced(
             let selecting = checks::selecting(chunk)?;
             let trace_name = trace.to_string_lossy();
             let mut asked = vec!["-f", "-qq", "-y", "-e", TRACED, "-o", &trace_name, "nix"];
-            asked.extend(crate::pure(&[
+            asked.extend(evaluating::pure(&[
                 "eval",
                 "--json",
                 &checks,
                 "--apply",
                 &selecting,
-                crate::UNCACHED,
+                evaluating::UNCACHED,
             ]));
             let began = Instant::now();
             let ran = uncached(&fresh, &strace, &asked);
