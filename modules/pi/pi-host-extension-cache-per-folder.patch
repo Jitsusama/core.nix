@@ -1,0 +1,89 @@
+A host keeps each folder's extension factories, not one folder's.
+
+pi caches the factories it loads for one folder and empties the cache
+whenever a load comes from another, with jiti's module cache off. A host
+opens and wakes conversations in many folders, so each open or wake in a
+folder other than the last evaluated every extension's modules again: the
+host's loop stalled for seconds each time and its memory grew with every
+copy. Each folder now keeps its own map, the sixteen loaded most recently
+held. Conversations in one folder share modules as two opened back to back
+in it always did, and nothing is shared across folders. A reload still
+empties every folder's map, and a token keeps its own map, so a load in
+flight when another folder's starts still caches what it loads.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -130,28 +130,38 @@
+ 
+ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
+ 
+-let extensionCacheCwd: string | undefined;
++// pi-host: a cache for each folder rather than one slot for the process. A
++// host opens conversations in many folders, and a slot emptied whenever the
++// folder changed evaluated every extension's modules again at each open and
++// wake in another folder. Each folder keeps the factories loaded for it, so
++// conversations in one folder share modules as two opened back to back in it
++// always did, and nothing is shared across folders. Past
++// EXTENSION_CACHE_FOLDERS the folder loaded longest ago is dropped; a token
++// already handed out keeps its own map, so a load in flight stays safe.
++const EXTENSION_CACHE_FOLDERS = 16;
+ let extensionCacheGeneration = 0;
+-const extensionCache = new Map<string, ExtensionFactory>();
++// Least recently loaded first.
++const extensionCaches: Array<{ cwd: string; cache: Map<string, ExtensionFactory> }> = [];
+ 
+ interface ExtensionCacheToken {
+ 	cwd: string;
+ 	generation: number;
++	cache: Map<string, ExtensionFactory>;
+ }
+ 
+ export function clearExtensionCache(): void {
+-	extensionCache.clear();
+-	extensionCacheCwd = undefined;
++	extensionCaches.length = 0;
+ 	extensionCacheGeneration++;
+ }
+ 
+ function useExtensionCacheCwd(cwd: string): ExtensionCacheToken {
+ 	const resolvedCwd = resolvePath(cwd);
+-	if (extensionCacheCwd !== undefined && !pathsEqual(extensionCacheCwd, resolvedCwd)) {
+-		clearExtensionCache();
+-	}
+-	extensionCacheCwd = resolvedCwd;
+-	return { cwd: resolvedCwd, generation: extensionCacheGeneration };
++	let held = extensionCaches.find((folder) => pathsEqual(folder.cwd, resolvedCwd));
++	if (held) extensionCaches.splice(extensionCaches.indexOf(held), 1);
++	else held = { cwd: resolvedCwd, cache: new Map<string, ExtensionFactory>() };
++	extensionCaches.push(held);
++	if (extensionCaches.length > EXTENSION_CACHE_FOLDERS) extensionCaches.shift();
++	return { cwd: resolvedCwd, generation: extensionCacheGeneration, cache: held.cache };
+ }
+ 
+ /**
+@@ -555,7 +565,6 @@
+ function isCurrentCacheToken(cacheToken: ExtensionCacheToken | undefined): cacheToken is ExtensionCacheToken {
+ 	return (
+ 		cacheToken !== undefined &&
+-		extensionCacheCwd === cacheToken.cwd &&
+ 		extensionCacheGeneration === cacheToken.generation
+ 	);
+ }
+@@ -562,7 +571,7 @@
+ 
+ async function loadExtensionModule(extensionPath: string, cacheToken?: ExtensionCacheToken) {
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		const cachedFactory = extensionCache.get(extensionPath);
++		const cachedFactory = cacheToken.cache.get(extensionPath);
+ 		if (cachedFactory) {
+ 			return cachedFactory;
+ 		}
+@@ -591,7 +600,7 @@
+ 		return undefined;
+ 	}
+ 	if (isCurrentCacheToken(cacheToken)) {
+-		extensionCache.set(extensionPath, factory);
++		cacheToken.cache.set(extensionPath, factory);
+ 	}
+ 	return factory;
+ }

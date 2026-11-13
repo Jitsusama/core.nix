@@ -96,7 +96,8 @@ assert.equal(await open("a"), 3, "a reload reused a folder's modules");
 // one loaded longest ago, and a folder opened again counts as recent.
 afresh();
 const sixteen = Array.from({ length: 16 }, (_, at) => `f${at}`);
-for (const name of sixteen) await open(name);
+// One after another, since the order they load in is what's held.
+await sixteen.reduce((before, name) => before.then(() => open(name)), Promise.resolve());
 assert.equal(await open("f0"), 1, "one of sixteen folders lost its modules");
 await open("f16");
 assert.equal(globalThis.evaluations, 17);
