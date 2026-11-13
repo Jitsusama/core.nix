@@ -126,7 +126,11 @@
       {
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
+        firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
+        firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
+        ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+        memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
   };
