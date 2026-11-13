@@ -29,7 +29,6 @@
     "shown"
     "speaks"
   ];
-  location = [ "speaks" ];
   machine = [ "speaks" ];
   meaning = [
     "held"

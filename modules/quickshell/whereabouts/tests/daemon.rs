@@ -110,11 +110,23 @@ fn changed_until(client: &mut Client, wanted: impl Fn(&Value) -> bool) -> Value 
 #[test]
 fn hello_says_it_is_locations_and_what_it_asks() {
     let running = Running::new("hello");
-    let said = running.client().ask(&json!({"id": 1, "ask": "hello"}));
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "hello"}));
     assert_eq!(said["version"], 1);
     assert_eq!(said["domain"], "location");
     assert_eq!(said["state"], "answering");
-    assert_eq!(said["sources"]["clock"]["state"], "answering", "{said}");
+    // A source is said by its word on every line but health, which says
+    // why it stands so too (docs/daemons.md).
+    assert_eq!(
+        said["sources"]["clock"], "answering",
+        "hello says the clock by its word: {said}"
+    );
+    let health = client.ask(&json!({"id": 2, "ask": "health"}));
+    assert_eq!(
+        health["sources"]["clock"],
+        json!({"state": "answering", "reason": ""}),
+        "health says the clock's state and its reason: {health}"
+    );
 }
 
 #[test]
