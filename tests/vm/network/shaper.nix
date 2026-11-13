@@ -37,7 +37,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     # The test's only distant host is the server.
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
-    # The module leaves it off until its rebuild; the test runs it.
+    # The module starts only the one-way controller at boot; the test runs this one.
     systemd.services.shaper.wantedBy = [ "multi-user.target" ];
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
     jitsusama.shaper.vpns = [ "wg0" ];
