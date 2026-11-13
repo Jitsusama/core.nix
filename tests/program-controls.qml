@@ -47,7 +47,8 @@
 // top that asks for a choice goes to its list inside its program. The list
 // programs share, heard again as it was, changes nothing, and an act
 // another provider gives to be found from the top makes its own row and
-// no program's own again. A step asked again, as a held one is at each
+// no program's own again, and none again as the same list is given anew
+// or what its acts read changes. A step asked again, as a held one is at each
 // change, makes none of its Recent's rows again. Typed inside Programs,
 // the rows holding its letters stand at once and the programs daemon's
 // answer takes its own order; where the daemon can't search, typing on
@@ -147,11 +148,15 @@ ShellRoot {
             ];
         }
 
+        // Who's in the room, which its acts read as swayimg's read its
+        // galleries, so a case sees it change remake none of them.
+        property int seated: 0
+
         // The acts found from the top alone, as Neovim's are (Provider.qml),
         // never asking every act it gives.
         function foundActsOf(program) {
             return program !== "pair" ? [] : [
-                { key: "pair:room", name: "Open the Room", verb: "open" }
+                { key: "pair:room", name: "Open the Room", verb: "open", seated: giver.seated }
             ];
         }
 
@@ -1021,6 +1026,15 @@ ShellRoot {
             same("and it asks none of the giver's other acts", giver.askedActs - askedBefore, 0);
             same("and it's found there", applications.things.filter(row => row.key
                 === "program-act:pair:pair:room").length, 1);
+            // The same acts given anew, as a binding makes its list again,
+            // or what they read changing, makes none of them again: Joel's
+            // shut launcher made every act found from the top again about
+            // every 2.5 s, 1,216 rows in 2 minutes (2026-11-12).
+            const againBefore = applications.tally.rows;
+            giver.foundActs = [{ program: "pair", key: "pair:room" }];
+            giver.seated += 1;
+            same("the same acts given anew, or what they read changing, make none again",
+                applications.tally.rows - againBefore, 0);
             giver.foundActs = [];
             // A program's note, read with its row, asks each other provider
             // for its Recent and what it has open once: it asked each twice,
