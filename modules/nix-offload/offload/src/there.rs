@@ -1803,7 +1803,7 @@ fn git(top: &Path, arguments: &[&str], index: Option<&Path>) -> Option<String> {
 }
 
 /// [`git`], with `vars` set as well.
-fn git_with(
+pub fn git_with(
     top: &Path,
     arguments: &[&str],
     index: Option<&Path>,

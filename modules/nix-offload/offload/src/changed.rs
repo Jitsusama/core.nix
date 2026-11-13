@@ -413,16 +413,22 @@ pub fn kept_first<T>(lenders: [T; 2], kept: [bool; 2]) -> [T; 2] {
     }
 }
 
+/// What a run with `arguments` compares with: the `--base` given, else
+/// origin's main.
+pub fn theirs(arguments: &[String]) -> &str {
+    arguments
+        .iter()
+        .position(|word| word == "--base")
+        .and_then(|at| arguments.get(at + 1))
+        .map_or("origin/main", String::as_str)
+}
+
 /// The commit a run with `arguments` at `commit` compares with, as the
 /// far side's changed-checks finds it: its merge base with the `--base`
 /// given, else with origin's main, here in `folder`, or none when git
 /// can't say.
 pub fn base_of(arguments: &[String], folder: &Path, commit: &str) -> Option<String> {
-    let theirs = arguments
-        .iter()
-        .position(|word| word == "--base")
-        .and_then(|at| arguments.get(at + 1))
-        .map_or("origin/main", String::as_str);
+    let theirs = theirs(arguments);
     // A fenced session's tree may name programs for git to start, as
     // there.rs's git says, and finding a merge base needs none.
     let found = Command::new("git")
