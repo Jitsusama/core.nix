@@ -273,9 +273,10 @@ fn written(env: &Env, cut: f64, err: &mut dyn Write) -> Result<Vec<Written>, Fai
 
 /// The journal's columns as text: when, whose guard, in what band, what
 /// it did, to what kind of thing, how big, and what. What it did names
-/// the entry, after when, so neither ever gives way.
+/// the entry, after when, so neither ever gives way. When is set left,
+/// as the column naming each row, so the table keeps one left edge.
 const JOURNAL: [(&str, layout::Align); 7] = [
-    ("when", layout::Align::Right),
+    ("when", layout::Align::Left),
     ("guard", layout::Align::Left),
     ("band", layout::Align::Left),
     ("did", layout::Align::Left),
