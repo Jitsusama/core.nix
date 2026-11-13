@@ -6197,6 +6197,11 @@ Scope {
         const pressed = KeyTimes.pressed();
         const collected = Heap.collected();
         searchParts = null;
+        // An arrow's drawer follows as it always has, the letters before
+        // it done (Pacing.lettersComing), and the drawer they waited for
+        // is the arrow's now.
+        lettersAt = 0;
+        lettersResting.stop();
         // What the glide it sets going is timed from, as the key is.
         movingFrom = pressed > 0 ? pressed : heard;
         current = to;
@@ -7648,6 +7653,7 @@ Scope {
         // or still to come, is selected anew with no key being handled, and
         // keeps the key that reached it: Every Count, told each second, lost
         // 2 of 131 drawers' times in the lab (2026-11-12).
+        drawerRested = 0;
         const keyed = movingFrom > 0 ? movingFrom : KeyTimes.pressed();
         if (keyed > 0 || !(drawerFollowDue || drawerAwaited))
             drawerKeyAt = keyed;
@@ -7664,14 +7670,99 @@ Scope {
             drawerFollowDue = false;
             drawerJoined = true;
             drawerFollow();
+        } else if (!prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
+            // While letters still come, its drawer waits until they rest
+            // rather than holding the next one; the key's own frame goes
+            // on without it (Pacing.typingRests).
+            drawerFollowDue = false;
+            drawerJoined = false;
+            lettersResting.restart();
+            afterFrame(drawerWaits);
         } else if (!prompt.keyHeld && !drawerFollowDue) {
             drawerFollowDue = true;
             drawerJoined = false;
-            afterFrame(drawerFollow);
+            afterFrame(drawerFollowOrRest);
+        } else if (prompt.keyHeld) {
+            afterFrame(drawerWaits);
         }
+    }
+    // While letters rest or an arrow's held, the drawer out names the row
+    // selected by only its name and kind, its body empty until it's made:
+    // the row before's drawer beside the new highlight spoke of the wrong
+    // thing for a whole word (VKCF3Z, c842849d). It's set in the frame
+    // after the key's, as a drawer follows, and stays where it is. A row
+    // each letter makes again keeps its drawer rather than flickering.
+    function drawerWaits() {
+        if (!open || !drawerOut || !drawerWaitsOn())
+            return;
+        drawerShows = { eyebrow: kindOf(selected), title: selected.name ?? "", waits: true };
+    }
+    // Whether the drawer's row is another than the one selected while the
+    // letters rest or an arrow's held, and the drawer is a row's.
+    function drawerWaitsOn() {
+        if (selected === null || drawerRow === selected
+            || !(prompt.keyHeld || lettersResting.running) || !drawerOfRows())
+            return false;
+        return (selected.key ?? "") === "" || drawerRow?.key !== selected.key;
+    }
+    // Whether the drawer is its row's, rather than a listing's plate or a
+    // command's.
+    function drawerOfRows() {
+        return !listing && commandPlate(commandLoader.item?.chosenLine ?? null) === null;
+    }
+    // A drawer that waited on a row it came back to shows its own again.
+    function drawerUnwaits() {
+        if (drawerShows?.waits === true)
+            drawerShows = drawerWanted === null ? null : drawerActed(drawerWanted);
+    }
+    // When the last letter was typed, on KeyTimes's clock, and pressed, so
+    // a drawer that rested for the letters is timed from the last of them.
+    // An arrow sets it back to 0.
+    property real lettersAt: 0
+    property real lettersPressed: 0
+    // How long the drawer following now rested for the letters, said
+    // apart from its making in its line (Pacing.drawerCame).
+    property real drawerRested: 0
+    function lettersTyped() {
+        lettersAt = KeyTimes.now();
+        const pressed = KeyTimes.pressed();
+        lettersPressed = pressed > 0 ? pressed : lettersAt;
+        if (lettersResting.running)
+            lettersResting.restart();
+    }
+    Timer {
+        id: lettersResting
+        interval: Pacing.lettersRest()
+        onTriggered: root.drawerAfterLetters()
+    }
+    // A letter's own row can be selected as its text changes, before the
+    // field says a letter came, so whether letters still come is asked
+    // again once its frame is begun.
+    function drawerFollowOrRest() {
+        if (drawerFollowDue && !prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
+            drawerFollowDue = false;
+            lettersResting.restart();
+            drawerWaits();
+            return;
+        }
+        drawerFollow();
+    }
+    function drawerAfterLetters() {
+        if (!open || prompt.keyHeld || lettersAt === 0)
+            return;
+        if (drawerRow === selected) {
+            drawerUnwaits();
+            return;
+        }
+        drawerRested = KeyTimes.now() - lettersAt;
+        if (drawerKeyAt > 0)
+            drawerKeyAt = lettersPressed;
+        drawerFollow();
     }
     function drawerFollow() {
         drawerFollowDue = false;
+        if (open && !prompt.keyHeld && drawerRow === selected)
+            drawerUnwaits();
         if (!open || prompt.keyHeld || drawerRow === selected)
             return;
         const began = KeyTimes.now();
@@ -7696,6 +7787,8 @@ Scope {
     // A held arrow let go: its drawer follows at once, timed from the
     // release, which is when Joel's walk ended.
     function drawerLetGo() {
+        if (open && drawerRow === selected)
+            drawerUnwaits();
         if (!open || drawerRow === selected)
             return;
         const pressed = KeyTimes.pressed();
@@ -7731,7 +7824,8 @@ Scope {
         // place held: each was said as `drawer for ""`, in home.
         const key = drawerRow?.key || drawerRow?.name || "";
         const made = KeyTimes.now();
-        const came = cameAs ?? Pacing.drawerCame(drawerJoined);
+        const came = cameAs ?? Pacing.drawerCame(drawerJoined, drawerRested);
+        drawerRested = 0;
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
             place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
             came } : null;
@@ -7770,7 +7864,16 @@ Scope {
     onDrawerWantedChanged: {
         if (!open) {
             drawerResting.stop();
+            lettersResting.stop();
+            drawerRested = 0;
             drawerOut = false;
+            if (drawerShows?.waits === true)
+                drawerShows = null;
+        } else if (drawerOut && drawerWanted !== null && drawerShows?.waits === true
+            && drawerRow !== selected) {
+            // Its row's drawer told again while it waits on another row is
+            // shown once it follows.
+            drawerResting.stop();
         } else if (drawerOut && drawerWanted !== null) {
             drawerResting.stop();
             const acted = drawerActed(drawerWanted);
@@ -7800,6 +7903,10 @@ Scope {
     }
     function drawerSettled() {
         drawerAwaited = false;
+        // One the row before brought stays in while another's selected and
+        // the letters rest, rather than coming out beside it.
+        if (!drawerOut && drawerWaitsOn())
+            return;
         const began = KeyTimes.now();
         drawerOut = drawerWanted !== null;
         if (!drawerOut)
@@ -10775,6 +10882,7 @@ Scope {
                                 held: root.answersAwaited }, root.typed), text,
                                 !!root.asking);
                             root.drafted();
+                            root.lettersTyped();
                             root.searchSoon(text, Date.now(), KeyTimes.now(),
                                 KeyTimes.pressed());
                         }
