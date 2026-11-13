@@ -50,7 +50,6 @@
   "modules/pi/ask.sh" = 6;
   "modules/pi/claude.sh" = 5;
   "modules/pi/settings.sh" = 3;
-  "modules/pi/tests/pi-ask-answers-on-the-machines-plan.sh" = 3;
   "modules/pi/tests/pi-keeps-its-own-settings.sh" = 5;
   "modules/plymouth/tests/the-splash-prompt-is-the-locks.sh" = 3;
   "modules/power-profiles-daemon/follow.sh" = 8;

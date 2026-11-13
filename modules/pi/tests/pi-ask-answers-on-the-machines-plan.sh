@@ -81,6 +81,8 @@ launches() {
   follows --exclude-tools 'mcp__*'
   lacks "arg --no-tools"
 }
+# How many extensions it was started with.
+loaded() { grep -cxF -- "arg -e" "$said" || true; }
 
 "$on_pi" --verbose
 has "started pi"
@@ -95,7 +97,8 @@ grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/a-proxy" ||
   fail "the machine's first extension wasn't loaded"
 grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/another" ||
   fail "the machine's second extension wasn't loaded"
-[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
+extensions=$(loaded)
+[ "$extensions" = 4 ] ||
   fail "it loaded more than the machine named, the digest and the launcher's tool"
 digests
 launches
@@ -108,7 +111,8 @@ has "path /folders/the-token-maker:/folders/another:$work/bin"
 # Stopped as systemd stops the shell's service, each of its processes told
 # at once, pi is gone within a second rather than waited on.
 : > "$said"
-SLOW_TO_STOP=1 "$on_pi" < <(echo '{"type":"prompt"}'; sleep 30) &
+echo '{"type":"prompt"}' > "$work/asked"
+SLOW_TO_STOP=1 "$on_pi" < "$work/asked" &
 asking=$!
 for _ in $(seq 200); do
   grep -q '^pid ' "$said" && break
@@ -133,7 +137,8 @@ has "started pi"
 lacks "arg --no-extensions"
 follows --mode rpc
 follows --model anthropic/claude-haiku-4-5
-[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
+extensions=$(loaded)
+[ "$extensions" = 4 ] ||
   fail "on a managed device, the machine's extensions weren't loaded"
 digests
 launches
@@ -145,6 +150,7 @@ lacks "started pi"
 follows --mode rpc
 follows --model claude-code/claude-haiku-4-5-20251001
 has "arg --no-extensions"
-[ "$(grep -cxF -- "arg -e" "$said")" = 2 ] || fail "it loaded more than the digest and the launcher's tool"
+extensions=$(loaded)
+[ "$extensions" = 2 ] || fail "it loaded more than the digest and the launcher's tool"
 digests
 launches
