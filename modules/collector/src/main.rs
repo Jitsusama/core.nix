@@ -34,7 +34,7 @@ use std::process::ExitCode;
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 use serde_json::{Value, json};
-use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
+use terminal_kit::{Context, Exit, Failure, Format, Help, Room, flags, layout};
 
 use otlp::Span;
 use store::{Keep, Store};
@@ -213,7 +213,7 @@ fn answered(context: &Context, spans: &[(&Span, usize)], zone: &TimeZone) -> Res
         _ => {
             let rows: String = spans
                 .iter()
-                .map(|(span, depth)| row(span, *depth, zone) + "\n")
+                .map(|(span, depth)| row(span, *depth, zone, context.room) + "\n")
                 .collect();
             context.say(&rows)
         }
@@ -282,32 +282,170 @@ fn fact(span: &Span) -> Value {
     })
 }
 
+/// How far in a span's words go on below its head, when the head takes
+/// more than half the room.
+const INSET: usize = 4;
+
 /// A span as a person reads it: when, how long, its name indented by how
 /// deep it sits, its service and trace, then its status and attributes.
-fn row(span: &Span, depth: usize, zone: &TimeZone) -> String {
-    let attributes: Vec<String> = span
-        .attributes
-        .iter()
-        .map(|(key, value)| match value {
+/// In a terminal the words after its head wrap beside it, under the name,
+/// or below it when the head takes more than half the room; into a pipe
+/// it's one line.
+fn row(span: &Span, depth: usize, zone: &TimeZone, room: Room) -> String {
+    let head = format!(
+        "{}  {:>9.1} ms  ",
+        when::shown(span.start, zone),
+        took_ms(span)
+    );
+    let indent = "  ".repeat(depth);
+    let mut pieces = vec![
+        ("", span.name.clone()),
+        ("  ", span.service.clone()),
+        ("  ", span.trace[..8].to_owned()),
+    ];
+    pieces.extend(span.status.iter().map(|status| ("  ", status.clone())));
+    pieces.extend(span.attributes.iter().enumerate().map(|(n, (key, value))| {
+        let said = match value {
             Value::String(text) => format!("{key}={text}"),
             other => format!("{key}={other}"),
-        })
+        };
+        (if n == 0 { "  " } else { " " }, said)
+    }));
+    let whole: String = pieces
+        .iter()
+        .map(|(gap, piece)| format!("{gap}{piece}"))
         .collect();
-    format!(
-        "{}  {:>9.1} ms  {}{}  {}  {}{}{}",
-        when::shown(span.start, zone),
-        took_ms(span),
-        "  ".repeat(depth),
-        span.name,
-        span.service,
-        &span.trace[..8],
-        span.status
-            .as_deref()
-            .map_or(String::new(), |s| format!("  {s}")),
-        if attributes.is_empty() {
-            String::new()
-        } else {
-            format!("  {}", attributes.join(" "))
-        },
-    )
+    let line = format!("{head}{indent}{whole}");
+    let Some(cells) = room.cells().filter(|cells| layout::width(&line) > *cells) else {
+        return line;
+    };
+    let beside = layout::width(&head) + indent.len();
+    if beside <= cells / 2 {
+        let pad = " ".repeat(beside);
+        let lines = filled(&pieces, cells - beside);
+        format!("{head}{indent}{}", lines.join(&format!("\n{pad}")))
+    } else {
+        let pad = format!("{}{indent}", " ".repeat(INSET));
+        let lines = filled(&pieces, cells.saturating_sub(pad.len()));
+        format!(
+            "{}\n{pad}{}",
+            head.trim_end(),
+            lines.join(&format!("\n{pad}"))
+        )
+    }
+}
+
+/// Pieces set into lines of `measure` cells, each kept whole and parted
+/// from the one before by its gap, but for one too long for any line,
+/// which wraps.
+fn filled(pieces: &[(&str, String)], measure: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for (gap, piece) in pieces {
+        if !line.is_empty() {
+            if layout::width(&line) + layout::width(gap) + layout::width(piece) <= measure {
+                line.push_str(gap);
+                line.push_str(piece);
+                continue;
+            }
+            lines.push(std::mem::take(&mut line));
+        }
+        let mut parts = layout::wrapped(piece, measure.max(1));
+        line = parts.pop().unwrap_or_default();
+        lines.extend(parts);
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn span() -> Span {
+        let mut attributes = serde_json::Map::new();
+        attributes.insert("row".to_owned(), json!("the launcher's quests"));
+        attributes.insert("shown".to_owned(), json!(14));
+        Span {
+            trace: "4bf92f3577b34da6a3ce929d0e0e4736".to_owned(),
+            id: "00f067aa0ba902b7".to_owned(),
+            parent: None,
+            name: "rows drawn".to_owned(),
+            service: "launcher".to_owned(),
+            start: 1_763_024_517_123_000_000,
+            end: 1_763_024_517_135_400_000,
+            status: Some("ok".to_owned()),
+            attributes,
+        }
+    }
+
+    fn lines(room: Room, depth: usize) -> Vec<String> {
+        row(&span(), depth, &TimeZone::UTC, room)
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn into_a_pipe_a_span_is_one_line() {
+        let said = lines(Room::Unbounded, 1);
+        assert_eq!(
+            said,
+            [
+                "2025-11-13 09:01:57.123       12.4 ms    rows drawn  launcher  4bf92f35  ok  \
+              row=the launcher's quests shown=14"
+            ],
+            "a pipe should take the row whole"
+        );
+    }
+
+    #[test]
+    fn with_room_the_words_wrap_beside_the_head_under_the_name() {
+        let said = lines(Room::Cells(80), 0);
+        assert!(said.len() > 1, "it should wrap at 80: {said:?}");
+        let under = said[0]
+            .find("rows drawn")
+            .expect("the first line should hold the name");
+        for line in &said {
+            assert!(layout::width(line) <= 80, "{line:?} runs past 80");
+        }
+        for line in &said[1..] {
+            assert_eq!(
+                line.len() - line.trim_start().len(),
+                under,
+                "{line:?} should start under the name"
+            );
+        }
+    }
+
+    #[test]
+    fn narrow_the_words_go_below_the_head_inset_by_its_depth() {
+        let said = lines(Room::Cells(60), 1);
+        assert_eq!(
+            said[0], "2025-11-13 09:01:57.123       12.4 ms",
+            "the head should stand alone"
+        );
+        for line in &said[1..] {
+            assert!(layout::width(line) <= 60, "{line:?} runs past 60");
+            assert!(
+                line.starts_with("      ") && !line.starts_with("       "),
+                "{line:?} should start 6 in"
+            );
+        }
+        assert!(
+            said[1].starts_with("      rows drawn  launcher"),
+            "the name should lead: {said:?}"
+        );
+    }
+
+    #[test]
+    fn a_row_that_fits_is_one_line() {
+        assert_eq!(
+            lines(Room::Cells(140), 0).len(),
+            1,
+            "at 140 the row should fit"
+        );
+    }
 }
