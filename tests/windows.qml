@@ -292,6 +292,22 @@ ShellRoot {
                 movedTo] }, desktop(movedTo));
             Expect.same("once answered, the desktop record says it",
                 fixedNamed("capture:window"), "This Window \u00b7 Notes");
+            // The next opening, the keys still in Notes: niri's word, then
+            // the watch's answer, each name the window it was, so Capture's
+            // acts are made no more. Joel's openings each made them again
+            // as here moved from the one to the other (2026-11-12).
+            const acts = capture.fixed;
+            Niri.focused = 13;
+            Niri.revision += 1;
+            const actsMade = capture.tally.rows;
+            capture.windowsDaemon.answeredThisWatch = false;
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                movedTo] }, desktop(movedTo));
+            Expect.expect("an opening on the same window makes no act again",
+                capture.fixed === acts && capture.tally.rows === actsMade,
+                `${capture.tally.rows - actsMade} rows made again`);
+            Niri.focused = 11;
+            Niri.revision += 1;
 
             // The daemon gone a second: its rows say so, rather than
             // reading on or saying there are none, but not before, since a

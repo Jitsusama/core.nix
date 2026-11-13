@@ -125,6 +125,12 @@ Provider {
     // read of niri either, so the keys moving remake no row then.
     readonly property var here: daemon.answeredThisWatch || !daemon.live ? focused
         : Niri.current === null ? null : Niri.windows[Niri.current] ?? null
+    // What the acts say of it, "" for none. niri's record and the desktop's
+    // are two objects for one window, and here moved from one to the other
+    // at each opening, so the acts read its title alone, which notifies
+    // only when it says another: each of Joel's openings made them again
+    // (2026-11-12). They read here itself as they're run.
+    readonly property string hereTitle: here === null ? "" : titled(here)
 
     // Takes what the daemon said: the window the keys are in, when that
     // reads otherwise, and each window's row whose program or title
@@ -299,17 +305,17 @@ Provider {
 
     readonly property var fixed: (Recorder.recording ? [stop] : []).concat([
         wholeScreen
-    ], here === null ? [] : [
+    ], hereTitle === "" ? [] : [
         acting({
             key: "capture:window",
             verb: "take",
-            name: Words.name("capture:window", "", { title: titled(here) }),
+            name: Words.name("capture:window", "", { title: hereTitle }),
             keywords: "screenshot picture focused",
             glyph: picture,
             hue: "action",
             chord: chord("niri msg action screenshot-window"),
             later: true,
-            run: () => provider.shoot(here)
+            run: () => provider.shoot(provider.here)
         }, shots, { command: "niri msg action screenshot-window", format: provider.shot })
     ], [
         acting({
@@ -334,11 +340,11 @@ Provider {
             later: true,
             run: () => Recorder.screen()
         }, Recorder.folder, { command: "qs ipc call recording screen", format: provider.recorded })
-    ], Recorder.recording || here === null ? [] : [
+    ], Recorder.recording || hereTitle === "" ? [] : [
         acting({
             key: "capture:record-window",
             verb: "record",
-            name: Words.name("capture:record-window", "", { title: titled(here) }),
+            name: Words.name("capture:record-window", "", { title: hereTitle }),
             keywords: "video recording screencast focused",
             glyph: Theme.glyph.recording,
             hue: "action",
