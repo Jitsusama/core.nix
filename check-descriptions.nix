@@ -2360,8 +2360,8 @@
     its busy time over the cycle or warned as over 100% where it didn't finish, a follower in
     its driver's cycle), its format, the kernel's facts, and its priority and identifiers last,
     never whether it's muted nor its level; and channels at one level are balanced, a stereo
-    pair's otherwise named without front; and a device's row served anew remakes only its own
-    row
+    pair's otherwise named without front; a device's row served anew remakes only its own row;
+    and the sound daemon down, its one row's Return starts it again
   '';
   sound-hears-pipewires-devices = ''
     the sound daemon makes each output and input PipeWire says a device and leaves out a program's

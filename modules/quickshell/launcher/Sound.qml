@@ -339,7 +339,9 @@ Provider {
     // With the daemon not answering, one row says so, since none listed
     // would read as the machine having no sound. Its socket is systemd's,
     // so the next ask starts it again, as its drawer says, beside what it
-    // serves and its service, the name its log is read by.
+    // serves and its service, the name its log is read by; and Return
+    // has the machine daemon start it, for when its socket has gone too,
+    // as Spend's down row starts its watch.
     function downRow() {
         const fact = (id, value) => ({ label: Words.name(id), value: value });
         return thing({
@@ -348,6 +350,12 @@ Provider {
             note: said("down"),
             glyph: Theme.glyph.caution,
             hue: "warning",
+            verb: Words.verb("sound:down"),
+            stays: true,
+            run: () => Watchers.act({ act: "restart-unit", unit: "sound.service" }, answer => {
+                if (answer === null || answer.error)
+                    provider.refused("sound:down", said("down"));
+            }),
             drawer: {
                 eyebrow: said("joined-here"),
                 title: Words.name("sound:down"),
