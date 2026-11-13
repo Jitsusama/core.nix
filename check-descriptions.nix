@@ -2498,6 +2498,15 @@
     swayimg keeps the picture it shows, read by its Recent's command as its process and whole path,
     and nothing once ZZ closes it, clearing what a killed one left
   '';
+  terminal-kit-gives-every-command-one-shape = ''
+    the terminal kit takes the shared flags out of a command line and leaves the rest in order,
+    inks by --color, NO_COLOR, FORCE_COLOR and the terminal in that order, lays rows out giving way
+    by whole items, reads help examples first, says a failure in three parts with its exit code,
+    and makes a panic a bug
+  '';
+  terminal-kit-passes-clippy = ''
+    clippy finds nothing in terminal-kit, the library every command takes its shape from
+  '';
   the-apple-silicon-stick-evaluates = ''
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates

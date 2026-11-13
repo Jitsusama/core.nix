@@ -1,0 +1,29 @@
+{
+  "colours": {
+    "text": "#D6D5BC",
+    "strong": "#F7E8B2",
+    "muted": "#B7B69D",
+    "rule": "#53685B",
+    "alert": "#FF6F5F",
+    "warning": "#E5C736"
+  },
+  "terminal": {
+    "foreground": "#D6D5BC",
+    "black": "#111c18",
+    "red": "#FF5345",
+    "green": "#549e6a",
+    "yellow": "#459451",
+    "blue": "#509475",
+    "magenta": "#DF88B3",
+    "cyan": "#2DD5B7",
+    "white": "#C1C497",
+    "bright_black": "#718779",
+    "bright_red": "#db9f9c",
+    "bright_green": "#63b07a",
+    "bright_yellow": "#E5C736",
+    "bright_blue": "#ACD4CF",
+    "bright_magenta": "#75bbb3",
+    "bright_cyan": "#8CD3CB",
+    "bright_white": "#F7E8B2"
+  }
+}

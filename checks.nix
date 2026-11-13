@@ -740,6 +740,7 @@ gather {
     ./modules/systemd/checks.nix
     ./modules/systemd-networkd/checks.nix
     ./modules/tcp/checks.nix
+    ./modules/terminal-kit/checks.nix
     ./modules/theme/checks.nix
     ./modules/to-do/checks.nix
     ./modules/touchpad/checks.nix
