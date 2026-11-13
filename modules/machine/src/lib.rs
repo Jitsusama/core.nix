@@ -76,21 +76,47 @@ use serde_json::Value;
 
 /// Where the kernel's files are read from.
 #[derive(Clone, Debug)]
-pub struct Root(PathBuf);
+pub struct Root {
+    path: PathBuf,
+    /// Each path read, in a test, so a case can say how often a file was
+    /// read: some answer every read through the firmware, which is slow.
+    #[cfg(test)]
+    reads: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
 
 impl Root {
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self(path.into())
+        Self {
+            path: path.into(),
+            #[cfg(test)]
+            reads: std::sync::Arc::default(),
+        }
     }
 
     /// A file under the root, by its path on the machine.
     pub fn path(&self, path: &str) -> PathBuf {
-        self.0.join(path.trim_start_matches('/'))
+        self.path.join(path.trim_start_matches('/'))
     }
 
     /// What a file says, or none when it can't be read.
     pub fn read(&self, path: &str) -> Option<String> {
+        #[cfg(test)]
+        self.reads
+            .lock()
+            .expect("the tally of reads is whole")
+            .push(path.to_owned());
         std::fs::read_to_string(self.path(path)).ok()
+    }
+
+    /// How many times a file has been read, in a test.
+    #[cfg(test)]
+    pub fn reads_of(&self, path: &str) -> usize {
+        self.reads
+            .lock()
+            .expect("the tally of reads is whole")
+            .iter()
+            .filter(|read| *read == path)
+            .count()
     }
 
     /// What a file says, trimmed, or none when it's empty or can't be read.
@@ -122,7 +148,7 @@ impl Root {
     /// Where a link under the root points, as a path on the machine.
     pub fn resolved(&self, path: &str) -> Option<String> {
         let full = std::fs::canonicalize(self.path(path)).ok()?;
-        let base = std::fs::canonicalize(&self.0).ok()?;
+        let base = std::fs::canonicalize(&self.path).ok()?;
         let inside = full.strip_prefix(&base).ok()?;
         Some(Path::new("/").join(inside).to_string_lossy().into_owned())
     }
