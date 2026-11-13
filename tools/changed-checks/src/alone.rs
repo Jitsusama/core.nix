@@ -108,12 +108,15 @@ fn recently_recorded(folder: &Path, system: &str, now: SystemTime) -> bool {
 fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> Result<(), String> {
     let derivations = checks::read_kept(&checks::keeping(&crate::cache(), base, system))?
         .ok_or("its derivations aren't kept")?;
+    let (tree, source) = reads::source(root, base)?;
+    // A check whose derivation takes the whole source in goes unrecorded,
+    // so every gate evaluates it.
+    let whole = checks::taking_whole(&source, &derivations)?;
     let ordinary: Vec<(usize, &String)> = derivations
         .keys()
-        .filter(|name| !name.starts_with("vm-"))
+        .filter(|name| !name.starts_with("vm-") && !whole.contains(name.as_str()))
         .enumerate()
         .collect();
-    let (tree, source) = reads::source(root, base)?;
     let checks = format!("path:{source}#checks.{system}");
     let strace = reads::strace();
     let mut evaluation = Run::evaluating("alone");

@@ -1,7 +1,7 @@
 //! What a change did to each check's derivation, and how the checks are
 //! evaluated and kept to find out.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -296,6 +296,28 @@ pub fn kept(
     fs::write(&writing, text).map_err(|error| unreadable(&error))?;
     fs::rename(&writing, path).map_err(|error| unreadable(&error))?;
     Ok(found)
+}
+
+/// The checks among `derivations` whose derivation takes `source`, the
+/// flake's whole source, in, so its build may read any file though no trace
+/// saw it read: `formatting`'s evaluation read 408 files on 12 November.
+/// No record of reads may stand for one of these.
+pub fn taking_whole<'a>(
+    source: &str,
+    derivations: &'a Derivations,
+) -> Result<BTreeSet<&'a str>, String> {
+    let asked = ["--query", "--referrers-closure", source];
+    let referring = crate::run("nix-store", &asked)?;
+    let referring: BTreeSet<&str> = referring.lines().collect();
+    Ok(derivations
+        .iter()
+        .filter(|(_, derivation)| {
+            derivation
+                .as_deref()
+                .is_some_and(|it| referring.contains(it))
+        })
+        .map(|(name, _)| name.as_str())
+        .collect())
 }
 
 /// Give the derivations kept at the path, or none when nothing is kept.
