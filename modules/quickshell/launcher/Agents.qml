@@ -93,10 +93,13 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
         place: "agents-top"
-        beside: ["drawer"]
+        // Its drawers are its sessions', read where the tree's are
+        // (topDrawer), not watched again here: each one told here remade
+        // its row, so arrows that only moved made 45 to 509 rows (keeps-up,
+        // 2026-11-13).
         watching: provider.opened() ? ({}) : ({ every: provider.shutPace })
-        ahead: provider.drawerWanted !== "" ? [provider.drawerWanted] : []
-        make: (row, key) => top.thing(row, key, provider.topReopens(row))
+        make: (row, key) => top.thing(row, key,
+            Object.assign(provider.topReopens(row), provider.topDrawer(row)))
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topCloses(one)
         maker: provider
@@ -151,6 +154,26 @@ Provider {
     function topCloses(one) {
         const session = one.key === "verb:agent:close" ? sessionAt(one.ask?.address) : null;
         return session ? sessionAct(session, "close") : null;
+    }
+
+    // A served row naming its session's drawer, "drawer:agents-top:<address>",
+    // is drawn as the tree's session rows draw it (drawerOf, SessionDrawer.js),
+    // from the drawer the tree's watch holds: the daemon serves a session's
+    // eyebrow as items and its facts as labels and values, not as
+    // ready-rows.md's drawer, so read as one it said "[object" over blank
+    // facts (finds-sessions, 2026-11-13). Its acts are named as served,
+    // Return's by ↵, except where they step into its members.
+    function topDrawer(row) {
+        const address = /^drawer:agents(?:-top)?:(.+)$/u.exec(String(row?.drawer ?? ""))?.[1];
+        if (address === undefined)
+            return {};
+        return {
+            drawer: () => {
+                const acts = top.actsOf(row);
+                const steps = acts.some(one => one.step === "rows");
+                return top.actsNamed(provider.drawerOf(address), steps ? [] : acts, null);
+            }
+        };
     }
 
     // A closed orchestrator the daemon serves under Closed, with no acts

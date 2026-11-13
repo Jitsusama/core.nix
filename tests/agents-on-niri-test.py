@@ -793,6 +793,22 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> N
     assert row["side"] == "1 of 3 working", row
     assert row["told"][:1] == ["\u21b5 talk"], row
 
+    # Its drawer is its session's, worded as every session's is: the daemon
+    # serves that eyebrow as items and its facts as labels and values, which
+    # read as a ready row's drew "[object" over blank facts.
+    def worded(shown: Json) -> bool:
+        drawer = shown["drawer"]
+        return (
+            drawer["shown"]
+            and isinstance(drawer["eyebrow"], str)
+            and drawer["eyebrow"] != ""
+            and drawer["facts"] != []
+            and all(label != "" for label in drawer["facts"])
+        )
+
+    shell.launcher_until(worded)
+    assert not shell.showing()["drawer"]["eyebrowDrawn"].startswith("[object"), shell.showing()
+
 
 def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(
     shell: Shell,
