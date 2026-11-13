@@ -193,6 +193,18 @@ QtObject {
         expect("a making no kind spent a millisecond on says none",
             Trials.madeOfKinds({ person: 0 }) === "" && Trials.madeOfKinds(undefined) === "",
             Trials.madeOfKinds({ person: 0 }));
+        expect("a drawer's making says working out which, its acts and showing it",
+            Trials.makingSplit(134, { acted: 0.4, shown: 21.6 })
+                === " (112 working out which, 0 its acts, 22 showing it)",
+            Trials.makingSplit(134, { acted: 0.4, shown: 21.6 }));
+        expect("a split rounded past its making works out none",
+            Trials.makingSplit(3, { acted: 1.6, shown: 1.6 })
+                === " (0 working out which, 2 its acts, 2 showing it)",
+            Trials.makingSplit(3, { acted: 1.6, shown: 1.6 }));
+        expect("a drawer made with none of its own, or untold, says no split",
+            Trials.makingSplit(0, { acted: 1, shown: 1 }) === ""
+                && Trials.makingSplit(40, null) === "",
+            Trials.makingSplit(40, null));
         expect("a key that made no rows says none", Trials.madeWhileTyping({ agents: 0 }) === ""
             && Trials.madeWhileTyping(undefined) === "", Trials.madeWhileTyping({ agents: 0 }));
         const bare = Trials.stepped(null, { began: 0, made: 4, pushed: 4, opened: 5, ended: 9 });
