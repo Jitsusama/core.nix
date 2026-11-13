@@ -6763,22 +6763,43 @@ Scope {
     // asked by name can say otherwise than the row it stands on. Worked
     // out only for the rows drawn, as each is drawn or what's typed
     // changes, and kept by nothing but the row drawing it, so a list of
-    // matches holds no more.
+    // matches holds no more; only the name's preparing is kept a while
+    // (namePrepared).
     function matchedIn(choice) {
         if (choice.byWord || choice.answered)
             return [];
         const drawn = choice.prepared?.text === choice.name ? choice.prepared
-            : Fuzzy.prepare(choice.name);
+            : namePrepared(choice.name);
         return Fuzzy.match(drawn, washedBy, true).positions ?? [];
+    }
+
+    // Names drawn lately, prepared to match, since a row found at home
+    // carries none of its own, and each row drawn prepared its name again
+    // at every key: 594 times over 25 keys typed into home, 34 ms (the
+    // keys lab's profile, 2026-11-12). At most 512 are kept, all let go
+    // at once past that, so a long session holds no more.
+    property var preparedNames: new Map()
+    function namePrepared(name) {
+        const kept = preparedNames.get(name);
+        if (kept !== undefined)
+            return kept;
+        if (preparedNames.size >= 512)
+            preparedNames.clear();
+        const made = Fuzzy.prepare(name);
+        preparedNames.set(name, made);
+        return made;
     }
 
     // A name with the letters that matched in Search's ink, as styled
     // text, their ground drawn behind them (Wash.qml).
     function marked(choice, at) {
-        const escape = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+        // Each letter is looked up rather than run through two patterns,
+        // which were 11,394 calls and 53 ms over 25 keys typed into home
+        // (the keys lab's profile, 2026-11-12).
+        const escaped = { "&": "&amp;", "<": "&lt;" };
         let out = "";
         for (let i = 0; i < choice.name.length; i++) {
-            const letter = escape(choice.name[i]);
+            const letter = escaped[choice.name[i]] ?? choice.name[i];
             out += at.includes(i)
                 ? `<font color="${Theme.wash.ink}">${letter}</font>`
                 : letter;
@@ -7685,11 +7706,15 @@ Scope {
     function drawerMade(began, making, cameAs) {
         if (!open)
             return;
-        const key = drawerRow?.key ?? "";
+        // A place's own answers, as Network's Address, carry no key and
+        // a command row no source, so they're named by their name and the
+        // place held: each was said as `drawer for ""`, in home.
+        const key = drawerRow?.key || drawerRow?.name || "";
         const made = KeyTimes.now();
         const came = cameAs ?? Pacing.drawerCame(drawerJoined);
         const presenting = drawerKeyAt > 0 ? { key, from: drawerKeyAt, followed: began,
-            place: drawerPlaceOf(drawerRow), came } : null;
+            place: drawerRow?.from?.settings?.name ?? held[0]?.row?.category?.id ?? "home",
+            came } : null;
         drawerKeyAt = 0;
         if (presenting !== null) {
             presentedAwait(presenting.from, at => {
@@ -9094,6 +9119,28 @@ Scope {
     // nothing kept (10:16).
     property int warmed: -1
     property real warmedTook: 0
+    // Where the pass's time went between its turns, said as it ends: at a
+    // switch its 83 turns made rows for 350 ms but ended 10 s after the
+    // configuration loaded, against 4 s at the switches before, and
+    // nothing said what the shell did meanwhile (2026-11-13, 00:52).
+    property real warmedFrom: -1
+    property real warmedLast: -1
+    property real warmedWaited: 0
+    property string warmedWaitedAfter: ""
+    property string warmedTurn: ""
+    property int warmedPutOff: 0
+    function warmedTurnBegins(began) {
+        if (warmedFrom < 0)
+            warmedFrom = began;
+        if (warmedLast >= 0 && began - warmedLast > warmedWaited) {
+            warmedWaited = began - warmedLast;
+            warmedWaitedAfter = warmedTurn;
+        }
+    }
+    function warmedTurnEnds(turn) {
+        warmedLast = KeyTimes.now();
+        warmedTurn = turn;
+    }
     Timer {
         id: warmingBegins
 
@@ -9114,14 +9161,19 @@ Scope {
         if (open || opening) {
             warmingOn.stop();
             warmingBegins.restart();
+            warmedPutOff += 1;
+            // A wait an opening made is the opening's, not the shell's.
+            warmedLast = -1;
             return;
         }
         const began = KeyTimes.now();
+        warmedTurnBegins(began);
         warmed += 1;
         if (warmed < sources.length) {
             sources[warmed].warming = true;
             sources[warmed].warming = false;
             warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(sources[warmed].settings?.name ?? "a source");
             warmingOn.start();
             return;
         }
@@ -9133,6 +9185,7 @@ Scope {
         if (place < chordPlaces.length) {
             warmPlace(chordPlaces[place]);
             warmedTook += KeyTimes.now() - began;
+            warmedTurnEnds(`${chordPlaces[place]} kept`);
             warmingOn.start();
             return;
         }
@@ -9153,7 +9206,10 @@ Scope {
         const rows = Object.values(tallies()).reduce((sum, each) => sum + each, 0);
         console.info(`launcher: home and ${Object.keys(placesKept).length} places kept as the`
             + ` shell started, ${rows} rows made in ${Math.round(warmedTook)} ms over`
-            + ` ${warmed} turns`);
+            + ` ${warmed} turns, spread over ${Math.round(KeyTimes.now() - warmedFrom)} ms,`
+            + ` the longest wait between them ${Math.round(warmedWaited)} ms after`
+            + ` ${warmedWaitedAfter || "none"}`
+            + (warmedPutOff > 0 ? `, put off ${warmedPutOff} times by an opening` : ""));
     }
 
     // The places a chord opens straight into, as the desktop's binds say
@@ -12281,11 +12337,27 @@ Scope {
                                 font.weight: Theme.level.name.weight
                             }
 
+                            // How many facts it has drawn, which only grows:
+                            // the keys beside them take another room at
+                            // nearly every key, so the facts kept are a new
+                            // list each time, and a Repeater given one made
+                            // each fact's Text again, 68 ms over 25 keys
+                            // typed into home (the keys lab's profile,
+                            // 2026-11-12). So each Text drawn is kept,
+                            // reading its fact by its place, and one past
+                            // the facts is hidden, which a Row leaves out.
+                            property int made: 0
+                            onKeptChanged: made = Math.max(made, kept.length)
+                            Component.onCompleted: made = Math.max(made, kept.length)
+
                             Repeater {
-                                model: standing.kept
+                                model: standing.made
 
                                 Text {
-                                    required property var modelData
+                                    required property int index
+                                    visible: index < standing.kept.length
+                                    readonly property var modelData: standing.kept[index]
+                                        ?? ({ entry: { name: "" }, way: "", said: "" })
 
                                     // The room it has needed since the launcher
                                     // opened, so one reading shorter moves

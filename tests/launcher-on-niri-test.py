@@ -2025,6 +2025,51 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_a_drawer_inside_a_place_is_said_by_its_row_and_place(shell: Shell) -> None:
+    """Each drawer walked inside Network is said by its row, and tallied in Network at the close.
+
+    Network's own answers carry no key and its commands no source, so the lab's walk through
+    it said 15 of its drawers as `drawer for ""` and all of them as drawers in home
+    (2026-11-12), and neither could be told from home's in Joel's journal.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("network", selecting="Network")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Network"))
+    shell.normal()
+    since = shell.mark()
+    rows = shell.showing()["rows"]
+    for row in rows[1:]:
+        shell.send_chars("j")
+        shell.launcher_until(functools.partial(drawer_on, row))
+    stepped_out(shell)
+    shell.close_launcher()
+    said = said_once(shell, since, DRAWERS_SAID)
+    lines = [line for line in said.splitlines() if "drawer" in line and "presented" in line]
+    assert lines, f"no drawer walked in Network was said presented, of {rows}"
+    unnamed = [line for line in lines if 'drawer for ""' in line]
+    assert not unnamed, f"drawers said with no row: {unnamed}"
+    in_home = [line for line in lines if " in home " in line]
+    assert not in_home, f"Network's drawers were tallied in home: {in_home}"
+
+
+def drawer_on(row: str, shown: Json) -> bool:
+    """Say whether the row named is selected with its drawer out, or makes none.
+
+    A row whose source can't answer here makes no drawer, as Work Network's does with no
+    warp-cli to read (2026-11-12), so the walk passes it rather than waiting on it. An
+    answer's drawer is titled by what it answers rather than its row's name, as Address's
+    "no address" is, so the drawer out is the one the row makes.
+    """
+    selected = cast("Json", shown.get("selected") or {})
+    if selected.get("name") != row:
+        return False
+    made = cast("Json | None", selected.get("drawer"))
+    drawer = cast("Json", shown["drawer"])
+    return made is None or (bool(drawer["shown"]) and drawer["title"] == made.get("title"))
+
+
 def said_once(shell: Shell, since: int, line: re.Pattern[str]) -> str:
     """Give the shell's log since `since` once it holds `line`, else as the wait ends."""
     said = ""
