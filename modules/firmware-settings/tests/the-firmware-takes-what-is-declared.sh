@@ -73,14 +73,15 @@ firmware-settings apply < /dev/null > out 2>&1 || fail "apply asked for a passwo
 
 printf 'Missing=x\n' > declared
 status=$(checked)
-[ "$status" = 2 ] || fail "check of a setting the firmware lacks exited $status"
+[ "$status" = 66 ] || fail "check of a setting the firmware lacks exited $status"
 grep -qF "no firmware setting Missing" out || fail "check didn't name the missing setting"
 
 chmod a-r "$fw/attributes/Mode/current_value"
 printf 'Mode=Standard\n' > declared
 status=$(checked)
 [ "$status" = 77 ] || fail "check of a setting it can't read exited $status"
-grep -qF "can't read Mode; run it as root: run0 firmware-settings check" out \
+grep -qF "it can't read Mode" out || fail "check didn't name the setting it couldn't read"
+grep -qF "try  run0 firmware-settings check" out \
   || fail "check didn't say to run it as root"
 if grep -qF "Mode is" out; then
   fail "check named a setting it couldn't read as differing"

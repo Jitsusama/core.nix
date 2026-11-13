@@ -3,13 +3,16 @@
 //! drivers provide.
 //!
 //! ```text
-//! firmware-settings check           names every setting that differs
+//! firmware-settings [check]         names every setting that differs
 //! firmware-settings apply           writes them, asking for the admin password
 //! firmware-settings set NAME VALUE  writes one for now, which check then names
 //! ```
 //!
-//! It exits 1 when a setting differs, 2 when the firmware has no such
-//! setting, and 77 when it can't read one, as without root. A setting
+//! It takes the shape every command of ours does (docs/commands.md): its
+//! help, its answer as text or JSON, and a failure that says what to try.
+//! It exits 1 when a setting differs, 66 when the firmware has no such
+//! setting, 77 when it can't read one, as without root, and 130 when a
+//! signal stops it, the password wiped first. A setting
 //! that waits for a person at the firmware's setup screen is named with
 //! what it waits for, and isn't counted as differing until it's taken off
 //! that list.
@@ -23,27 +26,21 @@
 
 use std::env;
 use std::ffi::c_int;
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::os::fd::FromRawFd;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, ExitCode};
+use std::process::{Command, ExitCode};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
-/// What it exits with when a setting differs from the declared one.
-const DIFFERS: u8 = 1;
-/// What it exits with when it couldn't write what it was asked to.
-const FAILED: u8 = 1;
-/// What it exits with when the firmware has no such setting.
-const MISSING: u8 = 2;
-/// What it exits with when it's asked for something it doesn't do.
-const USAGE: u8 = 64;
-/// What it exits with when it can't read a setting, as without root.
-const UNREADABLE: u8 = 77;
-/// What it exits with when a signal stops it, as a shell's 128 and SIGINT.
-const INTERRUPTED: i32 = 130;
+use serde_json::{Value, json};
+use terminal_kit::{Context, Exit, Failure, Help, flags};
+
+/// The commands it takes, a bare run being check.
+const COMMANDS: [&str; 3] = ["check", "apply", "set"];
 /// How many passes apply writes in before it gives up on settings that
 /// won't take.
 const PASSES: usize = 10;
@@ -80,6 +77,115 @@ struct Difference {
     dir: PathBuf,
     now: String,
     declared: String,
+}
+
+/// A setting that differs, as the answer names it, with what it waits for
+/// where a person must take it at the firmware's setup screen.
+#[derive(Debug, PartialEq, Eq)]
+struct Differs {
+    name: String,
+    now: String,
+    declared: String,
+    waits_for: Option<String>,
+}
+
+/// What the firmware holds against what's declared.
+#[derive(Debug, PartialEq, Eq)]
+struct Look {
+    differs: Vec<Differs>,
+    /// Whether an interface takes some of what was written at the next boot.
+    at_next_boot: bool,
+}
+
+/// A count of settings, as a sentence starts with it.
+fn settings(count: usize) -> String {
+    if count == 1 {
+        "1 setting".to_owned()
+    } else {
+        format!("{count} settings")
+    }
+}
+
+/// The line a setting that takes effect at the next boot adds.
+const AT_NEXT_BOOT: &str = "The firmware takes some of its settings at the next boot.\n";
+
+impl Look {
+    /// How many differ and wait for no one, which fail a check.
+    fn differing(&self) -> usize {
+        self.differs
+            .iter()
+            .filter(|differs| differs.waits_for.is_none())
+            .count()
+    }
+
+    /// Each setting that differs, a line each, for a person.
+    fn text(&self) -> String {
+        let mut text = String::new();
+        for differs in &self.differs {
+            // Writing to a String can't fail.
+            let _ = write!(
+                text,
+                "{} is {}, declared {}",
+                differs.name, differs.now, differs.declared
+            );
+            if let Some(what) = &differs.waits_for {
+                let _ = write!(text, "; it waits for {what}");
+            }
+            text.push('\n');
+        }
+        if self.differs.is_empty() {
+            text.push_str("The firmware's settings are as declared.\n");
+        }
+        if self.at_next_boot {
+            text.push_str(AT_NEXT_BOOT);
+        }
+        text
+    }
+
+    /// The same, for a machine.
+    fn json(&self) -> Value {
+        let differs: Vec<Value> = self
+            .differs
+            .iter()
+            .map(|differs| {
+                json!({
+                    "name": differs.name,
+                    "now": differs.now,
+                    "declared": differs.declared,
+                    "waits_for": differs.waits_for,
+                })
+            })
+            .collect();
+        json!({
+            "schema": "firmware-settings.check/1",
+            "differs": differs,
+            "at_next_boot": self.at_next_boot,
+        })
+    }
+
+    /// Says the look as it was asked for.
+    fn tell(&self, context: &Context) {
+        // A closed stream, as when a pipe's reader stops early, leaves
+        // nothing to say it to.
+        let _ = if context.format().is_json() {
+            context.answer(&self.json())
+        } else {
+            context.say(&self.text())
+        };
+    }
+}
+
+/// Why a write failed, and what to try: root where the kernel refused it.
+fn unwritten(error: &io::Error, what: String, command: &str) -> Failure {
+    if error.kind() == io::ErrorKind::PermissionDenied {
+        Failure::new(Exit::Refused, what)
+            .because(error.to_string())
+            .try_this(format!("run0 firmware-settings {command}"))
+    } else {
+        Failure::new(Exit::Failed, what)
+            .because(error.to_string())
+            .try_this("firmware-settings check")
+    }
 }
 
 /// The firmware's interfaces, the settings declared for them, and the
@@ -173,7 +279,7 @@ fn wipe_when_stopped(files: Arc<Mutex<Vec<PathBuf>>>) {
         let mut record = [0; SIGINFO];
         if stops.read_exact(&mut record).is_ok() {
             wipe(&files);
-            process::exit(INTERRUPTED);
+            Exit::Interrupted.end_now();
         }
     });
 }
@@ -216,7 +322,7 @@ impl Firmware {
     }
 
     /// Where a setting lives: the first interface that has it.
-    fn place(&self, name: &str) -> Result<PathBuf, u8> {
+    fn place(&self, name: &str) -> Result<PathBuf, Failure> {
         let mut waited = 0;
         loop {
             let found = self
@@ -233,31 +339,30 @@ impl Firmware {
             thread::sleep(Duration::from_secs(1));
             waited += 1;
         }
-        eprintln!("firmware-settings: no firmware setting {name}");
-        Err(MISSING)
+        Err(Failure::new(
+            Exit::NotFound,
+            format!("there's no firmware setting {name}"),
+        )
+        .try_this("ls /sys/class/firmware-attributes/*/attributes"))
     }
 
     /// A setting's value, or a refusal naming the command to run as root:
     /// the kernel lets only root read most of them, and an empty value
     /// would read as a setting that differs.
-    fn current(&self, dir: &Path, name: &str) -> Result<String, u8> {
+    fn current(&self, dir: &Path, name: &str) -> Result<String, Failure> {
         read(&dir.join("current_value")).ok_or_else(|| {
-            eprintln!(
-                "firmware-settings: can't read {name}; run it as root: run0 firmware-settings {}",
-                self.command
-            );
-            UNREADABLE
+            Failure::new(Exit::Refused, format!("it can't read {name}"))
+                .because("the kernel lets only root read most settings")
+                .try_this(format!("run0 firmware-settings {}", self.command))
         })
     }
 
     /// Each declared setting the firmware holds otherwise.
-    fn differences(&self) -> Result<Vec<Difference>, u8> {
+    fn differences(&self) -> Result<Vec<Difference>, Failure> {
         let text = fs::read_to_string(&self.declared).map_err(|error| {
-            eprintln!(
-                "firmware-settings: can't read {}: {error}",
-                self.declared.display()
-            );
-            FAILED
+            Failure::new(Exit::Config, "it couldn't read the declared settings")
+                .because(format!("{}: {error}", self.declared.display()))
+                .try_this("check that the machine imports firmware-settings' module")
         })?;
         let mut differences = Vec::new();
         for (name, declared) in parsed(&text) {
@@ -282,46 +387,39 @@ impl Firmware {
             .unwrap_or_default()
     }
 
-    /// Name every setting that differs, and say what to exit with: one
-    /// waiting for a person is named with what for, and fails nothing.
-    fn check(&self) -> u8 {
-        let differences = match self.differences() {
-            Err(code) => return code,
-            Ok(differences) => differences,
-        };
-        if differences.is_empty() {
-            println!("The firmware's settings are as declared.");
-            return 0;
-        }
+    /// Every setting that differs, one waiting for a person named with
+    /// what for, so it fails nothing.
+    fn look(&self) -> Result<Look, Failure> {
         let waits = self.waits();
-        let mut code = 0;
-        for difference in differences {
-            let line = format!(
-                "{} is {}, declared {}",
-                difference.name, difference.now, difference.declared
-            );
-            if let Some((_, what)) = waits.iter().find(|(name, _)| *name == difference.name) {
-                println!("{line}; it waits for {what}");
-            } else {
-                println!("{line}");
-                code = DIFFERS;
-            }
-        }
-        code
+        let differs = self
+            .differences()?
+            .into_iter()
+            .map(|difference| Differs {
+                waits_for: waits
+                    .iter()
+                    .find(|(name, _)| *name == difference.name)
+                    .map(|(_, what)| what.clone()),
+                name: difference.name,
+                now: difference.now,
+                declared: difference.declared,
+            })
+            .collect();
+        Ok(Look {
+            differs,
+            at_next_boot: self.pending(),
+        })
     }
 
-    /// Say when an interface takes some of what was written at the next boot.
-    fn pending(&self) {
-        for interface in self.interfaces() {
-            if read(&interface.join("attributes/pending_reboot")).as_deref() == Some("1") {
-                println!("The firmware takes some of its settings at the next boot.");
-            }
-        }
+    /// Whether an interface takes some of what was written at the next boot.
+    fn pending(&self) -> bool {
+        self.interfaces().iter().any(|interface| {
+            read(&interface.join("attributes/pending_reboot")).as_deref() == Some("1")
+        })
     }
 
     /// Give the admin password to each interface with one set, asking for
     /// it once: such an interface changes nothing without it.
-    fn unlock(&self) -> Result<(), u8> {
+    fn unlock(&self) -> Result<(), Failure> {
         let mut password: Option<String> = None;
         for interface in self.interfaces() {
             let admin = interface.join("authentication/Admin");
@@ -335,18 +433,19 @@ impl Firmware {
             let mut unlocked = held(&self.unlocked);
             unlocked.push(file.clone());
             if let Err(error) = fs::write(&file, password.as_bytes()) {
-                eprintln!("firmware-settings: can't give {}: {error}", file.display());
-                return Err(FAILED);
+                return Err(unwritten(
+                    &error,
+                    format!("it couldn't give {} the password", file.display()),
+                    &self.command,
+                ));
             }
         }
         Ok(())
     }
 
-    /// Write every declared setting, and check what the firmware holds then.
-    fn apply(&self) -> u8 {
-        if let Err(code) = self.unlock() {
-            return code;
-        }
+    /// Write every declared setting, and look at what the firmware holds then.
+    fn apply(&self) -> Result<Look, Failure> {
+        self.unlock()?;
         // Some settings unlock others, as a battery's custom limits wait for
         // its custom mode, so it writes in passes until a pass changes
         // nothing.
@@ -368,29 +467,22 @@ impl Firmware {
             }
             before = Some(wanted);
         }
-        self.pending();
-        self.check()
+        self.look()
     }
 
-    /// Write one setting for now, which check then names.
-    fn set(&self, name: &str, value: &str) -> u8 {
-        let dir = match self.place(name) {
-            Ok(dir) => dir,
-            Err(code) => return code,
-        };
-        if let Err(code) = self.unlock() {
-            return code;
-        }
-        if let Err(error) = fs::write(dir.join("current_value"), value) {
-            eprintln!("firmware-settings: can't write {name}: {error}");
-            return FAILED;
-        }
-        println!(
-            "{name} is {}",
-            read(&dir.join("current_value")).unwrap_or_default()
-        );
-        self.pending();
-        0
+    /// Write one setting for now, which check then names, giving what the
+    /// firmware holds after.
+    fn set(&self, name: &str, value: &str) -> Result<String, Failure> {
+        let dir = self.place(name)?;
+        self.unlock()?;
+        fs::write(dir.join("current_value"), value).map_err(|error| {
+            unwritten(
+                &error,
+                format!("the firmware wouldn't take {name} as {value}"),
+                &self.command,
+            )
+        })?;
+        Ok(read(&dir.join("current_value")).unwrap_or_default())
     }
 }
 
@@ -413,24 +505,102 @@ fn asked() -> String {
     line.strip_suffix('\n').unwrap_or(&line).to_owned()
 }
 
-fn usage() -> u8 {
-    eprintln!("usage: firmware-settings check | apply | set NAME VALUE");
-    USAGE
+/// Runs the command asked for, saying its answer.
+fn run(context: &Context, firmware: &Firmware) -> Result<(), Failure> {
+    let args: Vec<&str> = context.args.iter().map(String::as_str).collect();
+    match args.as_slice() {
+        [] | ["check"] => {
+            let look = firmware.look()?;
+            look.tell(context);
+            match look.differing() {
+                0 => Ok(()),
+                count => Err(Failure::new(
+                    Exit::Failed,
+                    format!(
+                        "{} the firmware holds differ from those declared",
+                        settings(count)
+                    ),
+                )
+                .try_this("run0 firmware-settings apply")),
+            }
+        }
+        ["apply"] => {
+            let look = firmware.apply()?;
+            look.tell(context);
+            match look.differing() {
+                0 => Ok(()),
+                count => Err(Failure::new(
+                    Exit::Failed,
+                    format!("{} wouldn't take what's declared", settings(count)),
+                )
+                .because("the firmware still holds them otherwise")
+                .try_this("check the firmware's setup screen for what locks them")),
+            }
+        }
+        ["set", name, value] => {
+            let now = firmware.set(name, value)?;
+            let at_next_boot = firmware.pending();
+            // As in Look::tell, a closed stream leaves nothing to say it to.
+            let _ = if context.format().is_json() {
+                context.answer(&json!({
+                    "schema": "firmware-settings.set/1",
+                    "name": name,
+                    "value": now,
+                    "at_next_boot": at_next_boot,
+                }))
+            } else {
+                let then = if at_next_boot { AT_NEXT_BOOT } else { "" };
+                context.say(&format!("{name} is {now}\n{then}"))
+            };
+            Ok(())
+        }
+        ["set", ..] => Err(
+            Failure::new(Exit::Usage, "set takes a setting's name and its value")
+                .try_this("firmware-settings set NAME VALUE"),
+        ),
+        [command, ..] if COMMANDS.contains(command) => Err(Failure::new(
+            Exit::Usage,
+            format!("{command} takes nothing more"),
+        )
+        .try_this(format!("firmware-settings {command}"))),
+        [word, ..] => Err(flags::unknown("command", word, &COMMANDS)),
+    }
+}
+
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "firmware-settings",
+        "holds the firmware's settings to the ones the machine declares",
+    )
+    .example("firmware-settings", "names every setting that differs")
+    .example(
+        "run0 firmware-settings apply",
+        "writes them, asking for the admin password",
+    )
+    .example(
+        "run0 firmware-settings set PrimaryBattChargeCfg Adaptive",
+        "writes one for now, which check then names",
+    )
+    .command("check", "names what differs, as a bare run does")
+    .command("apply", "writes every declared setting, then checks")
+    .command("set", "writes one, given its name and value, for now")
+    .exit(Exit::Failed, "a setting differs, or wouldn't take")
+    .exit(Exit::NotFound, "the firmware has no such setting")
+    .exit(Exit::Refused, "only root may read or write the setting")
+    .exit(Exit::Config, "the declared settings couldn't be read")
+    .exit(Exit::Interrupted, "stopped, the password wiped first")
 }
 
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let command = arguments.first().map_or("", String::as_str);
-    let firmware = Firmware::from_environment(command);
-    wipe_when_stopped(Arc::clone(&firmware.unlocked));
-    let code = match (command, arguments.len()) {
-        ("check", _) => firmware.check(),
-        ("apply", _) => firmware.apply(),
-        ("set", 3) => firmware.set(&arguments[1], &arguments[2]),
-        _ => usage(),
-    };
-    wipe(&firmware.unlocked);
-    ExitCode::from(code)
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let command = context.args.first().map_or("check", String::as_str);
+        let firmware = Firmware::from_environment(command);
+        wipe_when_stopped(Arc::clone(&firmware.unlocked));
+        let done = run(context, &firmware);
+        wipe(&firmware.unlocked);
+        done
+    })
 }
 
 #[cfg(test)]
@@ -442,7 +612,8 @@ mod tests {
 
     impl Class {
         fn new(name: &str) -> Self {
-            let root = env::temp_dir().join(format!("firmware-settings-{}-{name}", process::id()));
+            let root =
+                env::temp_dir().join(format!("firmware-settings-{}-{name}", std::process::id()));
             let _ = fs::remove_dir_all(&root);
             fs::create_dir_all(&root).unwrap();
             Self(root)
@@ -491,7 +662,10 @@ mod tests {
         class.setting("class/a-vendor", "Mode", "Custom");
         class.setting("class/b-vendor", "Mode", "Adaptive");
         let firmware = class.firmware("Mode=Custom\n");
-        assert_eq!(firmware.differences(), Ok(Vec::new()));
+        assert_eq!(
+            firmware.differences().map_err(|failure| failure.exit),
+            Ok(Vec::new())
+        );
     }
 
     #[test]
@@ -517,12 +691,54 @@ mod tests {
         class.setting("class/vendor", "Mode", "Adaptive");
         let firmware = class.firmware("Downgrade=Disabled\n");
         fs::write(&firmware.waiting, "Downgrade=someone at the setup screen\n").unwrap();
-        assert_eq!(firmware.check(), 0);
+        assert_eq!(firmware.look().unwrap().differing(), 0);
         fs::write(&firmware.declared, "Downgrade=Disabled\nMode=Custom\n").unwrap();
-        assert_eq!(firmware.check(), DIFFERS);
+        assert_eq!(firmware.look().unwrap().differing(), 1);
         fs::write(&firmware.waiting, "").unwrap();
         fs::write(&firmware.declared, "Downgrade=Disabled\n").unwrap();
-        assert_eq!(firmware.check(), DIFFERS);
+        assert_eq!(firmware.look().unwrap().differing(), 1);
+    }
+
+    #[test]
+    fn a_look_names_what_a_setting_waits_for_in_text_and_as_null_in_json_where_nothing() {
+        let look = Look {
+            differs: vec![
+                Differs {
+                    name: "Downgrade".to_owned(),
+                    now: "Enabled".to_owned(),
+                    declared: "Disabled".to_owned(),
+                    waits_for: Some("the setup screen".to_owned()),
+                },
+                Differs {
+                    name: "Start".to_owned(),
+                    now: "50".to_owned(),
+                    declared: "75".to_owned(),
+                    waits_for: None,
+                },
+            ],
+            at_next_boot: true,
+        };
+        assert_eq!(
+            look.text(),
+            "Downgrade is Enabled, declared Disabled; it waits for the setup screen\n\
+             Start is 50, declared 75\n\
+             The firmware takes some of its settings at the next boot.\n"
+        );
+        let json = look.json();
+        assert_eq!(json["schema"], "firmware-settings.check/1");
+        assert_eq!(json["differs"][0]["waits_for"], "the setup screen");
+        assert_eq!(json["differs"][1]["waits_for"], Value::Null);
+        assert_eq!(json["at_next_boot"], true);
+    }
+
+    #[test]
+    fn settings_as_declared_say_so() {
+        let look = Look {
+            differs: Vec::new(),
+            at_next_boot: false,
+        };
+        assert_eq!(look.text(), "The firmware's settings are as declared.\n");
+        assert_eq!(look.differing(), 0);
     }
 
     #[test]
@@ -530,6 +746,9 @@ mod tests {
         let class = Class::new("missing");
         class.setting("class/vendor", "Mode", "Custom");
         let firmware = class.firmware("Absent=1\n");
-        assert_eq!(firmware.differences(), Err(MISSING));
+        assert_eq!(
+            firmware.differences().map_err(|failure| failure.exit),
+            Err(Exit::NotFound)
+        );
     }
 }
