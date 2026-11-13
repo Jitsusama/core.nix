@@ -9,9 +9,10 @@
 //!
 //! It holds what it found for the shell too, over a socket in the shell's
 //! daemon interface (daemon-serve, Joel's word answered by acts.rs),
-//! beside each to-do as its owner wrote it, Joel's own word on it, the looks the agents left him, and what waits
-//! counted whole (stream.rs), so the bar's For You mark lights from one
-//! record rather than the shell watching three folders.
+//! beside each to-do as its owner wrote it, Joel's own word on it, the
+//! looks the agents left him, and what waits counted whole (stream.rs),
+//! so the bar's For You mark lights from one record rather than the
+//! shell watching three folders.
 //!
 //! Usage: `to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower
 //! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]
