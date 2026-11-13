@@ -1,7 +1,7 @@
 //! machine SOCKET [ROOT] [--words FILE] [--numbers FILE]
 //!
 //! How this machine is doing, held ready for the shell and anything else
-//! that asks, over SOCKET in the shell's daemon interface (interface.rs):
+//! that asks, over SOCKET in the shell's daemon interface (docs/daemons.md):
 //! the processor, the memory, each disk, this boot, the programs using
 //! the machine most, its sensors, thermal zones and cooling, each power
 //! supply, how it sleeps, its firmware, the screen's backlight and the
@@ -73,22 +73,23 @@
 //! fwupd or a polkit prompt, so each goes on a thread of its own, one at
 //! a time, and is answered once it's done, the connection answering
 //! everything else meanwhile; fwupd is asked again as each ends.
+//!
+//! It speaks through daemon-serve, as every daemon does: each read that
+//! moves a record hands it every record held, and it tells each watch
+//! what moved. What a get, a list or a watch beginning names is read
+//! first where it isn't fresh (`read_for`), and a watch beginning or
+//! ending wakes what reads for it (`heard_watches`).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::io::{BufRead, BufReader, Write};
-use std::net::Shutdown;
-use std::os::fd::FromRawFd;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, SyncSender};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::time::{Duration, Instant};
 
-use machine::interface::{
-    APART, Ask, KINDS, MADE, VERSION, ask, error, kind_of, place_of, refused,
-};
+use daemon_serve::serve::{Shared as Served, Wanted, accept, listen};
+use machine::interface::{APART, DOMAIN, KINDS, MADE, act_of, error, kind_of, place_of, refused};
 use machine::words::Words;
 use machine::{
     Root, acts, boot, camera, clock_ms, counts, disk, disk_rows, firmware, firmware_rows, guard,
@@ -207,52 +208,6 @@ const USING_FRESH: Duration = Duration::from_secs(2);
 const TELEMETRY_AGAIN: Duration = Duration::from_secs(5);
 /// How many of the last reads' times health says.
 const TIMES: usize = 32;
-/// How many lines a connection may have waiting to be written before
-/// it's taken as no longer reading and hung up on, so one stuck client
-/// can't grow the daemon without end.
-const QUEUED: usize = 256;
-/// How long to wait after a connection couldn't be taken, as when the
-/// process is out of descriptors, so the loop doesn't spin a core.
-const ACCEPT_BACKOFF: Duration = Duration::from_millis(100);
-
-/// One watch a client holds.
-struct Watch {
-    connection: u64,
-    id: Value,
-    kinds: Vec<String>,
-    keys: Option<Vec<String>>,
-    /// The places whose rows and headline it watches, or none for every
-    /// place's.
-    places: Option<Vec<String>>,
-    told: SyncSender<String>,
-    /// Its connection, to hang up on once it stops reading.
-    stream: Arc<UnixStream>,
-}
-
-impl Watch {
-    fn wants(&self, key: &str) -> bool {
-        let named = match &self.keys {
-            Some(keys) => keys.iter().any(|k| k == key),
-            None => kind_of(key)
-                .is_some_and(|kind| kind != APART && self.kinds.iter().any(|k| k == kind)),
-        };
-        named && placed(key, self.places.as_deref())
-    }
-
-    /// Whether it watches any of a place's rows or its headline.
-    fn wants_place(&self, place: Place) -> bool {
-        match &self.keys {
-            Some(keys) => keys.iter().any(|key| place.holds(key)),
-            None => self.wants(&format!("row:{}:", place.name)) || self.wants(&place.head()),
-        }
-    }
-}
-
-/// Whether a key is of one of these places, or of none, as a record read
-/// rather than made is.
-fn placed(key: &str, places: Option<&[String]>) -> bool {
-    place_of(key).is_none_or(|place| places.is_none_or(|places| places.iter().any(|p| p == place)))
-}
 
 /// The counters each kind's rates are measured from, and what's fixed.
 struct Reader {
@@ -483,7 +438,8 @@ struct Daemon {
     held: BTreeMap<String, Value>,
     /// When each kind was last read.
     read_at: HashMap<String, Instant>,
-    watches: Vec<Watch>,
+    /// What serves the records, and holds the watches.
+    served: Arc<Served>,
     /// Each disk's health as `UDisks` last said it.
     health: BTreeMap<String, Value>,
     /// How asking `UDisks` stands: "answering", or "refused" and why.
@@ -521,7 +477,6 @@ struct Daemon {
     /// When the last sleep began and ended, as logind's signal said.
     slept: Arc<Mutex<Value>>,
     took: VecDeque<u64>,
-    since: u64,
 }
 
 struct Shared {
@@ -556,7 +511,12 @@ fn main() {
             std::process::exit(71);
         }
     };
-    let shared = Arc::new(shared(&root, words));
+    let (heard, watches) = mpsc::channel();
+    let shared = started(&root, words, heard);
+    {
+        let shared = Arc::clone(&shared);
+        std::thread::spawn(move || heard_watches(&shared, &watches));
+    }
     {
         let shared = Arc::clone(&shared);
         let path = root.path(telemetry::PATH);
@@ -620,13 +580,69 @@ fn main() {
         let shared = Arc::clone(&shared);
         std::thread::spawn(move || light_loop(&shared, &root));
     }
-    for (connection, stream) in (1u64..).zip(listener.incoming()) {
-        let Ok(stream) = stream else {
-            std::thread::sleep(ACCEPT_BACKOFF);
-            continue;
-        };
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || serve(&shared, stream, connection));
+    answered(&shared, listener);
+}
+
+/// Every record held handed over, so how the sources stand is said from
+/// the first hello, then each connection to `listener` answered, for
+/// good, while the threads read.
+fn answered(shared: &Shared, listener: UnixListener) -> ! {
+    let served = {
+        let daemon = lock(&shared.daemon);
+        hand_over(&daemon);
+        Arc::clone(&daemon.served)
+    };
+    accept(served, listener);
+    loop {
+        std::thread::park();
+    }
+}
+
+/// What every thread shares, reading under `root`, saying rows in
+/// `words` and telling `heard` as each watch begins or ends.
+fn started(root: &Root, words: Option<Words>, heard: Sender<()>) -> Arc<Shared> {
+    Arc::new_cyclic(|this| shared(root, words, serving(this, heard)))
+}
+
+/// What serves `shared`'s records: its acts answered each on a thread of
+/// its own, since a firmware act waits on fwupd; what an ask names read
+/// first; and health saying how long reads took. A watch beginning or
+/// ending is told to `heard`, since it's told under the lock that holds
+/// the watches, which the daemon's lock is never taken under.
+fn serving(shared: &Weak<Shared>, heard: Sender<()>) -> Arc<Served> {
+    let this = Weak::clone(shared);
+    let answer = move |said: &Value| {
+        let shared = this.upgrade()?;
+        own(&shared, said)
+    };
+    let served = Served::new(DOMAIN, Box::new(answer));
+    served.slow(&["act"]);
+    let this = Weak::clone(shared);
+    served.fresh(Box::new(move |wanted| {
+        if let Some(shared) = this.upgrade() {
+            read_for(&shared, wanted);
+        }
+    }));
+    let this = Weak::clone(shared);
+    served.health_too(Box::new(move || {
+        this.upgrade().map_or(Value::Null, |shared| health(&shared))
+    }));
+    served.on_watches(Box::new(move || {
+        let _ = heard.send(());
+    }));
+    served
+}
+
+/// As each watch begins or ends: lets go what no watch holds now, and
+/// wakes every loop to look at what's watched again. The daemon's lock is
+/// taken before the loops are woken, so one that just found nothing
+/// watched is already waiting.
+fn heard_watches(shared: &Shared, watches: &Receiver<()>) {
+    for () in watches {
+        let mut daemon = lock(&shared.daemon);
+        let_go(&mut daemon);
+        drop(daemon);
+        shared.woken.notify_all();
     }
 }
 
@@ -687,16 +703,16 @@ fn hear_keyboards_and_watchers(shared: &Arc<Shared>, root: &Root) {
     });
 }
 
-/// What every thread shares, holding nothing yet, reading under `root`
-/// and saying rows in `words`.
-fn shared(root: &Root, words: Option<Words>) -> Shared {
+/// What every thread shares, holding nothing yet, reading under `root`,
+/// saying rows in `words` and serving through `served`.
+fn shared(root: &Root, words: Option<Words>, served: Arc<Served>) -> Shared {
     // SAFETY: sysconf only reads a constant of the running system.
     let page = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
     Shared {
         daemon: Mutex::new(Daemon {
             held: BTreeMap::new(),
             read_at: HashMap::new(),
-            watches: Vec::new(),
+            served,
             health: BTreeMap::new(),
             udisks: json!({"state": "starting"}),
             upower: BTreeMap::new(),
@@ -714,7 +730,6 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
             hurried: HashSet::new(),
             slept: Arc::new(Mutex::new(Value::Null)),
             took: VecDeque::new(),
-            since: now_ms(),
         }),
         reader: Mutex::new(Reader {
             fixed: processor::fixed(root),
@@ -741,70 +756,40 @@ fn shared(root: &Root, words: Option<Words>) -> Shared {
     }
 }
 
-/// The socket systemd holds for it (machine.socket), so the shell never
-/// finds it missing while the daemon starts or starts again; or, run by
-/// hand, its own, in a folder only Joel reads, replacing one left behind.
-fn listen(socket: &std::path::Path) -> std::io::Result<UnixListener> {
-    if let Some(listener) = handed() {
-        return Ok(listener);
-    }
-    if let Some(folder) = socket.parent() {
-        std::fs::create_dir_all(folder)?;
-        std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o700))?;
-    }
-    let _ = std::fs::remove_file(socket);
-    UnixListener::bind(socket)
-}
-
-/// The listening socket systemd hands this process, as the first
-/// descriptor after the standard three, when it says so (`sd_listen_fds`).
-fn handed() -> Option<UnixListener> {
-    let pid: u32 = std::env::var("LISTEN_PID").ok()?.parse().ok()?;
-    let count: u32 = std::env::var("LISTEN_FDS").ok()?.parse().ok()?;
-    if pid != std::process::id() || count < 1 {
-        return None;
-    }
-    // SAFETY: systemd hands descriptor 3 to this process alone, named by
-    // LISTEN_PID, and nothing here has opened or taken it before.
-    Some(unsafe { UnixListener::from_raw_fd(3) })
-}
-
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// The kinds some watch holds.
+/// The kinds some watch holds, of every place or by a key, as the rows
+/// of a place watched are said by `makes`.
 fn watched(daemon: &Daemon) -> HashSet<String> {
-    daemon
-        .watches
+    let served = &daemon.served;
+    let mut kinds: HashSet<String> = served
+        .keys_watched()
         .iter()
-        .flat_map(|watch| match &watch.keys {
-            Some(keys) => keys
-                .iter()
-                .filter_map(|key| kind_of(key))
-                .map(str::to_owned)
-                .collect(),
-            None => watch.kinds.clone(),
-        })
-        .collect()
+        .filter_map(|key| kind_of(key))
+        .map(str::to_owned)
+        .collect();
+    let whole = KINDS.iter().filter(|kind| served.watches(kind, ""));
+    kinds.extend(whole.map(|kind| (*kind).to_owned()));
+    kinds
 }
 
 /// The pids whose trees some watch names by key.
 fn watched_trees(daemon: &Daemon) -> BTreeSet<u32> {
-    daemon
-        .watches
-        .iter()
-        .filter_map(|watch| watch.keys.as_ref())
-        .flatten()
-        .filter_map(|key| tree::pid_of(key))
-        .collect()
+    let keys = daemon.served.keys_watched();
+    keys.iter().filter_map(|key| tree::pid_of(key)).collect()
 }
 
 /// Whether some watch holds a place's rows or its headline.
 fn makes(daemon: &Daemon, place: Place) -> bool {
-    daemon.words.is_some() && daemon.watches.iter().any(|watch| watch.wants_place(place))
+    let served = &daemon.served;
+    daemon.words.is_some()
+        && (served.watches("row", place.name)
+            || served.watches("head", place.name)
+            || served.keys_watched().iter().any(|key| place.holds(key)))
 }
 
 /// The places whose rows some watch holds.
@@ -838,6 +823,7 @@ fn reads(daemon: &Daemon) -> HashSet<String> {
 /// Lets a place's reads go once nothing watches its rows, so a shut
 /// launcher keeps none, and the next watch starts afresh.
 fn let_go(daemon: &mut Daemon) {
+    let held = daemon.held.len();
     for place in PLACES {
         if makes(daemon, place) {
             continue;
@@ -859,6 +845,16 @@ fn let_go(daemon: &mut Daemon) {
     if !telemetry_asked(daemon) {
         daemon.telemetry.dropped();
     }
+    if daemon.held.len() != held {
+        hand_over(daemon);
+    }
+}
+
+/// Hands every record held, and how the sources stand, to what serves
+/// them, which tells each watch what moved of what it wants.
+fn hand_over(daemon: &Daemon) {
+    let records = daemon.held.values().cloned().collect();
+    daemon.served.change(records, sources(daemon));
 }
 
 /// Whether the processor's telemetry is asked: while Heat's rows are
@@ -1098,35 +1094,8 @@ fn read_making(shared: &Shared, kinds: &HashSet<String>, asked: &[String], place
             gone.extend(unmade);
         }
     }
-    if changed.is_empty() && gone.is_empty() {
-        return;
-    }
-    // A connection whose lines aren't being read is hung up on, and its
-    // watches dropped, rather than told less than it asked for.
-    let mut stuck = HashSet::new();
-    for watch in &daemon.watches {
-        let records: Vec<&Value> = changed
-            .iter()
-            .filter(|record| record["key"].as_str().is_some_and(|key| watch.wants(key)))
-            .collect();
-        let went: Vec<&String> = gone.iter().filter(|key| watch.wants(key)).collect();
-        if records.is_empty() && went.is_empty() {
-            continue;
-        }
-        let mut told = json!({"id": watch.id, "changed": records});
-        if !went.is_empty() {
-            told["gone"] = json!(went);
-        }
-        if watch.told.try_send(told.to_string()).is_err() {
-            stuck.insert(watch.connection);
-            let _ = watch.stream.shutdown(Shutdown::Both);
-        }
-    }
-    if !stuck.is_empty() {
-        daemon
-            .watches
-            .retain(|watch| !stuck.contains(&watch.connection));
-        let_go(&mut daemon);
+    if !changed.is_empty() || !gone.is_empty() {
+        hand_over(&daemon);
     }
 }
 
@@ -1144,13 +1113,7 @@ fn unsettled(daemon: &Daemon, kinds: &HashSet<String>) -> bool {
 /// fifth of a second or a second after that, never at once again.
 fn watch_loop(shared: &Shared) {
     loop {
-        let mut daemon = lock(&shared.daemon);
-        while daemon.watches.is_empty() {
-            daemon = shared
-                .woken
-                .wait(daemon)
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-        }
+        let daemon = lock(&shared.daemon);
         let mut kinds = watched(&daemon);
         kinds.retain(|kind| !HEARD.contains(&kind.as_str()) && !KEPT.contains(&kind.as_str()));
         // A place's rows are read for only where some watch holds them,
@@ -1893,7 +1856,10 @@ fn health_loop(shared: &Shared) {
             match system_bus() {
                 Ok(connection) => bus = Some(connection),
                 Err(why) => {
-                    lock(&shared.daemon).udisks = json!({"state": "refused", "reason": format!("the system bus isn't there: {why}")});
+                    let mut daemon = lock(&shared.daemon);
+                    let reason = format!("the system bus isn't there: {why}");
+                    daemon.udisks = json!({"state": "refused", "reason": reason});
+                    hand_over(&daemon);
                     continue;
                 }
             }
@@ -1922,6 +1888,7 @@ fn health_loop(shared: &Shared) {
             Some(why) => json!({"state": "refused", "reason": why}),
             None => json!({"state": "answering"}),
         };
+        hand_over(&daemon);
         shared.woken.notify_all();
     }
 }
@@ -2042,43 +2009,11 @@ fn plain(value: &zbus::zvariant::Value) -> Value {
     }
 }
 
-fn serve(shared: &Arc<Shared>, stream: UnixStream, connection: u64) {
-    let Ok(reading) = stream.try_clone() else {
-        return;
-    };
-    let Ok(hangup) = stream.try_clone().map(Arc::new) else {
-        return;
-    };
-    let (told, lines) = mpsc::sync_channel::<String>(QUEUED);
-    let mut writing = stream;
-    std::thread::spawn(move || {
-        for line in lines {
-            if writeln!(writing, "{line}").is_err() {
-                break;
-            }
-        }
-    });
-    for line in BufReader::new(reading).lines() {
-        let Ok(line) = line else { break };
-        let Some(answer) = answer(shared, ask(&line), connection, &told, &hangup) else {
-            continue;
-        };
-        if told.send(answer.to_string()).is_err() {
-            break;
-        }
-    }
-    let mut daemon = lock(&shared.daemon);
-    daemon
-        .watches
-        .retain(|watch| watch.connection != connection);
-    let_go(&mut daemon);
-}
-
-/// The records held of these kinds or keys, read first where they aren't
-/// fresh or a key isn't held, in the daemon's order: by kind, then by key.
-fn records(shared: &Shared, kinds: &[String], keys: Option<&[String]>) -> Vec<Value> {
-    refresh(shared, kinds, keys, None);
-    held(&lock(&shared.daemon), kinds, keys, None)
+/// What a get, a list or a watch beginning names, read first where it
+/// isn't fresh or a key isn't held, and a place's rows made where they're
+/// asked for and not yet made, so the answer holds them.
+fn read_for(shared: &Shared, wanted: &Wanted<'_>) {
+    refresh(shared, wanted.kinds, wanted.keys, wanted.places);
 }
 
 /// The kinds these kinds or keys are of.
@@ -2159,129 +2094,26 @@ fn refresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>, places: O
     }
 }
 
-/// The records held of these kinds or keys, and of the rows these
-/// places' alone, or every place's, in the daemon's order.
-fn held(
-    daemon: &Daemon,
-    kinds: &[String],
-    keys: Option<&[String]>,
-    places: Option<&[String]>,
-) -> Vec<Value> {
-    let wanted = wanted_kinds(kinds, keys);
-    let mut found: Vec<Value> = match keys {
-        Some(keys) => keys
-            .iter()
-            .filter_map(|key| daemon.held.get(key))
-            .cloned()
-            .collect(),
-        None => daemon
-            .held
-            .iter()
-            .filter(|(key, _)| {
-                kind_of(key).is_some_and(|kind| kind != APART && wanted.contains(kind))
-            })
-            .filter(|(key, _)| placed(key, places))
-            .map(|(_, record)| record.clone())
-            .collect(),
-    };
-    // By the kind its key names, as a row's own kind is its thing's.
-    if keys.is_none() {
-        found.sort_by_key(|record| {
-            let kind = record["key"].as_str().and_then(kind_of).unwrap_or("");
-            KINDS.iter().position(|k| *k == kind).unwrap_or(KINDS.len())
-        });
-    }
-    found
-}
-
 fn sources(daemon: &Daemon) -> Value {
     json!({"kernel": {"state": "answering"}, "udisks": daemon.udisks})
 }
 
-/// What one ask is answered with, or none where the answer is already
-/// queued to be said.
-fn answer(
-    shared: &Arc<Shared>,
-    asked: Ask,
-    connection: u64,
-    told: &SyncSender<String>,
-    hangup: &Arc<UnixStream>,
-) -> Option<Value> {
-    Some(match asked {
-        Ask::Hello { id } => {
-            let daemon = lock(&shared.daemon);
-            json!({
-                "id": id, "version": VERSION, "domain": "machine", "state": "answering",
-                "since": daemon.since, "sources": sources(&daemon),
-            })
-        }
-        Ask::Get { id, keys } => {
-            json!({"id": id, "records": records(shared, &[], Some(&keys))})
-        }
-        Ask::List { id, kinds } => json!({"id": id, "records": records(shared, &kinds, None)}),
-        Ask::Watch {
-            id,
-            kinds,
-            keys,
-            places,
-        } => {
-            refresh(shared, &kinds, keys.as_deref(), places.as_deref());
-            // What it's told first is taken, and queued, under the lock
-            // that holds the watch, so a read between them is either in it
-            // or told after it. Queued once the lock was let go, a change
-            // read in between could be said first, and the whole answer
-            // after it would put back what the change moved on from.
-            let mut daemon = lock(&shared.daemon);
-            let snapshot = held(&daemon, &kinds, keys.as_deref(), places.as_deref());
-            // A watch asked again by its id replaces the one before.
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            // One that can't be queued is hung up on, as a change would
-            // hang up on it.
-            let first = json!({"id": id, "records": snapshot});
-            if told.try_send(first.to_string()).is_err() {
-                let _ = hangup.shutdown(Shutdown::Both);
-                return None;
-            }
-            daemon.watches.push(Watch {
-                connection,
-                id: id.clone(),
-                kinds,
-                keys,
-                places,
-                told: told.clone(),
-                stream: Arc::clone(hangup),
-            });
-            shared.woken.notify_all();
-            return None;
-        }
-        Ask::Unwatch { id } => {
-            let mut daemon = lock(&shared.daemon);
-            daemon
-                .watches
-                .retain(|watch| !(watch.connection == connection && watch.id == id));
-            let_go(&mut daemon);
-            json!({"id": id, "unwatched": true})
-        }
-        Ask::Health { id } => {
-            let daemon = lock(&shared.daemon);
-            json!({
-                "id": id, "version": VERSION, "domain": "machine", "state": "answering",
-                "since": daemon.since, "sources": sources(&daemon),
-                "watches": daemon.watches.len(),
-                "took_us": daemon.took.iter().collect::<Vec<_>>(),
-            })
-        }
-        Ask::Act { id, act, said } if act.starts_with("firmware-") => {
-            firmware_act(shared, id, act, said, told.clone());
-            return None;
-        }
-        Ask::Act { id, act, said } => acted(shared, &id, &act, &said),
-        Ask::UnknownKind { id, kind } => {
-            error(&id, "unknown-kind", &format!("no kind {kind} here"))
-        }
-        Ask::Unknown { id, ask } => error(&id, "unknown-ask", &format!("no ask {ask:?} here")),
+/// What health says beside what every daemon's says: how long the last
+/// reads took.
+fn health(shared: &Shared) -> Value {
+    let daemon = lock(&shared.daemon);
+    json!({"took_us": daemon.took.iter().collect::<Vec<_>>()})
+}
+
+/// The answer to an act, the daemon's own ask, on a thread of its own;
+/// none for an ask it doesn't know.
+fn own(shared: &Shared, said: &Value) -> Option<Value> {
+    let act = act_of(said)?;
+    let id = said.get("id").cloned().unwrap_or(Value::Null);
+    Some(if act.starts_with("firmware-") {
+        firmware_act(shared, &id, act, said)
+    } else {
+        acted(shared, &id, act, said)
     })
 }
 
@@ -2341,19 +2173,14 @@ fn acted(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
     }
 }
 
-/// Does a firmware act on a thread of its own and tells how it went once
-/// it's done, waiting at most the `patience_s` it's given; another asked
-/// while one goes is refused as `busy`, since fwupd puts in one thing at
-/// a time. fwupd is asked again as it ends, whatever it said.
-fn firmware_act(
-    shared: &Arc<Shared>,
-    id: Value,
-    act: String,
-    said: Value,
-    told: SyncSender<String>,
-) {
+/// Does a firmware act, on the thread daemon-serve answers it on, and
+/// says how it went once it's done, waiting at most the `patience_s` it's
+/// given; another asked while one goes is refused as `busy`, since fwupd
+/// puts in one thing at a time. fwupd is asked again as it ends, whatever
+/// it said.
+fn firmware_act(shared: &Shared, id: &Value, act: &str, said: &Value) -> Value {
     let text = |name: &str| said[name].as_str().unwrap_or("").to_owned();
-    let key = match act.as_str() {
+    let key = match act {
         "firmware-install" => format!("install:{}", text("device")),
         "firmware-fix" => format!("fix:{}", text("attribute")),
         "firmware-undo" => format!("undo:{}", text("attribute")),
@@ -2362,9 +2189,7 @@ fn firmware_act(
     {
         let mut daemon = lock(&shared.daemon);
         if daemon.acting.going.is_some() {
-            let busy = error(&id, "busy", "another firmware act is going");
-            let _ = told.send(busy.to_string());
-            return;
+            return error(id, "busy", "another firmware act is going");
         }
         daemon.acting.going = Some(key.clone());
         daemon.acting.ended.remove(&key);
@@ -2372,85 +2197,73 @@ fn firmware_act(
     // Firmware's rows say it's going before anything else is said.
     let firmware = HashSet::from(["firmware".to_owned()]);
     read(shared, &firmware, &[]);
-    let shared = Arc::clone(shared);
-    std::thread::spawn(move || {
-        let patience = said["patience_s"]
-            .as_u64()
-            .map_or(ACT_PATIENCE, Duration::from_secs);
-        let text = |name: &str| said[name].as_str().unwrap_or("");
-        let done = match act.as_str() {
-            "firmware-install" => {
-                let fwupdmgr = std::env::var(acts::FWUPDMGR).unwrap_or_default();
-                acts::install(&fwupdmgr, text("device"), patience)
-            }
-            "firmware-fix" => acts::change(text("attribute"), false, patience),
-            "firmware-undo" => acts::change(text("attribute"), true, patience),
-            "firmware-setup" => acts::setup(patience),
-            _ => Err(acts::refused("unknown-act", format!("no act {act:?} here"))),
-        };
-        {
-            let mut daemon = lock(&shared.daemon);
-            daemon.acting.going = None;
-            // How it ended is said while Firmware's rows are watched, and
-            // a launcher opened after has nothing to be told of it.
-            if makes(&daemon, FIRMWARE) {
-                let ended = match &done {
-                    Ok(()) => firmware_rows::Ended::Done,
-                    Err(refused) if refused.code == "stopped" => {
-                        firmware_rows::Ended::Stopped(patience.as_secs().div_ceil(60))
-                    }
-                    Err(refused) => firmware_rows::Ended::Refused(refused.message.clone()),
-                };
-                daemon.acting.ended.insert(key, ended);
-            }
-            daemon.hurried.insert("firmware".to_owned());
+    let patience = said["patience_s"]
+        .as_u64()
+        .map_or(ACT_PATIENCE, Duration::from_secs);
+    let text = |name: &str| said[name].as_str().unwrap_or("");
+    let done = match act {
+        "firmware-install" => {
+            let fwupdmgr = std::env::var(acts::FWUPDMGR).unwrap_or_default();
+            acts::install(&fwupdmgr, text("device"), patience)
         }
-        shared.woken.notify_all();
-        read(&shared, &firmware, &[]);
-        let answer = match done {
-            Ok(()) => json!({"id": id, "done": true}),
-            Err(refused) => error(&id, refused.code, &refused.message),
-        };
-        let _ = told.send(answer.to_string());
-    });
+        "firmware-fix" => acts::change(text("attribute"), false, patience),
+        "firmware-undo" => acts::change(text("attribute"), true, patience),
+        "firmware-setup" => acts::setup(patience),
+        _ => Err(acts::refused("unknown-act", format!("no act {act:?} here"))),
+    };
+    {
+        let mut daemon = lock(&shared.daemon);
+        daemon.acting.going = None;
+        // How it ended is said while Firmware's rows are watched, and a
+        // launcher opened after has nothing to be told of it.
+        if makes(&daemon, FIRMWARE) {
+            let ended = match &done {
+                Ok(()) => firmware_rows::Ended::Done,
+                Err(refused) if refused.code == "stopped" => {
+                    firmware_rows::Ended::Stopped(patience.as_secs().div_ceil(60))
+                }
+                Err(refused) => firmware_rows::Ended::Refused(refused.message.clone()),
+            };
+            daemon.acting.ended.insert(key, ended);
+        }
+        daemon.hurried.insert("firmware".to_owned());
+    }
+    shared.woken.notify_all();
+    read(shared, &firmware, &[]);
+    match done {
+        Ok(()) => json!({"id": id, "done": true}),
+        Err(refused) => error(id, refused.code, &refused.message),
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::{BufRead, BufReader, Lines, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+
     use super::*;
 
-    fn sensor(raw: &Value) -> Value {
-        json!({"key": "light:iio:device0", "kind": "light", "device": "iio:device0",
-            "name": "als", "raw": raw, "scale": 0.001, "offset": 0.0})
+    /// The daemon's threads' shared state alone, reading under `root`,
+    /// with no loop reading for it.
+    fn alone(root: &Root, words: Option<Words>) -> Arc<Shared> {
+        started(root, words, mpsc::channel().0)
     }
 
-    // The shell takes a watch's whole answer over what it held, so said
-    // after a change read once the watch is held, it puts back what the
-    // change moved on from, and nothing tells the change again: the room's
-    // sensor stayed unread for the looks VM test's 30 seconds (2026-11-10).
-    #[test]
-    fn a_watch_is_answered_whole_before_any_change_told_it() {
-        let shared = Arc::new(shared(&Root::new(std::env::temp_dir()), None));
-        let (told, lines) = mpsc::sync_channel(QUEUED);
-        let (end, _other) = UnixStream::pair().unwrap();
-        let hangup = Arc::new(end);
-        lock(&shared.daemon).light = vec![sensor(&Value::Null)];
-        let watch = ask(r#"{"id":"all","ask":"watch","kind":["light"]}"#);
-        let first = answer(&shared, watch, 1, &told, &hangup);
-        // The sensor's count is read before the answer is said, as
-        // light_loop reads it once the watch wakes it.
-        lock(&shared.daemon).light = vec![sensor(&json!(0.0))];
-        read(&shared, &HashSet::from(["light".to_owned()]), &[]);
-        if let Some(first) = first {
-            told.send(first.to_string()).unwrap();
-        }
-        let said: Vec<Value> = lines
-            .try_iter()
-            .map(|line| serde_json::from_str(&line).unwrap())
-            .collect();
-        assert_eq!(said.len(), 2, "the whole answer, then the change: {said:?}");
-        assert_eq!(said[0]["records"][0]["raw"], Value::Null, "{said:?}");
-        assert_eq!(said[1]["changed"][0]["raw"], json!(0.0), "{said:?}");
+    /// A connection to what serves `shared`, on a socket of its own, and
+    /// its lines as they're said.
+    fn connected(shared: &Shared, name: &str) -> (UnixStream, Lines<BufReader<UnixStream>>) {
+        let folder = std::env::temp_dir().join(format!("machine-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        let socket = folder.join("machine.sock");
+        let listener = UnixListener::bind(&socket).unwrap();
+        accept(Arc::clone(&lock(&shared.daemon).served), listener);
+        let stream = UnixStream::connect(&socket).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let lines = BufReader::new(stream.try_clone().unwrap()).lines();
+        (stream, lines)
     }
 
     // A read that comes too soon after the last to measure the processor,
@@ -2467,7 +2280,7 @@ mod tests {
             "cpu  100 0 100 800 0 0 0 0 0 0\ncpu0 100 0 100 800 0 0 0 0 0 0\n",
         )
         .unwrap();
-        let shared = Arc::new(shared(&Root::new(&folder), None));
+        let shared = alone(&Root::new(&folder), None);
         let kinds = HashSet::from(["processor".to_owned()]);
         read(&shared, &kinds, &[]);
         let first = lock(&shared.daemon).held.get("processor:0").cloned();
@@ -2490,36 +2303,30 @@ mod tests {
             .expect("the launcher's words parse");
         let words = Words::new(&vocabulary, ",", ".");
         let root = Root::new(std::env::temp_dir());
-        let shared = Arc::new(shared(&root, Some(words)));
+        let shared = alone(&root, Some(words));
         lock(&shared.daemon).firmware = vec![json!({ "key": "firmware:b10",
             "kind": "firmware", "id": "b10", "name": "System Firmware",
             "version": "1.12.0", "update": { "version": "1.13.0" } })];
-        let (told, lines) = mpsc::sync_channel(QUEUED);
-        let (end, _other) = UnixStream::pair().unwrap();
-        let hangup = Arc::new(end);
-        let watch = ask(r#"{"id":"f","ask":"watch","kind":["row"],"place":"firmware"}"#);
-        // A watch's whole answer is queued as it's held, not returned.
-        let _ = answer(&shared, watch, 1, &told, &hangup);
-        let first: Value = serde_json::from_str(&lines.try_recv().unwrap()).unwrap();
+        let (mut stream, mut lines) = connected(&shared, "firmware");
+        writeln!(
+            stream,
+            r#"{{"id":"f","ask":"watch","kind":["row"],"place":"firmware"}}"#
+        )
+        .unwrap();
+        let first = lines.next().expect("the watch is answered").unwrap();
+        let first: Value = serde_json::from_str(&first).unwrap();
         let records = first["records"].as_array().into_iter().flatten();
         let keys: Vec<&Value> = records.map(|record| &record["key"]).collect();
         assert!(
             keys.contains(&&json!("row:firmware:b10:install")),
             "Install is offered: {first}"
         );
-        let said = json!({ "device": "b10", "patience_s": 60 });
-        firmware_act(
-            &shared,
-            json!(1),
-            "firmware-install".to_owned(),
-            said,
-            told.clone(),
-        );
+        let said = json!({ "id": 1, "ask": "act", "act": "firmware-install",
+            "device": "b10", "patience_s": 60 });
+        writeln!(stream, "{said}").unwrap();
         let mut notes = Vec::new();
         loop {
-            let line = lines
-                .recv_timeout(Duration::from_secs(10))
-                .expect("the act is answered");
+            let line = lines.next().expect("the act is answered").unwrap();
             let line: Value = serde_json::from_str(&line).unwrap();
             if line["id"] == 1 {
                 assert_eq!(line["error"]["code"], "bad-act", "{line}");

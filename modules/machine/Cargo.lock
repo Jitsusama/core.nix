@@ -199,6 +199,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daemon-serve"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -383,6 +390,7 @@ name = "machine"
 version = "0.1.0"
 dependencies = [
  "daemon-client",
+ "daemon-serve",
  "libc",
  "ready-rows",
  "serde_json",

@@ -331,7 +331,7 @@ fn hello_says_it_answers_on_the_socket_systemd_hands_it() {
     assert_eq!(said["domain"], "machine");
     assert_eq!(said["version"], 1);
     assert_eq!(said["state"], "answering");
-    assert_eq!(said["sources"]["kernel"]["state"], "answering");
+    assert_eq!(said["sources"]["kernel"], "answering", "{said}");
 }
 
 #[test]
@@ -1055,6 +1055,16 @@ fn a_firmware_install_is_answered_once_done_and_the_connection_answers_meanwhile
     let mut client = running.client();
     client.send(&json!({"id": 1, "ask": "act", "act": "firmware-install",
         "device": "bios", "patience_s": 60}));
+    // Each act is answered on a thread of its own, so the install is
+    // going once fwupdmgr says what it was asked, and not before.
+    let began = std::time::Instant::now();
+    while !said.exists() {
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "the install never began"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let busy = client.ask(&json!({"id": 2, "ask": "act", "act": "firmware-undo",
         "attribute": "org.fwupd.hsi.Iommu"}));
     assert_eq!(busy["error"]["code"], "busy", "{busy}");

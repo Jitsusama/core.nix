@@ -10,6 +10,8 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# The serving side of the shell's daemon interface every daemon holds.
+daemon-serve = { path = "../daemon-serve" }
 # The clocks the kernel counts time awake and time since boot by, which
 # std doesn't name.
 libc = "0.2"
