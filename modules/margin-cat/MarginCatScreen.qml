@@ -80,6 +80,11 @@ PanelWindow {
     property bool handsBack: false
     property var roams: null
     property var place: null
+    // The column it last sat over or set off for, so its window grown,
+    // shrunk or moved up or down under it walks it rather than carries
+    // it (follow), and the windows as follow() last saw them.
+    property var under: null
+    property var seen: []
     // The walk under way, the window it walks to, and the step it's
     // on: its pose, by the theme's name, and the way it faces.
     property var going: null
@@ -124,19 +129,16 @@ PanelWindow {
     property var movingTo: null
     property int turn: 0
     // The margin's marks, where they're drawn (Paths.marks), which it
-    // creeps behind; and which of its columns they hide (Paths.veil),
-    // set only as that changes.
+    // hops across one at a time, perched on each.
     readonly property var marksLit: modelData === null ? null
         : Paths.marks(MarginMarks.drawn, modelData.width, Theme.gap)
-    property string veil: ""
     // What it's drawn as: a pose of its walk, turned the way it
     // goes and the way it climbs, or the scope's, sitting, asleep or
-    // stretching; and that, less what the marks hide.
-    readonly property var figure: pose
+    // stretching.
+    readonly property var drawn: pose
         ? MarginCat.quartered(
             MarginCat.turned(Theme.pixels[pose] ?? window.scene.drawing, facing), turn)
         : window.scene.drawing
-    readonly property var drawn: Paths.behind(figure, veil)
     // Whether it's on its way to another column or workspace, waiting
     // to set off or going, while which every tile of the workspaces it
     // crosses is wanted, its ways being over them, and as which it wants
@@ -168,13 +170,17 @@ PanelWindow {
     // Where the keys' column now has it: nowhere, once it's held
     // nowhere a moment (leaving); from
     // nowhere, there at once, since nothing walks in from nowhere;
-    // over the same window, carried as its column moves, or, on
-    // the way there, on from where it is where its seat moved a
-    // pixel; and over another, still where it is until the keys rest
-    // there two seconds. niri says the layout again for any window's
-    // change, a title's too, so the same seat neither sets a walk off
-    // again nor restarts its rest.
+    // over the same window, carried as its column scrolls, or, its
+    // window grown, shrunk or moved up or down under it, on its way
+    // there from where it is, as it is where its seat moved a pixel on
+    // the way there; and over another, where it is or on to where its
+    // walk was going, until the keys rest there two seconds, never
+    // put anywhere it didn't get to (WCJQSG 2bd7c7c6). niri says the
+    // layout again for any window's change, a title's too, so the same
+    // seat neither sets a walk off again nor restarts its rest.
     function follow(): void {
+        const saw = seen;
+        seen = tilesOf(space?.id);
         if (moving !== null) {
             steer();
             return;
@@ -189,20 +195,26 @@ PanelWindow {
             const hurried = roams;
             roams = null;
             resting.stop();
-            walkFrom(hurried);
+            walkFrom(hurried, saw);
         } else if (place === null || (going === null && wanted === sat)) {
             resting.stop();
+            const reshaped = place !== null && wanted === sat && under !== null
+                && column !== null && (Math.abs(column.width - under.width) > 0.5
+                    || Math.abs(column.top - under.top) > 0.5);
             sat = wanted;
-            place = there;
+            under = column;
+            if (reshaped)
+                walkFrom(true, saw);
+            else
+                place = there;
         } else if (going !== null && wanted === goingTo) {
-            if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio))
-                walkFrom(true);
+            if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
+                || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
+                walkFrom(true, saw);
         } else if (going !== null || !resting.running || wanted !== waitingOn) {
-            halt();
             // Its wander forgotten a moment later, outside this
             // change of `there`, which forgetting it changes again.
             Qt.callLater(endStroll);
-            place = { x: place.x, y: there.y };
             waitingOn = wanted;
             resting.restart();
         }
@@ -211,8 +223,9 @@ PanelWindow {
     // Sets off from where it's drawn to where it'd sit: `hurried`,
     // its seat moved on the way, without turning, thinking or
     // crouching again, or, setting off, after a thought of 150 to
-    // 450 ms, so no two walks begin alike.
-    function walkFrom(hurried: bool): void {
+    // 450 ms, so no two walks begin alike; riding what niri moved of
+    // the windows it `saw` (MarginCatFalls.js's rides).
+    function walkFrom(hurried: bool, saw: var): void {
         roams = null;
         if (place === null || there === null)
             return;
@@ -227,10 +240,14 @@ PanelWindow {
             slowdown: Theme.motion.slowdown,
             hurried,
             facing: stepped?.facing ?? 0,
+            height: modelData.height,
             cols: Paths.columns(tilesOf(space?.id), 0),
+            before: saw ? Paths.columns(saw, 0) : null,
+            spring: Theme.motion.spring,
             marks: marksLit
         });
         goingTo = wanted;
+        under = column;
         if (plan === null) {
             halt();
             sat = wanted;
@@ -300,22 +317,34 @@ PanelWindow {
     // Where a move goes as niri says the new workspace's columns: on
     // the ride, its way found again each time niri says any, since
     // none of the ride depends on them; once it's on its way, a seat
-    // moved or the keys gone to another window seat it there at once,
-    // as a second move does (VKCF3Z, 074321bd).
+    // moved or the keys gone to another window cut it short, and it
+    // walks on from where it's got to (cut()).
     function steer(): void {
         if (there === null)
             return;
         const riding = mover.elapsedTime * 1000 < moving.beats[0].ends;
         const same = Math.round(there.x * ratio) === Math.round(moving.to.x * ratio)
             && Math.round(there.y * ratio) === Math.round(moving.to.y * ratio);
-        if (movingTo !== null && wanted !== movingTo) {
-            arrive();
-        } else if (riding) {
+        if (riding) {
             movingTo = wanted;
             moving = plan(moving.way, moving.from, { x: there.x, y: there.y });
-        } else if (movingTo === null || !same) {
-            arrive();
+        } else if (movingTo === null || wanted !== movingTo || !same) {
+            cut();
         }
+    }
+
+    // A move cut short past its ride, the keys gone to another window
+    // or its seat moved: on from wherever it's got to, as a walk, so
+    // it's never put anywhere it didn't get to (WCJQSG 2bd7c7c6).
+    function cut(): void {
+        tell("move");
+        mover.stop();
+        moving = null;
+        movingFrom = null;
+        movingTo = null;
+        // No halt(): its pose and facing carry into the walk, never a
+        // frame of it sitting between.
+        walkFrom(true, null);
     }
 
     // Done moving, or cut short: it sits where the keys' column has
@@ -338,11 +367,13 @@ PanelWindow {
         if (was === null || space === null || was.id === space.id)
             return;
         const way = Math.sign(space.idx - was.idx);
-        if (moving !== null)
-            arrive();
-        else if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
+        // A move begun on a move under way rides on from where it's got
+        // to, rather than being put on its seat first.
+        if (place !== null && way !== 0 && !window.scene.asleep && !Niri.overview
             && !window.scene.shared)
             moveFrom(way, was.id);
+        else if (moving !== null)
+            arrive();
     }
 
     // How its walk or hop (`what`) reached the screen, in the
@@ -419,12 +450,10 @@ PanelWindow {
         going = null;
         stepped = null;
         pose = "";
-        veil = "";
     }
 
     // A step of a walk or a move, `now` (Paths.frame), taken: its pose,
-    // the way it faces and turns, its place, and what the marks hide of
-    // it while it's in the margin under them, each set only as it
+    // the way it faces and turns, and its place, each set only as it
     // changes.
     function took(now: var): void {
         if (now.facing !== facing)
@@ -436,10 +465,6 @@ PanelWindow {
         stepped = now;
         steps += 1;
         place = { x: now.x, y: now.y };
-        const hidden = now.y < Theme.gap
-            ? Paths.veil(now.x, figure[0]?.length ?? 0, cell, marksLit) : "";
-        if (hidden !== veil)
-            veil = hidden;
         // Asked as the step is taken, before its frame is drawn, so the
         // frame it moves is the one niri is asked about.
         if (window.FramePresentation.available)
@@ -542,7 +567,7 @@ PanelWindow {
     Timer {
         id: resting
         interval: MarginCat.RESTS
-        onTriggered: window.walkFrom(false)
+        onTriggered: window.walkFrom(false, null)
     }
 
     // A step each time the screen draws, at whatever rate it draws,
@@ -555,7 +580,10 @@ PanelWindow {
                 window.tell("walk");
                 window.halt();
                 window.sat = window.goingTo;
-                window.place = window.there ?? window.place;
+                // Where its walk took it, which is its seat unless the keys
+                // went elsewhere on the way, whose seat it walks to once
+                // they rest there.
+                window.place = { x: now.x, y: now.y };
                 window.sits();
                 return;
             }
@@ -611,7 +639,8 @@ PanelWindow {
                 top: one.layout.tile_pos_in_workspace_view[1],
                 width: one.layout.tile_size[0],
                 height: one.layout.tile_size[1],
-                column: one.layout.pos_in_scrolling_layout?.[0] ?? null
+                column: one.layout.pos_in_scrolling_layout?.[0] ?? null,
+                id: one.id
             }));
     }
 
@@ -652,8 +681,8 @@ PanelWindow {
     exclusionMode: ExclusionMode.Ignore
     color: "transparent"
     // Under the margin's marks, the launcher and notices, on Overlay, so
-    // it creeps behind the marks rather than over them (VKCF3Z,
-    // e2068d64).
+    // a mark's ink lies over its paws as it perches there and it never
+    // hides a mark or a notice (VKCF3Z, 3d799798).
     WlrLayershell.layer: WlrLayer.Top
     WlrLayershell.namespace: "cat"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None

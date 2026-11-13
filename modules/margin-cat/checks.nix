@@ -15,12 +15,21 @@ onLinux {
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
+      scripts = pkgs.lib.fileset.toSource {
+        root = ./.;
+        fileset = pkgs.lib.fileset.unions [
+          ./MarginCat.js
+          ./MarginCatFalls.js
+          ./MarginCatPaths.js
+          ./MarginCatPlays.js
+          ./MarginCatRoutes.js
+          ./MarginCatWays.js
+        ];
+      };
     in
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
       cp ${./tests/margin-cat.qml} margin-cat.qml
-      cp ${./MarginCat.js} MarginCat.js
-      cp ${./MarginCatPaths.js} MarginCatPaths.js
-      cp ${./MarginCatPlays.js} MarginCatPlays.js
+      cp ${scripts}/*.js .
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
       ${shellFolderLint}

@@ -1,53 +1,43 @@
 // The margin cat's ways through the world (MarginCatScreen.qml): each
 // screen's workspaces stacked one above another at niri's gap, as niri lays
 // them out, and the cat getting about them as a cat would. It walks along
-// the tops of their columns, leaps each gap between two, climbs a column's
-// side, and creeps behind the margin's marks rather than through them
-// (Joel, 2026-11-13: "it should stay on top of the previous workspaces
-// window ... i also want it to climb up, which will require it
-// pathfinding through the spaces between windows"; "when crossing across
-// gaps between windows, the kitty should jump"; VKCF3Z e2068d64 for the
-// creep). A way is a run of beats, each a pose of the theme's own, and
-// frame() says where it is at each moment of one.
+// the tops of their columns, leaps each gap between two, climbs their
+// sides, finds its way up through them (MarginCatRoutes.js), and hops
+// across the margin's marks one at a time (Joel, 2026-11-13: "it should
+// stay on top of the previous workspaces window ... i also want it to
+// climb up, which will require it pathfinding through the spaces between
+// windows"; "when crossing across gaps between windows, the kitty should
+// jump, is also should crawl above icons at the top middle, or do
+// something convincing to show it is having to engage with them"; VKCF3Z
+// 3d799798 for the hops). A way is a run of beats (MarginCatWays.js), each
+// a pose of the theme's own, and frame() says where it is at each moment
+// of one.
 .pragma library
 .import "MarginCat.js" as MarginCat
+.import "MarginCatRoutes.js" as Routes
+.import "MarginCatWays.js" as Ways
+.import "MarginCatFalls.js" as Falls
 
-// How fast it falls, in its cells a second each second: a hop of a cell
-// and a half over a gap lasts about a sixth of a second, a drop between
-// workspaces about two thirds.
-const GRAVITY = 400;
-// The shortest a leap may last, so even a small one is seen.
-const LEAPS_AT_LEAST = 160;
 // How high it hops over a gap between columns, in its cells, where the
 // margin above has room; and how far above the higher end any other leap
 // rises.
 const HOPS = 1.5;
 const RISES = 1;
-// How much slower than its walk it creeps behind the marks, crouched low,
-// and how long it stops crouched before them and stands after.
-const CREEPS = 0.6;
-// How much faster than its walk it climbs, in bounds, and the longest a
-// climb up a whole screen's height may take, in ms, so a tall screen
-// takes three seconds rather than six, and never more than half its
-// body between two frames at 120 Hz.
-const CLIMBS = 2;
-const CLIMBS_AT_MOST = 3000;
-const STOPS = 300;
-const STANDS = 180;
-// The longest all the beats nobody can see may take together, in ms: off
-// the screen, on a workspace above or below it, it hurries, since only
-// where it comes back into sight is seen, and a cat gone for seconds
-// reads as lost.
-const UNSEEN = 360;
-// The beats it walks, climbs or creeps, its strides stepped by the ground
-// it covers, and the poses of each stride.
-const STRIDING = { goes: ["walkingA", "walkingB"], climbs: ["walkingA", "walkingB"],
-    creeps: ["creepingA", "creepingB"] };
+// At the marks: how long it bats the first before it hops on, and how
+// long it perches crouched on each, about PERCHES and never the same
+// twice running, by PERCHED_BY either side, so across them it goes no
+// quicker than it walks and never reads as a dash (VKCF3Z 3d799798).
+const BATS = 400;
+const PERCHES = 300;
+const PERCHED_BY = 0.25;
+
+const holds = Ways.holds;
 
 // Each column of a workspace, from its tiles ({ left, top, width, height,
-// column }, niri's tile_pos_in_workspace_view, tile_size and column) in
-// its own view, moved `dy` down: across from `left` to `right`, from its
-// `top` to its `bottom`, and its `rows` stacked from the top. A tile with
+// column }, niri's tile_pos_in_workspace_view, tile_size and column, and
+// its window's `id`) in its own view, moved `dy` down: across from `left`
+// to `right`, from its `top` to its `bottom`, and its `rows` stacked from
+// the top, each with its window's `id`. A tile with
 // no column, floating, is no ground to stand on.
 function columns(tiles, dy) {
     const by = {};
@@ -55,7 +45,7 @@ function columns(tiles, dy) {
         if (tile.column === undefined || tile.column === null) {
             continue;
         }
-        const row = { top: tile.top + dy, bottom: tile.top + tile.height + dy };
+        const row = { top: tile.top + dy, bottom: tile.top + tile.height + dy, id: tile.id };
         const was = by[tile.column];
         by[tile.column] = was ? {
             left: Math.min(was.left, tile.left),
@@ -72,39 +62,18 @@ function columns(tiles, dy) {
 }
 
 // Where the margin's `count` marks are across a screen `across` wide, each
-// in a cell `each` wide, touching and centred on it: `from` and `to`, or
-// null for none.
+// in a square cell `each` wide from the screen's top, touching and centred
+// on it, its ink the middle half of its cell: `from` and `to`, or null for
+// none.
 function marks(count, across, each) {
     const reach = (count * each) / 2;
     return count > 0 ? { from: across / 2 - reach, to: across / 2 + reach, each, count } : null;
 }
 
-// Which of a drawing's `cells` columns at `x`, each `cell` wide, lie behind
-// one of the `lit` marks (marks()), each mark drawn in the middle half of
-// its cell: a string with "." for each hidden column and "#" for each
-// shown, or "" when none is hidden. The margin draws over the cat, so a cat
-// creeping behind them shows only in the gaps between them, never through
-// a mark; the screen works this out only as the cat moves.
-function veil(x, cells, cell, lit) {
-    if (!lit || x + cells * cell <= lit.from || x >= lit.to) {
-        return "";
-    }
-    let mask = "";
-    for (let c = 0; c < cells; c++) {
-        const middle = x + (c + 0.5) * cell - lit.from;
-        const within = middle - Math.floor(middle / lit.each) * lit.each;
-        mask += middle >= 0 && middle < lit.to - lit.from
-            && within >= lit.each / 4 && within < (lit.each * 3) / 4 ? "." : "#";
-    }
-    return mask.includes(".") ? mask : "";
-}
-
-// A drawing with each column its veil (veil()) hides left out.
-function behind(drawing, mask) {
-    if (mask === "") {
-        return drawing;
-    }
-    return drawing.map(row => row.split("").map((one, c) => mask[c] === "." ? "." : one).join(""));
+// `x` kept on the screen, where its width is given; a walk worked out
+// alone, with no screen, is held only at the left.
+function onScreen(x, at) {
+    return Math.min(Math.max(x, 0), (at.across ?? Infinity) - at.wide);
 }
 
 // The column under the cat's middle at `x`, or the nearest one to it.
@@ -127,63 +96,58 @@ function standsOn(column, at) {
     return column.top - at.tall - at.air;
 }
 
-function best(choices, cost) {
-    return choices.reduce((most, choice) =>
-        most === null || cost(choice) < cost(most) ? choice : most, null);
-}
-
-// A way begun at `from`, the legs it takes added as it goes, each from
-// where the last left it.
-function begun(at, from) {
-    return { at, x: from.x, y: from.y, facing: at.facing ?? 0, turn: 0, legs: [], low: false };
-}
-
-function leg(way, kind, to, more) {
-    way.legs.push(Object.assign({
-        kind,
-        from: { x: way.x, y: way.y },
-        to: { x: to.x, y: to.y },
-        facing: way.facing,
-        turn: way.turn
-    }, more));
-    way.x = to.x;
-    way.y = to.y;
-}
-
-// The pose of each beat it holds still, or nearly: standing as it turns,
-// thinks, settles or stands up, and crouched as it gathers itself, lands
-// or stops before the marks.
-const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB",
-    stands: "walkingB", crouches: "pouncing", lands: "pouncing", stops: "pouncing" };
-
-// A beat held `ms`, moving it to `to` on the theme's ease-out if it's
-// given, as a crouch draws back.
-function holds(way, name, ms, to) {
-    leg(way, "holds", to ?? way, { name, pose: HOLDS[name], ms, ease: to ? "out" : null });
-}
-
-// Walking, or creeping while it's low, to `x` on the ground there.
-function goes(way, x, y) {
-    if (Math.abs(x - way.x) < 1e-6 && Math.abs(y - way.y) < 1e-6) {
-        return;
+// Across the margin's marks (marks()) the way `dir` goes, from half a
+// mark's cell before them: it bats the first, hops onto each in turn and
+// perches there crouched, its paws on the mark's ink and only its head
+// above the screen, and hops down past the last where `onto` has it
+// from the `x` just past them: { x, y }, and the `side` of a window it
+// hangs on there, if any. Given the mark it's under, `from`, it hops
+// straight up onto that one instead, and on from there.
+function perches(way, dir, onto, from) {
+    const at = way.at;
+    const lit = at.marks;
+    const perched = lit.each / 4 + 2 * at.cell - at.tall;
+    let first = 0;
+    if (from === undefined) {
+        holds(way, "bats", BATS);
+        holds(way, "crouches", MarginCat.CROUCHES);
+    } else {
+        first = dir > 0 ? from : lit.count - 1 - from;
+        // Up there already, as the windows changed on its way across,
+        // it goes on with no crouch.
+        if (way.y > perched + at.cell) {
+            holds(way, "crouches", MarginCat.CROUCHES);
+        }
+        Ways.leap(way, { x: way.x, y: perched }, RISES, "hops");
     }
-    leg(way, way.low ? "creeps" : "goes", { x, y });
-}
-
-// A leap to `to`, as a thing thrown falls, its height `rises` cells above
-// the higher end, and never above the screen where both ends are on it.
-function leap(way, to, rises, name) {
-    const highest = Math.min(way.y, to.y);
-    const top = highest - rises * way.at.cell;
-    const apex = highest >= 0 ? Math.max(0, top) : top;
-    leg(way, "leaps", to, { name: name ?? "leaps", apex, pose: way.low ? "pouncing" : "leaping" });
+    for (let i = first; i < lit.count; i++) {
+        const mark = dir > 0 ? i : lit.count - 1 - i;
+        const middle = lit.from + (mark + 0.5) * lit.each;
+        Ways.leap(way, { x: middle - at.wide / 2, y: perched }, RISES, "hops");
+        holds(way, "perches", PERCHES * (1 + PERCHED_BY * Math.sin(2.4 * (i + 1))));
+    }
+    const off = onto(dir > 0 ? lit.to + lit.each / 2 : lit.from - at.wide - lit.each / 2);
+    if (off.side) {
+        // Over a window's side under them, and down onto it, clear of
+        // the window's corner.
+        Ways.leap(way, { x: off.x, y: perched }, RISES, "hops");
+        Ways.clings(way, off.side, 1);
+        Ways.leap(way, off, 0, "hops");
+    } else if (off.y - perched > 2 * at.tall) {
+        // Nothing near under it past them: off level, and a fall.
+        Ways.leap(way, { x: off.x, y: perched }, RISES, "hops");
+        Ways.falls(way, off);
+        holds(way, "lands", MarginCat.LANDS);
+        holds(way, "shakes", Falls.SHAKES);
+    } else {
+        Ways.leap(way, off, RISES, "hops");
+        holds(way, "lands", MarginCat.LANDS);
+    }
 }
 
 // Along the tops of `cols` from where it is to `x`: each gap between two
 // columns it passes is leapt, a crouch before and after, and the `lit`
-// marks (marks()) are crept behind, stopping crouched before them and
-// standing up past them, half a mark's cell off either side, where it
-// sits beside them.
+// marks (marks()) are hopped across (perches()).
 function along(way, x, cols, lit) {
     const at = way.at;
     const dir = Math.sign(x - way.x);
@@ -212,23 +176,37 @@ function along(way, x, cols, lit) {
         const right = lit.to + lit.each / 2;
         const before = dir > 0 ? left : right;
         const past = dir > 0 ? right : left;
-        if ((before - way.x) * dir >= 0 && (x - past) * dir >= 0) {
-            stops.push({ at: before, kind: "stops" }, { at: past, kind: "stands" });
+        // Passing their ink at all, it hops across them, from half a
+        // mark's cell before them or from where it is if nearer.
+        const sweeps = Math.min(way.x, x) < lit.to - lit.each / 4
+            && Math.max(way.x, x) + at.wide > lit.from + lit.each / 4;
+        if (sweeps) {
+            const start = (before - way.x) * dir >= 0 ? before : way.x;
+            // A gap under the marks it hops across on them.
+            const low = Math.min(start, past);
+            const high = Math.max(start, past) + at.wide;
+            stops.splice(0, stops.length, ...stops.filter(stop =>
+                Math.max(stop.at, stop.to.x) + at.wide <= low
+                || Math.min(stop.at, stop.to.x) >= high));
+            stops.push({ at: start, kind: "perches" });
         }
     }
     stops.sort((one, other) => (one.at - other.at) * dir);
     for (const stop of stops) {
-        goes(way, stop.at, ground(stop.at));
+        // Past the marks already, hopping down beyond them.
+        if ((stop.at - way.x) * dir < 0) {
+            continue;
+        }
+        Ways.goes(way, stop.at, ground(stop.at));
         if (stop.kind === "leaps") {
             holds(way, "crouches", MarginCat.CROUCHES);
-            leap(way, stop.to, way.low ? RISES / 2 : HOPS);
+            Ways.leap(way, stop.to, HOPS);
             holds(way, "lands", MarginCat.LANDS);
         } else {
-            holds(way, stop.kind, stop.kind === "stops" ? STOPS : STANDS);
-            way.low = stop.kind === "stops";
+            perches(way, dir, past => ({ x: past, y: ground(past) }));
         }
     }
-    goes(way, x, ground(x));
+    Ways.goes(way, x, ground(x));
 }
 
 // Its last steps onto its seat `to`: a cell and a half past it, if it was
@@ -238,181 +216,220 @@ function arrives(way, to) {
     const last = way.legs[way.legs.length - 1];
     const dir = Math.sign(to.x - (last?.from.x ?? to.x));
     if (last?.kind === "goes" && dir !== 0) {
-        last.to = { x: to.x + dir * MarginCat.OVERSHOOTS * at.cell, y: to.y };
+        // Never past the screen's edge.
+        const past = to.x + dir * MarginCat.OVERSHOOTS * at.cell;
+        last.to = { x: onScreen(past, at), y: to.y };
         way.x = last.to.x;
         holds(way, "settles", MarginCat.SETTLES, to);
     } else {
-        goes(way, to.x, to.y);
+        Ways.goes(way, to.x, to.y);
     }
     holds(way, "lands", MarginCat.LANDS);
 }
 
-// Up or down a column's side to `y`, the top of its box, each gap between
-// two of its rows leapt.
-function climb(way, column, y) {
-    const at = way.at;
-    const dir = Math.sign(y - way.y);
-    const rows = dir > 0 ? column.rows : column.rows.slice().reverse();
-    for (let i = 1; i < rows.length; i++) {
-        const leaves = dir > 0 ? rows[i - 1].bottom - at.tall : rows[i - 1].top;
-        const reaches = dir > 0 ? rows[i].top : rows[i].bottom - at.tall;
-        if ((leaves - way.y) * dir > 0 && (y - reaches) * dir > 0 && (reaches - leaves) * dir > 0) {
-            leg(way, "climbs", { x: way.x, y: leaves });
-            leap(way, { x: way.x, y: reaches }, RISES / 2);
-        }
-    }
-    leg(way, "climbs", { x: way.x, y });
-}
-
-// How it hangs on a side: head the way it climbs (`dir`, 1 down), belly to
-// the window, on its left side (-1) or right (1). The theme's profile
-// faces left, belly down: mirrored for 1, then a quarter turn, clockwise
-// for 1 and back for -1.
-function clings(way, side, dir) {
-    way.facing = side * dir;
-    way.turn = side;
-}
-
-// Down a workspace: off its old column's top at the side nearer its seat,
-// down that side, and a drop onto the column below it on the new one.
-function down(way, home, now, to) {
+// Down a workspace: off the old one's windows (`was`) the way
+// Routes.off finds, toward its seat, down a column's side to its bottom,
+// and a drop onto the column below it on the new one (`now`), one over a
+// column there and clear of the marks where it can. Standing on none of
+// them, it drops from where it is.
+function down(way, was, now, to) {
     const at = way.at;
     const goal = to.x + at.wide / 2;
-    const side = best([-1, 1], s => {
-        const edge = s < 0 ? home.left : home.right;
-        return Math.abs(way.x + at.wide / 2 - edge) + Math.abs(edge - goal);
-    });
-    along(way, side < 0 ? home.left : home.right - at.wide, [home], null);
-    const beside = side < 0 ? home.left - at.wide : home.right;
-    clings(way, side, 1);
-    leap(way, { x: beside, y: home.top }, RISES / 2, "over");
-    climb(way, home, home.bottom - at.tall);
-    const below = under(now, beside, at.wide);
-    const x = Math.min(Math.max(beside, below.left), below.right - at.wide);
+    const lit = at.marks;
+    const clear = spot => !lit || !Routes.inMarks(spot, lit.each / 4, at);
+    const lands = spot => clear(spot) && now.some(column => spot < column.right
+        && spot + at.wide > column.left);
+    const toward = { x: to.x, y: way.y };
+    const stops = [lands, clear, null].reduce((found, where) => found
+        ?? Routes.off(way, was, at, { toward, down: true, lands: where }), null);
+    if (stops !== null) {
+        follows(way, stops, was, null);
+    }
+    const below = under(now, way.x, at.wide);
+    let x = onScreen(Math.min(Math.max(way.x, below.left), below.right - at.wide), at);
+    if (!clear(x)) {
+        const sides = [lit.from + lit.each / 4 - at.wide, lit.to - lit.each / 4];
+        x = sides.reduce((most, one) => Math.abs(one - x) < Math.abs(most - x) ? one : most);
+    }
     way.turn = 0;
     way.facing = Math.sign(goal - (x + at.wide / 2)) || way.facing;
     // It lets go, falling out of sight to just above the screen's top,
-    // and from there falls in, so all of its fall that's seen is a fall.
-    leap(way, { x: beside, y: -at.tall - at.cell }, 0, "drops");
-    leap(way, { x, y: standsOn(below, at) }, 0, "drops");
+    // clear of the window it hung on, over to where it falls in, and
+    // from there falls in, so all of its fall that's seen is a fall.
+    Ways.leap(way, { x: way.x, y: -at.tall - at.cell }, 0, "drops");
+    if (Math.abs(x - way.x) > 1e-6) {
+        Ways.leap(way, { x, y: way.y }, 0, "drops");
+    }
+    Ways.leap(way, { x, y: standsOn(below, at) }, 0, "drops");
     holds(way, "lands", MarginCat.LANDS);
 }
 
-// Up a workspace: off its old column's top, up across the gap between
-// workspaces onto the side of a column on the new one, the side the
-// shortest way round to its seat that's on the screen, up it, and over
-// its top.
-function up(way, home, now, to) {
-    const at = way.at;
-    // Qt's engine has no flatMap.
-    const sides = now.reduce((all, each) => all.concat([
-        { column: each, side: -1, x: each.left - at.wide },
-        { column: each, side: 1, x: each.right }
-    ]), []);
-    const inSight = sides.filter(one => one.x >= 0 && one.x + at.wide <= at.across);
-    const pick = best(inSight.length > 0 ? inSight : sides,
-        one => Math.abs(way.x - one.x) + Math.abs(one.x - to.x));
-    const { column, side } = pick;
-    along(way, Math.min(Math.max(pick.x, home.left), home.right - at.wide), [home], null);
-    holds(way, "crouches", MarginCat.CROUCHES);
-    clings(way, side, -1);
-    // Up out of sight to just under the screen's bottom, and from there
-    // up onto the column's side, so all of its leap that's seen is one.
-    leap(way, { x: pick.x, y: at.height + at.cell }, 0);
-    leap(way, { x: pick.x, y: column.bottom - at.tall }, RISES);
-    climb(way, column, column.top - at.tall);
-    way.turn = 0;
-    way.facing = -side;
-    leap(way, { x: side < 0 ? column.left : column.right - at.wide, y: standsOn(column, at) },
-        RISES, "mantles");
-    holds(way, "lands", MarginCat.LANDS);
-}
-
-// How long a leg lasts at `pace`, its cells a second, before the theme's
-// slowdown: a leap as long as falling its height takes.
-function lasts(one, pace, at) {
-    if (one.kind === "holds") {
-        return one.ms;
-    }
-    const ground = Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y);
-    if (one.kind === "leaps") {
-        const fall = from => Math.sqrt((2 * Math.max(0, from - one.apex)) / at.cell / GRAVITY);
-        return Math.max(LEAPS_AT_LEAST, (fall(one.from.y) + fall(one.to.y)) * MarginCat.MS);
-    }
-    const paces = { creeps: CREEPS, climbs: CLIMBS };
-    const ms = (ground / at.cell / (pace * (paces[one.kind] ?? 1))) * MarginCat.MS;
-    return one.kind === "climbs" && at.height > 0
-        ? Math.min(ms, (CLIMBS_AT_MOST * ground) / at.height) : ms;
-}
-
-// Whether any of a leg can be seen on the screen, `across` by `height`.
-function seen(one, at) {
-    if (at.height === undefined) {
-        return true;
-    }
-    const xs = [one.from.x, one.to.x];
-    const ys = [one.from.y, one.to.y, one.apex ?? one.from.y];
-    return Math.max(...xs) + at.wide > 0 && Math.min(...xs) < at.across
-        && Math.max(...ys) + at.tall > 0 && Math.min(...ys) < at.height;
-}
-
-// A way's legs as beats in time: its pace by all the ground it walks, as
-// a walk's is, about CRUISES ms where it can and never past HURRIES; its
-// stride by that pace; the theme's slowdown on all of it but the ride,
-// which niri's own clock already slows.
-function timed(way) {
-    const at = way.at;
-    const slow = at.slowdown ?? 1;
-    const walked = way.legs.filter(one => STRIDING[one.kind]).reduce((all, one) =>
-        all + Math.abs(one.to.x - one.from.x) + Math.abs(one.to.y - one.from.y), 0) / at.cell;
-    const pace = Math.min(Math.max(walked / (MarginCat.CRUISES / MarginCat.MS), MarginCat.AMBLES),
-        MarginCat.HURRIES);
-    const stride = Math.min(Math.max(pace * MarginCat.STRIDE_SECONDS, MarginCat.SHORTEST_STRIDE),
-        MarginCat.LONGEST_STRIDE) * at.cell;
-    const natural = way.legs.map(one => one.kind === "rides" ? 0 : lasts(one, pace, at));
-    const unseen = way.legs.reduce((all, one, i) =>
-        one.kind === "rides" || seen(one, at) ? all : all + natural[i], 0);
-    const hurries = Math.min(1, UNSEEN / Math.max(unseen, 1));
-    const beats = [];
-    let ends = 0;
-    for (const [i, one] of way.legs.entries()) {
-        const ms = one.kind === "rides" ? one.ms
-            : natural[i] * (seen(one, at) ? 1 : hurries) * slow;
-        if (ms > 0) {
-            beats.push(Object.assign({}, one, { name: one.name ?? one.kind, begins: ends,
-                ends: ends + ms, stride: STRIDING[one.kind] ? stride : 0 }));
-            ends += ms;
+// Along a route's `stops` (MarginCatRoutes.js) over `now`'s columns from
+// the first, where it is, past the `lit` marks: up and down sides, along
+// ledges and tops, over edges and across gaps with a leap.
+function follows(way, stops, now, lit) {
+    let was = stops[0];
+    for (const [i, stop] of stops.entries()) {
+        const onto = { x: stop.x, y: stop.y };
+        const dir = stop.y > way.y + 1e-6 ? 1 : -1;
+        if (i === 0 || (stop.how === "climbs" && stops[i + 1]?.how === "climbs")) {
+            // Where it sets off, or on its way up or down a side to
+            // where it climbs on to, in one climb, its gaps leapt.
+            continue;
         }
+        if (stop.how === "climbs") {
+            Ways.clings(way, stop.side, dir);
+            Ways.climb(way, now[was.c], stop.y, RISES / 2);
+        } else if (stop.how === "goes") {
+            // A ledge has no gaps to leap and no marks over it, and no
+            // columns given, it walks at the height it's at.
+            along(way, stop.x, stop.row === 0 ? now : [], stop.row === 0 ? lit : null);
+        } else if (stop.perches && was.kind === "ledge") {
+            // Along its top to the marks over its end, across them, and
+            // down onto its window's side under them.
+            const before = stop.perches > 0 ? lit.from - way.at.wide - lit.each / 2
+                : lit.to + lit.each / 2;
+            way.facing = stop.perches;
+            if ((before - way.x) * stop.perches > 0) {
+                Ways.goes(way, before, way.y);
+            }
+            perches(way, stop.perches, () => stop);
+        } else if (stop.perches) {
+            // Up from under the marks onto the one it's under, and across.
+            const beneath = Math.floor((way.x + way.at.wide / 2 - lit.from) / lit.each);
+            way.turn = 0;
+            way.facing = stop.perches;
+            perches(way, stop.perches, past => ({ x: past, y: stop.y }),
+                Math.min(Math.max(beneath, 0), lit.count - 1));
+        } else if (stop.how === "over") {
+            Ways.clings(way, stop.side, 1);
+            Ways.leap(way, onto, RISES / 2, "over");
+        } else if (stop.kind === "side") {
+            // Along the screen's bottom to under it, from there.
+            if (stop.how === "springs") {
+                Ways.goes(way, stop.x, way.y);
+            }
+            holds(way, "crouches", MarginCat.CROUCHES);
+            Ways.clings(way, stop.side, dir);
+            Ways.leap(way, onto, RISES / 2);
+        } else {
+            way.facing = stop.how === "leaps" ? Math.sign(stop.x - way.x) || way.facing
+                : -was.side;
+            if (stop.how === "leaps") {
+                holds(way, "crouches", MarginCat.CROUCHES);
+            }
+            way.turn = 0;
+            Ways.leap(way, onto, stop.how === "leaps" ? HOPS : RISES / (stop.how === "hops" ? 2 : 1),
+                stop.how);
+            holds(way, "lands", MarginCat.LANDS);
+        }
+        was = stop;
     }
-    const from = way.legs[0]?.from ?? { x: way.x, y: way.y };
-    return { from, to: { x: way.x, y: way.y }, facing: way.facing, stride, beats, ends };
+}
+
+// Its last steps to its seat `to` from the ledge a route left it on: along
+// the tops past the `lit` marks, its seat on one, or along its ledge.
+function seats(way, to, now, lit) {
+    const goal = Routes.standing(now, to, way.at);
+    if ((goal?.row ?? 0) === 0) {
+        along(way, to.x, now, lit);
+    } else {
+        along(way, to.x, [], null);
+    }
+    arrives(way, to);
+}
+
+// Up a workspace, between `worlds`: up onto a top of the old one's
+// windows (`was`, the one it rode on its `home`), the way
+// Routes.off finds, then off it, up across the gap between workspaces
+// onto the side of a column on the new one (`now`), and on up the way
+// Routes.up finds through its windows: up a side, over onto a ledge and
+// along it, across the gap to the next column with a leap, and over a
+// top. Null where it finds none, no side being on the screen.
+function up(way, worlds, to) {
+    const { home, was, now } = worlds;
+    const at = way.at;
+    const stops = Routes.up({ x: way.x, y: at.height }, to, now, at);
+    if (stops === null) {
+        return null;
+    }
+    const climbs = Routes.off(way, was, at, { toward: { x: stops[0].x, y: way.y }, down: false });
+    if (climbs !== null) {
+        follows(way, climbs, was, null);
+    }
+    const top = climbs === null ? home : was[climbs[climbs.length - 1].c];
+    const first = stops[0];
+    along(way, Math.min(Math.max(first.x, top.left), top.right - at.wide), [top], null);
+    holds(way, "crouches", MarginCat.CROUCHES);
+    comesUp(way, first);
+    follows(way, stops, now, at.marks);
+    return stops;
+}
+
+// From under the screen up onto the side a route up begins on (`first`):
+// out of sight to just under the screen's bottom, and from there up onto
+// the column's side, so all of its leap that's seen is one.
+function comesUp(way, first) {
+    const below = way.at.height + way.at.cell;
+    Ways.clings(way, first.side, -1);
+    if (way.y < below) {
+        Ways.leap(way, { x: way.x, y: below }, 0);
+    }
+    Ways.leap(way, { x: first.x, y: below }, 0);
+    Ways.leap(way, { x: first.x, y: first.y }, RISES);
 }
 
 // A walk along the margin from `from` to its seat `to`, each { x, y }, over
 // `at`'s `cols` (columns()) and past its `marks`: it turns its head the
 // way it goes, thinks `pause` ms, draws back a cell crouched, and walks,
-// as MarginCat.js's walk says, leaping each gap and creeping behind the
+// as MarginCat.js's walk says, leaping each gap and hopping across the
 // marks on the way. `hurried`, its seat moved under it, it neither thinks
 // nor crouches, and turns only to go back the way it came from `facing`.
-// Null where it's already there, to the screen's pixel.
+// Where the windows changed under it, it's first shoved clear, or grabs
+// an edge or falls (MarginCatFalls.js), and sets off from there. Null
+// where it's already there, to the screen's pixel.
 function walk(from, to, at) {
-    const dir = Math.sign(to.x - from.x);
-    if (Math.round(from.x * at.ratio) === Math.round(to.x * at.ratio)) {
+    const pixel = one => Math.round(one * at.ratio);
+    if (pixel(from.x) === pixel(to.x) && pixel(from.y) === pixel(to.y)) {
         return null;
     }
-    const way = begun(at, from);
+    const cols = at.cols ?? [];
+    const level = place => (Routes.standing(cols, place, at)?.row ?? 0) === 0;
+    // Off the tops, to or from a window stacked under another, it finds
+    // its way there, setting off the way its route first goes.
+    const way = Ways.begun(at, from);
+    let start = Falls.settle(way, cols, at);
+    if (start.kind === "perched") {
+        way.turn = 0;
+        way.facing = Math.sign(to.x - way.x) || way.facing || 1;
+        perches(way, way.facing, past => Falls.under({ x: past, y: way.y }, cols, at),
+            start.mark);
+        start = Falls.settle(way, cols, at);
+    }
+    const tops = start.kind === "ledge" && start.row === 0 && level(to);
+    let stops = tops || start.kind === "below" ? null : Routes.route(start, to, cols, at);
+    if (start.kind === "below") {
+        stops = Routes.up({ x: way.x, y: at.height }, to, cols, at);
+        if (stops !== null) {
+            comesUp(way, stops[0]);
+        }
+    }
+    const fell = way.legs.length > 0;
+    const dir = Math.sign((stops?.[1] ?? to).x - way.x) || at.facing || 1;
     if (!at.hurried || at.facing !== dir) {
         way.facing = dir;
         holds(way, "turns", MarginCat.TURNS);
     }
-    if (!at.hurried) {
+    if (!at.hurried && !fell) {
         holds(way, "thinks", at.pause ?? 0);
-        holds(way, "crouches", MarginCat.CROUCHES,
-            { x: from.x - dir * MarginCat.DRAWS_BACK * at.cell, y: from.y });
+        const back = start.kind === "side" ? 0 : dir * MarginCat.DRAWS_BACK * at.cell;
+        holds(way, "crouches", MarginCat.CROUCHES, { x: onScreen(way.x - back, at), y: way.y });
     }
-    along(way, to.x, at.cols ?? [], at.marks);
-    arrives(way, to);
-    return timed(way);
+    if (stops !== null) {
+        follows(way, stops, cols, at.marks);
+    }
+    seats(way, to, cols, at.marks);
+    return Ways.timed(way);
 }
 
 // A move between workspaces, `way` 1 to the one below and -1 above, a
@@ -421,65 +438,49 @@ function walk(from, to, at) {
 // moves (MarginCat.slid), off the screen's top or bottom. Then it finds
 // its way to its seat `to` on the new workspace's columns (`now`, tiles as
 // columns() takes them) from the old one's (`was`): down its old column's
-// side and a drop, or a leap up onto a new column's side, a climb and over
-// its top; then along the tops to its seat, as a walk goes. With nowhere
-// to go, `to` null, it only rides.
+// side and a drop, or up through the new one's windows (up()); then along
+// the tops to its seat, as a walk goes. With nowhere to go, `to` null or
+// no way up, it only rides.
 function moves(from, to, at) {
     const slow = at.slowdown ?? 1;
     const spring = Object.assign({}, at.spring, { slowdown: slow });
     const dy = -at.way * at.step;
-    const way = begun(at, from);
-    leg(way, "rides", { x: from.x, y: from.y + dy }, {
+    const way = Ways.begun(at, from);
+    Ways.leg(way, "rides", { x: from.x, y: from.y + dy }, {
         ms: MarginCat.slides(spring),
         slide: t => MarginCat.slid(t, spring)
     });
     const was = columns(at.was, dy);
     const now = columns(at.now, 0);
+    const rides = () => Object.assign(Ways.timed(way), { way: at.way });
     if (to === null || now.length === 0) {
-        return Object.assign(timed(way), { way: at.way });
+        return rides();
     }
     const home = under(was, from.x, at.wide) ?? {
         left: from.x, right: from.x + at.wide, top: from.y + dy + at.tall + at.air,
         bottom: from.y + dy + at.step, rows: []
     };
+    const legs = way.legs.length;
     holds(way, "thinks", at.pause ?? 0);
-    (at.way > 0 ? down : up)(way, home, now, to);
-    along(way, to.x, now, at.marks);
-    arrives(way, to);
-    return Object.assign(timed(way), { way: at.way });
+    if (at.way > 0) {
+        down(way, was, now, to);
+        // Off the top it dropped onto, to a window stacked under another.
+        const stops = (Routes.standing(now, to, at)?.row ?? 0) === 0 ? null
+            : Routes.between(way, to, now, at);
+        if (stops !== null) {
+            follows(way, stops, now, at.marks);
+        }
+    } else if (up(way, { home, was, now }, to) === null) {
+        way.legs.length = legs;
+        way.x = from.x;
+        way.y = from.y + dy;
+        return rides();
+    }
+    seats(way, to, now, at.marks);
+    return rides();
 }
 
-// Where a way has it `t` ms in: its `x` and `y`, the top left of its box;
-// its `pose` by the theme's name, or null for its own as it rides; its
-// `turn`, a quarter turn clockwise (1) or back (-1) as it climbs; the way
-// it's `facing`; the `beat` it's on; and at its end, `done`, on its seat.
+// Where a way has it `t` ms in (MarginCatWays.js's frame).
 function frame(route, t) {
-    const beat = route.beats.find(one => t < one.ends);
-    if (!beat) {
-        return { x: route.to.x, y: route.to.y, pose: null, turn: 0, facing: route.facing,
-            beat: "sits", done: true };
-    }
-    const p = (t - beat.begins) / (beat.ends - beat.begins);
-    const { from, to } = beat;
-    let s = p;
-    if (beat.kind === "rides") {
-        s = beat.slide(t - beat.begins);
-    } else if (beat.kind === "holds") {
-        s = beat.ease ? MarginCat.easeOut(p) : p;
-    } else if (beat.kind !== "leaps") {
-        s = MarginCat.easeInOut(p);
-    }
-    const x = from.x + (to.x - from.x) * s;
-    let y = from.y + (to.y - from.y) * s;
-    if (beat.kind === "leaps") {
-        // A parabola through both ends and its apex, as a thing thrown.
-        const rise = Math.sqrt(Math.max(0, from.y - beat.apex));
-        const fall = Math.sqrt(Math.max(0, to.y - beat.apex));
-        const peak = rise + fall === 0 ? 0.5 : rise / (rise + fall);
-        y = beat.apex + (rise + fall) ** 2 * (p - peak) ** 2;
-    }
-    const strides = STRIDING[beat.kind];
-    const ground = Math.abs(x - from.x) + Math.abs(y - from.y);
-    const pose = strides ? strides[Math.floor(ground / beat.stride) % 2] : beat.pose ?? null;
-    return { x, y, pose, turn: beat.turn, facing: beat.facing, beat: beat.name, done: false };
+    return Ways.frame(route, t);
 }
