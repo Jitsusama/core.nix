@@ -497,9 +497,12 @@ pub fn sharing_kept(base: &str, system: &str, record: &str) -> Option<(String, S
 
 /// What changed-checks keeps of an evaluated base, each file named after
 /// it and its system: the checks' derivations, then what its VM tests
-/// read, which a gate uses only beside the derivations. A record a
-/// builder hasn't kept, as when tracing failed, isn't copied.
-pub const KEPT_AS: [&str; 2] = ["json", "reads.json"];
+/// read, which a gate uses only beside the derivations, then what each
+/// other check read alone, by which a gate evaluates only the checks its
+/// change reaches. A record a builder hasn't kept, as when tracing failed,
+/// isn't copied, nor any after it, so the last is the one kept least
+/// often: a keep traces each check alone at most once in 20 minutes.
+pub const KEPT_AS: [&str; 3] = ["json", "reads.json", "alone.reads.json"];
 
 /// Waits for `host`'s turn to evaluate, had while what this gives is
 /// held, so an evaluator takes one run at a time and the rest wait here:

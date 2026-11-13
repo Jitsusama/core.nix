@@ -58,6 +58,11 @@ case "$2" in
     [ -f "$here/unreached-$1" ] && exit 255
     cat >> "$here/took-kept-$1"
     exit 0 ;;
+  *"cat \""*/changed-checks/*.alone.reads.json\"*)
+    [ -f "$here/unreached-$1" ] && exit 255
+    [ -f "$here/kept-alone-$1" ] || exit 1
+    cat "$here/kept-alone-$1"
+    exit 0 ;;
   *"cat \""*/changed-checks/*.reads.json\"*)
     [ -f "$here/unreached-$1" ] && exit 255
     [ -f "$here/kept-reads-$1" ] || exit 1
