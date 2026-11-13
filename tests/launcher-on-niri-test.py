@@ -4512,20 +4512,31 @@ def test_on_the_selection_draws_its_actions_before_a_waking_server_answers(shell
     served = Waking(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "pi-verbs.sock")
     served.told([verb("Explain", "What it means"), verb("Shorten", "Fewer words")], [])
     listed = ["Explain", "Shorten", "Ask"]
+
+    def chord() -> None:
+        """Press Super+X as niri runs it, through launcher-say's socket, which a place may take.
+
+        qs ipc's collection only ever opens it, so Super+X again putting it away is only seen
+        the way the chord says it.
+        """
+        with socket.socket(socket.AF_UNIX) as said:
+            said.connect(str(Path(os.environ["XDG_RUNTIME_DIR"]) / "launcher.sock"))
+            said.sendall(b"collection selection\n")
+
     try:
-        shell.as_account(shell.ipc("collection", "selection"))
+        chord()
         shell.launcher_ready()
         shell.launcher_until(
             lambda shown: shown["rows"] == listed and shown["hint"] == "nothing selected"
         )
-        shell.as_account(shell.ipc("collection", "selection"))
+        chord()
         shell.launcher_closed()
         deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
         while served.open > 0:
             assert time.monotonic() < deadline, "the place held pi-verbs after it closed"
             time.sleep(launcher_on_niri.POLL)
         served.wait = 1.0
-        shell.as_account(shell.ipc("collection", "selection"))
+        chord()
         shell.launcher_until(lambda shown: shown["open"] and shown["rows"] == listed)
         drawn = time.monotonic()
         deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
