@@ -1370,8 +1370,9 @@ Provider {
     // Answers what a session asks, `fields` its `value` or Joel's own words
     // as `other`: the daemon finds the want by the session's address and
     // steers it there, and `then(put)` hears whether the node put it in
-    // the session's inbox, which Sessions says as it does any act's.
-    function answer(address, fields, then) {
+    // the session's inbox, which Sessions says as it does any act's. Not
+    // `answer`, which the launcher asks of every source for what's typed.
+    function answerWant(address, fields, then) {
         const said = Object.assign({ ask: "answer", address: String(address) }, fields);
         if (!rowsKind) {
             then(Sessions.steered(address, null));

@@ -1469,7 +1469,7 @@ Provider {
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
             };
             if (agents)
-                agents.answer(address, fields, answered);
+                agents.answerWant(address, fields, answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),

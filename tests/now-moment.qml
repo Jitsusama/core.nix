@@ -121,7 +121,7 @@ ShellRoot {
             return wants[address] ?? null;
         }
 
-        function answer(address, fields, then) {
+        function answerWant(address, fields, then) {
             answered = answered.concat([{ address: address, fields: fields }]);
             then(puts);
         }
