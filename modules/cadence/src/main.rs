@@ -33,6 +33,7 @@
 //!     cadence day [--orchestrator ADDRESS [--watcher ADDRESS] [--owner PREFIX=ADDRESS]...]
 //!     cadence axes [AXIS]
 
+mod asking;
 mod axes;
 mod builders;
 mod card;
@@ -66,9 +67,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
 
+use asking::{State, To};
 use mesh::{Mesh, Message};
 use net::Round;
-use watch::{Landing, Snapshot, State, To};
+use watch::{Landing, Snapshot};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";
@@ -230,7 +232,7 @@ fn run(args: &Args) -> io::Result<()> {
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    for question in watch::tick(&snapshot, &mut state) {
+    for question in asking::tick(&snapshot, &mut state) {
         let to = match question.to {
             To::Watcher => watcher,
             To::Orchestrator => orchestrator,
@@ -248,7 +250,7 @@ fn run(args: &Args) -> io::Result<()> {
             state.asked_as(key, &message.id, now, &question.text);
         }
     }
-    if watch::card_due(&snapshot, &state) {
+    if asking::card_due(&snapshot, &state) {
         let text = format!(
             "{card}Sent by cadence, as the session keeping the cycle fast sent none this hour; \
              tokens, sessions and the top bottleneck come with its next."
