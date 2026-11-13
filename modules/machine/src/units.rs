@@ -172,6 +172,9 @@ mod tests {
         // Sound's daemon, whose one row says it isn't answering and
         // starts it on Return.
         assert_eq!(allowed("sound.service"), Ok(()));
+        // Noise cancelling's trial, whose rows start it on Return while
+        // it isn't answering, its socket stopped or failed.
+        assert_eq!(allowed("noise-cancelled-trial.service"), Ok(()));
         assert_eq!(allowed("").map_err(|no| no.code), Err("bad-act"));
         assert_eq!(
             allowed("sshd.service").map_err(|no| no.code),
