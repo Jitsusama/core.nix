@@ -267,6 +267,10 @@ pub fn text(generations: &[Generation], pen: &Pen, room: Room) -> String {
         ("desktop cpu", Align::Right),
         ("apps' memory", Align::Right),
     ];
+    // Narrowed, the figures a person reads last go first: niri's waits,
+    // its worst answer, then the stalls, then the minutes watched. The
+    // load, how often Joel waited and niri's p99 say the most.
+    let gives_way = [5, 4, 7, 6, 1];
     let mut blocks = Vec::new();
     for generation in generations {
         let rows: Vec<Vec<String>> = generation
@@ -285,8 +289,11 @@ pub fn text(generations: &[Generation], pen: &Pen, room: Room) -> String {
                 ]
             })
             .collect();
-        let mut block = vec![pen.title(&layout::cut(&generation.name, room.measure()))];
-        block.extend(layout::table(&columns, &rows, pen));
+        // Its version is at its end and its hash at its start, so it's
+        // shortened in its middle.
+        let name = layout::shortened(&generation.name, room.cells().unwrap_or(usize::MAX));
+        let mut block = vec![pen.title(&name)];
+        block.extend(layout::table_in(&columns, &rows, pen, room, &gives_way));
         blocks.push(block);
         let notes: Vec<String> = generation
             .loads
@@ -317,7 +324,10 @@ pub fn text(generations: &[Generation], pen: &Pen, room: Room) -> String {
                 calls
                     .chain(waits)
                     .map(move |line| {
-                        format!("{} {}", pen.role("text", &band), pen.role("muted", &line))
+                        // Hung after the load, so a long unit's name wraps
+                        // under the words rather than past the terminal.
+                        let hung = layout::hung(&line, layout::width(&band) + 1, room.for_prose());
+                        format!("{} {}", pen.role("text", &band), pen.role("muted", &hung))
                     })
                     .collect::<Vec<_>>()
             })
