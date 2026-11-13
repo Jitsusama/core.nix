@@ -397,6 +397,20 @@ It gives:
 A command that isn't Rust keeps the convention by hand, and the check
 holds a script to the points it can keep without the kit, below.
 
+A repository built on core takes the kit from core's git, pinned to a
+commit of main, since the kit isn't published to crates.io:
+
+```toml
+[dependencies]
+terminal-kit = { git = "https://github.com/Jitsusama/core.nix", rev = "<commit>" }
+```
+
+Its Nix package then names the kit's hash beside its lock, in
+`cargoLock.outputHashes."terminal-kit-0.1.0"`: set to `lib.fakeHash`
+first, a build refuses it and prints the real one. It holds its commands to this page with `core.lib.commandsAgree`,
+as core does, given the commands it builds on the kit and a waiting list
+of its own.
+
 ## When a Command Doesn't Agree Yet
 
 The `commands-agree` check ([`tests/rules/commands-agree.py`][check])
