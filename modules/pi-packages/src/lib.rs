@@ -57,6 +57,7 @@
 //! tree back here. That folder is still read, so each version in it goes
 //! like any other once nothing uses it, and the folder with the last.
 
+pub mod ask;
 pub mod check;
 pub mod config;
 pub mod hold;

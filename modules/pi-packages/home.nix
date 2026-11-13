@@ -68,15 +68,21 @@ let
     }
   );
   command = "${lib.getExe package} update --config ${configFile}";
-  # The command, told its settings, for the account to run.
+  usage = "usage: pi-packages [status | update [--now] | sweep | hold [--for 2h] WHY | release]";
+  # The command, told its settings, for the account to run. Help is
+  # answered here, before `hold` takes the words after it as a reason.
   configured = pkgs.writeShellScriptBin "pi-packages" ''
     case "''${1:-status} ''${2:-}" in
+      "--help " | "-h " | "help " | "hold --help" | "hold -h" | "hold help")
+        echo "${usage}"
+        exit 0
+        ;;
       "update --now") exec ${lib.getExe package} update --config ${configFile} --now ;;
       "update " | "sweep " | "status " | "release ")
         exec ${lib.getExe package} "''${1:-status}" --config ${configFile} ;;
       hold\ ?*) shift; exec ${lib.getExe package} hold --config ${configFile} "$@" ;;
       *)
-        echo "usage: pi-packages [status | update [--now] | sweep | hold [--for 2h] WHY | release]" >&2
+        echo "${usage}" >&2
         exit 2
         ;;
     esac

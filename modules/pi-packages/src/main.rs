@@ -13,19 +13,19 @@
 //!                                      swap nothing, however an update
 //!                                      runs, until released or for a time
 //!   pi-packages release --config FILE  end the hold
+//!   pi-packages --help                 this, as `hold --help` is too; a
+//!                                      hold's reason never opens with a
+//!                                      flag (src/ask.rs)
 
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
+use pi_packages::ask::{Asked, USAGE, asked};
 use pi_packages::config::Config;
 use pi_packages::hold::{self, Hold};
 use pi_packages::run::{self, Done, Pace};
 use pi_packages::version::Place;
-
-const USAGE: &str = "usage: pi-packages update --config FILE [--now] | sweep --config FILE | \
-                     status --config FILE | hold --config FILE [--for 90m|2h] WHY... | \
-                     release --config FILE";
 
 /// Characters of a commit worth showing.
 const SHORT: usize = 8;
@@ -33,24 +33,17 @@ const SHORT: usize = 8;
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
-    let done = match words.as_slice() {
-        ["update", "--config", file] => update(Path::new(file), Pace::Spaced),
-        ["update", "--config", file, "--now"] => update(Path::new(file), Pace::Now),
-        ["sweep", "--config", file] => sweep(Path::new(file)),
-        ["status", "--config", file] => status(Path::new(file)),
-        ["hold", "--config", file, "--for", length, why @ ..] if !why.is_empty() => {
-            hold::lasting(length)
-                .ok_or_else(|| format!("{length} is no length; say 90m or 2h"))
-                .and_then(|length| put_hold(Path::new(file), why, Some(length)))
+    let done = asked(&words).and_then(|asked| match asked {
+        Asked::Help => {
+            println!("{USAGE}");
+            Ok(())
         }
-        ["hold", "--config", file, why @ ..]
-            if why.first().is_some_and(|word| *word != "--for") =>
-        {
-            put_hold(Path::new(file), why, None)
-        }
-        ["release", "--config", file] => release(Path::new(file)),
-        _ => Err(USAGE.into()),
-    };
+        Asked::Update { file, pace } => update(file, pace),
+        Asked::Sweep(file) => sweep(file),
+        Asked::Status(file) => status(file),
+        Asked::Hold { file, why, length } => put_hold(file, why, length),
+        Asked::Release(file) => release(file),
+    });
     match done {
         Ok(()) => ExitCode::SUCCESS,
         Err(reason) => {
@@ -68,11 +61,11 @@ fn how_long(now: SystemTime, hold: &Hold) -> String {
     )
 }
 
-fn put_hold(file: &Path, why: &[&str], length: Option<Duration>) -> Result<(), String> {
+fn put_hold(file: &Path, why: String, length: Option<Duration>) -> Result<(), String> {
     let config = Config::read(file)?;
     let now = SystemTime::now();
     let hold = Hold {
-        why: why.join(" "),
+        why,
         until: length.map(|length| now + length),
     };
     hold::put(&config, &hold)?;
