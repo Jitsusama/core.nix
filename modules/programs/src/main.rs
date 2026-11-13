@@ -387,6 +387,7 @@ fn entries_changed(shared: &Shared) {
     if rows::watched(&daemon) {
         rows::make(shared, &mut daemon, &[]);
     }
+    tabs::renamed(shared, &mut daemon);
 }
 
 /// The sources whose `recent`, `listed` or `opened` key is one of these,

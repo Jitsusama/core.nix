@@ -9,7 +9,7 @@
       "said": {
         "in": "in {program}",
         "kind": "tab",
-        "silent": "{program} isn't answering"
+        "silent": "{program} isn't answering; its tabs come back when it does."
       }
     },
     {
@@ -26,16 +26,6 @@
       "id": "tabs:folder",
       "in": "tabs",
       "name": "Folder"
-    },
-    {
-      "id": "tabs:program:google-chrome",
-      "in": "tabs",
-      "name": "Chrome"
-    },
-    {
-      "id": "tabs:program:kitty",
-      "in": "tabs",
-      "name": "Kitty"
     },
     {
       "id": "verb:tabs:go",

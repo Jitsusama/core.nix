@@ -328,12 +328,12 @@ mod tests {
         assert_eq!(
             row["drawer"],
             json!({
-                "eyebrow": [{"said": "in Kitty", "keep": 2}, {"said": "tab", "keep": 1}],
+                "eyebrow": [{"said": "in kitty", "keep": 2}, {"said": "tab", "keep": 1}],
                 "title": "core.nix",
                 "body": "",
                 "facts": [{"label": "Folder", "value": "~/src/core.nix"}],
             }),
-            "a tab's drawer isn't a tab in Kitty, by its folder: {row}"
+            "a tab's drawer isn't a tab in kitty, by its folder: {row}"
         );
     }
 

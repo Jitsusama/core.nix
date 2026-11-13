@@ -6,9 +6,10 @@
 //! Chrome tab's is made from the `opened` record of what a program has
 //! open (source.rs's `opened`): one row a page, two tabs on one page
 //! being one row. Return goes to Chrome's window, the one the page is in
-//! front of where the shell finds it by its title (`front`), and Copy the
-//! Link copies its address, both Tabs' own acts (VKCF3Z's ruling
-//! 98fe0553). kitty's are `kitty_tabs.rs`'s. A program with no window
+//! front of where the shell finds it by its title (`front`), Copy the
+//! Title its title and Copy the Link its address, Tabs' own acts in
+//! kitty's order (VKCF3Z's rulings 98fe0553 and 78ae8c2f). kitty's are
+//! `kitty_tabs.rs`'s. A program with no window
 //! open has no tabs to go to, so its session's are left out. Each tab's
 //! drawer is served on its row, said `in` its program, and Tabs' head
 //! names a program whose tabs can't be read while a window of it is open,
@@ -27,18 +28,22 @@ pub const PLACE: &str = "tabs";
 /// The words a tab's drawer and Tabs' head are said in, from the
 /// vocabulary (words/tabs.json). One the vocabulary hasn't is said by its
 /// id, so the tabs are served all the same, as people's names are.
+#[derive(Clone)]
 pub struct Words {
     /// A tab's program, `in {program}`.
     within: String,
     /// What a tab is.
     kind: String,
-    /// A program whose tabs can't be read, `{program} isn't answering`.
+    /// A program whose tabs can't be read, a sentence: `{program} isn't
+    /// answering; its tabs come back when it does.`
     silent: String,
     /// The labels of a tab's site, address and folder.
     site: String,
     address: String,
     pub(crate) folder: String,
-    /// Each program's name, by its desktop entry id.
+    /// Each program's name, by its desktop entry id, as its entry names
+    /// it and so as its Programs row does (VKCF3Z, 2026-11-12: "each
+    /// program's name should match what its Programs row says").
     programs: BTreeMap<String, String>,
 }
 
@@ -64,13 +69,6 @@ impl Words {
                 .unwrap_or("tabs:tab")
                 .to_owned()
         };
-        let programs = things
-            .iter()
-            .filter_map(|thing| {
-                let app = thing["id"].as_str()?.strip_prefix("tabs:program:")?;
-                Some((app.to_owned(), thing["name"].as_str()?.to_owned()))
-            })
-            .collect();
         Words {
             within: said("in"),
             kind: said("kind"),
@@ -78,7 +76,24 @@ impl Words {
             site: name("tabs:site"),
             address: name("tabs:address"),
             folder: name("tabs:folder"),
+            programs: BTreeMap::new(),
+        }
+    }
+
+    /// These words with each program named as these `program` records
+    /// (entry.rs) name it, those with no name by their id.
+    #[must_use]
+    pub fn naming(&self, programs: &[Value]) -> Words {
+        let programs = programs
+            .iter()
+            .filter_map(|program| {
+                let name = program["name"].as_str().filter(|name| !name.is_empty())?;
+                Some((program["id"].as_str()?.to_owned(), name.to_owned()))
+            })
+            .collect();
+        Words {
             programs,
+            ..self.clone()
         }
     }
 
@@ -129,7 +144,7 @@ pub fn head<'a>(
     let said: Vec<&str> = silent.iter().map(|one| text(&one["said"])).collect();
     let key = format!("head:{PLACE}");
     Some(json!({"key": key, "kind": "head", "head": {
-        "key": key, "place": PLACE, "said": said.join(", "), "silent": silent,
+        "key": key, "place": PLACE, "said": said.join(" "), "silent": silent,
     }}))
 }
 
@@ -240,6 +255,7 @@ fn row(app: &str, page: &Page, front: &str, words: &Words) -> Value {
         "held": {"address": page.address, "app": app, "front": one_line(front), "tabs": page.tabs},
         "acts": [
             {"key": "verb:tabs:go", "go": app},
+            {"key": "verb:tabs:title", "copy": name},
             {"key": "verb:tabs:link", "copy": page.address},
         ],
         "drawer": words.drawer(
@@ -271,17 +287,20 @@ pub(crate) mod tests {
     }
 
     /// The words a tab's drawer and Tabs' head are said in, as tabs.json
-    /// holds them.
+    /// holds them, each program named as its desktop entry names it.
     pub fn words() -> Words {
         Words::read(&json!({"things": [
             {"id": "tabs:tab", "said": {"in": "in {program}", "kind": "tab",
-                "silent": "{program} isn't answering"}},
+                "silent": "{program} isn't answering; its tabs come back when it does."}},
             {"id": "tabs:site", "name": "Site"},
             {"id": "tabs:address", "name": "Address"},
             {"id": "tabs:folder", "name": "Folder"},
-            {"id": "tabs:program:google-chrome", "name": "Chrome"},
-            {"id": "tabs:program:kitty", "name": "Kitty"},
         ]}))
+        .naming(&[
+            json!({"id": "google-chrome", "name": "Google Chrome"}),
+            json!({"id": "kitty", "name": "kitty"}),
+            json!({"id": "zathura", "name": "Zathura"}),
+        ])
     }
 
     /// Chrome's rows alone, before the windows daemon is heard.
@@ -440,16 +459,17 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn return_goes_to_chrome_and_copy_the_link_copies_its_address_in_a_tabs_words() {
+    fn return_goes_to_chrome_and_copy_the_title_and_link_copy_them_in_kittys_order() {
         let record = opened(&[site("1", true, 1, "https://example.org/", "Example")]);
         let rows = rows([("google-chrome", &record)]);
         assert_eq!(
             rows[0]["acts"],
             json!([
                 {"key": "verb:tabs:go", "go": "google-chrome"},
+                {"key": "verb:tabs:title", "copy": "Example"},
                 {"key": "verb:tabs:link", "copy": "https://example.org/"},
             ]),
-            "a page's acts weren't a tab's Go to the Tab then Copy the Link"
+            "a page's acts weren't Go to the Tab, Copy the Title, then Copy the Link"
         );
     }
 
@@ -460,13 +480,13 @@ pub(crate) mod tests {
         assert_eq!(
             rows[0]["drawer"],
             json!({
-                "eyebrow": [{"said": "in Chrome", "keep": 2}, {"said": "tab", "keep": 1}],
+                "eyebrow": [{"said": "in Google Chrome", "keep": 2}, {"said": "tab", "keep": 1}],
                 "title": "Example",
                 "body": "",
                 "facts": [{"label": "Site", "value": "example.org"}],
                 "nerd": [{"label": "Address", "value": "https://example.org/a"}],
             }),
-            "a page's drawer isn't a tab in Chrome, by its site, its address folded"
+            "a page's drawer isn't a tab in its program's entry's name, by its site, its address folded"
         );
     }
 
@@ -478,10 +498,14 @@ pub(crate) mod tests {
             head(["google-chrome", "kitty"], Some(&windows[..]), &words()),
             Some(json!({"key": "head:tabs", "kind": "head", "head": {
                 "key": "head:tabs", "place": "tabs",
-                "said": "Chrome isn't answering, Kitty isn't answering",
+                "said": concat!(
+                    "Google Chrome isn't answering; its tabs come back when it does. ",
+                    "kitty isn't answering; its tabs come back when it does."
+                ),
                 "silent": [
-                    {"in": "google-chrome", "said": "Chrome isn't answering"},
-                    {"in": "kitty", "said": "Kitty isn't answering"},
+                    {"in": "google-chrome",
+                     "said": "Google Chrome isn't answering; its tabs come back when it does."},
+                    {"in": "kitty", "said": "kitty isn't answering; its tabs come back when it does."},
                 ],
             }})),
             "Tabs' head didn't name each program whose tabs couldn't be read"

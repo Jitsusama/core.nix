@@ -161,11 +161,21 @@ fn a_program_with_no_window_open_leaves_its_tabs_out() {
     );
 }
 
+/// What Tabs' head says of a kitty whose entry names it Terminal.
+const SILENT: &str = "Terminal isn't answering; its tabs come back when it does.";
+
 #[test]
 fn tabs_head_says_a_program_isnt_answering_while_its_window_is_open() {
     let running = Running::new("tabs-silent");
     // kitty's list has no file, so reading it fails.
     std::fs::remove_file(running.path("lists/open")).unwrap();
+    // kitty's entry names it, as its Programs row is named.
+    let entry = running.path("near/applications/terminal.desktop");
+    std::fs::write(
+        entry,
+        "[Desktop Entry]\nType=Application\nName=Terminal\nExec=kitty\n",
+    )
+    .unwrap();
     sessioned(&running);
     let mut client = running.client();
     let watch = json!({"id": 1, "ask": "watch", "kind": ["row", "head"], "place": "tabs"});
@@ -175,9 +185,9 @@ fn tabs_head_says_a_program_isnt_answering_while_its_window_is_open() {
     let head = served(&mut client, &["head:tabs"]);
     assert_eq!(
         head[0]["head"],
-        json!({"key": "head:tabs", "place": "tabs", "said": "terminal isn't answering",
-               "silent": [{"in": "terminal", "said": "terminal isn't answering"}]}),
-        "Tabs' head didn't say kitty's tabs can't be read"
+        json!({"key": "head:tabs", "place": "tabs", "said": SILENT,
+               "silent": [{"in": "terminal", "said": SILENT}]}),
+        "Tabs' head didn't say kitty's tabs can't be read, by its entry's name"
     );
     served(&mut client, &[LATER, EARLIER]);
 }

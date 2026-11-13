@@ -30,6 +30,7 @@ ShellRoot {
             glyph: "web", hue: "program", side: [{ said: site, keep: 1 }], keywords: site,
             held: { address, app: "google-chrome", front, tabs: 1 },
             acts: [{ key: "verb:tabs:go", go: "google-chrome" },
+                { key: "verb:tabs:title", copy: title },
                 { key: "verb:tabs:link", copy: address }],
             order
         } };
@@ -170,19 +171,20 @@ ShellRoot {
                 whats === "tab, tab, tab, tab", whats);
             // A program whose tabs can't be read, its window open, is named under Tabs' row
             // while it's picked, until it answers (src/tab_rows.rs's head).
+            const silent = "Google Chrome isn't answering; its tabs come back when it does.";
             tabs.served.link.took([{ key: "head:tabs", kind: "head", head: {
-                key: "head:tabs", place: "tabs", said: "Chrome isn't answering",
-                silent: [{ in: "google-chrome", said: "Chrome isn't answering" }] } }], []);
+                key: "head:tabs", place: "tabs", said: silent,
+                silent: [{ in: "google-chrome", said: silent }] } }], []);
             Expect.expect("Tabs' row names a program not answering",
-                tabs.noted() === "Chrome isn't answering", tabs.noted());
+                tabs.noted() === silent, tabs.noted());
             tabs.served.link.took([], ["head:tabs"]);
             Expect.expect("and says nothing once it answers", tabs.noted() === "", tabs.noted());
             const kittys = tabs.everything()[3].verbs().map(made => made.name).join(", ");
             Expect.expect("a kitty tab goes to, closes and copies the tab",
                 kittys === "Go to the Tab, Close the Tab, Copy the Title", kittys);
             const chromes = tabs.everything()[0].verbs().map(made => made.name).join(", ");
-            Expect.expect("a Chrome tab goes to the tab and copies its link",
-                chromes === "Go to the Tab, Copy the Link", chromes);
+            Expect.expect("a Chrome tab goes to the tab and copies its title and link",
+                chromes === "Go to the Tab, Copy the Title, Copy the Link", chromes);
             const marks = tabs.things.map(made => made.name).join(", ");
             Expect.expect("the bookmarks alone are the main search's", marks === "Runbook", marks);
             const words = tabs.everything().concat(tabs.things)
