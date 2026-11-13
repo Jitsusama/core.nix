@@ -48,7 +48,10 @@
 # minute or more, its first ten seconds of speech, held in memory alone, are
 # cleaned every way and scored in the shadow (shadow.rs): what the scorer
 # would have chosen goes in judged, numbers and names, and nothing changes
-# what calls hear.
+# what that call hears. Once the scorer's best has matched 10 of Joel's 20
+# newest picks by ear, two calls in a row on a microphone at a spot that
+# score one cleaner 0.2 over what ran choose it for the next call there,
+# kept in chose (chooses.rs); a pick of his by ear there always wins.
 {
   config,
   lib,

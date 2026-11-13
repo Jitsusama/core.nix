@@ -17,6 +17,10 @@
 //! kept apart still count: one with a cleaner alone towards the most
 //! picked, and one with no spot as its microphone's pick anywhere.
 //!
+//! Where Joel hasn't picked at a spot, what noise cancelling chose itself
+//! there (chooses.rs) comes before his picks elsewhere, since it was heard
+//! at that spot. It's kept beside the picks in `chose`, in their form.
+//!
 //! A spot takes the machine's name for it, such as "Main Floor", until
 //! Joel gives it one of his own, such as "the desk", kept beside the
 //! picks in `spots`, a line a spot: its key, then his name.
@@ -79,15 +83,23 @@ impl Chosen {
     /// for takes.
     pub fn cleaner(&self, microphone: Option<&str>, spot: Option<&Spot>) -> Cleaner {
         let picks = self.picks();
-        let newest = |at: Option<&str>| {
-            picks.iter().rev().find(|pick| {
-                pick.microphone.as_deref() == microphone
-                    && at.is_none_or(|key| pick.spot.as_deref() == Some(key))
-            })
+        let chose = read(self.beside("chose").as_deref());
+        let newest = |picks: &[Pick], at: Option<&str>| {
+            picks
+                .iter()
+                .rev()
+                .find(|pick| {
+                    pick.microphone.as_deref() == microphone
+                        && at.is_none_or(|key| pick.spot.as_deref() == Some(key))
+                })
+                .map(|pick| pick.cleaner)
         };
+        let key = spot.map(|spot| spot.key.as_str());
         microphone
-            .and_then(|_| newest(spot.map(|spot| spot.key.as_str())).or_else(|| newest(None)))
-            .map(|pick| pick.cleaner)
+            .and_then(|_| {
+                key.and_then(|key| newest(&picks, Some(key)).or_else(|| newest(&chose, Some(key))))
+                    .or_else(|| newest(&picks, None))
+            })
             .or_else(|| most_picked(&picks))
             .unwrap_or(self.configured)
     }
@@ -190,25 +202,54 @@ impl Chosen {
         written(file, &said)
     }
 
-    /// Every pick the file holds, oldest first, past any line naming no
-    /// cleaner this program has.
-    fn picks(&self) -> Vec<Pick> {
-        let said = self
-            .file
-            .as_deref()
-            .and_then(|file| std::fs::read_to_string(file).ok())
-            .unwrap_or_default();
-        said.lines()
-            .filter_map(|line| {
-                let mut fields = line.split_whitespace();
-                Some(Pick {
-                    cleaner: Cleaner::named(fields.next()?).ok()?,
-                    microphone: fields.next().map(str::to_owned),
-                    spot: fields.next().map(str::to_owned),
-                })
-            })
-            .collect()
+    /// Keeps `cleaner` as what noise cancelling chose itself for
+    /// `microphone` at `spot` (chooses.rs), in place of what it chose there
+    /// before, in `chose` beside the picks.
+    pub fn chose_itself(
+        &self,
+        microphone: &str,
+        spot: &Spot,
+        cleaner: Cleaner,
+    ) -> Result<(), String> {
+        let Some(file) = self.beside("chose") else {
+            return Ok(());
+        };
+        let mut chose = read(Some(&file));
+        chose.retain(|pick| {
+            pick.microphone.as_deref() != Some(microphone)
+                || pick.spot.as_deref() != Some(spot.key.as_str())
+        });
+        chose.push(Pick {
+            cleaner,
+            microphone: Some(microphone.to_owned()),
+            spot: Some(spot.key.clone()),
+        });
+        let said: String = chose.iter().map(Pick::line).collect();
+        written(&file, &said)
     }
+
+    /// Every pick the file holds, oldest first.
+    fn picks(&self) -> Vec<Pick> {
+        read(self.file.as_deref())
+    }
+}
+
+/// Every pick `file` holds, oldest first, past any line naming no cleaner
+/// this program has; none when there's no file.
+fn read(file: Option<&Path>) -> Vec<Pick> {
+    let said = file
+        .and_then(|file| std::fs::read_to_string(file).ok())
+        .unwrap_or_default();
+    said.lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some(Pick {
+                cleaner: Cleaner::named(fields.next()?).ok()?,
+                microphone: fields.next().map(str::to_owned),
+                spot: fields.next().map(str::to_owned),
+            })
+        })
+        .collect()
 }
 
 impl Pick {
