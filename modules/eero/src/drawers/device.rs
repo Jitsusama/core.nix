@@ -12,7 +12,7 @@ use ready_rows::time::{self as said_at, Form};
 use serde_json::{Value, json};
 
 use super::node::{BREAK, KEPT, fact, heading, history_spark, stroke, timed, under};
-use super::{DRAWER, joined};
+use super::{DRAWER, joined, timeline};
 use crate::called;
 use crate::model::{Device, HomeNetwork, Rate};
 use crate::rows::{Words, fill, node_name};
@@ -544,25 +544,9 @@ fn events(model: &HomeNetwork, device: &Device, words: &Words) -> Vec<Value> {
             &device.mac
         )
     );
-    let told = model.told.iter().map(|one| {
-        let text = [one.summary.as_str(), one.body.as_str()]
-            .into_iter()
-            .filter(|part| !part.is_empty())
-            .collect::<Vec<_>>()
-            .join(". ");
-        (one.at.as_str(), text)
-    });
-    let mut timeline: Vec<(i64, String)> = model
-        .events
-        .iter()
-        .map(|one| (one.at.as_str(), one.text.clone()))
-        .chain(told)
-        .filter(|(_, text)| text.starts_with(&its))
-        .filter_map(|(at, text)| Some((time::to_unix(at)?, text)))
-        .collect();
-    timeline.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
-    let listed: Vec<Value> = timeline
+    let listed: Vec<Value> = timeline(model)
         .into_iter()
+        .filter(|(_, text)| text.starts_with(&its))
         .map(|(at, text)| {
             json!({
                 "name": said_at::at(at * 1000, Form::Moment),
@@ -576,7 +560,7 @@ fn events(model: &HomeNetwork, device: &Device, words: &Words) -> Vec<Value> {
 
 /// The name eero's sentences call a device by: its name, nickname or
 /// hostname, else its hardware address.
-fn name_of<'a>(names: &[&'a Option<String>; 3], mac: &'a str) -> &'a str {
+pub(super) fn name_of<'a>(names: &[&'a Option<String>; 3], mac: &'a str) -> &'a str {
     names
         .iter()
         .filter_map(|name| name.as_deref())
@@ -588,7 +572,7 @@ fn name_of<'a>(names: &[&'a Option<String>; 3], mac: &'a str) -> &'a str {
 /// unit kept to it, "5.2 GHz", and each device's name of several words
 /// kept on one line, the longest first so a name inside another stays part
 /// of it, a line free to break after a kept name's last number.
-fn sentence(model: &HomeNetwork, text: &str) -> String {
+pub(super) fn sentence(model: &HomeNetwork, text: &str) -> String {
     let mut names: Vec<&str> = model
         .devices
         .iter()

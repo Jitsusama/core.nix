@@ -50,6 +50,7 @@ mod time;
 mod views;
 mod waiting;
 mod watch;
+mod words;
 
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;

@@ -148,23 +148,7 @@
   "launcher/ForYou.js" = [ "launcher/Order.js" ];
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
   "launcher/Heat.qml" = [ "launcher/Seen.js" ];
-  "launcher/HomeNetwork.js" = [
-    "launcher/Interfaces.js"
-    "launcher/Numbers.js"
-    "launcher/Order.js"
-  ];
-  "launcher/HomeNetworkAddresses.js" = [ "launcher/HomeNetworkHistory.js" ];
-  "launcher/HomeNetworkDrawers.js" = [
-    "launcher/HomeNetwork.js"
-    "launcher/HomeNetworkAddresses.js"
-    "launcher/HomeNetworkHistory.js"
-    "launcher/Machine.js"
-  ];
-  "launcher/HomeNetworkHistory.js" = [
-    "When.js"
-    "launcher/HomeNetwork.js"
-    "launcher/Interfaces.js"
-  ];
+  "launcher/HomeNetwork.js" = [ "launcher/Numbers.js" ];
   "launcher/Keeping.js" = [ "launcher/Numbers.js" ];
   "launcher/KeyMap.qml" = [
     "Fuzzy.js"

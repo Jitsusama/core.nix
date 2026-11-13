@@ -71,12 +71,25 @@ pub fn home_network(answers: &Answers, read: &str, cloud: Cloud) -> Option<HomeN
     if network.is_null() {
         return None;
     }
+    let nodes = nodes(answers);
+    let mut internet = internet(answers);
+    // The network names as its target the firmware an update brings, once
+    // one waits, so what runs is what the nodes say they run: the gateway
+    // node's, else any node's, else the target, all one with none waiting.
+    if let Some(running) = nodes
+        .iter()
+        .filter(|node| node.firmware.is_some())
+        .max_by_key(|node| node.gateway)
+        .and_then(|node| node.firmware.clone())
+    {
+        internet.firmware.running = Some(running);
+    }
     Some(HomeNetwork {
         read: read.to_owned(),
         cloud,
         name: text(network, "/name").unwrap_or_default(),
-        internet: internet(answers),
-        nodes: nodes(answers),
+        internet,
+        nodes,
         devices: devices(&answers.devices),
         devices_off: devices_off(&answers.devices),
         profiles: profiles(&answers.profiles, &answers.profile_usage),

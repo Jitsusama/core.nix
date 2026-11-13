@@ -27,19 +27,15 @@
 // The rows are the eero daemon's (modules/eero's rows.rs), served ready
 // in the launcher's words (ReadyRows.qml), so nothing here words a row or
 // orders one, and a row is made again only once the daemon says it
-// changed. A profile's drawer is served beside its row, ready too
-// (modules/eero's drawers.rs), and what's a step into it is its facts as
-// rows. The internet's, a node's and a device's drawer are still worked
-// out in HomeNetworkDrawers.js, held in Qt's own engine
-// (tests/home-network.qml), from the record Eero.qml keeps, found by what
-// the row holds, until the daemon serves them too.
+// changed. Every row's drawer is served beside it, ready too
+// (modules/eero's drawers.rs), its times worded as it's drawn, and what's
+// a step into it is its facts as rows.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "HomeNetwork.js" as Home
-import "HomeNetworkDrawers.js" as Drawers
 import "Order.js" as Order
 
 Provider {
@@ -58,59 +54,26 @@ Provider {
         && (launcher.held ?? []).some(step => step.row.from === provider)
     onLookingChanged: Eero.watching = looking
 
-    // A part's name, as the vocabulary says it within one of the place's
-    // things: "eero:node:backhaul" is Backhaul.
-    function named(scope, id, fill) {
-        return Words.name(`eero:${scope}:${id}`, "", fill);
-    }
-
-    // The time the drawers say "today" against, and ages from.
-    function now() {
-        return Date.now();
-    }
-
-    // A drawer from what HomeNetworkDrawers.js says, each part named by the
-    // vocabulary, a stroke drawn as the drawer draws one.
-    function plate(scope, said) {
-        return {
-            eyebrow: said.eyebrow,
-            // An eyebrow naming a node or an internet provider keeps its case, as a name
-            // from the world is never re-cased (Drawer.qml).
-            eyebrowNames: said.names === true,
-            title: said.title,
-            facts: said.facts.map(one => one.heading !== undefined
-                ? { heading: provider.named(scope, one.heading) }
-                : {
-                    label: one.label ?? provider.named(scope, one.id, one.fill),
-                    value: one.value,
-                    figure: one.figure ?? undefined,
-                    // A sentence, as eero's events are, set as prose in
-                    // Words rather than as a figure (VKCF3Z, 2026-11-08).
-                    words: one.words ?? undefined
-                })
-        };
-    }
-
-    // The same figures as rows a step in, each copied by Return, a heading
-    // naming the rows under it, as the drawer's does.
-    function parts(scope, key, said) {
+    // A drawer's figures as rows a step in, each copied by Return and noted
+    // by the heading it's under, as the drawer has it.
+    function parts(key, said) {
         let under = "";
         const rows = [];
         for (const one of said.facts) {
             if (one.heading !== undefined) {
-                under = provider.named(scope, one.heading);
+                under = one.heading;
                 continue;
             }
-            const name = one.label ?? provider.named(scope, one.id, one.fill);
+            const name = one.label;
             const graph = one.figure ?? null;
             rows.push(copyRow({
-                key: `${key}:${one.id ?? ""}:${name}`,
+                key: `${key}:${name}`,
                 name: name,
                 side: one.value,
                 copy: one.value,
                 hue: "machine",
                 glyph: "",
-                note: one.label !== undefined || one.fill !== undefined ? under : "",
+                note: under,
                 graph: graph === null ? undefined : {
                     shape: graph.shape === "stroke" ? "bar" : graph.shape,
                     values: graph.values,
@@ -129,7 +92,7 @@ Provider {
 
         socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/eero/socket`
         place: "eero"
-        // The place's own drawer and each profile's, served beside its rows.
+        // The place's own drawer and every row's, served beside the rows.
         beside: ["drawer"]
         watching: ({
                 words: provider.settings.words ?? "",
@@ -140,17 +103,14 @@ Provider {
         drawn: provider.launcher?.open ?? false
     }
 
-    // A served row as the place draws it: a thing, its drawer and what's
-    // a step in it, the drawer served beside it where it names one, else
-    // worked out from the record as they're asked. Each says
+    // A served row as the place draws it: a thing, its drawer served beside
+    // it, and what's a step in it. Each says
     // no note on the cursor's row while its drawer is out, as the drawer
     // says every part of it, so the row's side reads as its neighbours'
     // do (VKCF3Z, 2026-11-08).
     function madeFrom(row, key) {
         const kind = row.kind ?? "";
-        const served = typeof row.drawer === "string";
-        const said = () => served ? ready.drawerOf(row) ?? { facts: [] }
-            : provider.drawerSaid(kind);
+        const said = () => ready.drawerOf(row) ?? { facts: [] };
         const made = ready.thing(row, key, {
             thing: true,
             noteInDrawer: true,
@@ -163,26 +123,21 @@ Provider {
             // The first node and the first profile each start a group.
             gap: (kind === "node" || kind === "profile")
                 && ready.keys.find(one => ready.held[one]?.row?.kind === kind) === key,
-            drawer: served ? () => ready.drawerOf(row) : () => provider.plate(kind, said())
+            drawer: () => ready.drawerOf(row)
         });
         if (made === null)
             return null;
         return entering(made, kind === "internet"
-            ? () => provider.acts().concat(provider.parts(kind, made.key,
+            ? () => provider.acts().concat(provider.parts(made.key,
                 provider.withoutSwitch(said())))
-            : () => provider.parts(kind, made.key, said()));
-    }
-
-    // What the internet's drawer says; every other row's drawer is served
-    // by the eero daemon beside it.
-    function drawerSaid(kind) {
-        return kind === "internet" ? Drawers.internet(model, now(), settings) : { facts: [] };
+            : () => provider.parts(made.key, said()));
     }
 
     // The internet's figures less how conferencing and gaming stands, which
     // its switch says a few rows above, so the step says it once.
     function withoutSwitch(said) {
-        return Object.assign({}, said, { facts: said.facts.filter(one => one.id !== "sqm") });
+        const sqm = Words.name("eero:internet:sqm");
+        return Object.assign({}, said, { facts: said.facts.filter(one => one.label !== sqm) });
     }
 
     // What can be done to the home network, a step into the internet: run

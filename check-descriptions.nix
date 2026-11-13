@@ -2623,10 +2623,9 @@
     runs its daemon, and not on one without it
   '';
   the-home-network-says-each-figure = ''
-    the Home Network place lists the gateway node first and each node after the one it hangs
-    from, its devices under it, and says every figure the eero contract places in the internet's,
-    a node's, a device's and a profile's drawer, each in its own unit, none eero didn't give, the
-    internet's timeline setting each notice the daemon told among eero's events, newest first
+    the figures the Home Network, the Work Network, Machine and the virtual machines say rates and
+    sizes in read in their own units to three digits, and the Home Network's row at home counts
+    its nodes and devices; its rows and drawers are the eero daemon's, held by its own tests
   '';
   the-kernel-boots-with-its-modules-keys = ''
     a machine with Secure Boot boots a kernel image carrying the certificates of the keys its

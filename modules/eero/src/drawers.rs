@@ -3,9 +3,8 @@
 //! `drawer:eero:<kind>:<id>`, served beside the rows and named by its row's
 //! `drawer`, so a watch is told one only once it reads differently, and its
 //! row isn't made again for it. A profile's drawer, a node's
-//! (drawers/node.rs) and a device's (drawers/device.rs) are made here;
-//! the internet's is still worked out in the shell (HomeNetworkDrawers.js)
-//! until it's made here too.
+//! (drawers/node.rs), a device's (drawers/device.rs) and the internet's
+//! (drawers/internet.rs) are made here.
 
 use ready_rows::numbers::Numbers;
 use serde_json::{Value, json};
@@ -16,9 +15,11 @@ use crate::place::KIND as DRAWER;
 use crate::rows::{Words, fill, node_name};
 
 mod device;
+mod internet;
 mod node;
 
 pub use device::{NAMES as DEVICE_NAMES, key as device_key};
+pub use internet::{KEY as INTERNET_KEY, NAMES as INTERNET_NAMES};
 pub use node::{NAMES as NODE_NAMES, key as node_key};
 
 /// The parts the drawers name, each by its thing in the vocabulary.
@@ -61,6 +62,7 @@ pub fn records(model: &HomeNetwork, words: &Words, numbers: &Numbers) -> Vec<Val
         })
         .chain(node::records(model, words, numbers))
         .chain(device::records(model, words, numbers))
+        .chain([internet::record(model, words, numbers)])
         .collect()
 }
 
@@ -294,6 +296,30 @@ fn to_f64(count: u64) -> f64 {
 }
 
 /// Parts said together, a dot between each, those saying nothing left out.
+/// What happened over the last 30 days, newest first, each by when in
+/// seconds: eero's activity in its own words, and each change the daemon
+/// told as a notice, its summary then what it said, a sentence as eero's
+/// are, so a drawer reads as `eero events` does.
+fn timeline(model: &HomeNetwork) -> Vec<(i64, String)> {
+    let told = model.told.iter().map(|one| {
+        let text = [one.summary.as_str(), one.body.as_str()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(". ");
+        (one.at.as_str(), text)
+    });
+    let mut timeline: Vec<(i64, String)> = model
+        .events
+        .iter()
+        .map(|one| (one.at.as_str(), one.text.clone()))
+        .chain(told)
+        .filter_map(|(at, text)| Some((crate::time::to_unix(at)?, text)))
+        .collect();
+    timeline.sort_by_key(|(at, _)| std::cmp::Reverse(*at));
+    timeline
+}
+
 fn joined(parts: impl IntoIterator<Item = String>) -> String {
     parts
         .into_iter()

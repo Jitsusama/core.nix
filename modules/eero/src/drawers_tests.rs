@@ -180,7 +180,7 @@ fn a_profile_eero_said_none_of_its_figures_of_says_only_its_devices() {
 }
 
 #[test]
-fn each_profile_node_and_device_row_names_the_drawer_served_beside_it() {
+fn every_row_names_the_drawer_served_beside_it() {
     let model = model();
     let words = words();
     let numbers = Numbers::default();
@@ -188,15 +188,11 @@ fn each_profile_node_and_device_row_names_the_drawer_served_beside_it() {
     let rows = crate::rows::rows(&model, &words, &numbers);
     let drawers = records(&model, &words, &numbers);
 
-    let mut named: Vec<&Value> = rows
-        .iter()
-        .filter(|row| ["profile", "node", "device"].contains(&row["kind"].as_str().unwrap_or("")))
-        .map(|row| &row["drawer"])
-        .collect();
+    let mut named: Vec<&Value> = rows.iter().map(|row| &row["drawer"]).collect();
     let mut served: Vec<&Value> = drawers.iter().map(|record| &record["key"]).collect();
     named.sort_by_key(|key| key.as_str());
     served.sort_by_key(|key| key.as_str());
-    assert_eq!(named, served);
+    assert_eq!(named, served, "the internet, each node, device and profile");
     assert!(
         drawers.iter().all(|record| record["kind"] == "drawer"),
         "each is a drawer's record"

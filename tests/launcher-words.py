@@ -268,9 +268,13 @@ STRAY_UNITS = [
 ]
 
 # Names cased as their own, which open a side word as they're written:
-# a network's generation reads "Wi-Fi 6", a node's link "Ethernet", and a
-# cleaner "DeepFilterNet, gentle" or "RNNoise", as their makers write them.
-PROPER = {"Wi-Fi", "Ethernet", "DeepFilterNet", "RNNoise", "YouTube"}
+# a network's generation reads "Wi-Fi 6", a node's link "Ethernet", a
+# resolver's mode "IPv6 automatic", and a cleaner "DeepFilterNet, gentle"
+# or "RNNoise", as their makers write them.
+PROPER = {"Wi-Fi", "Ethernet", "IPv6", "DeepFilterNet", "RNNoise", "YouTube"}
+
+# A hole a word is filled at, "{asn}", which isn't a word of its own.
+HOLE = re.compile(r"\{\w+\}")
 
 # A verb of two words is a turn, which says the way it goes, or one whose
 # second word is part of it ("log out", "go to"), as the launcher's foot
@@ -316,9 +320,11 @@ def unsaid(vocabulary: Entry) -> list[str]:
         if key == "name" and text[:1].isdigit():
             out.append(f"{thing}'s name {text!r} reads its value first.")
         # An initialism keeps its capitals ("LE Audio", "USB"), its own too
-        # ("WARP's measure"), and a name of its own its case ("Wi-Fi 6"),
-        # so only a word cased as a name is refused.
-        first = text.split()[0].removesuffix(",").removesuffix("'s") if text.strip() else ""
+        # ("WARP's measure") and with a figure run into it ("AS{asn}"), and
+        # a name of its own its case ("Wi-Fi 6"), so only a word cased as a
+        # name is refused.
+        word = text.split()[0] if text.strip() else ""
+        first = HOLE.sub("", word).removesuffix(",").removesuffix("'s")
         named_so = first.isupper() or first in PROPER
         if key == "said" and text[:1].isupper() and not named_so:
             out.append(f"{thing} says {text!r} beside it with a capital, as no value starts.")

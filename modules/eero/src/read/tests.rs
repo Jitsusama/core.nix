@@ -28,6 +28,26 @@ fn the_contract_and_its_history_read_into_the_model() {
 }
 
 #[test]
+fn the_firmware_running_is_the_nodes_while_an_update_waits() {
+    // As eero answered with v7.18 waiting (2026-11-12): the network names
+    // the firmware the update brings as its target, the nodes still on
+    // v7.17.4-5.
+    let mut answers = contract_answers();
+    answers.network["updates"]["target_firmware"] = json!("v7.18.0-12307");
+    answers.network["updates"]["update_to_firmware"] = json!("v7.18.0-12307");
+    answers.network["updates"]["has_update"] = json!(true);
+
+    let read = home_network(&answers, READ, answering()).expect("the network was read");
+
+    let firmware = &read.internet.firmware;
+    assert_eq!(
+        (firmware.running.as_deref(), firmware.next.as_deref()),
+        (Some("v7.17.4-5"), Some("v7.18.0-12307")),
+        "what runs is what the nodes run, and what's next what the update brings"
+    );
+}
+
+#[test]
 fn this_machine_is_the_device_with_one_of_its_addresses() {
     let mut read =
         home_network(&contract_answers(), READ, answering()).expect("the network was read");

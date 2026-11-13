@@ -77,9 +77,7 @@
       cp ${./tests/machines.qml} machines.qml
       cp ${./Machines.js} Machines.js
       cp ${../quickshell/launcher/HomeNetwork.js} HomeNetwork.js
-      cp ${../quickshell/launcher/Order.js} Order.js
       cp ${../quickshell/launcher/Numbers.js} Numbers.js
-      cp ${../quickshell/launcher/Interfaces.js} Interfaces.js
       cp ${(import ../quickshell/launcher/words.nix).file} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
