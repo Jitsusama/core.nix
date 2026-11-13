@@ -405,11 +405,13 @@ ShellRoot {
             JSON.stringify(Sessions.toReopen));
         expect("the boot they're of, which places are kept by",
             Sessions.restoring.boot === "an-earlier-boot", JSON.stringify(Sessions.restoring));
-        // Told, as it answered, which sessions that boot kept a place of,
-        // here none, since only the shell keeps the arrangement.
-        const arranged = agentsAsked.filter(one => one.ask === "arranged");
-        expect("the daemon told which the boot kept a place of", arranged.length > 0
-            && arranged.every(one => Array.isArray(one.ids)), JSON.stringify(agentsAsked));
+        // Where that boot's windows sat, as the daemon keeps it, never
+        // kept here.
+        expect("the places kept are the daemon's",
+            Sessions.arrangement["an-earlier-boot"]?.["s-elsewhere"]?.workspace === 2
+            && Sessions.arrangedOthers["an-earlier-boot"]?.[0]?.app === "slack"
+            && Sessions.arrangedBefore() === "an-earlier-boot",
+            JSON.stringify(Sessions.arrangement));
         Sessions.lastBoot.forEach(one => Sessions.reopen(one, told(one.id)));
         // One held elsewhere is joined again once, however often asked.
         Sessions.reopen(Sessions.lastBoot.find(one => one.id === "s-far"), told("s-far"));
@@ -517,7 +519,7 @@ ShellRoot {
     // Forgotten, one carried is offered no more, as the daemon says; put
     // off, the last boot's go, as it says too, and those apart stay.
     function forgetting() {
-        const asked = agentsAsked.filter(one => one.ask !== "arranged");
+        const asked = agentsAsked;
         const ids = Sessions.toReopen.map(one => one.id).join(" ");
         if (asked.length === 1 && ids === "s-before s-fresh s-given-back s-hosted s-far "
             + "s-ferry s-freed") {
@@ -787,7 +789,11 @@ ShellRoot {
         return offered.map(([way, one], at) => ({ key: `reopen:agents:${one.id}`,
             kind: "reopen", order: (at + 1) * 1024, way, session: one })).reverse()
             .concat([{ key: "restoring:agents", kind: "restoring",
-                restoring: { boot: "an-earlier-boot" } }]);
+                restoring: { boot: "an-earlier-boot" } },
+            { key: "arrangement:agents", kind: "arrangement", arrangement: { v: 1,
+                boots: { "an-earlier-boot": { "s-elsewhere": { output: "DP-4", workspace: 2,
+                    column: 1, tile: 1 } } },
+                others: { "an-earlier-boot": [{ app: "slack", title: "Slack" }] } } }]);
     }
 
     // A stand-in for the agents daemon (modules/agents), speaking the
@@ -814,7 +820,8 @@ ShellRoot {
                     }
                     if (ask.ask === "watch") {
                         const watched = JSON.stringify([ask.kind, ask.place]);
-                        if (watched !== '[["reopen","restoring","to-reopen"],"agents"]')
+                        if (watched
+                            !== '[["reopen","restoring","to-reopen","arrangement"],"agents"]')
                             root.fail(`a watch the shell has no need of: ${line}`);
                         said([{ id: ask.id, records: root.reopenRecords() }]);
                         return;
@@ -828,8 +835,6 @@ ShellRoot {
                     else if (ask.ask === "put-off")
                         said([{ id: ask.id, "put-off": true },
                             { id: "all", changed: [], gone: boot }]);
-                    else if (ask.ask === "arranged")
-                        said([{ id: ask.id, arranged: ask.ids.length }]);
                     else
                         root.fail(`an ask of the agents daemon the shell has no need of: ${line}`);
                     Qt.callLater(root.check);

@@ -5,15 +5,15 @@
 //! followed as every daemon of the shell follows one (daemon-serve's
 //! `watch`).
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
 
-pub use daemon_serve::watch::follow;
+pub use daemon_serve::watch::{follow, follow_asking};
 use serde_json::Value;
 
 use crate::answered;
+use crate::arrangement::Arrangement;
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
 
@@ -34,6 +34,10 @@ pub enum Heard {
     ToDos(Value),
     /// An answer to the windows daemon's watch of its windows.
     Windows(Value),
+    /// An answer to the windows daemon's watch of its workspaces.
+    Workspaces(Value),
+    /// An answer to the windows daemon's watch of its Screens rows.
+    Screens(Value),
     /// Files that landed or went.
     Files(Vec<PathBuf>),
     /// Whether the shell says the screen is shared.
@@ -42,9 +46,6 @@ pub enum Heard {
     PutOff,
     /// Joel forgets one of the sessions to reopen, by pi's id for it.
     Forget(String),
-    /// The sessions the boot being restored kept a place of, by pi's id,
-    /// as the shell says.
-    Arranged(HashSet<String>),
     /// Joel reads these landings, by their keys, at this moment in
     /// milliseconds, as the shell says.
     Read(Vec<String>, i64),
@@ -73,8 +74,24 @@ pub struct Paths {
     /// its talks, where the daemon says Joel read an answer.
     pub steer: PathBuf,
     /// The shell's own folders, where the launcher kept what Joel read
-    /// before the daemon did, read once while `landed` isn't there.
+    /// before the daemon did, read once while `landed` isn't there, and
+    /// where its sessions' windows sat, read once while `arrangement`
+    /// isn't there.
     pub shells: PathBuf,
+    /// Where each session's window sat, which the daemon writes and
+    /// follows, so a hand that writes it is heard.
+    pub arrangement: PathBuf,
+}
+
+impl Heard {
+    /// Whether it can move where a session's window sits, which is kept
+    /// once they've been still a moment.
+    pub fn moves_places(&self) -> bool {
+        matches!(
+            self,
+            Self::Sessions(_) | Self::Windows(_) | Self::Workspaces(_) | Self::Screens(_)
+        )
+    }
 }
 
 impl Paths {
@@ -85,6 +102,7 @@ impl Paths {
             self.budgets.clone(),
             self.orchestrators.clone(),
             self.restore.clone(),
+            self.arrangement.clone(),
         ]
     }
 }
@@ -129,6 +147,12 @@ impl Inputs {
             Heard::Windows(answer) => {
                 self.windows.took(&answer);
             }
+            Heard::Workspaces(answer) => {
+                self.workspaces.took(&answer);
+            }
+            Heard::Screens(answer) => {
+                self.screens.took(&answer);
+            }
             Heard::Files(landed) => {
                 for path in landed {
                     self.read(&path, paths);
@@ -145,7 +169,6 @@ impl Inputs {
                 self.kept.forget(&id, self.restore.as_ref());
                 self.keep(paths);
             }
-            Heard::Arranged(ids) => self.arranged = ids,
             Heard::Read(keys, now) => {
                 let (_, held) = self.landed();
                 self.read.mark(&keys, now, &held);
@@ -185,6 +208,12 @@ impl Inputs {
             self.orchestrators = file::read(path);
         } else if path == paths.restore {
             self.restore = file::read(path);
+        } else if path == paths.arrangement {
+            // Read again whenever it's written, by the daemon or another
+            // hand, as the shell read its own file of them.
+            if let Some(kept) = Arrangement::read(path) {
+                self.arrangement = kept;
+            }
         }
     }
 }
@@ -209,6 +238,7 @@ mod tests {
             landed: folder.join("agents").join("landed.json"),
             steer: folder.join("steer"),
             shells: folder.join("by-shell"),
+            arrangement: folder.join("agents").join("arrangement.json"),
         }
     }
 

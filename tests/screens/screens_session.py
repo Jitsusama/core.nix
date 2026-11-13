@@ -396,7 +396,6 @@ class Screens:
             self.in_niri("ls -d ~/.local/state/quickshell/by-shell/*"),
             timeout=dt.timedelta(seconds=60),
         )
-        folder = self.machine.succeed(self.in_niri("echo ~/.local/state/quickshell/by-shell/*"))
         self.machine.succeed(self.in_niri("zsh -lic true"), timeout=dt.timedelta(seconds=300))
         self.machine.succeed(self.in_niri("touch $XDG_RUNTIME_DIR/pi-stays"))
         sessions = [{"id": one, "cwd": f"/home/{self.account}"} for one in where]
@@ -405,7 +404,7 @@ class Screens:
             {"v": 1, "boot": "a-boot-before", "sessions": sessions},
         )
         self.keep(
-            f"{folder.strip()}/session-arrangement.json",
+            "~/.local/state/agents/arrangement.json",
             {"v": 1, "boots": {"a-boot-before": where}},
         )
         return self.machine.succeed("cat /proc/sys/kernel/random/boot_id").strip()
@@ -429,7 +428,10 @@ class Screens:
 
     def keep(self, path: str, read: dict[str, Any]) -> None:
         """Write a file the agents keep, whole, as they do."""
-        written = f"printf %s {shlex.quote(json.dumps(read))} > {path}.q && mv {path}.q {path}"
+        written = (
+            f"mkdir -p $(dirname {path}) && printf %s {shlex.quote(json.dumps(read))} > {path}.q"
+            f" && mv {path}.q {path}"
+        )
         self.machine.succeed(self.in_niri(written))
 
     def sessions_sat(self, prefix: str) -> dict[str, tuple[str, int, int]]:

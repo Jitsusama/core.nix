@@ -37,16 +37,11 @@ pub const KIND: &str = "arrangement";
 /// shell waited.
 pub const STILL: Duration = Duration::from_secs(2);
 
-const STUB: bool = true;
-
 /// Each lit screen's connector and what the screen is, from the windows
 /// daemon's Screens rows, each holding niri's record of its output. One
 /// that's off, as the laptop's is while its lid is shut on the dock, has
 /// no place in the layout, so it's as gone as one unplugged.
 pub fn screens(rows: &Held) -> HashMap<String, String> {
-    if STUB {
-        return HashMap::new();
-    }
     rows.records()
         .filter_map(|(_, row)| {
             let held = &row["held"];
@@ -112,9 +107,6 @@ pub fn now<'a>(
     paired: &[Value],
     desk: &Desk<'_>,
 ) -> Map<String, Value> {
-    if STUB {
-        return Map::new();
-    }
     let leaders: HashSet<String> = sessions
         .clone()
         .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
@@ -150,9 +142,6 @@ pub fn now<'a>(
 /// Every tiled window but kitty's, whose windows are sessions or a
 /// terminal of Joel's own, oldest first: Chrome's, Slack's and the like.
 pub fn others(desk: &Desk<'_>) -> Vec<Value> {
-    if STUB {
-        return Vec::new();
-    }
     let mut windows: Vec<&Value> = desk
         .windows
         .records()
@@ -204,9 +193,6 @@ impl Arrangement {
     /// What the shell kept before the daemon did, in the newest of its own
     /// folders under `shells`, read once while the daemon has kept none.
     pub fn from_shell(shells: &Path) -> Self {
-        if STUB {
-            return Self::default();
-        }
         fs::read_dir(shells)
             .into_iter()
             .flatten()
@@ -229,9 +215,6 @@ impl Arrangement {
     /// another boot at 18:41, and the places Reopen Them All had just used
     /// were dropped at 18:43, so nobody could see which it misplaced.
     pub fn before(&self, boot: &str, restoring: &str) -> Option<&str> {
-        if STUB {
-            return None;
-        }
         if !restoring.is_empty() && restoring != boot && self.boots.contains_key(restoring) {
             return Some(restoring);
         }
@@ -250,9 +233,6 @@ impl Arrangement {
         now: Map<String, Value>,
         others: Vec<Value>,
     ) -> Self {
-        if STUB {
-            return self.clone();
-        }
         let mut this = self
             .boots
             .get(boot)
@@ -276,9 +256,6 @@ impl Arrangement {
 
     /// The sessions the boot being restored kept a place of, by pi's id.
     pub fn arranged(&self, restoring: &str) -> HashSet<String> {
-        if STUB {
-            return HashSet::new();
-        }
         self.boots
             .get(restoring)
             .and_then(Value::as_object)
@@ -319,9 +296,6 @@ impl Still {
     /// How long from `at` until they've been still long enough, or none
     /// while nothing waits to be kept.
     pub fn wait(&self, at: Instant) -> Option<Duration> {
-        if STUB {
-            return None;
-        }
         self.moved
             .map(|moved| (moved + STILL).saturating_duration_since(at))
     }

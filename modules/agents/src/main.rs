@@ -17,19 +17,21 @@
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
 //! budgets.json read from beside it), ORCHESTRATORS the harness's list of
 //! them, RESTORE its list of sessions to reopen, KEPT the daemon's own
-//! file of what Joel said of those, LANDED its file of the landings he
+//! file of what Joel said of those (where each session's window sat is
+//! kept beside it, in arrangement.json), LANDED its file of the landings he
 //! has read, STEER the harness's steer folders, which keep each
 //! session's talks, and SHELLS the launcher's own folders, where it kept them
 //! before the daemon did. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, mpsc};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use agents::acts;
+use agents::arrangement::{Arrangement, Still};
 use agents::feedback::{self, Landings};
 use agents::inputs::Inputs;
 use agents::landed::Reading;
@@ -60,6 +62,7 @@ const DOMAIN: Domain = Domain {
         "landed-days",
         "closed",
         "agent-window",
+        "arrangement",
     ],
     sole: &[],
     named_only: &[],
@@ -148,23 +151,6 @@ fn own(
             };
             let _ = told.send(Heard::Forget(id.to_owned()));
             return Some(json!({"forgot": id}));
-        }
-        // Which sessions the boot being restored kept a place of, as the
-        // shell keeps its arrangement, so one pi's host runs is back only
-        // once its viewer is (reopen.rs).
-        if said["ask"] == "arranged" {
-            let Some(ids) = said["ids"].as_array() else {
-                return Some(json!({"error": {"code": "not-an-ask",
-                    "message": "an arranged names no `ids`"}}));
-            };
-            let ids: HashSet<String> = ids
-                .iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect();
-            let count = ids.len();
-            let _ = told.send(Heard::Arranged(ids));
-            return Some(json!({"arranged": count}));
         }
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -267,12 +253,27 @@ fn main() -> ExitCode {
         sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
-    sources::follow(args.windows, "window", Heard::Windows, to.clone());
+    sources::follow(args.windows.clone(), "window", Heard::Windows, to.clone());
+    sources::follow(
+        args.windows.clone(),
+        "workspace",
+        Heard::Workspaces,
+        to.clone(),
+    );
+    // Screens' rows alone, for what each screen is, since a place names
+    // its screen by that rather than by a connector a dock can change.
+    sources::follow_asking(
+        args.windows,
+        json!({"kind": "row", "place": "displays"}),
+        Heard::Screens,
+        to.clone(),
+    );
     let paths = Paths {
         budgets: args.spend.with_file_name("budgets.json"),
         spend: args.spend,
         orchestrators: args.orchestrators,
         restore: args.restore,
+        arrangement: args.kept.with_file_name("arrangement.json"),
         kept: args.kept,
         landed: args.landed,
         steer: args.steer,
@@ -290,15 +291,40 @@ fn main() -> ExitCode {
         kept: Kept::read(&paths.kept),
         home: std::env::var("HOME").unwrap_or_default(),
         read: Reading::read(&paths.landed).unwrap_or_else(|| Reading::from_shell(&paths.shells)),
+        arrangement: Arrangement::read(&paths.arrangement)
+            .unwrap_or_else(|| Arrangement::from_shell(&paths.shells)),
         ..Inputs::default()
     };
     let mut served = Served::default();
-    while let Ok(first) = heard.recv() {
-        inputs.hear(first, &paths);
+    let mut still = Still::default();
+    loop {
+        // It waits on nothing but what's said, unless places wait to be
+        // kept once the windows are still.
+        let first = match still.wait(Instant::now()) {
+            None => match heard.recv() {
+                Ok(first) => Some(first),
+                Err(_) => break,
+            },
+            Some(wait) => match heard.recv_timeout(wait) {
+                Ok(first) => Some(first),
+                Err(RecvTimeoutError::Timeout) => None,
+                Err(RecvTimeoutError::Disconnected) => break,
+            },
+        };
+        let mut said: Vec<Heard> = first.into_iter().collect();
         // Everything said meanwhile is taken before the rows are made, so
         // sources speaking at once make the rows once.
         while let Ok(more) = heard.try_recv() {
-            inputs.hear(more, &paths);
+            said.push(more);
+        }
+        for one in said {
+            if one.moves_places() {
+                still.moved(Instant::now());
+            }
+            inputs.hear(one, &paths);
+        }
+        if still.due(Instant::now()) {
+            inputs.keep_places(&paths.arrangement);
         }
         if !served.take(inputs.made()).is_empty() {
             landings.hold(served.all());

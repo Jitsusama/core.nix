@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 import desktop_session
 import pytest
 from desktop_session import (
+    ARRANGED,
     HARNESS,
     INBOX,
     LAUNCHER_OPEN,
@@ -1160,7 +1161,6 @@ def two_kept_beside_notes(
     Each session's folder is its id past the prefix, in the home folder, and each stays open
     (pi-stays). Gives this boot's id, the sessions to hand over, and Notes' window.
     """
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
     where = {
@@ -1171,7 +1171,7 @@ def two_kept_beside_notes(
     desktop.as_account(f"touch $XDG_RUNTIME_DIR/pi-stays && mkdir -p ~/{first[5:]} ~/{second[5:]}")
     lost = {"v": 1, "boot": "a-boot-before", "sessions": sessions}
     kept(desktop, "~/.local/state/pi/restore.json", lost)
-    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+    kept(desktop, ARRANGED, {"v": 1, "boots": {"a-boot-before": where}})
     stand_in(desktop, "notes", "Notes")
     notes = next(window for window in desktop.windows() if window["app_id"] == "notes")
     desktop.as_account(f"niri msg action focus-window --id {notes['id']}")
@@ -1279,8 +1279,7 @@ def test_agents_reopens_each_session_where_it_sat(desktop: Desktop) -> None:
     # A session's workspace, column and tile are kept by its own id for
     # this boot, once its windows have been still a moment.
     desktop.pi_session()
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
-    arranged = f"{folder}/session-arrangement.json"
+    arranged = ARRANGED
     machine.wait_until_succeeds(
         desktop.in_session(f"grep -q 01a1face-test {arranged}"), timeout=dt.timedelta(seconds=30)
     )
@@ -1390,8 +1389,7 @@ def test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile(
 ) -> None:
     """Each session goes back where it sat while Joel moves the focus and the workspace."""
     machine = desktop.machine
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
-    arranged = f"{folder}/session-arrangement.json"
+    arranged = ARRANGED
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     outputs = json.loads(desktop.as_account("niri msg --json outputs"))
     output, described = next(iter(outputs.items()))
@@ -1469,7 +1467,6 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
 ) -> None:
     """A terminal Joel opens while sessions reopen isn't taken for one, and each goes back."""
     machine = desktop.machine
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     output = next(iter(json.loads(desktop.as_account("niri msg --json outputs"))))
     where = {
@@ -1484,7 +1481,7 @@ def test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal(
         "~/.local/state/pi/restore.json",
         {"v": 1, "boot": "a-boot-before", "sessions": sessions},
     )
-    kept(desktop, f"{folder}/session-arrangement.json", {"v": 1, "boots": {"a-boot-before": where}})
+    kept(desktop, ARRANGED, {"v": 1, "boots": {"a-boot-before": where}})
     # The kitty that holds the sessions, started and then held still, so the
     # first session's window waits on it and Joel's own terminal shows
     # first, as it can when that kitty is slow, as it is starting cold.
@@ -1656,7 +1653,7 @@ def put_back(now: dict[str, tuple[int, int]]) -> bool:
 
 
 def kept_with(desktop: Desktop, arranged: str, boot: str, app: str) -> dict[str, Any]:
-    """Give the places kept once the shell keeps a window of a program's for a boot."""
+    """Give the places kept once the agents daemon keeps a window of a program's for a boot."""
     deadline = time.monotonic() + 30
     while True:
         read = json.loads(desktop.as_account(f"cat {arranged}"))
@@ -1669,8 +1666,7 @@ def kept_with(desktop: Desktop, arranged: str, boot: str, app: str) -> dict[str,
 def test_agents_puts_back_the_windows_that_reopen_themselves(desktop: Desktop) -> None:
     """Reopen Them All puts back the windows that reopen themselves, beside their sessions."""
     machine = desktop.machine
-    folder = desktop.as_account("echo ~/.local/state/quickshell/by-shell/*").strip()
-    arranged = f"{folder}/session-arrangement.json"
+    arranged = ARRANGED
     boot = desktop.as_account("cat /proc/sys/kernel/random/boot_id").strip()
     [(output, said)] = json.loads(desktop.as_account("niri msg --json outputs")).items()
     screen = " ".join(part for part in (said["make"], said["model"], said["serial"]) if part)
