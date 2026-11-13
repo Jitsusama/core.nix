@@ -222,5 +222,12 @@
     "owner_pr": 3884,
     "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "vm-desktop-launcher-keeps-up"
+  },
+  {
+    "at": 1794543709,
+    "commit": "1e356cd3a563977911cdeaa9915b34cca540c82a",
+    "owner_pr": 3884,
+    "reason": "has been broken since #3884, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "vm-desktop-moves-keep-their-window"
   }
 ]
