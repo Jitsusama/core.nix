@@ -8,7 +8,9 @@
 # are managed centrally, where pi refuses --no-extensions, pi-ask leaves the
 # flag out and loads the machine's extensions all the same. Started with no
 # more than a user service has, as the launcher starts it, pi-ask puts the
-# machine's folders ahead on pi's PATH, in the order named.
+# machine's folders ahead on pi's PATH, in the order named. Stopped as the
+# shell's service stops, every process at once, pi is gone at once, however
+# long it would take to wind down, and it reads what the launcher asks.
 # usage: pi-ask-answers-on-the-machines-plan.sh <pi-ask on pi's plan>
 #          <pi-ask on the Claude plan> <the stand-in pi-claude>
 set -euo pipefail
@@ -48,6 +50,15 @@ done
   echo "path $PATH"
   printf 'arg %s\n' "$@"
 } > "$SAID"
+# A pi that winds down slowly once told to stop, as a real one does, saying
+# what it was asked first.
+if [ -n "${SLOW_TO_STOP:-}" ]; then
+  trap 'echo "pi winding down" >> "$SAID"' TERM
+  IFS= read -r asked
+  echo "heard $asked" >> "$SAID"
+  echo "pid $$" >> "$SAID"
+  while :; do sleep 0.1; done
+fi
 EOF
 chmod +x "$work/bin/pi"
 export PATH=$work/bin:$PATH SAID=$said
@@ -70,6 +81,8 @@ launches() {
   follows --exclude-tools 'mcp__*'
   lacks "arg --no-tools"
 }
+# How many extensions it was started with.
+loaded() { grep -cxF -- "arg -e" "$said" || true; }
 
 "$on_pi" --verbose
 has "started pi"
@@ -84,7 +97,8 @@ grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/a-proxy" ||
   fail "the machine's first extension wasn't loaded"
 grep -A1 -xF -- "arg -e" "$said" | grep -qxF "arg /extensions/another" ||
   fail "the machine's second extension wasn't loaded"
-[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
+extensions=$(loaded)
+[ "$extensions" = 4 ] ||
   fail "it loaded more than the machine named, the digest and the launcher's tool"
 digests
 launches
@@ -94,13 +108,37 @@ env -i PATH="$work/bin" SAID="$said" "$on_pi"
 has "started pi"
 has "path /folders/the-token-maker:/folders/another:$work/bin"
 
+# Stopped as systemd stops the shell's service, each of its processes told
+# at once, pi is gone within a second rather than waited on.
+: > "$said"
+echo '{"type":"prompt"}' > "$work/asked"
+SLOW_TO_STOP=1 "$on_pi" < "$work/asked" &
+asking=$!
+for _ in $(seq 200); do
+  grep -q '^pid ' "$said" && break
+  sleep 0.05
+done
+has 'heard {"type":"prompt"}'
+slow=$(sed -n 's/^pid //p' "$said")
+kill -TERM "$asking" "$slow"
+for _ in $(seq 20); do
+  kill -0 "$slow" 2> /dev/null || break
+  sleep 0.05
+done
+if kill -0 "$slow" 2> /dev/null; then
+  kill -KILL "$slow"
+  fail "pi was still winding down a second after the stop"
+fi
+wait "$asking" || true
+
 : > "$said"
 MANAGED=1 "$on_pi"
 has "started pi"
 lacks "arg --no-extensions"
 follows --mode rpc
 follows --model anthropic/claude-haiku-4-5
-[ "$(grep -cxF -- "arg -e" "$said")" = 4 ] ||
+extensions=$(loaded)
+[ "$extensions" = 4 ] ||
   fail "on a managed device, the machine's extensions weren't loaded"
 digests
 launches
@@ -112,6 +150,7 @@ lacks "started pi"
 follows --mode rpc
 follows --model claude-code/claude-haiku-4-5-20251001
 has "arg --no-extensions"
-[ "$(grep -cxF -- "arg -e" "$said")" = 2 ] || fail "it loaded more than the digest and the launcher's tool"
+extensions=$(loaded)
+[ "$extensions" = 2 ] || fail "it loaded more than the digest and the launcher's tool"
 digests
 launches
