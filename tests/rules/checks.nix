@@ -112,7 +112,8 @@
 
   # Every command keeps docs/commands.md's convention, so learning one teaches
   # them all and an agent reads each the same way. Each on the terminal kit is
-  # run for its help, and lag-watch, the first, builds only on Linux. Those
+  # run for its help, and lag-watch, the first, builds only on Linux, as
+  # github-broker and session-backup do. Those
   # that broke a point before the rule wait in
   # tests/rules/commands-agree-waiting.nix, with the points each still
   # breaks, and the check fails once one keeps a point it waits on, so the
@@ -128,9 +129,12 @@
         device-check-disk = deviceCheck;
         firmware-notice = pkgs.callPackage ../../modules/firmware-notice/package.nix { };
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
+        gcloud-broker = pkgs.callPackage ../../modules/gcloud-broker/package.nix { };
+        github-broker = pkgs.callPackage ../../modules/github-broker/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         memory-modules = pkgs.callPackage ../../modules/memory-modules/package.nix { };
+        session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;
   };
