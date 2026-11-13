@@ -37,6 +37,7 @@ let
     ./checks/programs.nix
     ./checks/quests.nix
     ./checks/ready-rows.nix
+    ./checks/selection.nix
     ./checks/sessions.nix
     ./checks/shell.nix
     ./checks/shortcuts.nix

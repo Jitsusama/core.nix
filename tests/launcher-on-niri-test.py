@@ -15,6 +15,7 @@ import errno
 import functools
 import itertools
 import json
+import logging
 import math
 import os
 import re
@@ -4455,6 +4456,88 @@ def test_a_drawer_out_says_what_its_daemon_tells_as_it_comes(
     machine.told(drawered(77), [])
     shell.launcher_until(lambda shown: shown["drawer"]["shown"] and "77%" in drawn(shown))
     shell.close_launcher()
+
+
+def test_on_the_selection_draws_its_actions_before_a_waking_server_answers(shell: Shell) -> None:
+    """On the Selection draws pi-verbs' actions as served, Ask last, before a slow pi-verbs answers.
+
+    pi-verbs rests after five minutes alone and takes 146 to 231 ms to answer cold (harness
+    #1436), so the place draws from the list it kept and freshens it when the answer comes
+    (WCJQSG, c0f83eb9). It holds pi-verbs only while it's open, and Super+X again puts it away
+    (VKCF3Z, e684d7ae). The stand-in takes a second, rather than a cold 250 ms, so asking the
+    shell what it shows never takes longer than the wait it's measured against.
+    """
+
+    class Waking(StandIn):
+        """pi-verbs, answering each watch only after `wait` seconds, as one waking does."""
+
+        def __init__(self, path: Path) -> None:
+            """Listen on `path`, answering at once until told to wait."""
+            self.wait = 0.0
+            self.answered: list[float] = []
+            self.open = 0
+            super().__init__(path)
+
+        def serve(self, client: socket.socket) -> None:
+            """Answer one client, its watch after the wait, counting it open until it goes."""
+            with self.lock:
+                self.open += 1
+            try:
+                with contextlib.suppress(OSError), client.makefile("r") as lines:
+                    for line in lines:
+                        asked = json.loads(line)
+                        if asked.get("ask") == "watch" and asked.get("id") == "all":
+                            time.sleep(self.wait)
+                            self.write(client, {"id": "all"}, watching=self.watched(asked))
+                            self.answered.append(time.monotonic())
+                        elif asked.get("ask") == "hello":
+                            self.write(client, {"id": "hello", "version": 1})
+            finally:
+                with self.lock:
+                    self.open -= 1
+
+    def verb(name: str, says: str) -> Json:
+        """Give an action as pi-verbs serves it, its words its name."""
+        return {
+            "key": f"verb:{name.lower()}",
+            "kind": "verb",
+            "id": name.lower(),
+            "words": name,
+            "says": says,
+            "result": "say",
+            "disruptive": False,
+            "args": [],
+        }
+
+    served = Waking(Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / "pi-verbs.sock")
+    served.told([verb("Explain", "What it means"), verb("Shorten", "Fewer words")], [])
+    listed = ["Explain", "Shorten", "Ask"]
+    try:
+        shell.as_account(shell.ipc("collection", "selection"))
+        shell.launcher_ready()
+        shell.launcher_until(
+            lambda shown: shown["rows"] == listed and shown["hint"] == "nothing selected"
+        )
+        shell.as_account(shell.ipc("collection", "selection"))
+        shell.launcher_closed()
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while served.open > 0:
+            assert time.monotonic() < deadline, "the place held pi-verbs after it closed"
+            time.sleep(launcher_on_niri.POLL)
+        served.wait = 1.0
+        shell.as_account(shell.ipc("collection", "selection"))
+        shell.launcher_until(lambda shown: shown["open"] and shown["rows"] == listed)
+        drawn = time.monotonic()
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        while len(served.answered) < 2:  # noqa: PLR2004, the first opening's answer and this one's
+            assert time.monotonic() < deadline, "pi-verbs was never asked again"
+            time.sleep(launcher_on_niri.POLL)
+        assert drawn < served.answered[1], "the place waited for pi-verbs to draw its actions"
+        openings = json.loads(shell.as_account(shell.ipc("openings")))
+        logging.getLogger(__name__).info("On the Selection drew in %s ms", openings[-1]["took"])
+        shell.close_launcher()
+    finally:
+        served.close()
 
 
 def test_no_answer_raised_an_error_and_quickshell_warned_of_nothing(shell: Shell) -> None:

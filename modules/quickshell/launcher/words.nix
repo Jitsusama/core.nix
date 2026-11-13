@@ -56,6 +56,7 @@ let
     "quests" = ./words/quests.json;
     "recent" = ./words/recent.json;
     "runs" = ./words/runs.json;
+    "selection" = ./words/selection.json;
     "session" = ./words/session.json;
     "sheets" = ./words/sheets.json;
     "shortcuts" = ./words/shortcuts.json;

@@ -796,6 +796,23 @@
       }
     },
     {
+      "id": "selection",
+      "name": "On the Selection",
+      "noun": "actions",
+      "glyph": "agent",
+      "ask": "what to do with it?",
+      "said": {
+        "nothing": "nothing selected",
+        "typing": "type a question about it",
+        "asking": "thinking",
+        "answering": "answering",
+        "answered": "answered; Return copies it",
+        "copied": "copied; paste it over the selection",
+        "failed": "it couldn't answer",
+        "asks": "{question}\n\nAbout this text, which I've selected on my screen:\n\n{selection}"
+      }
+    },
+    {
       "id": "actions",
       "name": "Desktop",
       "term": "Desktop/desktop",

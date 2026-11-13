@@ -296,6 +296,8 @@ or a copy, can be opened, copied or forgotten.
 | to read | a look that asks nothing of Joel, only to be seen, kept in For You's last row 24 hours and then put in History as expired | | `for-you:kind:read` |
 | Lately | For You's band for what came for Joel, one row for each place it came from | | |
 | clipboard | what was copied last, and what was copied before it | | |
+| selected text | what Joel has selected in any window, Wayland's primary selection, read only when asked and never kept | | `selection:primary` |
+| On the Selection | the place on Super+X: the selected text at its head, and what an agent can do with it as pi-verbs serves them, Ask last | | `OnSelection.qml`, `pi-verbs` |
 | timer | a span Joel sets counting down, which rings as a notice when it ends, kept by its daemon so it rings with the launcher closed; Timers is the place holding them | countdown, alarm | `HeldTimers.qml`, the `timers` program |
 | stopwatch | the one count up from when Joel starts it, which keeps its laps; it's listed last in Timers | | `HeldTimers.qml`, the `timers` program |
 | lap | one stretch of the stopwatch, from its start or the lap before to when Joel marks it | | `Timers.qml` |

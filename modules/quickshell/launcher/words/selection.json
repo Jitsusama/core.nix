@@ -1,0 +1,18 @@
+{
+  "things": [
+    {
+      "id": "verb:selection:act",
+      "in": "selection",
+      "name": "Do It",
+      "verb": "ask",
+      "glyph": "agent"
+    },
+    {
+      "id": "verb:selection:ask",
+      "in": "selection",
+      "name": "Ask",
+      "verb": "ask",
+      "glyph": "ask"
+    }
+  ]
+}

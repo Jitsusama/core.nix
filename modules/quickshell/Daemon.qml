@@ -78,6 +78,23 @@ Scope {
     // watched from then on.
     property bool refreshing: false
     readonly property bool watched: live || refreshing
+    // Whether it's connected at all. A daemon that rests once nothing has
+    // held it for a while, as pi-verbs ends after five minutes alone, is
+    // connected only while what it says can be used, so it's never held
+    // awake all day (85PKB2's harness #1436): false lets the connection
+    // go and tries nothing again, true connects at once. What was held
+    // stays held between, as through a gap.
+    property bool connects: true
+    onConnectsChanged: {
+        if (connects) {
+            connectAgain();
+            return;
+        }
+        again.stop();
+        link.active = false;
+        if (wire !== null)
+            gone();
+    }
     // What a watch begun waits on, when it's begun by what Joel pressed:
     // something with `afterFrame(then)`, as the launcher is, which runs
     // `then` once its next frame is drawn, or at once while nothing is
@@ -408,7 +425,7 @@ Scope {
     LazyLoader {
         id: link
 
-        active: true
+        active: daemon.connects
 
         Socket {
             id: socket
@@ -458,15 +475,17 @@ Scope {
         path: daemon.socket
         preload: false
         printErrors: false
-        watchChanges: daemon.wire === null
+        watchChanges: daemon.connects && daemon.wire === null
         onFileChanged: {
-            if (daemon.wire === null)
+            if (daemon.connects && daemon.wire === null)
                 daemon.connectAgain();
         }
     }
 
     function connectAgain() {
         again.stop();
+        if (!connects)
+            return;
         link.active = false;
         link.active = true;
     }
@@ -497,7 +516,7 @@ Scope {
     // A connection dropped says so twice, as its state and as an error,
     // so a try already waiting counts once.
     function tryAgain() {
-        if (again.running)
+        if (again.running || !connects)
             return;
         again.interval = waitAfter(refusals);
         refusals += 1;
