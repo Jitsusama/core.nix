@@ -7,11 +7,14 @@
 //! so in its log. And sleep: one that failed, and one the hardware spent
 //! mostly awake, which drains a battery as fast as being on.
 //!
-//!   device-check    names what has gone wrong since it last ran, and what
-//!                   works again, in the journal and on the desktop
+//!   device-check    answers what's wrong now, and tells the desktop what
+//!                   has gone wrong since it last ran and what works again,
+//!                   and the journal too when it's run under one
 //!
-//! Each is named once, so running it often costs nothing to read. It exits 0
-//! whatever it finds, and non-zero only when it couldn't look.
+//! Each change is told once, so running it often costs nothing to read. Its
+//! answer takes the form `--format` asks for, as every command of ours does
+//! (docs/commands.md). It exits 0 whatever it finds, and non-zero only when
+//! it couldn't look.
 //!
 //! `DEVICE_CHECK_ROOT` puts a directory in front of /sys, /proc and /run,
 //! `DEVICE_CHECK_EXPECTED` names the expected devices' file, `DEVICE_CHECK_STATE`
@@ -19,14 +22,17 @@
 //! notifies, and `DEVICE_CHECK_SUSPENDED` the seconds spent asleep since
 //! boot in place of the clocks', for tests.
 
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
+use std::os::unix::fs::MetadataExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitCode, Stdio};
+use terminal_kit::{Exit, Failure, Help, Pen, Room, layout};
 
 /// notify-send, as the package builds it in.
 const NOTIFY_SEND: &str = match option_env!("DEVICE_CHECK_NOTIFY_SEND") {
@@ -389,153 +395,357 @@ fn sleep_now(root: &OsStr) -> Option<Sleep> {
 /// most of itself getting down to the deepest state and back.
 const SLEEP_WORTH_JUDGING: u64 = 10 * 60 * 1_000_000;
 
-/// What to say about the sleeps between two readings: one that failed, by
-/// the device that stopped it where the kernel names one, and sleep the
+/// What went wrong with a sleep.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Slept {
+    /// It failed to go or to come back, stopped by the device and at the
+    /// step the kernel names, where it names them.
+    Failed {
+        device: Option<String>,
+        step: Option<String>,
+    },
+    /// The hardware spent too little of it in its deepest state, in
+    /// microseconds of the time asleep.
+    Shallow { deep: u64, asleep: u64 },
+}
+
+impl Slept {
+    /// The line said for it.
+    fn line(&self) -> String {
+        match self {
+            Self::Failed {
+                device: Some(device),
+                step,
+            } => {
+                let resuming = step.as_deref().is_some_and(|step| step.contains("resume"));
+                let verb = if resuming { "resume" } else { "suspend" };
+                format!("Sleep failed: {device} wouldn't {verb}")
+            }
+            Self::Failed { device: None, step } if step.as_deref() == Some("freeze") => {
+                "Sleep failed: a program wouldn't pause for it".to_owned()
+            }
+            Self::Failed { .. } => "Sleep failed".to_owned(),
+            Self::Shallow { deep, asleep } => {
+                let minutes = |micros: u64| (micros + 30_000_000) / 60_000_000;
+                format!(
+                    "Sleep was shallow: {} of {} minutes in the deepest state, so the battery \
+                     ran down faster",
+                    minutes(*deep),
+                    minutes(*asleep)
+                )
+            }
+        }
+    }
+
+    /// It as facts, every kind in one shape.
+    fn json(&self) -> Value {
+        let seconds = |micros: u64| (micros + 500_000) / 1_000_000;
+        match self {
+            Self::Failed { device, step } => json!({
+                "kind": "failed", "device": device, "step": step,
+                "deep_s": null, "asleep_s": null,
+            }),
+            Self::Shallow { deep, asleep } => json!({
+                "kind": "shallow", "device": null, "step": null,
+                "deep_s": seconds(*deep), "asleep_s": seconds(*asleep),
+            }),
+        }
+    }
+}
+
+/// What went wrong with the sleeps between two readings: one that failed,
+/// by the device that stopped it where the kernel names one, and sleep the
 /// hardware spent less than four-fifths of in its deepest state. That's
 /// judged only where the platform reports its deepest state at all, which
 /// it says by the most its counter can hold.
-fn sleep_lines(root: &OsStr, before: &Sleep, now: &Sleep) -> Vec<String> {
+fn sleep_findings(root: &OsStr, before: &Sleep, now: &Sleep) -> Vec<Slept> {
     let stats = under(root, "/sys/power/suspend_stats");
-    let mut lines = Vec::new();
+    let named = |file: &str| {
+        first_line(&stats.join(file))
+            .map(|line| line.trim().to_owned())
+            .filter(|line| !line.is_empty())
+    };
+    let mut found = Vec::new();
     if now.fail > before.fail {
-        let device = first_line(&stats.join("last_failed_dev")).unwrap_or_default();
-        let step = first_line(&stats.join("last_failed_step")).unwrap_or_default();
-        let device = device.trim();
-        let step = step.trim();
-        lines.push(if !device.is_empty() {
-            let verb = if step.contains("resume") {
-                "resume"
-            } else {
-                "suspend"
-            };
-            format!("Sleep failed: {device} wouldn't {verb}")
-        } else if step == "freeze" {
-            "Sleep failed: a program wouldn't pause for it".to_owned()
-        } else {
-            "Sleep failed".to_owned()
+        found.push(Slept::Failed {
+            device: named("last_failed_dev"),
+            step: named("last_failed_step"),
         });
     }
     let reports = number(&stats.join("max_hw_sleep")) > 0;
-    let slept = now.asleep.saturating_sub(before.asleep);
+    let asleep = now.asleep.saturating_sub(before.asleep);
     let deep = now.hardware.saturating_sub(before.hardware);
     if reports
         && now.success > before.success
-        && slept >= SLEEP_WORTH_JUDGING
-        && deep.saturating_mul(5) < slept.saturating_mul(4)
+        && asleep >= SLEEP_WORTH_JUDGING
+        && deep.saturating_mul(5) < asleep.saturating_mul(4)
     {
-        let minutes = |micros: u64| (micros + 30_000_000) / 60_000_000;
-        lines.push(format!(
-            "Sleep was shallow: {} of {} minutes in the deepest state, so the battery ran \
-             down faster",
-            minutes(deep),
-            minutes(slept)
-        ));
+        found.push(Slept::Shallow { deep, asleep });
     }
-    lines
+    found
 }
 
-/// Says each sleep finding since the last look, and keeps what the kernel
-/// counts now for the next. The first look after boot only keeps it.
-fn look_at_sleep(root: &OsStr, notify: &OsStr, state: &Path) -> io::Result<()> {
-    let Some(now) = sleep_now(root) else {
-        return Ok(());
-    };
-    let kept = state.join("sleep");
-    let before = fs::read_to_string(&kept)
-        .ok()
-        .and_then(|text| Sleep::parse(&text))
-        // Counts that went down are another boot's.
-        .filter(|before| before.success <= now.success && before.fail <= now.fail);
-    if let Some(before) = before {
-        for line in sleep_lines(root, &before, &now) {
-            say(notify, 4, "normal", &line);
-        }
-    }
-    let next = state.join(format!("sleep.{}", process::id()));
-    fs::write(&next, now.kept())?;
-    fs::rename(&next, &kept)
+/// Where it looks, keeps what it found, and notifies.
+struct Places {
+    root: OsString,
+    expected: PathBuf,
+    state: PathBuf,
+    notify: OsString,
 }
 
-/// Says one line, in the journal at a priority journald reads from the
-/// prefix, and as a notification.
-fn say(notify: &OsStr, priority: u8, urgency: &str, line: &str) {
-    eprintln!("<{priority}>{line}");
-    let _ = Command::new(notify)
-        .args(["-u", urgency, "-a", "Devices"])
-        .arg(line)
-        .stdin(Stdio::null())
-        .status();
-}
-
-/// Says each finding, warnings for what broke and notices for what's fixed,
-/// whose priority journald reads from the prefix.
-fn tell<'a>(
-    root: &OsStr,
-    notify: &OsStr,
-    change: Change,
-    findings: impl Iterator<Item = &'a String>,
-) {
-    let (priority, urgency) = match change {
-        Change::Broke => (4, "critical"),
-        Change::Fixed => (5, "normal"),
-    };
-    for finding in findings {
-        let Some(line) = line(root, change, finding) else {
-            continue;
+impl Places {
+    fn here() -> Result<Self, Failure> {
+        let state = match env::var_os("DEVICE_CHECK_STATE") {
+            Some(state) => PathBuf::from(state),
+            None => match env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
+                Some(runtime) => Path::new(&runtime).join("device-check"),
+                None => {
+                    return Err(Failure::new(
+                        Exit::Config,
+                        "there's nowhere to keep what it finds",
+                    )
+                    .because("XDG_RUNTIME_DIR isn't set, as it is in a signed-in session")
+                    .try_this("run it signed in, or set DEVICE_CHECK_STATE to a folder"));
+                }
+            },
         };
-        say(notify, priority, urgency, &line);
+        Ok(Self {
+            root: env::var_os("DEVICE_CHECK_ROOT").unwrap_or_default(),
+            expected: env::var_os("DEVICE_CHECK_EXPECTED")
+                .map_or_else(|| PathBuf::from("/etc/device-check"), PathBuf::from),
+            state,
+            notify: env::var_os("DEVICE_CHECK_NOTIFY")
+                .unwrap_or_else(|| OsString::from(NOTIFY_SEND)),
+        })
     }
 }
 
-fn look() -> io::Result<()> {
-    let root = env::var_os("DEVICE_CHECK_ROOT").unwrap_or_default();
-    let expected = env::var_os("DEVICE_CHECK_EXPECTED")
-        .map_or_else(|| PathBuf::from("/etc/device-check"), PathBuf::from);
-    let state = match env::var_os("DEVICE_CHECK_STATE") {
-        Some(state) => PathBuf::from(state),
-        None => match env::var_os("XDG_RUNTIME_DIR").filter(|dir| !dir.is_empty()) {
-            Some(runtime) => Path::new(&runtime).join("device-check"),
-            None => return Err(io::Error::other("XDG_RUNTIME_DIR isn't set")),
-        },
-    };
-    let notify = env::var_os("DEVICE_CHECK_NOTIFY").unwrap_or_else(|| OsString::from(NOTIFY_SEND));
+/// What a look found: what's wrong now, what broke and what was fixed since
+/// the last, and what went wrong with the sleeps between them.
+struct Look {
+    now: BTreeSet<String>,
+    broke: Vec<String>,
+    fixed: Vec<String>,
+    sleeps: Vec<Slept>,
+    /// The kernel's sleep counts now, kept for the next look, or None on a
+    /// kernel that keeps none.
+    sleep: Option<Sleep>,
+}
 
-    fs::create_dir_all(&state)?;
-    let kept = state.join("found");
-    let found: BTreeSet<String> = match fs::read_to_string(&kept) {
+/// Looks, comparing with what the last look kept. The first look after boot
+/// judges no sleep, having no counts to judge it from.
+fn look(places: &Places) -> io::Result<Look> {
+    let root = &places.root;
+    let found: BTreeSet<String> = match fs::read_to_string(places.state.join("found")) {
         Ok(text) => text.lines().map(str::to_owned).collect(),
         Err(error) if error.kind() == io::ErrorKind::NotFound => BTreeSet::new(),
         Err(error) => return Err(error),
     };
-    let now: BTreeSet<String> = failed_power(&root)
+    let now: BTreeSet<String> = failed_power(root)
         .into_iter()
-        .chain(missing(&root, &expected))
-        .chain(disk_faults(&root))
-        .chain(kernel_trouble(&root))
+        .chain(missing(root, &places.expected))
+        .chain(disk_faults(root))
+        .chain(kernel_trouble(root))
         .collect();
+    let said = |change, findings: Vec<&String>| -> Vec<String> {
+        findings
+            .into_iter()
+            .filter(|finding| line(root, change, finding).is_some())
+            .cloned()
+            .collect()
+    };
+    let broke = said(Change::Broke, now.difference(&found).collect());
+    let fixed = said(Change::Fixed, found.difference(&now).collect());
+    let sleep = sleep_now(root);
+    let sleeps = sleep.map_or_else(Vec::new, |now| {
+        fs::read_to_string(places.state.join("sleep"))
+            .ok()
+            .and_then(|text| Sleep::parse(&text))
+            // Counts that went down are another boot's.
+            .filter(|before| before.success <= now.success && before.fail <= now.fail)
+            .map_or_else(Vec::new, |before| sleep_findings(root, &before, &now))
+    });
+    Ok(Look {
+        now,
+        broke,
+        fixed,
+        sleeps,
+        sleep,
+    })
+}
 
-    tell(&root, &notify, Change::Broke, now.difference(&found));
-    tell(&root, &notify, Change::Fixed, found.difference(&now));
-    look_at_sleep(&root, &notify, &state)?;
+/// Whether stderr is the journal's, as systemd says by naming its stream:
+/// a command a person runs from a terminal a service started inherits the
+/// variable, but not the stream.
+fn into_the_journal() -> bool {
+    let Some(named) = env::var_os("JOURNAL_STREAM") else {
+        return false;
+    };
+    let Ok(stderr) = fs::metadata("/proc/self/fd/2") else {
+        return false;
+    };
+    named.to_str() == Some(&format!("{}:{}", stderr.dev(), stderr.ino()))
+}
 
-    let next = state.join(format!("now.{}", process::id()));
-    let text = now.iter().fold(String::new(), |mut text, finding| {
+/// Tells what changed since the last look, as a notification, and in the
+/// journal at a priority journald reads from the prefix when it's run under
+/// one: warnings for what broke and a sleep that went wrong, notices for
+/// what's fixed.
+fn tell(places: &Places, look: &Look) {
+    let root = &places.root;
+    let journal = into_the_journal();
+    let say = |priority: u8, urgency: &str, line: &str| {
+        if journal {
+            eprintln!("<{priority}>{line}");
+        }
+        let _ = Command::new(&places.notify)
+            .args(["-u", urgency, "-a", "Devices"])
+            .arg(line)
+            .stdin(Stdio::null())
+            .status();
+    };
+    for (change, findings, priority, urgency) in [
+        (Change::Broke, &look.broke, 4, "critical"),
+        (Change::Fixed, &look.fixed, 5, "normal"),
+    ] {
+        for line in findings
+            .iter()
+            .filter_map(|finding| line(root, change, finding))
+        {
+            say(priority, urgency, &line);
+        }
+    }
+    for slept in &look.sleeps {
+        say(4, "normal", &slept.line());
+    }
+}
+
+/// Keeps what's wrong now, and the kernel's sleep counts, for the next look.
+fn keep(places: &Places, look: &Look) -> io::Result<()> {
+    let replace = |name: &str, text: &str| {
+        let next = places.state.join(format!("{name}.{}", process::id()));
+        fs::write(&next, text)?;
+        fs::rename(&next, places.state.join(name))
+    };
+    if let Some(sleep) = look.sleep {
+        replace("sleep", &sleep.kept())?;
+    }
+    let text = look.now.iter().fold(String::new(), |mut text, finding| {
         // Writing to a String can't fail.
         _ = writeln!(text, "{finding}");
         text
     });
-    fs::write(&next, text)?;
-    fs::rename(&next, &kept)
+    replace("found", &text)
+}
+
+/// A finding as facts: its kind, what it's of, and for a disk what it
+/// reported, null for the rest.
+fn finding_json(finding: &str) -> Value {
+    let (kind, subject) = finding.split_once('\t').unwrap_or(("", finding));
+    let (subject, report) = match subject.split_once(" reports ") {
+        Some((disk, report)) if kind == "disk" => (disk, Some(report)),
+        _ => (subject, None),
+    };
+    json!({"kind": kind, "subject": subject, "report": report})
+}
+
+/// The answer for a script: what's wrong now, and what changed since the
+/// last look.
+fn answer_json(look: &Look) -> Value {
+    let findings = |found: &mut dyn Iterator<Item = &String>| -> Vec<Value> {
+        found.map(|finding| finding_json(finding)).collect()
+    };
+    json!({
+        "schema": "device-check.look/1",
+        "wrong": findings(&mut look.now.iter()),
+        "broke": findings(&mut look.broke.iter()),
+        "fixed": findings(&mut look.fixed.iter()),
+        "sleeps": look.sleeps.iter().map(Slept::json).collect::<Vec<_>>(),
+    })
+}
+
+/// The answer for a person: what's wrong now, a line each, or that
+/// nothing is.
+fn answer_text(look: &Look, root: &OsStr, pen: &Pen, width: Room) -> String {
+    let wrong: Vec<String> = look
+        .now
+        .iter()
+        .filter_map(|finding| line(root, Change::Broke, finding))
+        .collect();
+    if wrong.is_empty() {
+        return format!(
+            "{}{}\n",
+            pen.marked("done", "success"),
+            pen.role("text", "Nothing has stopped working")
+        );
+    }
+    wrong.iter().fold(String::new(), |mut text, line| {
+        // Writing to a String can't fail.
+        _ = writeln!(
+            text,
+            "{}{}",
+            pen.marked("caution", "warning"),
+            pen.role("text", &layout::hung(line, layout::MARK, width))
+        );
+        text
+    })
+}
+
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "device-check",
+        "names the devices that have stopped working, and what works again",
+    )
+    .example(
+        "device-check",
+        "what's wrong now, telling the desktop what changed since the last look",
+    )
+    .example("device-check --json", "what's wrong now, for a script")
+    .exit(Exit::Failed, "it couldn't read or keep what it found")
+    .exit(Exit::Config, "there's nowhere to keep what it finds")
 }
 
 fn main() -> ExitCode {
-    match look() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("device-check: couldn't look: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context
+            .args
+            .iter()
+            .find(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
+        {
+            return Err(
+                Failure::new(Exit::Usage, format!("{word} isn't taken here"))
+                    .because("device-check takes nothing but the flags every command takes")
+                    .try_this("device-check --help"),
+            );
         }
-    }
+        let places = Places::here()?;
+        let couldnt = |what: &'static str| {
+            let state = places.state.display().to_string();
+            move |error: io::Error| {
+                Failure::new(Exit::Failed, what)
+                    .because(error.to_string())
+                    .try_this(format!("check that {state} can be written"))
+            }
+        };
+        fs::create_dir_all(&places.state).map_err(couldnt("it couldn't make its folder"))?;
+        let look = look(&places).map_err(couldnt("it couldn't read what it last found"))?;
+        tell(&places, &look);
+        keep(&places, &look).map_err(couldnt("it couldn't keep what it found"))?;
+        let said = if context.format().is_json() {
+            context.answer(&answer_json(&look))
+        } else {
+            context.say(&answer_text(
+                &look,
+                &places.root,
+                &context.out,
+                context.room,
+            ))
+        };
+        // Nothing is left to say if stdout has closed.
+        let _ = said;
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -638,6 +848,87 @@ mod tests {
     }
 
     const MINUTE: u64 = 60_000_000;
+
+    /// The lines said for the sleeps between two readings.
+    fn sleep_lines(root: &OsStr, before: &Sleep, now: &Sleep) -> Vec<String> {
+        sleep_findings(root, before, now)
+            .iter()
+            .map(Slept::line)
+            .collect()
+    }
+
+    #[test]
+    fn a_sleep_is_told_in_facts() {
+        let failed = Slept::Failed {
+            device: Some("usb3-port1".to_owned()),
+            step: None,
+        };
+        assert_eq!(
+            failed.json(),
+            json!({"kind": "failed", "device": "usb3-port1", "step": null,
+                   "deep_s": null, "asleep_s": null}),
+            "a failed sleep keeps the shallow one's fields, null"
+        );
+        let shallow = Slept::Shallow {
+            deep: 12 * MINUTE,
+            asleep: 60 * MINUTE,
+        };
+        assert_eq!(
+            shallow.json(),
+            json!({"kind": "shallow", "device": null, "step": null,
+                   "deep_s": 720, "asleep_s": 3600}),
+            "a shallow sleep says its times in seconds"
+        );
+    }
+
+    #[test]
+    fn a_finding_is_told_in_facts() {
+        assert_eq!(
+            finding_json("disk\t/dev/nvme0 reports Low spare"),
+            json!({"kind": "disk", "subject": "/dev/nvme0", "report": "Low spare"}),
+            "a disk's finding parts the disk from its report"
+        );
+        assert_eq!(
+            finding_json("missing\tThe speakers reports nothing"),
+            json!({"kind": "missing", "subject": "The speakers reports nothing",
+                   "report": null}),
+            "only a disk's finding has a report"
+        );
+    }
+
+    #[test]
+    fn a_person_reads_whats_wrong_now() {
+        let root = OsStr::new("/nonexistent");
+        let look = |now: &[&str]| Look {
+            now: now.iter().map(|finding| (*finding).to_owned()).collect(),
+            broke: Vec::new(),
+            fixed: Vec::new(),
+            sleeps: Vec::new(),
+            sleep: None,
+        };
+        let width = Room::of_stdout(&terminal_kit::Environment::of([false; 3], &[]));
+        let pen = Pen::plain();
+        let done = pen.marked("done", "success");
+        let caution = pen.marked("caution", "warning");
+        assert_eq!(
+            answer_text(&look(&[]), root, &pen, width),
+            format!("{done}Nothing has stopped working\n"),
+            "with nothing wrong it says so"
+        );
+        assert_eq!(
+            answer_text(
+                &look(&["missing\tBluetooth", "kernel\toops"]),
+                root,
+                &pen,
+                width
+            ),
+            format!(
+                "{caution}The kernel hit a fault and may misbehave until the next boot\n\
+                 {caution}Bluetooth is missing\n"
+            ),
+            "each thing wrong is a line, marked"
+        );
+    }
 
     #[test]
     fn names_a_shallow_sleep() {

@@ -574,7 +574,8 @@
   '';
   devices-that-stop-working-are-named = ''
     `device-check` names a failed or missing device, or a disk's fault, once, and again when it's
-    fixed
+    fixed, in the journal only when it's run under one, and answers what's wrong now as text and
+    as JSON
   '';
   dictation-hears-the-clip = ''
     Whisper on the CPU types a public clip back word for word

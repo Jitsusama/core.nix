@@ -13,8 +13,10 @@
   # device-check names a device whose power change failed, one the machine
   # expects that's gone and a disk smartd heard a fault from, each once, as a
   # warning and a notification, and again when it's fixed, and exits 0
-  # whatever it finds. Files stand in for sysfs, smartd's variables are set
-  # by hand, and a script stands in for notify-send
+  # whatever it finds. It writes the journal's lines only into the journal,
+  # and answers what's wrong now, as text and as JSON. Files stand in for
+  # sysfs, smartd's variables are set by hand, and a script stands in for
+  # notify-send
   # (tests/devices-that-stop-working-are-named.sh).
   devices-that-stop-working-are-named =
     pkgs.runCommandLocal "devices-that-stop-working-are-named"
