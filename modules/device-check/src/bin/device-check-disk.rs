@@ -13,6 +13,7 @@ use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use terminal_kit::{Exit, Failure, Help};
 
 /// What smartd reported, without the device it starts with, which
 /// device-check names itself, and on one line.
@@ -48,14 +49,37 @@ fn keep() -> io::Result<()> {
     fs::rename(&new, &file)
 }
 
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "device-check-disk",
+        "keeps what smartd heard from a disk, for device-check to name",
+    )
+    .example(
+        "SMARTD_DEVICE=/dev/nvme0 SMARTD_FAILTYPE=Health SMARTD_MESSAGE=... device-check-disk",
+        "what smartd runs, its fault in its variables",
+    )
+    .exit(
+        Exit::Failed,
+        "smartd's variables weren't set, or it couldn't keep the fault",
+    )
+}
+
 fn main() -> ExitCode {
-    match keep() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("device-check-disk: {error}");
-            ExitCode::FAILURE
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if let Some(word) = context.args.first() {
+            return Err(
+                Failure::new(Exit::Usage, format!("{word} isn't taken here"))
+                    .because("smartd hands it the fault in SMARTD_ variables, not on the line")
+                    .try_this("device-check-disk --help"),
+            );
         }
-    }
+        keep().map_err(|error| {
+            Failure::new(Exit::Failed, "it couldn't keep the disk's fault")
+                .because(error.to_string())
+                .try_this("check that smartd runs it as root, with its SMARTD_ variables")
+        })
+    })
 }
 
 #[cfg(test)]

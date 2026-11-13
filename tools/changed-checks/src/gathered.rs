@@ -10,7 +10,9 @@
 //! folder names each gathered file under it, as `${../..}` or a fileset of
 //! `../.` copies them, while a fileset's `root` copies nothing of its own.
 //! A file using the flake's whole source as a path or the outputs holding
-//! every check, and a check `checks.nix` gives itself, keep them all.
+//! every check, and a check `checks.nix` gives itself, keep them all. But
+//! `flake.nix` and `checks.nix`, which every check reads, make the outputs:
+//! their use of the checks makes others, so only their paths count.
 //!
 //! A gathered file may gather files of its own, as
 //! `modules/quickshell/checks.nix` imports 39 for its 182 checks, and those
@@ -31,6 +33,9 @@ use crate::reads::Reads;
 
 /// The file a check `checks.nix` gives itself is said to come from.
 const ROOT: &str = "checks.nix";
+
+/// The files that make the flake's outputs, every check read by each.
+const MAKING: [&str; 2] = [ROOT, "flake.nix"];
 
 /// The file that gives each check, by its name, from the flake at
 /// `source`; none when it can't be said, as of a base from before the
@@ -125,7 +130,7 @@ fn named_by(
 ) -> Option<BTreeSet<String>> {
     let text = fs::read_to_string(source.join(file)).ok()?;
     let code = code(&text);
-    if takes_whole(&code) {
+    if takes_whole(&code, MAKING.contains(&file)) {
         return None;
     }
     let here = file.rsplit_once('/').map_or("", |(folder, _)| folder);
@@ -148,8 +153,10 @@ fn named_by(
 /// Whether `code` uses the flake's own source, `self` or the `core` it's
 /// given as, as a path, or the outputs that hold every check: its checks,
 /// its legacy packages or any it names by a variable, as a check of which
-/// checks exist does. Its modules, library and packages gather none.
-fn takes_whole(code: &str) -> bool {
+/// checks exist does. Its modules, library and packages gather none. The
+/// files `making` the outputs use its checks for others no check reads,
+/// as `flake.nix` makes the subtests of them, so only a path counts there.
+fn takes_whole(code: &str, making: bool) -> bool {
     ["self", "core"].iter().any(|name| {
         code.match_indices(name).any(|(at, _)| {
             let before = &code[..at];
@@ -157,19 +164,18 @@ fn takes_whole(code: &str) -> bool {
             let alone = !before.ends_with(is_word) && !after.starts_with(is_word);
             let rest = after.trim_start();
             let lead = before.trim_end();
-            alone
-                && (before.ends_with("${")
-                    || rest.starts_with('+')
-                    || [".outPath", ".checks", ".legacyPackages"]
-                        .iter()
-                        .any(|output| {
-                            rest.strip_prefix(output)
-                                .is_some_and(|it| !it.starts_with(is_word))
-                        })
-                    || rest.starts_with(".${")
-                    || ["src =", "path =", "toString"]
-                        .iter()
-                        .any(|word| lead.ends_with(word)))
+            let output = |named: &str| {
+                rest.strip_prefix(named)
+                    .is_some_and(|it| !it.starts_with(is_word))
+            };
+            let path = before.ends_with("${")
+                || rest.starts_with('+')
+                || output(".outPath")
+                || ["src =", "path =", "toString"]
+                    .iter()
+                    .any(|word| lead.ends_with(word));
+            let checks = output(".checks") || output(".legacyPackages") || rest.starts_with(".${");
+            alone && (path || (checks && !making))
         })
     })
 }

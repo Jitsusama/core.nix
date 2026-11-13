@@ -68,8 +68,24 @@ fn the_whole_source_is_used_as_a_path_or_for_the_outputs_holding_every_check() {
         "self.${system}",
     ] {
         assert!(
-            takes_whole(&code(text)),
+            takes_whole(&code(text), false),
             "{text} uses the source or every check"
+        );
+    }
+    for text in ["\"${self}/x\"", "src = self;", "self.outPath"] {
+        assert!(
+            takes_whole(&code(text), true),
+            "{text} uses the source in a file making the outputs"
+        );
+    }
+    for text in [
+        "self.checks.${system}",
+        "self.legacyPackages.x",
+        "self.${system}",
+    ] {
+        assert!(
+            !takes_whole(&code(text), true),
+            "{text} makes another output in a file making them"
         );
     }
     for text in [
@@ -81,7 +97,7 @@ fn the_whole_source_is_used_as_a_path_or_for_the_outputs_holding_every_check() {
         "inherit core;",
     ] {
         assert!(
-            !takes_whole(&code(text)),
+            !takes_whole(&code(text), false),
             "{text} uses no path of the source"
         );
     }
@@ -183,10 +199,16 @@ fn a_check_keeps_only_the_gathered_files_its_own_names() {
     let at = source(
         "narrowed",
         &[
-            ("flake.nix", "{ }"),
+            // The flake makes other outputs of its checks, which every
+            // check reads, and from 13 November each kept every file.
+            (
+                "flake.nix",
+                "{ devShells = { checks = self.checks.${system}; }; }",
+            ),
             (
                 "checks.nix",
-                "folders = [ ./x/checks.nix ./y/checks.nix ]; r = removePrefix ./. f;",
+                "{ self }: folders = [ ./x/checks.nix ./y/checks.nix ]; r = removePrefix ./. f; \
+                 s = self.checks;",
             ),
             (
                 "x/checks.nix",
