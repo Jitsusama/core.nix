@@ -111,7 +111,9 @@ fn run(
     // on 8 November the morning switch started over three times for newer
     // heads while Joel waited.
     // One built with its inputs elsewhere than an ask names isn't what
-    // that ask was for.
+    // that ask was for. A plain ask names none, so it takes whatever
+    // waits, even one built for an ask at a named commit: switching what
+    // was built beats building newer, as for any waiting switch.
     if granted
         && let Some(waiting) = waited(config)
         && at
