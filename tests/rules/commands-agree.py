@@ -13,7 +13,10 @@ src/main.rs, its src/bin or a [[bin]] it declares. It agrees when:
   its colour follows --color, NO_COLOR, FORCE_COLOR and the theme;
 - helps: run with `--help --format json`, it answers help/1 under its own
   name on stdout, says nothing on stderr and exits 0, within a few seconds
-  and so without starting anything; and `--version` answers one line.
+  and so without starting anything; and `--version` answers one line;
+- fits: its `--help`, set in a terminal 60, 80, 100 and 140 columns wide,
+  runs no line past the edge, keeps each line's inset when it wraps, never
+  parts a figure from its unit across lines, and reads past 80 as at 80.
 
 A script is a command too: a program a Nix file outside the tests builds
 with writeShellApplication or writeShellScriptBin, named by the wrapper, or
@@ -24,7 +27,8 @@ hand, since the kit is Rust, and agrees when:
 - exits: every exit it spells with a number is one of the table's;
 - inks: it spells no escape sequence and sets no colour with tput;
 - helps: run with `--help`, it opens its answer on stdout with its own name,
-  says nothing on stderr and exits 0, within a few seconds.
+  says nothing on stderr and exits 0, within a few seconds;
+- fits: its `--help` fits each width as a crate's must.
 
 RUNS is JSON naming, for each command the check is given built, the program
 to run; a command on the kit has to be given, since its help is only proven
@@ -35,21 +39,28 @@ point it now keeps, so the list only shrinks. Every failure is printed before
 the check exits 1, and the last line says how many agree.
 """
 
+import fcntl
 import json
 import os
+import pty
 import re
+import select
+import struct
 import subprocess
 import sys
 import tempfile
+import termios
+import time
 import tomllib
+import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-POINTS = ("kit", "exits", "inks", "helps")
+POINTS = ("kit", "exits", "inks", "helps", "fits")
 
 # The points a script is held to: the kit is a Rust crate, so it keeps the
 # rest by hand.
-SCRIPT_POINTS = ("exits", "inks", "helps")
+SCRIPT_POINTS = ("exits", "inks", "helps", "fits")
 
 # What each point asks of a command that breaks it.
 FIXES = {
@@ -57,6 +68,7 @@ FIXES = {
     "exits": "end it by returning from terminal_kit::main, with a Failure's Exit",
     "inks": "draw it with the kit's Pen, which reads the theme's roles and marks",
     "helps": "declare its help with terminal_kit::Help and give the check its package",
+    "fits": "set its words with the kit's Help and layout, which fit the width",
 }
 
 # What each point asks of a script that breaks it.
@@ -64,6 +76,7 @@ SCRIPT_FIXES = {
     "exits": "exit with a code from docs/commands.md's table",
     "inks": "leave colour to a command on the kit, or draw none",
     "helps": "answer --help with its name first, and give the check its package",
+    "fits": "set its help in lines of at most 60 cells, each wrap keeping its inset",
 }
 
 # Every code docs/commands.md's table gives a meaning.
@@ -72,6 +85,27 @@ TABLE = frozenset({0, 1, 64, 65, 66, 69, 70, 75, 77, 78, 130})
 # How long a command may take to answer its help: one that takes longer is
 # doing something, which help never starts.
 HELP_SECONDS = 10
+
+# The widths a terminal is opened at, from a split beside an editor to a
+# whole wide screen (docs/commands.md, Width and What Gives Way).
+WIDTHS = (60, 80, 100, 140)
+
+# The widest prose is set however wide the terminal, so past it an answer
+# reads as it does here.
+MEASURE = 80
+
+# How the terminal is told what to draw, which takes no cells: a CSI
+# sequence, an OSC one ending in BEL or ST, and the carriage return a
+# terminal adds before each newline.
+CONTROLS = re.compile(r"\x1b\[[0-9;:?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\r")
+
+# A figure at a line's end, and a unit opening the next, which a wrap
+# mustn't part. A figure may open with a bracket, a tilde or a sign, the
+# minus sign among them, which the pattern spells by its code point.
+FIGURE_ENDS = re.compile(r"(?:^|\s)[(\[~\u2212+-]?\d[\d.,]*$")
+UNIT_OPENS = re.compile(
+    r"^(?:B|[KMGTP]i?B|[KMGT]|ms|µs|ns|s|min|h|d|%|°C|W|mW|V|Hz|[KMG]Hz|dB|px)(?=$|[\s.,;:)\]])"
+)
 
 # An exit the source makes itself rather than returning a Failure to the kit.
 EXITS = re.compile(r"\bprocess::exit\s*\(|\bExitCode::from\s*\(")
@@ -239,6 +273,107 @@ def ran(program: str, *args: str) -> subprocess.CompletedProcess[str] | None:
             return None
 
 
+def cells(line: str) -> int:
+    """Give a line's width in cells, wide letters taking two and marks none."""
+    return sum(
+        0
+        if unicodedata.combining(letter) or unicodedata.category(letter) == "Cf"
+        else 2
+        if unicodedata.east_asian_width(letter) in {"W", "F"}
+        else 1
+        for letter in line
+    )
+
+
+def rendered(program: str, width: int) -> str | None:
+    """Give a command's help as a terminal `width` columns wide shows it, or None past the time."""
+    leader, follower = pty.openpty()
+    fcntl.ioctl(follower, termios.TIOCSWINSZ, struct.pack("HHHH", 50, width, 0, 0))
+    with tempfile.TemporaryDirectory() as home:
+        environment = {
+            "HOME": home,
+            "PATH": os.environ.get("PATH", ""),
+            "TERM": "xterm-256color",
+            "COLUMNS": str(width),
+            # Colour is the inks point's; this one reads only the words.
+            "NO_COLOR": "1",
+        }
+        # The program is one the check was given built, from Nix.
+        child = subprocess.Popen(  # noqa: S603
+            [program, "--help"],
+            stdin=subprocess.DEVNULL,
+            stdout=follower,
+            stderr=subprocess.DEVNULL,
+            env=environment,
+        )
+        os.close(follower)
+        said = b""
+        deadline = time.monotonic() + HELP_SECONDS
+        while (left := deadline - time.monotonic()) > 0:
+            ready, _, _ = select.select([leader], [], [], left)
+            if not ready:
+                continue
+            try:
+                chunk = os.read(leader, 65536)
+            except OSError:
+                # The terminal closes once the program and all it started end.
+                break
+            if not chunk:
+                break
+            said += chunk
+        os.close(leader)
+        try:
+            child.wait(max(deadline - time.monotonic(), 0))
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.wait()
+            return None
+    return CONTROLS.sub("", said.decode(errors="replace"))
+
+
+def unfit(text: str, width: int) -> list[str]:
+    """Say how an answer set `width` columns wide falls short of fitting, if it does."""
+    lines = text.rstrip("\n").split("\n")
+    wrong = []
+    past = [line for line in lines if cells(line) > width]
+    if past:
+        lines_run = "line runs" if len(past) == 1 else "lines run"
+        wrong.append(f"{len(past)} {lines_run} past {width} columns, as {past[0].strip()[:40]!r}")
+    lost, parted = None, None
+    opens = None
+    for line, after in zip(lines, [*lines[1:], ""], strict=True):
+        if not line.strip():
+            opens = None
+            continue
+        inset = len(line) - len(line.lstrip(" "))
+        if opens is None:
+            opens = inset
+        elif inset < opens and lost is None:
+            lost = f"at {width}, {line.strip()[:40]!r} lost the inset of its block"
+        if FIGURE_ENDS.search(line) and UNIT_OPENS.match(after.lstrip(" ")) and parted is None:
+            parted = f"at {width}, a figure is parted from its unit at {line.strip()[-20:]!r}"
+    return [*wrong, *(said for said in (lost, parted) if said)]
+
+
+def fits(program: str) -> list[str]:
+    """Say how a command's help fails to fit the widths a terminal is opened at, if it does."""
+    wrong = []
+    at_measure = None
+    for width in WIDTHS:
+        text = rendered(program, width)
+        if text is None:
+            return [f"--help in a terminal took over {HELP_SECONDS} seconds"]
+        # Nothing said would fit any width, so it's a fault, not a pass.
+        if not text.strip():
+            return [f"--help in a terminal {width} columns wide said nothing"]
+        wrong.extend(unfit(text, width))
+        if width == MEASURE:
+            at_measure = text
+        elif width > MEASURE and text != at_measure:
+            wrong.append(f"at {width} it's set wider than at {MEASURE}, past a reading measure")
+    return wrong
+
+
 def script_helps(name: str, program: str) -> list[str]:
     """Say how a script's help falls short, if it does."""
     said = ran(program, "--help")
@@ -273,6 +408,9 @@ def script_broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]
         wrong = script_helps(command.name, runs[command.name])
         if wrong:
             out["helps"] = wrong
+        unfitting = fits(runs[command.name])
+        if unfitting:
+            out["fits"] = unfitting
     else:
         out["helps"] = ["the check isn't given it to run"]
     return out
@@ -320,6 +458,9 @@ def broken(command: Command, runs: dict[str, str]) -> dict[str, list[str]]:
         wrong = helps(command.name, runs[command.name])
         if wrong:
             out["helps"] = wrong
+        unfitting = fits(runs[command.name])
+        if unfitting:
+            out["fits"] = unfitting
     else:
         out["helps"] = ["the check isn't given it to run"] if "kit" not in out else []
     if command.wrapper is not None:
