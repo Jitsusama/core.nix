@@ -10,13 +10,14 @@ the check's result, that its layer is one taking no keys, that it goes in fullsc
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it ride off and climb to its new seat,
-unless a second move cuts it short.
+a second move cutting it short riding on from where the first got to.
 """
 
 from __future__ import annotations
 
 import itertools
 import json
+import math
 import os
 import struct
 import time
@@ -57,6 +58,9 @@ DRAWS = 4.0
 WALKED = "walked cat "
 # The fewest steps a second its walk may take, the nested screen drawing at 60.
 SMOOTH = 50
+# The farthest, in the cat's own size, a step of a move may take it between two frames
+# the shell says, a builder's dropped frames included.
+STEPS_ON = 2
 # The frames of a walk niri may not yet have said it showed as the cat sits.
 ON_THEIR_WAY = 3
 # How long niri may take to say its layers have changed.
@@ -283,8 +287,8 @@ def test_tapping_along_the_columns_never_sets_it_walking(shell: Shell) -> None:
 def test_the_cat_takes_no_keys_on_a_layer_of_its_own(shell: Shell) -> None:
     """It's on the top layer, taking no keys, so typing goes where it went before.
 
-    The margin, the launcher and notices stay over it, on the overlay layer, so it creeps
-    behind the margin's marks rather than over them (VKCF3Z, e2068d64).
+    The margin, the launcher and notices stay over it, on the overlay layer, so a mark's ink
+    lies over its paws as it perches there, and it never hides one (VKCF3Z, 3d799798).
     """
     shell.opened("a column under the cat")
     (layer,) = layered(shell, 1)
@@ -691,11 +695,13 @@ def test_the_cat_finds_its_way_up_and_down_between_workspaces(shell: Shell) -> N
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
 
 
-def test_a_second_move_seats_it_at_once(shell: Shell) -> None:
-    """A move between workspaces as it climbs from the last seats it at once, moving no more.
+def test_a_second_move_rides_on_from_where_the_first_got_to(shell: Shell) -> None:
+    """A move between workspaces as it climbs from the last moves it on from where it got to.
 
-    A step of the first move said as the second is made may come after the mark, so only a
-    step the other way, of a second move, fails it.
+    It's never put anywhere it didn't get to (WCJQSG, 2bd7c7c6): its first place said after
+    the second move is made is a step from its last before, and it moves back the other way
+    to its seat rather than being set there. A step of the first move said as the second is
+    made may come after the mark, and is a step on too.
     """
     since = shell.mark()
     upper = shell.opened("a workspace moved back to")
@@ -707,10 +713,23 @@ def test_a_second_move_seats_it_at_once(shell: Shell) -> None:
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
+    first = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
-    heard(shell, lambda said: moving(said) and '"beat":"rides"' not in said, since)
-    since = shell.mark()
+    heard(shell, lambda said: moving(said) and '"beat":"rides"' not in said, first)
+    before, since = shell.said_since(first)
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)
+    said, _ = shell.said_since(since)
+    places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
+    # The first place the second move says, past any step of the first said after the mark.
+    down = [((one or {}).get("move") or {}).get("way", 0) > 0 for one in places]
+    assert any(down), "the first move never said where the cat was"
+    turned = next((i for i in range(down.index(True), len(down)) if not down[i]), None)
+    assert turned is not None, "the second move never said where the cat was"
+    was, after = places[turned - 1], places[turned]
+    assert was is not None, "the cat was nowhere as the first move went"
+    assert after is not None, "the cat was nowhere as the second move began"
+    gone = math.hypot(after["x"] - was["x"], after["y"] - was["y"])
+    assert gone <= STEPS_ON * was["size"], f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
-    assert not again, f"the second move moved it again: {again[:3]}"
+    assert again, "the second move set it on its seat, moving it no more"
