@@ -18,6 +18,9 @@ Singleton {
     readonly property bool listening: state === "listening"
     readonly property bool transcribing: state === "transcribing"
     readonly property bool busy: listening || transcribing
+    // Whether the service answers at all, so the launcher's row can say
+    // it's off while its socket can't be reached.
+    readonly property bool reached: watching.connected
 
     // A moment's answer: "still-writing", or why it heard nothing (muted,
     // short, silent or unclear).

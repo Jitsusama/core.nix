@@ -271,7 +271,7 @@ STRAY_UNITS = [
 # a network's generation reads "Wi-Fi 6", a node's link "Ethernet", a
 # resolver's mode "IPv6 automatic", and a cleaner "DeepFilterNet, gentle"
 # or "RNNoise", as their makers write them.
-PROPER = {"Wi-Fi", "Ethernet", "IPv6", "DeepFilterNet", "RNNoise", "YouTube"}
+PROPER = {"Wi-Fi", "Ethernet", "IPv6", "DeepFilterNet", "RNNoise", "YouTube", "Super"}
 
 # A hole a word is filled at, "{asn}", which isn't a word of its own.
 HOLE = re.compile(r"\{\w+\}")

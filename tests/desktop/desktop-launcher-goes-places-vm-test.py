@@ -1332,6 +1332,8 @@ def test_a_word_typed_whole_lands_on_what_it_says(desktop: Desktop) -> None:
     # nothing.
     lands: list[tuple[str, Callable[[Json], bool]]] = [
         ("do not disturb", selects("session:quiet")),
+        # Dictation by a word of its own, as well as its name.
+        ("dictate", selects("dictation")),
         ("agents", selects("collection:agents")),
         ("clipboard", selects("collection:clipboard")),
         ("light", lambda shown: "Brighten the screen" in shown["rows"]),

@@ -25,6 +25,7 @@
         "selection",
         "timers",
         "capture",
+        "dictation",
         "session:recording",
         "emoji",
         "session:quiet"

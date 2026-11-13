@@ -258,6 +258,7 @@ or a copy, can be opened, copied or forgotten.
 | notice | a card at the top right saying what a program said | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on | dnd, quiet | `session:quiet` |
+| dictation | what Joel says, typed where the focus is, while he holds Super+D or after Return on its row | | `modules/dictation`, `Dictated.qml` |
 | question | what the desktop asks Joel: a centred box for a password or a yes, or the file chooser's which file, or where to save | | `Polkit.qml`, `Askpass.qml`, the file chooser's `said` |
 | mark | one drawn symbol, such as each one in the margin | glyph, icon | `glyphs.nix` |
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |

@@ -52,6 +52,12 @@ in
     home.packages = [ dictation ];
 
     xdg.configFile."quickshell/Dictation.qml".source = ./Dictation.qml;
+    # A row in the launcher's Desktop, so dictation is found where Joel
+    # looks rather than only by its key; after the desktop's own actions.
+    jitsusama.quickshell.launcher.providers.dictation = {
+      order = 46;
+      source = ./Dictated.qml;
+    };
     # Its own surface rather than a glyph in the margin, since it's for the
     # moment it's used and says more than a glyph can: the time, a wave.
     jitsusama.quickshell.surfaces.Speaking = ./Speaking.qml;
