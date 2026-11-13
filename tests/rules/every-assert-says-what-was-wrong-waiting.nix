@@ -22,7 +22,6 @@
   "modules/cadence/src/mesh.rs" = 7;
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;
-  "modules/cadence/src/watch.rs" = 3;
   "modules/calls/src/lib.rs" = 5;
   "modules/chrome/open-tabs/host/src/main.rs" = 2;
   "modules/chrome/pack-extension/src/main.rs" = 1;
