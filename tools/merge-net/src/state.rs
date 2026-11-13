@@ -170,6 +170,18 @@ impl State {
         )
     }
 
+    /// Write down that a hold on the machine starts nothing now, and why,
+    /// for cadence: it waits out what a hold stops, a switch or a round,
+    /// and counts from the hold's end, since on 13 November it said three
+    /// merges weren't on and the net was six hours behind under a hold
+    /// that stopped both from 09:55 to 15:47.
+    pub fn held(&self, why: &str) -> Result<(), String> {
+        write_json(
+            &self.root.join("held.json"),
+            &json!({ "at": now(), "why": why }),
+        )
+    }
+
     /// The last head the quick look ran its checks at, if any.
     pub fn quick(&self) -> Option<String> {
         read_json(&self.root.join("quick.json"))

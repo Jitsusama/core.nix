@@ -7,6 +7,9 @@ use crate::stats::spread;
 
 /// A merge not on the machine this long after it merged, in minutes.
 pub const NOT_ON_MIN: i64 = 20;
+/// How recently the net must have found the machine held for the hold to
+/// stand still, in seconds: it looks again each minute while held.
+pub const HELD_FRESH_S: i64 = 180;
 /// A VM run's median wait for a builder over the last hour, past which it
 /// is said, in minutes; the target is 2, and a few slow runs aren't a trend.
 pub const VM_WAIT_MEDIAN_MIN: f64 = 5.0;
@@ -51,6 +54,9 @@ pub struct Snapshot {
     pub round: Option<Round>,
     /// The net's hold on switching, while a test it broke is unfixed.
     pub net_hold: Option<NetHold>,
+    /// When the net last found a hold on the machine starting nothing,
+    /// which stops switches too.
+    pub net_held: Option<i64>,
     pub net_hung: Option<crate::net::Hung>,
     /// Whether a watcher was named, so its being there is read at all.
     pub watched: bool,
@@ -119,7 +125,15 @@ pub fn breaches(s: &Snapshot) -> Vec<Breach> {
             ),
         });
     }
-    if let Some(breach) = s.round.as_ref().and_then(|round| lag(round, s.now)) {
+    // A hold on the machine stops the net's rounds, so its lag counts from
+    // the hold's end, as a merge waiting to go on does.
+    let round = s.round.clone().filter(|_| !held(s)).map(|round| Round {
+        merged: s
+            .net_held
+            .map_or(round.merged, |held| held.max(round.merged)),
+        ..round
+    });
+    if let Some(breach) = round.as_ref().and_then(|round| lag(round, s.now)) {
         out.push(breach);
     }
     out.extend(s.net_hung.as_ref().map(crate::net::hang));
@@ -172,13 +186,20 @@ pub const GOING_QUIET_MIN: i64 = 15;
 /// a merge waiting out the shorter one while nobody is there isn't late.
 pub const SWITCH_EVERY_MIN: i64 = 30;
 
+/// Whether a hold on the machine stands now, as the net last found one:
+/// it stops switches and the net's rounds alike, so nothing they wait on
+/// can move.
+fn held(s: &Snapshot) -> bool {
+    s.net_held.is_some_and(|at| s.now - at < HELD_FRESH_S)
+}
+
 /// The oldest merge that should be on the machine by now and isn't, unless
 /// a switch that began after it is under way, for less than
 /// `GOING_QUIET_MIN`, or one waits out a call. A merge is counted late
 /// from when it could first go on: when it merged, or once the switches'
 /// spacing since the last one has passed, whichever is later.
 fn not_on(s: &Snapshot) -> Option<Breach> {
-    if s.follower.meeting {
+    if s.follower.meeting || held(s) {
         return None;
     }
     let spaced = s
@@ -188,7 +209,8 @@ fn not_on(s: &Snapshot) -> Option<Breach> {
         .filter(|look| look.switched)
         .map(|look| look.at + SWITCH_EVERY_MIN * 60)
         .max();
-    let due = |l: &Landing| spaced.map_or(l.merge.at, |spaced| spaced.max(l.merge.at));
+    let could = spaced.max(s.net_held);
+    let due = |l: &Landing| could.map_or(l.merge.at, |could| could.max(l.merge.at));
     let mut waiting: Vec<&Landing> = s
         .landings
         .iter()
@@ -516,6 +538,43 @@ pub mod tests {
             testing: true,
         });
         assert_eq!(breaches(&s)[0].key, "net:cb5b9b12d:3");
+    }
+
+    #[test]
+    fn a_hold_on_the_machine_quiets_what_it_stops_until_it_ends() {
+        // 13 November: a hold on every session stopped switches and the
+        // net from 09:55 to 15:47, and #4103, #4104 and #4107 were each
+        // said not on, and the net six hours behind, with nothing to do.
+        let mut s = calm(100_000);
+        s.landings = vec![Landing {
+            merge: merge("abc", 100_000 - 3 * 3600),
+            on: None,
+        }];
+        s.round = Some(Round {
+            head: "cb5b9b12dce0".into(),
+            merged: 100_000 - 4 * 3600,
+            behind: 5,
+            testing: false,
+        });
+        s.net_held = Some(100_000 - 60);
+        assert_eq!(
+            breaches(&s),
+            [] as [crate::watch::Breach; 0],
+            "what a hold stops was said while it stood"
+        );
+        s.net_held = Some(100_000 - 10 * 60);
+        assert_eq!(
+            breaches(&s),
+            [] as [crate::watch::Breach; 0],
+            "what a hold stopped was counted from before it ended"
+        );
+        s.net_held = Some(100_000 - 30 * 60);
+        let keys: Vec<String> = breaches(&s).into_iter().map(|b| b.key).collect();
+        assert_eq!(
+            keys,
+            ["noton:abc"],
+            "a merge still off twenty minutes after a hold wasn't said"
+        );
     }
 
     #[test]

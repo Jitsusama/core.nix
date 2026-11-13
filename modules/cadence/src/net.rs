@@ -24,11 +24,13 @@ pub struct Round {
 
 /// The net's lag at `now`, once its head is past `NET_BEHIND_H` old, and
 /// again each time its age doubles, so a long search is known once said.
+/// A round at main's head lags nothing, however old the head, since no
+/// merge waits on it.
 #[must_use]
 pub fn lag(round: &Round, now: i64) -> Option<Breach> {
     #[expect(clippy::cast_precision_loss, reason = "seconds within a lifetime")]
     let hours = (now - round.merged) as f64 / 3600.0;
-    if hours <= NET_BEHIND_H {
+    if hours <= NET_BEHIND_H || round.behind == 0 {
         return None;
     }
     let mut tier = NET_BEHIND_H;
@@ -174,6 +176,15 @@ mod tests {
         assert_eq!(
             lag(&round(4, true), 100_000).unwrap().key,
             "net:cb5b9b12d:3"
+        );
+        let caught_up = Round {
+            behind: 0,
+            ..round(7, true)
+        };
+        assert_eq!(
+            lag(&caught_up, 100_000),
+            None,
+            "a round at main's head was said to lag, with no merge waiting on it"
         );
         let said = lag(&round(7, false), 100_000).unwrap();
         assert_eq!(said.key, "net:cb5b9b12d:6");
