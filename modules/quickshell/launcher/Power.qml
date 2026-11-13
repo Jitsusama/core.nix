@@ -168,27 +168,22 @@ Provider {
         return ready.served(served) ? ready.rowAt(served) : undefined;
     }
 
-    // While its answer is shown, what the daemon changes is answered at
-    // once, so its figures and sparks move.
-    readonly property bool shown: launcher !== null && launcher.open && launcher.held.length === 0
-        && launcher.answer?.live === provider
-
-    // Whether its answer is stepped into: held as a step rather than
-    // being the launcher's answer, as Machine.qml's are.
-    readonly property bool steppedIn: launcher !== null && launcher.open
-        && launcher.held.some(step => step.row?.live === provider)
-
     // The rows' keys as last answered, so a battery or a port coming or
     // going is said: the launcher keeps what's inside each place until its
     // source says it changed, and Machine's Power row says the charge too,
     // so the places held are said again with it. Unsaid, Battery's Health
     // was never found from the root (the net's goes-places run,
-    // 2026-11-07). After that, a shown answer moves with each change, and
-    // so does one stepped into, as Machine › Power › Battery is: it kept
-    // the charge it was stepped into with, since a new charge moves no key
-    // (Y2YBTS, 2026-11-12 [495f1a1b]). Power's figures change about once
-    // a minute, so saying each again costs little, where Heat's change
-    // every second.
+    // 2026-11-07). Every other change is said while its rows can be seen,
+    // wherever they are: said only while its answer was shown or stepped
+    // into, Machine › Power › Battery kept the charge it was stepped into
+    // with, since a new charge moves no key (Y2YBTS, 2026-11-12
+    // [495f1a1b]), and an answer heard inside Machine › Power, as its
+    // connection came back after Machine's, left Battery to be stepped
+    // into from the rows held before, so Charge came without the drawer it
+    // names (KP0L6A's, XY9H5C's and H6EDLC's runs, 2026-11-13). The daemon
+    // is watched only while they can be seen, and Power's figures change
+    // about once a minute, so saying each again costs little, where
+    // Heat's change every second.
     property string placedAnswered: ""
 
     Connections {
@@ -201,7 +196,7 @@ Provider {
             if (moved) {
                 provider.answered();
                 provider.launcher?.placesRead?.();
-            } else if (provider.shown || provider.steppedIn) {
+            } else if (provider.seen) {
                 provider.answered();
             }
         }
