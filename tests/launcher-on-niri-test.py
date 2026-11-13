@@ -704,6 +704,34 @@ def test_do_not_disturbs_other_act_is_done_by_its_own_key(shell: Shell) -> None:
     shell.close_launcher()
 
 
+def test_ctrl_bracketright_takes_do_not_disturb_where_it_lives_and_never_in(
+    shell: Shell,
+) -> None:
+    """Ctrl+] on Do Not Disturb, found from the top, goes to where it lives, never into it.
+
+    Its acts lie on its row with nothing under them (Joel, 2026-11-11: "if they have nothing
+    under them, we shouldn't open a submenu for them"), so Ctrl+] goes to its place with it
+    selected, as with any row holding nothing, and there it says it goes nowhere more
+    (RCTRF8's walk, 68c21332).
+    """
+
+    def selected(shown: Json) -> Json:
+        return cast("Json", shown["selected"] or {})
+
+    shell.answer("do not disturb")
+    shell.launcher_until(lambda shown: selected(shown).get("name") == "Do Not Disturb")
+    shell.normal()
+    shell.step_in("ctrl-bracketright")
+    shown = shell.showing()
+    assert "Do Not Disturb" not in shown["held"], f"Ctrl+] went into it: {shown['held']}"
+    shell.launcher_until(lambda shown: selected(shown).get("name") == "Do Not Disturb")
+    held = shell.showing()["held"]
+    shell.send_key("ctrl-bracketright")
+    shell.launcher_until(lambda shown: "not here" in str(shown["saying"]))
+    assert shell.showing()["held"] == held, "Ctrl+] in its place went somewhere"
+    shell.close_launcher()
+
+
 def test_an_answer_asked_for_holds_its_row_from_the_keystroke(shell: Shell) -> None:
     """An answer asked for holds its row from the keystroke."""
     typed = "weather lima"

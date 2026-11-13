@@ -580,6 +580,10 @@ Scope {
             // so a terminal's show asks again (Launcher.qml's drawerOf).
             drawerUnread: typeof row.drawer === "string" ? () => !(row.drawer in held) : undefined
         }, acting, asking, copying, fields ?? {}, {
+            // A place giving the row its own rows to step into, as a screen its light, holds
+            // more than the daemon's acts, which alone say whether it holds them only.
+            actsOnly: typeof fields?.verbs === "function" ? fields.actsOnly === true
+                : fields?.actsOnly ?? acting.actsOnly,
             // The words it's found by beyond its name, the daemon's and the
             // place's, made ready to match as the search reads them
             // (Launcher.qml's hiddenWords), once for each text.
