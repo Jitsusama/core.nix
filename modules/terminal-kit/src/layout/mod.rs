@@ -325,11 +325,19 @@ pub fn table(columns: &[(&str, Align)], rows: &[Vec<String>], pen: &Pen) -> Vec<
     table_in(columns, rows, pen, Room::Unbounded, &[])
 }
 
+/// The fewest cells a last column of words is counted at when the
+/// others are weighed for the room: enough for a path shortened in its
+/// middle to still name its folder and itself. Counted at its full width,
+/// a long path would send every other column away before it was
+/// shortened at all.
+pub const SHORTENED: usize = 24;
+
 /// A table fitted to the room: where it's too wide, its columns go in
 /// the order `gives_way` names them by place, least useful first, and
 /// what's still too wide has its last column's words cut at a whole word.
-/// The first column names each record, so it never goes. Into a pipe
-/// nothing goes.
+/// A last column of words is weighed at `SHORTENED` cells at most, since
+/// it can be cut and the columns before it can't. The first column names
+/// each record, so it never goes. Into a pipe nothing goes.
 pub fn table_in(
     columns: &[(&str, Align)],
     rows: &[Vec<String>],
@@ -341,21 +349,25 @@ pub fn table_in(
         return set_table(columns, rows, pen);
     };
     let mut kept: Vec<usize> = (0..columns.len()).collect();
+    let widest = |at: usize| {
+        rows.iter()
+            .filter_map(|row| row.get(at))
+            .map(|cell| width(cell))
+            .chain([width(columns[at].0)])
+            .max()
+            .unwrap_or(0)
+    };
     let across = |kept: &[usize]| {
-        kept.iter()
-            .map(|at| {
-                rows.iter()
-                    .filter_map(|row| row.get(*at))
-                    .map(|cell| width(cell))
-                    .chain([width(columns[*at].0)])
-                    .max()
-                    .unwrap_or(0)
-            })
-            .sum::<usize>()
-            + GAP * kept.len().saturating_sub(1)
+        kept.iter().map(|at| widest(*at)).sum::<usize>() + GAP * kept.len().saturating_sub(1)
+    };
+    let needed = |kept: &[usize]| match kept.split_last() {
+        Some((last, before)) if !before.is_empty() && columns[*last].1 == Align::Left => {
+            across(before) + GAP + widest(*last).min(SHORTENED)
+        }
+        _ => across(kept),
     };
     for going in gives_way.iter().filter(|at| **at > 0) {
-        if across(&kept) <= cells {
+        if needed(&kept) <= cells {
             break;
         }
         kept.retain(|at| at != going);
@@ -530,6 +542,34 @@ mod tests {
         assert_eq!(
             table_in(&columns, &rows, &pen, Room::Unbounded, &[1]),
             table(&columns, &rows, &pen)
+        );
+    }
+
+    #[test]
+    fn a_long_last_column_is_shortened_before_the_others_give_way() {
+        let columns = [
+            ("Kind", Align::Left),
+            ("Size", Align::Right),
+            ("Path", Align::Left),
+        ];
+        let rows = [vec![
+            "cache".to_owned(),
+            "1 GiB".to_owned(),
+            "/home/someone/.cache/a/very/deep/folder/of/runs/run-48".to_owned(),
+        ]];
+        let pen = Pen::plain();
+        assert_eq!(
+            table_in(&columns, &rows, &pen, Room::Cells(40), &[1]),
+            [
+                "KIND    SIZE  PATH",
+                "cache  1 GiB  /…/folder/of/runs/run-48"
+            ],
+            "a path that can be shortened should leave the size in place"
+        );
+        let narrow = table_in(&columns, &rows, &pen, Room::Cells(28), &[1]);
+        assert!(
+            narrow[0] == "KIND   PATH",
+            "with less room than a shortened path needs, the size should go: {narrow:?}"
         );
     }
 

@@ -496,10 +496,13 @@ reads every program a crate builds, and holds it to five points:
   Its views, what it answers a person from a machine's state, such as its
   bare run, its status and its lists, are set at the same widths from
   stand-in state the check is given beside it, and held to the same rules
-  but the last, since a table may take the room: each has to exit 0, so
-  a stand-in too thin to show the view fails rather than passing on an
+  but the last, since a table may take the room: each has to exit 0, or
+  1 where its answer is that something differs, as `diff` says, so a
+  stand-in too thin to show the view fails rather than passing on an
   error. A stand-in's times are written as `@NOW-N@`, set as it runs, so
-  what it says happened lately reads that way.
+  what it says happened lately reads that way, and the folder it's put
+  in as `@HERE@`, in the view's words, its variables and its files, so a
+  command that reads a fixed path or a settings file is pointed at it.
 
 It reads every script a Nix file outside the tests wraps as a program,
 with `writeShellApplication` or `writeShellScriptBin`, too: the files its

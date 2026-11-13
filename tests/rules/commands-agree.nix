@@ -23,6 +23,10 @@
   # by its name: a list of views, each the words after the program, as
   # `args`, and the folder of stand-in state it reads, as `state`, whose
   # config, state, cache, data and runtime folders are its XDG folders.
+  # A view may set variables of its own, as `env`, and its words and
+  # variables, and its state's .in files, may name the folder its state is
+  # put in as @HERE@. It ends
+  # with 0, or the `exits` it names, as 1 where it says something differs.
   # Each is set at the widths its help is, and has to fit as help does.
   views ? { },
   name ? "commands-agree",

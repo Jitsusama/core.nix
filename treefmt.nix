@@ -67,6 +67,7 @@ in
     # A command's stand-in state, whose times commands-agree writes in as
     # it renders the view, so it's JSON only once they're there.
     "*.json.in"
+    "*.jsonl.in"
     # C and C++ built by the kernel's, QMK's and CMake's own builds, which
     # stop on an error but don't lint.
     "*.c"

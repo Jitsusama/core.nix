@@ -451,16 +451,18 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     assert!(out.contains("reclaimed"), "{out}");
     let (_, out, _) = machine.run("journal --since 1h --json");
     assert_eq!(out.lines().count(), 1, "{out}");
-    // A pass says how it ended and how long it took.
+    // A pass says how it ended, what it freed and how long it took.
     let pass = format!(
         r#"{{"event":"pass","at":{},"band":"nearly-full","end":"reached","freed":1073741824,"seconds":60.0}}"#,
         now - 30.0
     );
     fs::write(machine.env.state.join("journal.jsonl"), format!("{pass}\n")).unwrap();
     let (_, said, _) = machine.run("journal");
+    // The newest entry, after what the rotated file still holds.
+    let row = said.lines().last().unwrap_or_default();
     assert!(
-        said.contains("pass reached, freed 1.0 GiB in 60 s"),
-        "{said}"
+        row.contains("pass") && row.contains("1.0 GiB") && row.ends_with("reached in 60 s"),
+        "a pass should say it was one, what it freed, how it ended and how long it took: {said}"
     );
     let answer: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
     assert_eq!(answer["schema"], "disk-guard.journal/1", "{out}");
@@ -488,7 +490,7 @@ fn the_journal_leaves_out_what_a_reclaim_began_with_but_keeps_it_as_json() {
     .unwrap();
     let (code, out, _) = machine.run("journal");
     assert_eq!(code, 0);
-    assert_eq!(out.lines().count(), 1, "{out}");
+    assert_eq!(out.lines().count(), 2, "its labels and one entry: {out}");
     assert!(out.contains("reclaimed") && !out.contains("begin"), "{out}");
     let (_, json, _) = machine.run("journal --json");
     let answer: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -526,8 +528,8 @@ fn the_journal_shows_the_machines_guard_beside_the_accounts_by_time() {
     );
     let (code, out, _) = machine.run("journal");
     assert_eq!(code, 0);
-    let lines: Vec<&str> = out.lines().collect();
-    assert_eq!(lines.len(), 3, "{out}");
+    let lines: Vec<&str> = out.lines().skip(1).collect();
+    assert_eq!(lines.len(), 3, "three entries under the labels: {out}");
     for (said, (path, whose)) in lines.iter().zip([
         ("/tmp/left", "machine"),
         ("/home/u/app/target", "account"),
@@ -563,7 +565,10 @@ fn a_machines_journal_it_cant_read_is_said_and_the_accounts_still_shown() {
     let (code, out, err) = machine.run("journal");
     fs::set_permissions(&machine.env.system_state, fs::Permissions::from_mode(0o700)).unwrap();
     assert_eq!(code, 0, "{err}");
-    assert!(out.contains("pass reached"), "{out}");
+    assert!(
+        out.contains("reached in"),
+        "the account's pass should still be shown: {out}"
+    );
     assert!(
         err.contains("machine's guard") && err.contains("var/lib/disk-guard"),
         "an unreadable machine's journal should be said, not passed over: {err}"

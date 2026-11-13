@@ -1,0 +1,7 @@
+{"at":@NOW-7260@,"band":"filling","event":"begin","path":"/home/someone/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261029-6QB521/tmp/run-48","root":"/home/someone/.cache/pi"}
+{"at":@NOW-7260@,"band":"filling","event":"action","kind":"quest-temp","outcome":"reclaimed","path":"/home/someone/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261029-6QB521/tmp/run-48","reason":null,"size":2147483648}
+{"at":@NOW-7250@,"band":"filling","event":"action","kind":"quest-scratch","outcome":"kept","path":"/home/someone/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261101-ABCDEF","reason":"process 1 can't be read","size":734003200}
+{"at":@NOW-7240@,"band":"filling","end":"exhausted","event":"pass","freed":2147483648,"seconds":36.9}
+{"at":@NOW-90@,"band":"nearly-full","event":"action","kind":"target","outcome":"reclaimed","path":"/home/someone/src/an-app/target","reason":null,"size":19327352832}
+{"at":@NOW-85@,"band":"nearly-full","event":"action","kind":"trash","outcome":"failed","path":"/home/someone/.local/share/Trash/files/a-film.mkv","reason":"permission denied","size":4294967296}
+{"at":@NOW-80@,"band":"nearly-full","end":"reached","event":"pass","freed":19327352832,"seconds":12.4}
