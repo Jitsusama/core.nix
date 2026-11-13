@@ -9,3 +9,5 @@ publish = false
 
 [dependencies]
 libc = "0.2"
+# Its help, usage and failures take the shape every command of ours does.
+terminal-kit = { path = "../terminal-kit" }

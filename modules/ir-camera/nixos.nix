@@ -144,7 +144,7 @@ in
             cfg.source
             "--sink"
             sink
-            "--format"
+            "--raw"
             cfg.format
             "--width"
             (toString cfg.width)

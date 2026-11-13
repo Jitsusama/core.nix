@@ -12,12 +12,15 @@
 //! it, which powers it down and turns its IR light off, and blanks the
 //! loopback, so the next reader never sees the last one's face.
 //!
-//! ir-camera --source PATH --sink PATH --format Y10|Y12|Y16 --width PIXELS
+//! ir-camera --source PATH --sink PATH --raw Y10|Y12|Y16 --width PIXELS
 //! --height PIXELS [--prepare PROGRAM]
 //!
 //! The sink is the loopback, and the prepare program runs before each
 //! stream: for a camera behind a media pipeline, it wires the pipeline, and
-//! it may make the source a link to the node the pipeline ends at.
+//! it may make the source a link to the node the pipeline ends at. The
+//! camera's raw format is `--raw`, since `--format` is every command's
+//! answer's form, and it takes the shape every command of ours does
+//! (docs/commands.md): its help, and a failure that says what to try.
 
 mod grey;
 mod v4l2;
@@ -26,7 +29,12 @@ use grey::{Raw, Shape};
 use std::io;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
+use terminal_kit::{Exit, Failure, Help};
 use v4l2::{Capture, Device, PixFormat};
+
+/// What its unit runs, given in help and as the try of a usage failure.
+const EXAMPLE: &str = "ir-camera --source /dev/video2 --sink /dev/video9 --raw Y10 \
+                       --width 648 --height 368";
 
 /// How many buffers the camera streams into.
 const CAMERA_BUFFERS: u32 = 4;
@@ -62,10 +70,10 @@ fn settings(mut arguments: impl Iterator<Item = String>) -> Result<Settings, Str
         match flag.as_str() {
             "--source" => source = Some(PathBuf::from(value)),
             "--sink" => sink = Some(PathBuf::from(value)),
-            "--format" => {
+            "--raw" => {
                 format = Some(
                     Raw::named(&value)
-                        .ok_or_else(|| format!("--format takes Y10, Y12 or Y16, not {value}"))?,
+                        .ok_or_else(|| format!("--raw takes Y10, Y12 or Y16, not {value}"))?,
                 );
             }
             "--width" => width = Some(size(&value)?),
@@ -77,7 +85,7 @@ fn settings(mut arguments: impl Iterator<Item = String>) -> Result<Settings, Str
     Ok(Settings {
         source: source.ok_or("--source is needed")?,
         sink: sink.ok_or("--sink is needed")?,
-        format: format.ok_or("--format is needed")?,
+        format: format.ok_or("--raw is needed")?,
         width: width.ok_or("--width is needed")?,
         height: height.ok_or("--height is needed")?,
         prepare,
@@ -309,15 +317,44 @@ fn relay(settings: &Settings) -> Result<(), String> {
     }
 }
 
+/// What it says of itself, set as help and read by the check.
+fn help() -> Help {
+    Help::new(
+        "ir-camera",
+        "relays an IR camera's raw frames to a camera any program can open",
+    )
+    .example(
+        EXAMPLE,
+        "what its unit runs, streaming while a program reads",
+    )
+    .option(
+        "--source PATH",
+        "the raw camera, or a link the prepare program makes",
+    )
+    .option(
+        "--sink PATH",
+        "the loopback camera it writes grey frames to",
+    )
+    .option("--raw Y10|Y12|Y16", "the raw camera's format")
+    .option("--width PIXELS", "the raw camera's width")
+    .option("--height PIXELS", "the raw camera's height")
+    .option(
+        "--prepare PROGRAM",
+        "run before each stream, to wire a media pipeline",
+    )
+    .exit(Exit::Unavailable, "the loopback camera stopped answering")
+}
+
 fn main() -> ExitCode {
-    let result = settings(std::env::args().skip(1)).and_then(|settings| relay(&settings));
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("ir-camera: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let settings = settings(context.args.iter().cloned())
+            .map_err(|why| Failure::new(Exit::Usage, why).try_this(EXAMPLE))?;
+        relay(&settings).map_err(|why| {
+            Failure::new(Exit::Unavailable, "the loopback camera stopped answering")
+                .because(why)
+                .try_this("systemctl restart ir-camera-loopback ir-camera")
+        })
+    })
 }
 
 #[cfg(test)]
@@ -333,7 +370,7 @@ mod tests {
         "/run/ir/source",
         "--sink",
         "/dev/video9",
-        "--format",
+        "--raw",
         "Y10",
         "--width",
         "648",
@@ -360,7 +397,7 @@ mod tests {
 
     #[test]
     fn needs_each_setting_but_prepare() {
-        for missing in ["--source", "--sink", "--format", "--width", "--height"] {
+        for missing in ["--source", "--sink", "--raw", "--width", "--height"] {
             let index = ALL.iter().position(|flag| *flag == missing).unwrap();
             let without = [&ALL[..index], &ALL[index + 2..]].concat();
             assert_eq!(parse(&without), Err(format!("{missing} is needed")));
@@ -376,8 +413,8 @@ mod tests {
             parse(&arguments)
         };
         assert_eq!(
-            with("--format", "GREY"),
-            Err("--format takes Y10, Y12 or Y16, not GREY".into())
+            with("--raw", "GREY"),
+            Err("--raw takes Y10, Y12 or Y16, not GREY".into())
         );
         assert_eq!(
             with("--width", "0"),
