@@ -171,6 +171,13 @@ ShellRoot {
             Choice { id: voicedSaid; quiet: true; voiced: true; glyph: "$"; name: root.voice }
             Prompt { id: typedField; width: root.panel; text: root.voice }
             Prompt { id: voicedField; width: root.panel; hint: root.voice }
+            // Super+S's line: a field that wraps, its hint longer than a line.
+            Prompt {
+                id: wrappedHint
+                width: root.panel / 2
+                wraps: true
+                hint: "Say anything, and the void passes it to whoever owns it."
+            }
             // The launcher's head: its field the band from the frame to the
             // hairline over the rows, as tall as the rows' rhythm sets it.
             Prompt {
@@ -1330,20 +1337,45 @@ ShellRoot {
             expect("a row's words in the voice, on the mono's baseline",
                 root.voicedLike(plainRow, voicedRow),
                 `${JSON.stringify(plainRow)} against ${JSON.stringify(voicedRow)}`);
+            // The hint reads as words he could have typed: set as the typed
+            // letters are, as wide and on their baseline, its first letter
+            // where a typed one's is, and the caret at its start as at a
+            // typed word's (Joel, 2026-11-13 07:48). Run at scales 2 and 1.5.
             const typed = root.setting(typedField, root.voice);
             const hint = root.setting(voicedField, root.voice);
-            expect("the launcher's hint in the voice, on the typed words' baseline",
-                root.voicedLike(typed, hint), `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
-            // Where a caret is drawn, the hint starts a caret and an s past
-            // where letters would, so the caret never cuts its first letter
-            // (VKCF3Z's space audit, the picker's fault 11: "open which
-            // file?" read with its o cut).
-            const line = root.inputOf(voicedField);
-            const letters = line.mapToItem(null, 0, 0).x;
+            expect("the hint set as typed words are, on their baseline",
+                typed !== null && hint !== null && Math.abs(typed.base - hint.base) <= 0.5
+                    && Math.abs(typed.wide - hint.wide) <= 0.5,
+                `${JSON.stringify(typed)} against ${JSON.stringify(hint)}`);
+            const typedInput = root.inputOf(typedField);
+            const firstLetter = typedInput.mapToItem(null,
+                typedInput.positionToRectangle(0).x, 0).x;
+            const hintedInput = root.inputOf(voicedField);
+            hintedInput.cursorPosition = 0;
+            const startCaret = hintedInput.mapToItem(null, hintedInput.cursorRectangle.x, 0).x;
             const hinting = drawn(voicedField, []).find(t => t.text === root.voice);
-            expect("a hint starts past the caret", hinting !== undefined
-                && hinting.from >= letters + voicedField.caretWidth + Theme.space.rung.mark - 0.5,
-                `hint at ${hinting?.from}, letters at ${letters}`);
+            expect("a hint's first letter stands where a typed one does",
+                hinting !== undefined && Math.abs(hinting.from - firstLetter) <= 0.5,
+                `hint at ${hinting?.from}, a typed letter at ${firstLetter}`);
+            expect("the caret stands at the hint's start, as at a typed word's",
+                Math.abs(startCaret - firstLetter) <= 0.5,
+                `caret at ${startCaret}, a typed letter at ${firstLetter}`);
+            // Where what's typed wraps, a hint too long for a line wraps as
+            // typing it would, whole, the field growing for it, rather than cut.
+            const wrapping = drawn(wrappedHint, []).find(t => t.text === wrappedHint.hint);
+            expect("a wrapping field's long hint wraps whole, the field grown for it",
+                wrapping !== undefined && !wrapping.truncated && wrappedHint.typedLines > 1
+                    && wrappedHint.wrapsTall > 0,
+                `${said(drawn(wrappedHint, []))}, ${wrappedHint.typedLines} lines`);
+            // Its last line is drawn, not clipped by a field one line tall.
+            const hintField = root.inputOf(wrappedHint);
+            const hintItem = root.textItemsOf(hintField, [])
+                .find(t => t.text === wrappedHint.hint && t.visible) ?? null;
+            const hintEnds = hintItem === null ? NaN
+                : hintItem.mapToItem(hintField, 0, hintItem.contentHeight).y;
+            expect("a wrapping field's hint is drawn to its last line",
+                hintEnds <= hintField.height + 0.5,
+                `the hint ends at ${hintEnds}, the field ${hintField.height} tall`);
             const right = steadied.mapToItem(null, steadied.width - Theme.space.rung.inset, 0).x;
             const note = drawn(steadied, []).find(t => t.text === "just now");
             expect("a short note keeps to the field's right end", note !== undefined

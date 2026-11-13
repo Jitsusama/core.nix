@@ -98,13 +98,16 @@
       "in": "agents",
       "name": "Say to the Void",
       "glyph": "reply",
-      "ask": "Say anything, and the void passes it to whoever owns it.",
+      "ask": "Say anything, and the void passes it to its owner.",
       "said": {
         "hearer": "void",
         "nobody": "nobody to hear it",
         "sent": "sent",
         "taking": "taking it back",
-        "taken": "taken back"
+        "taken": "taken back",
+        "waiting": "waiting on {who}",
+        "void": "the void",
+        "letGo": "{who} let it go"
       }
     },
     {

@@ -299,8 +299,13 @@
       mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = machine.fonts.packages; }}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml > said 2>&1 || { cat said; exit 1; }
-      cat said
+      # At his laptop's scale and his big screen's, since an edge that meets
+      # another at one can miss it by a device pixel at the other.
+      : > said
+      for scale in 2 1.5; do
+        QT_SCALE_FACTOR=$scale timeout 60 ${qs} -p shell.qml > at 2>&1 || { cat at; exit 1; }
+        tee -a said < at
+      done
       # A row reused for another lays itself out again, and a binding loop
       # in a row's parts is warned of on Joel's desktop on every step that
       # meets it, so one warned of here fails, as the desktop's own warnings

@@ -422,10 +422,12 @@ for other people's programs.
   so comments read as handwriting, chosen by looking.
 - **Serif italic, the voice** (Fraunces, italic, weight 380, soft and wonky, drawn for 24
   points) is the desktop's voice: what the launcher says to Joel rather than
-  what he typed, such as its hint while nothing's typed and its words when
-  nothing is shown. Upright, at the Title level below, it names a place
-  and the thing a launcher's drawer is about. Joel, 2 November: "i love
-  serif, i'm willing to give fraunces a try".
+  what he typed, such as its words when nothing is shown. A field's hint
+  isn't: it's set as typed letters are, muted, the caret at its start, so
+  it reads as something he could have typed (Joel, 13 November). Upright,
+  at the Title level below, it names a place and the thing a launcher's
+  drawer is about. Joel, 2 November: "i love serif, i'm willing to give
+  fraunces a try".
   It's sized by capitals, not by its em: Monaspace's stand 0.730 of an em
   and Fraunces' 0.700, so it's drawn 0.730 / 0.700 as large and sits on the
   line Monaspace would, aligned by baseline.
@@ -501,9 +503,9 @@ axis.
 | Display | Monaspace 400, tabular figures                           | hero on the lock and greeter, display on a plate | as is, -0.01 em | text on a wallpaper, strong on a plate                 | a clock or a time shown large                                                                                                 |
 | Title   | Fraunces upright, wght 640, opsz 14, SOFT 100, WONK 1    | large   | sentence            | strong                                                   | a drawer's title, a place's name in the launcher's head, a dialog's heading, a page's section                                 |
 | Name    | Monaspace Medium 500                                     | large   | as written          | text; strong when selected or as a notice's sender       | a row's name, a notice's sender, a window's title                                                                             |
-| Figure  | Monaspace 400, tabular figures                           | large   | as written          | text; strong while typed                                 | a fact's value, a figure in a row, the typed query                                                                            |
+| Figure  | Monaspace 400, tabular figures                           | large   | as written          | text; strong while typed                                 | a fact's value, a figure in a row, the typed query, and muted, a field's hint while nothing's typed                            |
 | Words   | Fraunces upright, wght 380, opsz 14, SOFT 50, WONK 0     | large   | sentence            | muted beside a name; text alone                          | a row's words, a notice's words, a drawer's prose, the lock's day, a prompt's ask                                             |
-| Voice   | Fraunces italic, wght 380, opsz 24, SOFT 100, WONK 1     | large   | sentence            | muted as a hint; text when it speaks                     | a prompt's hint while nothing's typed, what's said when nothing is found, the drawer's line on what needs him               |
+| Voice   | Fraunces italic, wght 380, opsz 24, SOFT 100, WONK 1     | large   | sentence            | muted as a hint; text when it speaks                     | what's said when nothing is found, the drawer's line on what needs him                                                       |
 | Note    | Monaspace 400                                            | body    | as written          | muted; text on the selection and for a chord             | a row's side note, the count, chords and their hints, the foot, a fact's label, a notice's program and time; units at small |
 | Label   | Monaspace Medium 500, the `case` feature                 | body    | capitals, +0.16 em  | muted                                                    | a drawer's eyebrow, a group's heading in a list                                                                               |
 

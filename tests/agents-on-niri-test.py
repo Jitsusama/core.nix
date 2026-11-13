@@ -1512,13 +1512,13 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
     shell.as_account(line)
     shell.launcher_until(lambda shown: shown["line"]["keys"] and shown["line"]["typed"] == words)
-    # Return sends them, the window attached, and the line stays up saying they went.
+    # Return sends them, the window attached, and the line stays up saying whom they wait on.
     shell.send_key("ret")
     shell.launcher_until(
         lambda shown: (
             shown["line"]["up"]
             and shown["line"]["typed"] == ""
-            and shown["line"]["standing"] == "sent"
+            and shown["line"]["standing"] == "waiting on the void"
         )
     )
     inbox = STEER / "VOID"
@@ -1616,6 +1616,96 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
+def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
+    shell: Shell, said_over: str, shoot: Callable[[str], None]
+) -> None:
+    """Two lines in a row each say whom they wait on, then every answer, a newer in place.
+
+    Joel asked twice in a row and the line showed only the first answer, and not the one
+    that superseded it (WCJQSG [cf8639ab], 2026-11-13 07:46). The void writes each event to
+    its file as it happens (8GYNJ6 [a9490eb0]); the line reads it while it's up.
+    """
+    del said_over
+
+    def asked(words: str, kept: str) -> None:
+        """Say the words on the line, and lay the void's answer that your orchestrator has it."""
+        shell.send_chars(words)
+        # In the field before Return, since an empty field after it says nothing of a
+        # Return that came before the letters landed.
+        shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
+        deadline = time.monotonic() + 10
+        while not (
+            sent := [
+                text
+                for one in sorted((STEER / "VOID").glob("*.json"))
+                if (text := str(json.loads(one.read_text()).get("text", ""))).startswith(words)
+            ]
+        ):
+            held = [one.name for one in sorted((STEER / "VOID").glob("*"))]
+            assert time.monotonic() < deadline, (
+                f"the void's inbox never had {words!r}: it held {held}, "
+                f"the line {shell.showing()['line']}"
+            )
+            time.sleep(0.1)
+        replies = STEER / "VOID" / "replies"
+        replies.mkdir(parents=True, exist_ok=True)
+        now = datetime.now(UTC)
+        lines = [
+            {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
+             "text": sent[0]},
+            {"stage": "replied", "at": now.isoformat(),
+             "text": f"Your orchestrator has it \u00b7 undo {kept}"},
+        ]  # fmt: skip
+        laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["keys"])
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "insert")
+    # A key of another keymap first, as Shell.restart presses, since the line's first letter
+    # was read by the last keymap and lost, leaving "ow is it going?". F24 does nothing here.
+    subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+    asked("how is it going?", "07:42")
+    asked("what is being worked on?", "07:43")
+    waiting = ["waiting on your orchestrator"] * 2
+    shell.launcher_until(
+        lambda shown: [talk["waiting"] for talk in shown["line"]["talks"][:2]] == waiting
+    )
+    shoot("waiting")
+    day = datetime.now().astimezone().strftime("%Y-%m-%d")
+    events = [
+        {"line": f"{day} 07:42", "msg": "m1", "who": "your orchestrator", "event": "routed"},
+        {"line": f"{day} 07:43", "msg": "m2", "who": "your orchestrator", "event": "routed"},
+        {"line": f"{day} 07:42", "msg": "m3", "who": "your orchestrator",
+         "event": "answered", "at": "07:44", "text": "Going well: eleven clean updates."},
+        {"line": f"{day} 07:43", "msg": "m4", "who": "your orchestrator",
+         "event": "answered", "at": "07:44", "text": "The cat's clips, and the void."},
+        {"line": f"{day} 07:42", "msg": "m5", "supersedes": "m3", "who": "your orchestrator",
+         "event": "answered", "at": "07:45", "text": "Going well: thirteen clean updates."},
+    ]  # fmt: skip
+    written = STATE / "void" / "answers.jsonl"
+    written.parent.mkdir(parents=True, exist_ok=True)
+    with written.open("a") as file:
+        file.writelines(json.dumps(event) + "\n" for event in events)
+    answered = [["The cat's clips, and the void."], ["Going well: thirteen clean updates."]]
+    shell.launcher_until(
+        lambda shown: [talk["answers"] for talk in shown["line"]["talks"][:2]] == answered
+    )
+    talks = shell.showing()["line"]["talks"]
+    assert [talk["waiting"] for talk in talks[:2]] == ["", ""], talks
+    # Its right says when he said it, the undo's time, however late the answer; who
+    # answered stands beside the answer (WCJQSG [e05f6231]).
+    assert [talk["by"] for talk in talks[:2]] == ["your orchestrator"] * 2, talks
+    assert all(re.fullmatch(r"\d\d:\d\d", talk["side"]) for talk in talks[:2]), talks
+    shoot("answered-twice")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
 def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
     shell: Shell, said_over: str
 ) -> None:
@@ -1635,6 +1725,8 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
     )
     # Over the window the launcher went from, which goes with what's said.
     shell.launcher_until(lambda shown: shown["line"]["about"].endswith(said_over))
-    assert shell.showing()["line"]["standing"] == "taken back", shell.showing()["line"]
+    # Its talks kept: the case before's newest answer.
+    standing = shell.showing()["line"]["standing"]
+    assert standing == "The cat's clips, and the void.", shell.showing()["line"]
     shell.as_account(shell.ipc("line"))
     shell.launcher_until(lambda shown: not shown["line"]["up"])
