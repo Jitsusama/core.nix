@@ -306,11 +306,11 @@ def test_a_terminals_busy_work_goes_where_its_terminals_owner_works(jobs: Accoun
     # own, with a sleep in it, as a build a terminal runs does. Polkit asks Joel for what runs
     # in his slot, so an agent's must never land there.
     real = "/run/current-system/systemd/bin/systemd-run"
-    for number, (slice, seconds) in enumerate([("agents", 1031), ("app", 1032)], start=1):
+    for number, (owner, seconds) in enumerate([("agents", 1031), ("app", 1032)], start=1):
         jobs.machine.succeed(
             f"systemd-run -M alice@ --user --slice=jobs.slice --unit=window-{number}"
             f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
-            f" '{real} --user --scope --unit=kitty-9-{number} --slice={slice}.slice"
+            f" '{real} --user --scope --unit=kitty-9-{number} --slice={owner}.slice"
             f' {jobs.bash} -c "setsid {jobs.bash} -c \\"{jobs.sleep} {seconds} &'
             ' while :; do :; done\\"; wait"\''
         )
