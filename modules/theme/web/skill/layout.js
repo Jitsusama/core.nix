@@ -180,6 +180,17 @@
     await settled();
     const grown = opened === null || !shown(opened) ? null : laid(opened);
     const from = grown?.top;
+    // Whether a box stood above the fold, or level with its top beside it.
+    // A box level with its top and under it, as the next thing after a
+    // panel that was shut to nothing, is below it, free to move down.
+    const above = (then) => {
+      if (then.top < from - 1) {
+        return true;
+      }
+      const level = then.top < from + 1;
+      const under = then.left < grown.left + grown.width && then.left + then.width > grown.left;
+      return level && !under;
+    };
     // What stood beside it as it opened: begun above its top and running
     // past it, and not holding it. Anything inside one of these that moves
     // is a neighbour reflowing, such as the parts of the next card over.
@@ -189,7 +200,7 @@
         grown !== null &&
         !element.contains(opened) &&
         !opened.contains(element) &&
-        then.top < from + 1 &&
+        above(then) &&
         then.top + then.height > from + 1
       );
     });
@@ -211,7 +222,7 @@
       // Above it or beside it, nothing changes, though an unframed box may
       // stretch unseen; below it, things only move down, and nothing inside
       // what stood beside it moves at all.
-      if (then.top < from + 1) {
+      if (above(then)) {
         return sides.some((side) => side !== "height") || (sides.length > 0 && framed(element));
       }
       const neighbour = beside.some((other) => other.contains(element));
