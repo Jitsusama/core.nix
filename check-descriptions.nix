@@ -533,9 +533,11 @@
   commands-agree = ''
     every command core's crates build keeps docs/commands.md's convention: built on the terminal
     kit, ending and inking only through it, and answering --help --format json as help/1 and
-    --version in one line without starting anything; and every script a Nix wrapper builds
-    exits only with the table's codes, spells no colour and answers --help with its name, but
-    the points each still waits on
+    --version in one line without starting anything; every script a Nix wrapper builds
+    exits only with the table's codes, spells no colour and answers --help with its name; and
+    each command given it sets its help at 60, 80, 100 and 140 columns with no line past the
+    edge, no wrap losing its inset or parting a figure from its unit, and none wider than at 80,
+    but the points each still waits on
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests

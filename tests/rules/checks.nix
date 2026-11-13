@@ -112,7 +112,9 @@
 
   # Every command keeps docs/commands.md's convention, so learning one teaches
   # them all and an agent reads each the same way. Each on the terminal kit is
-  # run for its help, and lag-watch, the first, builds only on Linux, as
+  # run for its help, as JSON and in a terminal at four widths, which it has to
+  # fit (docs/commands.md, Width and What Gives Way). lag-watch, the first,
+  # builds only on Linux, as
   # github-broker and session-backup do. Those
   # that broke a point before the rule wait in
   # tests/rules/commands-agree-waiting.nix, with the points each still

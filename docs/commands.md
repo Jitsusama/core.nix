@@ -477,7 +477,7 @@ commands it builds on the kit and a waiting list of its own.
 ## When a Command Doesn't Agree Yet
 
 The `commands-agree` check ([`tests/rules/commands-agree.py`][check])
-reads every program a crate builds, and holds it to four points:
+reads every program a crate builds, and holds it to five points:
 
 - **kit:** its crate builds on the terminal kit;
 - **exits:** its own code never ends the process, with `process::exit`
@@ -488,18 +488,27 @@ reads every program a crate builds, and holds it to four points:
 - **helps:** run with `--help --format json`, it answers `help/1` under
   its own name, says nothing on stderr and exits 0 within ten seconds, and
   `--version` answers one line. The check is given each command on the kit
-  built, to run it.
+  built, to run it;
+- **fits:** its `--help`, set in a terminal 60, 80, 100 and 140 columns
+  wide, runs no line past the edge, keeps each line's inset when it wraps,
+  parts no figure from its unit across lines, and reads at 100 and 140 as
+  at 80, as [Width and What Gives Way](#width-and-what-gives-way) says.
+  What a command answers from a machine's state is held to the same rules
+  by its crate's own tests, which set it at 60 and 100 from made-up state,
+  as disk-guard's status tests do.
 
 It reads every script a Nix file outside the tests wraps as a program,
 with `writeShellApplication` or `writeShellScriptBin`, too: the files its
-`text` reads or runs and the strings it spells. A script is held to three
+`text` reads or runs and the strings it spells. A script is held to four
 of the points by hand:
 
 - **exits:** every exit it spells with a number is the table's;
 - **inks:** it spells no escape sequence and sets no colour with `tput`;
 - **helps:** run with `--help`, it opens its answer on stdout with its own
   name, says nothing on stderr and exits 0 within ten seconds, as the
-  check runs it when given its package.
+  check runs it when given its package;
+- **fits:** its help fits each width as a crate's does, which a script
+  meets by setting its help in lines of at most 60 cells.
 
 A script by a crate program's own name, telling it its settings, is that
 program as it's typed, so its exits and inks count as the program's.
