@@ -244,9 +244,10 @@ pub fn wants(only_there: bool, queued: impl FnOnce() -> bool, waiting: bool) -> 
 pub enum Restart {
     /// No build reaches its builder, so its way ends with it.
     Ending,
-    /// A build reaches its builder, so its way is told to take no new
-    /// connection and finish those it has, outliving the lender, while the
-    /// next start takes the builder back beside it.
+    /// A build reaches its builder, so its way and its line stay, outliving
+    /// the lender, while the next start takes the builder back beside it;
+    /// only then is the old way told to take no new connection and finish
+    /// those it has.
     HandingOver,
 }
 

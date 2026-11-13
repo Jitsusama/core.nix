@@ -2582,8 +2582,8 @@ fn ends_superseded(reached: bool, finishing: bool, said: &mut bool) -> Option<Re
             );
         }
         Some(Restart::HandingOver) => eprintln!(
-            "nix-offload: its unit changed, so it starts again, and its way to the builder \
-             finishes the builds it carries while the next start takes the builder back"
+            "nix-offload: its unit changed, so it starts again, and builds go on reaching its \
+             builder while the next start takes it back"
         ),
         None if superseded && !*said => {
             eprintln!(
@@ -2605,8 +2605,6 @@ fn serve(settings: &Settings) -> bool {
     hear_hand_overs();
     let dir = &settings.dir;
     let mut machines = machines_of(settings);
-    machines.show(None);
-    machines.asking(None);
     // Said so a build with no builder waits for one only while a lender
     // runs to make it.
     let lender = dir.join("lender");
@@ -2616,7 +2614,7 @@ fn serve(settings: &Settings) -> bool {
             lender.display()
         );
     }
-    let mut lent = adopt(settings, &mut machines, into_day());
+    let mut lent = start(settings, &mut machines, into_day());
     let mut leaving: Vec<Leaving> = Vec::new();
     let mut hold = decide::Hold::default();
     let mut hand_over_after = 0;
@@ -2731,7 +2729,7 @@ fn left_leaving(settings: &Settings, leaving: Vec<Leaving>, hands_over: bool) {
     } in leaving
     {
         if hands_over {
-            finishes(settings, &builder, outliving);
+            finishes(settings, &builder, outliving, false);
         } else {
             end(&mut builder.helper);
         }
@@ -2739,13 +2737,15 @@ fn left_leaving(settings: &Settings, leaving: Vec<Leaving>, hands_over: bool) {
     }
 }
 
-/// Note that `builder`'s helper finishes the builds it carries, and
-/// whether a run `outliving` its caller builds there, for the next start.
-fn finishes(settings: &Settings, builder: &Lent, outliving: bool) {
+/// Note that `builder`'s helper finishes the builds it carries, whether a
+/// run `outliving` its caller builds there, and whether its way is left
+/// `accepting` new connections, for the next start.
+fn finishes(settings: &Settings, builder: &Lent, outliving: bool, accepting: bool) {
     let left = finishing::Finishing {
         helper: Some(builder.helper.id()),
         outliving,
         ends: builder.ends,
+        accepting,
     };
     if let Err(error) = finishing::note(&settings.dir, &builder.name, &left) {
         eprintln!(
@@ -2884,12 +2884,12 @@ fn let_go(settings: &Settings, leaving: Vec<Leaving>, now: u64) -> Vec<Leaving> 
 }
 
 /// Leave the builder lent as the service ends for the next start to take
-/// back. Its helper ends with it, unless it `hands_over`: then the helper,
-/// run through `--outlasting` so the unit's end leaves it, takes no new
-/// connection and finishes the builds it carries beside the next start's,
-/// and the builder is noted as finishing, with whether a run `outliving`
-/// its caller builds there, so a start that can't take it back leaves it
-/// until they end.
+/// back. Its helper ends with it and its line goes, unless it
+/// `hands_over`: then the helper, run through `--outlasting` so the unit's
+/// end leaves it, and its line stay, taking new connections until the
+/// next start holds the builder, as `start` says, and the builder is noted
+/// as finishing, with whether a run `outliving` its caller builds there,
+/// so a start that can't take it back leaves it until they end.
 fn left_as_it_ends(
     settings: &Settings,
     machines: &mut Machines,
@@ -2897,11 +2897,10 @@ fn left_as_it_ends(
     hands_over: bool,
     outliving: bool,
 ) {
-    machines.show(None);
     if hands_over {
-        told_to_hand_over(&builder.helper);
-        finishes(settings, &builder, outliving);
+        finishes(settings, &builder, outliving, true);
     } else {
+        machines.show(None);
         end(&mut builder.helper);
     }
     leave(settings, &builder.name, builder.since, builder.rate);
@@ -3097,6 +3096,29 @@ fn hear(settings: &Settings, arguments: &[&str]) -> Option<(Child, Heard, Arc<Mu
         }
     }
     Some((helper, said, place))
+}
+
+/// Start lending, taking back what the last stop left. A restart that
+/// handed its builder over left its line named and its way taking
+/// connections, so builds go on reaching the builder while this takes it
+/// back. On 13 November a switch restarted both lenders, and with the
+/// line out for the 23 s each took, root's Nix built here. Only once this
+/// start holds the builder, or names it nowhere, is the old way told to
+/// take no new connection.
+fn start(settings: &Settings, machines: &mut Machines, into_day: u32) -> Option<Lent> {
+    let accepting = finishing::accepting(&settings.dir);
+    if accepting.is_empty() {
+        machines.show(None);
+    }
+    machines.asking(None);
+    let lent = adopt(settings, machines, into_day);
+    if lent.is_none() && !accepting.is_empty() {
+        machines.show(None);
+    }
+    for name in &accepting {
+        finishing::hand_over(&settings.dir, name);
+    }
+    lent
 }
 
 /// Take back the builder the last stop left, before the deadline, rather
@@ -3646,15 +3668,19 @@ exit 1
             telling: None,
             freeing: None,
         };
+        (settings, machines_in(folder))
+    }
+
+    /// The files a lender in `folder` names its builders in.
+    fn machines_in(folder: &Path) -> Machines {
         let file = |name: &str| folder.join(name);
-        let machines = Machines::new(
+        Machines::new(
             file("machines"),
             file("with-standing"),
             file("store"),
             file("lending"),
             Vec::new(),
-        );
-        (settings, machines)
+        )
     }
 
     #[test]
@@ -3834,6 +3860,107 @@ exit 1
         end(&mut successor.helper);
     }
 
+    /// A helper whose `hold lend-5` keeps in `seen` what `machines` said
+    /// as it was asked, and in `at-hand-over` what it said once told to
+    /// hand over, refusing while `refuse` is beside it.
+    const HANDS_OVER_SEEING: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+[ "$1 $2" = "hold lend-5" ] || exit 1
+[ -e "$here/refuse" ] && exit 1
+cat "$here/machines" > "$here/seen" 2>/dev/null
+trap 'cat "$here/machines" > "$here/at-hand-over" 2>/dev/null; exit 0' USR1
+echo "ssh-ng://far x86_64-linux /k 8 1 big-parallel - -"
+sleep 60 &
+wait
+exit 3
+"#;
+
+    /// How the helper `pid`, our own child, ended, once it has.
+    fn reaped(pid: u32) -> i32 {
+        let pid = libc::pid_t::try_from(pid).unwrap();
+        let mut status = 0;
+        // SAFETY: waiting on our own child, which nothing else reaps.
+        let reaped = unsafe { libc::waitpid(pid, &raw mut status, 0) };
+        assert_eq!(reaped, pid, "it wasn't ours to reap");
+        status
+    }
+
+    #[test]
+    fn a_builder_handed_over_as_the_service_ends_is_named_until_the_next_start_holds_it() {
+        // On 13 November a switch restarted both lenders while builds ran
+        // on their builders. Each stop took its line out and closed its way
+        // to new connections, and taking the builder back took 23 s, so for
+        // that long root's Nix named no lent builder and built here.
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let (settings, mut machines) = holding(folder.path(), LEFT);
+        executable(&settings.helper, HANDS_OVER_SEEING);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let pid = old.helper.id();
+        left_as_it_ends(&settings, &mut machines, old, true, false);
+        let read = |name: &str| fs::read_to_string(folder.path().join(name)).unwrap_or_default();
+        assert!(
+            read("machines").starts_with("ssh-ng://far "),
+            "its line went with the stop: {:?}",
+            read("machines")
+        );
+        assert_eq!(
+            read("at-hand-over"),
+            "",
+            "the stop told its way to hand over"
+        );
+        let mut next = machines_in(folder.path());
+        let mut lent = start(&settings, &mut next, 3600).expect("taken back");
+        assert!(
+            read("seen").starts_with("ssh-ng://far "),
+            "it was named nowhere while it was taken back: {:?}",
+            read("seen")
+        );
+        let status = reaped(pid);
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "the old way wasn't told to hand over once the start held it: {status}"
+        );
+        assert!(
+            read("at-hand-over").starts_with("ssh-ng://far "),
+            "it was named nowhere as its old way handed over"
+        );
+        assert!(
+            read("machines").starts_with("ssh-ng://far "),
+            "it was named nowhere once taken back"
+        );
+        end(&mut lent.helper);
+    }
+
+    #[test]
+    fn a_start_that_cant_take_back_what_was_handed_over_names_it_nowhere_first() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let (settings, mut machines) = holding(folder.path(), LEFT);
+        executable(&settings.helper, HANDS_OVER_SEEING);
+        let old = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let pid = old.helper.id();
+        left_as_it_ends(&settings, &mut machines, old, true, false);
+        fs::write(folder.path().join("refuse"), "").unwrap();
+        let mut next = machines_in(folder.path());
+        assert!(
+            start(&settings, &mut next, 3600).is_none(),
+            "a refused one was taken back"
+        );
+        let status = reaped(pid);
+        assert!(
+            libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
+            "the old way wasn't told to hand over: {status}"
+        );
+        let read = |name: &str| fs::read_to_string(folder.path().join(name)).unwrap_or_default();
+        assert_eq!(
+            read("at-hand-over"),
+            "",
+            "it was still named as its old way took no new connection"
+        );
+        assert_eq!(read("machines"), "", "one not taken back was still named");
+    }
+
     #[test]
     fn a_builder_handed_over_as_the_service_ends_keeps_the_builds_on_its_way() {
         let _heard = unstopped();
@@ -3852,17 +3979,19 @@ exit 1
         let old = adopt(&settings, &mut machines, 3600).expect("taken back");
         let through = fs::read_to_string(folder.path().join("through")).unwrap();
         assert!(through.ends_with("hold lend-5\n"), "{through}");
-        let pid = libc::pid_t::try_from(old.helper.id()).unwrap();
+        let pid = old.helper.id();
         left_as_it_ends(&settings, &mut machines, old, true, false);
-        // Told to hand over, the stand-in ends as it would once its last
-        // connection closed; told to end, it would die of the signal.
-        let mut status = 0;
-        // SAFETY: waiting on our own child, which nothing else reaps.
-        let reaped = unsafe { libc::waitpid(pid, &raw mut status, 0) };
-        assert_eq!(reaped, pid);
+        // Told to end, the stand-in would die of the signal.
+        assert!(
+            finishing::read(folder.path(), "lend-5").is_some_and(|left| left.accepting),
+            "its way wasn't left taking connections"
+        );
+        // SAFETY: our own child, ended here, as the next start would tell it.
+        unsafe { libc::kill(libc::pid_t::try_from(pid).unwrap(), libc::SIGUSR1) };
+        let status = reaped(pid);
         assert!(
             libc::WIFEXITED(status) && libc::WEXITSTATUS(status) == 0,
-            "it wasn't told to hand over: {status}"
+            "its way ended with the service: {status}"
         );
         let journal = fs::read_to_string(&settings.journal).unwrap();
         assert!(
@@ -4108,6 +4237,7 @@ exit 1
             helper: Some(way.id()),
             outliving: false,
             ends: now() + 3600,
+            accepting: false,
         };
         finishing::note(folder.path(), "lend-5", &left).unwrap();
         assert!(
@@ -4149,6 +4279,7 @@ exit 1
             helper: None,
             outliving: true,
             ends,
+            accepting: false,
         };
         let mut said = BTreeSet::new();
         finishing::note(folder.path(), "lend-5", &left(now() + 3600)).unwrap();
@@ -4178,6 +4309,7 @@ exit 1
                 helper: Some(pid),
                 outliving: true,
                 ends,
+                accepting: true,
             })
         );
         let old = adopt(&settings, &mut machines, 3600).expect("taken back");
@@ -4205,6 +4337,10 @@ exit 1
         left_leaving(&settings, leaving, true);
         let noted = finishing::read(folder.path(), "lend-5").expect("not noted");
         assert_eq!(noted.helper, Some(pid));
+        assert!(
+            !noted.accepting,
+            "one already handed to a successor takes connections"
+        );
         let pid = libc::pid_t::try_from(pid).unwrap();
         // SAFETY: a probe of a pid we started and haven't reaped.
         assert_eq!(unsafe { libc::kill(pid, 0) }, 0, "its way was ended");
