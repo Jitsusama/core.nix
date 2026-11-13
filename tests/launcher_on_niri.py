@@ -91,6 +91,10 @@ class Shell:
         # environment names, given the lists the check gives as PROGRAMS_SOURCES.
         if "PROGRAMS" in os.environ:
             self.daemon("programs", os.environ["PROGRAMS"], os.environ["PROGRAMS_SOURCES"])
+        # For You's looks come from the to-do daemon, watching the folder the harness writes them
+        # in and settling each as Joel acts on it, as the account's does.
+        if "TO_DO" in os.environ:
+            self.to_do()
         # WARP's link comes from warp, asking the check's stand-in warp-cli.
         if "WARP" in os.environ:
             self.daemon("warp", os.environ["WARP"])
@@ -179,6 +183,39 @@ class Shell:
         with (self.log.parent / f"{name}.log").open("ab") as log:
             self.daemons[name] = subprocess.Popen(  # noqa: S603
                 [program, str(socket), *given],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+            )
+
+    def to_do(self) -> None:
+        """Start the to-do daemon the check gives as TO_DO, over the looks folder, with no to-do.
+
+        The folder is made first, since a case writes its looks there once the shell is up.
+        """
+        state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+        looks = state / "pi/agentic-harness.pi/looks"
+        looks.mkdir(parents=True, exist_ok=True)
+        own = self.log.parent / "to-do"
+        (own / "waiting").mkdir(parents=True, exist_ok=True)
+        daemons = Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons"
+        daemons.mkdir(mode=0o700, exist_ok=True)
+        given = [own / "waiting", own / "verdicts.json", own / "signins", own / "core.git"]
+        with (self.log.parent / "to-do.log").open("ab") as log:
+            self.daemons["to-do"] = subprocess.Popen(  # noqa: S603, the program the check gives
+                [
+                    os.environ["TO_DO"],
+                    *map(str, given),
+                    "--follower",
+                    "none",
+                    "--systemctl",
+                    "none",
+                    "--socket",
+                    str(daemons / "to-do.sock"),
+                    "--looks",
+                    str(looks),
+                    "--settled",
+                    str(own / "settled.json"),
+                ],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
