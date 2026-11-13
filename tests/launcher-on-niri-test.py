@@ -1332,9 +1332,12 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
     looks = state / "pi/agentic-harness.pi/looks"
     looks.mkdir(parents=True, exist_ok=True)
     written = [looks / f"weighed{at:02d}.json" for at in range(LOOKS_WAITING)]
-    # Each came in the last hour, a minute apart, since one three days old goes quiet
-    # (launcher/Looks.js).
-    hour = now("-u", "-d", "1 hour ago", "+%FT%H")
+    # Each came yesterday at noon, a minute apart: within three days, past which one goes
+    # quiet (launcher/Looks.js), and saying "yesterday" until midnight. Under an hour old,
+    # each said its minutes, so a minute turning between the count and the act remade every
+    # such row and weighed it again: 5 to 11 on loaded builders, each early in an hour
+    # (H6EDLC, 2026-11-13).
+    hour = now("-u", "-d", "yesterday", "+%FT12")
     for at, look in enumerate(written):
         said = {"v": 1, "id": look.stem, "title": f"Weighed Look {at}", "kind": "file",
                 "target": "/etc/hostname", "state": "waiting",
