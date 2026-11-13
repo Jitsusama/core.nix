@@ -490,6 +490,14 @@ fn newest_day(folder: &Path) -> Option<Day> {
         .max_by_key(|d| d.to)
 }
 
+/// What a source's thread read, its panic carried on as this thread's, so
+/// reading side by side fails as reading in a row would.
+fn joined<T>(thread: std::thread::ScopedJoinHandle<'_, T>) -> T {
+    thread
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
 /// Where cadence keeps what it can make again: `$XDG_CACHE_HOME`, else
 /// `~/.cache`.
 fn cache_home() -> PathBuf {
@@ -499,8 +507,11 @@ fn cache_home() -> PathBuf {
     )
 }
 
-/// Reads every source from the machine, each cheaply: files, and four
-/// commands that answer at once.
+/// Reads every source from the machine, each cheaply: files, and a few
+/// commands that answer at once. The slow ones, git's logs and the
+/// journal behind the landings, the quest store and the mesh's day, are
+/// read side by side, since on a busy machine each waits on the disk
+/// and in a row they took seconds.
 #[must_use]
 pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
     let text = |path: PathBuf| fs::read_to_string(path).unwrap_or_default();
@@ -540,16 +551,32 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         },
         PathBuf::from,
     );
+    let (messages, landings, harness, plans, counted) = std::thread::scope(|s| {
+        let messages = s.spawn(|| {
+            messages::read(
+                &mesh.root,
+                now - DAY,
+                Some(&cache_home().join("cadence/mesh-notes.json")),
+            )
+        });
+        let landings = s.spawn(|| landings::gather(folder, &runtime, now));
+        let harness = s.spawn(|| landings::gather_harness(now));
+        let plans = s.spawn(plans::gather);
+        let counted = s.spawn(|| counted::gather(folder, state_home, now));
+        (
+            joined(messages),
+            joined(landings),
+            joined(harness),
+            joined(plans),
+            joined(counted),
+        )
+    });
     Sources {
         measures,
         card: text(folder.join("card.txt")),
         day: newest_day(folder),
         failed,
-        messages: messages::read(
-            &mesh.root,
-            now - DAY,
-            Some(&cache_home().join("cadence/mesh-notes.json")),
-        ),
+        messages,
         ghosts: Some(ghosts(&mesh)),
         quests: text(runtime.join("jobs/quests.json")),
         waiting: fs::read_dir(state_home.join("mission/waiting"))
@@ -562,10 +589,10 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         notices: text(state_home.join("notices/notices.json")),
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
         meminfo: text(PathBuf::from("/proc/meminfo")),
-        landings: landings::gather(folder, &runtime, now),
-        harness: landings::gather_harness(now),
-        plans: plans::gather(),
-        counted: counted::gather(folder, state_home, now),
+        landings,
+        harness,
+        plans,
+        counted,
         network: network::gather(
             state_home,
             &Timestamp::from_second(now)
