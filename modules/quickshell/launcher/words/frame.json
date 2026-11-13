@@ -475,6 +475,7 @@
       "late": "{object} not {did} yet",
       "noAnswer": "no answer",
       "couldNot": "couldn't",
+      "done": "done",
       "missing": "{program} is gone",
       "objects": {
         "deskLight": "Desk Light",

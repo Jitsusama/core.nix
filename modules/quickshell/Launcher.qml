@@ -5156,7 +5156,7 @@ Scope {
         tellOnOpen(Becoming.told({
             mark: Theme.glyph.failed,
             what: what.replace("{object}", name)
-                .replace("{did}", (words.did ?? {})[act] ?? act),
+                .replace("{did}", Becoming.did(words.did, act, words.done ?? "")),
             why: why === "" ? words.noAnswer ?? "" : why
         }, { what: Theme.alert, why: Theme.muted }), true);
     }

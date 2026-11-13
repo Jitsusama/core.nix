@@ -111,6 +111,14 @@ QtObject {
             JSON.stringify([["not\u00a0connected", "", "muted"],
                 ["x", "Home-5G\u00a0not\u00a0disconnected", "alert", "alert"]]));
 
+        const did = { off: "turned off" };
+        check(failures, "an act is said by what it did", Becoming.did(did, "off", "done"),
+            "turned off");
+        check(failures, "a daemon's own word is never said", Becoming.did(did, "sqm", "done"),
+            "done");
+        check(failures, "nor one an object holds of its own",
+            Becoming.did(did, "toString", "done"), "done");
+
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
