@@ -1135,7 +1135,8 @@
     finds the threads it watches by name, of niri only the one its socket names, names in a call
     the worst-waiting thread of Tuple's daemon and of Chrome apart, Chrome's only while a page
     records the microphone, and in an idle window nothing,
-    reads a stand-in's named thread from the kernel, and sums each generation by its load
+    reads a stand-in's named thread from the kernel, sums each generation by its load, and answers
+    now and report as text for Joel or as JSON named by its schema
   '';
   lately-follows-each-source = ''
     For You's Lately counts what's unread from the mail, Slack and the desktop's other notices,

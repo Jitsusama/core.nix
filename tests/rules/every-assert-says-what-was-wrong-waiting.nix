@@ -177,7 +177,6 @@
   "modules/ir-camera/src/v4l2.rs" = 6;
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
-  "modules/lag-watch/src/report.rs" = 5;
   "modules/lid/docked/src/main.rs" = 11;
   "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
