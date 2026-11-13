@@ -1,7 +1,7 @@
 // Which meeting is next, when it is in words, whether it's about to
 // start, said as a notice or told already by another, and joined by
 // Return, its day in full, how Joel answered it, its details for the
-// drawer and the line answering it, and which Meet call a window is and
+// drawer, and which Meet call a window is and
 // whose, from meetings like the google program's, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-desktop-tells-the-next-meeting` check copies Calendar.js,
@@ -208,18 +208,17 @@ QtObject {
             meeting("m", at(28, 0, 0), at(29, 0, 0), { allDay: true })),
             "Wednesday 28 October \u00b7 all day");
 
-        // How he answered, and his answer: [answer, said, invited]
+        // How he answered: [answer, said]
         const answers = [
-            ["yes", "going", true],
-            ["maybe", "maybe", true],
-            ["no", "not going", true],
-            ["waiting", "not answered", true],
-            [null, "", false]
+            ["yes", "going"],
+            ["maybe", "maybe"],
+            ["no", "not going"],
+            ["waiting", "not answered"],
+            [null, ""]
         ];
-        for (const [answer, said, invited] of answers) {
+        for (const [answer, said] of answers) {
             const one = meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: answer });
             check(`answered ${answer}`, Calendar.answered(one), said);
-            check(`${answer} is an invitation`, Calendar.invited(one), invited);
         }
         check("an answer beside the times", Calendar.about(
             meeting("m", at(26, 14, 0), at(26, 14, 30), { answer: "maybe" })),
@@ -329,99 +328,6 @@ QtObject {
             ["no"],
             []
         ].map(answering), ["3 going, 1 maybe, 1 not going, 2 not answered", "3 going", "", ""]);
-        check("the line answering one", Calendar.answer(meeting("abc_1", now, now), "no"),
-            '{"answer":{"id":"abc_1","with":"no"}}\n');
-        check("the line cancelling one", Calendar.cancel(meeting("abc_1", now, now)),
-            '{"cancel":{"id":"abc_1"}}\n');
-
-        // Moving one: [what, the meeting, movable]
-        const movables = [
-            ["one through his own", meeting("a", now, now, { through: "primary" }), true],
-            ["one through the team's", meeting("a", now, now, { through: "team@x" }), true],
-            ["one he may not change", meeting("a", now, now, { through: null }), false],
-            ["one all day", meeting("a", at(26, 0, 0), at(27, 0, 0),
-                { through: "primary", allDay: true }), false],
-            ["none", null, false]
-        ];
-        for (const [what, one, meant] of movables)
-            check(`movable: ${what}`, Calendar.movable(one), meant);
-
-        // Later times keep its length, a day on keeps the clock.
-        const design = meeting("design", at(26, 16, 0), at(26, 16, 30));
-        check("later times", Calendar.later(design).map(time => [time.state,
-            Calendar.dated(Object.assign({ allDay: false }, time))]), [
-            ["quarter", "Monday 26 October \u00b7 16:15 to 16:45"],
-            ["half", "Monday 26 October \u00b7 16:30 to 17:00"],
-            ["hour", "Monday 26 October \u00b7 17:00 to 17:30"],
-            ["tomorrow", "Tuesday 27 October \u00b7 16:00 to 16:30"],
-            ["week", "Monday 2 November \u00b7 16:00 to 16:30"]
-        ]);
-        // A week on crosses Toronto's clocks going back, on Sunday 1
-        // November, which mustn't move the time on the clock.
-        check("a week on, at the same time on the clock", new Date(Calendar.later(design)[4]
-            .start).getHours(), 16);
-
-        // What it clashes with: [what, from, to, the clash]
-        const busy = [
-            meeting("standup", at(26, 16, 30), at(26, 16, 45)),
-            meeting("declined", at(26, 17, 0), at(26, 18, 0), { answer: "no" }),
-            meeting("holiday", at(26, 0, 0), at(27, 0, 0), { allDay: true }),
-            design
-        ];
-        const clashing = [
-            ["one it overlaps", at(26, 16, 15), at(26, 16, 45), "standup"],
-            ["not one it ends as it starts", at(26, 16, 0), at(26, 16, 30), null],
-            ["not one he said no to", at(26, 17, 0), at(26, 17, 30), null],
-            ["not itself, nor one all day", at(26, 16, 0), at(26, 16, 29), null]
-        ];
-        for (const [what, from, to, meant] of clashing)
-            check(`clashes with ${what}`, ids(Calendar.clashes(design, from, to, busy)), meant);
-
-        // A typed time, at 15:20 on Monday: [typed, its day and times, or null]
-        const typing = [
-            ["16:30", "Monday 26 October \u00b7 16:30 to 17:00"],
-            ["17", "Monday 26 October \u00b7 17:00 to 17:30"],
-            ["  5pm ", "Monday 26 October \u00b7 17:00 to 17:30"],
-            ["tomorrow 10:00", "Tuesday 27 October \u00b7 10:00 to 10:30"],
-            ["Thursday 9", "Thursday 29 October \u00b7 09:00 to 09:30"],
-            ["thu 2pm", "Thursday 29 October \u00b7 14:00 to 14:30"],
-            ["monday 9", "Monday 2 November \u00b7 09:00 to 09:30"],
-            ["monday 16:00", "Monday 26 October \u00b7 16:00 to 16:30"],
-            ["today 9:00", null],
-            ["12am", null],
-            ["tomorrow 12am", "Tuesday 27 October \u00b7 00:00 to 00:30"],
-            ["25:00", null],
-            ["16:75", null],
-            ["13pm", null],
-            ["th 9", null],
-            ["someday 9", null],
-            ["stand", null]
-        ];
-        for (const [text, meant] of typing) {
-            const typedTime = Calendar.typed(text, design, now);
-            check(`typed "${text}"`, typedTime === null ? null
-                : Calendar.dated(Object.assign({ allDay: false }, typedTime)), meant);
-        }
-
-        // Who's told of it: [what, the meeting, as said]
-        const person = name => ({ name: name, email: null });
-        const tellings = [
-            ["nobody", meeting("a", now, now), "Telling Nobody Else"],
-            ["its organizer", meeting("a", now, now, { organizer: person("Ada Lovelace") }),
-                "Telling Ada Lovelace"],
-            ["two", meeting("a", now, now, { organizer: person("Ada Lovelace"),
-                guests: [person("Grace Hopper")] }), "Telling Ada Lovelace and Grace Hopper"],
-            ["three", meeting("a", now, now, { guests: [person("Ada Lovelace"),
-                person("Grace Hopper"), person("Alan Turing")] }),
-                "Telling Ada Lovelace, Grace Hopper and 1 Other"],
-            ["four", meeting("a", now, now, { organizer: person("Ada Lovelace"),
-                guests: [person("Grace Hopper"), person("Alan Turing"), person("Edsger")] }),
-                "Telling Ada Lovelace, Grace Hopper and 2 Others"]
-        ];
-        for (const [what, one, meant] of tellings)
-            check(`telling ${what}`, Calendar.tellingThem(Calendar.toldOfChanges(one)), meant);
-        check("the line moving one", Calendar.move(design, at(26, 17, 0), at(26, 17, 30)),
-            `{"move":{"id":"design","start":${at(26, 17, 0)},"end":${at(26, 17, 30)}}}\n`);
 
         // A Meet code as typed: [what, typed, the code]
         const codes = [

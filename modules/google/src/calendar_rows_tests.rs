@@ -367,7 +367,7 @@ fn show_in_calendar_steps_into_each_fact_copied_then_opens_its_page() {
             ),
         ],
         "then where, his answer, its call, who holds it and each guest by name with how \
-         they answered, Return copying the value or the address, as Calendar.qml's facts, \
+         they answered, Return copying the value or the address, \
          and what it's about on one line, copied whole"
     );
     assert!(
