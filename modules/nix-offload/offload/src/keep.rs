@@ -53,6 +53,14 @@ const KEPT_FOR: Duration = Duration::from_hours(30 * 24);
 /// How long the keeper waits, idle, before ending.
 const IDLE: Duration = Duration::from_mins(1);
 
+/// How long an asker waits for the socket to listen again. A switch
+/// closed it for 9 s on 12 November, and a gate that passed meanwhile
+/// kept nothing, so merge-net ready had it run again: 28 minutes.
+const REACHED_WITHIN: Duration = Duration::from_secs(30);
+
+/// How often an asker tries the socket again while it waits.
+const REACH_AGAIN: Duration = Duration::from_millis(500);
+
 /// How long one asking may take, in all, to say what it asks.
 const HEARD_WITHIN: Duration = Duration::from_secs(5);
 
@@ -233,7 +241,13 @@ fn said_within(asking: &mut UnixStream, within: Duration, bound: usize) -> Resul
 
 /// Ask the keeper at `socket` for `asked`, a JSON object as `heard` reads.
 pub fn ask(socket: &Path, asked: &serde_json::Value) -> Result<(), String> {
-    let mut keeper = UnixStream::connect(socket)
+    ask_within(socket, asked, REACHED_WITHIN)
+}
+
+/// Ask as [`ask`] does, waiting up to `within` for a socket that isn't
+/// listening.
+fn ask_within(socket: &Path, asked: &serde_json::Value, within: Duration) -> Result<(), String> {
+    let mut keeper = reach(socket, within)
         .map_err(|error| format!("couldn't reach {}: {error}", socket.display()))?;
     keeper
         .write_all(asked.to_string().as_bytes())
@@ -247,6 +261,25 @@ pub fn ask(socket: &Path, asked: &serde_json::Value) -> Result<(), String> {
         "ok" => Ok(()),
         "" => Err("the keeper said nothing".to_owned()),
         refused => Err(refused.to_owned()),
+    }
+}
+
+/// Connect to `socket`, trying again each [`REACH_AGAIN`] for up to
+/// `within` while nothing listens there, as while a switch restarts it.
+fn reach(socket: &Path, within: Duration) -> io::Result<UnixStream> {
+    let until = Instant::now() + within;
+    loop {
+        match UnixStream::connect(socket) {
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                ) && Instant::now() < until =>
+            {
+                std::thread::sleep(REACH_AGAIN);
+            }
+            reached => return reached,
+        }
     }
 }
 

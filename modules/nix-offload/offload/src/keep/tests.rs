@@ -203,7 +203,34 @@ fn the_keeper_answers_what_its_asked_until_it_idles() {
     );
     keeper.join().unwrap();
     assert!(
-        ask(&socket, &asked).is_err(),
+        ask_within(&socket, &asked, Duration::ZERO).is_err(),
         "the keeper was still answering after it idled"
     );
+}
+
+#[test]
+fn a_keeper_whose_socket_is_away_a_moment_is_waited_for() {
+    // A switch closes the socket and listens again: 9 s on 12 November,
+    // which lost a gate's pass and cost its rerun 28 minutes.
+    let folder = tempfile::tempdir().unwrap();
+    let socket = folder.path().join("keep.sock");
+    let records = folder.path().join("records");
+    fs::create_dir(&records).unwrap();
+    let (path, kept) = (socket.clone(), records.clone());
+    let keeper = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(1500));
+        let listener = UnixListener::bind(&path).unwrap();
+        // The asker tries again only each REACH_AGAIN, later still on a
+        // loaded builder, so a keeper idle as briefly could drop its
+        // listener with the asking still queued, which resets it.
+        serve(&listener, &kept, Duration::from_secs(5));
+    });
+    let asked = serde_json::json!({ "keep": COMMIT, "lines": [{ "check": "a" }] });
+    assert_eq!(
+        ask_within(&socket, &asked, Duration::from_secs(20)),
+        Ok(()),
+        "a keeper back within the wait was given up on"
+    );
+    keeper.join().unwrap();
+    assert!(records.join(COMMIT).exists(), "the keep wasn't kept");
 }
