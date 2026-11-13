@@ -129,6 +129,9 @@ case "$2" in
       mkdir -p "$here/building-$1"
       : > "$here/building-$1/$$"
       ls "$here/building-$1" | wc -l >> "$here/at-once-$1"
+      # Held while gated, so a build can't end before the runs after
+      # it have come, however slowly a loaded machine starts them.
+      while [ -f "$here/gated-$1" ]; do sleep 0.05; done
       sleep "$(cat "$here/holds-$1")"
       rm -f "$here/building-$1/$$"
     fi ;;
@@ -4050,7 +4053,8 @@ fn side_by_side(runs: [&[String]; 2]) -> (Vec<String>, String) {
 
 /// `there` runs with `runs`' arguments, each started once the one before
 /// it builds on the VM builder or waits for room there, beside a VM
-/// builder at a room of 4, each build there lasting 2 seconds: how many
+/// builder at a room of 4, each build there held until every run has
+/// come, then lasting 2 seconds: how many
 /// it built at once as each began, the VM builds it was sent in the order
 /// they were, and what every run said.
 fn one_after_another(runs: &[&[String]]) -> (Vec<String>, Vec<String>, String) {
@@ -4075,6 +4079,12 @@ fn one_after_another_with(
     )
     .unwrap();
     fs::write(bin.join("holds-nix-offload-vm"), "2").unwrap();
+    // Every VM build is held until the last run has built or waited, so
+    // the order they're sent in never hangs on how fast each starts: on
+    // a loaded builder a run behind took longer to come than one ahead
+    // took to build, and room freed before it waited.
+    let gate = bin.join("gated-nix-offload-vm");
+    fs::write(&gate, "").unwrap();
     let run = |args: &[String], said: &Path| {
         there_command(&bin, &offload, folder.path())
             .args(args)
@@ -4117,6 +4127,7 @@ fn one_after_another_with(
         }
         started.push(child);
     }
+    fs::remove_file(&gate).unwrap();
     let mut said = String::new();
     for (index, mut child) in started.into_iter().enumerate() {
         let status = child.wait().unwrap();
