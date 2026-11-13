@@ -80,7 +80,7 @@ status=$(exited layer sideways)
 # sends the board nothing: flash would have sent its restart first.
 : > "$root/dev/hidraw2"
 help=$("$ergodox" flash --help) || fail "ergodox flash --help didn't answer its help."
-[[ $help == Usage:* ]] || fail "ergodox flash --help said $help, not its help."
+[[ $help == "ergodox  "* ]] || fail "ergodox flash --help said $help, not its help."
 for words in "bootloader now" "flash x" "brighter 2" "layer" "layer numb x" "lights"; do
   # Each word stays its own.
   # shellcheck disable=SC2086
