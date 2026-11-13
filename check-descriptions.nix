@@ -2198,6 +2198,11 @@
     folders of their own build one dependency through what an account's shells and user manager
     are given, finding that server's socket, and the second's compile of it comes from the cache
   '';
+  screen-picture-follows-its-screen = ''
+    the wallpaper's picture is read once at its screen's pixels, let go when its screen goes and
+    read once again when it comes back, as screens come and go, and Quickshell warns of nothing,
+    no binding loop among it
+  '';
   screen-text-finds-a-screenshot-by-its-words = ''
     screen-text's daemon, on the CPU, reads a screenshot moved into its folder and finds it by its
     words, with the line that matched, giving its lines by key; lets its record go once it's

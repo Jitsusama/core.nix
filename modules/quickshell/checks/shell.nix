@@ -68,6 +68,30 @@
       touch $out
     '';
 
+  # The wallpaper's picture follows its screen as it goes and comes back,
+  # read once each time and without a binding loop, in the Quickshell the
+  # machine runs, as tests/screen-picture/shell.qml holds ScreenPicture.qml
+  # to, with a niri that never answers and a picture of 1 by 1.
+  screen-picture-follows-its-screen =
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # case, or sets what Quickshell runs it with.
+    pkgs.runCommandLocal "screen-picture-follows-its-screen" { } ''
+      mkdir runtime && chmod 700 runtime
+      cp ${../../../tests/screen-picture/shell.qml} shell.qml
+      cp ${../../../tests/screen-picture/Niri.qml} Niri.qml
+      ${copied [ "ScreenPicture.qml" ]}
+      base64 -d > picture.png <<< \
+        iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==
+      export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      ${shellFolderLint}
+      timeout 60 ${qs} -p shell.qml > log 2>&1 || { cat log; exit 1; }
+      cat log
+      if grep -q 'WARN' log; then
+        echo "the picture warned as its screen came and went"; exit 1
+      fi
+      touch $out
+    '';
+
   # A switch restarts Quickshell when any file it reads changes, so the shell
   # on screen is never the one from before the switch.
   quickshell-restarts-with-its-files =
