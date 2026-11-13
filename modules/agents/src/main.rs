@@ -24,7 +24,7 @@
 //! before the daemon did. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::mpsc::RecvTimeoutError;
 use std::sync::{Arc, mpsc};
@@ -204,6 +204,46 @@ fn own(
     })
 }
 
+/// Follows the windows daemon: its windows, its workspaces, and Screens'
+/// rows alone, for what each screen is, since a place names its screen
+/// by that rather than by a connector a dock can change.
+fn follow_windows(windows: &Path, to: &mpsc::Sender<Heard>) {
+    sources::follow(windows.to_owned(), "window", Heard::Windows, to.clone());
+    sources::follow(
+        windows.to_owned(),
+        "workspace",
+        Heard::Workspaces,
+        to.clone(),
+    );
+    sources::follow_asking(
+        windows.to_owned(),
+        json!({"kind": "row", "place": "displays"}),
+        Heard::Screens,
+        to.clone(),
+    );
+}
+
+/// Everything said, at least one, waiting on nothing but what's said
+/// unless places wait to be kept once the windows are still; none once
+/// that wait ends, and an error once nothing can be said any more.
+fn hear(heard: &mpsc::Receiver<Heard>, still: &Still) -> Result<Vec<Heard>, RecvTimeoutError> {
+    let first = match still.wait(Instant::now()) {
+        None => Some(heard.recv().map_err(|_| RecvTimeoutError::Disconnected)?),
+        Some(wait) => match heard.recv_timeout(wait) {
+            Ok(first) => Some(first),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(gone) => return Err(gone),
+        },
+    };
+    let mut said: Vec<Heard> = first.into_iter().collect();
+    // Everything said meanwhile is taken before the rows are made, so
+    // sources speaking at once make the rows once.
+    while let Ok(more) = heard.try_recv() {
+        said.push(more);
+    }
+    Ok(said)
+}
+
 fn main() -> ExitCode {
     let Some(args) = args() else {
         eprintln!("{USAGE}");
@@ -253,21 +293,7 @@ fn main() -> ExitCode {
         sources::follow(node, "landing", Heard::Landings, to.clone());
     }
     sources::follow(args.to_do, "to-do", Heard::ToDos, to.clone());
-    sources::follow(args.windows.clone(), "window", Heard::Windows, to.clone());
-    sources::follow(
-        args.windows.clone(),
-        "workspace",
-        Heard::Workspaces,
-        to.clone(),
-    );
-    // Screens' rows alone, for what each screen is, since a place names
-    // its screen by that rather than by a connector a dock can change.
-    sources::follow_asking(
-        args.windows,
-        json!({"kind": "row", "place": "displays"}),
-        Heard::Screens,
-        to.clone(),
-    );
+    follow_windows(&args.windows, &to);
     let paths = Paths {
         budgets: args.spend.with_file_name("budgets.json"),
         spend: args.spend,
@@ -297,26 +323,7 @@ fn main() -> ExitCode {
     };
     let mut served = Served::default();
     let mut still = Still::default();
-    loop {
-        // It waits on nothing but what's said, unless places wait to be
-        // kept once the windows are still.
-        let first = match still.wait(Instant::now()) {
-            None => match heard.recv() {
-                Ok(first) => Some(first),
-                Err(_) => break,
-            },
-            Some(wait) => match heard.recv_timeout(wait) {
-                Ok(first) => Some(first),
-                Err(RecvTimeoutError::Timeout) => None,
-                Err(RecvTimeoutError::Disconnected) => break,
-            },
-        };
-        let mut said: Vec<Heard> = first.into_iter().collect();
-        // Everything said meanwhile is taken before the rows are made, so
-        // sources speaking at once make the rows once.
-        while let Ok(more) = heard.try_recv() {
-            said.push(more);
-        }
+    while let Ok(said) = hear(&heard, &still) {
         for one in said {
             if one.moves_places() {
                 still.moved(Instant::now());
