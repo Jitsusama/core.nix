@@ -786,6 +786,11 @@ QtObject {
                     seen(rode).every(one => one.x === 948)],
                 ["rides", top - 9, 507 + (top - 516) * MarginCat.slid(40, spring), true]);
         }
+        const heard = Paths.walk({ x: 948, y: 507 }, { x: 948, y: 307 }, among({ hurried: true,
+            cols: Paths.columns(split(316), 0), before: Paths.columns(ided, 0), ahead: 30 }));
+        expect("told of the resize late, it rides as far into niri's spring as the edge has gone",
+            [Paths.frame(heard, 0).y, Math.round(heard.beats[0].ends)],
+            [507 - 200 * MarginCat.slid(30, spring), MarginCat.slides(spring) - 30]);
         const narrowed = ided.map(tile => tile.column !== 2 ? tile
             : Object.assign({}, tile, { width: 60 }));
         const left = resized(narrowed, { x: 874, y: 507 });
