@@ -88,7 +88,11 @@ head of main once it has stood 30 s, and again on each
 builder lent afresh, which starts with nothing kept: on 2026-11-05, before
 it ran, 42 of the lent builder's 105 runs evaluated their base first, a
 median of 444 s, and a replay of that day's heads had it sparing 29 of
-them. It evaluates a chunk
+them. A gate whose base no builder keeps yet, `nix-offload there
+--changed`, checks the change replayed onto the newest main one keeps,
+where main moved nothing beside it between the two, and runs it again on
+its own base when that fails. So a change meant to fail, a test's red run,
+pays for two runs. It evaluates a chunk
 of checks for every 4 cores and 6 GiB free, from 2 to 8 at once, since one
 kept under 2 of 16 cores busy: on 2026-10-26 a working tree took 324 s one
 chunk at a time, peaking at 5.8 GB, and one a few commits later took
