@@ -776,6 +776,34 @@ Provider {
     // What the foot says once words have gone to a session.
     property string told: ""
 
+    // Who a line said from anywhere goes to (TalkLine.qml), `{ to, name }`: the session in
+    // `window`, as the daemon's tell answers without words (modules/agents/src/tell.rs), else
+    // the one standing at Agents' top, the void; null where neither is.
+    function hears(window, then) {
+        const top = Sessions.running.concat(Sessions.parked)
+            .find(one => !!one.presence?.standsAtTop?.name);
+        const atTop = top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
+            : null;
+        if (!rowsKind || window === null || window === undefined) {
+            then(atTop);
+            return;
+        }
+        rowsKind.ask({ ask: "tell", window }, answer => then(typeof answer?.to === "string"
+            && answer.to !== "" ? { to: answer.to, name: String(answer.name || answer.to) }
+            : atTop));
+    }
+
+    // Says `text` to whom a line goes, as a talk does, Told's card saying it went and then
+    // what came back.
+    function say(heard, text) {
+        const said = { ask: "talk", address: heard.to, text };
+        if (rowsKind)
+            rowsKind.ask(said, answer => Sessions.steered(heard.to, answer));
+        else
+            Sessions.steered(heard.to, null);
+        toldCard.sent(heard.to, heard.name, text);
+    }
+
     // The card of Joel's line to the one standing at the top, sent and then
     // answered in place (Told.qml).
     // Words a talk delivered, or anything after, are let go of the field's

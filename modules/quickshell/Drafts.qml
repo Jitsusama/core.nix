@@ -37,6 +37,14 @@ Scope {
         write();
     }
 
+    // Return on the line (TalkLine.qml) sent `text` to `to`: the line empties for the next thing
+    // said, and the words wait on that talk, as the session's own field's do.
+    function handed(from, to, text) {
+        const now = Date.now();
+        state = Drafts.sent(Drafts.typed(state, from, { text: "", caret: 0 }, now), to, text, now);
+        write();
+    }
+
     // What each talk has reached (Orchestrators' talks, by address); words
     // delivered go, and nothing is written when none did.
     function settle(talks) {

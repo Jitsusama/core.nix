@@ -7,6 +7,7 @@
   "PiSource.js"
   "Sessions.qml"
   "SessionWindows.js"
+  "TalkLine.qml"
   "Told.qml"
   "Told.js"
   "Viewers.js"
