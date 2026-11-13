@@ -54,7 +54,9 @@ pub fn settle_look(
     look.insert("resolvedAt".to_owned(), Value::from(iso(at)));
     let text = serde_json::to_string_pretty(&Value::Object(look))
         .map_err(|error| refused("refused", error.to_string()))?;
-    written(&path, &text).map_err(|error| refused("refused", error.to_string()))
+    // The red: nothing is written.
+    let _ = (written, path, text);
+    Ok(())
 }
 
 /// `at` milliseconds as JavaScript's `toISOString` writes them, as every
