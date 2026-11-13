@@ -62,7 +62,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     };
     networking.firewall.checkReversePath = "loose";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
-    # The module leaves it off until its rebuild; the test runs it.
+    # The module starts only the one-way controller at boot; the test runs this one.
     systemd.services.shaper.wantedBy = [ "multi-user.target" ];
     users.users.alice = {
       isNormalUser = true;

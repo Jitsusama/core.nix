@@ -179,13 +179,16 @@ in
 
   config.systemd.services.shaper = {
     description = "Keep the network's queue here, sorted by the slices";
-    # Wanted by nothing, so no boot or switch starts it, until its rebuild
-    # on one-way delays passes the bar its review set: five faults in four
-    # days came from guessing whose queue a round trip shows and learning
-    # rates from its own cuts, and on 3 November it held a 312 Mbit/s
-    # download at 81. A router's own SQM shapes the connection meanwhile.
-    # Its VM tests start it themselves.
-    wantedBy = [ ];
+    # The one-way controller starts at boot: a day of it on against off
+    # on a real link, eighteen pairs overnight, found it as good or better
+    # on every bar, and a boot that left it off left agents' uploads
+    # filling the router's queue until someone started it. A switch never
+    # starts a shaper someone stopped, so `systemctl stop shaper` stays
+    # the way to turn it off. The round-trip controller stays wanted by
+    # nothing: five faults in four days came from guessing whose queue a
+    # round trip shows, and on 3 November it held a 312 Mbit/s download
+    # at 81. Its VM tests start it themselves.
+    wantedBy = lib.optional oneWay "multi-user.target";
     # The table must be there before the shaper fills its sets, and its
     # queues must be on a link before the first connection leaves by it.
     # The one-way controller reads what the recorder writes, so it wants

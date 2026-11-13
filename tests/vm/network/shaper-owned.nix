@@ -42,8 +42,6 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     jitsusama.shaper.controller = "one-way";
     systemd.services.shaper.environment.SHAPER_HOSTS = server;
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = server;
-    # The module leaves it off until it beats the router alone; the test runs it.
-    systemd.services.shaper.wantedBy = [ "multi-user.target" ];
     users.users.alice = {
       isNormalUser = true;
       linger = true;
