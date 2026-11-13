@@ -51,11 +51,23 @@ const WAITS_AT_MOST: Duration = Duration::from_hours(1);
 /// held nothing, would otherwise let a later switch restart a held daemon
 /// after the work it was held for went on.
 pub fn update(config: &Config, following: &dyn Fn() -> bool, tell: &mut dyn FnMut(&Line)) -> Line {
+    update_at(config, following, &follows::Followed::new(), tell)
+}
+
+/// Runs one update as `update` does, with each followed input `at` names
+/// at that commit rather than its main's head (src/follows.rs says what
+/// such a commit must be).
+pub fn update_at(
+    config: &Config,
+    following: &dyn Fn() -> bool,
+    at: &follows::Followed,
+    tell: &mut dyn FnMut(&Line),
+) -> Line {
     let granted = take_grant(config);
     if granted {
         run::granted();
     }
-    let ending = run(config, granted, following, tell);
+    let ending = run(config, granted, following, at, tell);
     take_grant(config);
     if matches!(ending, Line::Done { .. } | Line::Unchanged { .. }) {
         let _ = fs::remove_file(config.behind_file());
@@ -84,6 +96,7 @@ fn run(
     config: &Config,
     granted: bool,
     following: &dyn Fn() -> bool,
+    at: &follows::Followed,
     tell: &mut dyn FnMut(&Line),
 ) -> Line {
     let last = last(config);
@@ -97,8 +110,13 @@ fn run(
     // that one, rather than fetch main again and build what merged since:
     // on 8 November the morning switch started over three times for newer
     // heads while Joel waited.
+    // One built with its inputs elsewhere than an ask names isn't what
+    // that ask was for.
     if granted
         && let Some(waiting) = waited(config)
+        && at
+            .iter()
+            .all(|(name, commit)| waiting.followed.get(name) == Some(commit))
         && held::stops(config, &waiting.commit, &waiting.followed).is_none()
     {
         return switch_waiting(config, waiting, last, tell);
@@ -114,7 +132,7 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     let last_followed = follows::last(config);
-    let followed = match follows::heads(config, &head, &last_followed) {
+    let followed = match follows::heads(config, &head, &last_followed, at) {
         Ok(Ok(followed)) => followed,
         Ok(Err(why)) => return Line::Refused { commit: last, why },
         Err(failure) => return failed(last, failure),

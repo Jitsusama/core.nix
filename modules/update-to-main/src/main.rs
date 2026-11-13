@@ -2,8 +2,12 @@
 //!
 //! - `update-to-main serve --config FILE`: root's daemon, on the config's
 //!   socket.
-//! - `update-to-main ask [--socket FILE]`: asks for an update and prints
-//!   each line as it comes, as JSON. It exits 0 when the machine runs main
+//! - `update-to-main ask [--at INPUT=COMMIT] [--socket FILE]`: asks for an
+//!   update and prints each line as it comes, as JSON. With `--at`, the
+//!   followed input INPUT is built at COMMIT, by its full id, rather than
+//!   at its main's head; the commit must be on its main, signed, and past
+//!   what the machine last followed, and holds still judge it.
+//!   Otherwise it's as `ask`. It exits 0 when the machine runs main
 //!   or already did, 1 when the update failed, 2 when it was refused and 3
 //!   when the daemon couldn't be asked or stopped answering.
 //! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
@@ -50,7 +54,7 @@ const CONFIG: &str = "/etc/update-to-main/config.json";
 const FOLLOW_EVERY: u64 = 600;
 
 const USAGE: &str = "usage: update-to-main serve --config FILE
-       update-to-main ask [--socket FILE]
+       update-to-main ask [--at INPUT=COMMIT] [--socket FILE]
        update-to-main stop [--socket FILE]
        update-to-main pause|resume [--socket FILE]
        update-to-main hold|lift COMMIT [--socket FILE]
@@ -70,8 +74,14 @@ fn main() -> ExitCode {
                 }
             }
         }
-        ["ask"] => asked(Path::new(SOCKET)),
-        ["ask", "--socket", file] => asked(Path::new(file)),
+        ["ask"] => asked(Path::new(SOCKET), None),
+        ["ask", "--socket", file] => asked(Path::new(file), None),
+        ["ask", "--at", at] => {
+            at_args(at).map_or_else(usage, |at| asked(Path::new(SOCKET), Some(at)))
+        }
+        ["ask", "--at", at, "--socket", file] => {
+            at_args(at).map_or_else(usage, |at| asked(Path::new(file), Some(at)))
+        }
         ["stop"] => stopped(Path::new(SOCKET)),
         ["stop", "--socket", file] => stopped(Path::new(file)),
         [how @ ("pause" | "resume")] => held(Path::new(SOCKET), how),
@@ -282,8 +292,23 @@ fn held(socket: &Path, how: &str) -> ExitCode {
     }
 }
 
-fn asked(socket: &Path) -> ExitCode {
-    let ending = ask::ask(socket, &mut |line| println!("{}", line.json()));
+fn usage() -> ExitCode {
+    eprintln!("{USAGE}");
+    ExitCode::from(64)
+}
+
+/// The input and commit `--at` names, as INPUT=COMMIT.
+fn at_args(at: &str) -> Option<(&str, &str)> {
+    at.split_once('=')
+        .filter(|(input, commit)| !input.is_empty() && !commit.is_empty())
+}
+
+fn asked(socket: &Path, at: Option<(&str, &str)>) -> ExitCode {
+    let hear = &mut |line: &Line| println!("{}", line.json());
+    let ending = match at {
+        Some((input, commit)) => ask::ask_at(socket, input, commit, hear),
+        None => ask::ask(socket, hear),
+    };
     match ending {
         Ok(Line::Done { .. } | Line::Unchanged { .. }) => ExitCode::SUCCESS,
         Ok(Line::Failed { .. }) => ExitCode::from(1),

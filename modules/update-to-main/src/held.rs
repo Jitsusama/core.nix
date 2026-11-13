@@ -94,7 +94,8 @@ fn now() -> u64 {
 /// Whether `word` is a commit's full id. A short one won't do: the host
 /// answers whether a head holds a commit by naming their merge base in
 /// full, and a prefix two commits share would hold back the wrong one.
-fn is_commit(word: &str) -> bool {
+#[must_use]
+pub fn is_commit(word: &str) -> bool {
     word.len() == 40 && word.bytes().all(|b| b.is_ascii_hexdigit())
 }
 

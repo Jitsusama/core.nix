@@ -406,6 +406,13 @@ impl World {
         let ending = update::update(&self.config, following, &mut |l| told.push(l.clone()));
         (told, ending)
     }
+
+    /// Updates as a person asks, with the followed input `name` at
+    /// `commit` rather than its main's head.
+    fn update_at(&self, name: &str, commit: &str) -> Line {
+        let at = BTreeMap::from([(name.to_owned(), commit.to_owned())]);
+        update::update_at(&self.config, &|| false, &at, &mut |_| {})
+    }
 }
 
 fn keygen(key: &Path) {
@@ -2190,6 +2197,109 @@ fn a_followed_input_behind_its_lock_is_refused() {
     };
     assert!(why.contains("which the flake's lock pins"), "{why}");
     assert_eq!(world.builds(), 0);
+}
+
+#[test]
+fn an_ask_at_a_followed_commit_builds_it_rather_than_its_mains_head() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let wanted = world.core_commit("wanted", true);
+    let newer = world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    assert_eq!(
+        world.update_at("core", &wanted),
+        following_done(&head, &wanted),
+        "an ask at a commit on core's main didn't build that commit"
+    );
+    let overridden = world.read("overridden");
+    assert!(
+        overridden.trim().ends_with(&format!("rev={wanted}")),
+        "the build wasn't given the commit asked for: {overridden}"
+    );
+    world.system(&format!("{head}+{newer}"));
+    assert_eq!(
+        world.update().1,
+        following_done(&head, &newer),
+        "the next plain ask didn't take core's main again"
+    );
+}
+
+#[test]
+fn an_ask_at_a_commit_before_a_held_one_switches_while_the_hold_stands() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let before = world.core_commit("before", true);
+    let walk = world.core_commit("the walk", true);
+    world.core_commit("after", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    held::ask(&world.config, &format!("hold {walk}"), Some(1000));
+    let Line::Refused { why, .. } = world.update().1 else {
+        panic!("core's main holding a held commit wasn't refused")
+    };
+    assert!(why.contains("is held"), "refused for another reason: {why}");
+    assert_eq!(
+        world.update_at("core", &before),
+        following_done(&head, &before),
+        "an ask at a commit before the held one didn't switch"
+    );
+    let Line::Refused { why, .. } = world.update_at("core", &walk) else {
+        panic!("an ask at the held commit itself wasn't refused")
+    };
+    assert!(why.contains("is held"), "refused for another reason: {why}");
+}
+
+#[test]
+fn an_ask_at_a_commit_off_its_main_is_refused_and_nothing_is_built() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let core = world.root.join("core");
+    git(&core, &["checkout", "--quiet", "-b", "aside"]);
+    let aside = world.core_commit("aside", true);
+    git(&core, &["checkout", "--quiet", "main"]);
+    let from = format!("file://{}", core.display());
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    world.update();
+    let copy = world.config.follows_folder().join("core.git");
+    git(&copy, &["fetch", "--quiet", &from, "aside"]);
+    let built = world.builds();
+    let Line::Refused { why, .. } = world.update_at("core", &aside) else {
+        panic!("an ask at a commit off core's main wasn't refused")
+    };
+    assert!(
+        why.contains("isn't on its main"),
+        "refused for another reason: {why}"
+    );
+    assert_eq!(world.builds(), built, "a commit off core's main was built");
+}
+
+#[test]
+fn an_ask_at_a_commit_behind_what_was_followed_or_of_no_followed_input_is_refused() {
+    let world = following();
+    let pinned = world.core_commit("pinned", true);
+    let older = world.core_commit("older", true);
+    let newer = world.core_commit("newer", true);
+    let head = world.signed_pinning("one", &pinned);
+    world.system(&head);
+    assert_eq!(world.update().1, following_done(&head, &newer));
+    let built = world.builds();
+    let Line::Refused { why, .. } = world.update_at("core", &older) else {
+        panic!("an ask behind what the machine last followed wasn't refused")
+    };
+    assert!(
+        why.contains("which this machine last followed"),
+        "refused for another reason: {why}"
+    );
+    let Line::Refused { why, .. } = world.update_at("nixpkgs", &newer) else {
+        panic!("an ask at an input this machine doesn't follow wasn't refused")
+    };
+    assert!(
+        why.contains("isn't an input this machine follows"),
+        "refused for another reason: {why}"
+    );
+    assert_eq!(world.builds(), built, "a refused ask built something");
 }
 
 #[test]
