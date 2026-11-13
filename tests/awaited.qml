@@ -94,5 +94,17 @@ QtObject {
             Awaited.before(at([key("kit")], { due: [key("ki")] }, true, false), "k"), "kit");
         Expect.same("or, with none, after what was searched",
             Awaited.before(at([], null, true, false), "k"), "k");
+
+        // A wait its bound ended is said apart from the time past that
+        // bound, when the shell's thread was busy with other work and its
+        // timer couldn't fire: "ca" said 98 ms on answers against a bound
+        // of 8, behind two drawers drawing (Y2YBTS, 2026-11-12, 15:46).
+        const asked98 = { began: 1000 };
+        Expect.same("a wait its bound ended late says how far past it",
+            Awaited.waitedOf(asked98, 1098, 8, true), { waited: 98, behind: 90 });
+        Expect.same("a wait its bound ended on time is behind nothing",
+            Awaited.waitedOf(asked98, 1008, 8, true), { waited: 8, behind: 0 });
+        Expect.same("a wait an answer ended is behind nothing, however long",
+            Awaited.waitedOf(asked98, 1030, 8, false), { waited: 30, behind: 0 });
     }
 }

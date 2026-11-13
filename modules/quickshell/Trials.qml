@@ -47,8 +47,9 @@ Scope {
         trial = Trials.counted(trial, kind);
     }
 
-    function retyped(was, now) {
-        trial = Trials.retyped(trial, was, now);
+    // `asking` while the field holds words asked for, which are never kept.
+    function retyped(was, now, asking) {
+        trial = Trials.retyped(trial, was, now, asking);
     }
 
     // One key's search and the time to the frame that drew it, and what the
@@ -66,9 +67,16 @@ Scope {
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
                         : ""}`
-                    + `${parts.waited ? `, waiting ${parts.waited} on answers` : ""})` : "")
+                    + `${parts.waited ? `, waiting ${parts.waited} on answers${behind(parts)}`
+                        : ""})` : "")
                 + (frame ? `, then ${frame.waiting} waiting for its frame and ${frame.drawing}`
                     + " drawing it" + drawingApart(frame) : ""));
+    }
+
+    // How much of a key's wait for answers was past its bound, behind the
+    // shell's other work (Awaited.waitedOf), or nothing when none was.
+    function behind(parts) {
+        return parts.behind ? ` (${parts.behind} of it behind the shell's other work)` : "";
     }
 
     // What drawing it was, by the render thread's times of its frame where
@@ -161,7 +169,8 @@ Scope {
         trial = Trials.picked(trial, Date.now(), row, { typed: typed, depth: depth });
     }
 
-    function closed() {
+    // `typed` is what the field held as it closed, "" where it was asked for.
+    function closed(typed) {
         if (!trial)
             return;
         // An opening that stuttered is said in the journal, as a slow key
@@ -169,7 +178,7 @@ Scope {
         if (pace.late > 0)
             console.info(`launcher: ${pace.late} of ${pace.drawn} frames came late while`
                 + ` it moved, the longest ${pace.longest} ms after the one before`);
-        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now()));
+        const said = Trials.said(Trials.ended(Trials.paced(trial, pace), Date.now(), typed));
         if (piped)
             keeping.write(said);
         else

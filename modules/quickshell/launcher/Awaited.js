@@ -41,3 +41,14 @@ function next(now, waitingOn) {
     }
     return { due: timed, waited: now.typing ? null : now.held };
 }
+
+// How long a held key waited for its answers, from when they were asked
+// (`held.began`) to `now`, and how much of that came past its `bound`
+// when the bound's timer ended it (`timedOut`): a timer fires only once
+// the shell's thread is free, so time past the bound is time the key
+// waited behind the shell's other work, such as frames being drawn,
+// rather than on any answer. An answer ending the wait is behind nothing.
+function waitedOf(held, now, bound, timedOut) {
+    const waited = Math.max(0, Math.round(now - held.began));
+    return { waited, behind: timedOut ? Math.max(0, waited - bound) : 0 };
+}

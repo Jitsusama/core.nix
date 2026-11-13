@@ -34,7 +34,7 @@ function begun(at, home) {
         keys[kind] = 0;
     }
     return { at, home, keys, picked: "", kind: "", typed: "", depth: 0,
-        ms: -1, open: -1, missed: false,
+        ms: -1, open: -1, missed: false, sought: [],
         timed: { count: 0, searched: 0, searchedMost: 0, drawn: 0, drawnMost: 0, felt: [] } };
 }
 
@@ -133,8 +133,10 @@ function counted(trial, kind) {
 // The trial after the field went from `was` to `now`: letters typed when it
 // grew, erased when it shrank. Filling it from a row (Tab, a command's
 // start) counts as the letters it put there, which Joel didn't type, but
-// it's one key for many letters only where Tab was counted too.
-function retyped(trial, was, now) {
+// it's one key for many letters only where Tab was counted too. A search
+// erased from is one given up on, kept as it stood (sought), unless it was
+// typed for an ask, which may be a talk's words or a password.
+function retyped(trial, was, now, asking) {
     if (!trial) {
         return trial;
     }
@@ -145,7 +147,24 @@ function retyped(trial, was, now) {
     } else {
         keys.erased -= grown;
     }
-    return Object.assign({}, trial, { keys });
+    const sought = grown < 0 && !asking ? soughtWith(trial.sought, String(was))
+        : trial.sought;
+    return Object.assign({}, trial, { keys, sought });
+}
+
+// The most searches a miss keeps, the newest, and the most of each kept.
+const SOUGHT_MOST = 5;
+const SOUGHT_LETTERS = 60;
+
+// `sought` with `search` added, unless it's one already kept with letters
+// erased from its end, as erasing letter by letter gives.
+function soughtWith(sought, search) {
+    const kept = sought ?? [];
+    const cut = search.slice(0, SOUGHT_LETTERS);
+    if (cut === "" || (kept[kept.length - 1] ?? "").startsWith(cut)) {
+        return kept;
+    }
+    return kept.concat([cut]).slice(-SOUGHT_MOST);
 }
 
 // The trial with this picked at `at`, `where` saying what was typed for it
@@ -171,14 +190,18 @@ function answerCounted(answers, about) {
     return kind === "" ? "answer" : `answer:${kind}`;
 }
 
-// The trial as it closed at `at`: how long it was open, and a miss if
-// letters were typed and nothing was picked.
-function ended(trial, at) {
+// The trial as it closed at `at`, `typed` left in its field ("" for an
+// ask's): how long it was open, and a miss if letters were typed and
+// nothing was picked. Only a miss keeps what was sought, so what wasn't
+// found can be read (1JQPPC, 2026-11-12: two searches gave up after 51
+// and 62 s, and their trials held only counts).
+function ended(trial, at, typed) {
     if (!trial) {
         return trial;
     }
-    return Object.assign({}, trial, { open: at - trial.at,
-        missed: trial.picked === "" && trial.keys.letters > 0 });
+    const missed = trial.picked === "" && trial.keys.letters > 0;
+    return Object.assign({}, trial, { open: at - trial.at, missed,
+        sought: missed ? soughtWith(trial.sought, String(typed ?? "")) : [] });
 }
 
 // The frames of an opening so far: how many were drawn while it moved,

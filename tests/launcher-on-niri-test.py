@@ -380,7 +380,9 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     An answer's key is empty, so every Return on Ask, a sum or Memory was kept as a miss, and
     what the trials said of them was wrong (1JQPPC, 2026-11-11). Each key typed is kept with
     it too, as its milliseconds from its press to the screen, for health to pool a day's keys
-    for their 99th (1JQPPC, 2026-11-12).
+    for their 99th (1JQPPC, 2026-11-12). An opening that misses keeps each search given up on,
+    so what wasn't found can be read: two of Joel's gave up after 51 and 62 s holding only counts
+    (1JQPPC, 2026-11-12, 77f84121); a pick keeps none.
     """
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
 
@@ -408,6 +410,22 @@ def test_return_on_an_answer_is_kept_as_a_pick_of_its_kind(shell: Shell) -> None
     assert len(presented) + int(last.get("unpresented", 0)) >= len("6*7"), last
     assert presented, last
     assert all(isinstance(ms, int) and ms >= 0 for ms in presented), last
+    assert last.get("sought") == [], last
+    before = len(kept())
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("zqxjv")
+    for _ in "zqxjv":
+        shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.type_in("qqwy")
+    shell.close_launcher()
+    while len(kept()) <= before:
+        assert time.monotonic() < deadline, "the miss was never kept"
+        time.sleep(launcher_on_niri.POLL)
+    missed = kept()[-1]
+    assert missed.get("missed") is True, missed
+    assert missed.get("sought") == ["zqxjv", "qqwy"], missed
 
 
 def test_a_place_stepped_into_from_whats_typed_is_kept_as_what_it_meant(shell: Shell) -> None:
