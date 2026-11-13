@@ -21,17 +21,17 @@
 // drawer beside the row, which the daemon serves ready for anyone it
 // lists or finds (drawer.rs).
 //
-// A source the people daemon holds (`daemonHolds`, as Tuple's and Google's) is read from
+// A source the people daemon holds (`daemonHolds`, as Tuple's, Google's and Slack's) is read from
 // the daemon, never held whole here: only those it lists with nothing
 // typed, watched as they change, and those a search finds, asked of the
 // daemon as each text is typed. Holding Tuple's 7,731 contacts here made
 // 23,276 rows at each opening and held Joel's first key a second
 // (2026-10-31, 09:31).
 //
-// Long because it still merges and ranks the people of the sources the
-// daemon doesn't hold yet, Slack's; what works on plain values
-// lives apart, in Person.js, Recent.js and Zones.js. It shrinks as the
-// daemon takes those over, by Fri 13 Nov.
+// Long because it still merges and ranks the people of a source the
+// daemon doesn't hold, as one a machine's own repository brings may be;
+// what works on plain values lives apart, in Person.js, Recent.js and
+// Zones.js. It shrinks as the daemon serves a person's insides too.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -329,7 +329,10 @@ Provider {
             stands[name] = {};
             for (const record of records) {
                 const entry = record.sources?.[name];
-                if (!entry)
+                // One Slack was asked about and knows nobody by is no one
+                // of Slack's, so a search for their address finds no
+                // person no source knows.
+                if (!entry || !source.knows(entry))
                     continue;
                 // The daemon keeps someone by their address, in the key,
                 // or by the source's id for one who has none.
@@ -449,10 +452,10 @@ Provider {
                 // same, which the daemon stamps `heard` anew when a source
                 // says anything new of them, so each search's answer remakes
                 // none it found before; and let go once no answer holds it.
-                // The rest are merged here from what QML sources hold, until
-                // the daemon holds them too: Slack's people, whose facts
-                // slack-people serves (#3045), its source in QML going by
-                // Fri 13 Nov.
+                // The rest are merged here from what a source the daemon
+                // doesn't hold gives: Slack's are the daemon's, so someone
+                // Slack found once is held only while listed or found, and
+                // a first letter makes no row for them.
                 const record = readyFor(person);
                 return record ? keptOr(made.keeping, person.key, record, () => provider.made(
                     person, Person.standing(person, []), record.row, () => record.drawer),

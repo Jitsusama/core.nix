@@ -11,9 +11,13 @@
 // it heard is a minute old. The shell runs no reader of its own, so Slack
 // is asked once for everyone who asks (the daemon's own lines were a
 // second slack-people asking the same, 2026-11-02). The reader keeps who
-// was found between runs, so a restart forgets nobody. Whoever Slack
-// found it knows, with their time zone as a fact, which People follows
-// with the time there.
+// was found between runs, so a restart forgets nobody. Who Slack found,
+// and how each stands there, People reads from the daemon (`daemonHolds`)
+// for those it lists and those a search finds, never from a copy held
+// here: merged from one, a new shell's first letter made a row for each
+// the daemon neither listed nor found (Joel's journal, 2026-11-13). What
+// it heard is kept here only for the ways to reach them and their
+// conversation.
 //
 // Write in Slack never arrives late or moves under the keys: for someone
 // not yet looked up, it stands in its place dimmed, "looking in Slack",
@@ -40,6 +44,8 @@ PersonSource {
     id: source
 
     called: "Slack"
+
+    daemonHolds: true
 
     // What Slack said of each address asked about: { id, team, name,
     // zone, presence, status, emoji }, with no id for one Slack knows
@@ -84,29 +90,28 @@ PersonSource {
     // taken as one change, since each change makes everyone anew.
     property var pending: ({})
 
-    people: Object.values(known).filter(said => said.id).map(said => ({
-        emails: [said.email],
-        name: said.name
-    }))
+    // How one stands in Slack, from what Slack told the daemon of them,
+    // for their note: active, away or in a huddle in People's words
+    // (words.json), a presence it doesn't know said as it is, and their
+    // status's emoji as its mark, which People weighs with what other
+    // sources say (Person.standing). The daemon words those it lists and
+    // finds the same way, from Slack's `stands` in its module.
+    // One it was asked about and knows nobody by, said with no id, is no
+    // one of Slack's.
+    function knows(entry) {
+        return Boolean(entry.id);
+    }
 
-    // How each stands in Slack, by address, for their note: active, away
-    // or in a huddle in People's words (words.json), a presence it doesn't
-    // know said as it is, and their status's emoji as its mark, which
-    // People weighs with what other sources say (Person.standing).
-    stands: {
-        const by = {};
-        const words = Words.of("people").said;
-        for (const said of Object.values(known)) {
-            if (said.id && (said.presence || said.emoji)) {
-                const presence = presences[said.presence];
-                by[said.email] = {
-                    said: presence ? words[presence.word] : said.presence,
-                    order: presence?.order ?? 4,
-                    mark: said.emoji
-                };
-            }
-        }
-        return by;
+    function stood(entry) {
+        const presence = presences[entry.presence ?? ""];
+        return {
+            said: presence ? Words.of("people").said[presence.word]
+                : String(entry.presence ?? ""),
+            order: presence?.order ?? 4,
+            mark: String(entry.emoji ?? ""),
+            favourite: false,
+            recent: false
+        };
     }
     readonly property var presences: ({
         active: { word: "active", order: 0 },

@@ -661,10 +661,12 @@ ShellRoot {
                     names(people.persons()));
             }
         },
-        seeking("quill", "one Slack found is found as Slack says she stands", () => {
+        // Found among everyone, as one Tuple or Google found is, so her row
+        // says nothing of how she stands.
+        seeking("quill", "one Slack found is found as the daemon serves her", () => {
             const zoe = found("quill");
-            expect("active, as the daemon serves her", names(zoe) === "Zo\u00eb \"Zed\" Quill"
-                && zoe[0].side === "active", `${names(zoe)} ${zoe[0]?.side}`);
+            expect("by Slack's name for her", names(zoe) === "Zo\u00eb \"Zed\" Quill"
+                && zoe[0].side === "", `${names(zoe)} ${zoe[0]?.side}`);
         })
     ]
 

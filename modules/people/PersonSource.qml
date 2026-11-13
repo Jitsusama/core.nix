@@ -51,7 +51,8 @@
 // whose stands are keyed "<its name>:<id>", their key. `woken` is asked
 // each time the launcher opens, for a source that only follows what it
 // knows while someone might look. A source whose program the people
-// daemon runs and says everyone to, as Tuple's and Google's do, `daemonHolds`: it gives
+// daemon runs and says everyone to, as Tuple's and Google's do, or each it's
+// asked about, as Slack's does, `daemonHolds`: it gives
 // no `people` or `stands` of its own, and People reads from the daemon
 // only those it lists and those a search finds, never everyone, asking
 // `stood` how each stands from what the source told the daemon of them.
@@ -114,6 +115,13 @@ QtObject {
     }
 
     function woken() {
+    }
+
+    // Whether what this source told the daemon of someone says it knows
+    // them, for a source that says so of one it knows nobody by, as
+    // Slack's does with no id: such a one is nobody of this source's.
+    function knows(entry) {
+        return true;
     }
 
     // How one the daemon holds stands, from what this source told it of
