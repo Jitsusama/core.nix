@@ -22,16 +22,32 @@ const SUPPLIES: &str = "/sys/class/power_supply";
 /// move (2026-11-13).
 pub const SETTINGS_KEPT: Duration = Duration::from_secs(60);
 
+/// How soon a battery's setting is read again when its file is there but
+/// answered nothing, as when the kernel found no buffer for the call.
+/// Only once: a file that answers nothing twice waits `SETTINGS_KEPT`, so
+/// one that never answers isn't asked every few seconds.
+pub const SETTINGS_AGAIN: Duration = Duration::from_secs(5);
+
 /// What each battery's charging is set to, its charge types and its
 /// limit's ends, as last read, by its folder, with when it was made and
 /// its health, so a supply read each second asks the firmware once a
-/// minute. A limit set here is read again at once (`forget`).
+/// minute. A limit set here is read again at once (`forget`). A file
+/// that's there but answered nothing keeps what it said last, and is read
+/// again `SETTINGS_AGAIN` on, once.
 #[derive(Default)]
 pub struct Settings {
-    read: HashMap<String, (Instant, Set)>,
+    read: HashMap<String, Read>,
 }
 
-#[derive(Clone)]
+/// A battery's settings as last read, when, and how many reads running
+/// one of its files answered nothing.
+struct Read {
+    at: Instant,
+    set: Set,
+    missed: u32,
+}
+
+#[derive(Clone, Default)]
 struct Set {
     types: Option<String>,
     start: Option<u64>,
@@ -44,19 +60,64 @@ impl Settings {
     /// What the battery in `folder` is set to, read again once it's been
     /// kept `SETTINGS_KEPT` by `now`.
     fn of(&mut self, root: &Root, folder: &str, now: Instant) -> Set {
-        if let Some((at, set)) = self.read.get(folder)
-            && now.saturating_duration_since(*at) < SETTINGS_KEPT
-        {
-            return set.clone();
+        let last = self.read.get(folder);
+        if let Some(read) = last {
+            let kept = if read.missed == 1 {
+                SETTINGS_AGAIN
+            } else {
+                SETTINGS_KEPT
+            };
+            if now.saturating_duration_since(read.at) < kept {
+                return read.set.clone();
+            }
         }
-        let set = Set {
-            types: root.said(&format!("{folder}/charge_types")),
-            start: root.number(&format!("{folder}/{START}")),
-            stop: root.number(&format!("{folder}/{STOP}")),
-            made: made(root, folder),
-            health: root.said(&format!("{folder}/health")),
+        let was = last.map(|read| read.set.clone()).unwrap_or_default();
+        let mut missed = false;
+        let mut or_last = |file: &str, said: Option<String>, was: Option<String>| {
+            if said.is_none() && root.path(&format!("{folder}/{file}")).exists() {
+                missed = true;
+                return was;
+            }
+            said
         };
-        self.read.insert(folder.to_owned(), (now, set.clone()));
+        let types = or_last(
+            "charge_types",
+            root.said(&format!("{folder}/charge_types")),
+            was.types,
+        );
+        let figure = |file: &str| root.said(&format!("{folder}/{file}"));
+        let start = or_last(
+            START,
+            figure(START),
+            was.start.as_ref().map(ToString::to_string),
+        );
+        let stop = or_last(
+            STOP,
+            figure(STOP),
+            was.stop.as_ref().map(ToString::to_string),
+        );
+        let made = or_last("manufacture_year", made(root, folder), was.made);
+        let health = or_last("health", figure("health"), was.health);
+        let set = Set {
+            types,
+            start: start.and_then(|n| n.parse().ok()),
+            stop: stop.and_then(|n| n.parse().ok()),
+            made,
+            health,
+        };
+        let missed = match last {
+            Some(read) if missed => read.missed + 1,
+            None if missed => 1,
+            _ => 0,
+        };
+        self.read.insert(
+            folder.to_owned(),
+            Read {
+                at: now,
+                set: set.clone(),
+                missed,
+            },
+        );
         set
     }
 
@@ -504,6 +565,61 @@ mod tests {
         );
         let moved = (json!("2025-03-08"), json!("Overheat"));
         assert_eq!(later, moved, "kept past a minute");
+    }
+
+    // A Dell's firmware read fails when the kernel finds no 64 KiB buffer
+    // for it ("page allocation failure: order:4", six times on Joel's
+    // laptop overnight, 2026-11-13). The file is still there; it just
+    // answers nothing, as one this account can't read does here.
+    #[test]
+    fn a_firmware_read_that_fails_keeps_what_it_said_last() {
+        let root = std::env::temp_dir().join(format!("machine-missed-{}", std::process::id()));
+        let at = root.join("sys/class/power_supply/BAT0");
+        std::fs::create_dir_all(&at).unwrap();
+        let types = at.join("charge_types");
+        let readable = |yes: bool| {
+            let mode = if yes { 0o644 } else { 0o000 };
+            std::fs::set_permissions(&types, std::fs::Permissions::from_mode(mode)).unwrap();
+        };
+        std::fs::write(&types, "Fast [Standard]\n").unwrap();
+        let held = Root::new(&root);
+        let mut settings = Settings::default();
+        let first = Instant::now();
+        let mut said = |at: Instant| {
+            let kept = record(&held, "BAT0", &Value::Null, &mut settings, at);
+            (kept["charge_type"].clone(), kept["charge_types"].clone())
+        };
+        let read = said(first);
+        readable(false);
+        let failed = said(first + SETTINGS_KEPT);
+        readable(true);
+        std::fs::write(&types, "[Fast] Standard\n").unwrap();
+        let again = said(first + SETTINGS_KEPT + SETTINGS_AGAIN);
+        let next = first + SETTINGS_KEPT * 2 + SETTINGS_AGAIN;
+        readable(false);
+        said(next);
+        said(next + SETTINGS_AGAIN);
+        readable(true);
+        std::fs::write(&types, "Fast [Standard]\n").unwrap();
+        let twice = said(next + SETTINGS_AGAIN * 2);
+        std::fs::remove_dir_all(&root).unwrap();
+        let all = json!(["Fast", "Standard"]);
+        assert_eq!(read, (json!("Standard"), all.clone()));
+        assert_eq!(
+            failed,
+            (json!("Standard"), all.clone()),
+            "what it said last, not nothing"
+        );
+        assert_eq!(
+            again,
+            (json!("Fast"), all.clone()),
+            "read again soon, not a minute on"
+        );
+        assert_eq!(
+            twice,
+            (json!("Fast"), all),
+            "answering nothing twice running waits a minute"
+        );
     }
 
     #[test]
