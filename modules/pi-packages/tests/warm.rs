@@ -5,20 +5,24 @@
 
 mod common;
 mod running;
+mod tree;
 
 use std::fs::{self, File};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use common::{Fixture, program};
 use pi_packages::hold::{self, Hold};
 use pi_packages::jiti;
+use pi_packages::loaded::Pi;
 use pi_packages::run::Done;
-use pi_packages::version::Place;
+use pi_packages::version::{self, Place};
+use pi_packages::warm;
 use running::Running;
 use serde_json::{Value, json};
+use tree::files;
 
 /// A process that says, through a file like a pi's, that it loaded `root`
 /// and which pi it is. It ends with the test.
@@ -89,6 +93,37 @@ impl FakePi {
     fn tmp(&self) -> PathBuf {
         PathBuf::from(self.said["tmp"].as_str().expect("a folder"))
     }
+
+    /// The pi as a live record names it.
+    fn pi(&self) -> Pi {
+        let path = |key: &str| PathBuf::from(self.said[key].as_str().expect("a path"));
+        Pi {
+            node: path("node"),
+            bundle: path("bundle"),
+            tmp: path("tmp"),
+        }
+    }
+}
+
+/// Warm `pi` alone for the version `current` leads to, as an update would.
+fn warm_current(fixture: &Fixture, pi: &FakePi) -> Vec<String> {
+    let version = fs::canonicalize(fixture.place().current()).expect("current resolves");
+    warm::warm(
+        &fixture.config,
+        &fixture.config.packages[0],
+        &version,
+        &[pi.pi()],
+        &version::build_env(&fixture.config),
+    )
+}
+
+/// Whether a process is still running, a zombie counting as ended.
+fn running(pid: &str) -> bool {
+    fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+        stat.rsplit(')')
+            .next()
+            .is_some_and(|rest| !rest.trim_start().starts_with('Z'))
+    })
 }
 
 #[test]
@@ -242,4 +277,65 @@ fn a_removed_version_takes_its_cache_entries_with_it() {
         "a removed version's entry was kept"
     );
     assert!(cache.join(&kept).exists(), "a kept version's entry went");
+}
+
+#[test]
+fn a_warm_leaves_the_real_home_as_it_was() {
+    let fixture = Fixture::new();
+    fixture.update();
+    let (_, home) = fixture
+        .config
+        .env
+        .iter()
+        .find(|(key, _)| key == "HOME")
+        .expect("a home");
+    let home = PathBuf::from(home);
+    // Where an extension that builds its own path from the home folder
+    // would write: its state, and the home it saw.
+    let pi = FakePi::new(
+        &fixture.place(),
+        0,
+        &format!(
+            "{mkdir} -p \"$HOME/.local/state/pi\" && echo here > \"$HOME/.local/state/pi/presence\"\n\
+             echo \"$HOME\" > \"$TMPDIR/home\"",
+            mkdir = program("mkdir").display(),
+        ),
+    );
+    let before = files(&home);
+
+    let unwarmed = warm_current(&fixture, &pi);
+
+    assert_eq!(unwarmed, Vec::<String>::new(), "the warm failed");
+    let seen = fs::read_to_string(pi.tmp().join("home")).expect("the fake said its home");
+    assert_ne!(
+        PathBuf::from(seen.trim()),
+        home,
+        "the warm ran in the real home"
+    );
+    assert_eq!(files(&home), before, "the warm changed the real home");
+}
+
+#[test]
+fn nothing_a_warm_started_outlives_it() {
+    let fixture = Fixture::new();
+    fixture.update();
+    let pi = FakePi::new(
+        &fixture.place(),
+        0,
+        &format!(
+            "{sleep} 600 &\necho $! > \"$TMPDIR/child\"",
+            sleep = program("sleep").display(),
+        ),
+    );
+
+    let unwarmed = warm_current(&fixture, &pi);
+
+    assert_eq!(unwarmed, Vec::<String>::new(), "the warm failed");
+    let child = fs::read_to_string(pi.tmp().join("child")).expect("the fake started a child");
+    let child = child.trim();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while running(child) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!running(child), "a child the warm started outlived it");
 }

@@ -3,20 +3,20 @@
 
 mod common;
 mod running;
+mod tree;
 
-use std::collections::BTreeMap;
 use std::fs::{self, File};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 use common::Fixture;
-// A node session, or any process standing in a version, as a running pi does.
 use pi_packages::run::{self, Done};
 use pi_packages::version::Place;
+// A node session, or any process standing in a version, as a running pi does.
 use running::Running as Session;
 use serde_json::json;
+use tree::files;
 
 impl Fixture {
     /// Remove what nothing uses, as a pi starting or ending has it done.
@@ -43,25 +43,6 @@ fn saying(place: &Place, root: &Path) -> (Session, PathBuf) {
     let file = place.loaded().join(sleeping.0.id().to_string());
     fs::write(&file, json!({ "root": root }).to_string()).expect("what it loaded");
     (sleeping, file)
-}
-
-/// Every file under a folder, with its inode and contents.
-fn files(dir: &Path) -> BTreeMap<PathBuf, (u64, Vec<u8>)> {
-    let mut found = BTreeMap::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(next) = stack.pop() {
-        for entry in fs::read_dir(&next).expect("a folder").flatten() {
-            let path = entry.path();
-            let kind = entry.file_type().expect("a kind");
-            if kind.is_dir() {
-                stack.push(path);
-            } else if kind.is_file() {
-                let inode = fs::metadata(&path).expect("metadata").ino();
-                found.insert(path.clone(), (inode, fs::read(&path).expect("contents")));
-            }
-        }
-    }
-    found
 }
 
 /// A node that loaded the package's dependency through `current` and

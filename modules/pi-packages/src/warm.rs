@@ -12,13 +12,18 @@
 //! which loads every extension and ends. It is given the new version and
 //! each other package at its `current`, its own temporary folder, so the
 //! entries land where that pi reads them, and scratch state, so it joins
-//! no mesh and touches no session. Running pi itself rather than jiti
+//! no mesh and touches no session. The scratch state includes a home of
+//! its own, since an extension may reach a path through the home folder
+//! rather than the XDG ones. Each warm leads a process group of its own,
+//! killed whole once pi ends or is stopped, so nothing an extension
+//! started at session start outlives it. Running pi itself rather than jiti
 //! keeps the names and options exactly as pi gives them. A warm that
 //! fails or overruns is said, and the swap goes ahead: it only costs the
 //! start it would have saved.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -104,10 +109,13 @@ fn warm_one(
 }
 
 /// The scratch state a warm runs in: an agent folder whose settings name
-/// the packages, and empty state, data, cache, config and runtime folders.
+/// the packages, and empty home, state, data, cache, config and runtime
+/// folders.
 fn prepare(scratch: &Path, packages: &[PathBuf]) -> Result<(), String> {
     let shown = |error: std::io::Error| format!("{}: {error}", scratch.display());
-    for folder in ["agent", "state", "data", "cache", "config", "runtime"] {
+    for folder in [
+        "agent", "home", "state", "data", "cache", "config", "runtime",
+    ] {
         fs::create_dir_all(scratch.join(folder)).map_err(shown)?;
     }
     fs::set_permissions(scratch.join("runtime"), fs::Permissions::from_mode(0o700))
@@ -119,6 +127,7 @@ fn prepare(scratch: &Path, packages: &[PathBuf]) -> Result<(), String> {
 fn run(scratch: &Path, pi: &Pi, env: &[(String, String)]) -> Result<(), String> {
     let scratched = [
         ("PI_CODING_AGENT_DIR", "agent"),
+        ("HOME", "home"),
         ("XDG_STATE_HOME", "state"),
         ("XDG_DATA_HOME", "data"),
         ("XDG_CACHE_HOME", "cache"),
@@ -148,23 +157,39 @@ fn run(scratch: &Path, pi: &Pi, env: &[(String, String)]) -> Result<(), String> 
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
+        .process_group(0)
         .spawn()
         .map_err(|error| format!("{}: {error}", pi.node.display()))?;
     let started = Instant::now();
-    loop {
+    let ended = loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => return Err(format!("pi ended with {status}")),
+            Ok(Some(status)) if status.success() => break Ok(()),
+            Ok(Some(status)) => break Err(format!("pi ended with {status}")),
             Ok(None) if started.elapsed() > LONGEST => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
+                break Err(format!(
                     "pi ran past {} s and was stopped",
                     LONGEST.as_secs()
                 ));
             }
             Ok(None) => thread::sleep(LOOK),
-            Err(error) => return Err(format!("pi could not be waited for: {error}")),
+            Err(error) => break Err(format!("pi could not be waited for: {error}")),
+        }
+    };
+    stop_group(child.id());
+    // Reaps pi where it was stopped; where it ended, it was reaped already.
+    let _ = child.wait();
+    ended
+}
+
+/// Kill every process left in the group `leader` leads. Once pi has been
+/// reaped its pid stays the group's while any member lives, so the number
+/// names no other group; with none left, the kill finds nothing.
+fn stop_group(leader: u32) {
+    if let Ok(leader) = libc::pid_t::try_from(leader) {
+        // SAFETY: kill takes no pointers; a group already gone is ESRCH,
+        // which is nothing to do.
+        unsafe {
+            libc::kill(-leader, libc::SIGKILL);
         }
     }
 }
