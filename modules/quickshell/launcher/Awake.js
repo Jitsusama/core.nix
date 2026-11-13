@@ -67,20 +67,21 @@ function facts(logind, said, told) {
     ]).filter((fact) => fact.value !== "");
 }
 
-// Keep Awake's drawer of its facts, headed by `head`'s eyebrow and
-// title, each fact named by `named(id)`, or null while logind says
+// Keep Awake's drawer of `shown`, the facts as facts gives them,
+// headed by `head`'s eyebrow and title, each fact named by
+// `named(id)`, or null while logind says
 // nothing it shows: a switch has no drawer, so one held with nothing in
 // it is held for a row that is no thing (Launcher.qml's actless
 // undrawn, 80ECO2's ba28c5c1).
-function drawer(facts, head, named) {
-    if (facts.length === 0) {
+function drawer(shown, head, named) {
+    if (shown.length === 0) {
         return null;
     }
     return {
         eyebrow: head.eyebrow ?? "",
         eyebrowNames: true,
         title: head.title,
-        facts: facts.map((fact) => ({ label: named(fact.id), value: fact.value })),
+        facts: shown.map((fact) => ({ label: named(fact.id), value: fact.value })),
         body: ""
     };
 }
