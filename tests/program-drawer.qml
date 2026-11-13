@@ -26,7 +26,8 @@ QtObject {
         workspaces: "on {count} workspaces",
         program: "program",
         more: "{count} more",
-        terminal: "a terminal"
+        terminal: "a terminal",
+        agents: "agents' windows {memory}"
     })
 
     function named(id) {
@@ -65,6 +66,27 @@ QtObject {
         ]), { processor: 0.1, memory: 300, count: 3 });
         expect("no share past the whole", Program.usage([{ share_ratio: 0.8 },
             { share_ratio: 0.7 }]).processor, 1);
+        // Two agents' windows in one kitty, one beside Joel's own in
+        // another, which is his, and one of his alone.
+        const split = Program.split([{ pid: 9, session: true, id: 1 },
+            { pid: 9, session: true, id: 2 }, { pid: 5, session: true, id: 3 },
+            { pid: 5, id: 4 }, { pid: 2, id: 5 }, { pid: 0, id: 6 }]);
+        expect("each process once, and those holding agents' windows alone",
+            [split.pids, split.agents], [[2, 5, 9], [9]]);
+        expect("only Joel's own windows said as where it is",
+            split.own.map(window => window.id), [4, 5, 6]);
+        expect("the agents' processes' memory beside the whole", Program.usage([
+            { pid: 2, resident_b: 300 }, { pid: 9, resident_b: 200 }], [9]),
+            { processor: 0, memory: 500, count: 0, agents: 200 });
+        // kitty holds every agent's window, so its memory is said whole,
+        // as Machine says it, and how much of it is the agents' beside it
+        // (VKCF3Z [b31d7a90]).
+        const kitty = Program.drawer({ name: "kitty", places: [],
+            usage: { processor: 0.1, memory: 1800000000, count: 9, agents: 1600000000 },
+            id: "kitty", command: ["kitty"] }, named, said);
+        expect("the agents' windows' share said beside the whole memory",
+            kitty.facts.find(fact => fact.label === "[memory]")?.value,
+            "1.80\u00a0GB \u00b7 agents' windows 1.60\u00a0GB");
 
         expect("windows on one workspace", Program.eyebrow([4, 4], "web browser", said),
             "on 4 \u00b7 web browser");
