@@ -2905,8 +2905,9 @@
   '';
   the-launcher-paces-its-refreshes = ''
     an open launcher takes the first of its sources' changes at once and those after it a pace
-    apart, together, the pace five times what the last refresh cost, at least a frame and at most
-    a quarter second, so a storm of changes spends at most a fifth of the time refreshing; and a
+    apart, together, the pace three times the median of what the last three refreshes cost, at
+    least a frame and at most a quarter second, so one dear refresh holds the next change no longer
+    and a storm of changes spends at most a third of the time refreshing; and a
     refresh taken another way takes the one waiting with it; and a source's rows are wanted only while it's held,
     searched, named at home or has an act waiting, so a change nobody sees builds none; and a
     key's act is said shown by the first frame begun after its refresh, which another act
