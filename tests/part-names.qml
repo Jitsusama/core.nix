@@ -101,6 +101,20 @@ ShellRoot {
     }
 
     function run() {
+        // A thing the vocabulary knows is made once, in each of its states,
+        // since rows' bindings ask it about a thousand times a key; an id it
+        // doesn't know is said as itself.
+        const radio = Words.of("bluetooth:radio");
+        expect("a known thing is made once, however often it's asked",
+            Words.of("bluetooth:radio") === radio, "it was made again");
+        const off = Words.of("bluetooth:radio", "off");
+        expect("a thing in a state is made once, and is its own",
+            Words.of("bluetooth:radio", "off") === off && off !== radio, "made again or shared");
+        expect("a state it hasn't is the thing itself",
+            Words.of("bluetooth:radio", "floating") === radio, "made apart");
+        const unknown = Words.of("nothing:known");
+        expect("an id it doesn't know is said as itself",
+            unknown.name === "nothing:known" && unknown.parts.length === 0, unknown.name);
         for (const each of asked) {
             // What the vocabulary names each of its parts, or nothing for an
             // id it doesn't know.
