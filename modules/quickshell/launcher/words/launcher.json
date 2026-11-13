@@ -1329,6 +1329,48 @@
       }
     },
     {
+      "id": "dictation",
+      "name": "Dictation",
+      "term": "Desktop/dictation",
+      "verb": "dictate",
+      "glyph": "dictating",
+      "words": ["dictate", "voice", "speak"],
+      "said": {
+        "eyebrow": "on this desktop \u00b7 dictation",
+        "ready": "ready",
+        "listening": "listening",
+        "transcribing": "writing",
+        "off": "off",
+        "how": "hold Super D, speak, let go",
+        "terminal": "typed as a command",
+        "stop": "tap Super D",
+        "also": "Super Shift F23"
+      },
+      "tells": {
+        "body": "What you say is typed where the focus is."
+      }
+    },
+    {
+      "id": "dictation:how",
+      "of": "dictation",
+      "name": "How"
+    },
+    {
+      "id": "dictation:terminal",
+      "of": "dictation",
+      "name": "In a Terminal"
+    },
+    {
+      "id": "dictation:stop",
+      "of": "dictation",
+      "name": "To Stop"
+    },
+    {
+      "id": "dictation:also",
+      "of": "dictation",
+      "name": "Its Other Key"
+    },
+    {
       "id": "session:recording",
       "command": "set",
       "argument": "norecording",
