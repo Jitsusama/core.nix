@@ -565,6 +565,11 @@
   darwin-role-twice-is-once = ''
     importing a nix-darwin role twice leaves the machine unchanged
   '';
+  dates-read-as-before = ''
+    in the shell's own Qt, Date.parse reads ECMA's format, Qt's text, ISO and RFC 2822 forms and
+    its others as before, gives NaN for strings none reads, and refuses five hundred empty ones
+    within 100 ms
+  '';
   dell-events-are-known = ''
     the XPS 14's dell-wmi ignores the EC's hourly type 0x0012 event rather than log an unknown key
   '';

@@ -291,6 +291,19 @@
         touch $out
       '';
 
+  # Date.parse reads what it read, in the shell's own Qt, which refuses a
+  # string without a digit at once rather than after trying every form
+  # (qtdeclarative-dates-without-digits-refused.patch). In UTC, so a form
+  # read as local time reads the moment the case names.
+  dates-read-as-before = pkgs.runCommandLocal "dates-read-as-before" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../../tests/dates-read-as-before.qml} shell.qml
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen TZ=UTC
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # A Map and a Set mean what the language says, in the shell's own Qt,
   # whose tables find string and number keys by hash
   # (qtdeclarative-maps-find-keys-by-hash.patch).
