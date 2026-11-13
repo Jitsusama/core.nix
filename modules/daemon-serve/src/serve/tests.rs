@@ -265,6 +265,7 @@ fn a_paced_watch_is_told_a_record_new_to_it_at_once_with_all_it_held_back() {
         ),
         "the new row at once, with the move held back before it: {told}"
     );
+    assert_eq!(client.heard()["id"], "health", "then health, asked after");
     shared.change(
         vec![row("agents", "Q", "lantern"), row("agents", "O", "buoy")],
         json!({}),
