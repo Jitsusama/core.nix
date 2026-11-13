@@ -525,11 +525,9 @@ fn compare(
     let flake = &format!("git+file://{root}");
     let short = base.get(..12).unwrap_or(base);
     if options.keep_base {
-        reads::keep_base(root, base, system, noted)?;
-        alone::keep(root, base, system, noted);
-        eprintln!("kept {system}'s checks at {short}");
-        return Ok(ExitCode::SUCCESS);
+        return kept_base(root, base, system, noted);
     }
+    let _gating = alone::gating(&alone::gating_lock());
     eprintln!("comparing {system}'s checks at {short} with the working tree");
     // What each check read at the newest head of main recorded, the base or
     // one it came after, spares evaluating at the base and in the tree each
@@ -583,10 +581,8 @@ fn compare(
                 let derivations = after.clone();
                 scope.spawn(move || built(flake, system, held, &targets, &derivations))
             }));
-            match unread(root, base, system, (&before, recorded.as_ref()), &vm) {
-                Some(unread) => after.extend(unread),
-                None => after.extend(evaluated(flake, system, &vm, &mut evaluation)?),
-            }
+            let (judged, at) = ((&before, recorded.as_ref()), (base, system));
+            after.extend(vm_tests(flake, root, at, judged, vm, &mut evaluation)?);
             noted.evaluated(evaluation);
             Ok(after)
         };
@@ -650,7 +646,8 @@ fn ordinarily(
         .iter()
         .cloned()
         .partition(|name| name.starts_with("vm-"));
-    let (unreached, ordinary) = alone::unreached(root, recorded, system, ordinary);
+    let (unreached, ordinary) =
+        alone::unreached(root, recorded, system, (ordinary, "other checks"));
     let mut after = if ordinary.is_empty() {
         Derivations::new()
     } else {
@@ -660,6 +657,42 @@ fn ordinarily(
     after.retain(|name, _| asked.contains(name));
     after.extend(unreached);
     Ok((after, vm))
+}
+
+/// Keep the base's checks, what its VM tests read, and what each check read
+/// alone, as keep-main asks.
+fn kept_base(root: &str, base: &str, system: &str, noted: &mut Run) -> Result<ExitCode, String> {
+    reads::keep_base(root, base, system, noted)?;
+    alone::keep(root, base, system, noted);
+    eprintln!(
+        "kept {system}'s checks at {}",
+        base.get(..12).unwrap_or(base)
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// The tree's VM tests' derivations: for each the change reaches nothing
+/// of, as they read together (`reads.rs`) or as it read alone
+/// (`alone.rs`), the base's or the recorded head's, and the rest evaluated.
+fn vm_tests(
+    flake: &str,
+    root: &str,
+    (base, system): (&str, &str),
+    judged: (&Derivations, Option<&(String, Derivations)>),
+    vm: Vec<String>,
+    evaluation: &mut runs::Evaluation,
+) -> Result<Derivations, String> {
+    if let Some(unread) = unread(root, base, system, judged, &vm) {
+        return Ok(unread);
+    }
+    let (mut after, left) = alone::unreached(root, judged.1, system, (vm, "VM tests"));
+    if !left.is_empty() {
+        let mut tree = evaluated(flake, system, &left, evaluation)?;
+        let asked: std::collections::BTreeSet<&String> = left.iter().collect();
+        tree.retain(|name, _| asked.contains(name));
+        after.extend(tree);
+    }
+    Ok(after)
 }
 
 /// The VM tests' derivations, `vm`, when the change reaches nothing they

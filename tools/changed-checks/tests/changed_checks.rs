@@ -1519,8 +1519,8 @@ fn keeping_a_base_keeps_what_each_of_its_checks_read_alone() {
         "b read its own file: {kept}"
     );
     assert!(
-        kept["checks"]["vm-x"].is_null(),
-        "the VM tests' record is their own: {kept}"
+        read("vm-x").contains(&"tests/x.nix"),
+        "the VM test's reads alone were kept beside the others': {kept}"
     );
     let runs = stand_in.runs();
     assert_eq!(
@@ -1529,6 +1529,46 @@ fn keeping_a_base_keeps_what_each_of_its_checks_read_alone() {
         "{}",
         runs[0]
     );
+    let traced: Vec<&serde_json::Value> = runs[0]["evaluated"][2]["chunks"]
+        .as_array()
+        .expect("what was traced alone")
+        .iter()
+        .map(|chunk| &chunk["checks"])
+        .collect();
+    assert_eq!(
+        traced,
+        [3, 1],
+        "the other checks weren't traced before the VM test: {}",
+        runs[0]
+    );
+}
+
+#[test]
+fn a_keep_traces_no_vm_test_alone_while_a_gate_runs_beside_it() {
+    // A keep's tracing must never take a builder from a gate.
+    let stand_in = traced_alone("vm-alone-gating");
+    let lock = stand_in.path("cache/changed-checks/gating.lock");
+    fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+    let gate = fs::File::create(&lock).expect("the gate's lock");
+    gate.lock_shared().expect("held as a gate holds it");
+
+    let ran = stand_in.run(&KEEPING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    let kept: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(stand_in.path(ALONE)).expect("kept"))
+            .expect("JSON");
+    assert!(!kept["checks"]["a"].is_null(), "{kept}");
+    assert!(
+        kept["checks"]["vm-x"].is_null(),
+        "a VM test was traced while a gate ran: {kept}"
+    );
+    assert!(
+        text(&ran.stderr).contains("a gate runs here, so this keep traces no more VM tests alone"),
+        "{}",
+        text(&ran.stderr)
+    );
+    drop(gate);
 }
 
 #[test]
@@ -1606,6 +1646,13 @@ const RECORDED: &str = "9876543210fedcba9876";
 /// working tree.
 fn kept_behind(test: &str, head: &str, between: &str, diff: &str) -> StandIn {
     let stand_in = kept_alone(test, MOVED, diff);
+    filed_as(&stand_in, head);
+    fs::write(stand_in.path("diff.between"), between).expect("written");
+    stand_in
+}
+
+/// File what was kept of the base as `head`'s.
+fn filed_as(stand_in: &StandIn, head: &str) {
     for kept in ["json", "reads.json", "alone.reads.json"] {
         let at = |commit: &str| {
             stand_in.path(&format!(
@@ -1614,8 +1661,6 @@ fn kept_behind(test: &str, head: &str, between: &str, diff: &str) -> StandIn {
         };
         fs::rename(at("0123456789abcdef0123"), at(head)).expect("filed as the head's");
     }
-    fs::write(stand_in.path("diff.between"), between).expect("written");
-    stand_in
 }
 
 #[test]
@@ -1645,6 +1690,132 @@ fn a_gate_on_a_base_past_a_recorded_head_evaluates_there_only_what_main_reached(
         run["recorded"],
         serde_json::json!({ "head": RECORDED, "main": 1, "tree": 1 }),
         "the run didn't say the record it judged from and what moved since: {run}"
+    );
+}
+
+/// What the base's VM test read alone: its flake and its own file, where
+/// the VM tests together read `TRACE`'s files besides.
+const VM_ALONE: &str = concat!(
+    "openat(AT_FDCWD</tmp>, \"SOURCE/flake.nix\", O_RDONLY) = 7<SOURCE/flake.nix>\n",
+    "openat(AT_FDCWD</tmp>, \"SOURCE/vm-x.nix\", O_RDONLY) = 8<SOURCE/vm-x.nix>\n",
+);
+
+/// What the base's other VM test read alone: its flake and tests/x.nix.
+const VM_Y_ALONE: &str = concat!(
+    "openat(AT_FDCWD</tmp>, \"SOURCE/flake.nix\", O_RDONLY) = 7<SOURCE/flake.nix>\n",
+    "openat(AT_FDCWD</tmp>, \"SOURCE/tests/x.nix\", O_RDONLY) = 8<SOURCE/tests/x.nix>\n",
+);
+
+/// The base's checks with two VM tests.
+const VM_BASE: &str =
+    r#"{"a": "a.drv", "b": "b.drv", "gone": "g.drv", "vm-x": "v.drv", "vm-y": "w.drv"}"#;
+
+/// The base's checks as the tree has them, only the VM tests moved.
+const VM_MOVED: &str =
+    r#"{"a": "a.drv", "b": "b.drv", "gone": "g.drv", "vm-x": "v2.drv", "vm-y": "w2.drv"}"#;
+
+/// A stand-in whose base is kept with what each check read alone, vm-x
+/// reading its own file, vm-y tests/x.nix, and the two together `TRACE`'s
+/// too; whose tree moves only the VM tests, and whose change is `diff`.
+fn vm_alone(test: &str, diff: &str) -> StandIn {
+    let stand_in = traced_alone(test);
+    stand_in.checks("base", VM_BASE);
+    fs::write(stand_in.path("trace"), format!("{TRACE}{VM_ALONE}")).expect("written");
+    fs::write(stand_in.path("trace.vm-x"), VM_ALONE).expect("written");
+    fs::write(stand_in.path("trace.vm-y"), VM_Y_ALONE).expect("written");
+    let ran = stand_in.run(&KEEPING);
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    stand_in.checks("working", VM_MOVED);
+    fs::write(stand_in.path("diff"), diff).expect("written");
+    stand_in
+}
+
+#[test]
+fn a_gate_reaching_the_vm_tests_but_nothing_one_read_alone_keeps_its_derivation() {
+    // On 13 November 46 of 49 gates evaluated all 101 VM tests, though of
+    // 12 traced alone, 104 of the last 300 merges reached none.
+    let stand_in = vm_alone("vm-alone-unreached", "M\ttests/x.nix\n");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(
+        text(&ran.stdout),
+        "changed  vm-y\n",
+        "only vm-y read what the change touched, yet vm-x was evaluated too"
+    );
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 1 of x86_64-linux's 2 VM tests, since the change reaches nothing \
+             the other 1 read at 0123456789ab"
+        ),
+        "{}",
+        text(&ran.stderr)
+    );
+}
+
+#[test]
+fn a_gate_evaluates_each_vm_test_its_change_reaches_or_the_record_lacks() {
+    for (test, diff, lacks, moved) in [
+        (
+            "vm-alone-reached",
+            "M\tvm-x.nix\n",
+            false,
+            "changed  vm-x\n",
+        ),
+        (
+            "vm-alone-all-read",
+            "M\tflake.nix\n",
+            false,
+            "changed  vm-x\nchanged  vm-y\n",
+        ),
+        (
+            "vm-alone-lacked",
+            "M\ttests/x.nix\n",
+            true,
+            "changed  vm-x\nchanged  vm-y\n",
+        ),
+    ] {
+        let stand_in = vm_alone(test, diff);
+        if lacks {
+            let mut kept: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(stand_in.path(ALONE)).expect("kept"))
+                    .expect("JSON");
+            kept["checks"]
+                .as_object_mut()
+                .expect("each check's reads")
+                .remove("vm-x");
+            fs::write(stand_in.path(ALONE), kept.to_string()).expect("written");
+        }
+
+        let ran = stand_in.run(&GATING);
+
+        assert!(ran.status.success(), "{test}: {}", text(&ran.stderr));
+        assert_eq!(
+            text(&ran.stdout),
+            moved,
+            "{test}: a VM test the change reached, or the record lacked, kept its derivation"
+        );
+    }
+}
+
+#[test]
+fn a_gate_on_a_base_past_a_head_whose_vm_test_main_reached_evaluates_it_at_the_base() {
+    let stand_in = vm_alone("vm-alone-behind", "M\tvm-x.nix\n");
+    filed_as(&stand_in, RECORDED);
+    fs::write(stand_in.path("diff.between"), "M\tvm-x.nix\n").expect("written");
+
+    let ran = stand_in.run(&GATING);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert_eq!(text(&ran.stdout), "changed  vm-x\n");
+    assert!(
+        text(&ran.stderr).contains(
+            "evaluates 1 of x86_64-linux's 2 VM tests at the base 0123456789ab, since main \
+             from 9876543210fe reaches nothing the other 1 read"
+        ),
+        "the gate didn't evaluate at the base the VM test main reached: {}",
+        text(&ran.stderr)
     );
 }
 
