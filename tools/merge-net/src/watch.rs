@@ -1237,7 +1237,8 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
     /// round's start asked before: on 8 November #2381 fixed the held
     /// vm-desktop-launcher-goes-places forward at 12:10, while the round
     /// begun at 09:30 ran on, and every merge waited off the machine behind
-    /// the hold. One thread asks at a time; the rest carry on.
+    /// the hold. The run goes to the settler: run here, it held the thread
+    /// that ended a test for a VM test's minutes before its next test.
     fn fixed_forward_since(&self) {
         let Ok(mut tried) = self.tried.try_lock() else {
             return;
@@ -1257,21 +1258,11 @@ impl<'a, 's, F: Fn(&str) -> bool> Breaking<'a, 's, F> {
             return;
         }
         *tried = Some(newest.clone());
-        if same_drv(self.world, &newest, self.head, &test)
-            || attempt(self.world, self.state, &newest, &test) != Outcome::Passed
-        {
-            return;
-        }
-        let cleared = self.settler.write(|| {
-            clear_hold_of(
-                self.state,
-                &test,
-                &format!("passes at main's newest head {}", short(&newest)),
-            )
+        self.settler.hand(Job::Forward {
+            head: self.head.to_owned(),
+            newest,
+            test,
         });
-        if let Err(why) = cleared {
-            self.state.say(&why);
-        }
     }
 }
 
@@ -4132,6 +4123,56 @@ mod tests {
             world.built()
         );
         assert!(state.hold().is_none());
+    }
+
+    #[test]
+    fn a_held_test_is_run_at_the_newest_head_beside_the_round_not_in_it() {
+        // 13 November: a round thread that ended a test ran the held test
+        // at main's newest head itself, a VM test's minutes, before taking
+        // up its next test.
+        let state = state("forward-beside");
+        state.set_heads("s", "s").unwrap();
+        state.begin("h").unwrap();
+        state
+            .set_hold(&json!({ "test": "vm-z", "bad": "b", "revert_commit": null }))
+            .unwrap();
+        let world = Stand {
+            head: "n".into(),
+            merges: names("b h"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        };
+        let settler = Settler::new(&world, &state);
+        assert_eq!(
+            round_beside(&world, &state, "s", &settler).unwrap(),
+            Round::Passed("h".into())
+        );
+        assert!(
+            !world.built().contains(&("n".into(), "vm-z".into())),
+            "the round ran the held test at main's newest head itself: {:?}",
+            world.built()
+        );
+        assert!(
+            settler.holds("vm-z"),
+            "the held test's run wasn't handed on"
+        );
+        // A net restarted meanwhile takes the run up again from disk.
+        let restarted = Settler::new(&world, &state);
+        restarted.take_up();
+        std::thread::scope(|scope| {
+            restarted.start(scope);
+            restarted.close();
+        });
+        assert!(
+            world.built().contains(&("n".into(), "vm-z".into())),
+            "the handed run never ran: {:?}",
+            world.built()
+        );
+        assert!(
+            state.hold().is_none(),
+            "a pass at main's newest head left the hold"
+        );
+        assert!(state.settling().is_empty(), "a run settled is still kept");
     }
 
     #[test]
