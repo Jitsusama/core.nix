@@ -511,8 +511,9 @@ Scope {
                 ? { askedAs: firstOwn.askedAs, leaves: firstOwn.leaves } : {});
         // A row asking Joel to be sure, or that is an act (an orchestration's Stop), holds its
         // act alone, as the shell's own do, so the key language reads that act's command
-        // (Catalogue.endsSomething) rather than a row of verbs.
-        if (acts.length > 0 && row.sure !== true && row.kind !== "act")
+        // (Catalogue.endsSomething) rather than a row of verbs; an act stepping into rows, as a
+        // meeting's Show in Calendar or Cancel the daemon serves, holds those (RTOIMQ, 2026-11-12).
+        if (acts.length > 0 && row.sure !== true && (row.kind !== "act" || steps))
             Object.assign(acting, { verbs: verbs, targets: verbs });
         // A row whose Return copies is a value, drawn as Provider.qml's
         // copyRow draws one, and what it copies is what y joins.
