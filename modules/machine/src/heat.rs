@@ -24,8 +24,9 @@ const THERMAL: &str = "/sys/class/thermal";
 pub const SLOW: Duration = Duration::from_millis(20);
 
 /// How long a slow chip's record is kept before it's read again. Each of
-/// its reads is a firmware call that holds every processor while it
-/// runs, and its temperatures and fans move over seconds, not within one.
+/// its reads is a firmware call, `dell_smm`'s a system management call
+/// that holds every processor while it runs, and its temperatures and
+/// fans move over seconds, not within one.
 pub const SLOW_KEPT: Duration = Duration::from_secs(5);
 
 /// A chip's files that never change, kept by path, and the chips they
@@ -63,6 +64,7 @@ impl Kept {
         let chips = root.names(HWMON);
         if chips != self.chips {
             self.files.clear();
+            self.slow.clear();
             self.chips.clone_from(&chips);
         }
         chips
@@ -348,7 +350,21 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
         } else {
             format!("sensor:{name}:{count}")
         };
-        records.push(chip(root, kept, &folder, &key, &name));
+        if let Some((at, record)) = kept.slow.get(&folder)
+            && now.saturating_duration_since(*at) < SLOW_KEPT
+            && record["key"] == key.as_str()
+        {
+            records.push(record.clone());
+            continue;
+        }
+        let began = Instant::now();
+        let record = chip(root, kept, &folder, &key, &name);
+        if began.elapsed() >= kept.slow_from {
+            kept.slow.insert(folder, (now, record.clone()));
+        } else {
+            kept.slow.remove(&folder);
+        }
+        records.push(record);
     }
     records
 }
