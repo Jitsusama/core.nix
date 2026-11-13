@@ -4034,14 +4034,18 @@ def test_a_drawer_served_apart_beside_the_one_drawn_comes_with_its_key(
     shell.launcher_until(lambda shown: "40,000,000" in shown["drawer"]["values"])
     deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
     beside = machine.ahead("drawer:power:rate", deadline)
+    shell.normal()
     since = shell.mark()
-    shell.down_to("Rate")
+    # A letter, as Joel walks rows, since an arrow sent here comes with no press time to say
+    # its drawer from.
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Rate")
     said = said_once(shell, since, DRAWER_SAID)
     lines = [line for line in said.splitlines() if "drawer for" in line]
     shown = shell.showing()["drawer"]
     shell.close_launcher()
     assert beside, "Rate's drawer, beside the one drawn, wasn't watched before a key reached it"
-    assert any('drawer for "row:power:rate"' in line for line in lines), (
+    assert any('drawer for "power:rate" presented' in line for line in lines), (
         f"Rate's drawer was never said presented from the key that reached it: {lines}"
     )
     assert shown["title"] == "Rate", f"the drawer beside Rate's row was {shown['title']!r}"
