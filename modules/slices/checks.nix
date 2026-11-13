@@ -78,8 +78,14 @@
     let
       inherit (graphical.config.systemd.user) slices services;
       weight = slice: slice.sliceConfig.CPUWeight or 100;
+      # A slice is watched when it's named alone or with where its terminals'
+      # busy work goes, after an `=` the shell quotes.
       watches =
-        slice: lib.hasInfix " --under ${slice} " "${services.jobs-sorter.serviceConfig.ExecStart} ";
+        slice:
+        let
+          given = "${services.jobs-sorter.serviceConfig.ExecStart} ";
+        in
+        lib.hasInfix " --under ${slice} " given || lib.hasInfix " --under '${slice}=" given;
     in
     holds "sessions-sit-beside-the-programs"
       "Agents' sessions have no slice beside the apps, the apps don't outweigh it ten times over, or the sorter doesn't watch it."
