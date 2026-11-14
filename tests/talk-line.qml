@@ -3,12 +3,13 @@
 // with it attached, the quiet line naming who hears it, and the talk sent,
 // answered, taken back, all in the line. The
 // `the-talk-line-says-what-became-of-its-words` check copies
-// modules/quickshell/TalkLine.js, the Told.js it imports and
+// modules/quickshell/TalkLine.js, SessionTalks.js, the Told.js they import and
 // tests/lib/Expect.js beside this file and runs
 // `qml -platform offscreen talk-line.qml`.
 import QtQuick
 import "Expect.js" as Expect
 import "TalkLine.js" as Said
+import "SessionTalks.js" as Session
 
 QtObject {
     Component.onCompleted: {
@@ -320,6 +321,54 @@ QtObject {
                     [], at(18, 0))), ["2026-11-12 09:05"]);
             Expect.same("a missing or broken file of what's seen is nothing seen",
                 [Said.seenIn(""), Said.seenIn("{\"2026"), Said.seenIn("[1]")], [{}, {}, {}]);
+
+            // Talk to It in the launcher shows the talk under the field as the line does,
+            // from the session's own talk lines (Joel at 19:30 on 2026-11-13: "they need to
+            // feel more like the void").
+            const toIt = { sent: "sent", waiting: "waiting on {who}", unsent: "not delivered" };
+            const when = (hour, minute, second) => new Date(2026, 10, 13, hour, minute,
+                second ?? 0).getTime();
+            const talkAt = (hour, minute, words, stage, reply) => ({ id: `talk-${when(hour,
+                minute)}`, at: new Date(when(hour, minute, 1)).toISOString(), words, stage,
+                reply: reply ?? "", why: "" });
+            const justSent = Session.toSession("  is the fix in? ", when(20, 30));
+            Expect.same("said here, it shows his words and sent, nothing breathing yet",
+                Session.spoken(justSent, "Tune the launcher", toIt),
+                { line: "is the fix in?", answers: [], waiting: "", stands: "sent", by: "",
+                    side: "20:30" });
+            Expect.same("delivered, it waits on the session by its name",
+                Session.spoken(talkAt(20, 30, "is the fix in?", "delivered"), "Tune the launcher",
+                    toIt).waiting, "waiting on Tune the launcher");
+            const writing = Session.spoken(talkAt(20, 30, "is the fix in?", "replying", "Yes, "),
+                "Tune the launcher", toIt);
+            Expect.same("what it's writing shows as it writes, still waiting on it",
+                [writing.answers, writing.waiting, writing.by],
+                [["Yes,"], "waiting on Tune the launcher", ""]);
+            const itReplied = Session.spoken(talkAt(20, 30, "is the fix in?", "replied",
+                "Yes, merged at 20:28."), "Tune the launcher", toIt);
+            Expect.same("replied, the answer stands in place, who answered at its right",
+                [itReplied.answers, itReplied.waiting, itReplied.stands, itReplied.by],
+                [["Yes, merged at 20:28."], "", "", "Tune the launcher"]);
+            Expect.same("never delivered, it says so and why",
+                Session.spoken(Object.assign(talkAt(20, 30, "hi", "failed"), { why: "no inbox" }),
+                    "Tune the launcher", toIt).stands, "not delivered \u00b7 no inbox");
+            Expect.same("on an earlier day its side says which",
+                Session.spoken(justSent, "x", toIt, () => "yesterday").side, "yesterday 20:30");
+            const heardTalks = [talkAt(19, 0, "one", "read", "A."), talkAt(18, 0, "two", "read",
+                "B."), talkAt(17, 0, "three", "over", "C."), talkAt(16, 0, "four", "read", "D."),
+                talkAt(15, 0, "five", "replied", "E."), talkAt(14, 0, "", "delivered")];
+            const saidOf = shownTalks => shownTalks.map(one => one.words);
+            Expect.same("an answer not yet heard shows first, then the newest three, none "
+                + "without words", saidOf(Session.sessionTalks([], heardTalks)),
+                ["five", "one", "two", "three"]);
+            Expect.same("one said here and not yet delivered shows first",
+                saidOf(Session.sessionTalks([Session.toSession("six", when(20, 0))], heardTalks))[0],
+                "six");
+            Expect.same("one said here and delivered shows once, as served",
+                Session.sessionTalks([Session.toSession("six", when(20, 0))],
+                    [talkAt(20, 0, "six", "delivered")]).map(one => one.stage), ["delivered"]);
+            Expect.same("a reply not yet heard is to be told heard",
+                [Session.unheard(heardTalks[4]), Session.unheard(heardTalks[0])], [true, false]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

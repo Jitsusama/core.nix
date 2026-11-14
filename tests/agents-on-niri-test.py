@@ -5,6 +5,7 @@ are the realm's own mycelium node's, which reads the presence records laid here 
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
+What Joel says to one shows under the field, sent, then waiting on it, then its answer.
 A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
 80% of its context says how full first, in the warning's hue, and its drawer its figures. A
@@ -416,6 +417,105 @@ def test_a_talks_words_come_back_after_the_shell_starts_again(shell: Shell) -> N
     # Emptied, the field keeps nothing for the next time it opens.
     shell.send_key("ctrl-u")
     shell.launcher_until(lambda shown: shown["typed"] == "")
+
+
+@pytest.mark.usefixtures("at_shots_scale")
+def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """What Joel says to a session stands under the field until it answers, as the line's do.
+
+    Talk opened over empty rows and said nothing once sent (Joel at 19:30 on 2026-11-13: "no
+    feedback, they need to feel more like the void"). Before any talk the card is the field
+    and its foot alone; his words then stand with sent, waiting on the session once it's
+    delivered, and its answer in their place, which is told read once shown two seconds. How
+    each stage reads is tests/talk-line.qml's.
+    """
+    words, answer = "is the tide in yet", "Rising, and full by six."
+    inbox = STEER / "LISTEN"
+    replies = inbox / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    steered = set(inbox.glob("*.json"))
+    talk: Path | None = None
+
+    def now() -> str:
+        return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+    try:
+        found(shell, "listening quest", "Listening Quest")
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["asking"] and shown["talks"] == [])
+        card = shell.showing()["card"]
+        assert card["foot"] - card["top"] == card["drawn"], card
+        shoot("talk-empty")
+        shell.send_chars(words)
+        shell.launcher_until(lambda shown: shown["typed"] == words)
+        shoot("talk-typed")
+        since = shell.mark()
+        shell.send_key("ret")
+
+        def standing(shown: Json) -> tuple[object, ...]:
+            talks = cast("list[Json]", shown["talks"] or [{}])
+            first = talks[0]
+            return (len(talks), first.get("line"), first.get("stands"), first.get("waiting"),
+                first.get("answers"), first.get("by"))  # fmt: skip
+
+        shell.launcher_until(lambda shown: standing(shown) == (1, words, "sent", "", [], ""))
+        card = shell.showing()["card"]
+        assert card["foot"] - card["top"] > card["drawn"], card
+        shown_after_return(shell, since)
+        shoot("talk-sent")
+        # The session's inbox took it, and its talk's own file, named by the id the launcher
+        # gave it and opened by the node, says what became of it, as pi says it.
+        talk = replies / f"{said_to(inbox, steered, words)}.jsonl"
+        delivered = {"stage": "delivered", "at": now(), "session": "s-listen", "from": "joel",
+            "text": words}  # fmt: skip
+        talk.write_text(json.dumps(delivered) + "\n")
+        waits = "waiting on Listening Quest"
+        shell.launcher_until(lambda shown: standing(shown) == (1, words, "", waits, [], ""))
+        shoot("talk-waiting")
+        replied = {"stage": "replied", "at": now(), "text": answer}
+        with talk.open("a") as lines:
+            lines.write(json.dumps(replied) + "\n")
+        shell.launcher_until(
+            lambda shown: standing(shown) == (1, words, "", "", [answer], "Listening Quest")
+        )
+        shoot("talk-answered")
+        # Shown while it's open, the answer is heard, which the daemon says in its file.
+        deadline = time.monotonic() + 10
+        while '"stage":"read"' not in talk.read_text():
+            assert time.monotonic() < deadline, talk.read_text()
+            time.sleep(0.1)
+    finally:
+        if talk is not None:
+            talk.unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+
+
+def said_to(inbox: Path, steered: set[Path], words: str) -> str:
+    """Give the id of the talk these words went in as, once their steer is in the inbox."""
+    deadline = time.monotonic() + 10
+    while True:
+        for one in set(inbox.glob("*.json")) - steered:
+            steer = json.loads(one.read_text())
+            if steer.get("text") == words and str(steer.get("id", "")).startswith("talk-"):
+                return str(steer["id"])
+        assert time.monotonic() < deadline, sorted(inbox.glob("*.json"))
+        time.sleep(0.1)
+
+
+def shown_after_return(shell: Shell, since: int) -> None:
+    """Say how long words given took from their Return to the frame showing them, as said."""
+    deadline = time.monotonic() + 10
+    while not (
+        took := re.search(
+            r"words given shown (\d+) ms", shell.log.read_bytes()[since:].decode(errors="replace")
+        )
+    ):
+        assert time.monotonic() < deadline, shell.tail()
+        time.sleep(0.1)
+    logging.getLogger(__name__).info("words given were shown %s ms after Return", took[1])
 
 
 def test_a_sessions_drawer_names_the_repo_its_record_says_over_its_folder(shell: Shell) -> None:
@@ -1191,8 +1291,10 @@ def test_a_folder_filling_the_disk_offers_to_talk_to_the_session_working_in_it(
         asked = shell.showing()["hint"]
         assert asked == "what to tell Listening Quest?", asked
         shell.send_chars("clear what you built")
+        since = shell.mark()
         shell.send_key("ret")
         shell.launcher_until(lambda shown: shown["footer"] == "told Listening Quest")
+        shown_after_return(shell, since)
         # The node names each steer's file itself, so what was told is found by its words.
         deadline = time.monotonic() + 10
         while not (told := talks(inbox)):
@@ -1509,6 +1611,18 @@ def shoot() -> Callable[[str], None]:
 def own_title(title: str) -> str:
     """Give a pi window's title as Super+S's line shows it, without pi's letter leading it."""
     return title.removeprefix("\u03c0 - ")
+
+
+@pytest.fixture
+def at_shots_scale(shell: Shell) -> Iterator[None]:
+    """Hold niri's screen at SHOTS_SCALE through a case pictured there, then as it was."""
+    scale = os.environ.get("SHOTS_SCALE", "")
+    outputs = json.loads(shell.as_account("niri msg --json outputs")) if scale else {}
+    for name in outputs:
+        shell.as_account(f"niri msg output {name} scale {scale}")
+    yield
+    for name, output in outputs.items():
+        shell.as_account(f"niri msg output {name} scale {output['logical']['scale']}")
 
 
 @pytest.fixture(scope="module")

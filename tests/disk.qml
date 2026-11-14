@@ -108,6 +108,8 @@ ShellRoot {
         holds: piece => piece.active && piece.role === "warning" && !piece.wants && !piece.now
             && piece.value === "filling \u00b7 129\u00a0GB free"
             && piece.context === "nearly full in 1 h 30 min; nothing more is safe to take"
+            && piece.standing
+                === "filling; nearly full in 1 h 30 min; nothing more is safe to take"
     }, {
         what: "a healthy disk full within a day",
         // cargo's builds on 7 November: healthy, 21 GiB free, full in 6.8
@@ -146,6 +148,7 @@ ShellRoot {
         account: status([filling(disk("/", "healthy", 286), 5 * 24 * 3600, 2)]),
         machine: status([disk("/", "healthy", 286)]),
         holds: piece => !piece.active && piece.context === ""
+            && piece.standing === "from the disk guard"
     }, {
         what: "a critically full disk",
         account: status([disk("/", "critically-full", 8.25)],
@@ -199,6 +202,7 @@ ShellRoot {
             && piece.value === "guard stopped"
             && piece.hint === "The disk guard stopped, so nothing keeps the disks from filling"
             && piece.context === "it failed"
+            && piece.standing === "the disk guard stopped; it failed"
             && piece.actions.some(action => action.name === "Start the Guard")
     }, {
         what: "the machine's guard turned off",
@@ -208,6 +212,7 @@ ShellRoot {
         holds: piece => piece.active && piece.value === "guard stopped"
             && piece.hint.endsWith("restarting the machine starts it again")
             && piece.context === "it was turned off"
+            && piece.standing === "the machine's disk guard stopped; it was turned off"
             && piece.actions.length === 0
     }]
 

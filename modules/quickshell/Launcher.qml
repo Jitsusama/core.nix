@@ -4789,6 +4789,26 @@ Scope {
     readonly property var asking: held.length > 0 && held[held.length - 1].row.given
         ? held[held.length - 1].row : null
 
+    // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
+    // field where the rows go, as Super+S's line does (TalkSpoken.qml), from what its place
+    // serves, rather than over an empty box (Joel at 19:30 on 2026-11-13: "they need to feel
+    // more like the void"). The card is as tall as its talks, the field and the foot alone
+    // before there are any, its top where it was.
+    readonly property bool talkAsked: typeof asking?.talks === "function"
+    readonly property var talks: talkAsked ? asking.talks() : []
+    readonly property bool talkless: talkAsked && talks.length === 0
+    // An answer shown under the field two seconds is one Joel has read, as a session's drawer
+    // kept that long is (Agents.qml's staying), which its place tells whoever keeps it, so it's
+    // open no more after a restart. It's told again each two seconds while one is shown
+    // unread, since the daemon may not yet have heard of the answer the shell shows.
+    Timer {
+        interval: 2000
+        repeat: true
+        running: root.open && root.talkAsked && root.talks.length > 0
+            && typeof root.asking.heard === "function"
+        onTriggered: root.asking.heard()
+    }
+
     // Asks for words in the field, with nothing to choose from below it.
     function ask(row) {
         held = held.concat([Object.assign(here(), { row: row, rows: [] })]);
@@ -4804,8 +4824,11 @@ Scope {
     }
 
     // Hands over what was typed, and empties the field for another try
-    // while the footer says how it went.
-    function give() {
+    // while the footer says how it went. `pressed` is when its Return was
+    // pressed, or heard where no press was stamped, from which the frame
+    // showing what became of the words is timed, held to design.md's 50 ms
+    // as Super+S's line is.
+    function give(pressed) {
         const words = prompt.text;
         if (words === "")
             return;
@@ -4823,7 +4846,10 @@ Scope {
         asking.given(words);
         prompt.text = "";
         searchNow();
+        wordsGiven = { from: pressed, framing: false };
     }
+    // Words handed over, until the frame begun after them is swapped.
+    property var wordsGiven: null
 
     // What a talk's field is still asking for, by whom it goes to.
     readonly property string drafting: asking?.draft ?? ""
@@ -8249,6 +8275,9 @@ Scope {
                     .filter(part => part !== "").join(" \u00b7 ")
             })),
             asking: !!root.asking,
+            // What an ask for words to a session shows under its field, as the line
+            // shows its talks, or null for an ask that shows none.
+            talks: root.talkAsked ? root.talks : null,
             // Where the field's caret stands, so a talk's can be seen kept.
             caret: prompt.caret,
             // What the list says in place of rows, where it has none.
@@ -10705,6 +10734,25 @@ Scope {
             }
         }
 
+        // Words given are shown by the first frame begun after them, so a
+        // swap of one already under way isn't taken for it.
+        Connections {
+            target: card.Window.window
+            enabled: root.wordsGiven !== null
+
+            function onAfterAnimating() {
+                root.wordsGiven.framing = true;
+            }
+
+            function onFrameSwapped() {
+                if (!root.wordsGiven.framing)
+                    return;
+                console.info(`launcher: words given shown ${Math.round(KeyTimes.now()
+                    - root.wordsGiven.from)} ms after their Return`);
+                root.wordsGiven = null;
+            }
+        }
+
         Connections {
             target: card.Window.window
             enabled: root.keysDrawing.waiting.length + root.keysDrawing.framing.length > 0
@@ -11063,7 +11111,7 @@ Scope {
                             if (arming)
                                 root.landedKey = "";
                             else if (act === "gave")
-                                root.give();
+                                root.give(pressed > 0 ? pressed : heard);
                             else if (act === "entered")
                                 root.enter(root.selected);
                             else if (act === "lined")
@@ -11415,9 +11463,11 @@ Scope {
                 Column {
                     width: parent.width
 
+                    // A talk not yet begun has no rows' band, the head's
+                    // hairline the one between the field and the foot.
                     Item {
                         width: parent.width
-                        height: Theme.space.rung.tie
+                        height: root.talkless ? 0 : Theme.space.rung.tie
                     }
 
                     // As tall as it opened, whatever's found, so the foot
@@ -11427,9 +11477,12 @@ Scope {
                         id: listBox
                         width: parent.width
                         // Over a viewer only the line's menu, as tall as its
-                        // lines, ten at most, as his pumheight.
+                        // lines, ten at most, as his pumheight; a talk as
+                        // tall as its talks, as many as the rows' room holds.
                         height: root.over !== null
-                            ? Math.min(commandRows.count, 10) * root.rowTall : root.tall
+                            ? Math.min(commandRows.count, 10) * root.rowTall
+                            : root.talkAsked ? Math.min(root.tall, talksShown.tall)
+                            : root.tall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
                         // at its own, so a row's ground reaches out over the
@@ -11497,6 +11550,31 @@ Scope {
                                     count: commandRow.modelData.title ?? ""
                                     side: commandRow.modelData.key ?? ""
                                 }
+                            }
+                        }
+
+                        // A talk's talks, newest first, on the rows' names'
+                        // column out to the inset, the room under the last
+                        // baseline the room over the first capital, as the
+                        // line keeps its own. Being few, they stand whole, with
+                        // no room set to bound them.
+                        TalkSpoken {
+                            id: talksShown
+                            readonly property real tall: root.talkless ? 0
+                                : whole + Theme.level.words.pitch
+                                    - talkCaps.tightBoundingRect.height
+                            visible: root.talkAsked && !root.talkless
+                            width: parent.width - card.inset
+                            textAt: card.inset + root.columns.text
+                            gap: Theme.level.figure.pitch
+                            up: root.open
+                            exchanges: root.talks
+
+                            TextMetrics {
+                                id: talkCaps
+                                text: "H"
+                                font.family: Theme.level.words.family
+                                font.pointSize: Theme.level.words.pointSize
                             }
                         }
 
@@ -12096,7 +12174,7 @@ Scope {
 
                     Item {
                         width: parent.width
-                        height: Theme.space.rung.tie
+                        height: root.talkless ? 0 : Theme.space.rung.tie
                     }
 
                     // The foot, one line, the one place that teaches, so the
@@ -12115,7 +12193,7 @@ Scope {
                         id: footLine
                         x: card.inset
                         width: parent.width - 2 * x
-                        height: Theme.border
+                        height: root.talkless ? 0 : Theme.border
                         color: Theme.edge
                     }
 

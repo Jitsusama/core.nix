@@ -409,22 +409,9 @@ Provider {
             title: Words.name(kinds.disks),
             about: kinds.disks,
             // The guard's own words are each disk's, in its drawer (disked).
-            note: guardSays(guard, worst)
+            note: guard.standing
         }, () => ordered(kinds.disks, guardParts(guard).concat(parts()
             .filter(row => !watched || row.key !== "machine:disk:space"))));
-    }
-
-    // How the guard stands, in a phrase: the band the worst file system is
-    // in and what its last pass did, such as "filling; nothing more is safe
-    // to take", so Joel sees why the disk is still short.
-    function guardSays(guard, worst) {
-        if (guard.silent)
-            return [guard.accountStopped ? "the disk guard stopped"
-                : "the machine's disk guard stopped", guard.context]
-                .filter(part => part !== "").join("; ");
-        const said = [worst && worst.band !== "healthy" ? guard.banded(worst.band) : "",
-            guard.context].filter(part => part !== "");
-        return said.length > 0 ? said.join("; ") : "from the disk guard";
     }
 
     // What's filling the disks, as the guards measured it (Joel, 12:27:
@@ -489,6 +476,10 @@ Provider {
             holder)) {
             const state = SessionRow.state(session.presence, Sessions.asks(session), false);
             const sided = Holders.talkSide(session.title, String(standing[state] ?? ""));
+            // Its talk shows under the field as Agents' Talk shows one.
+            const talking = (provider.launcher?.sources ?? [])
+                .find(one => one.settings.name === "agents")
+                ?.talking(session.address, session.title) ?? null;
             rows.push(act("talk", {
                 key: `verb:disk:talk:${holder.path}:${session.address}`,
                 side: sided.map(item => item.said).join(" \u00b7 "),
@@ -497,11 +488,15 @@ Provider {
                 ask: (talk.ask ?? "").replace("{name}", session.title),
                 chip: session.title,
                 state: () => provider.talked,
+                talks: talking?.talks,
+                heard: talking?.heard,
                 given: words => {
                     const said = `${words.trim()} ${about}`;
-                    if (words.trim() !== "" && Sessions.talk(session.address, said))
+                    if (words.trim() !== "" && Sessions.talk(session.address, said)) {
+                        talking?.said(said);
                         provider.talked = (talk.said?.sent ?? "")
                             .replace("{name}", session.title);
+                    }
                 }
             }));
         }
