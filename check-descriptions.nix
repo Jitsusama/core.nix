@@ -2095,6 +2095,11 @@
     with Do Not Disturb's file holding it while it's on, and a Mac is told nothing, ringing with
     its own
   '';
+  pineapple-github-starts-with-the-sign-in = ''
+    the reader of GitHub for the safe word starts at login, reads Joel's GitHub sign-in through gh,
+    comes back after a switch and a failure, runs in the background slice and reads as its own name
+    in ps
+  '';
   pineapple-judges-each-saying = ''
     every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as
     the table says, and reaches what its words and its place name, or everything, said so; and

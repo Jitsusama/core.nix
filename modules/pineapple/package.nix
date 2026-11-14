@@ -1,4 +1,5 @@
-# pineapple (Joel's own command for stops) and pineapple-slack, built
+# pineapple (Joel's own command for stops), pineapple-slack and
+# pineapple-github, built
 # from this directory's crate, its tests run as it builds, reading
 # sayings.json beside it. It reads Slack
 # through Slack's own module (../slack), which reads through the pieces
@@ -33,7 +34,7 @@ rustPlatform.buildRustPackage rec {
   sourceRoot = "${src.name}/pineapple";
   cargoLock.lockFile = ./Cargo.lock;
   meta = {
-    description = "Judges whether a saying is the safe word that stops Joel's agents, and reads Slack for it";
+    description = "Judges whether a saying is the safe word that stops Joel's agents, and reads Slack and GitHub for it";
     license = lib.licenses.mit;
     mainProgram = "pineapple-slack";
     platforms = lib.platforms.linux;
