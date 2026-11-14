@@ -24,6 +24,10 @@
 //! trusts, but only in plain characters: Nix reads `;` as the start of
 //! another machine and `#` as the end of the line.
 //!
+//! It also writes [`LENT`], every lent builder root vouches for now, each
+//! lender's whether or not root's own files name it, which the fence's
+//! ssh agent reads to sign a login to that builder alone.
+//!
 //! Long because its tests, nearly half of it, stay beside the private
 //! pieces they prove: the clock each instance is asked again by, and what
 //! is kept of what the cloud last said.
@@ -56,6 +60,20 @@ const ASK_AGAIN: Duration = Duration::from_secs(30);
 /// for nothing: the lender's account writes the token, so either could
 /// otherwise buy this long for a change made unseen.
 const STANDS: Duration = Duration::from_secs(120);
+
+/// How often the cloud is asked again of a builder only [`LENT`] names,
+/// while it vouches for it: one asked every [`ASK_AGAIN`] costs a gcloud
+/// or two each time, and on 12 November 8 such builders took half a core.
+/// What it last vouched for stands this much longer, and a builder it
+/// didn't answer for is asked again at [`ASK_AGAIN`], so a call lost
+/// drops nothing; a lender naming a builder anew is asked of at once, and
+/// its helper gives back one changed once made within a minute.
+const ASK_LENT: Duration = Duration::from_secs(300);
+
+/// The file of every lent builder root vouches for now, one a line as
+/// `<lender> <instance> ssh-ed25519 <base64-key>`, the lender named as its
+/// ssh host is; empty while none is.
+pub const LENT: &str = "lent";
 
 /// How long after first trust the audit log is read once more, for what
 /// it hadn't shown yet: a change logged late, or an insert made with a
@@ -319,6 +337,23 @@ struct Asked {
     /// Whether it was refused once root had trusted it, which is for good:
     /// what it ran while changed may still be there once it's set back.
     spoiled: bool,
+    /// Whether only [`LENT`] names it, no file root's Nix reads, so it's
+    /// asked of every [`ASK_LENT`].
+    lent_only: bool,
+}
+
+impl Asked {
+    /// How long since this was asked before it's asked again, `lent_only`
+    /// saying whether only [`LENT`] names it now: such a builder, last
+    /// vouched for when last asked, waits [`ASK_LENT`]; any other
+    /// [`ASK_AGAIN`].
+    fn every(&self, lent_only: bool) -> Duration {
+        if lent_only && self.vouched.is_some() && self.vouched == self.at {
+            ASK_LENT
+        } else {
+            ASK_AGAIN
+        }
+    }
 }
 
 /// Why the cloud didn't vouch for an instance.
@@ -418,7 +453,13 @@ impl HostKeys {
     /// at once when the lender names it or its host key anew: after each
     /// switch on 10 November, an answer kept for the key before dropped
     /// the line for up to 30 s.
-    fn of(&mut self, lent: &Lent, settings: &Settings, wanted: &[String]) -> Option<String> {
+    fn of(
+        &mut self,
+        lent: &Lent,
+        settings: &Settings,
+        wanted: &[String],
+        lent_only: bool,
+    ) -> Option<(String, String)> {
         let about = lent.instance.display().to_string();
         // None named is a lender with nothing lent, which says nothing.
         let named = fs::read_to_string(&lent.instance).unwrap_or_default();
@@ -437,17 +478,20 @@ impl HostKeys {
         let key = (name.clone(), zone.clone());
         let due = self.asked.get(&key).is_none_or(|asked| {
             let anew = asked.named != named || asked.wanted != wanted;
-            asked.at.is_none_or(|at| anew || at.elapsed() >= ASK_AGAIN)
+            let every = asked.every(lent_only);
+            asked.at.is_none_or(|at| anew || at.elapsed() >= every)
         });
         if due {
-            let before = self.asked.remove(&key).unwrap_or_default();
+            let mut before = self.asked.remove(&key).unwrap_or_default();
+            before.lent_only = lent_only;
             let mut asked = self.vet(settings, &name, &zone, &lent.token, wanted, before);
-            (asked.named, asked.wanted) = (named, wanted.to_vec());
+            (asked.named, asked.wanted, asked.lent_only) = (named, wanted.to_vec(), lent_only);
             self.asked.insert(key.clone(), asked);
         }
         self.asked
             .get(&key)
             .and_then(|asked| asked.host_key.clone())
+            .map(|host_key| (name, host_key))
     }
 
     /// What the cloud says of instance `name` in `zone` now, `before` being
@@ -495,7 +539,12 @@ impl HostKeys {
                     name,
                     Some(format!("the cloud didn't describe {name} in {zone}")),
                 );
-                let stands = before.vouched.is_some_and(|at| at.elapsed() < STANDS);
+                let window = if before.lent_only {
+                    STANDS + ASK_LENT
+                } else {
+                    STANDS
+                };
+                let stands = before.vouched.is_some_and(|at| at.elapsed() < window);
                 return Asked {
                     host_key: before.host_key.filter(|_| stands),
                     at: Some(now),
@@ -791,31 +840,84 @@ impl HostKeys {
 }
 
 /// Every triple trusted now: the standing builders', and each lent one's
-/// whose instance the cloud vouches for.
+/// whose instance the cloud vouches for; and what [`LENT`] holds. `wanted`
+/// is what root's files carry, and `own` what each lender's own do.
 fn trusted(
     settings: &Settings,
     keys: &mut HostKeys,
     wanted: &HashMap<String, Vec<String>>,
-) -> Vec<Trusted> {
+    own: &HashMap<String, Vec<String>>,
+) -> (Vec<Trusted>, String) {
     let mut trusted = settings.standing.clone();
+    let mut lent_text = String::new();
     for lent in &settings.lent {
-        // A builder no line root reads names could pass nothing, and asking
-        // the cloud of it cost a gcloud or two every 30 s each: on 12
-        // November, 8 of 9 lent builders were named only to Joel's own
-        // Nix, and the service spent half a core on them. A line naming it
-        // later changes what's wanted, so it's asked of at once then.
-        let Some(wanted) = wanted.get(&lent.uri) else {
+        // A builder no line names could pass nothing, so it's never asked
+        // of; one only its lender's own files name is asked of less often
+        // ([`ASK_LENT`]). A line naming it later changes what's wanted, so
+        // it's asked of at once then.
+        let root_wants = wanted.get(&lent.uri);
+        let mut keys_wanted = root_wants.cloned().unwrap_or_default();
+        keys_wanted.extend(own.get(&lent.uri).into_iter().flatten().cloned());
+        if keys_wanted.is_empty() {
+            continue;
+        }
+        let Some((instance, host_key)) =
+            keys.of(lent, settings, &keys_wanted, root_wants.is_none())
+        else {
             continue;
         };
-        if let Some(host_key) = keys.of(lent, settings, wanted) {
-            trusted.push(Trusted {
-                uri: lent.uri.clone(),
-                key: settings.key.clone(),
-                host_key,
-            });
+        if let Some(line) = lent_line(&lent.uri, &instance, &host_key) {
+            lent_text.push_str(&line);
+        }
+        trusted.push(Trusted {
+            uri: lent.uri.clone(),
+            key: settings.key.clone(),
+            host_key,
+        });
+    }
+    (trusted, lent_text)
+}
+
+/// The line [`LENT`] holds for `instance`, lent through `uri` with
+/// `host_key` as a machines line carries it, when that key is an ed25519
+/// key, the only kind the fence's agent signs a login for. The lender is
+/// the URI's host, as `there` reaches it by name.
+fn lent_line(uri: &str, instance: &str, host_key: &str) -> Option<String> {
+    let after = uri.split_once("://").map_or(uri, |(_, rest)| rest);
+    let host = after.split(['?', '/']).next().unwrap_or(after);
+    let lender = host.rsplit('@').next().unwrap_or(host);
+    let key = crate::there::decoded(host_key)?;
+    let blob = key.trim().strip_prefix("ssh-ed25519 ")?;
+    // Each field is one word of its own characters, so no line can hold
+    // another's fields.
+    let made_of = |text: &str, also: &str| {
+        !text.is_empty()
+            && text
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || also.contains(c))
+    };
+    (made_of(lender, "-.") && made_of(instance, "-") && made_of(blob, "+/="))
+        .then(|| format!("{lender} {instance} ssh-ed25519 {blob}\n"))
+}
+
+/// What each lender's own files carry, read from the folder it names its
+/// instance in, by the URI it lends through.
+fn own_wanted(settings: &Settings) -> HashMap<String, Vec<String>> {
+    let mut own = HashMap::new();
+    for lent in &settings.lent {
+        let Some(folder) = lent.instance.parent() else {
+            continue;
+        };
+        let texts: Vec<String> = settings
+            .files
+            .iter()
+            .map(|file| fs::read_to_string(folder.join(file)).unwrap_or_default())
+            .collect();
+        if let Some(keys) = wanted(&texts).remove(&lent.uri) {
+            own.insert(lent.uri.clone(), keys);
         }
     }
-    trusted
+    own
 }
 
 /// The host keys the lender's lines carry for each URI, so a key the
@@ -852,7 +954,10 @@ pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
         .iter()
         .map(|file| fs::read_to_string(settings.from.join(file)).unwrap_or_default())
         .collect();
-    let trusted = trusted(settings, keys, &wanted(&texts));
+    let (trusted, lent_text) = trusted(settings, keys, &wanted(&texts), &own_wanted(settings));
+    if let Err(error) = put(&settings.into.join(LENT), &lent_text) {
+        eprintln!("nix-offload: couldn't write {LENT}: {error}");
+    }
     for (file, text) in settings.files.iter().zip(&texts) {
         let passed = passing(text, &trusted);
         let dropped =
@@ -1650,6 +1755,144 @@ mod tests {
             lent_to_root(&dir),
             format!("{}\n", line(URI, KEY, HOST)),
             "a line naming the builder waited to be vouched for"
+        );
+    }
+
+    /// The lent file in `dir`.
+    fn lent_file(dir: &tempfile::TempDir) -> String {
+        fs::read_to_string(dir.path().join("into").join(LENT)).expect("the lent file")
+    }
+
+    /// What [`LENT`] says of `instance`, lent by `lender` with `HOST`.
+    fn named(lender: &str, instance: &str) -> String {
+        format!("{lender} {instance} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHost\n")
+    }
+
+    #[test]
+    fn a_lent_builder_root_vouches_for_is_named_in_the_lent_file_until_it_changes() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_file(&dir),
+            named("nix-offload", "offload-1a2b"),
+            "the lent file doesn't name the builder root vouches for"
+        );
+        marked_in(dir.path(), STARTED, &[], "Zz9y");
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_file(&dir),
+            "",
+            "the lent file still names a changed builder"
+        );
+    }
+
+    /// Settings beside [`lender`]'s for a second lender, `vm`, in a folder
+    /// of its own, lending instance offload-3c4d through `ssh-ng://hook@
+    /// nix-offload-vm`, whose line only its own files carry.
+    fn beside(dir: &tempfile::TempDir, settings: &mut Settings) -> String {
+        let uri = "ssh-ng://hook@nix-offload-vm?compress=true";
+        let vm = dir.path().join("vm");
+        fs::create_dir(&vm).expect("the second lender's folder");
+        fs::write(vm.join("token"), "ya29.a0-x_y\n").expect("its token");
+        fs::write(vm.join("instance"), "offload-3c4d us-east1-b\n").expect("its instance");
+        fs::write(vm.join("machines"), format!("{}\n", line(uri, KEY, HOST)))
+            .expect("its machines");
+        settings.lent.push(Lent {
+            uri: uri.to_owned(),
+            instance: vm.join("instance"),
+            token: vm.join("token"),
+        });
+        uri.to_owned()
+    }
+
+    #[test]
+    fn a_builder_only_its_own_lender_names_is_in_the_lent_file_alone() {
+        let (dir, mut settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        fs::write(dir.path().join("from/instance"), "\n").expect("nothing lent first");
+        fs::write(dir.path().join("from/machines"), "").expect("no line first");
+        beside(&dir, &mut settings);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_file(&dir),
+            named("nix-offload-vm", "offload-3c4d"),
+            "the lent file doesn't name the builder only its lender's files name"
+        );
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "root was given a builder its files don't name"
+        );
+    }
+
+    #[test]
+    fn a_builder_only_the_lent_file_names_is_asked_of_less_often_while_vouched_for() {
+        let now = Instant::now();
+        let vouched = Asked {
+            at: Some(now),
+            vouched: Some(now),
+            ..Asked::default()
+        };
+        assert_eq!(
+            vouched.every(true),
+            ASK_LENT,
+            "a lent-only builder was asked of as often"
+        );
+        assert_eq!(
+            vouched.every(false),
+            ASK_AGAIN,
+            "a builder root reads was asked of less"
+        );
+        let unheard = Asked {
+            at: Some(now),
+            vouched: now.checked_sub(Duration::from_secs(40)),
+            ..Asked::default()
+        };
+        assert_eq!(
+            unheard.every(true),
+            ASK_AGAIN,
+            "a lent-only builder the cloud didn't answer for waited to be asked again"
+        );
+    }
+
+    #[test]
+    fn what_the_cloud_vouched_for_stands_longer_for_a_builder_only_the_lent_file_names() {
+        let (dir, mut settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        fs::write(dir.path().join("from/instance"), "\n").expect("nothing lent first");
+        fs::write(dir.path().join("from/machines"), "").expect("no line first");
+        beside(&dir, &mut settings);
+        copy_once(&settings, &mut keys);
+        for asked in keys.asked.values_mut() {
+            asked.vouched = Instant::now().checked_sub(STANDS + Duration::from_secs(60));
+            asked.at = None;
+        }
+        fs::write(dir.path().join("unreachable"), "").expect("the network down");
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_file(&dir),
+            named("nix-offload-vm", "offload-3c4d"),
+            "a lent-only builder was dropped for one call lost"
+        );
+    }
+
+    #[test]
+    fn a_lent_line_is_made_only_of_plain_words_and_an_ed25519_key() {
+        let uri = "ssh-ng://hook@nix-offload-vm-3?compress=true";
+        assert_eq!(
+            lent_line(uri, "offload-3c4d", HOST),
+            Some(named("nix-offload-vm-3", "offload-3c4d")),
+            "a lent line was misread"
+        );
+        let rsa = "c3NoLXJzYSBBQUFBQjNOemFDMXljMkVBQUFBREFRQUI=";
+        assert_eq!(
+            lent_line(uri, "offload-3c4d", rsa),
+            None,
+            "an RSA key was named"
+        );
+        assert_eq!(
+            lent_line(uri, "offload 3c4d", HOST),
+            None,
+            "an instance of two words was named"
         );
     }
 
