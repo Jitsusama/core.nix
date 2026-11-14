@@ -121,7 +121,24 @@ pub struct Process {
 /// below it. A session's holder runs in a scope of its own, apart from the
 /// window's, with pi under it, so pi is followed by parent, not by scope.
 pub fn pi_below(scope: &[u32], processes: &[Process]) -> Option<u32> {
-    let _ = (scope, processes);
+    let mut level: Vec<&Process> = processes
+        .iter()
+        .filter(|p| scope.contains(&p.pid))
+        .collect();
+    // A pid seen once is never walked again, so a parent loop in a
+    // racing read of /proc can't keep the walk going.
+    let mut seen: Vec<u32> = level.iter().map(|p| p.pid).collect();
+    while !level.is_empty() {
+        if let Some(pi) = level.iter().filter(|p| p.name == "pi").map(|p| p.pid).min() {
+            return Some(pi);
+        }
+        let parents: Vec<u32> = level.iter().map(|p| p.pid).collect();
+        level = processes
+            .iter()
+            .filter(|p| parents.contains(&p.parent) && !seen.contains(&p.pid))
+            .collect();
+        seen.extend(level.iter().map(|p| p.pid));
+    }
     None
 }
 
@@ -250,11 +267,7 @@ mod tests {
             process(960, 900, "mycelium"),
         ];
         assert_eq!(pi_below(&[900, 1200, 950, 960], &processes), Some(950));
-        assert_eq!(
-            pi_below(&[900], &[process(900, 1, "zsh")]),
-            None,
-            "no pi"
-        );
+        assert_eq!(pi_below(&[900], &[process(900, 1, "zsh")]), None, "no pi");
     }
 
     #[test]
