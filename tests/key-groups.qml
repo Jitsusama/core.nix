@@ -454,9 +454,9 @@ QtObject {
             // A forge that names its pages as GitHub does, but for those
             // marks, is Chrome's alone, as is a name with a slash in it
             // and a page that only mentions GitHub.
-            ["google-chrome", "areas/tools \u00B7 example/monorepo - Google Chrome",
+            ["google-chrome", "docs/guide \u00B7 example/site - Google Chrome",
                 ["chrome", "desktop"]],
-            ["google-chrome", "Pull requests \u00B7 example/monorepo - Google Chrome",
+            ["google-chrome", "Pull requests \u00B7 example/site - Google Chrome",
                 ["chrome", "desktop"]],
             ["google-chrome", "Notes/Ideas: A Plan \u00B7 Planner - Google Chrome",
                 ["chrome", "desktop"]],

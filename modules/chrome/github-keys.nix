@@ -32,7 +32,7 @@ grouped "going" [
   }
   {
     chord = "g p";
-    does = "The repository's pull requests";
+    does = "The repository's changes";
   }
   {
     chord = "g a";
@@ -72,7 +72,7 @@ grouped "going" [
   ]
 )
 ++ grouped "lists" (
-  where "in a list of issues or pull requests" [
+  where "in a list of issues or changes" [
     {
       chord = "c";
       does = "A new issue";
@@ -100,7 +100,7 @@ grouped "going" [
   ]
 )
 ++ grouped "changes" (
-  where "on an issue or pull request" [
+  where "on an issue or change" [
     {
       chord = "q";
       does = "Ask for a review";
@@ -119,7 +119,7 @@ grouped "going" [
     }
     {
       chord = "x";
-      does = "Link another issue or pull request";
+      does = "Link another issue or change";
     }
   ]
   ++ [
