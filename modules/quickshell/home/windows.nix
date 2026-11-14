@@ -4,4 +4,5 @@
   "NiriRecords.js"
   "launcher/AgentWindows.js"
   "launcher/AgentsFold.qml"
+  "launcher/WindowTargets.qml"
 ]

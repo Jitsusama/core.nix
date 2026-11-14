@@ -28,6 +28,7 @@ import Quickshell
 import qs
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
+import "AgentWindows.js" as AgentWindows
 import "HeldWindows.js" as HeldWindows
 import "KeyLayers.js" as KeyLayers
 import "Order.js" as Order
@@ -90,11 +91,18 @@ Provider {
     // keeps through the gap may no longer be true; the row's name already
     // says Windows.
     function noted() {
-        return pressing;
+        return silent ? Words.of("windows").said.silent : "";
     }
     // What the head says of Windows while it's entered, where a find's
-    // count is, as home's row says it (Launcher.qml reads it).
-    readonly property string pressing: silent ? Words.of("windows").said.silent : ""
+    // count is (Launcher.qml reads it): that it's not answering, or how
+    // many windows need Joel, as home's row says at its right (homeSays)
+    // and Agents' row says of its sessions, "1 needs you" (VKCF3Z,
+    // 2026-11-14 [961bf73d]).
+    readonly property string pressing: silent ? Words.of("windows").said.silent : needingSaid
+    property string needingSaid: ""
+    function homeSays() {
+        return provider.needingSaid !== "" ? provider.needingSaid : null;
+    }
     stillReading: daemon.live && !daemon.answeredThisWatch && daemon.state !== "not answering"
 
     // An open list follows windows opening, closing and being renamed, and
@@ -155,6 +163,14 @@ Provider {
 
         provider: provider
     }
+
+    // Where a window's acts can send it (WindowTargets.qml).
+    WindowTargets {
+        id: whereTo
+
+        provider: provider
+    }
+    property alias windowTargets: whereTo
 
     // Every window's key as its row says it, and This Window's, for a pick
     // (Launcher.qml's knowing), read from niri with no row made: unwanted,
@@ -241,6 +257,19 @@ Provider {
     readonly property var thisOne: ({ key: "", row: null })
     // The windows whose rows say they wait on Joel, by id.
     readonly property var waitingOf: ({ ids: {} })
+    // Since when each window niri marks urgent has needed Joel, by key
+    // (HeldWindows.js's urgentSince).
+    property var urgentSince: ({})
+
+    // What's held says again since when each window has needed Joel, and
+    // how many do, as a window's urgency or its agent's waiting turned.
+    function needsHeard() {
+        provider.urgentSince = HeldWindows.urgentSince(provider.urgentSince, provider.held,
+            Date.now());
+        provider.needingSaid = AgentWindows.needed(
+            HeldWindows.needing(provider.held, provider.waitingOf.ids),
+            Words.of("windows:agents").said);
+    }
 
     Daemon {
         id: daemon
@@ -321,6 +350,8 @@ Provider {
         if (told.reworded.length > 0)
             rewordingLater.restart();
         letGo(windowsOnly(gone));
+        if (told.reworded.length > 0)
+            provider.needsHeard();
         if (told.unknown.length > 0)
             provider.askWhole(told.unknown);
     }
@@ -466,6 +497,7 @@ Provider {
     function remake(keys, gone) {
         if (keys.length === 0 && gone.length === 0)
             return;
+        provider.needsHeard();
         for (const key of gone) {
             delete provider.kept[key];
             if (key === provider.thisOne.key)
@@ -509,8 +541,18 @@ Provider {
                 record.elsewhere ? null : workspace, record.alike),
             workspace: workspace ? workspace.idx : null,
             focused: record.focused,
-            waiting: String(record.id) in provider.waitingOf.ids
+            waiting: String(record.id) in provider.waitingOf.ids,
+            urgent: record.urgent === true,
+            since: provider.urgentSince[record.key] ?? null
         };
+    }
+
+    // The time a window came to need Joel, as a drawer gives it: the
+    // clock's, and the day's too when it wasn't today.
+    function clocked(at) {
+        const when = new Date(at);
+        const today = new Date().toDateString() === when.toDateString();
+        return Qt.formatDateTime(when, today ? "HH:mm" : "ddd d MMM, HH:mm");
     }
 
     // What Shift+Return opens below a window: another of its program, its
@@ -546,13 +588,24 @@ Provider {
             name: title,
             glyph: noted === program ? provider.glyphOf(window, entry)
                 : provider.programGlyph(noted),
-            hue: "program",
+            // One niri marks urgent wears its own glyph in the alert, its
+            // name in the text's ink, since colour goes on glyphs, never on
+            // words (VKCF3Z, 2026-11-14 [961bf73d]).
+            hue: said.urgent ? "alert" : "program",
             side: [title === noted ? "" : noted, said.where]
                 .filter(part => part !== "").join(" \u00b7 "),
             context: said.workspace !== null ? `on workspace ${said.workspace}` : "",
             focused: said.focused,
-            waiting: said.waiting,
-            count: said.waiting ? Words.of("windows").said.needs : "",
+            // Waiting on Joel by its agent's word or niri's, it says so the
+            // same, one thing in one word, and leads the rest as Windows
+            // opens (promoted).
+            waiting: said.waiting || said.urgent,
+            count: said.waiting || said.urgent ? Words.of("windows").said.needs : "",
+            drawer: said.since === null ? null : {
+                title: title,
+                facts: [{ label: Words.name("windows:needs-since"),
+                    value: provider.clocked(said.since) }]
+            },
             run: () => Niri.act({ FocusWindow: { id: window.id } }),
             below: below,
             verbs: () => provider.verbs(window, title, program, below),
@@ -639,11 +692,11 @@ Provider {
             side: "\u2026",
             ask: "which workspace?",
             chip: "move to",
-            targets: () => provider.workspacesFor(window)
+            targets: () => whereTo.workspacesFor(window)
         }));
         // Another screen, where there's one to go to, each named as Screens
         // names it (Displays.qml).
-        const screens = provider.screensFor(window);
+        const screens = whereTo.screensFor(window);
         if (screens.length > 0)
             all.push(act("verb:screen", "", {
                 side: "\u2026",
@@ -655,7 +708,7 @@ Provider {
             side: "\u2026",
             ask: "how wide?",
             chip: "size",
-            targets: () => provider.sizesFor(window)
+            targets: () => whereTo.sizesFor(window)
         }));
         if (below)
             all.push(act("verb:below", "", {
@@ -696,75 +749,5 @@ Provider {
 
     function closing(window) {
         return { run: () => Niri.act({ CloseWindow: { id: window.id } }) };
-    }
-
-    // The lit screens a window isn't on, as Screens names them, or none when
-    // there's one screen, or no Screens to ask.
-    function screensFor(window) {
-        const displays = (provider.launcher?.sources ?? [])
-            .find(source => source.settings.name === "displays") ?? null;
-        const here = daemon.held[`workspace:${window.workspace_id}`]?.output ?? "";
-        const others = displays ? displays.lit.filter(output => output.name !== here) : [];
-        return others.map(output => thing({
-            key: `screen:${output.name}`,
-            verb: "move",
-            name: displays.named(output),
-            glyph: Theme.glyph.display,
-            hue: "machine",
-            run: () => Niri.act({ MoveWindowToMonitor: { id: window.id, output: output.name } })
-        }));
-    }
-
-    // The widths a window can be given, as shares of its screen, niri's
-    // own proportions in percent.
-    readonly property var widths: [["third", 100 / 3], ["half", 50], ["two-thirds", 200 / 3]]
-
-    function sizesFor(window) {
-        return widths.map(width => thing({
-            key: `verb:size:${width[0]}`,
-            verb: Words.verb(`verb:size:${width[0]}`),
-            name: Words.name(`verb:size:${width[0]}`),
-            glyph: Words.glyph("verb:size"),
-            hue: "action",
-            run: () => Niri.act({
-                SetWindowWidth: { id: window.id, change: { SetProportion: width[1] } }
-            })
-        }));
-    }
-
-    // The workspaces a window could go to, on its own screen in order, each
-    // saying what's on it, as the windows daemon holds them. niri always
-    // keeps an empty one last, which is how a new workspace is made, so that
-    // one is offered as new.
-    function workspacesFor(window) {
-        const said = daemon.held;
-        const current = said.desktop?.current ?? null;
-        // The chord that moves the focused window there, to learn next time.
-        const chordTo = idx => {
-            const does = `Move the window to workspace ${idx}`;
-            const action = Shortcuts.actions.find(a => a.does === does);
-            return action ? action.chord.map(key => key.text).join("+") : "";
-        };
-        const words = Words.of("windows").said;
-        return HeldWindows.spacesFrom(said, window.workspace_id).map(space => {
-            const chord = window.id === current ? chordTo(space.idx) : "";
-            return thing({
-                key: `workspace:${space.idx}`,
-                verb: "move",
-                name: space.new ? "A new workspace" : space.name ?? `Workspace ${space.idx}`,
-                count: space.focused ? words.here : "",
-                glyph: space.new ? Theme.glyph.newWorkspace : Theme.glyph.workspace,
-                hue: "machine",
-                side: space.new ? "" : HeldWindows.insideSaid(space.inside, words),
-                note: chord === "" ? "" : words.nextTime.replace("{chord}", chord),
-                run: () => Niri.act({
-                    MoveWindowToWorkspace: {
-                        window_id: window.id,
-                        reference: { Id: space.id },
-                        focus: true
-                    }
-                })
-            });
-        });
     }
 }
