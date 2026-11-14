@@ -1438,6 +1438,10 @@
     mycelium's end of a link or an attach, as the realm and machine it names, with a terminal for
     the attach; a machine naming none authorizes nothing of mycelium's
   '';
+  mycelium-map-keeps-its-last-map = ''
+    the mycelium site's writer, while no node answers, ends well in one line and leaves the last
+    map as it was, and once one answers writes the live sessions alone and no message's words
+  '';
   mycelium-runs-among-the-sessions = ''
     on Linux, every realm's node runs in the agents' slice, beside Joel's programs rather than among
     them
