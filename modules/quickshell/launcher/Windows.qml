@@ -1,5 +1,6 @@
 // Every open window, found by its own title, the most recently used first,
-// each saying its program and, when that's another, the workspace it's on;
+// each saying its program (pi, for a session's) and, when that's another,
+// the workspace it's on;
 // windows whose titles read the same say their column as well, and how
 // far down it, so no two rows read alike. A window titled only by its program is that program's
 // row (Applications.qml), which lists its windows. Its program's name
@@ -484,12 +485,16 @@ Provider {
     }
 
     // A window's names, as its record says them: its program's entry by id,
-    // the program's own name, and its title tidied of the program's.
+    // the program's own name, and its title tidied of the program's. A pi
+    // session's window is kitty's to niri, but its row says it's pi's, as
+    // Super+S's line notes it (TalkLine.js), so one window reads one way
+    // everywhere (VKCF3Z, 2026-11-14).
     function named(record) {
         return {
             window: provider.held.windows[record.key],
             entry: record.entry,
             program: record.program,
+            noted: record.session ? "pi" : record.program,
             title: record.named,
             untitled: record.untitled
         };
@@ -525,6 +530,7 @@ Provider {
         const entry = one.entry;
         const program = one.program;
         const title = one.title;
+        const noted = one.noted;
         const below = provider.belowOf(window, entry);
         return thing({
             // What learning knows it by, which outlives the window.
@@ -535,12 +541,13 @@ Provider {
             is: one.untitled && entry ? `program:${entry}` : `window:${window.id}`,
             id: window.id,
             program: entry ?? window.app_id ?? "",
-            owner: Fuzzy.prepare(program),
+            owner: Fuzzy.prepare(noted),
             verb: "go to",
             name: title,
-            glyph: provider.glyphOf(window, entry),
+            glyph: noted === program ? provider.glyphOf(window, entry)
+                : provider.programGlyph(noted),
             hue: "program",
-            side: [title === program ? "" : program, said.where]
+            side: [title === noted ? "" : noted, said.where]
                 .filter(part => part !== "").join(" \u00b7 "),
             context: said.workspace !== null ? `on workspace ${said.workspace}` : "",
             focused: said.focused,
