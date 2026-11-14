@@ -1102,6 +1102,11 @@
   joels-work-goes-before-agents = ''
     the sorter moves a terminal's work inside jobs, above pi's work and below timed work
   '';
+  json-strings-kept-once = ''
+    in the shell's own Qt, 20,000 equal string values parsed grow its memory by under 1 MB, where
+    a string apiece took about 7, and what's parsed reads as before, a value dropped by a repeated
+    key whole when its twin comes after the parse has collected
+  '';
   keeping-awake-holds-the-lid-only-where-it-sleeps = ''
     keeping awake holds the lid only where a shut lid would suspend, on battery or on the charger,
     and tells the shell whether it does

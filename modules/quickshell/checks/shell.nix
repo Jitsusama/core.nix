@@ -327,6 +327,21 @@
     touch $out
   '';
 
+  # JSON.parse keeps each string value once per parse, in the shell's own
+  # Qt, and still means what it did (qtdeclarative-json-strings-kept-once.patch):
+  # the daemons' answers say the same words thousands of times, and a
+  # string apiece held twice what one for each word does.
+  json-strings-kept-once = pkgs.runCommandLocal "json-strings-kept-once" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../../tests/json-strings-kept-once.qml} shell.qml
+    cp ${../../../tests/lib/Memory.js} Memory.js
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export QML_XHR_ALLOW_FILE_READ=1
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # A Map and a Set mean what the language says, in the shell's own Qt,
   # whose tables find string and number keys by hash
   # (qtdeclarative-maps-find-keys-by-hash.patch).
