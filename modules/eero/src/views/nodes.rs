@@ -390,12 +390,15 @@ pub fn radio_table(with_node: bool) -> Table {
     headings.extend(["channel", "width", "power", "busy", "", "devices", "BSSID"]);
     let mut table = Table::new(&aligns);
     table.header(&headings);
-    // How busy a radio is, in figures, stays after its graph goes.
+    // How busy a radio is, in figures, stays after its graph goes, and
+    // after its channel and its count of devices.
     table.gives_way(vec![
         table.under("BSSID"),
         table.under("power"),
         table.under("width"),
         table.under(""),
+        table.under("channel"),
+        table.under("devices"),
     ]);
     table
 }

@@ -26,13 +26,13 @@ ports
   2     no link      –  1.00 Gb/s   –   –
 
 devices · 9
-  device              band      signal    SNR           rx           tx         down           up
-  laptop computer 1   5 GHz    −75 dBm  33 dB  432 Mb/s     961 Mb/s     130 kb/s      14.5 kb/s
-  generic 4           5 GHz    −20 dBm  88 dB  433 Mb/s     867 Mb/s       2.23 kb/s    3.31 kb/s
-  audio 1             2.4 GHz  −29 dBm  78 dB   48.0 Mb/s     –            0 b/s        0 b/s
-  media streamer 1    5 GHz    −43 dBm  65 dB  325 Mb/s       –            0 b/s        0 b/s
-  unknown computer 1  5 GHz    −57 dBm  51 dB    1.20 Gb/s    1.20 Gb/s   11.5 Mb/s     9.86 Mb/s
-  thermostat 1        5 GHz    −65 dBm  43 dB  390 Mb/s     433 Mb/s     132 b/s      106 b/s
-  game console 1      2.4 GHz  −66 dBm  41 dB   72.2 Mb/s    65.0 Mb/s     0 b/s        0 b/s
-  generic 1           5 GHz    −68 dBm  40 dB  360 Mb/s       –            0 b/s        0 b/s
-  phone 1             5 GHz    −69 dBm   –      48.0 Mb/s     –            0 b/s        0 b/s
+  device              band      signal    SNR         rx         tx       down         up
+  laptop computer 1   5 GHz    −75 dBm  33 dB   432 Mb/s   961 Mb/s   130 kb/s  14.5 kb/s
+  generic 4           5 GHz    −20 dBm  88 dB   433 Mb/s   867 Mb/s  2.23 kb/s  3.31 kb/s
+  audio 1             2.4 GHz  −29 dBm  78 dB  48.0 Mb/s     –          0 b/s      0 b/s
+  media streamer 1    5 GHz    −43 dBm  65 dB   325 Mb/s     –          0 b/s      0 b/s
+  unknown computer 1  5 GHz    −57 dBm  51 dB  1.20 Gb/s  1.20 Gb/s  11.5 Mb/s  9.86 Mb/s
+  thermostat 1        5 GHz    −65 dBm  43 dB   390 Mb/s   433 Mb/s   132 b/s    106 b/s
+  game console 1      2.4 GHz  −66 dBm  41 dB  72.2 Mb/s  65.0 Mb/s     0 b/s      0 b/s
+  generic 1           5 GHz    −68 dBm  40 dB   360 Mb/s     –          0 b/s      0 b/s
+  phone 1             5 GHz    −69 dBm   –     48.0 Mb/s     –          0 b/s      0 b/s

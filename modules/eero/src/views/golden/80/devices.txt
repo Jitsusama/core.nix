@@ -1,33 +1,33 @@
 home · 15 devices on now · read 1 min 7 s ago
 
-node   device              band      signal           rx         down
-Hall   generic 3           2.4 GHz  −48 dBm   72.2 Mb/s    98.2 b/s
-       phone 1             5 GHz    −52 dBm  313 Mb/s       0 b/s
+node   device              band       signal         rx       down         up
+Hall   generic 3           2.4 GHz   −48 dBm  72.2 Mb/s  98.2 b/s    154 b/s
+       phone 1             5 GHz     −52 dBm   313 Mb/s     0 b/s      0 b/s
 
-Study  laptop computer 1   5 GHz    −75 dBm  432 Mb/s     130 kb/s
-       generic 4           5 GHz    −20 dBm  433 Mb/s       2.23 kb/s
-       audio 1             2.4 GHz  −29 dBm   48.0 Mb/s     0 b/s
-       media streamer 1    5 GHz    −43 dBm  325 Mb/s       0 b/s
-       unknown computer 1  5 GHz    −57 dBm    1.20 Gb/s   11.5 Mb/s
-       thermostat 1        5 GHz    −65 dBm  390 Mb/s     132 b/s
-       game console 1      2.4 GHz  −66 dBm   72.2 Mb/s     0 b/s
-       generic 1           5 GHz    −68 dBm  360 Mb/s       0 b/s
-       phone 1             5 GHz    −69 dBm   48.0 Mb/s     0 b/s
+Study  laptop computer 1   5 GHz     −75 dBm   432 Mb/s   130 kb/s  14.5 kb/s
+       generic 4           5 GHz     −20 dBm   433 Mb/s  2.23 kb/s  3.31 kb/s
+       audio 1             2.4 GHz   −29 dBm  48.0 Mb/s     0 b/s      0 b/s
+       media streamer 1    5 GHz     −43 dBm   325 Mb/s     0 b/s      0 b/s
+       unknown computer 1  5 GHz     −57 dBm  1.20 Gb/s  11.5 Mb/s  9.86 Mb/s
+       thermostat 1        5 GHz     −65 dBm   390 Mb/s   132 b/s    106 b/s
+       game console 1      2.4 GHz   −66 dBm  72.2 Mb/s     0 b/s      0 b/s
+       generic 1           5 GHz     −68 dBm   360 Mb/s     0 b/s      0 b/s
+       phone 1             5 GHz     −69 dBm  48.0 Mb/s     0 b/s      0 b/s
 
-Den    generic 2           5 GHz    −37 dBm    1.20 Gb/s    0 b/s
-       laptop computer 2   5 GHz    −38 dBm    1.20 Gb/s  145 kb/s
-       printer 1           2.4 GHz  −49 dBm   72.2 Mb/s     0 b/s
-       tablet 1            5 GHz    −59 dBm   48.0 Mb/s     1.22 Mb/s
+Den    generic 2           5 GHz     −37 dBm  1.20 Gb/s     0 b/s      0 b/s
+       laptop computer 2   5 GHz     −38 dBm  1.20 Gb/s   145 kb/s  97.6 kb/s
+       printer 1           2.4 GHz   −49 dBm  72.2 Mb/s     0 b/s      0 b/s
+       tablet 1            5 GHz     −59 dBm  48.0 Mb/s  1.22 Mb/s  24.0 kb/s
 
 9 devices not on now
 
-device              last on          node   band      made by
-game console 2      1 h 17 min ago   Study  5 GHz     AzureWave Technology Inc.
-phone 1             2 h 58 min ago   Den    5 GHz     –
-generic 5           9 h 40 min ago   Hall   Ethernet  Dell Inc.
-02:00:00:00:00:1b   9 h 42 min ago   Den    5 GHz     –
-02:00:00:00:00:1c   10 h 21 min ago  Den    2.4 GHz   –
-unknown computer 2  12 h 51 min ago  Study  5 GHz     Intel Corporate
-phone 2             22 h 56 min ago  Den    2.4 GHz   –
-02:00:00:00:00:1f   2 d ago          Den    5 GHz     –
-02:00:00:00:00:20   4 d ago          Study  2.4 GHz   –
+node   device              band      last on          made by
+Study  game console 2      5 GHz     1 h 17 min ago   AzureWave Technology Inc.
+Den    phone 1             5 GHz     2 h 58 min ago   –
+Hall   generic 5           Ethernet  9 h 40 min ago   Dell Inc.
+Den    02:00:00:00:00:1b   5 GHz     9 h 42 min ago   –
+Den    02:00:00:00:00:1c   2.4 GHz   10 h 21 min ago  –
+Study  unknown computer 2  5 GHz     12 h 51 min ago  Intel Corporate
+Den    phone 2             2.4 GHz   22 h 56 min ago  –
+Den    02:00:00:00:00:1f   5 GHz     2 d ago          –
+Study  02:00:00:00:00:20   2.4 GHz   4 d ago          –
