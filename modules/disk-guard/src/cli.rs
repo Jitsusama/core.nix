@@ -130,33 +130,68 @@ pub fn help() -> Help {
         "disk-guard status --json",
         "the status for a program, as disk-guard.status/1",
     )
-    .command(
-        "status",
-        "each guard's disks, last pass and biggest holders",
+    .subcommand(
+        Help::new(
+            "status",
+            "each guard's disks, last pass and biggest holders",
+        )
+        .example("disk-guard status", "the same as bare disk-guard")
+        .example("disk-guard status --json", "as disk-guard.status/1")
+        .exit(Exit::Unavailable, "no guard is running to ask"),
     )
-    .command("plan", "what a pass would take now, taking nothing")
-    .command("journal", "what the guards did, oldest first")
-    .command("explain", "why a path stays or would go, band by band")
-    .command("keep", "never offer what's in a folder, for your reason")
-    .command("unkeep", "let a kept folder go again")
-    .command("clear", "clear what the guard would take of a folder now")
-    .command("footprint", "what files really take on the disk")
-    .command("thaw", "let every writer the guard froze carry on")
-    .command("check-config", "whether a file is a config the guard reads")
-    .command("user", "the account's guard, kept running")
-    .command("system", "the machine's guard, kept running as root")
-    .option("--config FILE", "read this config, not the daemon's own")
-    .option(
-        "--state DIR",
-        "user, system: where the daemon keeps its state",
+    .subcommand(plan())
+    .subcommand(
+        Help::new("journal", "what the guards did, oldest first")
+            .example("disk-guard journal", "everything the guards kept")
+            .example("disk-guard journal --since 1h", "the last hour")
+            .option("--since SPAN", "only what's newer, such as 1h or 2d"),
     )
-    .option("--band BAND", "plan: as if the disk were in this band")
-    .option("--pretend-free SIZE", "plan: as if this much were free")
-    .option("--fresh", "plan: survey every source again")
-    .option(
-        "--since SPAN",
-        "journal: only what's newer, such as 1h or 2d",
+    .subcommand(
+        Help::new("explain", "why a path stays or would go, band by band")
+            .example("disk-guard explain ~/src/a/target", "what holds it")
+            .argument("<path>", "what to explain")
+            .option(CONFIG.0, CONFIG.1)
+            .exit(Exit::NotFound, "the path isn't there")
+            .exit(Exit::Config, "the config can't be read"),
     )
+    .subcommand(
+        Help::new("keep", "never offer what's in a folder, for your reason")
+            .example("disk-guard keep ~/vms mine", "never offer ~/vms")
+            .argument("<folder>", "what to keep")
+            .argument("<why>...", "your reason, said where it's kept")
+            .exit(Exit::NotFound, "the folder isn't there"),
+    )
+    .subcommand(
+        Help::new("unkeep", "let a kept folder go again")
+            .example("disk-guard unkeep ~/vms", "offer ~/vms again")
+            .argument("<folder>", "a folder kept"),
+    )
+    .subcommand(clear())
+    .subcommand(
+        Help::new("footprint", "what files really take on the disk")
+            .example("disk-guard footprint ~/vms", "its blocks, not its size")
+            .argument("<path>...", "each file or folder")
+            .exit(Exit::Failed, "a footprint couldn't be read"),
+    )
+    .subcommand(
+        Help::new("thaw", "let every writer the guard froze carry on")
+            .example("disk-guard thaw", "every frozen writer runs again")
+            .exit(Exit::Unavailable, "no guard is running to ask"),
+    )
+    .subcommand(
+        Help::new("check-config", "whether a file is a config the guard reads")
+            .example(
+                "disk-guard check-config config.json",
+                "read as a guard would",
+            )
+            .argument("<file>", "the config")
+            .exit(Exit::BadInput, "it isn't a config the guard reads"),
+    )
+    .subcommand(daemon("user", "the account's guard, kept running"))
+    .subcommand(daemon(
+        "system",
+        "the machine's guard, kept running as root",
+    ))
     .exit(
         Exit::Failed,
         "it couldn't be done, or a footprint couldn't be read",
@@ -172,6 +207,28 @@ pub fn help() -> Help {
         Exit::Config,
         "the config can't be read, or is the other daemon's",
     )
+}
+
+/// `plan`'s help: the one subcommand that pretends.
+fn plan() -> Help {
+    Help::new("plan", "what a pass would take now, taking nothing")
+        .example("disk-guard plan", "what a pass would clear now")
+        .example("disk-guard plan --band full", "as if the disk were full")
+        .option(CONFIG.0, CONFIG.1)
+        .option("--band BAND", "as if the disk were in this band")
+        .option("--pretend-free SIZE", "as if this much were free")
+        .option("--fresh", "survey every source again")
+        .exit(Exit::Config, "the config can't be read")
+}
+
+/// `clear`'s help, which asks the running guard.
+fn clear() -> Help {
+    Help::new("clear", "clear what the guard would take of a folder now")
+        .example("disk-guard clear ~/src/a", "its builds and caches")
+        .argument("<folder>", "what to clear")
+        .exit(Exit::Failed, "it couldn't be cleared")
+        .exit(Exit::NotFound, "the folder isn't there")
+        .exit(Exit::Unavailable, "no guard is running to ask")
 }
 
 impl Env {
@@ -221,6 +278,22 @@ impl Env {
             processes: PathBuf::from("/proc"),
         }
     }
+}
+
+/// The flag every command reading a config takes, said once.
+const CONFIG: (&str, &str) = ("--config FILE", "read this config, not the daemon's own");
+
+/// A guard's daemon, as its service runs it.
+fn daemon(name: &str, about: &str) -> Help {
+    Help::new(name, about)
+        .example(&format!("disk-guard {name}"), "as its service runs it")
+        .option(CONFIG.0, CONFIG.1)
+        .option("--state DIR", "where the daemon keeps its state")
+        .exit(Exit::TryAgain, "a daemon already runs with that state")
+        .exit(
+            Exit::Config,
+            "the config can't be read, or is the other daemon's",
+        )
 }
 
 /// The command line asked wrongly: what was wrong, and where to read how.
