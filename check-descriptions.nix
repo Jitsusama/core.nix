@@ -2054,6 +2054,13 @@
     with Do Not Disturb's file holding it while it's on, and a Mac is told nothing, ringing with
     its own
   '';
+  pineapple-judges-each-saying = ''
+    every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as
+    the table says, and reaches what its words and its place name, or everything, said so
+  '';
+  pineapple-passes-clippy = ''
+    clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents
+  '';
   pi-runs-on-the-machines-plan = ''
     a machine on the Claude plan has one pi, starting on the claude-code provider and Sonnet with
     no pi-claude beside it, and a work machine's pi is unchanged

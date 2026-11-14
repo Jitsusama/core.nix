@@ -1,0 +1,403 @@
+{
+  "about": "What counts as the safe word, one case a saying. IDs and names are stand-ins. The first cases are real messages of 13 November and 20 October, reworded only where they named someone. targets is what the words name; reach is what the stop reaches once context is added.",
+  "joel": {
+    "slack_ids": ["U0JOEL0001"],
+    "logins": ["jitsusama", "joel.gerber"],
+    "emails": ["joel.gerber@example.com"]
+  },
+  "sayings": [
+    {
+      "name": "the override that stopped everything on 13 Nov, in a thread about one PR",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override",
+      "verdict": "stop",
+      "targets": [],
+      "context": { "pr": 2438343, "repo": "shop/world" },
+      "reach": { "targets": ["pr:shop/world#2438343"], "fell_back": false }
+    },
+    {
+      "name": "asked to stop, tagged, without the phrase",
+      "platform": "slack",
+      "author": "U0OTHER002",
+      "text": "<@U0JOEL0001>, can you please STOP your robots? they are not letting us push this pr\u2026..",
+      "verdict": "stop-asked"
+    },
+    {
+      "name": "wondering whether the safe word still works",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "he had a safe word in the last delta switch over\u2026 I wonder if that still works",
+      "verdict": "nothing"
+    },
+    {
+      "name": "a link to the post explaining it",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<https://example.slack.com/archives/C0CHANNEL1/p1792472240666679>",
+      "verdict": "nothing"
+    },
+    {
+      "name": "Joel's own post explaining it",
+      "platform": "slack",
+      "author": "U0JOEL0001",
+      "text": "If Skynet ever looks like it's going rogue, tag <@U0JOEL0001> with the words pineapple override and it stops everything it's doing within about five minutes, then tells you what it was up to.",
+      "verdict": "waved:talked-about"
+    },
+    {
+      "name": "Joel's own post explaining the resume",
+      "platform": "slack",
+      "author": "U0JOEL0001",
+      "text": "And if you said it by mistake, tag me with pineapple resume within the hour and it picks back up where it stopped.",
+      "verdict": "waved:talked-about"
+    },
+    {
+      "name": "the phrase without the tag",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "his old display name typed as plain text is no tag",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "@skynet pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "his handle typed as plain text in Slack is no tag",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "@joel.gerber pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "a mention carrying a display name still names his ID",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001|skynet> pineapple override",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "case, spacing and a hyphen don't matter",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> PINEAPPLE  -Override",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "the tag after the phrase",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "pineapple override <@U0JOEL0001>",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "only in a block quote",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "&gt; <@U0JOEL0001> pineapple override\nthat's what she said earlier",
+      "verdict": "waved:quoted"
+    },
+    {
+      "name": "only in code",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "The safe word is `@jitsusama pineapple override`.",
+      "verdict": "waved:quoted"
+    },
+    {
+      "name": "only in a fenced block",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "Try:\n```\n@jitsusama pineapple override\n```",
+      "verdict": "waved:quoted"
+    },
+    {
+      "name": "only in quotation marks",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> is it true that \"pineapple override\" stops your agents",
+      "verdict": "waved:quoted"
+    },
+    {
+      "name": "only in curly quotation marks",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> they said \u201cpineapple override\u201d works",
+      "verdict": "waved:quoted"
+    },
+    {
+      "name": "a bot repeating it",
+      "platform": "slack",
+      "author": "B0BOT00001",
+      "bot": true,
+      "text": "<@U0JOEL0001> pineapple override",
+      "verdict": "waved:bot"
+    },
+    {
+      "name": "plainly a joke",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override jk",
+      "verdict": "waved:joke"
+    },
+    {
+      "name": "sarcasm marked",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override /s",
+      "verdict": "waved:joke"
+    },
+    {
+      "name": "a what-if",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "what happens if I <@U0JOEL0001> pineapple override",
+      "verdict": "waved:joke"
+    },
+    {
+      "name": "a laugh alone leans to stopping",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "lol <@U0JOEL0001> pineapple override",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "a joke marker beside urgency stops",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override NOW, not kidding",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "a what-if that is urgent stops",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> should I? pineapple override, please!",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "Joel's own override, untagged",
+      "platform": "slack",
+      "author": "U0JOEL0001",
+      "text": "pineapple override on QEST-20261109-WM4KSZ",
+      "verdict": "stop",
+      "targets": ["quest:QEST-20261109-WM4KSZ"],
+      "context": {},
+      "reach": { "targets": ["quest:QEST-20261109-WM4KSZ"], "fell_back": false }
+    },
+    {
+      "name": "on this PR, in a PR's thread",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override on this PR",
+      "verdict": "stop",
+      "targets": ["this-pr"],
+      "context": { "pr": 2438343, "repo": "shop/world" },
+      "reach": { "targets": ["pr:shop/world#2438343"], "fell_back": false }
+    },
+    {
+      "name": "on this PR, where no PR is found, reaches everything",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override on this PR",
+      "verdict": "stop",
+      "targets": ["this-pr"],
+      "context": { "lanes": ["QEST-20261109-WM4KSZ"] },
+      "reach": { "targets": ["everything"], "fell_back": true }
+    },
+    {
+      "name": "a PR by number, in a repository's thread",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override on #2438343",
+      "verdict": "stop",
+      "targets": ["pr:#2438343"],
+      "context": { "repo": "shop/world" },
+      "reach": { "targets": ["pr:shop/world#2438343"], "fell_back": false }
+    },
+    {
+      "name": "a PR by its link, which Slack wraps",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override <https://code.example.com/shop/world/pull/2438343|#2438343>",
+      "verdict": "stop",
+      "targets": ["pr:shop/world#2438343"]
+    },
+    {
+      "name": "a repository by its link",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override on https://github.com/Jitsusama/core.nix.",
+      "verdict": "stop",
+      "targets": ["repo:Jitsusama/core.nix"]
+    },
+    {
+      "name": "a branch by its link",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "@jitsusama pineapple override https://github.com/Jitsusama/core.nix/tree/jitsusama/some-fix",
+      "verdict": "stop",
+      "targets": ["branch:Jitsusama/core.nix@jitsusama/some-fix"]
+    },
+    {
+      "name": "everything",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override, everything, the whole swarm",
+      "verdict": "stop",
+      "targets": ["everything"],
+      "context": { "pr": 12 },
+      "reach": { "targets": ["everything"], "fell_back": false }
+    },
+    {
+      "name": "a name after the phrase",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override on aquifer",
+      "verdict": "stop",
+      "targets": ["named:aquifer"]
+    },
+    {
+      "name": "the sentence going on is no name",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override for now",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "a realm",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override, the work realm",
+      "verdict": "stop",
+      "targets": ["realm:work"]
+    },
+    {
+      "name": "nothing narrower anywhere reaches everything",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override",
+      "verdict": "stop",
+      "targets": [],
+      "context": {},
+      "reach": { "targets": ["everything"], "fell_back": true }
+    },
+    {
+      "name": "a channel's lanes when the thread names nothing",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override",
+      "verdict": "stop",
+      "targets": [],
+      "context": { "lanes": ["QEST-20261109-WM4KSZ", "QEST-20261104-VP50PC"] },
+      "reach": {
+        "targets": ["quest:QEST-20261109-WM4KSZ", "quest:QEST-20261104-VP50PC"],
+        "fell_back": false
+      }
+    },
+    {
+      "name": "a thread's quest over its channel's lanes",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple override",
+      "verdict": "stop",
+      "targets": [],
+      "context": { "quest": "QEST-20261104-VP50PC", "lanes": ["QEST-20261109-WM4KSZ"] },
+      "reach": { "targets": ["quest:QEST-20261104-VP50PC"], "fell_back": false }
+    },
+    {
+      "name": "on GitHub, in a PR comment",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "@Jitsusama pineapple override",
+      "verdict": "stop",
+      "targets": [],
+      "context": { "pr": 4215, "repo": "Jitsusama/core.nix" },
+      "reach": { "targets": ["pr:Jitsusama/core.nix#4215"], "fell_back": false }
+    },
+    {
+      "name": "on Delta, the tag ending a sentence",
+      "platform": "markdown",
+      "author": "someone@example.com",
+      "text": "Please stop, @joel.gerber. Pineapple override.",
+      "verdict": "stop",
+      "targets": []
+    },
+    {
+      "name": "an address holding the login is no tag",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "mail joel.gerber@example.com, pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "a longer login is no tag",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "@jitsusama2 pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "a repository path is no tag",
+      "platform": "markdown",
+      "author": "someone",
+      "text": "see @jitsusama/core.nix, pineapple override",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "Joel resumes",
+      "platform": "slack",
+      "author": "U0JOEL0001",
+      "text": "pineapple resume",
+      "verdict": "resume",
+      "targets": []
+    },
+    {
+      "name": "Joel resumes one PR",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "pineapple resume on #4215",
+      "verdict": "resume",
+      "targets": ["pr:#4215"]
+    },
+    {
+      "name": "someone else asks to resume",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple resume, my mistake",
+      "verdict": "resume-asked",
+      "targets": []
+    },
+    {
+      "name": "someone else's resume, untagged",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "pineapple resume",
+      "verdict": "waved:no-tag"
+    },
+    {
+      "name": "tagged about something else",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> can you stop by the review later?",
+      "verdict": "nothing"
+    },
+    {
+      "name": "a pineapple is just fruit",
+      "platform": "slack",
+      "author": "U0OTHER001",
+      "text": "<@U0JOEL0001> pineapple on pizza, override my objection",
+      "verdict": "nothing"
+    }
+  ]
+}
