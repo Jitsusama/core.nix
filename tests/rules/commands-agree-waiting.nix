@@ -364,7 +364,6 @@
     "exits"
     "helps"
   ];
-  update-to-main-the-launcher-is-in-use = [ "helps" ];
   warp = [
     "kit"
     "helps"

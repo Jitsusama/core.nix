@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # Compiles the shell's files into Quickshell's cache once a switch has linked
-# them and before it restarts the shell (home.nix's quickshellStartsWarm), so
+# them and before the shell restarts onto them (home.nix's quickshellStartsWarm), so
 # the new shell starts from compiled files and listens sooner (./warm.qml).
 #
 #   quickshell-starts-warm WARMS
