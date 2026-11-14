@@ -38,7 +38,6 @@ Scope {
     property var session: null
     readonly property var rows: Said.attached({
         window: root.window,
-        program: root.program,
         session: root.session,
         tab: root.tab,
         registers: root.registers
@@ -46,7 +45,6 @@ Scope {
     // The rows shown of them under a hairline before it's sent, the window
     // left to a tab or a session that already names it (TalkLine.js).
     readonly property var shownRows: Said.shownRows(rows)
-    property string program: ""
     // What Ctrl+R * and Ctrl+R + attached, the selection and the clipboard
     // as Vim names its registers, kept with the words until they're sent.
     property var registers: []
@@ -166,20 +164,21 @@ Scope {
     // window it was said over as it was.
     // Opened again the moment it was put away, niri may not have given that window the keys
     // back yet, so it's said over the window it was last, while niri still lists it.
+    // It's read again as its title, its own title or its program changes, the last two as
+    // the windows daemon names them (core #4242).
     function look() {
         const id = Niri.focused ?? (window === null ? lastOver : null);
         const focused = id === null ? null : Niri.windows[id] ?? null;
         if (focused === null && window !== null)
             return;
         if ((focused?.id ?? null) === (window?.id ?? null)
-            && (focused?.title ?? "") === lookedTitle)
+            && lookedAs(focused) === looked)
             return;
         const asked = (focused?.id ?? null) !== (window?.id ?? null);
         window = focused;
         if (focused !== null)
             lastOver = focused.id;
-        lookedTitle = focused?.title ?? "";
-        program = programOf(focused?.app_id ?? "");
+        looked = lookedAs(focused);
         if (!asked)
             return;
         session = null;
@@ -188,7 +187,10 @@ Scope {
                 root.session = found;
         });
     }
-    property string lookedTitle: ""
+    property string looked: ""
+    function lookedAs(window) {
+        return JSON.stringify([window?.title ?? "", window?.named ?? "", window?.program ?? ""]);
+    }
     property var lastOver: null
 
     Connections {
@@ -264,11 +266,6 @@ Scope {
             if (record !== undefined)
                 root.registers = Said.registered(root.registers, name, record.text, root.said);
         });
-    }
-
-    // A window's program as it names itself, where the desktop has an entry by its app id.
-    function programOf(app) {
-        return (DesktopEntries.byId(app) ?? DesktopEntries.byId(app.toLowerCase()))?.name || app;
     }
 
     function putAway() {

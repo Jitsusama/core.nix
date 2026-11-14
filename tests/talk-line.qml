@@ -13,17 +13,38 @@ import "TalkLine.js" as Said
 QtObject {
     Component.onCompleted: {
         try {
-            const kitty = { app_id: "kitty", title: "π - Tune the launcher" };
+            // A window as Niri.qml holds it from the windows daemon, its title without the
+            // program's name (`named`) and the program's own (ZINAWZ, core #4242).
+            const kitty = { app_id: "kitty", title: "π - Tune the launcher",
+                named: "π - Tune the launcher", untitled: false, program: "kitty" };
             const session = { to: "TESTQA", name: "Tune the launcher" };
-            const rows = Said.attached({ window: kitty, program: "kitty", session });
+            const rows = Said.attached({ window: kitty, session });
             Expect.same("a pi window attaches its window and its session, each with its mark "
-                    + "and its note", rows.map(row => [row.kind, row.mark, row.text, row.note]),
-                [["window", "windows", "π - Tune the launcher", "kitty"],
-                    ["session", "agent", "Tune the launcher", "TESTQA"]]);
+                    + "and its note, the session noted as pi's (VKCF3Z, 2026-11-13 [00c78048])",
+                rows.map(row => [row.kind, row.mark, row.text, row.note]),
+                [["window", "windows", "Tune the launcher", "kitty"],
+                    ["session", "agent", "Tune the launcher", "pi"]]);
+            Expect.same("a pi window its session isn't known for yet shows its title without "
+                    + "pi's lead", Said.shownRows(Said.attached({ window: kitty }))
+                    .map(row => row.text), ["Tune the launcher"]);
+            Expect.same("a title that only begins with pi's letter keeps it",
+                Said.attached({ window: { title: "π day", named: "π day", program: "Foot" } })[0]
+                    .text, "π day");
+            const slack = { app_id: "slack", title: "Slack", named: "Slack", untitled: true,
+                program: "Slack" };
+            Expect.same("a window with no title of its own is said by its program alone, sent "
+                    + "as before", Said.attached({ window: slack }).map(row =>
+                    [row.text, row.note, row.sent]), [["Slack", "", "Slack · Slack"]]);
+            const heard = { app_id: "foot", title: "htop - Foot", named: "htop - Foot",
+                untitled: false, program: "" };
+            Expect.same("a window niri's stream stands in for, no program said, goes by its "
+                    + "app id", Said.attached({ window: heard }).map(row => [row.text, row.note]),
+                [["htop - Foot", "foot"]]);
             Expect.same("a window with no title attaches only what else it has",
-                Said.attached({ window: { app_id: "foot", title: "" }, program: "Foot" }), []);
+                Said.attached({ window: { app_id: "foot", title: "", named: "Foot",
+                    untitled: true, program: "Foot" } }), []);
             Expect.same("none focused attaches nothing",
-                Said.attached({ window: null, program: "" }), []);
+                Said.attached({ window: null }), []);
             Expect.same("his words go first, what's attached under the heading the void reads",
                 Said.said("  is this the right fix? ", rows),
                 "is this the right fix?\n\nAttached:\n- window: kitty · π - Tune the launcher\n"
@@ -36,7 +57,8 @@ QtObject {
             // Chrome's tab in front of the window it's said over (brief, slice C), as the
             // programs daemon serves it by niri's window id (FEH1HE, core #4190).
             const chrome = { id: 7, app_id: "google-chrome",
-                title: "Pull requests - Google Chrome" };
+                title: "Pull requests - Google Chrome", named: "Pull requests", untitled: false,
+                program: "Google Chrome" };
             Expect.same("the front tab is asked for by its browser and window",
                 Said.tabKey("google-chrome", 7), "front:google-chrome:7");
             const tab = Said.tabFrom({ records: [{ key: "front:google-chrome:7", kind: "front",
@@ -51,7 +73,7 @@ QtObject {
                     address: "https://mail.example" }] }, "google-chrome", 7), null);
             Expect.same("no answer, the daemon not there, gives none",
                 Said.tabFrom(null, "google-chrome", 7), null);
-            const browsed = Said.attached({ window: chrome, program: "Google Chrome", tab });
+            const browsed = Said.attached({ window: chrome, tab });
             Expect.same("a browser's window is titled without its program, and its tab shown "
                     + "in its place", [browsed[0].text, Said.shownRows(browsed).map(row =>
                     [row.mark, row.text, row.note])],
@@ -83,7 +105,7 @@ QtObject {
             Expect.same("any other register attaches nothing",
                 Said.registered(both, "a", "text", registerWords), both);
             Expect.same("a register's text goes whole, a line of many under its row, indented",
-                Said.said("what's wrong here?", Said.attached({ window: null, program: "", registers: both })),
+                Said.said("what's wrong here?", Said.attached({ window: null, registers: both })),
                 "what's wrong here?\n\nAttached:\n- selection: the beacon's key\n"
                     + "- clipboard:\n  fn main() {\n      run();\n  }");
             const huge = Said.registered([], "+", "x".repeat(5000), registerWords)[0].sent;

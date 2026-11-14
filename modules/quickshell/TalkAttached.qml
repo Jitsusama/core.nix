@@ -1,11 +1,11 @@
-// What goes with Super+S's line once it's sent, under its typing: a row each, muted, as it's
-// context rather than anything to act on (TalkLine.qml). Each has its mark on the lead's
-// column, in its kind's hue where it has one, its words on the text column, and at the right
-// its note, which gives way first, so a row is one line (brief, slice C). Marks: a window's,
-// the web's, an agent's, text's lines and the clipboard's; a browser's tab and a pi window's
-// session wear the program's hue as the window does, and his own words, the selection and
-// the clipboard, the muted text's, as the launcher's copies wear text's (Copies.qml), the
-// designer's choice. TalkLine.js's shownRows says which rows there are.
+// What goes with Super+S's line as it's sent, shown under its typing while it's typed: a row
+// each, muted, as it's context rather than anything to act on (TalkLine.qml). Each has its
+// mark on the lead's column, in its kind's hue where it has one, its words on the text
+// column, and at the right its note, which gives way first, so a row is one line (brief,
+// slice C). Marks: a window's, the web's, an agent's, text's lines and the clipboard's; a
+// browser's tab and a pi window's session wear the program's hue as the window does, and his
+// own words, the selection and the clipboard, the muted text's, as the launcher's copies wear
+// text's (Copies.qml), the designer's choice. TalkLine.js's shownRows says which rows there are.
 pragma ComponentBehavior: Bound
 import qs
 import QtQuick

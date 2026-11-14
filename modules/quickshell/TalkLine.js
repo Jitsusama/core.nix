@@ -31,17 +31,20 @@ const KINDS = {
 // copied log doesn't bury his words: the clipboard keeps copies far larger.
 const LONGEST = 4000;
 
-// What a window says of itself in its title, without the program's name
-// after it, as Chrome titles a window "page - Google Chrome" (Provider.qml's
-// tidy).
-function titled(title, program) {
-    const whole = String(title ?? "").trim();
-    for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "]) {
-        if (program !== "" && whole.endsWith(joint + program)) {
-            return whole.slice(0, whole.length - joint.length - program.length);
-        }
-    }
-    return whole;
+// The name pi goes by, which a pi session's row notes.
+const PI = "pi";
+
+// pi's letter and its joint before a session's title, "π - name", which
+// the row's mark already says, set small and odd in the words' face
+// (VKCF3Z, 2026-11-13 [00c78048]). A stopgap: the windows daemon's `named`
+// drops it itself from about Sat 14 01:30 (ZINAWZ [5dc6c596]), and then
+// this finds nothing to drop.
+const PI_LEAD = /^\u03c0(?: - | \u2013 | \u2014 | \| )/u;
+
+// What a window says of itself, as Niri.qml holds it from the windows
+// daemon: its title without the program's name (`named`, core #4242).
+function ownTitle(window) {
+    return String(window?.named ?? window?.title ?? "").trim().replace(PI_LEAD, "");
 }
 
 // What the programs daemon is asked for the tab in front of a browser's
@@ -80,23 +83,30 @@ function shortAddress(address) {
     return String(address ?? "").replace(SCHEME, "").replace(TRAILING_SLASH, "");
 }
 
-// What goes with a line, a row each: the window it's said over, as its
-// program names itself, and its title; the tab in front, where it's a
-// browser's (tabFrom); the pi session that window is, where it's one, by its
-// name and address; and what he attached of the registers (registered). A
-// window with no title, or none focused, attaches nothing of itself.
-function attached({ window, program, session, tab, registers }) {
+// What goes with a line, a row each: the window it's said over, by its own
+// title and noted by its program, or by its program alone where it has no
+// title of its own; the tab in front, where it's a browser's (tabFrom); the
+// pi session that window is, where it's one, by its name and noted as pi's,
+// sent with its address; and what he attached of the registers
+// (registered). A window with no title, or none focused, attaches nothing
+// of itself.
+function attached({ window, session, tab, registers }) {
     const rows = [];
     const title = String(window?.title ?? "").trim();
-    if (title !== "") {
-        rows.push(row("window", titled(title, program), program, `${program} \u00b7 ${title}`));
+    // The program as the daemon names it, or, while niri's stream stands
+    // in and says none, the app id.
+    const program = String(window?.program || window?.app_id || "");
+    if (title !== "" && window?.untitled === true) {
+        rows.push(row("window", program, "", `${program} \u00b7 ${title}`));
+    } else if (title !== "") {
+        rows.push(row("window", ownTitle(window), program, `${program} \u00b7 ${title}`));
     }
     if (tab) {
         rows.push(row("tab", tab.title, shortAddress(tab.address),
             `${tab.title} \u00b7 ${tab.address}`));
     }
     if (session) {
-        rows.push(row("session", session.name, session.to, `${session.name} \u00b7 ${session.to}`));
+        rows.push(row("session", session.name, PI, `${session.name} \u00b7 ${session.to}`));
     }
     return rows.concat(registers ?? []);
 }
