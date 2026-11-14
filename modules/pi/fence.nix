@@ -44,15 +44,17 @@ in
     };
     home.file.".local/share/pi-fence/bin".source = "${clipboardDoor}/share/pi-fence/bin";
 
-    # The display the agent fence is to let in, at %t/pi-fence/wayland: a
-    # socket niri accepts as a sandbox's through wp-security-context-v1, so
-    # its clients may open windows but never reach data-control,
-    # screencopy, the virtual keyboard and pointer or the other privileged
-    # protocols (fence-display/src/main.rs). The harness doesn't bind it in
-    # yet: niri 26.04 focuses a sandboxed client's new window as it does any
-    # other's, on the focused workspace, and no window rule can tell a
-    # sandboxed client from one naming the same app id. It lasts as long as
-    # the graphical session, and its folder outlives a restart.
+    # The display the agent fence is to let in, at
+    # %t/pi-fence-display/wayland: a socket niri accepts as a sandbox's
+    # through wp-security-context-v1, so its clients may open windows but
+    # never reach data-control, screencopy, the virtual keyboard and
+    # pointer or the other privileged protocols (fence-display/src/main.rs),
+    # and niri opens their windows behind, unfocused
+    # (niri/sandboxed-windows-stay-behind.patch). Its folder is its own,
+    # never %t/pi-fence, where the harness keeps the fence's filtered copies
+    # of files, which no fenced command is to read but through the file each
+    # stands in for. It lasts as long as the graphical session, and its
+    # folder outlives a restart.
     systemd.user.services.pi-fence-display = {
       Unit = {
         Description = "The sandboxed display pi's fenced commands are to open windows on";
@@ -60,8 +62,8 @@ in
         After = [ "graphical-session.target" ];
       };
       Service = {
-        ExecStart = "${lib.getExe fenceDisplay} --socket %t/pi-fence/wayland";
-        RuntimeDirectory = "pi-fence";
+        ExecStart = "${lib.getExe fenceDisplay} --socket %t/pi-fence-display/wayland";
+        RuntimeDirectory = "pi-fence-display";
         RuntimeDirectoryMode = "0700";
         RuntimeDirectoryPreserve = "yes";
         Restart = "on-failure";

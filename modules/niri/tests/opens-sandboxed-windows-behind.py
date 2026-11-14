@@ -15,6 +15,8 @@ opening a window must not move Joel's keys. This runs pi-fence-display on the ne
    stays on his first, and the second is marked urgent.
 5. Joel goes to the empty workspace at the end, and a second sandbox's window opens: the
    workspace he's on is still the focused one, and the window is elsewhere.
+6. Joel goes to that window himself, by its id through niri's own action as his launcher does:
+   it takes the focus, and its workspace is the focused one. Behind is never out of his reach.
 
 Every case is checked and reported before the stand-in fails.
 
@@ -278,7 +280,7 @@ def kept(before: int | None, failures: list[str], case: str) -> None:
 
 
 def main() -> None:
-    """Run the five cases against pi-fence-display's socket, and fail on any that didn't hold."""
+    """Run the six cases against pi-fence-display's socket, and fail on any that didn't hold."""
     runtime = Path(os.environ["XDG_RUNTIME_DIR"])
     filtered = runtime / "pi-fence-wayland"
     with subprocess.Popen([sys.argv[1], "--socket", str(filtered)]) as display:
@@ -299,7 +301,7 @@ def main() -> None:
 
 
 def run(joel: Connection, filtered: Path) -> list[str]:
-    """Run the five cases, Joel's window on `joel` and the sandbox's on the filtered socket."""
+    """Run the six cases, Joel's window on `joel` and the sandbox's on the filtered socket."""
     failures: list[str] = []
     joels_surface = joel.window("joel.window")
     joels = int(opened("joel.window", joel)["id"])
@@ -349,6 +351,13 @@ def run(joel: Connection, filtered: Path) -> list[str]:
     if not opened("joel.other", joel, sandbox)["is_urgent"]:
         failures.append(f"{case}: Joel's window {joels_other} wasn't marked urgent")
 
+    failures.extend(from_an_empty_workspace(joel, sandbox))
+    return failures
+
+
+def from_an_empty_workspace(joel: Connection, sandbox: Connection) -> list[str]:
+    """Run cases 5 and 6: a sandbox's window opening from the empty workspace, then reached."""
+    failures: list[str] = []
     ask({"Action": {"FocusWorkspace": {"reference": {"Id": empty_workspace()}}}})
     settle(joel, sandbox)
     focused = focused_workspace()
@@ -359,6 +368,18 @@ def run(joel: Connection, filtered: Path) -> list[str]:
     if focused_workspace() != focused:
         failures.append("an empty workspace: the focus went to another workspace")
     behind(second, focused, failures, "a sandbox's window opening on an empty workspace")
+
+    # Joel reaches a sandbox's window himself, the way his launcher's rows do: niri's action
+    # focuses it by id, needing no token, so behind never means out of his reach.
+    case = "Joel going to a sandbox's window"
+    reached = int(second["id"])
+    ask({"Action": {"FocusWindow": {"id": reached}}})
+    settle(joel, sandbox)
+    if focused_window() != reached:
+        failures.append(f"{case}: the focus is on {focused_window()}, not its window {reached}")
+    on = int(opened("pi.fence.second", joel, sandbox)["workspace_id"])
+    if focused_workspace() != on:
+        failures.append(f"{case}: the focused workspace isn't its workspace {on}")
     return failures
 
 

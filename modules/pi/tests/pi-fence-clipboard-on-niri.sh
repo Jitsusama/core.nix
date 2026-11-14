@@ -36,8 +36,8 @@ appears() {
   fail "$1 never appeared"
 }
 
-mkdir -m 700 "$XDG_RUNTIME_DIR/pi-fence" "$XDG_RUNTIME_DIR/pi-clipboard"
-filtered=$XDG_RUNTIME_DIR/pi-fence/wayland
+mkdir -m 700 "$XDG_RUNTIME_DIR/pi-fence-display" "$XDG_RUNTIME_DIR/pi-clipboard"
+filtered=$XDG_RUNTIME_DIR/pi-fence-display/wayland
 "$display" --socket "$filtered" 2> "$logs/display.log" &
 appears "$filtered"
 

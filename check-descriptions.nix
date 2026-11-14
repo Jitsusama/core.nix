@@ -1584,7 +1584,7 @@
   niri-opens-sandboxed-windows-behind = ''
     the session's niri, nested in the sandbox, opens a sandbox's windows on a workspace no screen
     shows without moving the focus, even with an activation token from the focused window or while
-    the focused workspace is the empty one at the end
+    the focused workspace is the empty one at the end, and Joel still goes to one by its id
   '';
   niri-patches-add-no-settings = ''
     no patch of niri's adds a setting a niri started before it would refuse at a switch, all of its
@@ -3178,7 +3178,8 @@
   pi-clipboard-door-reaches-only-the-fence = ''
     pi's clipboard door starts from a socket in a folder only the account reaches, tagged in the
     journal, its shims linked from a folder of their own, and the sandboxed display runs with the
-    graphical session at %t/pi-fence/wayland, in a folder that outlives a restart; a Mac gets none
+    graphical session at %t/pi-fence-display/wayland, in a folder of its own that outlives a
+    restart; a Mac gets none
   '';
   pi-fence-clipboard-holds-on-niri = ''
     on a real niri, the sandboxed display offers windows' protocols and none of the privileged
