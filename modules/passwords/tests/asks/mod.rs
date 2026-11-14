@@ -525,6 +525,30 @@ fn a_released_command_is_kept_from_what_the_fence_hides() {
     );
 }
 
+/// The folders `args` let the command write.
+fn writable(args: &[String]) -> Vec<&String> {
+    args.windows(2)
+        .filter(|window| window[0] == "--bind")
+        .map(|window| &window[1])
+        .collect()
+}
+
+/// Lays out a repository at `common` with a worktree of it, named
+/// `name`, whose own git folder says it belongs to `back`.
+fn worktree_of(common: &Path, name: &str, back: &Path) -> PathBuf {
+    for folder in ["objects", "refs", "logs", "hooks"] {
+        std::fs::create_dir_all(common.join(folder)).unwrap();
+    }
+    std::fs::write(common.join("config"), "").unwrap();
+    let own = common.join("worktrees").join(name);
+    std::fs::create_dir_all(own.join("logs")).unwrap();
+    std::fs::write(own.join("commondir"), "../..\n").unwrap();
+    std::fs::write(own.join("gitdir"), format!("{}\n", back.display())).unwrap();
+    std::fs::write(own.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+    std::fs::write(own.join("index"), "").unwrap();
+    own
+}
+
 #[test]
 fn a_released_command_writes_its_tree_and_caches_alone() {
     let running = Running::releasing("asks-writes", &[LISTED]);
@@ -533,13 +557,23 @@ fn a_released_command_writes_its_tree_and_caches_alone() {
         std::fs::create_dir_all(git.join(folder)).unwrap();
     }
     std::fs::write(git.join("config"), "").unwrap();
+    let home = running.folder.join("home");
+    for folder in [
+        ".cache/nix",
+        ".npm/_cacache",
+        ".npm/_npx",
+        ".cargo/registry",
+        ".cargo/bin",
+        ".gem",
+    ] {
+        std::fs::create_dir_all(home.join(folder)).unwrap();
+    }
     let args = released_with(&running, "b123456789abcdef0123456789abcdef");
-    let cache = running.folder.join("home/.cache");
     let bind = Path::new("--bind");
+    let ro = Path::new("--ro-bind");
     let tree = &running.folder;
     holds(&args, &[bind, tree, tree]);
-    holds(&args, &[bind, &cache, &cache]);
-    let kept = holds(&args, &[Path::new("--ro-bind"), &git, &git]);
+    let kept = holds(&args, &[ro, &git, &git]);
     for written in ["objects", "refs"] {
         let written = git.join(written);
         assert!(
@@ -548,16 +582,83 @@ fn a_released_command_writes_its_tree_and_caches_alone() {
             written.display()
         );
     }
-    let writable: Vec<&String> = args
-        .windows(2)
-        .filter(|window| window[0] == "--bind")
-        .map(|window| &window[1])
-        .collect();
+    let cache = home.join(".cache");
+    let nix = cache.join("nix");
+    assert!(
+        holds(&args, &[ro, &nix, &nix]) > holds(&args, &[bind, &cache, &cache]),
+        "Nix's fetcher cache, which later unfenced runs trust, was left writable: {args:?}"
+    );
+    for written in [".npm/_cacache", ".cargo/registry", ".gem"] {
+        let written = home.join(written);
+        holds(&args, &[bind, &written, &written]);
+    }
+    let writable = writable(&args);
     assert_eq!(
         writable.len(),
-        4,
-        "the command may write more than its tree, git's objects and refs, and the cache: \
-         {writable:?}"
+        7,
+        "the command may write more than its tree, git's objects and refs, and the tools' \
+         caches: {writable:?}"
+    );
+}
+
+#[test]
+fn a_released_command_in_a_worktree_writes_its_history_but_not_what_runs() {
+    let running = Running::releasing("asks-worktree", &[LISTED]);
+    let tree = &running.folder;
+    let dot_git = tree.join(".git");
+    let common = tree.join("home/src/repo/.git");
+    let own = worktree_of(&common, "released", &dot_git);
+    std::fs::write(&dot_git, format!("gitdir: {}\n", own.display())).unwrap();
+    let args = released_with(&running, "e123456789abcdef0123456789abcdef");
+    let bind = Path::new("--bind");
+    let ro = Path::new("--ro-bind");
+    let kept = holds(&args, &[ro, &dot_git, &dot_git]);
+    assert!(
+        kept > holds(&args, &[bind, tree, tree]),
+        "the worktree's .git could be pointed elsewhere: {args:?}"
+    );
+    for written in ["objects", "refs", "logs"] {
+        let written = common.join(written);
+        holds(&args, &[bind, &written, &written]);
+    }
+    let opened = holds(&args, &[bind, &own, &own]);
+    for pointer in ["commondir", "gitdir"] {
+        let pointer = own.join(pointer);
+        assert!(
+            holds(&args, &[ro, &pointer, &pointer]) > opened,
+            "{} could be pointed elsewhere: {args:?}",
+            pointer.display()
+        );
+    }
+    let settings = own.join("config.worktree");
+    assert!(
+        holds(&args, &[ro, Path::new("/dev/null"), &settings]) > opened,
+        "the worktree's own settings could be written: {args:?}"
+    );
+    let writable = writable(&args);
+    assert_eq!(
+        writable.len(),
+        6,
+        "the command may write more than its tree, the history and the cache: {writable:?}"
+    );
+}
+
+#[test]
+fn a_released_command_writes_no_history_a_forged_git_file_points_at() {
+    let running = Running::releasing("asks-forged", &[LISTED]);
+    let tree = &running.folder;
+    let dot_git = tree.join(".git");
+    let common = tree.join("home/src/repo/.git");
+    let own = worktree_of(&common, "elsewhere", &tree.join("elsewhere/.git"));
+    std::fs::write(&dot_git, format!("gitdir: {}\n", own.display())).unwrap();
+    let args = released_with(&running, "f123456789abcdef0123456789abcdef");
+    holds(&args, &[Path::new("--ro-bind"), &dot_git, &dot_git]);
+    let writable = writable(&args);
+    assert!(
+        writable
+            .iter()
+            .all(|path| !Path::new(path).starts_with(&common)),
+        "a worktree that isn't this tree's was opened: {writable:?}"
     );
 }
 
