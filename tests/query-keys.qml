@@ -1231,6 +1231,19 @@ QtObject {
         for (const [what, said, room, want] of titleLines)
             holds(`a title's lines: ${what}`, Identifier.titleLines(said, room, width, "\u2026"),
                 want);
+        // One shown whole is laid as any where that cuts none of it, else
+        // on as many full lines as its words take (VKCF3Z, c2d01d53).
+        const titlesWhole = [
+            ["one two lines hold is laid as any", "One two three four five six", 200,
+                ["One two three", "four five six"]],
+            ["one past two takes as many full lines as it needs, none cut",
+                "One two three four five six seven eight", 100,
+                ["One two", "three four", "five six", "seven", "eight"]],
+            ["an empty one is no line", "", 100, []]
+        ];
+        for (const [what, said, room, want] of titlesWhole)
+            holds(`a whole title's lines: ${what}`,
+                Identifier.titleWhole(said, room, width, "\u2026"), want);
         // A list alone in a value, on one line, giving way to a tail.
         const kinds = ["PDF", "HTML", "PNG", "JPEG"].map(said => ({ said }));
         const lines = [

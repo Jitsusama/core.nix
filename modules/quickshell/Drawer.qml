@@ -315,6 +315,12 @@ Floating {
     // wraps, the break falls between two and the dot goes with it, so no
     // line ends or starts on one (VKCF3Z, 2026-11-09, 8e0712aa).
     readonly property bool runs: shown?.runs === true
+    // Whether its title and prose are shown whole (`whole: true`), as a
+    // landing asking Joel something is: the title on as many lines as it
+    // takes and the prose never cut, since it's one line by contract
+    // rather than a log, and it's what Joel reads it for (VKCF3Z,
+    // 2026-11-13, c2d01d53).
+    readonly property bool whole: shown?.whole === true
     // How many lines its prose shows while the fold is shut: five, as a
     // lead's at most, so a long message or log doesn't stand in for the
     // rest of the drawer, and the rest is the fold's, opened by za as the
@@ -325,7 +331,7 @@ Floating {
     // in the mono that another program wrote are never cut.
     readonly property var proseLaid: {
         void bodyFace.font;
-        return prose && !runs && body !== ""
+        return prose && !runs && !whole && body !== ""
             ? Prose.lines({ text: body, styled: shown?.styled === true }, wordsBox.width,
                 proseMost, text => bodyFace.advanceWidth(text))
             : null;
@@ -1939,7 +1945,9 @@ Floating {
                         // the face loads.
                         plain: {
                             void titleFace.font;
-                            return Identifier.titleLines(drawer.title, width,
+                            const lines = drawer.whole ? Identifier.titleWhole
+                                : Identifier.titleLines;
+                            return lines(drawer.title, width,
                                 words => titleFace.advanceWidth(words), "\u2026").join("\n");
                         }
                         leading: drawer.titleLeading
