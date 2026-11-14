@@ -166,10 +166,10 @@ fn run(args: &[String]) -> Result<(), Failure> {
     match args.as_slice() {
         ["serve", "--config", file] => {
             let config = Config::read(&PathBuf::from(file)).map_err(|e| {
-                Failure::new(Exit::Config, "its config couldn't be read").because(e.to_string())
+                Failure::new(Exit::Config, "its config couldn't be read").because(e)
             })?;
             serve::serve(config)
-                .map_err(|e| Failure::new(Exit::Failed, "it couldn't serve").because(e.to_string()))
+                .map_err(|e| Failure::new(Exit::Failed, "it couldn't serve").because(e))
         }
         ["ask"] => asked(Path::new(SOCKET), None),
         ["ask", "--socket", file] => asked(Path::new(file), None),
@@ -232,8 +232,7 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
         let config = match Config::read(file) {
             Ok(config) => config,
             Err(e) => {
-                return Err(Failure::new(Exit::Config, "its config couldn't be read")
-                    .because(e.to_string()));
+                return Err(Failure::new(Exit::Config, "its config couldn't be read").because(e));
             }
         };
         if let Some(program) = &config.program
