@@ -63,6 +63,7 @@ let
   screenKept = pkgs.writeShellApplication {
     name = "screen-kept";
     runtimeInputs = [
+      pkgs.coreutils
       pkgs.jq
       pkgs.systemd
     ];

@@ -148,17 +148,25 @@
       in
       {
         camera = script "camera" ../../modules/camera/camera.sh { };
+        declared-last = script "declared-last" ../../modules/git/declared-last.sh { };
+        disk-guard-merged-on-github =
+          script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
+            { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         google-opens = script "google-opens" ../../modules/google/opens.sh {
           words = "a-window an-opener";
         };
+        inkscape-drawings = script "inkscape-drawings" ../../modules/inkscape/drawings.sh { };
         lock-for-sleep = script "lock-for-sleep" ../../modules/swayidle/lock-for-sleep.sh { };
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
         mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
+        mpv-stopped = script "mpv-stopped" ../../modules/mpv/stopped.sh { };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
         niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
         pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
+        pi-settings = script "pi-settings" ../../modules/pi/settings.sh { };
+        screen-kept = script "screen-kept" ../../modules/swayidle/screen-kept.sh { };
         se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
         shots-changed = script "shots-changed" ../../tools/shots-changed/shots-changed.sh { };
         sign = script "sign" ../../modules/signing/sign.sh { before = "export name=sign"; };
@@ -168,6 +176,7 @@
         switch-system = script "switch-system" ../../modules/switch-system/switch-system.sh { };
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
+        zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
