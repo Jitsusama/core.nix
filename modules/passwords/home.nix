@@ -76,6 +76,12 @@ let
         "/run/current-system/sw/bin"
         "/etc/profiles/per-user/${config.home.username}/bin"
       ];
+      # The agent fence's list of what it hides, which an ask's command is
+      # kept from too, read from the harness's install at every ask so its
+      # own update reaches it; where it isn't there, every ask is refused.
+      hidden =
+        "${config.xdg.dataHome}/pi-packages/github.com/Jitsusama/agentic-harness.pi"
+        + "/current/data/fence-hidden.json";
     }
   );
   # The launcher's vocabulary, which the daemon says its rows in.
