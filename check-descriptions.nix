@@ -2638,9 +2638,10 @@
     evaluates
   '';
   the-arrival-line-shows-what-still-waits = ''
-    the arrival line shows the front of the notices' stack that's neither read nor withdrawn, only
-    a critical one while notices are held or over the talk line, none while the launcher or the
-    held list has the notices, and counts those behind it still waiting
+    the arrival line shows the notice the notices daemon serves as in front, only its critical one
+    while notices are held or over the talk line, none while the launcher or the held list has the
+    notices, and counts those behind it still waiting; a message to Joel knocks once for a burst,
+    never while notices are held or with no sound set
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

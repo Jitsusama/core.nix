@@ -603,7 +603,6 @@ Scope {
         id: line
 
         launcher: root.launcher
-        shown: root.shown
         talking: root.talking
         holding: root.holding
         whenOf: notification => root.whenOf(notification)
