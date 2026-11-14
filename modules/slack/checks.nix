@@ -37,10 +37,9 @@ onLinux {
   # clippy finds nothing in slack-people, its tests included.
   slack-passes-clippy = passesClippy "slack-passes-clippy" (pkgs.callPackage ./package.nix { });
   # slack-unreads starts at login, reads pi's sign-in from the keyring,
-  # comes back as the
-  # new one after a switch, is restarted once its watchdog hears nothing,
-  # and takes its ask in For You with it however it stops, so For You
-  # never shows what nothing is keeping current.
+  # comes back as the new one after a switch, is restarted once its
+  # watchdog hears nothing, and takes its ask in For You with it however
+  # it stops, so For You never shows what nothing is keeping current.
   # Its socket is systemd's, so it stays when the daemon stops, and both
   # start at login without the file pi kept its sign-in in before the
   # keyring, which the daemon reads through a reader of pi's own item.
