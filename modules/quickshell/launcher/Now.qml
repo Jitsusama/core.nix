@@ -1286,6 +1286,39 @@ Provider {
         }
         return lookedPage.rows;
     }
+    // History's rows made while the launcher is shut, so a step into it
+    // finds them made: on Now's turn as the shell starts (Launcher.qml's
+    // warmNext), and once the to-do daemon or the notices tell a change,
+    // after the turn, since the daemon's first answer may come later. A
+    // served row is made only as it's listed, so a fresh shell's first
+    // step still made Joel's 564 and took 137 ms, 80 of them making
+    // (his journal, 2026-11-14 16:29). Open, a change waits for the step.
+    onWarmingChanged: {
+        if (warming)
+            historyRows();
+    }
+    function historyAhead() {
+        if (!(launcher?.open ?? false))
+            Qt.callLater(provider.historyMadeAhead);
+    }
+    function historyMadeAhead() {
+        if (!(launcher?.open ?? false))
+            historyRows();
+    }
+    Connections {
+        target: doneLooks
+
+        function onHeard() {
+            provider.historyAhead();
+        }
+    }
+    Connections {
+        target: provider.source("notices")
+
+        function onChanged() {
+            provider.historyAhead();
+        }
+    }
     // A served look's row, its key the one the shell's own gave it, so
     // the launcher keeps its place: Return opens it as the shell's own
     // does, the look as the shell holds it, so one gone quiet is written

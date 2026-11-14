@@ -25,7 +25,8 @@
 // files an opening reads are taken together, one read as it was not at all.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // History lists the looks done with as the to-do daemon serves them,
-// making none itself, among the notices by when each was done.
+// making none itself, among the notices by when each was done, and has
+// its rows made while the launcher is shut, so a step finds them made.
 // Long because its cases run in turn on one Now, its stand-ins and its
 // stand-in notices and to-do daemons, which each file split from it would
 // build again.
@@ -584,8 +585,38 @@ ShellRoot {
             expect("and the rows past the page go as the launcher closes",
                 pastNotices.pastWhole.kept === null,
                 JSON.stringify(pastNotices.pastWhole.kept?.keys));
+            // A look done with while the launcher is shut, which the case
+            // then waits to find among History's rows made, asking for none.
+            looksDaemon.looks = looksDaemon.looks.concat([{ id: "f", kind: "page",
+                title: "Looked at f", why: "Because.", how: "opened",
+                doneAt: Date.parse(root.lookedAt) + 1000 }]);
+        }))
+            waiting = "made ahead";
+    }
+    // History's rows as last made, read without making any.
+    function historyMade() {
+        return (now.historyKept.rows[""]?.row ?? []).map(row => row.key);
+    }
+    // History's rows are made while the launcher is shut, once the to-do
+    // daemon tells a change, so a fresh shell's first step finds them
+    // made: made at the step, Joel's 564 took 80 ms of 137 (2026-11-14).
+    function madeAhead() {
+        waiting = "";
+        if (tried(() => {
+            const made = now.historyKept.rows[""].row;
+            expect("a step into History finds its rows made while the launcher was shut",
+                now.historyRows() === made, "made again at the step");
         }))
             Qt.exit(0);
+    }
+    Timer {
+        running: root.waiting === "made ahead"
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (root.historyMade().includes("on:look:f"))
+                root.madeAhead();
+        }
     }
 
     // The notices daemon, serving the rows of the notices a case gives.
@@ -595,6 +626,8 @@ ShellRoot {
     // The to-do daemon, serving History's rows of the looks done with,
     // those the History case's look files hold.
     LooksDaemon {
+        id: looksDaemon
+
         looks: ["d", "e"].map(id => ({ id: id, kind: "page",
             title: `Looked at ${id}`, why: "Because.", how: "opened",
             doneAt: Date.parse(root.lookedAt) }))
