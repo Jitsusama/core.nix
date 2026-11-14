@@ -622,6 +622,7 @@ gather {
     ./modules/backlight/checks.nix
     ./modules/bat/checks.nix
     ./modules/bluetooth/checks.nix
+    ./modules/bluetooth-again/checks.nix
     ./modules/bluetooth-disk-prompt/checks.nix
     ./modules/bluetooth-links/checks.nix
     ./modules/btop/checks.nix

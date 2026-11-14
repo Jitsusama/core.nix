@@ -290,6 +290,14 @@
   batteries-leave-time-to-hibernate = ''
     UPower hibernates a laptop at 5%, before it goes flat, keeping its work
   '';
+  bluetooth-again-passes-clippy = ''
+    clippy finds nothing in bluetooth-again or its tests
+  '';
+  bluetooth-again-starts-a-controller = ''
+    bluetooth-again finds each Bluetooth controller on PCI by its class, has its driver let go of
+    it and take it back, hands one no driver holds to the bus, and says a refusal, or a
+    controller that doesn't come back, as a failure
+  '';
   bluetooth-firmware-reaches-the-disk-prompt-dell-xps-14-da14260 = ''
     the XPS 14's Bluetooth firmware for the disk prompt is in the machine's firmware
   '';

@@ -339,6 +339,7 @@
         asahi-nvram = ./modules/asahi-nvram/nixos.nix;
         backlight = ./modules/backlight/nixos.nix;
         bluetooth = ./modules/bluetooth/nixos.nix;
+        bluetooth-again = ./modules/bluetooth-again/nixos.nix;
         bluetooth-disk-prompt = ./modules/bluetooth-disk-prompt/nixos.nix;
         bluetooth-links = ./modules/bluetooth-links/nixos.nix;
         btrfs = ./modules/btrfs/nixos.nix;

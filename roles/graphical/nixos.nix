@@ -1,6 +1,6 @@
 # A NixOS machine with a screen in front of Joel: fonts, sound, Bluetooth for
 # headphones and mice, how well each Bluetooth link is doing, for the
-# launcher to say, a plugged-in monitor's own controls, which memory modules
+# launcher to say, and a command that starts its controller again, a plugged-in monitor's own controls, which memory modules
 # the firmware lists, for the launcher to say what RAM it is, which programs
 # stream from a USB camera, a desk light lit while one does, a keyring the
 # TPM unlocks, 1Password, and niri, started at boot by greetd, with the
@@ -32,6 +32,7 @@
     nixosModules.backlight
     nixosModules.base
     nixosModules.bluetooth
+    nixosModules.bluetooth-again
     nixosModules.bluetooth-links
     nixosModules.camera
     nixosModules.console
