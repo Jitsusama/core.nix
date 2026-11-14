@@ -55,17 +55,18 @@ in
   # read, and as only a dump it could read led to a reset, the chip stayed
   # dead, mouse and all, until a reboot. So an exception that passed no event
   # on must still raise the Hardware Error that resets it
-  # (btintel-pcie-resets-unread-dump).
+  # (btintel-pcie-resets-unread-dump). Every way out of reading the dump
+  # goes through the label that raises it: a newer kernel's read added an
+  # early return the patch carried forward would leave, which skips the
+  # error as surely as having no call at all
+  # (tests/every-unread-dump-resets.sh).
   bluetooth-recovers-from-an-unread-exception =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
     in
     pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
-      source=${kernelSource [ driver ]}/${driver}
-      if ! grep -q '^[[:space:]]*btintel_pcie_hwexp_unread(data);$' "$source"; then
-        echo "Bluetooth's chip is left halted when its exception dump can't be read." >&2
-        exit 1
-      fi
+      ${lib.getExe pkgs.bash} ${./tests/every-unread-dump-resets.sh} \
+        ${kernelSource [ driver ]}/${driver}
       touch $out
     '';
 
