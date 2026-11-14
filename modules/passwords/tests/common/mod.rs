@@ -76,6 +76,20 @@ while read -r line; do
 done
 "#;
 
+/// The fence's list as the harness publishes it, naming a file, a folder,
+/// a link to a file outside home and a file that isn't there, keeping
+/// SSH's settings and public keys, and naming npm's settings.
+pub const FENCE_LIST: &str = r#"{
+  "version": 1,
+  "home": [".secret-file", ".secret-folder/", ".linked-secret", ".absent-file"],
+  "sshKept": ["^(config|known_hosts(\\.old)?|.*\\.pub)$"],
+  "npmrc": ".npmrc"
+}"#;
+
+/// npm's settings with a registry and its made-up token.
+pub const NPMRC: &str = "registry=https://registry.example/\n\
+                         //registry.example/:_authToken=npm-made-up-token\n";
+
 /// The made-up value RELEASING releases, which no answer, log or
 /// command line may hold.
 pub const RELEASED_VALUE: &str = "tr0ub4dor-made-up-for-the-test";
@@ -156,6 +170,9 @@ impl Running {
     /// Its profiles are the store's folder holding the tests' bash, as a
     /// machine's are root's folders of the programs it chose, and then
     /// `planted_profile`, which a test may plant as the account's own.
+    /// The fence's list it hides by is `fence_list`, as `FENCE_LIST` gives
+    /// it, and its home holds one of each thing the list names, beside a
+    /// cache folder.
     pub fn releasing(test: &str, releases: &[&str]) -> Running {
         let words = std::env::var("LAUNCHER_WORDS")
             .expect("LAUNCHER_WORDS names no vocabulary; passwords-holds-no-secret hands it one");
@@ -169,6 +186,7 @@ impl Running {
             "bwrap": bwrap,
             "references": {"1password": "op://"},
             "profiles": [stored_folder("bash"), folder.join("home/.nix-profile/bin")],
+            "hidden": folder.join("fence-hidden.json"),
         });
         let running = Running::started_with(
             test,
@@ -184,7 +202,29 @@ impl Running {
         std::fs::write(&bwrap, format!("#!/bin/sh\n{BWRAP}")).unwrap();
         std::fs::set_permissions(&bwrap, std::os::unix::fs::PermissionsExt::from_mode(0o755))
             .unwrap();
+        std::fs::write(running.fence_list(), FENCE_LIST).unwrap();
+        for folder in [".secret-folder", ".ssh", ".cache"] {
+            std::fs::create_dir_all(home.join(folder)).unwrap();
+        }
+        for (file, held) in [
+            (".secret-file", "a token"),
+            (".secret-folder/inside", "a key"),
+            (".ssh/id_ed25519", "a private key"),
+            (".ssh/id_ed25519.pub", "a public key"),
+            (".ssh/config", "Host *"),
+            (".npmrc", NPMRC),
+        ] {
+            std::fs::write(home.join(file), held).unwrap();
+        }
+        std::fs::write(folder.join("outside-secret"), "a credential").unwrap();
+        std::os::unix::fs::symlink(folder.join("outside-secret"), home.join(".linked-secret"))
+            .unwrap();
         running
+    }
+
+    /// Where a releasing daemon reads the fence's list from.
+    pub fn fence_list(&self) -> PathBuf {
+        self.folder.join("fence-hidden.json")
     }
 
     /// The folder a test keeps everything in.
