@@ -1,8 +1,9 @@
 """The Wi-Fi test's joins-when-asked area.
 
 Here the shell has wifid join, leave, sign in and save, the radios go off and on, a card stuck or
-unanswered moves on, an account moves the card to another access point, and the card dozes only
-on battery. tests/vm/network/wifi.nix runs this through
+unanswered moves on, an account moves the card to another access point and the card keeps its
+neighbours through it, a network of another name forgets them, and the card dozes only on
+battery. tests/vm/network/wifi.nix runs this through
 pytest inside the driver (tests/lib/vm_pytest.py), and its opening comment says what the test
 proves. The tests run in the order written, each taking the machine on from where the one before
 left it, so one run alone with -k starts from the boot and may not find what an earlier one set up.
@@ -24,6 +25,25 @@ if TYPE_CHECKING:
 # How many columns a line of wpa_cli's scan results has: its access point, frequency,
 # level, flags and network.
 SCAN_COLUMNS = 5
+
+# A neighbour on Lantern nothing on the machine asks after, so it stays known only while the
+# kernel keeps what it knew, and nothing learning it again hides that it was forgotten.
+NEIGHBOUR = "10.42.0.99"
+NEIGHBOUR_ADDRESS = "02:00:00:00:42:99"
+
+
+def knows_a_neighbour(machine: BaseMachine, wifid: Wifid) -> None:
+    """Have the Wi-Fi card know the neighbour, as it knows one it has asked after lately."""
+    # The Wi-Fi card keeps what it knows through a moment without its carrier, and a cable
+    # doesn't, since it's often plugged into another network.
+    for setting in ("ipv4/conf/wlan2/arp", "ipv6/conf/wlan2/ndisc"):
+        machine.succeed(f"grep -qx 0 /proc/sys/net/{setting}_evict_nocarrier")
+    assert wifid.cables, "the cables were noted by an earlier test"
+    for cable in wifid.cables:
+        machine.succeed(f"grep -qx 1 /proc/sys/net/ipv4/conf/{cable}/arp_evict_nocarrier")
+    machine.succeed(
+        f"ip neighbour replace {NEIGHBOUR} lladdr {NEIGHBOUR_ADDRESS} dev wlan2 nud stale"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -478,6 +498,8 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
 
     retry(hears_the_second, timeout=timedelta(seconds=60))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    wifid.holds_address("10.42.0.")
+    knows_a_neighbour(machine, wifid)
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
     assert answer == {"id": 1, "done": True}, answer
     machine.wait_until_succeeds(
@@ -486,6 +508,11 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         ' && echo "$s" | grep -qx bssid=02:00:00:00:05:00',
         timeout=timedelta(seconds=30),
     )
+    # The card still knows the neighbour after the move, so it asks no one
+    # where the router went, and the router answers through the second.
+    still = machine.succeed(f"ip -4 neighbour show {NEIGHBOUR} dev wlan2")
+    assert NEIGHBOUR_ADDRESS in still, still
+    machine.succeed("ping -c 1 -W 2 10.42.0.1")
     unheard = wifid.acting({"act": "roam", "bssid": "02:00:00:00:09:00"})
     assert unheard["error"]["refused"] == "NotNearby", unheard
     machine.succeed("systemctl stop lantern-two")
@@ -495,6 +522,23 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
         timeout=timedelta(seconds=60),
     )
+
+
+def test_joining_a_network_of_another_name_forgets_the_neighbours_of_the_last(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """Joining a network of another name forgets the neighbours of the last.
+
+    A neighbour kept from Lantern could carry the Inn's traffic to a router that isn't there,
+    were the two to give their routers one address, as many networks do.
+    """
+    knows_a_neighbour(machine, wifid)
+    status, _, said = wifid.joining({"name": "Roadside Inn"})
+    assert status == 0, said
+    wifid.joined("Roadside Inn")
+    wifid.holds_address("10.43.0.")
+    gone = machine.succeed(f"ip -4 neighbour show {NEIGHBOUR} dev wlan2")
+    assert NEIGHBOUR_ADDRESS not in gone, gone
 
 
 def test_the_card_stays_awake_on_mains_power_and_dozes_on_battery(
