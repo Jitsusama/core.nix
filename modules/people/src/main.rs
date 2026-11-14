@@ -37,6 +37,10 @@
 //! watch of it is told again only once the book changed, or the clock
 //! reached a meeting's start or end, and then only the records that
 //! changed and the keys that went, so the shell remakes nothing else.
+//! Each source is asked ahead about everyone a watch of it lists, as
+//! Joel steps into them from its first rows. A listing's records and a
+//! search's say how each source that says has someone stand, in People's
+//! words, as that source's entry's `stood`, so the shell words no stand.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -379,13 +383,18 @@ fn took_in(shared: &Shared, source: &str, line: &str) {
     shared.1.notify_all();
 }
 
-/// Everyone a watch names, as a source is asked ahead about once it can
-/// answer again.
+/// Everyone a watch names, and everyone a watch of those listed was last
+/// told of, as a source is asked ahead about once it can answer again.
 fn watched(daemon: &Daemon) -> Vec<String> {
     daemon
         .watches
         .iter()
-        .filter_map(|watch| watch.keys.as_ref())
+        .filter_map(|watch| {
+            watch
+                .keys
+                .as_ref()
+                .or_else(|| watch.listing.as_ref().map(|(told, _)| &told.listed))
+        })
         .flatten()
         .cloned()
         .collect()
@@ -476,6 +485,7 @@ fn say_gathered(daemon: &mut Daemon) {
         ..
     } = daemon;
     let at = clock();
+    let mut listed = Vec::new();
     watches.retain_mut(|watch| {
         if let Some((told, seen)) = &mut watch.listing {
             // Told again once the book changed, or once the clock reaches
@@ -488,6 +498,7 @@ fn say_gathered(daemon: &mut Daemon) {
             if moved.is_empty() {
                 return true;
             }
+            listed.extend(told.listed.iter().cloned());
             let line = json!({"id": watch.id, "changed": moved.changed, "gone": moved.gone});
             return watch.told.send(line.to_string()).is_ok();
         }
@@ -498,6 +509,9 @@ fn say_gathered(daemon: &mut Daemon) {
         let line = json!({"id": watch.id, "changed": changed}).to_string();
         watch.told.send(line).is_ok()
     });
+    // Whoever is listed anew is asked ahead of, as everyone listed was as
+    // the watch began.
+    ask_ahead(daemon, &listed);
 }
 
 /// Answers one client until it goes.
@@ -550,6 +564,10 @@ fn listing(
     // Told under the lock that holds the watch, as a watch of records is,
     // so no change is said before the whole.
     let _ = told.send(json!({"id": id, "records": records}).to_string());
+    // Everyone listed is asked ahead of, since they're who Joel steps into
+    // from the launcher's first rows: Slack is asked who they are and
+    // their conversation before he does, so their insides are ready.
+    ask_ahead(&mut daemon, &said.listed);
     let seen = daemon.revision;
     daemon.watches.push(Watch {
         connection,

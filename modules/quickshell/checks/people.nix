@@ -17,8 +17,9 @@
   # The launcher's People, with Tuple as its source, reads Tuple's contacts
   # from the real people daemon, which runs the real tuple-people reading
   # a stand-in for Tuple's follow here, and calls, joins or favours one
-  # (tests/people.qml), with niri stood in. Slack's source rides beside it,
-  # its reader stood in by tests/people-slack-source.sh. A listener stands in for
+  # (tests/people.qml), with niri stood in. Slack rides beside it as the
+  # daemon serves it, with no file of its own, its reader stood in by
+  # tests/people-slack-source.sh. A listener stands in for
   # Tuple's daemon's socket, and the shell never asks Tuple anything
   # itself, since it reaches Tuple through niri alone.
   the-launcher-finds-the-people =
@@ -112,6 +113,7 @@
         "launcher/Placed.js"
         "launcher/Provider.qml"
         "launcher/ReadyRows.js"
+        "launcher/ReadyRows.qml"
         "launcher/Recent.js"
         "launcher/Zones.js"
         "launcher/words.json"
@@ -121,11 +123,6 @@
       cp ${import ../launcher/zones.nix { inherit lib pkgs; }} zones.jsonl
       cp ${../../people/PersonSource.qml} PersonSource.qml
       cp ${../../tuple/TupleSource.qml} launcher/people/tuple.qml
-      # Slack's source as a machine bringing Slack has it, over a stand-in
-      # for slack-people, so its people are seen to make no rows here.
-      cp ${../../slack/SlackSource.qml} launcher/people/slack.qml
-      cp ${../../slack/Slack.js} launcher/people/Slack.js
-      cp ${../../slack/SlackConversation.qml} SlackConversation.qml
       cp ${../../../tests/people-page-source.qml} launcher/people/pages.qml
       cp ${../../tuple/TuplePeople.qml} TuplePeople.qml
       cp ${../../../tests/people.qml} shell.qml

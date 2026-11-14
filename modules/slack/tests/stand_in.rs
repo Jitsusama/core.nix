@@ -504,19 +504,40 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     let path = credentials("words");
     // The launcher's words, as the people daemon's unit hands them. Ada
     // asked again says her status, which only Slack's profile of her
-    // holds.
+    // holds. Nobody, asked ahead once stepped into, as the daemon's watch
+    // of a step-in asks, still says Slack knows no one there.
     let said = said_to(
         program(&stand_in.origin, &path)
             .env("LAUNCHER_WORDS", WORDS)
             .spawn()
             .unwrap(),
-        "ada@example.com\nada@example.com\nnobody@example.com\n",
+        "ada@example.com\nada@example.com\nnobody@example.com\n?nobody@example.com\n",
     );
     let said: Vec<serde_json::Value> = said
         .iter()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
-    let ada = said.last_chunk::<2>().unwrap();
+    let of = |address: &str| -> Vec<&serde_json::Value> {
+        said.iter()
+            .filter(|line| line["email"] == address)
+            .collect()
+    };
+    // Stepped into before anything is known of her, Write in Slack's place
+    // is held at once while Slack is asked, and so is nobody's.
+    let looking = serde_json::json!([{"key": "verb:person:slack", "side": "looking in Slack",
+        "gone": true, "main": true}]);
+    assert_eq!(
+        (
+            &of("ada@example.com")[0]["acts"],
+            &of("ada@example.com")[0]["known"]
+        ),
+        (&looking, &serde_json::json!(false))
+    );
+    assert_eq!(of("nobody@example.com")[0]["acts"], looking);
+    let ada = [
+        *of("ada@example.com").last().unwrap(),
+        *of("nobody@example.com").last().unwrap(),
+    ];
     assert_eq!(
         (&ada[0]["facts"], &ada[0]["acts"]),
         (
@@ -526,21 +547,25 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
                 {"name": "Time Zone", "zone": "Europe/London", "as": "zone"}
             ]),
             &serde_json::json!([{"key": "verb:person:slack",
-                "open": "slack://user?team=T1&id=U1"}])
+                "open": "slack://user?team=T1&id=U1", "main": true}])
         )
     );
-    // Who she is stays as the shell's source reads it.
-    assert_eq!(ada[0]["zone"], "Europe/London");
-    // Nobody Slack knows has nothing to write to, and a fact says so.
+    // Who she is stays as the daemon reads how she stands.
+    assert_eq!(ada[0]["presence"], "active");
+    // Nobody Slack knows has nothing to write to, Write in Slack's place
+    // saying so where Joel stepped in, and a fact says so too.
     assert_eq!(
-        (&ada[1]["facts"], &ada[1]["acts"]),
+        (&ada[1]["facts"], &ada[1]["acts"], &ada[1]["known"]),
         (
             &serde_json::json!([{"name": "Slack", "said": "no one at this address"}]),
-            &serde_json::json!([])
+            &serde_json::json!([{"key": "verb:person:slack",
+                "side": "no one at this address", "gone": true, "main": true}]),
+            &serde_json::json!(false)
         )
     );
-    // Lin, asked ahead, has her conversation with Joel as a row ready for
-    // her Recent, with its messages in its drawer.
+    // Lin, asked ahead, has her conversation with Joel between them as a
+    // row ready for her Messages, with its messages in its drawer, waiting
+    // on Joel's answer, which Reply in Slack gives first of her ways.
     let lin = said_to(
         program(&stand_in.origin, &path)
             .env("LAUNCHER_WORDS", WORDS)
@@ -550,10 +575,14 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
     );
     let lin: serde_json::Value = serde_json::from_str(&lin[0]).unwrap();
     assert_eq!(
-        lin["conversations"],
+        lin["between"],
         serde_json::json!([{
             "at": 1_730_312_345_000_u64,
             "key": "slack:conversation:D4",
+            "kind": "wrote",
+            "mine": false,
+            "what": "Slack",
+            "waits": {},
             "row": {
                 "name": "See you there & then",
                 "glyph": "chat",
@@ -562,14 +591,19 @@ fn handed_the_launchers_words_it_says_their_facts_and_how_to_write_to_them() {
                 "acts": [
                     {"key": "verb:slack:open", "open": "slack://channel?team=T1&id=D4"},
                     {"key": "verb:slack:link", "copy": "https://slack.example/archives/D4/p2"}
-                ]
-            },
-            "drawer": {
-                "title": "Lin Chen",
-                "facts": [],
-                "body": "You: Lunch, @Lin Chen?\n\nLin Chen: See you there & then"
+                ],
+                "drawer": {
+                    "title": "Lin Chen",
+                    "facts": [],
+                    "body": "You: Lunch, @Lin Chen?\n\nLin Chen: See you there & then"
+                }
             }
         }])
+    );
+    assert_eq!(
+        lin["acts"],
+        serde_json::json!([{"key": "verb:person:slack:reply",
+            "open": "slack://channel?team=T1&id=D4", "main": true}])
     );
     forget(&path);
 }

@@ -2433,14 +2433,6 @@
     rows, and takes its ask in For You with it however it stops,
     while its socket, systemd's and held only once pi has signed in, stays
   '';
-  slack-waits-in-its-place = ''
-    Slack's source in People asks about each address once a minute as Joel steps in, never one
-    known to be nobody, and ahead about those listed, in order, each once; Write in Slack stands
-    dimmed, looking in Slack, until it's answered, or not in Slack once a step-in found nobody,
-    and isn't listed for someone already known not to be there; answers that come together are
-    taken as one change, and those already known as none; their conversation is found by any of
-    their addresses, its drawer saying who said each message, newest last
-  '';
   slack-reads-a-notice-read-there-once = ''
     Slack's own desktop notice of a message Joel read in Slack is read in Notices once, said as
     read in Slack, after the change that found it, so the shell logs no binding loop doing it,

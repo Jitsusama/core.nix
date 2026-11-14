@@ -1,7 +1,6 @@
 pragma Singleton
-// A conversation in Slack, one thing wherever the launcher shows it: a
-// person's direct messages with Joel in their Recent (SlackSource.qml),
-// what in Slack wants him in Now (NewSlack.qml), and Slack's own Unread
+// A conversation in Slack, one thing wherever the launcher shows it: what
+// in Slack wants him in Now (NewSlack.qml), and Slack's own Unread
 // and Recent (SlackProgram.qml). `row` gives its whole row, made with the
 // launcher's `thing` of the surface showing it, so no surface makes a
 // second version (Joel, 2026-10-28 22:20). The surface says what's beside

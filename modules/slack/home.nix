@@ -34,8 +34,6 @@ in
   ];
 
   xdg.configFile = {
-    # What the source decides, beside it, where its import finds it.
-    "quickshell/launcher/people/Slack.js".source = ./Slack.js;
     # A Slack conversation's one row, which every surface showing one
     # takes (SlackConversation.qml), a message's, wherever it's listed
     # (SlackMessage.qml), what in Slack wants him, watched on Slack's
@@ -75,12 +73,12 @@ in
   # the harness's Slack sign-in, read only (Joel, 2026-10-28). It's the
   # first source asked, since a message is the lightest way to reach
   # someone, before a call or a mail (VKCF3Z, 3bbad443). With no sign-in,
-  # nothing is asked.
+  # nothing is asked. The people daemon serves Slack's part of a person
+  # whole, its act, conversation and facts ready, so it has no QML source.
   jitsusama.people.sources.slack = {
     order = 5;
-    source = ./SlackSource.qml;
     # Slack's reader, run by the people daemon alone, which asks it only
-    # what a client of the daemon asks, the shell's source among them. It's
+    # what a client of the daemon asks, or ahead of those it lists. It's
     # handed the vocabulary through env, which becomes slack-people, since
     # the daemon runs a source's command as it's given.
     daemon = [
@@ -89,8 +87,8 @@ in
       (lib.getExe lookUp)
       credentials
     ];
-    # How someone stands in Slack, as SlackSource.qml says it, for those
-    # the daemon lists in order: which of People's words (words.json) each
+    # How someone stands in Slack, worded by the daemon for each entry it
+    # serves and for those it lists in order: which of People's words (words.json) each
     # presence is, a presence People doesn't know said as it is, and their
     # status's emoji after it.
     stands = {

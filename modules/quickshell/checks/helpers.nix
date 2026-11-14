@@ -115,8 +115,8 @@ let
   mathsModules = "${pkgs.callPackage ../maths/package.nix { }}/lib/qt-6/qml";
   # Fonts for a shell drawn offscreen, which needs none of its own.
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
-  # The account's shell as it gets it, laid out in qs, with Slack's source for
-  # People and the greeter beside it, for a check to read every file of.
+  # The account's shell as it gets it, laid out in qs, with Slack's rows and
+  # the greeter beside it, for a check to read every file of.
   shellAsGiven =
     let
       files =
@@ -131,13 +131,10 @@ let
         '') files
       )}
       mv quickshell qs
-      # Slack's source for People, its conversation's row and a message's,
-      # Now's Slack piece and what its program row says are installed only
-      # where a machine brings Slack, as no example does, so they're read
-      # here as if one had.
-      mkdir -p qs/launcher/people qs/pieces
-      cp ${../../slack/SlackSource.qml} qs/launcher/people/slack.qml
-      cp ${../../slack/Slack.js} qs/launcher/people/Slack.js
+      # Slack's conversation's row and a message's, Now's Slack piece and
+      # what its program row says are installed only where a machine brings
+      # Slack, as no example does, so they're read here as if one had.
+      mkdir -p qs/launcher qs/pieces
       cp ${../../slack/SlackConversation.qml} qs/SlackConversation.qml
       cp ${../../slack/SlackMessage.qml} qs/SlackMessage.qml
       cp ${../../slack/SlackMessage.js} qs/SlackMessage.js

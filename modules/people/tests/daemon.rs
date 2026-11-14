@@ -7,8 +7,14 @@
 //! about everyone watched; a roster is searched and watched by who it
 //! lists; one a source found when asked is searched with their row and
 //! drawer ready; one found says how they stand as one listed does, by
-//! every source; what's held is known by key with no source asked; and an ask
-//! or kind it doesn't know is refused.
+//! every source; those listed are asked ahead of while they're watched,
+//! each source's entry saying how it has them stand; what's held is known
+//! by key with no source asked; and an ask or kind it doesn't know is
+//! refused.
+//!
+//! Long because every case runs the one daemon over its socket with the
+//! same stand-in sources and the same running harness, which a split would
+//! repeat or move into a module each part reads.
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -647,6 +653,67 @@ fn one_found_says_how_they_stand_as_one_listed_does() {
         (&grace["side"], &grace["glyph"]),
         (&json!([{"said": "in a call"}]), &json!("person")),
         "Grace, by Slack and Google: {said}"
+    );
+}
+
+#[test]
+fn those_listed_are_asked_ahead_of_and_each_source_says_how_they_stand() {
+    // Tuple says everyone unasked, Ada a favourite, and Slack only those
+    // asked about, standing in a call once asked ahead.
+    let tuple = json!({"field": "status", "words": {"unknown": {"word": "available", "order": 0}}});
+    let slack = json!({"field": "way", "words": {"ahead": {"word": "call", "order": 1}}});
+    let running = Running::started(
+        "ahead",
+        &[("tuple", ROSTER), ("slack", KNOWING)],
+        &[("tuple", tuple), ("slack", slack)],
+        &[],
+    );
+    let mut client = running.client();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while client.ask(&json!({"id": 0, "ask": "health"}))["people"] != 3 {
+        assert!(Instant::now() < deadline, "the roster was never held");
+        // The roster's three lines land as the source starts, asked about
+        // again each 20 ms until the deadline.
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Nobody is asked ahead of while nothing watches those listed.
+    assert_eq!(running.asked("slack"), Vec::<String>::new());
+    client.ask(&json!({"id": 1, "ask": "watch", "kind": "listing"}));
+    // Ada, listed, is asked ahead of, as the shell's Slack source asked as
+    // the launcher opened; Eli, listed by nobody, and Gus, with no
+    // address, aren't.
+    let ada = loop {
+        let said = next_change(&mut client);
+        let found = said["changed"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|record| record["key"] == "person:ada@example.com")
+            .cloned();
+        if let Some(ada) = found.filter(|ada| !ada["sources"]["slack"].is_null()) {
+            break ada;
+        }
+    };
+    assert_eq!(running.asked("slack"), ["?ada@example.com"]);
+    // Each source's entry says how it has them stand, in the launcher's
+    // words, so the shell words nobody's stand itself.
+    assert_eq!(
+        (
+            &ada["sources"]["tuple"]["stood"],
+            &ada["sources"]["slack"]["stood"]
+        ),
+        (
+            &json!({"said": "around", "order": 0}),
+            &json!({"said": "in a call", "order": 1})
+        ),
+        "{ada}"
+    );
+    // And so does each a search finds.
+    let said = client.ask(&json!({"id": 2, "ask": "search", "words": "fenwick"}));
+    assert_eq!(
+        said["records"][0]["sources"]["tuple"]["stood"],
+        json!({"said": "around", "order": 0}),
+        "{said}"
     );
 }
 
