@@ -114,6 +114,10 @@ pub struct Row {
     /// asks it as served rather than working it out from the session's
     /// folder; "" where it has none.
     pub leaves: String,
+    /// Joel's talk to it on its way to an answer, its id and stage, so
+    /// the launcher ties what it says of the talk to the row; none
+    /// where no talk waits.
+    pub talk: Option<serde_json::Value>,
     pub ranked: Ranked,
 }
 
@@ -226,6 +230,27 @@ fn known_as(listed: Option<(String, String)>, keywords: &[&str]) -> String {
     known
 }
 
+/// What a session's row notes: the machine it's on where it isn't here,
+/// then its `note`, which one out of reach doesn't say.
+fn noted(session: Session, note: &str, words: &Words) -> String {
+    let machine = [("machine", session.machine())];
+    let place_said = if session.here() {
+        String::new()
+    } else {
+        fill(
+            words
+                .machine
+                .word(if session.reachable() { "on" } else { "away" }),
+            &machine,
+        )
+    };
+    if session.reachable() {
+        joined(&[place_said.as_str(), note])
+    } else {
+        place_said
+    }
+}
+
 /// A session's row, `place`d in the tree.
 pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row {
     let presence = session.presence();
@@ -242,22 +267,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
             &[&title, said("/questInfo/title").unwrap_or("")],
         ),
     };
-    let machine = [("machine", session.machine())];
-    let place_said = if session.here() {
-        String::new()
-    } else {
-        fill(
-            words
-                .machine
-                .word(if session.reachable() { "on" } else { "away" }),
-            &machine,
-        )
-    };
-    let noted = if session.reachable() {
-        joined(&[&place_said, &note])
-    } else {
-        place_said
-    };
+    let noted = noted(session, &note, words);
     let orchestrator = session.under();
     let under = if orchestrator.is_empty() || orchestrator == address {
         String::new()
@@ -323,6 +333,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         },
         acts: standing::acts(stands, windowed, session.here()),
         leaves: leaves(session, known, words),
+        talk: None,
         ranked: Ranked {
             note: joined(&[&under, &noted]),
             side: said_of(&ranked_items),
@@ -349,9 +360,10 @@ impl Row {
     }
 
     /// Says first at its right that it answered a talk Joel hasn't read,
-    /// given way last, flat or under its orchestrator alike (Joel,
-    /// 2026-11-11: "how do i know when a sessions answers a talk?").
-    pub fn answered(&mut self, said: &str) {
+    /// or how one of his stands on its way, given way last, flat or under
+    /// its orchestrator alike (Joel, 2026-11-11: "how do i know when a
+    /// sessions answers a talk?").
+    pub fn says_first(&mut self, said: &str) {
         let item = Item {
             said: said.to_owned(),
             keep: 6,
@@ -360,6 +372,13 @@ impl Row {
         self.side = said_of(&self.side_items);
         self.ranked.side_items.insert(0, item);
         self.ranked.side = said_of(&self.ranked.side_items);
+    }
+
+    /// Says first how Joel's talk to it stands on its way (`said`), and
+    /// holds which talk it is and its stage.
+    pub fn waits(&mut self, said: &str, talk: &str, stage: &str) {
+        self.says_first(said);
+        self.talk = Some(serde_json::json!({"id": talk, "stage": stage}));
     }
 }
 

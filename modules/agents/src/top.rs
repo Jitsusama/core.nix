@@ -156,14 +156,25 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             .filter(|id| **id != "talk")
             .map(|id| row.act(id)),
     );
-    json!({
-        "key": key_of(address), "thing": row.key, "place": PLACE,
-        "kind": if members.is_empty() { "session" } else { "orchestration" },
-        "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": 0,
-        "side": items(&side), "note": row.note,
-        "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-        "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
-    })
+    talking(
+        row,
+        json!({
+            "key": key_of(address), "thing": row.key, "place": PLACE,
+            "kind": if members.is_empty() { "session" } else { "orchestration" },
+            "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": 0,
+            "side": items(&side), "note": row.note,
+            "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+        }),
+    )
+}
+
+/// The `entry` with the talk its session's row holds, where one waits.
+fn talking(row: &Row, mut entry: Value) -> Value {
+    if let Some(talk) = &row.talk {
+        entry["talk"] = talk.clone();
+    }
+    entry
 }
 
 /// An orchestration's own acts as rows a step in, ahead of its sessions:
@@ -248,13 +259,16 @@ fn member(row: &Row, parent: &str, depth: usize) -> Value {
     let address = address(row);
     let mut acts = vec![peek()];
     acts.extend(member_acts(row).map(|id| row.act(id)));
-    json!({
-        "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
-        "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
-        "depth": depth, "side": items(&row.side_items), "note": row.note,
-        "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
-        "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
-    })
+    talking(
+        row,
+        json!({
+            "key": key_of(address), "thing": row.key, "place": PLACE, "parent": parent,
+            "kind": "session", "name": row.name, "glyph": row.glyph, "hue": row.hue,
+            "depth": depth, "side": items(&row.side_items), "note": row.note,
+            "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
+            "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone},
+        }),
+    )
 }
 
 /// The entries laid under an orchestrator, each under the nearest laid
@@ -416,6 +430,7 @@ mod tests {
             returns: "switch",
             acts: acts.to_vec(),
             leaves: format!("its folder stays ({address})."),
+            talk: None,
             ranked: Ranked {
                 note: String::new(),
                 side: String::new(),

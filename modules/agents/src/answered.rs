@@ -16,6 +16,13 @@
 //! talk's lines (lib/mesh/talk.ts): a reader tags on the stage, passes
 //! over stages and fields it doesn't know, and finds a field absent
 //! rather than null; `read` is the daemon's alone to write.
+//!
+//! Until it's answered, a talk of his is waiting: its row says how it
+//! stands in Talks' own words (delivered, reading, replying) and its
+//! drawer leads with what he asked and how it went, so what he said is
+//! seen to have landed somewhere rather than in the void (Joel, through
+//! MY3HPU: "saying to an agent feels like the void"). It's never counted,
+//! since nothing waits on him.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -47,6 +54,27 @@ pub struct Answer {
     pub read: bool,
 }
 
+/// A talk of Joel's its session hasn't answered yet.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Waiting {
+    /// The session's address.
+    pub address: String,
+    /// The talk's id.
+    pub talk: String,
+    /// What Joel asked.
+    pub asked: String,
+    /// How far it's come: delivered, reading or replying.
+    pub stage: String,
+    /// When it was delivered, in milliseconds since 1970, where it said.
+    pub at: Option<i64>,
+}
+
+/// The stages a talk passes on its way to an answer, and those ending
+/// it, as talk.ts writes them; others (`read`, `came`) say nothing of how
+/// far it's come.
+const ON_ITS_WAY: [&str; 3] = ["delivered", "reading", "replying"];
+const ENDED: [&str; 3] = ["replied", "failed", "over"];
+
 /// When a talk was sent, in milliseconds, from its id, `talk-<ms>` or
 /// `talk-<ms>-<n>`, so the newest is known without reading its lines.
 fn sent(id: &str) -> (i64, i64) {
@@ -59,11 +87,7 @@ fn sent(id: &str) -> (i64, i64) {
 /// read or not.
 fn answer_of(talk: &Value) -> Option<Answer> {
     let lines = talk["lines"].as_array()?;
-    let delivered = lines.iter().find(|line| line["stage"] == "delivered")?;
-    let asked = delivered["text"].as_str()?;
-    if delivered["from"] != "joel" || asked.starts_with(AUTOMATED) {
-        return None;
-    }
+    let asked = asked_of(lines)?;
     let (answered, line) = lines
         .iter()
         .enumerate()
@@ -85,6 +109,39 @@ fn answer_of(talk: &Value) -> Option<Answer> {
     })
 }
 
+/// The line delivering what Joel said, unless the machine said it on
+/// its own.
+fn delivered(lines: &[Value]) -> Option<&Value> {
+    let delivered = lines.iter().find(|line| line["stage"] == "delivered")?;
+    let asked = delivered["text"].as_str()?;
+    (delivered["from"] == "joel" && !asked.starts_with(AUTOMATED)).then_some(delivered)
+}
+
+fn asked_of(lines: &[Value]) -> Option<&str> {
+    delivered(lines)?["text"].as_str()
+}
+
+/// The talk, if it's Joel's and on its way to an answer: delivered and
+/// not yet replied, failed or over.
+fn waiting_of(talk: &Value) -> Option<Waiting> {
+    let lines = talk["lines"].as_array()?;
+    let delivered = delivered(lines)?;
+    let stage = lines
+        .iter()
+        .filter_map(|line| line["stage"].as_str())
+        .rfind(|stage| ON_ITS_WAY.contains(stage) || ENDED.contains(stage))?;
+    if ENDED.contains(&stage) {
+        return None;
+    }
+    Some(Waiting {
+        address: talk["address"].as_str()?.to_owned(),
+        talk: talk["id"].as_str()?.to_owned(),
+        asked: delivered["text"].as_str()?.to_owned(),
+        stage: stage.to_owned(),
+        at: clock::ms_of(&delivered["at"]),
+    })
+}
+
 /// The answers among the node's `talks`, read or not, one at most a session,
 /// from the newest talk to each whose session is `live`, in the order of
 /// their addresses.
@@ -92,6 +149,24 @@ pub fn answers<'a>(
     talks: impl Iterator<Item = &'a Value>,
     live: &dyn Fn(&str) -> bool,
 ) -> Vec<Answer> {
+    newest(talks, live).filter_map(answer_of).collect()
+}
+
+/// Joel's talks still on their way to an answer, one at most a session,
+/// as `answers` finds them.
+pub fn waiting<'a>(
+    talks: impl Iterator<Item = &'a Value>,
+    live: &dyn Fn(&str) -> bool,
+) -> Vec<Waiting> {
+    newest(talks, live).filter_map(waiting_of).collect()
+}
+
+/// The newest talk to each session `live`, in the order of their
+/// addresses.
+fn newest<'a>(
+    talks: impl Iterator<Item = &'a Value>,
+    live: &dyn Fn(&str) -> bool,
+) -> impl Iterator<Item = &'a Value> {
     let mut newest: std::collections::BTreeMap<&str, &Value> = std::collections::BTreeMap::new();
     for talk in talks {
         let (Some(address), Some(id)) = (talk["address"].as_str(), talk["id"].as_str()) else {
@@ -104,11 +179,12 @@ pub fn answers<'a>(
             newest.insert(address, talk);
         }
     }
-    newest
+    let kept: Vec<&Value> = newest
         .into_iter()
         .filter(|(address, _)| live(address))
-        .filter_map(|(_, talk)| answer_of(talk))
-        .collect()
+        .map(|(_, talk)| talk)
+        .collect();
+    kept.into_iter()
 }
 
 /// Says in the talk's own file that Joel read its answer, as the harness
@@ -151,6 +227,21 @@ pub fn facts(answer: &Answer, names: &Said, called: &dyn Fn(&str) -> Option<Stri
     vec![
         json!({"label": names.word("asked"), "value": answer.asked, "words": true}),
         answered,
+    ]
+}
+
+/// What a drawer says first of a session Joel's talk waits on: what he
+/// asked, then how it went in Talks' words (`stages`, by its stage) and
+/// when it was delivered, under Talks' and the drawer's names for them
+/// (`names`, `parts`).
+pub fn waiting_facts(waiting: &Waiting, names: &Said, parts: &Said, stages: &Said) -> Vec<Value> {
+    let mut went = json!({"label": parts.word("went"), "value": stages.word(&waiting.stage)});
+    if let Some(at) = waiting.at {
+        went["at"] = json!({"at": at, "as": "clock"});
+    }
+    vec![
+        json!({"label": names.word("asked"), "value": waiting.asked, "words": true}),
+        went,
     ]
 }
 
@@ -358,6 +449,87 @@ mod tests {
             answered(&talks),
             [("BEACON".to_owned(), "Still.".to_owned())],
             "talk-20 came after talk-3, by its number, not its name"
+        );
+    }
+
+    fn stages(talks: &[Value]) -> Vec<(String, String)> {
+        waiting(talks.iter(), &|address| address != "GONE01")
+            .into_iter()
+            .map(|one| (one.address, one.stage))
+            .collect()
+    }
+
+    #[test]
+    fn a_talk_of_joels_waits_at_the_stage_it_reached_until_it_ends() {
+        let stage = |stage: &str| json!({"stage": stage, "text": "Ye"});
+        let talks = [
+            talk("BEACON", "talk-1", &[delivered("lit?")]),
+            talk("HARBOR", "talk-1", &[delivered("lit?"), stage("reading")]),
+            talk(
+                "KELPBD",
+                "talk-1",
+                &[delivered("lit?"), stage("replying"), stage("came")],
+            ),
+            talk("LAMPLT", "talk-1", &[delivered("lit?"), replied("Yes.")]),
+            talk("REEFSS", "talk-1", &[delivered("lit?"), stage("failed")]),
+            talk("TIDEPL", "talk-1", &[delivered("lit?"), stage("over")]),
+            talk("GONE01", "talk-1", &[delivered("lit?")]),
+        ];
+        let said = |address: &str, stage: &str| (address.to_owned(), stage.to_owned());
+        assert_eq!(
+            stages(&talks),
+            [
+                said("BEACON", "delivered"),
+                said("HARBOR", "reading"),
+                said("KELPBD", "replying"),
+            ],
+            "on its way, at the furthest stage it reached, while its session lives"
+        );
+    }
+
+    #[test]
+    fn only_joels_newest_talk_waits() {
+        let reopened = json!({"stage": "delivered", "from": "joel",
+            "text": "[Automated message, no human input: the machine restarted.] Carry on."});
+        let talks = [
+            talk("BEACON", "talk-3", &[delivered("lit?")]),
+            talk(
+                "BEACON",
+                "talk-20",
+                &[delivered("and now?"), replied("Still.")],
+            ),
+            talk("LAMPLT", "talk-1", &[reopened]),
+        ];
+        assert_eq!(
+            stages(&talks),
+            [],
+            "one since answered moved it on, and the machine's own isn't his"
+        );
+    }
+
+    #[test]
+    fn a_drawer_says_what_joel_asked_then_how_it_went_and_when_it_landed() {
+        let words = crate::said::LAUNCHERS;
+        let names = Said::names_under(words, "agents").expect("the drawer's names");
+        let parts = Said::names_under(words, "orchestrators:talk").expect("Talks' parts");
+        let stages = Said::of_thing(words, "orchestrators:talk").expect("Talks' stages");
+        let talks = [talk(
+            "BEACON",
+            "talk-1",
+            &[
+                delivered("is the beacon lit?"),
+                json!({"stage": "replying"}),
+            ],
+        )];
+        let waits = &waiting(talks.iter(), &|_| true)[0];
+        assert_eq!(
+            waiting_facts(waits, &names, &parts, &stages),
+            [
+                json!({"label": "You Asked", "value": "is the beacon lit?", "words": true}),
+                json!({"label": "How It Went", "value": "replying",
+                    "at": {"at": clock::ms_of(&json!("2026-11-11T21:00:00Z")), "as": "clock"}}),
+            ],
+            "what was asked, then how far it's come, with when it was delivered"
         );
     }
 

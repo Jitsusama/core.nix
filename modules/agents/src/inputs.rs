@@ -16,7 +16,7 @@ use std::path::Path;
 use daemon_serve::watch::Held;
 use serde_json::Value;
 
-use crate::answered::{self, Answer};
+use crate::answered::{self, Answer, Waiting};
 use crate::arrangement::{self, Arrangement, Desk};
 use crate::carried::Carried;
 use crate::clock;
@@ -26,7 +26,7 @@ use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
 use crate::recent;
 use crate::reopen::{self, Kept};
-use crate::row::{self, Known, Shown, Words};
+use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
@@ -345,16 +345,29 @@ impl Inputs {
     /// What sessions running or parked answered of Joel's talks, read or
     /// not, while each talk is the session's newest (answered.rs).
     pub fn answers(&self) -> Vec<Answer> {
-        let live: HashSet<&str> = self
-            .sessions
+        let live = self.live();
+        answered::answers(self.talks.records().map(|(_, one)| one), &|address| {
+            live.contains(address)
+        })
+    }
+
+    /// Joel's talks to sessions running or parked still on their way to
+    /// an answer, while each is the session's newest (answered.rs).
+    fn waiting(&self) -> Vec<Waiting> {
+        let live = self.live();
+        answered::waiting(self.talks.records().map(|(_, one)| one), &|address| {
+            live.contains(address)
+        })
+    }
+
+    /// The addresses of the sessions running or parked.
+    fn live(&self) -> HashSet<&str> {
+        self.sessions
             .records()
             .map(|(_, one)| Session(one))
             .filter(|one| matches!(one.lives(), Lives::Running | Lives::Parked))
             .map(Session::address)
-            .collect();
-        answered::answers(self.talks.records().map(|(_, one)| one), &|address| {
-            live.contains(address)
-        })
+            .collect()
     }
 
     /// Every closed orchestrator's record, the one last live first
@@ -449,10 +462,20 @@ impl Inputs {
             .filter(|one| !one.read)
             .map(|one| one.address.as_str())
             .collect();
-        mark_answered(&mut rows, &answering, self.words.agents.word("answered"));
+        let waiting = self.waiting();
+        let answered = self.words.agents.word("answered");
+        each_row(&mut rows, &mut |row| {
+            let address = row.key.trim_start_matches("agent:");
+            if answering.contains(address) {
+                row.says_first(answered);
+            } else if let Some(one) = waiting.iter().find(|one| one.address == address) {
+                let said = self.words.talk_stages.word(&one.stage);
+                row.waits(said, &one.talk, &one.stage);
+            }
+        });
         let mut orchestrating = HashSet::new();
         orchestrators(&rows, &mut orchestrating);
-        let drawers = self.drawers(&sessions, &orchestrating, &answers);
+        let drawers = self.drawers(&sessions, &orchestrating, (&answers, &waiting));
         let closed = self.closed();
         let top = self.top(&sessions, &rows, &closed);
         served::made(
@@ -474,13 +497,13 @@ impl Inputs {
         .with_wants(wants::records(&sessions, &joel_can))
     }
 
-    /// Each session's drawer, the facts of a talk it answered first, and
-    /// the top level's drawers made of them.
+    /// Each session's drawer, the facts of a talk it answered, or of one
+    /// on its way, first, and the top level's drawers made of them.
     fn drawers(
         &self,
         sessions: &[Session],
         orchestrating: &HashSet<&str>,
-        answers: &[Answer],
+        (answers, waiting): (&[Answer], &[Waiting]),
     ) -> Vec<Value> {
         let needs = |quest: &str| self.needs(quest);
         let today = clock::today();
@@ -497,10 +520,21 @@ impl Inputs {
             .map(|one| {
                 let orchestrates = orchestrating.contains(one.address());
                 let mut drawn = drawer::drawer(*one, orchestrates, &self.words, &drawn);
-                if let Some(answer) = answers.iter().find(|said| said.address == one.address())
-                    && let Some(facts) = drawn["drawer"]["facts"].as_array_mut()
+                let words = &self.words;
+                let first = if let Some(answer) =
+                    answers.iter().find(|said| said.address == one.address())
                 {
-                    facts.splice(0..0, answered::facts(answer, &self.words.names, &called));
+                    answered::facts(answer, &words.names, &called)
+                } else if let Some(waits) =
+                    waiting.iter().find(|said| said.address == one.address())
+                {
+                    let (parts, stages) = (&words.talk_parts, &words.talk_stages);
+                    answered::waiting_facts(waits, &words.names, parts, stages)
+                } else {
+                    Vec::new()
+                };
+                if let Some(facts) = drawn["drawer"]["facts"].as_array_mut() {
+                    facts.splice(0..0, first);
                 }
                 drawn
             })
@@ -538,17 +572,13 @@ impl Inputs {
     }
 }
 
-/// Marks the rows of the sessions `answering` as having answered a talk
-/// Joel hasn't read, folded or not.
-fn mark_answered(shown: &mut [Shown], answering: &HashSet<&str>, said: &str) {
+/// Does `to` each session's row, folded or not, as how Joel's talks to
+/// them stand is said on them.
+fn each_row(shown: &mut [Shown], to: &mut dyn FnMut(&mut Row)) {
     for one in shown {
         match one {
-            Shown::Session(row) => {
-                if answering.contains(row.key.trim_start_matches("agent:")) {
-                    row.answered(said);
-                }
-            }
-            Shown::Fold(fold) => mark_answered(&mut fold.held, answering, said),
+            Shown::Session(row) => to(row),
+            Shown::Fold(fold) => each_row(&mut fold.held, to),
         }
     }
 }
@@ -752,6 +782,53 @@ mod tests {
             facts(&served),
             [json!("still lit?"), json!("Yes.")],
             "but its drawer keeps it"
+        );
+    }
+
+    #[test]
+    fn a_talk_on_its_way_is_said_on_its_row_and_its_drawer_uncounted() {
+        let mut inputs = inputs();
+        inputs
+            .talks
+            .took(&json!({"records": [{"key": "talk:P/talk-1", "address": "P",
+            "id": "talk-1", "lines": [
+                {"stage": "delivered", "from": "joel", "at": "2026-11-11T21:00:00Z",
+                    "text": "still lit?"},
+                {"stage": "replying", "text": "Ye"}
+            ]}]}));
+        let served = served(&inputs);
+        assert_eq!(
+            summary_of(&served),
+            "1 working · $214 today",
+            "nothing waits on Joel"
+        );
+        assert_eq!(side(&served, "P"), "replying · working · $4");
+        let talk = json!({"id": "talk-1", "stage": "replying"});
+        for key in ["row:agents:P", "row:agents-top:P"] {
+            let record = served.get(key).expect("its row");
+            assert_eq!(record["row"]["talk"], talk, "{key} holds which talk waits");
+        }
+        let drawer = &served.get("drawer:agents:P").expect("P's drawer")["drawer"];
+        let first: Vec<_> = drawer["facts"]
+            .as_array()
+            .expect("its facts")
+            .iter()
+            .take(2)
+            .map(|fact| (fact["label"].clone(), fact["value"].clone()))
+            .collect();
+        assert_eq!(
+            first,
+            [
+                (json!("You Asked"), json!("still lit?")),
+                (json!("How It Went"), json!("replying")),
+            ],
+            "its drawer leads with what he asked and how it went"
+        );
+        assert!(
+            served.get("row:agents:O").expect("O's row")["row"]
+                .get("talk")
+                .is_none(),
+            "one with no talk waiting holds none"
         );
     }
 
