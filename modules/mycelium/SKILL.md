@@ -26,7 +26,7 @@ Add `-o json` for JSON lines: networks first, then cells.
 mycelium networks -o json          # every network, then every cell
 mycelium networks grow -o json     # one network, by name, short name or title words
 mycelium cells -o json             # every session worst first, then the machines
-mycelium cells QQ1UAK -o json      # one cell and the networks it joined
+mycelium cells NAME -o json        # one cell, by name or title words, and its networks
 ```
 
 A network line has `name`, `short` (what a person types), `title`,
@@ -38,9 +38,6 @@ A network line has `name`, `short` (what a person types), `title`,
 `machine`, `quest` and `networks`; a machine cell has `state` (such as
 `ready`), `busy` (the share of the last ten seconds some task waited on a
 processor) and `runs` (how many sessions it runs).
-
-Where `mycelium networks` isn't known yet, the machine hasn't updated onto
-it; `mycelium swarm` gives the teams and their sessions instead.
 
 ## Answering
 
@@ -62,6 +59,6 @@ summarise it. Say the time you read it, since it moves.
 
 ## What You Don't Do
 
-These commands only read. Speaking, pausing or resuming through `mycelium
-swarm` acts as the person, so do it only when he asked for that act in this
-conversation, and say what you did.
+Use only `mycelium networks` and `mycelium cells`, which only read. Never
+run `send`, `steer`, `start`, `holds` or `carry` to answer a question:
+they act on sessions and machines, and some act as the person.
