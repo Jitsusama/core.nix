@@ -12,7 +12,9 @@ use serde_json::Value;
 
 use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
-use super::{asks, counted, faults, landings, launcher, measure, network, plans, responds};
+use super::{
+    asks, counted, faults, landings, launcher, measure, network, plans, repository, responds,
+};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -49,6 +51,8 @@ pub struct Sources {
     pub landings: landings::Sources,
     /// The harness's changes, read the same way.
     pub harness: landings::Sources,
+    /// The machine repository's changes, read the same way.
+    pub machine: landings::Sources,
     /// The active quests and whether they're worked on and planned.
     pub plans: plans::Sources,
     /// What code-health and health have already counted.
@@ -132,6 +136,7 @@ fn resources(s: &Sources) -> Axis {
         bill,
         changes,
         landings::harness(&s.harness, s.now, &TimeZone::system()),
+        repository::reading(&s.machine, s.now, &TimeZone::system()),
         measure::rewrites(s.measures.last().map(String::as_str)),
         Reading::new(
             "agents' CPU pressure {} over the day",
@@ -567,7 +572,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         },
         PathBuf::from,
     );
-    let (messages, landings, harness, plans, counted) = std::thread::scope(|s| {
+    let (messages, landings, harness, machine, plans, counted) = std::thread::scope(|s| {
         let messages = s.spawn(|| {
             messages::read(
                 &mesh.root,
@@ -577,12 +582,15 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         });
         let landings = s.spawn(|| landings::gather(folder, &runtime, now));
         let harness = s.spawn(|| landings::gather_harness(now));
+        let machine =
+            s.spawn(|| repository::gather(now, &cache_home().join("cadence/repository.json")));
         let plans = s.spawn(plans::gather);
         let counted = s.spawn(|| counted::gather(folder, state_home, now));
         (
             joined(messages),
             joined(landings),
             joined(harness),
+            joined(machine),
             joined(plans),
             joined(counted),
         )
@@ -608,6 +616,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
         meminfo: text(PathBuf::from("/proc/meminfo")),
         landings,
         harness,
+        machine,
         plans,
         counted,
         faults: faults::gather(state_home, now),

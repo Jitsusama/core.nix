@@ -121,20 +121,22 @@ pub fn gather(folder: &Path, runtime: &Path, now: i64) -> Sources {
 
 /// Runs a source's three commands at once, since each waits on the disk
 /// and in a row they took over a second on a busy machine.
-fn side_by_side(
-    a: impl FnOnce() -> String + Send,
-    b: impl FnOnce() -> String + Send,
-    c: impl FnOnce() -> String + Send,
-) -> (String, String, String) {
+pub(super) fn side_by_side<A: Send, B: Send, C>(
+    a: impl FnOnce() -> A + Send,
+    b: impl FnOnce() -> B + Send,
+    c: impl FnOnce() -> C,
+) -> (A, B, C) {
     std::thread::scope(|s| {
         let a = s.spawn(a);
         let b = s.spawn(b);
         let c = c();
-        let joined = |t: std::thread::ScopedJoinHandle<'_, String>| {
-            t.join()
-                .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-        };
-        (joined(a), joined(b), c)
+        let a = a
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        let b = b
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        (a, b, c)
     })
 }
 
@@ -469,11 +471,9 @@ pub fn readings(
 /// the seven days before.
 #[must_use]
 pub fn harness(s: &Sources, now: i64, tz: &TimeZone) -> Reading {
-    let today = Timestamp::from_second(now).map_or(Date::MIN, |t| t.to_zoned(tz.clone()).date());
-    stayed(
+    kept_yesterday(
         s,
-        &reached(s, tz),
-        today,
+        now,
         tz,
         (
             "{} harness changes reached you and stayed yesterday",
@@ -481,6 +481,20 @@ pub fn harness(s: &Sources, now: i64, tz: &TimeZone) -> Reading {
         ),
         "the harness's main and pi-packages's journal",
     )
+}
+
+/// A source's changes that reached him and stayed yesterday, against the
+/// seven days before, said in `says` and owned by `owner`.
+#[must_use]
+pub fn kept_yesterday(
+    s: &Sources,
+    now: i64,
+    tz: &TimeZone,
+    said: (&'static str, &'static str),
+    from: &'static str,
+) -> Reading {
+    let today = Timestamp::from_second(now).map_or(Date::MIN, |t| t.to_zoned(tz.clone()).date());
+    stayed(s, &reached(s, tz), today, tz, said, from)
 }
 
 /// The changes that reached him and stayed yesterday, held to at least the
