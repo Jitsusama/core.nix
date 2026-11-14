@@ -49,11 +49,8 @@ EOF
 } > bin/systemd-notify
 chmod +x bin/quickshell bin/systemctl bin/systemd-notify
 export PATH=$here/bin:$PATH
-failed=0
-wrong() {
-  echo "$1"
-  failed=1
-}
+# What went wrong, said once every case has run.
+failures=()
 
 # Starts one case from nothing said, the old shell running as the unit's main process.
 case_of() {
@@ -104,28 +101,31 @@ done_within() {
 
 case_of
 hand_over
-wait "${handing}" || wrong "a handover with nothing open failed: $(< run/said)"
-done_within || wrong "nothing open, the shell wasn't handed over: $(< run/said)"
+wait "${handing}" || failures+=("a handover with nothing open failed: $(< run/said)")
+done_within || failures+=("nothing open, the shell wasn't handed over: $(< run/said)")
 over
 
 # The old launcher open, it waits for Joel to close it.
 case_of
 echo true > run/old-open
 hand_over
+# The script looks every 50 ms, so it would have ended the old shell by now were it not
+# waiting: these 2 s are what's proven.
 sleep 2
-! handed_over || wrong "the old launcher was ended open"
+! handed_over || failures+=("the old launcher was ended open")
 echo false > run/old-open
-done_within || wrong "the old launcher's close didn't hand the shell over: $(< run/said)"
+done_within || failures+=("the old launcher's close didn't hand the shell over: $(< run/said)")
 over
 
 # Super+S's line come up on the old shell while the new one loaded holds it the same.
 case_of
 export STANDIN_OLD_TALKS=1
 hand_over
+# As above, the 2 s in which the old shell must not be ended.
 sleep 2
-! handed_over || wrong "the old shell was ended with Super+S's line up"
+! handed_over || failures+=("the old shell was ended with Super+S's line up")
 echo closed > run/quickshell-talk-line
-done_within || wrong "the talk line's close didn't hand the shell over: $(< run/said)"
+done_within || failures+=("the talk line's close didn't hand the shell over: $(< run/said)")
 over
 
 case_of
@@ -133,17 +133,21 @@ echo locked > run/quickshell-locked
 hand_over
 wait "${handing}"
 grep -qx -- "--user --no-block restart quickshell.service" run/asked 2> /dev/null ||
-  wrong "a locked screen didn't restart the shell: $(< run/said)"
-[[ -z $(new_shell) ]] || wrong "a locked screen started a held shell"
+  failures+=("a locked screen didn't restart the shell: $(< run/said)")
+held=$(new_shell)
+[[ -z ${held} ]] || failures+=("a locked screen started a held shell")
 over
 
 # A new shell that ends as it loads leaves the old one the unit's.
 case_of
 export STANDIN_FAILS=1
 hand_over
-if wait "${handing}"; then wrong "a new shell that failed was taken as handed over"; fi
-alive "${MAINPID}" || wrong "a new shell that failed ended the old one"
-[[ ! -e run/notified ]] || wrong "a new shell that failed was made the unit's"
+if wait "${handing}"; then failures+=("a new shell that failed was taken as handed over"); fi
+alive "${MAINPID}" || failures+=("a new shell that failed ended the old one")
+[[ ! -e run/notified ]] || failures+=("a new shell that failed was made the unit's")
 over
 
-exit "${failed}"
+((${#failures[@]} == 0)) || {
+  printf '%s\n' "${failures[@]}"
+  exit 1
+}
