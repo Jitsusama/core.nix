@@ -8,7 +8,9 @@
 //! parts, as text or as JSON, and a panic as a bug, 70. A command whose
 //! help declares subcommands of its own has its words walked down them
 //! first (tree.rs): each answers its own help, and a word none answers to
-//! is refused before the body starts.
+//! is refused before the body starts. A command that asks yes or no hands
+//! `ask` its body instead, which answers 0 for yes and 1 for no, saying
+//! nothing for no, so a no never reads as broken.
 //!
 //! It depends on `serde_json` and `unicode-width` alone, since a parser crate
 //! would be most of a small command's dependencies: the command reads
@@ -179,6 +181,21 @@ pub fn run(
     args: Vec<String>,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
+    run_question(help, version, environment, args, |context| {
+        body(context).map(|()| true)
+    })
+}
+
+/// Runs a question's body as `run` runs a command's: yes ends 0, no ends
+/// 1 saying nothing but a stream's `end` line, whose outcome is `no`, and
+/// a failure is said as any command's is (docs/commands.md).
+pub fn run_question(
+    help: &Help,
+    version: &str,
+    environment: &Environment,
+    args: Vec<String>,
+    body: impl FnOnce(&Context) -> Result<bool, Failure>,
+) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
     let mut context = match Context::new(environment.clone(), args, &forms) {
         Ok(context) => context,
@@ -218,7 +235,8 @@ pub fn run(
         context.args = walked.words;
     }
     match caught(|| body(&context)) {
-        Ok(()) => ended(&context, Exit::Done, String::new()),
+        Ok(true) => ended(&context, Exit::Done, "done", String::new()),
+        Ok(false) => ended(&context, Exit::Failed, "no", String::new()),
         Err(failure) => failed(&context, environment, &failure),
     }
 }
@@ -252,13 +270,12 @@ fn failed(context: &Context, environment: &Environment, failure: &Failure) -> En
             environment,
         )
     };
-    ended(context, failure.exit, said)
+    ended(context, failure.exit, "failed", said)
 }
 
 /// How a run ends, with a stream's `end` line under `jsonl`.
-fn ended(context: &Context, exit: Exit, stderr: String) -> Ending {
+fn ended(context: &Context, exit: Exit, outcome: &str, stderr: String) -> Ending {
     let stdout = if context.shared.format == Format::Jsonl {
-        let outcome = if exit == Exit::Done { "done" } else { "failed" };
         format!(
             "{}\n",
             json!({"type": "end", "outcome": outcome, "exit": exit.code()})
@@ -314,14 +331,21 @@ pub fn run_os(
     args: Vec<OsString>,
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
-    match args.into_iter().map(OsString::into_string).collect() {
+    match texts(args) {
         Ok(args) => run(help, version, environment, args, body),
-        Err(word) => unread(
-            environment,
-            &Failure::new(Exit::Usage, "an argument isn't UTF-8 text")
-                .because(format!("{} can't be read as text", word.to_string_lossy())),
-        ),
+        Err(failure) => unread(environment, &failure),
     }
+}
+
+/// The arguments as text, or the failure of one that isn't.
+fn texts(args: Vec<OsString>) -> Result<Vec<String>, Failure> {
+    args.into_iter()
+        .map(OsString::into_string)
+        .collect::<Result<_, _>>()
+        .map_err(|word| {
+            Failure::new(Exit::Usage, "an argument isn't UTF-8 text")
+                .because(format!("{} can't be read as text", word.to_string_lossy()))
+        })
 }
 
 thread_local! {
@@ -336,7 +360,7 @@ thread_local! {
 /// words only of a thread in a body, handing every other panic to the
 /// hook it found: swapped in and out around each body, two at once on
 /// two threads would put back each other's.
-fn caught(body: impl FnOnce() -> Result<(), Failure>) -> Result<(), Failure> {
+fn caught<T>(body: impl FnOnce() -> Result<T, Failure>) -> Result<T, Failure> {
     static HOOK: Once = Once::new();
     HOOK.call_once(|| {
         let before = panic::take_hook();
@@ -384,6 +408,26 @@ pub fn main(
         std::env::args_os().skip(1).collect(),
         body,
     );
+    ends(&ending)
+}
+
+/// A question's whole run, as `main` is a command's: yes exits 0 and no
+/// exits 1, saying nothing, as `test` and `grep -q` do.
+pub fn ask(
+    help: &Help,
+    version: &str,
+    body: impl FnOnce(&Context) -> Result<bool, Failure>,
+) -> ExitCode {
+    let environment = Environment::here();
+    let ending = match texts(std::env::args_os().skip(1).collect()) {
+        Ok(args) => run_question(help, version, &environment, args, body),
+        Err(failure) => unread(&environment, &failure),
+    };
+    ends(&ending)
+}
+
+/// How a run ended, written out and exited with.
+fn ends(ending: &Ending) -> ExitCode {
     // Nothing is left to say if a stream has closed, as it has when a
     // pipe's reader stops early.
     let _ = io::stdout().lock().write_all(ending.stdout.as_bytes());
@@ -487,6 +531,52 @@ mod tests {
             ending.stdout,
             "{\"exit\":75,\"outcome\":\"failed\",\"type\":\"end\"}\n"
         );
+    }
+
+    fn asked(line: &str, body: impl FnOnce(&Context) -> Result<bool, Failure>) -> Ending {
+        let args = line.split_whitespace().map(str::to_owned).collect();
+        run_question(
+            &help(),
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            args,
+            body,
+        )
+    }
+
+    #[test]
+    fn a_question_answered_yes_ends_done_saying_nothing() {
+        let ending = asked("go", |_| Ok(true));
+        assert_eq!(ending.exit, Exit::Done);
+        assert_eq!(
+            (ending.stdout, ending.stderr),
+            (String::new(), String::new())
+        );
+    }
+
+    #[test]
+    fn a_question_answered_no_ends_1_saying_nothing_but_its_streams_end() {
+        let ending = asked("go", |_| Ok(false));
+        assert_eq!(ending.exit, Exit::Failed);
+        assert_eq!(
+            (ending.stdout, ending.stderr),
+            (String::new(), String::new())
+        );
+        let ending = asked("go --format jsonl", |_| Ok(false));
+        assert_eq!(
+            ending.stdout,
+            "{\"exit\":1,\"outcome\":\"no\",\"type\":\"end\"}\n"
+        );
+        assert_eq!(ending.stderr, "", "a no said something on stderr");
+    }
+
+    #[test]
+    fn a_question_that_cant_be_answered_fails_as_any_command_does() {
+        let ending = asked("go", |_| {
+            Err(Failure::new(Exit::Unavailable, "nothing answered"))
+        });
+        assert_eq!(ending.exit, Exit::Unavailable);
+        assert_eq!(ending.stderr, "\u{2715} nothing answered\n");
     }
 
     #[test]

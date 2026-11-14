@@ -101,6 +101,7 @@ name = "calls"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "terminal-kit",
 ]
 
 [[package]]
