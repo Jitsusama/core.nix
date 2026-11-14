@@ -42,7 +42,9 @@
 //! their windows apart, as it tells (agents.rs). The tab in front of one
 //! of Chrome's windows is made as a get names niri's window (fronts.rs).
 //! Each command runs on a thread of its own, without a shell, so a slow one never holds an
-//! answer back, and is stopped past ten seconds (command.rs).
+//! answer back, and is stopped past ten seconds (command.rs). A source is
+//! read once at a time, a get's own read too, and once more after it
+//! where a change came meanwhile, so the newest read ends last (runs.rs).
 //!
 //! It speaks the shell's daemon interface through daemon-serve, as every
 //! daemon does (docs/daemons.md): each change hands it every record held,
@@ -57,6 +59,7 @@ mod fronts;
 mod heard;
 mod named;
 mod rows;
+mod runs;
 mod search;
 mod tabs;
 mod taken;
@@ -82,6 +85,7 @@ use serde_json::{Value, json};
 
 use heard::{heard, notice};
 use named::read_named;
+use runs::{claim, read_claimed, start};
 
 /// How many of the last answers' times health says.
 const TIMES: usize = 32;
@@ -572,42 +576,6 @@ fn due(shared: &Shared, daemon: &Daemon, at: usize) -> bool {
         || changed_at(source) != daemon.read_as_of[at]
 }
 
-/// Runs a source's command on a thread of its own, or, while it runs
-/// already, once more after it, so the last change always counts. A list
-/// is read once more only if it's still due as the read ends: one asked
-/// for by a change the running read already took, as a watch beginning
-/// does a moment after the change that's read, would read it twice. Nor
-/// is it read once more if nothing watches it now: its file changing
-/// after its watch went would have it read for nobody, and a get would
-/// read it again anyway. What Tabs has open reads kitty's list too, so it counts as watching.
-fn start(shared: &Arc<Shared>, at: usize, what: Run) {
-    {
-        let mut daemon = lock(&shared.daemon);
-        if !daemon.running.insert((at, what)) {
-            daemon.again.insert((at, what));
-            return;
-        }
-    }
-    let shared = Arc::clone(shared);
-    std::thread::spawn(move || {
-        loop {
-            read_source(&shared, at, what);
-            let mut daemon = lock(&shared.daemon);
-            let asked = daemon.again.remove(&(at, what));
-            let again = asked
-                && (what == Run::Opened
-                    || (due(&shared, &daemon, at)
-                        && (watched(&daemon, &shared.sources[at].list_key())
-                            || tabs::wanted(&daemon))));
-            if !again {
-                daemon.running.remove(&(at, what));
-                shared.read.notify_all();
-                return;
-            }
-        }
-    });
-}
-
 /// Whether these kinds or keys name any entry.
 fn names_programs(kinds: &[String], keys: Option<&[String]>) -> bool {
     match keys {
@@ -648,29 +616,25 @@ fn begin(shared: &Arc<Shared>, kinds: &[String], keys: Option<&[String]>) {
 /// What a get or a list reads first, on this thread: the entries not yet
 /// held, each list not read since it changed or that's asked, once any
 /// read of it under way has ended, and what each program has open now.
+/// A read under way counts its list fresh as it begins, so what's held
+/// until it ends is from before; a get waits for it, and its own read is
+/// held in `running` as one on a thread of its own is (`claim`).
 fn fresh(shared: &Shared, kinds: &[String], keys: Option<&[String]>) {
     if names_programs(kinds, keys) {
         read_programs(shared, keys);
     }
     for at in sources_of(shared, Run::List, kinds, keys) {
-        let due = {
-            let mut daemon = lock(&shared.daemon);
-            // A read under way counts its list fresh as it begins, so
-            // what's held until it ends is from before; a get waits for it.
-            while daemon.running.contains(&(at, Run::List)) {
-                daemon = shared
-                    .read
-                    .wait(daemon)
-                    .unwrap_or_else(PoisonError::into_inner);
-            }
-            due(shared, &daemon, at) || !daemon.held.contains_key(&shared.sources[at].list_key())
+        let unread = |daemon: &Daemon| {
+            due(shared, daemon, at) || !daemon.held.contains_key(&shared.sources[at].list_key())
         };
-        if due {
-            read_source(shared, at, Run::List);
+        if claim(shared, at, Run::List, unread) {
+            read_claimed(shared, at, Run::List);
         }
     }
     for at in sources_of(shared, Run::Opened, kinds, keys) {
-        read_source(shared, at, Run::Opened);
+        if claim(shared, at, Run::Opened, |_| true) {
+            read_claimed(shared, at, Run::Opened);
+        }
     }
     read_named(shared, keys.unwrap_or_default());
     fronts::read(shared, keys.unwrap_or_default());
