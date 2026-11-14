@@ -53,7 +53,7 @@ use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, found, micros, root};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Heard, Joel, Platform, decide};
+use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
@@ -74,6 +74,14 @@ const NEWEST: usize = 20;
 /// Whether its stops are only written down: until Joel has read two days
 /// of its log and said so, they are (the plan's item 10).
 const SHADOW: bool = true;
+
+/// Whether Joel's resume said in Slack may end a live stop. Not yet, even
+/// once the reader leaves shadow: anything posting with his sign-in reads
+/// as him, so a resume an agent forged would defeat the safe word. It
+/// waits until the harness's Slack-send guard is proven to stop every
+/// agent posting as him (WCJQSG, 2026-11-14); his press in the launcher
+/// resumes all the while.
+const SLACK_RESUMES_LIVE: bool = false;
 
 /// The replies' words, as Joel said yes to them (2026-11-14); a reply
 /// missing any of them has nothing to say.
@@ -479,6 +487,11 @@ fn round(slack: &Slack, replier: &Replier, account: &Account, state: &Path, judg
         .collect();
     heard.sort_by_key(|message| micros(&message.ts));
     for message in heard {
+        // The reader's own alert quotes others as Joel, so it's no saying.
+        if message.author == account.user && phone::is_alert(&message.text) {
+            judged.keys.push(message.key());
+            continue;
+        }
         judge(slack, replier, account, state, &joel, message);
         judged.keys.push(message.key());
     }
@@ -595,6 +608,53 @@ fn judge(
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
         }
     }
+    if decision.verdict == Verdict::Resume && decision.by_joel {
+        let said = micros(&message.ts).unwrap_or(0);
+        resume_as_joel(
+            &state.join("stops"),
+            &decision.reaches,
+            (now, said),
+            &message.link,
+        );
+    }
+}
+
+/// Ends the stops Joel's own "pineapple resume" names, as his press in the
+/// launcher does: what it reaches, or every stop when it reaches
+/// everything. Only stops said before it, since Slack's search indexes late
+/// and a round can judge a resume beside a stop said after it (KP0L6A). In
+/// shadow, and until Slack resumes are let go live, it ends only the stops
+/// written in shadow, so it never ends one that stands for real. `at` is
+/// when it's heard, in milliseconds, and when it was said, in microseconds.
+fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str) {
+    let (now, said) = at;
+    let shadow = SHADOW || !SLACK_RESUMES_LIVE;
+    for reach in reaches {
+        let scope = match reach {
+            Target::Everything => "all".to_owned(),
+            named => named.to_string(),
+        };
+        let ended = resume::resume_only(stops, &scope, now, "joel", |record| {
+            (!shadow || record["shadow"] != false) && said_by(record).is_some_and(|at| at <= said)
+        });
+        match ended {
+            Ok(ids) if ids.is_empty() => {}
+            Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
+            Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
+            Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
+        }
+    }
+}
+
+/// When a stop was said, in microseconds: as its record writes Slack's
+/// timestamp, else when it was heard; none when it says neither, and such
+/// a stop is left for the launcher's press rather than ended unseen.
+fn said_by(record: &Value) -> Option<u128> {
+    record["said_at"].as_str().and_then(micros).or_else(|| {
+        record["heard_at"]
+            .as_u64()
+            .map(|at| u128::from(at) * u128::from(MILLIS))
+    })
 }
 
 /// Say a reply the rules let through, and whether it counts as said: in
