@@ -152,10 +152,15 @@ Singleton {
     // daemon judges it). Each is kitty's all the same to every list,
     // mark and key the shell has, and says it holds a session (`session`).
     // The app id it opened with is kept as `opened`, which names it apart
-    // from every other window of the same kitty.
+    // from every other window of the same kitty. niri names no program, so
+    // a window heard here is named by its whole title, as the daemon's
+    // are by theirs less the program's name (NiriRecords.js's windowOf).
     function heard(window: var): var {
         const app = window.app_id ?? "";
         window.opened = app;
+        window.named = window.title ?? "";
+        window.untitled = false;
+        window.program = "";
         if (NiriRecords.isSessionApp(app)) {
             window.app_id = "kitty";
             window.session = true;

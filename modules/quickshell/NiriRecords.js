@@ -2,9 +2,10 @@
 // (modules/windows) rather than from niri's own event stream, so the shell
 // wakes only for what something here reads: never for a window's tile
 // moving, which niri says at every resize and scroll, unless a reader
-// draws tiles (`layout` records, watched only then), nor for a window's
-// name for its row or what it reads alike with, which only the launcher's
-// own watch takes. Each window and workspace is given in niri's own shape,
+// draws tiles (`layout` records, watched only then), nor for what a
+// window reads alike with, which only the launcher's own watch takes. Its
+// name without its program's (`named`) is told, as Super+S's line says a
+// window by it, and moves only as its title or its program does. Each window and workspace is given in niri's own shape,
 // as every reader of Niri.qml reads it, and only those told are made
 // again, in place, as niri's events changed them. Plain JavaScript, held
 // to it by tests/niri-records.qml in Qt's own engine.
@@ -12,12 +13,12 @@
 
 // The fields of a window record Niri.qml's watch is told, and only as one
 // of them changes (the daemon's `fields`).
-const WINDOW_FIELDS = ["id", "order", "title", "app_id", "opened", "session", "pid",
-    "workspace", "floating", "urgent", "column", "down"];
+const WINDOW_FIELDS = ["id", "order", "title", "named", "untitled", "program", "app_id",
+    "opened", "session", "pid", "workspace", "floating", "urgent", "column", "down"];
 
 // The fields a list of windows draws from, so a change to one is a change
 // `revision` counts; when a window was used, and where it sits, aren't.
-const LISTED = ["title", "app_id", "opened", "session", "pid", "workspace", "urgent",
+const LISTED = ["title", "named", "untitled", "program", "app_id", "opened", "session", "pid", "workspace", "urgent",
     "floating"];
 
 // What says a workspace is another, rather than only activated or
@@ -54,11 +55,17 @@ function layoutOf(record, tile) {
 
 // A window as niri describes it, from its record, the window niri says
 // has the keys, and its tile record where it's watched. One opened for a
-// session is kitty's with `session`, as the daemon says it.
+// session is kitty's with `session`, as the daemon says it. Beyond niri's
+// shape, its title without its program's name (`named`, the program's
+// own where it has none of its own, `untitled`) and the program's name,
+// as the daemon works them out, so nothing here shapes a title again.
 function windowOf(record, focused, tile) {
     const window = {
         id: record.id,
         title: record.title ?? "",
+        named: record.named ?? record.title ?? "",
+        untitled: record.untitled === true,
+        program: record.program ?? "",
         app_id: record.app_id ?? "",
         opened: record.opened ?? record.app_id ?? "",
         pid: record.pid ?? null,
