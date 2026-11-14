@@ -833,6 +833,7 @@ Scope {
                 Quickshell.clipboardText = words;
             alsoAsked(one);
             return;
+        }
         case "open": {
             const opened = Ready.opened(one, id => commandOf(id), Words.field.becoming ?? {});
             if (opened.run === null) {
