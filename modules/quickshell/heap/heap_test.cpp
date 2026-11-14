@@ -6,8 +6,9 @@
 // are never more than what's held beyond live; and the time the collector
 // has spent grows with each collection; and a heap holding far more than is
 // live, as one does after the launcher's closing, starts the collector as
-// it makes more unless it's left room, and doesn't once it is. It exits 0 once
-// all of it holds, and otherwise 1, saying what didn't.
+// it makes more unless it's left room, and doesn't once it is, nor as it
+// makes strings whose text is held outside the heap. It exits 0 once all of
+// it holds, and otherwise 1, saying what didn't.
 #include "heap.h"
 
 #include <QCoreApplication>
@@ -47,7 +48,7 @@ constexpr double ROOM_MB = 64;
 // on a heap left holding a scattered few, given that much room first. The
 // objects hold only numbers, so no memory outside the heap, which starts the
 // collector on its own, comes into it.
-bool collectsWhileMaking(double room) {
+bool collectsWhileMaking(double room, const QString &made) {
     QJSEngine engine;
     Heap heap(&engine);
     QJSValue few = engine.evaluate(
@@ -58,12 +59,19 @@ bool collectsWhileMaking(double room) {
     engine.collectGarbage();
     heap.leaveRoom(room);
     const double before = heap.collected();
-    QJSValue made = engine.evaluate(
-        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
-                       "m: i }); return made; })()")
-            .arg(2 * KEPT));
+    QJSValue making = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push(%2); "
+                       "return made; })()")
+            .arg(2 * KEPT)
+            .arg(made));
     return heap.collected() > before;
 }
+
+// What's made: objects holding only numbers, so nothing outside the heap;
+// and strings, whose text Qt holds outside it, about 20 MB of them, which
+// start the collector on their own once they pass what Qt allows outside.
+const QString NUMBERS = QStringLiteral("{ n: i, m: i }");
+const QString STRINGS = QStringLiteral("`row ${i} of the clipboard's history`");
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
@@ -128,13 +136,20 @@ int main(int argc, char **argv) {
     if (!timed)
         std::fprintf(stderr, "FAIL the collector's time grows with each collection: %.3f, "
                      "then %.3f, then %.3f ms\n", collectedFirst, collectedBefore, collectedAfter);
-    const bool collects = collectsWhileMaking(0);
+    const bool collects = collectsWhileMaking(0, NUMBERS);
     if (!collects)
         std::fprintf(stderr, "FAIL a heap holding far more than is live starts the collector "
                      "as it makes more\n");
-    const bool roomy = !collectsWhileMaking(ROOM_MB);
+    const bool roomy = !collectsWhileMaking(ROOM_MB, NUMBERS);
     if (!roomy)
         std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
                      "it makes more\n", ROOM_MB);
-    return grows && falls && holds && scattered && bounded && timed && collects && roomy ? 0 : 1;
+    const bool roomyOutside = !collectsWhileMaking(ROOM_MB, STRINGS);
+    if (!roomyOutside)
+        std::fprintf(stderr, "FAIL a heap left %.0f MB of room doesn't start the collector as "
+                     "it makes strings held outside it\n", ROOM_MB);
+    return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
+                   roomyOutside
+               ? 0
+               : 1;
 }
