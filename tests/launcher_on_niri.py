@@ -73,6 +73,9 @@ class Shell:
         self.folder = folder
         self.log = logs / "shell.log"
         self.process: subprocess.Popen[bytes] | None = None
+        # Where the log stood as the shell last started, so a wait for what it says once a
+        # start is done reads that start's alone, past a restart.
+        self.launched = 0
         self.daemons: dict[str, subprocess.Popen[bytes]] = {}
 
     def start(self) -> None:
@@ -157,6 +160,7 @@ class Shell:
         # profiler (tests/launcher-keys-lab-on-niri.py).
         given = os.environ.get("QS_GIVEN", "").split()
         with self.log.open(mode) as log:
+            self.launched = self.log.stat().st_size
             self.process = subprocess.Popen(
                 ["qs", "-p", str(self.folder), *given],
                 stdout=log,

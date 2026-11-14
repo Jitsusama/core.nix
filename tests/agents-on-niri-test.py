@@ -1308,9 +1308,7 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     what his openings wait behind (2026-11-10).
     """
     shell.launcher_closed()
-    # The test before closed For You by :q, which makes six of Agents' rows of its own as it
-    # goes (To Reopen's row and its two verbs, twice). Under load that work can trail the
-    # moment the launcher says it's shut, so the count starts once the shell is at rest.
+    warmed(shell)
     made_settled(shell)
     before = made_by_agents(shell)
     landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}
@@ -1445,6 +1443,26 @@ FIRST_LETTER_MAKES = 5
 
 # How long Agents makes no row before an opening's work is taken as done: many frames.
 SETTLED = 0.5
+
+
+# What the shell says once it has warmed every source and kept home and each chord's place
+# (Launcher.qml's warmNext), and how long a case waits for it.
+WARMED_SAID = "places kept as the shell started"
+WARMED = 30
+
+
+def warmed(shell: Shell) -> None:
+    """Wait until the shell has warmed its sources, so no count takes in Agents' turn of it.
+
+    Warming wraps every session's row shut, a new one's too, so the first letter finds them
+    wrapped. Each opening puts it off until the launcher has been shut a second and a half, so
+    after the openings before it, it fell inside a shut test's count as an arrival's rows
+    (`agent:ARRIVE shut` made from warmNext, 2026-11-13).
+    """
+    deadline = time.monotonic() + WARMED
+    while WARMED_SAID.encode() not in shell.log.read_bytes()[shell.launched :]:
+        assert time.monotonic() < deadline, f"the shell never finished warming:\n{shell.tail()}"
+        time.sleep(0.1)
 
 
 def made_settled(shell: Shell) -> None:
