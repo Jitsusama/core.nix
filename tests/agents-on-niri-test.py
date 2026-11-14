@@ -950,9 +950,12 @@ def walked_into_landed(shell: Shell) -> dict[str, Json]:
 def climbed_out_of_landed(shell: Shell, picks: dict[str, Json]) -> None:
     """Climb back by - through each step the walk passed, each listed then, onto its row.
 
-    Nothing typed led there, so no step on the way learned a pick (`picks` were kept before).
+    It starts from the words given on the landing, the step they were asked in. Nothing
+    typed led there, so no step on the way learned a pick (`picks` were kept before).
     """
     shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: shown["held"] == ["agents", "Landed", TRY_FIRST])
     shell.send_chars("-")
     shell.launcher_until(
         lambda shown: (
