@@ -1,22 +1,27 @@
 # Joel's timers, kept and rung for the launcher's Timers, built from this
-# directory, its tests run as it builds.
+# directory, its tests run as it builds. It takes its shape from the
+# terminal kit (../../terminal-kit), so the source is cut from the folder
+# holding both.
 {
   dbus,
   lib,
   rustPlatform,
 }:
-rustPlatform.buildRustPackage {
+rustPlatform.buildRustPackage rec {
   pname = "timers";
   version = "0.1.0";
   src = lib.fileset.toSource {
-    root = ./.;
+    root = ../..;
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
       ./src
       ./tests
+      ../../terminal-kit/Cargo.toml
+      ../../terminal-kit/src
     ];
   };
+  sourceRoot = "${src.name}/quickshell/timers";
   cargoLock.lockFile = ./Cargo.lock;
   # A test runs a bus of its own, with a stand-in notifications server on
   # it, for the daemon to ring on.

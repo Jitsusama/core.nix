@@ -37,7 +37,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools",
  "proc-macro2",
  "quote",
  "regex",
@@ -86,6 +86,10 @@ name = "cfg-if"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
+
+[[package]]
+name = "chrome-session"
+version = "0.1.0"
 
 [[package]]
 name = "clang-sys"
@@ -313,7 +317,10 @@ dependencies = [
 name = "programs"
 version = "0.1.0"
 dependencies = [
+ "chrome-session",
+ "daemon-serve",
  "libc",
+ "ready-rows",
  "serde",
  "serde_json",
 ]
@@ -461,6 +468,7 @@ dependencies = [
  "programs",
  "ready-rows",
  "serde_json",
+ "terminal-kit",
  "windows",
 ]
 
@@ -504,6 +512,14 @@ name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
+
+[[package]]
+name = "terminal-kit"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "unicode-width",
+]
 
 [[package]]
 name = "toml"

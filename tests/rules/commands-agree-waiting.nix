@@ -212,11 +212,6 @@
     "exits"
     "helps"
   ];
-  sound = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   surface-clock = [
     "kit"
     "helps"
@@ -227,11 +222,6 @@
   systemd-run = [ "helps" ];
   timekeeping = [
     "kit"
-    "helps"
-  ];
-  timers = [
-    "kit"
-    "exits"
     "helps"
   ];
   to-do = [

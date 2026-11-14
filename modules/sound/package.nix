@@ -3,7 +3,8 @@
 # (../daemon-client), and its rows take the form every daemon's do
 # (../ready-rows), and it names programs by their desktop entries and
 # marks as the windows daemon does (../windows, ../programs, and
-# ../daemon-serve, which the windows daemon answers through), so the
+# ../daemon-serve, which the windows daemon answers through), and it
+# takes its shape from the terminal kit (../terminal-kit), so the
 # source is cut from the modules folder holding them all, and built from
 # this one. PipeWire's bindings are
 # generated from its headers as they build, as dictation's are.
@@ -34,6 +35,8 @@ rustPlatform.buildRustPackage rec {
       ../programs/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
       ../windows/Cargo.toml
       ../windows/src
     ];
