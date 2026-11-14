@@ -99,19 +99,21 @@ def sitting_over(shell: Shell, title: str) -> tuple[Json, Json]:
 
 
 def quiet(shell: Shell) -> int:
-    """Type until the cat has said nothing for a whole key's gap, and give the mark it's at.
+    """Type until the cat has said and drawn nothing for a whole key's gap; give its mark.
 
     Sitting down can outlast a pause, so a pause's pose may be up, and the column just opened
     may still be settling: on a loaded builder either can draw after the first key, so the
-    count starts only once neither has more to draw.
+    count starts only once neither has more to draw. A settling column redraws the cat's
+    window without the cat saying anything, so its frames are counted as well as its words.
     """
     since = shell.mark()
     began = time.monotonic()
     while time.monotonic() - began < TYPED:
+        shell.as_account(f"qs -p {shell.folder} ipc call frames start")
         shell.send_key("F24")
         time.sleep(TYPING)
         found, since = reports(shell, since)
-        if not found:
+        if not found and not cat_frames(shell):
             return since
     pytest.fail(f"the cat never sat quiet in {TYPED:.0f} s of typing")
 
