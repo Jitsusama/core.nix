@@ -72,10 +72,21 @@ lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
           # launcher kept the landings Joel read before the daemon did.
           "--shells"
           "${config.xdg.stateHome}/quickshell/by-shell"
+          # What of core runs, as update-to-main last followed it, and the
+          # bare clone cadence fetches each tick, whose history says what
+          # that core merged: a landing of core's waits for the switch that
+          # brings it before To Try holds it. Where either isn't there, as
+          # with no cadence, nothing waits.
+          "--switched"
+          "/run/update-to-main/last.json"
+          "--clone"
+          "${config.xdg.stateHome}/cadence/core.git"
           "--socket"
           "%t/daemons/agents.sock"
         ]
       );
+      # git, to read what core merged from the clone.
+      Environment = [ "PATH=${lib.makeBinPath [ pkgs.git ]}" ];
       Restart = "always";
       RestartSec = 5;
       Slice = "background.slice";

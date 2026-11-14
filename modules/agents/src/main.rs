@@ -10,8 +10,8 @@
 //!
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
-//! --kept KEPT --landed LANDED --steer STEER --shells SHELLS --socket
-//! SOCKET`, where
+//! --kept KEPT --landed LANDED --steer STEER --shells SHELLS [--switched
+//! SWITCHED --clone CLONE] --socket SOCKET`, where
 //! WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
@@ -21,8 +21,12 @@
 //! kept beside it, in arrangement.json, and where those moving onto pi's
 //! host sat, in kept-places.json), LANDED its file of the landings he
 //! has read, STEER the harness's steer folders, which keep each
-//! session's talks, and SHELLS the launcher's own folders, where it kept them
-//! before the daemon did. A machine with no realm runs no node,
+//! session's talks, SHELLS the launcher's own folders, where it kept them
+//! before the daemon did, SWITCHED update-to-main's answer to its last
+//! ask and CLONE a clone of core's, which together say what of core's
+//! merges run, so a landing of core's waits for its switch before To
+//! Try holds it (carried.rs; the core is kept beside KEPT, in
+//! carried.json), and with neither nothing waits. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
 use std::path::{Path, PathBuf};
@@ -80,7 +84,7 @@ const DOMAIN: Domain = Domain {
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
                      --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
                      --restore RESTORE --kept KEPT --landed LANDED --steer STEER \
-                     --shells SHELLS --socket SOCKET";
+                     --shells SHELLS [--switched SWITCHED --clone CLONE] --socket SOCKET";
 
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
@@ -99,6 +103,8 @@ struct Args {
     landed: PathBuf,
     steer: PathBuf,
     shells: PathBuf,
+    switched: Option<PathBuf>,
+    clone: Option<PathBuf>,
     socket: PathBuf,
 }
 
@@ -121,6 +127,8 @@ fn args() -> Option<Args> {
         landed: named("--landed")?,
         steer: named("--steer")?,
         shells: named("--shells")?,
+        switched: named("--switched"),
+        clone: named("--clone"),
         socket: named("--socket")?,
     })
 }
@@ -345,7 +353,10 @@ fn main() -> ExitCode {
         restore: args.restore,
         arrangement: args.kept.with_file_name("arrangement.json"),
         kept_places: args.kept.with_file_name("kept-places.json"),
+        carried: args.kept.with_file_name("carried.json"),
         kept: args.kept,
+        switched: args.switched,
+        clone: args.clone,
         landed: args.landed,
         steer: args.steer,
         shells: args.shells,

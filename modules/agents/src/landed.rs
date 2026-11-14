@@ -43,6 +43,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
+use crate::carried::Carried;
 use crate::clock;
 use crate::row::Words;
 use crate::served::PLACE;
@@ -342,6 +343,26 @@ fn tried(record: &Value) -> Option<Value> {
         json!({"key": format!("{TRY}:{PLACE}:{}", text(said, "key")), "kind": TRY,
             "order": record["order"], "try": {"landing": record["key"], "read": said["read"]}})
     })
+}
+
+/// Holds back from To Try each landing in `records` that the running
+/// system doesn't carry yet (carried.rs): it stays in Landed, named as
+/// it will be, but waits for the switch that brings it, since a line
+/// tried before then fails (WCJQSG, 2026-11-13). Its `try` record goes
+/// too, so it isn't shown as coming either.
+pub fn waiting_for_switch(records: &mut Vec<Value>, carried: &Carried) {
+    let mut waiting = HashSet::new();
+    for record in records.iter_mut() {
+        if record["landed"]["tries"] == true && !carried.carries(&record["landed"]) {
+            record["landed"]["tries"] = json!(false);
+            waiting.insert(text(record, "key"));
+        }
+    }
+    records.retain(|record| {
+        record["try"]["landing"]
+            .as_str()
+            .is_none_or(|key| !waiting.contains(key))
+    });
 }
 
 /// Gives each landing in `records` its drawer, the same in Landed and in
@@ -1025,6 +1046,43 @@ mod tests {
             first_sentence("Open Agents"),
             ("Open Agents", ""),
             "one with no stop is all its first sentence"
+        );
+    }
+
+    #[test]
+    fn a_landing_of_cores_waits_for_the_switch_that_brings_it_before_to_try_holds_it() {
+        let core = |reference: &str, at: &str| {
+            let mut one = kept("s", reference, at, "Open Machine \u{203a} Heat.");
+            one["repo"] = json!("Jitsusama/core.nix");
+            one
+        };
+        let landings = [
+            core("core.nix#4178", "2026-11-11T11:00:00Z"),
+            core("core.nix#4177", "2026-11-11T10:00:00Z"),
+        ];
+        let (mut records, _) = landed(landings.iter(), &[], &Reading::default(), now());
+        waiting_for_switch(&mut records, &Carried::of(&[4177]));
+        let tries: Vec<(&Value, &Value)> = records[..2]
+            .iter()
+            .map(|one| (&one["landed"]["ref"], &one["landed"]["tries"]))
+            .collect();
+        assert_eq!(
+            tries,
+            [
+                (&json!("core.nix#4178"), &json!(false)),
+                (&json!("core.nix#4177"), &json!(true)),
+            ],
+            "only the one a switch brought asks to be tried; the other stays in Landed"
+        );
+        let waiting: Vec<&Value> = records
+            .iter()
+            .filter(|one| one["kind"] == TRY)
+            .map(|one| &one["try"]["landing"])
+            .collect();
+        assert_eq!(
+            waiting,
+            [&records[1]["key"]],
+            "To Try holds only the one carried, the other not even as coming"
         );
     }
 
