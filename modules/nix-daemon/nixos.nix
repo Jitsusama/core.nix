@@ -153,10 +153,17 @@
 }:
 let
   gib = 1024 * 1024 * 1024;
-  # Only 2.34's daemon is patched, so a newer Nix fails
-  # an-untrusted-client-passes-only-named-env until the patch is carried to it.
+  # The patch applies unchanged to 2.34 and 2.35, the versions it was checked against. Any
+  # other Nix goes unpatched, so an-untrusted-client-passes-only-named-env fails until the
+  # patch is carried to it, rather than a bump quietly dropping it.
+  patchedVersions = [
+    "2.34"
+    "2.35"
+  ];
   nix =
-    if pkgs.nix ? appendPatches && lib.versions.majorMinor pkgs.nix.version == "2.34" then
+    if
+      pkgs.nix ? appendPatches && builtins.elem (lib.versions.majorMinor pkgs.nix.version) patchedVersions
+    then
       pkgs.nix.appendPatches [ ./untrusted-named-impure-env.patch ]
     else
       pkgs.nix;

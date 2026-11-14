@@ -107,7 +107,7 @@
   # machine gives in its unit's environment, hands a client that isn't
   # trusted only those impure-env variables, and only to a fixed-output
   # build, however the client asks, and puts no value in a warning or a log.
-  # Stock Nix 2.34 hands it none, so a tool that fetches private sources
+  # Stock Nix hands it none, so a tool that fetches private sources
   # fails from an untrusted account or a sandbox; a patch that let any name
   # through would let a client set what the daemon set for everyone's
   # downloads. The door runs the machine's own Nix, so this proves the
