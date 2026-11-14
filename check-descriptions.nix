@@ -3707,8 +3707,9 @@
   '';
   the-shell-hands-over-only-once-its-surfaces-are-shut = ''
     the old shell is ended in a handover only once its launcher and Super+S's line are shut,
-    even one come up while the new shell loaded; a locked screen restarts the shell instead,
-    and a new shell that fails as it loads leaves the old one the unit's
+    even one come up while the new shell loaded or opened by a chord heard just after it was
+    found shut, whose socket is put back; a locked screen restarts the shell instead, and a
+    new shell that fails as it loads leaves the old one the unit's
   '';
   the-shell-takes-a-switchs-files-at-idle = ''
     after a switch the shell is handed over onto its new files once the launcher and Super+S's
