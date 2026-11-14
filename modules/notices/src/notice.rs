@@ -105,6 +105,10 @@ pub struct Notice {
     /// Whether the shell sounds it as it's shown: one to Joel himself from
     /// a chat program the machine says who he is in (judged.rs).
     pub chimes: bool,
+    /// Whether the shell sounds it even while notices are held or a call
+    /// is on: one Joel's safe word sends when someone stops his agents
+    /// (judged.rs).
+    pub alarms: bool,
 
     pub read: bool,
     /// How it was read where that wasn't here, as `readInSlack`.

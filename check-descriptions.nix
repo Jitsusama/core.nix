@@ -2641,7 +2641,7 @@
     the arrival line shows the notice the notices daemon serves as in front, only its critical one
     while notices are held or over the talk line, none while the launcher or the held list has the
     notices, and counts those behind it still waiting; a message to Joel knocks once for a burst,
-    never while notices are held or with no sound set
+    never while notices are held or with no sound set, and his safe word knocks even while held
   '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,

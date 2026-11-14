@@ -148,7 +148,7 @@ Singleton {
             urgent: notice.urgent, held: notice.held, missed: notice.missed,
             read: notice.read, readHow: notice.readHow, readAt: notice.readAt,
             withdrawn: notice.withdrawn, waits: notice.waits, transient: notice.transient,
-            chimes: notice.chimes ?? false,
+            chimes: notice.chimes ?? false, alarms: notice.alarms ?? false,
             left: notice.left ?? undefined, leftAt: notice.leftAt ?? undefined,
             raisedAt: notice.raisedAt
         };
@@ -164,6 +164,7 @@ Singleton {
         const nowResting = Object.assign({}, resting);
         const arrivals = [];
         let chimes = false;
+        let alarms = false;
         let nowFront = front;
         for (const key of gone) {
             if (key === frontKey) {
@@ -200,6 +201,7 @@ Singleton {
                     if (arriving) {
                         arrivals.push(id);
                         chimes = chimes || now.chimes;
+                        alarms = alarms || now.alarms;
                     }
                 }
             } else {
@@ -231,7 +233,7 @@ Singleton {
             .sort((a, b) => b.at - a.at || b.id - a.id);
         for (const id of arrivals)
             came(live[id], made[id]);
-        chime(chimes);
+        chime(chimes, alarms);
     }
 
     // A message to Joel himself, which the daemon says chimes as its card
@@ -239,16 +241,21 @@ Singleton {
     // Slack's every other notice comes without a sound, so this is how he
     // knows one's for him (Joel, 2026-11-12: "the slack sound is the only
     // way i notice"). Never while notices are held or a call is on, and
-    // once for a burst, so three lines sent together knock once.
+    // once for a burst, so three lines sent together knock once. One the
+    // daemon says `alarms`, someone stopping his agents with his safe word,
+    // knocks even then, as the calls program isn't asked.
     property real chimed: 0
-    function chime(chimes) {
+    function chime(chimes, alarms) {
         const sound = Options.sounds.addressed ?? "";
-        if (!Knock.knocks({ chimes: chimes, sound: sound, held: Quiet.on }, Date.now(), chimed))
+        const knock = { chimes: chimes, alarms: alarms, sound: sound, held: Quiet.on };
+        if (!Knock.knocks(knock, Date.now(), chimed))
             return;
         chimed = Date.now();
-        Niri.spawn(["sh", "-c", '"$1" || exec "$2" --volume=0.4 "$3"', "chime",
+        const played = 'exec "$2" --volume=0.4 "$3"';
+        Niri.spawn(["sh", "-c", alarms ? played : `"$1" || ${played}`, "chime",
             Options.sounds.calls, Options.sounds.player, sound]);
-        console.info("notices: knocked for a message to Joel");
+        console.info(alarms ? "notices: knocked for Joel's safe word"
+            : "notices: knocked for a message to Joel");
     }
 
     Connections {
