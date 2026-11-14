@@ -212,13 +212,50 @@ struct Asker {
 /// its writes still in memory. `unwritten` keeps what was dirty or being
 /// written at the last look; a file the build deleted before then never
 /// reaches the disk, so it's the most still to come.
+///
+/// Each time the daemon restarts, systemd takes the builds' controllers
+/// back to start it, and vm-first hands them on again: a build's io.stat
+/// goes, and comes back counting from nothing. `counter` keeps what the
+/// counter that's there now said at the last look, so `read` and `written`
+/// add up every counter the build has had.
 struct Tally {
     cgroup: u64,
     read: u64,
     written: u64,
+    counter: (u64, u64),
     unwritten: u64,
     seen: bool,
     asked: Option<Asker>,
+}
+
+impl Tally {
+    fn new(cgroup: u64) -> Self {
+        Self {
+            cgroup,
+            read: 0,
+            written: 0,
+            counter: (0, 0),
+            unwritten: 0,
+            seen: false,
+            asked: None,
+        }
+    }
+
+    /// Adds what a build's io.stat has counted since the last look, given
+    /// what it reads now, or `None` while it's gone. A counter that reads
+    /// less than it did started again between two looks, from nothing.
+    fn count(&mut self, now: Option<(u64, u64)>) {
+        let (read, written) = now.unwrap_or((0, 0));
+        let (was_read, was_written) = self.counter;
+        let (from_read, from_written) = if read < was_read || written < was_written {
+            (0, 0)
+        } else {
+            (was_read, was_written)
+        };
+        self.read += read - from_read;
+        self.written += written - from_written;
+        self.counter = (read, written);
+    }
 }
 
 /// The bytes of a cgroup's file pages dirty or being written back, from its
@@ -384,21 +421,18 @@ fn tally(tallies: &mut HashMap<PathBuf, Tally>, builds: &[PathBuf]) {
         {
             eprintln!("{said}");
         }
-        let known = tallies.entry(build.clone()).or_insert_with(|| Tally {
-            cgroup,
-            read: 0,
-            written: 0,
-            unwritten: 0,
-            seen: false,
-            asked: None,
-        });
+        let known = tallies
+            .entry(build.clone())
+            .or_insert_with(|| Tally::new(cgroup));
         if known.asked.is_none() {
             known.seen |= has_a_process(build);
             known.asked = asker_of(build);
         }
-        if let Ok(stat) = fs::read_to_string(build.join("io.stat")) {
-            (known.read, known.written) = parse_io_stat(&stat, is_a_disk);
-        }
+        known.count(
+            fs::read_to_string(build.join("io.stat"))
+                .ok()
+                .map(|stat| parse_io_stat(&stat, is_a_disk)),
+        );
         if let Ok(stat) = fs::read_to_string(build.join("memory.stat")) {
             known.unwritten = parse_unwritten(&stat);
         }
@@ -1042,6 +1076,22 @@ mod tests {
     }
 
     #[test]
+    fn keeps_what_a_build_wrote_when_its_counters_start_again() {
+        let mut tally = Tally::new(1);
+        tally.count(Some((10, 1 << 20)));
+        tally.count(Some((10, 2 << 20)));
+        // The daemon restarts: its io controller is taken back, so the
+        // build's io.stat goes, and comes back counting from nothing.
+        tally.count(None);
+        tally.count(Some((0, 64 << 10)));
+        assert_eq!((tally.read, tally.written), (10, (2 << 20) + (64 << 10)));
+        // Taken back and handed again between two looks.
+        tally.count(Some((0, 4 << 10)));
+        tally.count(Some((5, 8 << 10)));
+        assert_eq!((tally.read, tally.written), (15, (2 << 20) + (72 << 10)));
+    }
+
+    #[test]
     fn counts_a_write_once_however_many_layers_it_passes() {
         // As a laptop's build.slice reads: zram, then the disk, then the
         // LUKS mapper on it, holding the disk's bytes again.
@@ -1082,6 +1132,7 @@ mod tests {
             cgroup: 1,
             read: 0,
             written: 1 << 30,
+            counter: (0, 1 << 30),
             unwritten: 0,
             seen: true,
             asked: Some(Asker {
@@ -1124,6 +1175,7 @@ mod tests {
             cgroup: 1,
             read: 4096,
             written: 1 << 20,
+            counter: (4096, 1 << 20),
             unwritten: 0,
             seen: false,
             asked: None,
