@@ -118,7 +118,7 @@ impl Page {
 
     /// The page's lines as `room` lays them out.
     pub fn lines(self, room: Room) -> Vec<Line> {
-        let shared = Shared::of(&self.blocks, room);
+        let alike = Shared::of(&self.blocks, room);
         let mut lines = Vec::new();
         for block in self.blocks {
             match block {
@@ -128,7 +128,7 @@ impl Page {
                 }
                 Block::Facts(indent, facts) => lines.extend(set_facts(indent, facts, room)),
                 Block::Table(indent, table, shares) => {
-                    lines.extend(table.lines(indent, room, shares.then_some(&shared)));
+                    lines.extend(table.lines(indent, room, shares.then_some(&alike)));
                 }
             }
         }
