@@ -264,9 +264,11 @@ QtObject {
     }
 
     // A walk of 100 cells of 1 to the right, thinking 200 ms: it turns,
-    // thinks, crouches back, walks easing in and out with its strides stepped
-    // by the ground it covers, overshoots, steps back and crouches as it
-    // stops.
+    // thinks, crouches back, walks easing in over its first stride and out
+    // over its last, its strides stepped by the ground it covers, onto its
+    // seat and no further, and crouches as it stops (Joel, 2026-11-14 17:19:
+    // "i never want the kitty to skid into place, i always want to see its
+    // paws moving when it is walking or running").
     function walks(expect) {
         const cat = more => Object.assign({ cell: 1, ratio: 1, wide: 8, tall: 8, air: 1 }, more);
         const on = x => ({ x, y: 0 });
@@ -274,7 +276,7 @@ QtObject {
         const at = t => Paths.frame(going, t);
         const beats = going.beats.map(beat => beat.name);
         expect("its beats, in order", beats,
-            ["turns", "thinks", "crouches", "goes", "settles", "lands"]);
+            ["turns", "thinks", "crouches", "goes", "lands"]);
         const begins = name => going.beats.find(beat => beat.name === name).begins;
         const ends = name => going.beats.find(beat => beat.name === name).ends;
         expect("it turns its head the way it's going first, standing where it sat",
@@ -293,11 +295,14 @@ QtObject {
         const xs = frames.map(frame => frame.x);
         expect("it only moves forward as it walks",
             xs.every((x, i) => i === 0 || x >= xs[i - 1]), true);
-        const first = xs[1] - xs[0];
-        const middle = Math.floor(xs.length / 2);
-        const most = xs[middle + 1] - xs[middle];
-        expect("it eases in, slow at first and fastest midway", first < most / 4, true);
-        expect("and eases out", xs[xs.length - 1] - xs[xs.length - 2] < most / 4, true);
+        // How far it goes in each tenth of a second wholly past its first
+        // stride and short of its last.
+        const tenths = xs.slice(6).map((x, i) => [xs[i], x]).filter(([from, to]) =>
+            from >= 99 + going.stride && to <= 200 - going.stride).map(([from, to]) => to - from);
+        expect("it eases in over its first stride, from a standstill", xs[1] - xs[0] < 1, true);
+        expect("then goes at an even pace, never faster midway",
+            Math.max(...tenths) - Math.min(...tenths) <= 2, true);
+        expect("and eases out over its last", xs[xs.length - 1] - xs[xs.length - 2] < 1, true);
         // Each pair of legs apart two strides and gathered two, the hind pair
         // a stride behind (RSCH-20261113-24R2QV's rule 4).
         const walk = ["walkingA", "walkingC", "walkingB", "walkingD"];
@@ -309,11 +314,12 @@ QtObject {
                 Math.floor((frame.x - 99) / going.stride) % walk.length]), true);
         const changes = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose);
         expect("as many strides as its way holds, the last ending as it stops",
-            changes.length, Math.ceil((201.5 - 99) / going.stride) - 1);
-        expect("it walks on past its seat a cell and a half",
-            Math.round(at(ends("goes") - 1e-6).x * 10) / 10, 201.5);
-        expect("steps back onto it", [at(ends("settles") - 1e-6).beat,
-            Math.round(at(ends("settles") - 1e-6).x * 10) / 10], ["settles", 200]);
+            changes.length, Math.ceil((200 - 99) / going.stride) - 1);
+        expect("it walks onto its seat, never past it", Math.max(...xs), 200);
+        const lastStride = frames.filter((frame, i) => i > 0 && frame.pose !== frames[i - 1].pose)
+            .pop();
+        expect("and in its last drawing goes no more than a stride and a cell",
+            200 - lastStride.x <= going.stride + 1, true);
         expect("and crouches as it stops, where it'll sit",
             [at(begins("lands")).pose, at(begins("lands")).x], ["pouncing", 200]);
         expect("then sits, done", [at(going.ends).done, at(going.ends).x, at(going.ends).pose],
@@ -326,12 +332,12 @@ QtObject {
         expect("drawing back to the right",
             Math.round(Paths.frame(back, back.beats[1].ends - 1e-6).x), 201);
         expect("with no thought it doesn't stop to think",
-            back.beats.map(beat => beat.name), ["turns", "crouches", "goes", "settles", "lands"]);
+            back.beats.map(beat => beat.name), ["turns", "crouches", "goes", "lands"]);
         expect("where it already sits, to the screen's pixel, it doesn't walk",
             Paths.walk(on(40), on(40.2), cat({ ratio: 1.5 })), null);
         const hurried = Paths.walk(on(150), on(300), cat({ hurried: true, facing: 1 }));
         expect("a walk begun on the way neither turns nor thinks nor crouches",
-            hurried.beats.map(beat => beat.name), ["goes", "settles", "lands"]);
+            hurried.beats.map(beat => beat.name), ["goes", "lands"]);
         expect("and sets off from where it is", Paths.frame(hurried, 0).x, 150);
         const turned = Paths.walk(on(150), on(50), cat({ hurried: true, facing: 1 }));
         expect("one going back the way it came turns first", turned.beats[0].name, "turns");
@@ -339,12 +345,23 @@ QtObject {
         expect("the theme's slowdown stretches all of it", slowed.ends, going.ends * 2);
         const far = Paths.walk(on(0), on(1000), cat({ pause: 0 }));
         const goes = far.beats.find(beat => beat.name === "goes");
-        // Drawn back no further than the screen's left edge, it goes 1001.5.
-        expect("far, it hurries, never more than 120 cells a second",
-            Math.round(goes.ends - goes.begins), Math.round(1001.5 / 120 * 1000));
-        expect("its stride at most ten cells", far.stride, 10);
+        // Drawn back no further than the screen's left edge, it goes 1000.
+        expect("far, it hurries, never more than 80 cells a second",
+            Math.round(goes.ends - goes.begins), Math.round(1000 / 80 * 1000));
+        expect("at a run, at most three cells a drawing", far.stride, 3);
+        const held = [];
+        for (let t = goes.begins, run = null; t < goes.ends; t += 1) {
+            const pose = Paths.frame(far, t).pose;
+            if (run === null || pose !== run.pose) {
+                held.push(run);
+                run = { pose, begins: t };
+            }
+            run.ends = t + 1;
+        }
+        expect("each drawing of its run held two frames at 60 Hz", held.slice(2)
+            .every(run => run.ends - run.begins >= 33), true);
         const near = Paths.walk(on(0), on(20), cat({ cell: 2, pause: 0 }));
-        expect("near, it ambles, its stride half its body", near.stride, 8);
+        expect("near, it ambles, two cells a drawing", near.stride, 4);
         const shown = MarginCat.walked([100, 116.7, 133.3, 150, 200], [1.2, 0.4, 3.04, 0.8], 1,
             { begun: 7, stepped: 6 });
         expect("a walk's frames as niri showed them, the gaps between them sorted",
