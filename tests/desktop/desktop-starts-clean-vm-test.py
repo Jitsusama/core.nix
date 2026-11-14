@@ -11,6 +11,7 @@ opening comment says what the test proves. Every test asks for the desktop, star
 from __future__ import annotations
 
 import json
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,6 +22,7 @@ from desktop_session import (
     PICTURE_COLOURS,
     retry,
 )
+from test_driver.errors import RequestedAssertionFailed
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -32,6 +34,10 @@ if TYPE_CHECKING:
 GOING = timedelta(seconds=10)
 # How long a unit may take to say what's wanted after boot, or a picture to be painted.
 SAYING = timedelta(seconds=30)
+# How long a call allowed 2 seconds may run, however busy the host, before
+# the test says its time never ended it: 2 seconds paced at most four
+# times, with room for su to start and end.
+CUT_OFF = timedelta(seconds=60)
 
 
 @pytest.fixture(scope="module")
@@ -47,6 +53,19 @@ def test_the_machine_boots_without_an_ordering_cycle(desktop: Desktop) -> None:
     reached, so only a boot shows it.
     """
     desktop.machine.fail("journalctl -b -o cat | grep -F 'ordering cycle'")
+
+
+def test_a_call_into_the_session_that_never_answers_fails_in_its_time(desktop: Desktop) -> None:
+    """A command run in the session that never ends fails once its time is up.
+
+    Waiting on it until the driver's own end held a run for an hour, when
+    one launcher toggle never answered.
+    """
+    started = time.monotonic()
+    with pytest.raises(RequestedAssertionFailed, match="exit code 124"):
+        desktop.as_account("sleep 600", timeout=timedelta(seconds=2))
+    took = time.monotonic() - started
+    assert took < CUT_OFF.total_seconds(), f"a call allowed 2 seconds ran {took:.0f}"
 
 
 def caps_of(status: str) -> dict[str, int]:
