@@ -8,6 +8,7 @@
   rustPlatform,
   stdenv,
   systemd,
+  util-linux,
 }:
 let
   changed-checks = callPackage ../../../tools/changed-checks/package.nix { };
@@ -39,8 +40,12 @@ rustPlatform.buildRustPackage {
   // lib.optionalAttrs (lib.meta.availableOn stdenv.hostPlatform systemd) {
     NIX_OFFLOAD_SYSTEMD_RUN = lib.getExe' systemd "systemd-run";
   };
-  # Its tests bundle a real git tree's commits.
-  nativeCheckInputs = [ git ];
+  # Its tests bundle a real git tree's commits, and start a run apart with
+  # setsid as a builder does (src/command.rs).
+  nativeCheckInputs = [
+    git
+    util-linux
+  ];
   meta = {
     description = "Lends the machine a builder while its queue has builds one could take";
     license = lib.licenses.mit;

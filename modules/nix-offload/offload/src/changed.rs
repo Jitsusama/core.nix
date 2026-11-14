@@ -602,7 +602,9 @@ pub fn sharing_kept(base: &str, system: &str, record: &str) -> Option<(String, S
     }
     let folder = "${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks";
     let kept = format!("{folder}/{base}-{system}");
-    let read = format!("cat \"{kept}.{record}\"");
+    // A builder often keeps no record of a base, as when tracing failed,
+    // and the copy is then simply not made: cat's complaint said nothing.
+    let read = format!("cat \"{kept}.{record}\" 2>/dev/null");
     let take = format!(
         "test -e \"{kept}.{record}\" || {{ mkdir -p \"{folder}\" && \
          t=\"{kept}.{record}.copying.$$\" && {{ cat > \"$t\" && test -s \"$t\" && \

@@ -417,11 +417,23 @@ fn away(
     };
     match once() {
         Err(failed) if lost_its_builder(&failed) && !run::stopping() => {
-            eprintln!("{what} lost its builder, so it's tried once more");
+            eprintln!("{}", tried_again(what, &failed));
             once()
         }
         ran => ran,
     }
+}
+
+/// What's said of a try that lost its builder, with the last lines Nix
+/// said of it, since the try after says only its own: on 14 November the
+/// first of a switch's two failed tries left no reason in the journal.
+fn tried_again(what: &str, failed: &Failure) -> String {
+    let mut note = format!("{what} lost its builder, so it's tried once more, after:");
+    for line in &failed.lines {
+        note.push_str("\n  ");
+        note.push_str(line);
+    }
+    note
 }
 
 /// Whether a build on the builders failed because its builder went away
@@ -1079,6 +1091,23 @@ mod tests {
         assert_eq!(
             to_build("this path will be fetched:\n  /nix/store/c.drv\n"),
             [] as [std::string::String; 0]
+        );
+    }
+
+    #[test]
+    fn a_try_that_lost_its_builder_says_what_nix_said_of_it() {
+        let lost = Failure {
+            why: "building the system on the machine's builders failed (exit status: 1)".to_owned(),
+            lines: vec![
+                "error: cannot build on 'ssh-ng://far': connection closed".to_owned(),
+                "Reason: local builds are disabled (max-jobs = 0)".to_owned(),
+            ],
+        };
+        assert_eq!(
+            tried_again("building the system on the machine's builders", &lost),
+            "building the system on the machine's builders lost its builder, so it's tried \
+             once more, after:\n  error: cannot build on 'ssh-ng://far': connection \
+             closed\n  Reason: local builds are disabled (max-jobs = 0)"
         );
     }
 

@@ -108,14 +108,21 @@ fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
         "two gates copying one base at once would write into one file"
     );
     assert_eq!(
-        read, "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.json\"",
+        read,
+        concat!(
+            "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/",
+            "abc123-x86_64-linux.json\" 2>/dev/null"
+        ),
         "not the file changed-checks keeps a base's checks in"
     );
     let (read, _) = sharing_kept("abc123", "x86_64-linux", "reads.json")
         .expect("what the VM tests read isn't shared");
     assert_eq!(
         read,
-        "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/abc123-x86_64-linux.reads.json\"",
+        concat!(
+            "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/",
+            "abc123-x86_64-linux.reads.json\" 2>/dev/null"
+        ),
         "not the file changed-checks keeps what a base's VM tests read in"
     );
     assert_eq!(
@@ -139,7 +146,7 @@ fn what_each_check_read_alone_is_shared_after_the_rest() {
         read,
         concat!(
             "cat \"${XDG_CACHE_HOME:-$HOME/.cache}/changed-checks/",
-            "abc123-x86_64-linux.alone.reads.json\""
+            "abc123-x86_64-linux.alone.reads.json\" 2>/dev/null"
         ),
         "not the file changed-checks keeps what each check read alone in"
     );
