@@ -114,6 +114,10 @@ pub fn shaper(s: &Sources) -> Vec<Reading> {
     let way = |name: &'static str, says: &'static str| {
         let way = day.map(|d| &d[name]);
         let loaded = way.and_then(|w| w["loaded_minutes"].as_f64());
+        // The felt delay stays the reading, since it's his side; what's
+        // left once the Wi-Fi hop's own queue is taken out is the part the
+        // shaper can reach (B8RBNW, 2026-11-14, 534f3035), said beside it.
+        let less_air = way.and_then(|w| w["added_delay_less_air_ms"]["p90"].as_f64());
         Reading::new(
             says,
             way.and_then(|w| w["added_delay_ms"]["p90"].as_f64()),
@@ -122,11 +126,20 @@ pub fn shaper(s: &Sources) -> Vec<Reading> {
         )
         .bar(Bar::AtMost(30.0))
         .detail(loaded.zip(recorded).map(|(loaded, recorded)| {
-            format!(
+            let under = format!(
                 "{} of {} minutes under load",
                 shown(loaded, ""),
                 shown(recorded, "")
-            )
+            );
+            match less_air {
+                Some(less) => {
+                    format!(
+                        "{under}; {} less the Wi-Fi hop's own queue",
+                        shown(less, " ms")
+                    )
+                }
+                None => under,
+            }
         }))
         .from("the shaper's day file")
         .his()
@@ -230,7 +243,8 @@ mod tests {
                 "up": {"full_kbit": 11600, "loaded_minutes": 911,
                        "added_delay_ms": {"p50": 6, "p90": 15}},
                 "down": {"full_kbit": 300000, "loaded_minutes": 40,
-                         "added_delay_ms": {"p50": 9, "p90": 34}},
+                         "added_delay_ms": {"p50": 9, "p90": 34},
+                         "added_delay_less_air_ms": {"p50": 3, "p90": 19.4392455}},
                 "probe_loss": 0.0003}"#,
             )
             .ok(),
@@ -253,6 +267,11 @@ mod tests {
         assert_eq!(
             read[0].detail.as_deref(),
             Some("911 of 972 minutes under load")
+        );
+        assert_eq!(
+            read[1].detail.as_deref(),
+            Some("40 of 972 minutes under load; 19 ms less the Wi-Fi hop's own queue"),
+            "the delay the shaper can reach is said beside the one he feels"
         );
         let unloaded = Sources {
             eero: None,
