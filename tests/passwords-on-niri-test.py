@@ -383,12 +383,13 @@ def test_a_place_opened_from_outside_the_launcher_asks_nothing_as_joel(shell: Sh
 
 
 def test_a_place_a_terminal_or_the_catalogue_opens_asks_nothing_as_joel(shell: Shell) -> None:
-    """Passwords opened by `launcher do` or the catalogue's run asks as none, as `collection` does.
+    """Passwords asked open by `launcher do` or the catalogue's run is never stepped into.
 
-    Both open a place for any process of the account's. Passwords hears it was opened inside
-    the walk today, so it lists nothing; were it told a moment later, the place would still be
-    the one told, so it would list without `asked`. Its asks are watched for a few seconds
-    after, since what's proven is that none comes.
+    Both open a place for any process of the account's, walking to it while the launcher is
+    walked from outside, when Passwords holds no row (Passwords.qml's `outside`). So the step
+    into it finds nowhere to go and the launcher opens at home: it never opens, and asks its
+    daemon nothing as Joel. Its asks are watched for a few seconds after, since what's proven
+    is that none comes.
     """
     walk = f"qs -p {shell.folder} ipc call -- launcher"
     catalogue = json.loads(shell.as_account(f"{walk} list"))
@@ -400,12 +401,14 @@ def test_a_place_a_terminal_or_the_catalogue_opens_asks_nothing_as_joel(shell: S
     for way, command in opens.items():
         shell.launcher_until(lambda shown: not shown["open"])
         before = len(asked())
-        shell.as_account(command)
-        shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
+        answer = shell.as_account(command)
+        shell.launcher_until(lambda shown: shown["open"])
         quiet_until = time.monotonic() + QUIET.total_seconds()
         while time.monotonic() < quiet_until:
             since = asked()[before:]
             assert all(one.get("asked") is not True for one in since), f"{way} asked: {since}"
             assert "let-in" not in asks()[before:], f"{way} asked to be let in: {since}"
             time.sleep(0.1)
+        held = shell.showing()["held"]
+        assert held == [], f"{way} answered {answer} and stepped into {held}"
         shell.close_launcher()
