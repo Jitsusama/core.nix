@@ -56,7 +56,7 @@ step.
 | `dns.default_test_servers` | the resolvers eero offers as custom ones | left out: an offer, not a fact of the internet |
 | `geo_ip.isp`, `org`, `asn`, `city`, `region`, `countryCode` | who carries the internet, and where eero places it | place head (ISP), internet, `internet` |
 | `ipv6_upstream`, `ipv6_lease` | whether the internet gives IPv6 | internet, `internet` |
-| `upnp`, `nat_port_randomization`, `sqm` | UPnP, port randomization, and Optimize for Conferencing and Gaming | internet, `internet`; `sqm` is `:sqm` and `eero sqm` |
+| `upnp`, `nat_port_randomization`, `sqm` | UPnP, port randomization, and Optimize for Conferencing and Gaming | internet, `internet`; `sqm` is `:sqm` and `eero internet sqm` |
 | `band_steering`, `wpa3`, `wireless_mode`, `mlo_mode` | the radios' network-wide settings | internet, `internet` |
 | `net.wpa3_per_band.json` `band_<GHz>_ghz` | each band's Wi-Fi security, as eero names it | internet, `internet` |
 | `net.ac_compat.json` `enabled` | whether the network keeps to what older Wi-Fi 5 (802.11ac) devices can join | internet, `internet` |

@@ -19,7 +19,13 @@ src/main.rs, its src/bin or a [[bin]] it declares. It agrees when:
   parts a figure from its unit across lines, and reads past 80 as at 80;
   and each of its views, what it answers a person from a machine's state,
   is set at those widths from stand-in state, exits 0, and fits as its help
-  does, short of reading past 80 as at 80, since a table may use the room.
+  does, short of reading past 80 as at 80, since a table may use the room;
+- subcommands: each subcommand its help lists answers help of its own, at
+  every depth: `PROG SUB --help --format json` and `PROG help SUB --format
+  json` both answer help/1 named `PROG SUB`, with an example and its exits,
+  unlike its parent's; `PROG SUB -h` reads unlike its parent's; and a word
+  no subcommand answers to is refused with 64 where no name could stand
+  (docs/commands.md, Subcommands).
 
 A script is a command too: a program a Nix file outside the tests builds
 with writeShellApplication or writeShellScriptBin, named by the wrapper, or
@@ -70,8 +76,9 @@ import unicodedata
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-POINTS = ("kit", "exits", "inks", "helps", "fits")
+POINTS = ("kit", "exits", "inks", "helps", "fits", "subcommands")
 
 # The points a script is held to: the kit is a Rust crate, so it keeps the
 # rest by hand.
@@ -84,7 +91,15 @@ FIXES = {
     "inks": "draw it with the kit's Pen, which reads the theme's roles and marks",
     "helps": "declare its help with terminal_kit::Help and give the check its package",
     "fits": "set its words with the kit's Help and layout, which fit the width",
+    "subcommands": "declare each subcommand with Help::subcommand, its own help in it",
 }
+
+# The code a word no command answers to is refused with.
+USAGE = 64
+
+# How deep the subcommands are walked: deeper than any tree here, so a tree
+# that answers its own path forever still ends.
+DEPTH = 4
 
 # What each point asks of a script that breaks it.
 SCRIPT_FIXES = {
@@ -575,6 +590,90 @@ def helps(name: str, program: str) -> list[str]:
     return wrong
 
 
+def answered(program: str, *args: str) -> dict[str, Any] | None:
+    """Give the help/1 a command answers to its words, or None if it answers none."""
+    said = ran(program, *args)
+    if said is None or said.returncode != 0:
+        return None
+    try:
+        answer = json.loads(said.stdout)
+    except json.JSONDecodeError:
+        return None
+    return answer if isinstance(answer, dict) and answer.get("schema") == "help/1" else None
+
+
+def listed(answer: dict[str, Any]) -> list[str]:
+    """Give the subcommands a help lists, each by the word typed for it, once.
+
+    A word in capitals, as FILE, or in brackets stands for what's typed,
+    and isn't a subcommand.
+    """
+    words = [entry.get("name", "").split(" ")[0] for entry in answer.get("commands", [])]
+    typed = [
+        word
+        for word in words
+        if word and word[0] not in "<-[" and word != "help" and not word.isupper()
+    ]
+    return list(dict.fromkeys(typed))
+
+
+def subcommand(
+    name: str, program: str, under: tuple[str, ...], parent: dict[str, Any]
+) -> tuple[list[str], dict[str, Any] | None]:
+    """Say how one subcommand's help falls short, and give the help it answers."""
+    typed = " ".join((name, *under))
+    answer = answered(program, *under, "--help", "--format", "json")
+    if answer is None:
+        return [f"{typed} --help didn't answer help/1"], None
+    if answer == parent or answer.get("name") != typed:
+        return [f"{typed} --help answers the help of {answer.get('name')}"], None
+    wrong = []
+    if not answer.get("examples") or not answer.get("exits"):
+        wrong.append(f"{typed} --help gives no example or no exits")
+    if answered(program, "help", *under, "--format", "json") != answer:
+        wrong.append(f"{name} help {' '.join(under)} doesn't answer as --help")
+    text = ran(program, *under, "-h")
+    brief = ran(program, *under[:-1], "-h")
+    if text is None or brief is None or text.stdout == brief.stdout:
+        wrong.append(f"{typed} -h reads as its parent's")
+    return wrong, answer
+
+
+def subcommands(name: str, program: str) -> list[str]:
+    """Say which subcommands answer no help of their own, at every depth."""
+    wrong: list[str] = []
+
+    def walk(path: tuple[str, ...], parent: dict[str, Any]) -> None:
+        words = listed(parent)
+        for word in words:
+            seen, answer = subcommand(name, program, (*path, word), parent)
+            wrong.extend(seen)
+            if answer is not None and len(path) < DEPTH and not answer.get("arguments"):
+                walk((*path, word), answer)
+        # Where the level takes a name, any word could be one, so only a
+        # level without one can refuse a word.
+        if words and not parent.get("arguments"):
+            stray = ran(program, *path, f"{words[0]}x", "--help")
+            if stray is None or stray.returncode != USAGE:
+                typed = " ".join((name, *path, f"{words[0]}x"))
+                wrong.append(f"{typed} --help wasn't refused with {USAGE}")
+
+    root = answered(program, "--help", "--format", "json")
+    if root is not None:
+        walk((), root)
+    return wrong
+
+
+def run_breaks(name: str, run: Run) -> dict[str, list[str]]:
+    """Give the points a command breaks when it's run, each with what was seen."""
+    out = {
+        "helps": helps(name, run.program),
+        "fits": fits(run.program, run.views),
+        "subcommands": subcommands(name, run.program),
+    }
+    return {point: seen for point, seen in out.items() if seen}
+
+
 def broken(command: Command, runs: dict[str, Run]) -> dict[str, list[str]]:
     """Give the points a command breaks, each with what was seen."""
     if command.is_script:
@@ -590,13 +689,7 @@ def broken(command: Command, runs: dict[str, Run]) -> dict[str, list[str]]:
     if ESCAPES.search(code) or colours:
         out["inks"] = [f"it takes {', '.join(colours)}"] if colours else []
     if command.name in runs:
-        run = runs[command.name]
-        wrong = helps(command.name, run.program)
-        if wrong:
-            out["helps"] = wrong
-        unfitting = fits(run.program, run.views)
-        if unfitting:
-            out["fits"] = unfitting
+        out |= run_breaks(command.name, runs[command.name])
     else:
         out["helps"] = ["the check isn't given it to run"] if "kit" not in out else []
     if command.wrapper is not None:
