@@ -46,14 +46,33 @@ pub struct Alert<'a> {
     pub link: &'a str,
 }
 
+/// How many characters of the words said are shown, so a long message
+/// doesn't flood Joel's phone; the link has the rest.
+const WORDS_SHOWN: usize = 300;
+
 /// The alert's one form, the same the launcher's daemon writes down as
-/// what it would send.
+/// what it would send. What others wrote is escaped as Slack's formatting
+/// asks (&, < and >), so none of it is drawn as a masked link, a mention
+/// or `<!here>` in Joel's own IM (KP0L6A), and the words are cut short.
 #[must_use]
 pub fn text(alert: Alert) -> String {
+    let mut words: String = alert.words.chars().take(WORDS_SHOWN).collect();
+    if alert.words.chars().nth(WORDS_SHOWN).is_some() {
+        words.push_str("...");
+    }
     format!(
         "pineapple: {}\nSaid: \"{}\"\nWhere: {}",
-        alert.title, alert.words, alert.link
+        escaped(alert.title),
+        escaped(&words),
+        escaped(alert.link)
     )
+}
+
+/// Text as Slack draws it plainly: its three control characters escaped.
+fn escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Joel's own note-to-self IM, as Slack confirmed it: made only by
@@ -125,12 +144,22 @@ pub fn own_im(origin: &str, slack: &Slack, account: &Account) -> Result<OwnIm, S
     Err("none of Joel's IMs is his own".to_owned())
 }
 
+/// Why an alert didn't go, as far as can be told.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Missed {
+    /// It never went, or Slack said no: trying again can't say it twice.
+    NotSent(String),
+    /// It may have gone, as when Slack's answer timed out or couldn't be
+    /// read: trying again may say it twice.
+    Unsure(String),
+}
+
 /// Sends one alert to Joel's own IM, unfurling nothing under it.
 ///
 /// # Errors
 ///
-/// Why Slack didn't take it.
-pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<(), String> {
+/// Why it didn't go, and whether it may have all the same.
+pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Result<(), Missed> {
     let said = text(alert);
     let mut answer = agent()
         .post(format!("{origin}/api/{POST}"))
@@ -142,13 +171,24 @@ pub fn tell(origin: &str, account: &Account, own: &OwnIm, alert: Alert) -> Resul
             ("unfurl_links", "false"),
             ("unfurl_media", "false"),
         ])
-        .map_err(|error| format!("couldn't reach Slack: {error}"))?;
+        .map_err(|error| {
+            let why = format!("couldn't reach Slack: {error}");
+            // Only a connection never made is sure not to have posted.
+            if matches!(
+                error,
+                ureq::Error::HostNotFound | ureq::Error::ConnectionFailed
+            ) {
+                Missed::NotSent(why)
+            } else {
+                Missed::Unsure(why)
+            }
+        })?;
     let status = answer.status().as_u16();
     let took: Value = answer
         .body_mut()
         .read_json()
-        .map_err(|error| format!("Slack answered {status}: {error}"))?;
-    refused(&took).map_err(|why| format!("Slack answered {status}: {why}"))
+        .map_err(|error| Missed::Unsure(format!("Slack answered {status}: {error}")))?;
+    refused(&took).map_err(|why| Missed::NotSent(format!("Slack answered {status}: {why}")))
 }
 
 fn agent() -> Agent {
@@ -204,6 +244,38 @@ mod tests {
             "pineapple: Someone stopped your agents on pull request example/shop#12\n\
              Said: \"pineapple override\"\n\
              Where: https://example.slack.com/archives/C1/p1"
+        );
+    }
+
+    #[test]
+    fn what_others_wrote_is_never_drawn_as_slacks_markup() {
+        let said = text(Alert {
+            title: "Someone stopped your agents on <!here>",
+            words: "pineapple override <https://evil.example|your PR> & <@U0OTHER001>",
+            link: "https://example.slack.com/archives/C1/p1?thread_ts=1&cid=C1",
+        });
+        assert_eq!(
+            said,
+            "pineapple: Someone stopped your agents on &lt;!here&gt;\n\
+             Said: \"pineapple override &lt;https://evil.example|your PR&gt; &amp; \
+             &lt;@U0OTHER001&gt;\"\n\
+             Where: https://example.slack.com/archives/C1/p1?thread_ts=1&amp;cid=C1",
+            "a masked link, a mention and <!here> come out escaped"
+        );
+    }
+
+    #[test]
+    fn long_words_are_cut_short() {
+        let long = "a".repeat(WORDS_SHOWN + 50);
+        let said = text(Alert {
+            title: "t",
+            words: &long,
+            link: "l",
+        });
+        let shown = format!("Said: \"{}...\"", "a".repeat(WORDS_SHOWN));
+        assert!(
+            said.contains(&shown),
+            "cut to {WORDS_SHOWN} characters: {said}"
         );
     }
 

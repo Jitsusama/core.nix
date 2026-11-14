@@ -30,9 +30,9 @@
 //!
 //! In shadow it sends nothing and only reads Slack. Out of it, its two
 //! writes are such a reply, from Joel's own account, in the thread that
-//! asked, and only with words he said yes to; and an alert in his own IM. Slack is Slack's own, unless
-//! a test names a stand-in with `--origin` and a quicker pace with
-//! `--every`.
+//! asked, and only with words he said yes to; and an alert in his own IM.
+//! Slack is Slack's own, unless a test names a stand-in with `--origin`
+//! and a quicker pace with `--every`.
 //!
 //! Which messages it has judged is kept in judged.json beside the log, so a restart
 //! neither judges a message twice nor misses one said while it was down,
@@ -41,13 +41,13 @@
 //! message a while after a newer one. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
-use pineapple::phone::{self, Alert, OwnIm};
+use pineapple::phone::{self, Alert, Missed, OwnIm};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
@@ -337,7 +337,7 @@ struct Phone {
 /// is tried again next round, until it's ten minutes old.
 fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
     let phoned = state.join("phoned.jsonl");
-    let told: HashSet<String> = lines(&phoned).iter().map(told_as).collect();
+    let told = done(&lines(&phoned));
     let since = millis().saturating_sub(LOOK_BACK * MILLIS);
     let new: Vec<Value> = lines(&state.join("would-tell.jsonl"))
         .into_iter()
@@ -368,16 +368,20 @@ fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path)
         let sent = match (&phone.own, shadow) {
             (_, true) => {
                 eprintln!("<5>Joel's phone, in shadow: {link}");
-                false
+                json!(false)
             }
             (Some(own), false) => match phone::tell(&phone.origin, account, own, alert) {
                 Ok(()) => {
                     eprintln!("<5>Joel's phone was told: {link}");
-                    true
+                    json!(true)
                 }
-                Err(why) => {
+                Err(Missed::NotSent(why)) => {
                     eprintln!("<3>Slack didn't take Joel's phone alert: {why}");
                     continue;
+                }
+                Err(Missed::Unsure(why)) => {
+                    eprintln!("<4>Joel's phone alert may have gone: {why}");
+                    json!(UNSURE)
                 }
             },
             (None, false) => continue,
@@ -395,6 +399,35 @@ fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path)
             eprintln!("<3>couldn't keep a phone alert's line: {error}");
         }
     }
+}
+
+/// What phoned.jsonl keeps for an alert that may have gone, whose answer
+/// was lost.
+const UNSURE: &str = "unsure";
+
+/// How many sends an alert gets whose answers were lost, so one that
+/// landed unheard reaches Joel's phone twice at most (KP0L6A).
+const UNSURE_TRIES: usize = 2;
+
+/// The alerts done with: told, written down in shadow, or sent as often as
+/// an unsure one may be.
+fn done(phoned: &[Value]) -> HashSet<String> {
+    let mut unsure: HashMap<String, usize> = HashMap::new();
+    let mut done = HashSet::new();
+    for line in phoned {
+        if line["sent"] == UNSURE {
+            *unsure.entry(told_as(line)).or_default() += 1;
+        } else {
+            done.insert(told_as(line));
+        }
+    }
+    done.extend(
+        unsure
+            .into_iter()
+            .filter(|(_, tries)| *tries >= UNSURE_TRIES)
+            .map(|(told, _)| told),
+    );
+    done
 }
 
 /// The lines of a log kept as JSON lines, those that read.
@@ -651,4 +684,30 @@ fn seconds() -> u64 {
 
 fn millis() -> u64 {
     u64::try_from(since_epoch().as_millis()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn phoned(key: &str, sent: &Value) -> Value {
+        json!({"key": key, "saying": "stopped", "sent": sent})
+    }
+
+    #[test]
+    fn an_alert_whose_answer_was_lost_is_sent_once_more_and_no_more() {
+        let once = [phoned("a", &json!(UNSURE))];
+        assert!(done(&once).is_empty(), "one unsure send is tried again");
+        let twice = [phoned("a", &json!(UNSURE)), phoned("a", &json!(UNSURE))];
+        assert!(
+            done(&twice).contains("a@stopped"),
+            "a second unsure send is the last"
+        );
+        let told = [phoned("b", &json!(true)), phoned("c", &json!(false))];
+        assert_eq!(
+            done(&told).len(),
+            2,
+            "one told, and one written down in shadow, are done"
+        );
+    }
 }
