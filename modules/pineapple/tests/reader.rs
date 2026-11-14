@@ -3,8 +3,9 @@
 //! kept as a shadow record; a tag asking to stop without the phrase is
 //! written down and stops nothing; of the would-be replies, only the first
 //! fresh stop in a thread's goes through, and the switch holds even that
-//! back; only Slack's reading methods are asked; and a restart judges
-//! nothing twice.
+//! back; only Slack's reading methods are asked; a restart judges
+//! nothing twice; and an alert for Joel's phone finds his own IM and, in
+//! shadow, is only written down.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -96,6 +97,15 @@ fn answer(line: &str, now: u64) -> Value {
             ask_ts.replace('.', "")
         ),
     });
+    if line.contains("/api/users.conversations") {
+        return json!({"ok": true, "channels": [
+            {"id": "D0OTHER001", "is_im": true, "user": "U0OTHER001"},
+            {"id": "D0SELF0001", "is_im": true, "user": JOEL},
+        ], "response_metadata": {"next_cursor": ""}});
+    }
+    if line.contains("/api/conversations.info") && line.contains("D0SELF0001") {
+        return json!({"ok": true, "channel": {"id": "D0SELF0001", "is_im": true, "user": JOEL}});
+    }
     if line.contains("/api/conversations.replies") {
         return json!({"ok": true, "messages": [
             {"text": "a review, please: https://code.example.com/example/shop/pull/12"}
@@ -146,6 +156,32 @@ fn the_one_reply(home: &Path) -> Value {
     assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
     serde_json::from_str(replies.lines().next().unwrap_or_default())
         .expect("a reply's line is JSON")
+}
+
+/// Holds that the stand-in was asked only Slack's methods that read:
+/// searching and reading threads, and looking for Joel's own IM, which
+/// the reader does once as it starts.
+fn only_reads(asked: &Mutex<Vec<String>>) {
+    let methods: Vec<String> = asked
+        .lock()
+        .expect("what was asked")
+        .iter()
+        .filter_map(|line| line.split_whitespace().nth(1))
+        .filter_map(|path| path.strip_prefix("/api/"))
+        .map(|path| path.split('?').next().unwrap_or_default().to_owned())
+        .collect();
+    let reading = [
+        "search.messages",
+        "conversations.replies",
+        "users.conversations",
+        "conversations.info",
+    ];
+    assert!(
+        methods
+            .iter()
+            .all(|method| reading.contains(&method.as_str())),
+        "only reading methods are asked: {methods:?}"
+    );
 }
 
 fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
@@ -247,20 +283,7 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     assert_eq!(record["said_by"], "U0OTHER001", "it names who said it");
     assert_eq!(record["resumed"], Value::Null, "nobody has resumed it");
 
-    let methods: Vec<String> = asked
-        .lock()
-        .expect("what was asked")
-        .iter()
-        .filter_map(|line| line.split_whitespace().nth(1))
-        .filter_map(|path| path.strip_prefix("/api/"))
-        .map(|path| path.split('?').next().unwrap_or_default().to_owned())
-        .collect();
-    assert!(
-        methods
-            .iter()
-            .all(|method| ["search.messages", "conversations.replies"].contains(&method.as_str())),
-        "only reading methods are asked: {methods:?}"
-    );
+    only_reads(&asked);
 
     let mut again = reader(&home, &origin);
     let rounds = asked.lock().expect("what was asked").len();
@@ -347,6 +370,75 @@ fn the_switch_holds_replies_back_and_stops_carry_on() {
     assert!(
         !home.join("state/pineapple/replies.jsonl").exists(),
         "no reply is kept as sent"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn an_alert_for_joels_phone_finds_his_own_im_and_in_shadow_sends_nothing() {
+    let (origin, asked) = stand_in();
+    let home = home();
+    let at = u64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_millis(),
+    )
+    .expect("a time in range");
+    let alert = json!({"at": at, "key": "pineapple:slack:C1:1.0", "saying": "stopped",
+        "shadow": false, "title": "Someone stopped your agents on quest SAFEQA",
+        "words": "pineapple override", "link": "https://example.slack.com/archives/C1/p1"});
+    let stale = json!({"at": at - 3_600_000, "key": "pineapple:slack:C2:1.0",
+        "saying": "stopped", "shadow": false, "title": "an hour ago", "words": "",
+        "link": ""});
+    std::fs::write(
+        home.join("state/pineapple/would-tell.jsonl"),
+        format!("{stale}\n{alert}\n"),
+    )
+    .expect("what the launcher's daemon would tell");
+    let phoned = home.join("state/pineapple/phoned.jsonl");
+    let mut reading = reader(&home, &origin);
+    until_decided(&home, 4);
+    let began = Instant::now();
+    while !phoned.exists() {
+        assert!(
+            began.elapsed() < PATIENCE,
+            "Joel's phone was never written down"
+        );
+        // The reader goes round every tenth of a second.
+        thread::sleep(Duration::from_millis(50));
+    }
+    // Another round, to be sure the alert is told only once.
+    thread::sleep(Duration::from_millis(300));
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+
+    let kept = std::fs::read_to_string(&phoned).expect("what Joel's phone was told");
+    let lines: Vec<Value> = kept
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a line is JSON"))
+        .collect();
+    assert_eq!(
+        lines.len(),
+        1,
+        "the fresh alert once, not the hour-old one: {kept}"
+    );
+    assert_eq!(
+        (&lines[0]["im"], &lines[0]["shadow"], &lines[0]["sent"]),
+        (&json!("D0SELF0001"), &json!(true), &json!(false)),
+        "Joel's own IM is found, and in shadow nothing is sent"
+    );
+    assert_eq!(
+        lines[0]["text"],
+        "pineapple: Someone stopped your agents on quest SAFEQA\n\
+         Said: \"pineapple override\"\n\
+         Where: https://example.slack.com/archives/C1/p1",
+        "in the alert's one form"
+    );
+    let methods = asked.lock().expect("the stand-in's list").clone();
+    assert!(
+        !methods.iter().any(|line| line.contains("chat.postMessage")),
+        "nothing is posted in shadow: {methods:?}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

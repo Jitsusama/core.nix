@@ -22,9 +22,15 @@
 //! yes to. A line `off` in replies-switch beside them turns replies off
 //! alone, read each time, so stops and alerts carry on.
 //!
-//! In shadow it sends nothing and only reads Slack. Out of it, its one
-//! write is such a reply, from Joel's own account, in the thread that
-//! asked, and only with words he said yes to. Slack is Slack's own, unless
+//! It also tells Joel's phone: each alert the launcher's daemon writes to
+//! would-tell.jsonl goes, in its one form, to his own note-to-self IM and
+//! nowhere else (src/phone.rs), once, kept in phoned.jsonl. In shadow it
+//! finds that IM, so the finding is tried against Slack as it will be,
+//! and sends nothing.
+//!
+//! In shadow it sends nothing and only reads Slack. Out of it, its two
+//! writes are such a reply, from Joel's own account, in the thread that
+//! asked, and only with words he said yes to; and an alert in his own IM. Slack is Slack's own, unless
 //! a test names a stand-in with `--origin` and a quicker pace with
 //! `--every`.
 //!
@@ -41,6 +47,7 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
+use pineapple::phone::{self, Alert, OwnIm};
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
@@ -297,16 +304,116 @@ fn run(origin: &str, every: Duration) -> Result<(), Failure> {
         since: format!("{}.000000", seconds().saturating_sub(LOOK_BACK)),
         keys: Vec::new(),
     });
+    let mut phone = Phone {
+        origin: origin.to_owned(),
+        own: None,
+        looked: false,
+    };
     loop {
         match Account::read(&credentials) {
             Some(account) if !account.user.is_empty() => {
                 round(&slack, &replier, &account, &state, &mut judged);
+                tell_phone(&slack, &mut phone, &account, &state);
             }
             Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
             None => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
         }
         std::thread::sleep(every);
     }
+}
+
+/// Where Joel's phone is told: his own IM, once it's found.
+struct Phone {
+    origin: String,
+    own: Option<OwnIm>,
+    /// Whether it has looked for the IM yet: once as it starts, so the
+    /// finding is tried against Slack whether or not an alert comes, and
+    /// then again only when an alert finds none.
+    looked: bool,
+}
+
+/// Tells Joel's phone each alert the launcher's daemon wrote down in the
+/// last ten minutes and his phone wasn't told yet. One Slack didn't take
+/// is tried again next round, until it's ten minutes old.
+fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
+    let phoned = state.join("phoned.jsonl");
+    let told: HashSet<String> = lines(&phoned).iter().map(told_as).collect();
+    let since = millis().saturating_sub(LOOK_BACK * MILLIS);
+    let new: Vec<Value> = lines(&state.join("would-tell.jsonl"))
+        .into_iter()
+        .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
+        .collect();
+    if phone.own.is_none() && (!phone.looked || !new.is_empty()) {
+        phone.looked = true;
+        match phone::own_im(&phone.origin, slack, account) {
+            Ok(own) => {
+                eprintln!("<6>Joel's own IM is {}", own.id());
+                phone.own = Some(own);
+            }
+            Err(why) => eprintln!("<4>Joel's own IM wasn't found, so his phone isn't told: {why}"),
+        }
+    }
+    if new.is_empty() {
+        return;
+    }
+    for line in new {
+        let field = |name: &str| line[name].as_str().unwrap_or_default().to_owned();
+        let (title, words, link) = (field("title"), field("words"), field("link"));
+        let alert = Alert {
+            title: &title,
+            words: &words,
+            link: &link,
+        };
+        let shadow = SHADOW || line["shadow"] != false;
+        let sent = match (&phone.own, shadow) {
+            (_, true) => {
+                eprintln!("<5>Joel's phone, in shadow: {link}");
+                false
+            }
+            (Some(own), false) => match phone::tell(&phone.origin, account, own, alert) {
+                Ok(()) => {
+                    eprintln!("<5>Joel's phone was told: {link}");
+                    true
+                }
+                Err(why) => {
+                    eprintln!("<3>Slack didn't take Joel's phone alert: {why}");
+                    continue;
+                }
+            },
+            (None, false) => continue,
+        };
+        let one = json!({
+            "at": millis(),
+            "key": line["key"],
+            "saying": line["saying"],
+            "shadow": shadow,
+            "sent": sent,
+            "im": phone.own.as_ref().map(OwnIm::id),
+            "text": phone::text(alert),
+        });
+        if let Err(error) = record::append(&phoned, &one) {
+            eprintln!("<3>couldn't keep a phone alert's line: {error}");
+        }
+    }
+}
+
+/// The lines of a log kept as JSON lines, those that read.
+fn lines(path: &Path) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+
+/// What an alert is told as, its row and the saying it shows, as the
+/// launcher's daemon tells it.
+fn told_as(line: &Value) -> String {
+    format!(
+        "{}@{}",
+        line["key"].as_str().unwrap_or_default(),
+        line["saying"].as_str().unwrap_or_default()
+    )
 }
 
 /// Where replies go and the words they say.
