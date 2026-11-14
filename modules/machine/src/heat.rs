@@ -7,6 +7,10 @@
 //! listed change, since some chips answer every read through the firmware,
 //! which is slow. A chip, or a zone's temperature or a cooling device's
 //! state, that's slow to read is read again only every few seconds.
+//!
+//! Long because chips, zones and cooling devices share what's kept of
+//! them and the rules for which are slow, and each rule's cases stay
+//! beside the private pieces they prove.
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
@@ -37,7 +41,10 @@ pub const SLOW_KEPT: Duration = Duration::from_secs(5);
 /// zone's temperature or a cooling device's state asked of the firmware
 /// takes 1.8 to 4.6 ms on Joel's laptop, where one the kernel holds
 /// answers in under 0.2 ms (2026-11-13). A quick file once caught slow
-/// is only read every `SLOW_KEPT`, which its temperature allows.
+/// is only read every `SLOW_KEPT`, which its temperature allows. A chip
+/// counts as slow at this for each sensor it reads too: the battery's
+/// reads three in 5 to 11 ms, each a firmware call, under `SLOW`, where
+/// the processor's reads 17 in 0.5 ms and a disk's 3 in 1.4 ms.
 pub const SLOW_FILE: Duration = Duration::from_millis(1);
 
 /// A chip's files that never change, kept by path, and the chips they
@@ -406,12 +413,25 @@ pub fn sensors(root: &Root, kept: &mut Kept, now: Instant) -> Vec<Value> {
         }
         let began = Instant::now();
         let record = chip(root, kept, &folder, &key, &name);
-        if began.elapsed() >= kept.slow_from || kept.slow.contains_key(&folder) {
+        let took = began.elapsed();
+        let each = took / read_in(&record).max(1);
+        if took >= kept.slow_from || each >= kept.file_slow_from || kept.slow.contains_key(&folder)
+        {
             kept.slow.insert(folder, (now, record.clone()));
         }
         records.push(record);
     }
     records
+}
+
+/// How many sensors a chip's record says it read.
+fn read_in(record: &Value) -> u32 {
+    let count: usize = ["temperatures", "fans", "voltages", "currents", "power"]
+        .iter()
+        .filter_map(|kind| record[kind].as_array())
+        .map(Vec::len)
+        .sum();
+    u32::try_from(count).unwrap_or(u32::MAX)
 }
 
 /// Every thermal zone's record: its temperature, how it's governed, and
@@ -666,6 +686,7 @@ mod tests {
         };
         let mut quick = Kept {
             slow_from: Duration::MAX,
+            file_slow_from: Duration::MAX,
             ..Kept::default()
         };
         let read = (degrees(&mut slow, first), degrees(&mut quick, first));
@@ -681,6 +702,44 @@ mod tests {
             "the slow one kept, the quick read"
         );
         assert_eq!(kept, json!(52.0), "the slow one read once kept a while");
+    }
+
+    /// A chip whose read is quick whole but slow for each sensor it
+    /// reads is kept as a slow one is: the battery's chip on Joel's
+    /// laptop reads three sensors in 5 to 11 ms, each a call to the
+    /// firmware, under the whole chip's `SLOW`, and was read each second
+    /// (2026-11-13). Which counts as slow is set here, since a file in a
+    /// test folder reads quickly.
+    #[test]
+    fn a_chip_slow_for_each_sensor_is_kept_though_quick_whole() {
+        let folder = std::env::temp_dir().join(format!("machine-each-{}", std::process::id()));
+        let chip = folder.join("sys/class/hwmon/hwmon0");
+        std::fs::create_dir_all(&chip).expect("the chip's folder is made");
+        let temperature = |says: &str| {
+            std::fs::write(chip.join("temp1_input"), says).expect("the file is written");
+        };
+        std::fs::write(chip.join("name"), "BAT0").expect("the name is written");
+        temperature("31000");
+        let root = Root::new(&folder);
+        let degrees = |kept: &mut Kept, at: Instant| {
+            sensors(&root, kept, at)[0]["temperatures"][0]["temperature_c"].clone()
+        };
+        let first = Instant::now();
+        let mut kept = Kept {
+            slow_from: Duration::MAX,
+            file_slow_from: Duration::ZERO,
+            ..Kept::default()
+        };
+        degrees(&mut kept, first);
+        temperature("32000");
+        let soon = degrees(&mut kept, first + Duration::from_secs(1));
+        let later = degrees(&mut kept, first + SLOW_KEPT);
+        std::fs::remove_dir_all(&folder).ok();
+        assert_eq!(
+            (soon, later),
+            (json!(31.0), json!(32.0)),
+            "kept a second on, then read once kept a while"
+        );
     }
 
     /// A chip found slow stays slow though a later pass is quick, as
