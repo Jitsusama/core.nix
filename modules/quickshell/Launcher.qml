@@ -757,6 +757,7 @@ Scope {
     function freshen() {
         if (!choicesStale)
             return;
+        const began = KeyTimes.now();
         choicesStale = false;
         const out = [];
         for (const source of sources) {
@@ -779,6 +780,7 @@ Scope {
             out.push(withSynonyms(row));
         choicesJoined += 1;
         choices = out;
+        feltSpan("joining", began);
     }
 
     // Where a collection that's no place of its own leads, as one found row,
@@ -7917,6 +7919,7 @@ Scope {
         // Timed with what working out its row's drawer took as it was
         // followed, but not the rest between, which is the drawer's pace.
         drawerMade(began - drawerAsked, Math.round(KeyTimes.now() - began) + drawerAsked);
+        feltSpan("the drawer", began);
     }
     // Shows the drawer wanted with its acts filled in, timing each, so its
     // making's line says what went on which (Trials.makingSplit): Joel's
@@ -9594,6 +9597,7 @@ Scope {
         else
             open = true;
         wakeBegan = KeyTimes.now();
+        feltSpan("filling", began);
         afterFrame(wakeNext);
         if (openAsked >= 0)
             fillEarly = KeyTimes.now() - began;
@@ -9649,6 +9653,7 @@ Scope {
             slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
         }
         wakeSlices = wakeSlices.concat([{ took: KeyTimes.now() - began, woke: slice }]);
+        feltSpan("waking", began);
         if (wakeQueue.length > 0) {
             afterFrame(wakeNext);
             return;
@@ -10195,7 +10200,18 @@ Scope {
         feltTicks = Pacing.feltBegun(KeyTimes.now());
         feltFrom = from;
         feltFromChord = fromChord;
+        feltSpans = [];
+        feltFrameAt = -1;
         feltTicking.start();
+    }
+    // The named work run while an opening is felt, `{ name, from, to }`, so
+    // its longest stall says what it ran into (Pacing.stallSpent). Nothing
+    // binds to it, so it's added to in place.
+    property var feltSpans: []
+    property real feltFrameAt: -1
+    function feltSpan(name, from) {
+        if (feltTicking.running)
+            feltSpans.push({ name, from, to: KeyTimes.now() });
     }
     function feltTicked() {
         const now = KeyTimes.now();
@@ -10214,10 +10230,17 @@ Scope {
                 .concat([Object.assign({}, last, { usable, stalled })]);
         const from = feltFromChord ? "the chord" : "the ask";
         const waited = Math.round(KeyTimes.now() - feltFrom);
+        const stallAt = feltTicks.stallAt;
+        const ranInto = stalled > 0
+            ? `, ${Math.round(stallAt - feltFrom)} ms in: `
+                + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
+            : "";
+        feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
+                + ranInto
             : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
-                + ` ${stalled} ms` + (cardUp ? "" : ", closed first"));
+                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first"));
     }
     Timer {
         id: feltTicking
@@ -10572,6 +10595,24 @@ Scope {
 
             function onActiveChanged() {
                 root.keysMoved();
+            }
+        }
+
+        // Each frame's own work on the shell's thread while an opening is
+        // felt, from its animating through its sync, when the render
+        // thread lets it go, so a stall is told from the frames in it.
+        Connections {
+            target: card.Window.window
+            enabled: feltTicking.running
+
+            function onAfterAnimating() {
+                root.feltFrameAt = KeyTimes.now();
+            }
+
+            function onAfterSynchronizing() {
+                if (root.feltFrameAt >= 0)
+                    root.feltSpan("drawing", root.feltFrameAt);
+                root.feltFrameAt = -1;
             }
         }
 

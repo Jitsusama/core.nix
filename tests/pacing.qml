@@ -12,7 +12,9 @@
 // what's typed, the steps and the mode. What was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
-// things whose stamp moved (launcher/Spots.js).
+// things whose stamp moved (launcher/Spots.js). Long because its cases
+// share one check's qml run, so each part split from it would need a check
+// and a run of its own.
 import QtQuick
 import "Pacing.js" as Pacing
 import "Presented.js" as Presented
@@ -198,10 +200,31 @@ QtObject {
         const freed = tick(pegged, [1596, 1612]);
         check(failures, "it's usable from when it came free", freed.usable, 1500);
         check(failures, "and its longest stall is said", freed.stall, 1484);
+        check(failures, "with when it began", freed.stallAt, 16);
         const jittered = tick(Pacing.feltBegun(0), [30, 46, 62, 78, 94, 110]);
         check(failures, "a tick a frame late isn't a stall", jittered.usable, 0);
         check(failures, "once usable, a later stall changes nothing",
             tick(freed, [5000]).usable, 1500);
+        stalled(failures);
+    }
+
+    // What held an opening's longest stall, by the work it ran into: Joel's
+    // kept openings drew in a median 48 ms and stalled a median 73 ms after,
+    // and the journal named only some of it (2026-11-13).
+    function stalled(failures) {
+        const spans = [{ name: "filling", from: 10, to: 70 },
+            { name: "drawing", from: 70, to: 120 }, { name: "waking", from: 120, to: 121 },
+            { name: "filling", from: 300, to: 310 }];
+        check(failures, "a stall is said by what it ran into, most first",
+            Pacing.stallSpent(spans, 20, 170), "filling 50, drawing 50, waking 1, 49 unnamed");
+        check(failures, "one that ran into nothing named is all unnamed",
+            Pacing.stallSpent(spans, 150, 250), "100 unnamed");
+        const nested = [{ name: "filling", from: 10, to: 70 },
+            { name: "the drawer", from: 30, to: 40 }];
+        check(failures, "work inside other work is its own, not both",
+            Pacing.stallSpent(nested, 0, 100), "filling 50, the drawer 10, 40 unnamed");
+        check(failures, "one all named says nothing unnamed",
+            Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
     }
 
     // Agents says how its sessions stand at home, and People is named

@@ -332,9 +332,10 @@ function openingParts(parts) {
 // what Joel saw: his openings logged 437 ms to their frame and showed him
 // the launcher about 7 s after his chord, when the thread came free (Joel,
 // 2026-11-10: "It takes 7 seconds for me to see the launcher window").
-// `stall` is the longest gap between ticks, and `usable` is -1 until then.
+// `stall` is the longest gap between ticks, begun at `stallAt`, and
+// `usable` is -1 until then.
 function feltBegun(now) {
-    return { last: now, calm: now, stall: 0, usable: -1 };
+    return { last: now, calm: now, stall: 0, stallAt: now, usable: -1 };
 }
 
 function feltTicked(felt, now, pace) {
@@ -343,6 +344,46 @@ function feltTicked(felt, now, pace) {
     }
     const gap = now - felt.last;
     const calm = gap - pace.every > pace.within ? now : felt.calm;
-    return { last: now, calm, stall: Math.max(felt.stall, gap),
+    const longer = gap > felt.stall;
+    return { last: now, calm, stall: longer ? gap : felt.stall,
+        stallAt: longer ? felt.last : felt.stallAt,
         usable: now - calm >= pace.calmFor ? calm : -1 };
+}
+
+// What of `from` to `to` each named span of work ran into, most first,
+// then what none did: Joel's kept openings drew in a median 48 ms and
+// then stalled a median 73 ms, over a fill, a frame and more the journal
+// didn't name (2026-11-13). Each span is `{ name, from, to }`; where one
+// runs inside another, the one begun last has the time, as it's the work
+// then running, so none is counted twice.
+function stallSpent(spans, from, to) {
+    const edges = [from, to];
+    for (const span of spans) {
+        if (span.to > from && span.from < to) {
+            edges.push(Math.max(span.from, from), Math.min(span.to, to));
+        }
+    }
+    edges.sort((a, b) => a - b);
+    const spent = new Map();
+    let unnamed = 0;
+    // Two edges at one time hold no time between them.
+    const segments = edges.slice(0, -1).map((start, at) => [start, edges[at + 1]])
+        .filter(([start, end]) => end > start);
+    for (const [start, end] of segments) {
+        const running = spans.filter(span => span.from <= start && span.to >= end)
+            .reduce((last, span) => last === null || span.from >= last.from ? span : last, null);
+        if (running === null) {
+            unnamed += end - start;
+        } else {
+            spent.set(running.name, (spent.get(running.name) ?? 0) + end - start);
+        }
+    }
+    // Ties go to the one that ran first, as Qt's sort may not keep order.
+    const said = [...spent].map(([name, ms], first) => [name, Math.round(ms), first])
+        .filter(([, ms]) => ms > 0).sort((a, b) => b[1] - a[1] || a[2] - b[2])
+        .map(([name, ms]) => `${name} ${ms}`);
+    if (Math.round(unnamed) > 0) {
+        said.push(`${Math.round(unnamed)} unnamed`);
+    }
+    return said.join(", ");
 }
