@@ -395,6 +395,21 @@
     touch $out
   '';
 
+  # One long call keeps the heap near what it keeps, in the shell's own Qt
+  # (qtdeclarative-collector-keeps-up.patch): Qt 6.12.0 stepped a collection
+  # only from the event loop, so the shell's hearing of its Emoji at the start
+  # left the heap 30 MB heavier for the rest of its run.
+  the-collector-keeps-up = pkgs.runCommandLocal "the-collector-keeps-up" { } ''
+    mkdir runtime && chmod 700 runtime
+    cp ${../../../tests/collector-keeps-up.qml} shell.qml
+    cp ${../../../tests/lib/Memory.js} Memory.js
+    export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+    export QML_XHR_ALLOW_FILE_READ=1
+    ${shellFolderLint}
+    timeout 60 ${qs} -p shell.qml
+    touch $out
+  '';
+
   # A Map and a Set mean what the language says, in the shell's own Qt,
   # whose tables find string and number keys by hash
   # (qtdeclarative-maps-find-keys-by-hash.patch).
