@@ -5,9 +5,11 @@
 //! fresh stop in a thread's goes through, and the switch holds even that
 //! back; only Slack's reading methods are asked; a restart judges
 //! nothing twice; and an alert for Joel's phone finds his own IM and, in
-//! shadow, is only written down.
+//! shadow, is only written down. The reader let go live is in live.rs.
 
-use std::io::{BufRead, BufReader, Write};
+mod live;
+
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -26,8 +28,9 @@ const PACE: &str = "100";
 /// The stand-in's Joel, and the colleagues who tag him.
 const JOEL: &str = "U0JOEL0001";
 
-/// A stand-in for Slack's API that keeps the first line of each request
-/// and answers as Slack would to a search and to a thread's first message.
+/// A stand-in for Slack's API that keeps the first line of each request,
+/// a post's form after it, and answers as Slack would to a search and to
+/// a thread's first message.
 fn stand_in() -> (String, Arc<Mutex<Vec<String>>>) {
     answering(answer)
 }
@@ -52,15 +55,28 @@ fn answering(answer: fn(&str, u64) -> Value) -> (String, Arc<Mutex<Vec<String>>>
             if reader.read_line(&mut line).unwrap_or(0) == 0 {
                 continue;
             }
-            // Its headers end at an empty line; a GET has no body.
+            // Its headers end at an empty line; a GET has no body, and a
+            // post's form is as long as its Content-Length says.
             let mut header = String::new();
+            let mut length = 0;
             while reader.read_line(&mut header).unwrap_or(0) > 0 && !header.trim().is_empty() {
+                if let Some((name, value)) = header.split_once(':')
+                    && name.eq_ignore_ascii_case("content-length")
+                {
+                    length = value.trim().parse().unwrap_or(0);
+                }
                 header.clear();
             }
+            let mut form = vec![0; length];
+            if reader.read_exact(&mut form).is_err() {
+                continue;
+            }
             let said = answer(&line, now).to_string();
-            kept.lock()
-                .expect("the stand-in's list")
-                .push(line.trim_end().to_owned());
+            let mut one = line.trim_end().to_owned();
+            if length > 0 {
+                one = format!("{one} {}", String::from_utf8_lossy(&form));
+            }
+            kept.lock().expect("the stand-in's list").push(one);
             let reply = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
                  Content-Length: {}\r\nConnection: close\r\n\r\n{said}",
@@ -264,8 +280,14 @@ fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
 }
 
 fn reader(home: &Path, origin: &str) -> Child {
+    reader_with(home, origin, &[])
+}
+
+/// The reader, given `more` on its line after the stand-in and pace.
+fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Child {
     Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
         .args(["run", "--origin", origin, "--every", PACE])
+        .args(more)
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_STATE_HOME", home.join("state"))

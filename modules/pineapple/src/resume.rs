@@ -14,6 +14,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use crate::slack::micros;
+
+/// Microseconds in a millisecond.
+const MICROS_A_MILLI: u128 = 1000;
+
 /// A stop standing, with the file it's kept in.
 #[derive(Clone, Debug)]
 pub struct Standing {
@@ -122,6 +127,40 @@ pub fn resume_only(
     Ok(resumed)
 }
 
+/// Ends the stops Joel's own resume, said where a reader heard it, names
+/// in `scope`, as his press in the launcher does. Only stops said at or
+/// before `said` (in microseconds), since a search can index late and a
+/// round can judge a resume beside a stop said after it (KP0L6A); a stop
+/// whose record says neither when it was said nor heard is left for his
+/// press. With `only_shadow`, as a reader in shadow or one whose resumes
+/// aren't let go live, it ends only stops written in shadow, never one
+/// that stands for real.
+///
+/// # Errors
+///
+/// Why a record couldn't be rewritten; those before it stay resumed.
+pub fn as_joel(
+    folder: &Path,
+    scope: &str,
+    at: u64,
+    said: u128,
+    only_shadow: bool,
+) -> io::Result<Vec<String>> {
+    resume_only(folder, scope, at, "joel", |record| {
+        (!only_shadow || record["shadow"] != false) && said_by(record).is_some_and(|by| by <= said)
+    })
+}
+
+/// When a stop was said, in microseconds: as its record writes Slack's
+/// timestamp, else when it was heard, in milliseconds.
+fn said_by(record: &Value) -> Option<u128> {
+    record["said_at"].as_str().and_then(micros).or_else(|| {
+        record["heard_at"]
+            .as_u64()
+            .map(|at| u128::from(at) * MICROS_A_MILLI)
+    })
+}
+
 /// The reply ledger without the what-stopped replies of stops since
 /// resumed, so the gate answers a thread again once its stop is over; a
 /// line naming no stop, or one never kept, is left as it is.
@@ -210,6 +249,40 @@ mod tests {
         assert_eq!(resumed, ["shadow"], "only the shadow stop is ended");
         let left: Vec<String> = standing(&dir).into_iter().map(|stop| stop.id).collect();
         assert_eq!(left, ["live"], "the live stop still stands");
+    }
+
+    #[test]
+    fn joels_resume_ends_only_stops_said_before_it_and_known_to_be() {
+        let said = |id: &str, at: &str| {
+            let mut one = stop(id, &["everything"]);
+            one["said_at"] = json!(at);
+            one
+        };
+        let mut heard = stop("heard", &["everything"]);
+        heard["heard_at"] = json!(1_700_000_000_000_u64);
+        let mut live = said("live", "1700000000.000100");
+        live["shadow"] = json!(false);
+        let records = [
+            said("before", "1700000000.000100"),
+            heard,
+            said("after", "1700000099.000100"),
+            stop("unknown", &["everything"]),
+            live,
+        ];
+        let dir = folder("as-joel", &records);
+        let resume = 1_700_000_050_000_000;
+        assert_eq!(
+            as_joel(&dir, "all", 1, resume, true).expect("resumes"),
+            ["before", "heard"],
+            "said or heard before it, and in shadow"
+        );
+        assert_eq!(
+            as_joel(&dir, "all", 1, resume, false).expect("resumes"),
+            ["live"],
+            "a live stop too, once resumes may end one"
+        );
+        let left: Vec<String> = standing(&dir).into_iter().map(|stop| stop.id).collect();
+        assert_eq!(left, ["after", "unknown"], "later and unknown stops stand");
     }
 
     #[test]
