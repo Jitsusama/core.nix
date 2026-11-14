@@ -428,8 +428,11 @@ impl State {
                 let by = card_of(path)?;
                 let on = |card: &&Card| card.network.as_deref() == Some(point.name.as_str());
                 let at = |card: &&Card| self.at.get(&card.name).map(String::as_str);
-                let hears = |card: &&Card| at(card).and_then(card_of) == Some(by);
-                let card = self.cards.values().find(|card| on(card) && hears(card))?;
+                let listening = |card: &&Card| at(card).and_then(card_of) == Some(by);
+                let card = self
+                    .cards
+                    .values()
+                    .find(|card| on(card) && listening(card))?;
                 Some(card.name.clone())
             })
             .ok_or(Refused::NotJoined)
