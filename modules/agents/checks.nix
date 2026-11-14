@@ -60,7 +60,8 @@ onLinux {
         && lib.hasInfix "--socket %t/daemons/agents.sock" started
         && lib.hasInfix "/quickshell/by-shell --socket" started
         && lib.hasInfix "--switched /run/update-to-main/last.json --clone " started
-        && lib.hasInfix "/cadence/core.git" started
+        && lib.hasInfix "/cadence/core.git --harness " started
+        && lib.hasInfix "/pi-packages/github.com/Jitsusama/agentic-harness.pi --shells" started
         && lib.elem "PATH=${lib.makeBinPath [ pkgs.git ]}" (lib.toList service.Service.Environment)
         && socket.Socket.ListenStream == "%t/daemons/agents.sock"
         && service.Unit.Requires == [ "agents.socket" ]

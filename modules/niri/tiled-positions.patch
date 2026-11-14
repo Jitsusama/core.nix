@@ -11,9 +11,18 @@ rather than where it's drawn this frame, and without column or tile
 render offsets, so an animation or a gesture in progress sends no layout
 change on every frame: the position changes once, when the target does.
 
+A client riding a tile's edge as it moves has to follow the animation
+itself, so a tiled window's layout also says which animation moving or
+resizing its tile began last (WindowLayout::tile_animation: Resize,
+TileMove, ColumnMove, ViewMove or WorkspaceSlide) and how many real
+milliseconds before the layout went out it began
+(tile_animation_began_ms_ago). A layout goes out again when another
+animation begins, never as one runs on or ends, so the report still
+changes once per change rather than once a frame.
+
 ---
 diff --git a/niri-ipc/src/lib.rs b/niri-ipc/src/lib.rs
-index 0aa3cb4..317f84b 100644
+index 0aa3cb4..84e72c8 100644
 --- a/niri-ipc/src/lib.rs
 +++ b/niri-ipc/src/lib.rs
 @@ -1383,6 +1383,9 @@ pub struct WindowLayout {
@@ -26,15 +35,321 @@ index 0aa3cb4..317f84b 100644
      pub tile_pos_in_workspace_view: Option<(f64, f64)>,
      /// Location of the window's visual geometry within its tile.
      ///
-diff --git a/src/layout/scrolling.rs b/src/layout/scrolling.rs
-index 007bcaf..7493ead 100644
---- a/src/layout/scrolling.rs
-+++ b/src/layout/scrolling.rs
-@@ -2418,18 +2418,32 @@ impl<W: LayoutElement> ScrollingSpace<W> {
+@@ -1390,6 +1393,37 @@ pub struct WindowLayout {
+     /// the distance from the corner of the black backdrop to the corner of the (centered) window
+     /// contents.
+     pub window_offset_in_tile: (f64, f64),
++    /// The animation moving or resizing the tile that began last, while it runs.
++    ///
++    /// Only tiled windows say it. It's `None` when nothing moves the tile, and when what moves
++    /// it follows a gesture, which has no beginning to say.
++    pub tile_animation: Option<TileAnimation>,
++    /// How many milliseconds before this layout was sent its `tile_animation` began, in real
++    /// time, whatever the animations' slowdown.
++    ///
++    /// A layout is sent again when an animation begins, but not as this grows or as the
++    /// animation ends; the next layout sent carries it as of then. A layout niri answers a
++    /// request with, rather than sends in the event stream, says it as of when that layout was
++    /// last sent.
++    pub tile_animation_began_ms_ago: Option<f64>,
++}
++
++/// What moves or resizes a tile, as [`WindowLayout::tile_animation`] says.
++#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
++#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
++pub enum TileAnimation {
++    /// The window resizing, on the `window-resize` animation.
++    Resize,
++    /// The tile moving within its column or between columns, on `window-movement`.
++    TileMove,
++    /// The tile's column moving as one beside it opens, closes or resizes, on
++    /// `window-movement`, or on `window-resize` when it's a resize that moves it.
++    ColumnMove,
++    /// The workspace's view scrolling across its columns, on `horizontal-view-movement`, or on
++    /// `window-resize` when it's a resize that scrolls it.
++    ViewMove,
++    /// The monitor sliding between its workspaces, on `workspace-switch`.
++    WorkspaceSlide,
+ }
+ 
+ /// Output configuration change result.
+diff --git a/src/animation/mod.rs b/src/animation/mod.rs
+index 73a79c5..7fa1a24 100644
+--- a/src/animation/mod.rs
++++ b/src/animation/mod.rs
+@@ -3,6 +3,8 @@ use std::time::Duration;
+ use keyframe::functions::{EaseOutCubic, EaseOutQuad};
+ use keyframe::EasingFunction;
+ 
++use crate::utils::get_monotonic_time;
++
+ mod bezier;
+ use bezier::CubicBezier;
+ 
+@@ -238,6 +240,27 @@ impl Animation {
+         self.clock.now() >= self.start_time + self.duration
      }
  
-     pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
++    /// How long ago the animation began, in real time as of now, or `None` once it's done.
++    ///
++    /// The animation's clock runs slower under a slowdown and is set ahead to a frame's
++    /// presentation while it's drawn, so its time is divided back by its rate and put in step
++    /// with the monotonic clock, which is what a client reading niri's IPC has.
++    pub fn began_ago(&self) -> Option<Duration> {
++        if self.is_done() {
++            return None;
++        }
++
++        let rate = self.clock.rate().max(0.001);
++        let on_its_clock = self.clock.now().saturating_sub(self.start_time).div_f64(rate);
++        let clock = self.clock.now_unadjusted();
++        let now = get_monotonic_time();
++        Some(if now >= clock {
++            on_its_clock + (now - clock)
++        } else {
++            on_its_clock.saturating_sub(clock - now)
++        })
++    }
++
+     pub fn is_clamped_done(&self) -> bool {
+         if self.clock.should_complete_instantly() {
+             return true;
+diff --git a/src/ipc/client.rs b/src/ipc/client.rs
+index 40a58ef..f6a9bca 100644
+--- a/src/ipc/client.rs
++++ b/src/ipc/client.rs
+@@ -709,6 +709,8 @@ fn print_window(window: &Window) {
+         window_size,
+         tile_pos_in_workspace_view,
+         window_offset_in_tile,
++        tile_animation,
++        tile_animation_began_ms_ago,
+     } = window.layout;
+ 
+     println!("  Layout:");
+@@ -736,6 +738,13 @@ fn print_window(window: &Window) {
+         fmt_rounded(window_offset_in_tile.0),
+         fmt_rounded(window_offset_in_tile.1)
+     );
++
++    if let (Some(animation), Some(ago)) = (tile_animation, tile_animation_began_ms_ago) {
++        println!(
++            "    Tile animation: {animation:?}, began {} ms before it was reported",
++            fmt_rounded(ago)
++        );
++    }
+ }
+ 
+ fn print_cast(cast: &Cast) {
+diff --git a/src/ipc/server.rs b/src/ipc/server.rs
+index db71da6..e1bfc94 100644
+--- a/src/ipc/server.rs
++++ b/src/ipc/server.rs
+@@ -1,10 +1,11 @@
+ use std::cell::RefCell;
+-use std::collections::HashSet;
++use std::collections::{HashMap, HashSet};
+ use std::ffi::OsStr;
+ use std::os::unix::net::{UnixListener, UnixStream};
+ use std::path::{Path, PathBuf};
+ use std::rc::Rc;
+ use std::sync::{Arc, Mutex};
++use std::time::Duration;
+ use std::{env, io, process};
+ 
+ use anyhow::Context;
+@@ -18,7 +19,7 @@ use niri_config::OutputName;
+ use niri_ipc::state::{EventStreamState, EventStreamStatePart as _};
+ use niri_ipc::{
+     Action, Event, KeyboardLayouts, OutputConfigChanged, Overview, Reply, Request, Response,
+-    Timestamp, WindowLayout, Workspace,
++    TileAnimation, Timestamp, WindowLayout, Workspace,
+ };
+ use smithay::desktop::layer_map_for_output;
+ use smithay::input::pointer::{
+@@ -34,7 +35,7 @@ use crate::backend::IpcOutputMap;
+ use crate::input::pick_window_grab::PickWindowGrab;
+ use crate::layout::workspace::WorkspaceId;
+ use crate::niri::State;
+-use crate::utils::{version, with_toplevel_role};
++use crate::utils::{get_monotonic_time, version, with_toplevel_role};
+ use crate::window::Mapped;
+ 
+ // If an event stream client fails to read events fast enough that we accumulate more than this
+@@ -48,6 +49,9 @@ pub struct IpcServer {
+     pub socket_path: Option<PathBuf>,
+     event_streams: Rc<RefCell<Vec<EventStreamSender>>>,
+     event_stream_state: Rc<RefCell<EventStreamState>>,
++    /// When the animation each window's last sent layout said moves its tile began, on the
++    /// monotonic clock, so a layout goes out again when another begins but not as it runs.
++    tile_animations_began: RefCell<HashMap<u64, (TileAnimation, Duration)>>,
+ }
+ 
+ struct ClientCtx {
+@@ -109,6 +113,7 @@ impl IpcServer {
+             socket_path,
+             event_streams: Rc::new(RefCell::new(Vec::new())),
+             event_stream_state: Rc::new(RefCell::new(EventStreamState::default())),
++            tile_animations_began: RefCell::new(HashMap::new()),
+         })
+     }
+ 
+@@ -512,6 +517,25 @@ async fn handle_event_stream_client(client: EventStreamClient) -> anyhow::Result
+     Ok(())
+ }
+ 
++/// Whether two layouts put the window in the same place at the same size, whatever they say
++/// moves it, which is compared by when it began instead.
++fn same_place(a: &WindowLayout, b: &WindowLayout) -> bool {
++    let at_rest = |layout: &WindowLayout| WindowLayout {
++        tile_animation: None,
++        tile_animation_began_ms_ago: None,
++        ..layout.clone()
++    };
++    at_rest(a) == at_rest(b)
++}
++
++/// What a layout says moves its tile, and when that began on the monotonic clock, `now` being
++/// when the layout is sent.
++fn tile_animation_began(layout: &WindowLayout, now: Duration) -> Option<(TileAnimation, Duration)> {
++    let kind = layout.tile_animation?;
++    let ago = Duration::from_secs_f64(layout.tile_animation_began_ms_ago?.max(0.) / 1000.);
++    Some((kind, now.saturating_sub(ago)))
++}
++
+ fn make_ipc_window(
+     mapped: &Mapped,
+     workspace_id: Option<WorkspaceId>,
+@@ -700,6 +724,18 @@ impl State {
+ 
+         let mut batch_change_layouts: Vec<(u64, WindowLayout)> = Vec::new();
+ 
++        // A layout says how long ago what moves its tile began, which grows every frame, so the
++        // beginning it said is kept to tell a new animation from one still running.
++        let now = get_monotonic_time();
++        let mut tile_animations_began = server.tile_animations_began.borrow_mut();
++        type Began = HashMap<u64, (TileAnimation, Duration)>;
++        let sending = |began: &mut Began, id: u64, window_layout: &WindowLayout| {
++            match tile_animation_began(window_layout, now) {
++                Some(at) => began.insert(id, at),
++                None => began.remove(&id),
++            };
++        };
++
+         // Check for window changes.
+         let mut seen = HashSet::new();
+         let mut focused_id = None;
+@@ -712,6 +748,7 @@ impl State {
+             }
+ 
+             let Some(ipc_win) = state.windows.get(&id) else {
++                sending(&mut tile_animations_began, id, &window_layout);
+                 let window = make_ipc_window(mapped, ws_id, window_layout);
+                 events.push(Event::WindowOpenedOrChanged { window });
+                 return;
+@@ -726,12 +763,24 @@ impl State {
+             });
+ 
+             if changed {
++                sending(&mut tile_animations_began, id, &window_layout);
+                 let window = make_ipc_window(mapped, ws_id, window_layout);
+                 events.push(Event::WindowOpenedOrChanged { window });
+                 return;
+             }
+ 
+-            if ipc_win.layout != window_layout {
++            // Another animation beginning is a change, its running on or ending is not; a
++            // beginning said again a little differently, as rounding can, is the same one.
++            let began = tile_animation_began(&window_layout, now);
++            let began_anew = match (began, tile_animations_began.get(&id)) {
++                (None, _) => false,
++                (Some(_), None) => true,
++                (Some((kind, at)), Some(&(was_kind, was_at))) => {
++                    kind != was_kind || at.abs_diff(was_at) >= Duration::from_millis(1)
++                }
++            };
++            if began_anew || !same_place(&ipc_win.layout, &window_layout) {
++                sending(&mut tile_animations_began, id, &window_layout);
+                 batch_change_layouts.push((id, window_layout));
+             }
+ 
+@@ -764,6 +813,9 @@ impl State {
+             });
+         }
+ 
++        tile_animations_began.retain(|id, _| seen.contains(id));
++        drop(tile_animations_began);
++
+         // Check for closed windows.
+         let mut ipc_focused_id = None;
+         for (id, ipc_win) in &state.windows {
+diff --git a/src/layout/mod.rs b/src/layout/mod.rs
+index 5c4dd63..247244f 100644
+--- a/src/layout/mod.rs
++++ b/src/layout/mod.rs
+@@ -1678,8 +1678,14 @@ impl<W: LayoutElement> Layout<W> {
+         match &self.monitor_set {
+             MonitorSet::Normal { monitors, .. } => {
+                 for mon in monitors {
++                    // A slide between workspaces moves every one on the monitor; one following
++                    // a gesture has no beginning to say.
++                    let sliding = match &mon.workspace_switch {
++                        Some(WorkspaceSwitch::Animation(anim)) => Some(anim),
++                        _ => None,
++                    };
+                     for ws in &mon.workspaces {
+-                        for (tile, layout) in ws.tiles_with_ipc_layouts() {
++                        for (tile, layout) in ws.tiles_with_ipc_layouts(sliding) {
+                             f(tile.window(), Some(&mon.output), Some(ws.id()), layout);
+                         }
+                     }
+@@ -1687,7 +1693,7 @@ impl<W: LayoutElement> Layout<W> {
+             }
+             MonitorSet::NoOutputs { workspaces } => {
+                 for ws in workspaces {
+-                    for (tile, layout) in ws.tiles_with_ipc_layouts() {
++                    for (tile, layout) in ws.tiles_with_ipc_layouts(None) {
+                         f(tile.window(), None, Some(ws.id()), layout);
+                     }
+                 }
+diff --git a/src/layout/scrolling.rs b/src/layout/scrolling.rs
+index 007bcaf..b8e6b54 100644
+--- a/src/layout/scrolling.rs
++++ b/src/layout/scrolling.rs
+@@ -5,7 +5,7 @@ use std::time::Duration;
+ 
+ use niri_config::utils::MergeWith as _;
+ use niri_config::{CenterFocusedColumn, PresetSize, Struts};
+-use niri_ipc::{ColumnDisplay, SizeChange, WindowLayout};
++use niri_ipc::{ColumnDisplay, SizeChange, TileAnimation, WindowLayout};
+ use ordered_float::NotNan;
+ use smithay::backend::renderer::gles::GlesRenderer;
+ use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
+@@ -13,7 +13,7 @@ use smithay::utils::{Logical, Point, Rectangle, Scale, Serial, Size};
+ use super::closing_window::{ClosingWindow, ClosingWindowRenderElement};
+ use super::monitor::InsertPosition;
+ use super::tab_indicator::{TabIndicator, TabIndicatorRenderElement, TabInfo};
+-use super::tile::{Tile, TileRenderElement, TileRenderSnapshot};
++use super::tile::{with_ipc_animation, Tile, TileRenderElement, TileRenderSnapshot};
+ use super::workspace::{InteractiveResize, ResolvedSize};
+ use super::{ConfigureIntent, HitType, InteractiveResizeData, LayoutElement, Options, RemovedTile};
+ use crate::animation::{Animation, Clock};
+@@ -2417,19 +2417,55 @@ impl<W: LayoutElement> ScrollingSpace<W> {
+             })
+     }
+ 
+-    pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
++    /// The tiles with their layouts for IPC, each saying which animation moving its tile began
++    /// last, `sliding` the monitor's slide between workspaces when one runs.
++    pub fn tiles_with_ipc_layouts<'a>(
++        &'a self,
++        sliding: Option<&'a Animation>,
++    ) -> impl Iterator<Item = (&'a Tile<W>, WindowLayout)> + 'a {
 +        let scale = self.scale;
++        let viewing = match &self.view_offset {
++            ViewOffset::Animation(anim) => Some(anim),
++            _ => None,
++        };
 +        // Positions are taken where the view comes to rest rather than where it is drawn this
 +        // frame, so a view animation or a gesture in progress does not send a layout change on
 +        // every frame; the position changes once, when the view's target does. Column and tile
@@ -66,8 +381,128 @@ index 007bcaf..7493ead 100644
 +                            tile_pos_in_workspace_view: Some(pos.into()),
 +                            ..tile.ipc_layout_template()
 +                        };
-+                        (tile, layout)
++                        // What moves the tile most nearly its own is said first, so of
++                        // animations beginning together the report names the tile's.
++                        let [resize, move_x, move_y] = tile.ipc_animations();
++                        let moving = [
++                            resize,
++                            move_x,
++                            move_y,
++                            col.move_animation
++                                .as_ref()
++                                .map(|move_| (TileAnimation::ColumnMove, &move_.anim)),
++                            viewing.map(|anim| (TileAnimation::ViewMove, anim)),
++                            sliding.map(|anim| (TileAnimation::WorkspaceSlide, anim)),
++                        ];
++                        (tile, with_ipc_animation(layout, moving))
 +                    })
              })
      }
  
+diff --git a/src/layout/tile.rs b/src/layout/tile.rs
+index 86c7eba..2192234 100644
+--- a/src/layout/tile.rs
++++ b/src/layout/tile.rs
+@@ -3,7 +3,7 @@ use std::rc::Rc;
+ 
+ use niri_config::utils::MergeWith as _;
+ use niri_config::{Color, CornerRadius, GradientInterpolation};
+-use niri_ipc::WindowLayout;
++use niri_ipc::{TileAnimation, WindowLayout};
+ use smithay::backend::renderer::element::{Element, Kind};
+ use smithay::backend::renderer::gles::GlesRenderer;
+ use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
+@@ -174,6 +174,36 @@ pub(super) struct AlphaAnimation {
+     offscreen: OffscreenBuffer,
+ }
+ 
++/// Fills a tiled window's layout for IPC with the animation moving or resizing its tile that
++/// began last and still runs, and how long ago it began. Of animations that began together, as
++/// those started by one change do, the first given is said.
++pub fn with_ipc_animation<'a>(
++    mut layout: WindowLayout,
++    animations: impl IntoIterator<Item = Option<(TileAnimation, &'a Animation)>>,
++) -> WindowLayout {
++    let mut latest: Option<(TileAnimation, &Animation)> = None;
++    for (kind, anim) in animations.into_iter().flatten() {
++        if anim.is_done() {
++            continue;
++        }
++        let later = match latest {
++            None => true,
++            Some((_, last)) => anim.start_time() > last.start_time(),
++        };
++        if later {
++            latest = Some((kind, anim));
++        }
++    }
++
++    if let Some((kind, anim)) = latest {
++        if let Some(ago) = anim.began_ago() {
++            layout.tile_animation = Some(kind);
++            layout.tile_animation_began_ms_ago = Some(ago.as_secs_f64() * 1000.);
++        }
++    }
++    layout
++}
++
+ impl<W: LayoutElement> Tile<W> {
+     pub fn new(
+         window: W,
+@@ -868,9 +898,27 @@ impl<W: LayoutElement> Tile<W> {
+             window_size: self.window().size().into(),
+             tile_pos_in_workspace_view: None,
+             window_offset_in_tile: self.window_loc().into(),
++            tile_animation: None,
++            tile_animation_began_ms_ago: None,
+         }
+     }
+ 
++    /// The animations of the tile's own that move or resize it, for IPC to say which began
++    /// last: its resize first, so that one beginning with a move is reported as the resize.
++    pub fn ipc_animations(&self) -> [Option<(TileAnimation, &Animation)>; 3] {
++        [
++            self.resize_animation
++                .as_ref()
++                .map(|resize| (TileAnimation::Resize, &resize.anim)),
++            self.move_x_animation
++                .as_ref()
++                .map(|move_| (TileAnimation::TileMove, &move_.anim)),
++            self.move_y_animation
++                .as_ref()
++                .map(|move_| (TileAnimation::TileMove, &move_.anim)),
++        ]
++    }
++
+     fn is_in_input_region(&self, mut point: Point<f64, Logical>) -> bool {
+         point -= self.window_loc().to_f64();
+         self.window.is_in_input_region(point)
+diff --git a/src/layout/workspace.rs b/src/layout/workspace.rs
+index 49548a8..eb959b2 100644
+--- a/src/layout/workspace.rs
++++ b/src/layout/workspace.rs
+@@ -27,7 +27,7 @@ use super::{
+     ActivateWindow, HitType, InsertPosition, InteractiveResizeData, LayoutElement, Options,
+     RemovedTile, SizeFrac,
+ };
+-use crate::animation::Clock;
++use crate::animation::{Animation, Clock};
+ use crate::niri_render_elements;
+ use crate::render_helpers::renderer::NiriRenderer;
+ use crate::render_helpers::shadow::ShadowRenderElement;
+@@ -1603,8 +1603,13 @@ impl<W: LayoutElement> Workspace<W> {
+         floating.chain(scrolling)
+     }
+ 
+-    pub fn tiles_with_ipc_layouts(&self) -> impl Iterator<Item = (&Tile<W>, WindowLayout)> {
+-        let scrolling = self.scrolling.tiles_with_ipc_layouts();
++    /// The tiles with their layouts for IPC, `sliding` the monitor's slide between workspaces
++    /// when one runs, which a tiled window's layout says moves it.
++    pub fn tiles_with_ipc_layouts<'a>(
++        &'a self,
++        sliding: Option<&'a Animation>,
++    ) -> impl Iterator<Item = (&'a Tile<W>, WindowLayout)> + 'a {
++        let scrolling = self.scrolling.tiles_with_ipc_layouts(sliding);
+         let floating = self.floating.tiles_with_ipc_layouts();
+         floating.chain(scrolling)
+     }

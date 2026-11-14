@@ -17,6 +17,8 @@ import sys
 import time
 from pathlib import Path
 
+from wayland_wire import message, read_string, string
+
 # The wl_display every connection starts with, and the ids this client gives the objects it
 # makes.
 DISPLAY = 1
@@ -37,24 +39,6 @@ BUSY = 500
 # The most refreshes a busy second may hold: a 60 Hz output's frames, and a few that a focus
 # change or a window coming had at once.
 MOST = 75
-
-
-def message(target: int, opcode: int, payload: bytes = b"") -> bytes:
-    """Frame a request to the object `target`, as the wire protocol does."""
-    return struct.pack("<II", target, (8 + len(payload)) << 16 | opcode) + payload
-
-
-def string(text: str) -> bytes:
-    """Encode a string argument: its length with its NUL, then it, padded to 4 bytes."""
-    data = text.encode() + b"\0"
-    return struct.pack("<I", len(data)) + data + b"\0" * (-len(data) % 4)
-
-
-def read_string(payload: bytes, at: int) -> tuple[str, int]:
-    """Read the string argument at `at` in a payload, and where the next one starts."""
-    (length,) = struct.unpack_from("<I", payload, at)
-    text = payload[at + 4 : at + 4 + length - 1].decode()
-    return text, at + 4 + length + (-length % 4)
 
 
 class Connection:

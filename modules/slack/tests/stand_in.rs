@@ -1476,3 +1476,31 @@ fn with_no_sign_in_nothing_is_held_and_slack_is_never_asked() {
     assert!(stand_in.heard().is_empty());
     let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
 }
+
+/// With no sign-in it still tells systemd's watchdog it's there each
+/// round, since waiting on one is no hang: systemd restarted it every
+/// three minutes while the harness's sign-in folder was empty (16V6F4,
+/// 2026-11-13).
+#[test]
+fn with_no_sign_in_it_still_tells_its_watchdog() {
+    let stand_in = StandIn::new(wanting);
+    let missing = std::env::temp_dir().join("slack-unreads-no-such-file.json");
+    let run = std::env::temp_dir().join(format!("slack-unreads-watched-{}", std::process::id()));
+    let notify = run.with_extension("notify");
+    let _ = std::fs::remove_file(&notify);
+    let systemd = std::os::unix::net::UnixDatagram::bind(&notify).unwrap();
+    systemd
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_slack-unreads"));
+    command.env("NOTIFY_SOCKET", &notify);
+    let mut program = unreads_from(command, &stand_in, &missing, &run);
+    let mut told = [0; 64];
+    let heard = systemd.recv(&mut told);
+    program.kill().unwrap();
+    program.wait().unwrap();
+    let _ = std::fs::remove_file(&notify);
+    let _ = std::fs::remove_dir_all(socket(&run).parent().unwrap());
+    let length = heard.expect("the watchdog was never told, with no sign-in");
+    assert_eq!(&told[..length], b"WATCHDOG=1");
+}
