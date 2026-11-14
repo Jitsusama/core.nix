@@ -1545,15 +1545,14 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     )
     logging.getLogger(__name__).info("the line was up after %s ms each time", times)
     # The void keeps it, so it waits no longer and the cases after begin from no line open.
-    replies = inbox / "replies"
-    replies.mkdir(parents=True, exist_ok=True)
     now = datetime.now(UTC)
+    laid = inbox / "replies" / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+    laid.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
          "text": sent[0]},
         {"stage": "replied", "at": now.isoformat(), "text": "Kept."},
     ]  # fmt: skip
-    laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
     laid.write_text("".join(json.dumps(one) + "\n" for one in lines))
     laid.rename(laid.with_suffix(""))
     shell.launcher_until(lambda shown: shown["line"]["talk"] == "answered")
