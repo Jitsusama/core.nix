@@ -419,6 +419,30 @@ Scope {
             putAway();
     }
 
+    // A screen going takes the line's surface with it, and when it comes back Qt moves the
+    // window onto it by itself, so Quickshell sees no change of screen and never makes the
+    // surface again: Super+S only flipped `up`, with nothing to draw or take the keys (Joel,
+    // 2026-11-13 23:01, after the laptop's only screen went dark under the lock at 21:58). So
+    // once the screens change and the one it's on is gone, it's put away, its draft kept, and
+    // made again on the screen the keys are on, as the launcher's is (Launcher.qml's remake);
+    // with no screen at all it waits unmade for the next, which changes the screens again.
+    Connections {
+        target: Quickshell
+        function onScreensChanged() {
+            Qt.callLater(root.remake);
+        }
+    }
+    function remake() {
+        const real = Quickshell.screens.filter(one => one.name !== "");
+        if (surface.visible && real.includes(surface.screen))
+            return;
+        if (up)
+            putAway();
+        screen = null;
+        surface.visible = false;
+        surface.visible = real.length > 0;
+    }
+
     PanelWindow {
         id: surface
 
