@@ -421,5 +421,15 @@
     "owner_pr": 4243,
     "reason": "failed, then passed, at 4f0387b4623e",
     "test": "vm-boot-asks-in-the-theme"
+  },
+  {
+    "at": 1794639395,
+    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
+    "owner_pr": 4252,
+    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_a_rows_words_are_in_the_serif_on_its_names_baseline"
+    ],
+    "test": "vm-desktop-looks-rows"
   }
 ]
