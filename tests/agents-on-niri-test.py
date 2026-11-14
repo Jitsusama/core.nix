@@ -2170,6 +2170,9 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     # As far from the screen's foot as its top stands from the screen's top.
     stands = shell.showing()["line"]
     assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
+    # A key of another keymap first, since the line's first key was read by the last keymap
+    # and lost, its Escape at 1.5x leaving the line in insert. F24 does nothing here.
+    shell.send_key("F24")
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     # j picks the newest, and a line picked far down is scrolled into view.
@@ -2261,6 +2264,8 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
             shown["line"]["keys"] and asked in [one["line"] for one in shown["line"]["talks"]]
         )
     )
+    # A key of another keymap first, as the case before does, so Escape isn't lost.
+    shell.send_key("F24")
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     at_line = [one["line"] for one in shell.showing()["line"]["talks"]].index(asked)
@@ -2344,6 +2349,8 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     )
     talks = [one["line"] for one in shell.showing()["line"]["talks"]]
     assert not [one for one in talks if one.startswith("reply ") or one == words], talks
+    # A key of another keymap first, as the cases before do, so Escape isn't lost.
+    shell.send_key("F24")
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars(f"{talks.index(asked) + 1}j")

@@ -80,7 +80,7 @@ Item {
                     readonly property bool voiced: !modelData.answer && !modelData.mine
                     readonly property bool folded: nerd.visible
                     // As tall as its words, or as who and when stacked at its right.
-                    readonly property int lines: Math.max(said.lineCount, by.visible ? 2 : 1)
+                    readonly property int stands: Math.max(said.lineCount, by.visible ? 2 : 1)
                     // The one text column every line holds, up to where a time stands,
                     // as the list's answers do, so the paragraph keeps one right edge
                     // (VKCF3Z [fd1e4e67]).
@@ -88,7 +88,7 @@ Item {
                         - Theme.space.rung.groups - thread.textAt
 
                     width: thread.width
-                    height: (lines + (folded ? 1 : 0)) * pitch
+                    height: (stands + (folded ? 1 : 0)) * pitch
 
                     TextMetrics {
                         id: clock
@@ -162,7 +162,7 @@ Item {
                         id: nerd
                         visible: thread.nerdy && text !== ""
                         x: thread.textAt
-                        y: (entry.lines + 1) * entry.pitch - baselineOffset
+                        y: (entry.stands + 1) * entry.pitch - baselineOffset
                         width: entry.width - x
                         text: entry.modelData.nerd
                         textFormat: Text.PlainText
