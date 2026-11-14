@@ -17,6 +17,11 @@ runtime=${XDG_RUNTIME_DIR}
 if [[ ${1:-} == ipc ]]; then
   if [[ -e ${runtime}/held-$3 ]]; then
     echo '{"kept":true,"open":false}'
+  elif [[ ${STANDIN_CHORD_LANDS:-0} == 1 && ! -e ${runtime}/chord-landed ]]; then
+    # Found shut, then a chord sent before its socket went opens it.
+    touch "${runtime}/chord-landed"
+    echo true > "${runtime}/old-open"
+    echo '{"open":false}'
   else
     printf '{"open":%s}\n' "$(cat "${runtime}/old-open" 2> /dev/null || echo false)"
   fi
@@ -55,7 +60,8 @@ failures=()
 # Starts one case from nothing said, the old shell running as the unit's main process.
 case_of() {
   rm -f run/*
-  unset STANDIN_FAILS STANDIN_OLD_TALKS
+  unset STANDIN_FAILS STANDIN_OLD_TALKS STANDIN_CHORD_LANDS
+  touch run/launcher.sock
   setsid "${here}/bin/quickshell" &
   MAINPID=$!
   export MAINPID
@@ -126,6 +132,21 @@ sleep 2
 ! handed_over || failures+=("the old shell was ended with Super+S's line up")
 echo closed > run/quickshell-talk-line
 done_within || failures+=("the talk line's close didn't hand the shell over: $(< run/said)")
+over
+
+# A chord the old shell hears just after it's found shut opens it after all, so the shell
+# isn't ended under it, and the socket is back where the chord after it finds it.
+case_of
+export STANDIN_CHORD_LANDS=1
+hand_over
+# As above, the 2 s in which the old shell must not be ended.
+sleep 2
+! handed_over || failures+=("the old launcher was ended as a chord opened it")
+[[ -e run/launcher.sock ]] || failures+=("the old launcher's socket was gone while it was open")
+echo false > run/old-open
+done_within || failures+=("the chord's opening closed didn't hand the shell over: $(< run/said)")
+[[ ! -e run/launcher.sock && ! -e run/launcher.sock.handing-over ]] ||
+  failures+=("the old shell's socket outlived it")
 over
 
 case_of

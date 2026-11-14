@@ -162,7 +162,8 @@
       '';
 
   # The handover waits for the old shell's launcher and Super+S's line to be shut before
-  # ending it, restarts instead on a locked screen, and leaves the old shell the unit's when
+  # ending it, a chord heard just after they were found shut included, restarts instead on
+  # a locked screen, and leaves the old shell the unit's when
   # the new one fails as it loads (modules/quickshell/tests/hands-over.sh).
   the-shell-hands-over-only-once-its-surfaces-are-shut =
     pkgs.runCommandLocal "the-shell-hands-over-only-once-its-surfaces-are-shut"

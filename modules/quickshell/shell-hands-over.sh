@@ -33,12 +33,23 @@ esac
 
 ready="$XDG_RUNTIME_DIR/quickshell-held"
 locked="$XDG_RUNTIME_DIR/quickshell-locked"
+socket="$XDG_RUNTIME_DIR/launcher.sock"
+aside="$socket.handing-over"
+
+# The old shell's socket, taken aside below, goes back where launcher-say
+# finds it, unless a socket is there already.
+put_back() {
+  if [ -e "$aside" ] && [ ! -e "$socket" ]; then
+    mv -f "$aside" "$socket"
+  fi
+}
 
 restart_if_locked() {
   local state=""
   read -r state 2>/dev/null <"$locked" || true
   if [ "$state" = locked ]; then
     echo "the screen is locked, so the shell restarts instead"
+    put_back
     exec systemctl --user --no-block restart quickshell.service
   fi
 }
@@ -83,12 +94,27 @@ done
 # one writes only as its line changes, so "open" there now is the old
 # shell's line, come up since.
 talking="$XDG_RUNTIME_DIR/quickshell-talk-line"
-for ((i = 0; i < 600; i++)); do
+shut() {
+  local shown open line=""
   shown="$("$1" ipc --pid "$old" call launcher showing 2>/dev/null || true)"
   open="$(jq -r .open <<<"$shown" 2>/dev/null || true)"
-  line=""
   read -r line 2>/dev/null <"$talking" || true
-  [ "$open" = true ] || [ "$line" = open ] || break
+  [ "$open" != true ] && [ "$line" != open ]
+}
+# Found shut, the old shell could still hear a chord before its socket
+# went, open, and be ended under it: on a busy builder the fourth of four
+# chords drew the old launcher and was never presented (2026-11-14,
+# e777b33d). So the socket is taken aside, which launcher-say waits out,
+# and the shell asked again once a chord it had already been sent has
+# opened it; open then, the socket goes back and the wait goes on.
+for ((i = 0; i < 600; i++)); do
+  if shut "$1"; then
+    mv -f "$socket" "$aside" 2>/dev/null || true
+    # A chord read before the socket went is opening within this.
+    sleep 0.05
+    shut "$1" && break
+    put_back
+  fi
   sleep 0.1
 done
 
@@ -100,6 +126,7 @@ restart_if_locked
 # take the unit as stopped and end the new shell with it.
 if ! systemd-notify --pid="$new"; then
   echo "systemd didn't take the new shell as the unit's, so the old one stays"
+  put_back
   kill -TERM "$new"
   exit 1
 fi
@@ -107,7 +134,7 @@ fi
 # A chord said as the old shell ends would be heard by it and lost, so its
 # socket goes first, as the unit's stop does, and launcher-say waits for the
 # new shell's.
-rm -f "$XDG_RUNTIME_DIR/launcher.sock"
+rm -f "$socket" "$aside"
 
 # The old shell's group, so what it started (its Process children) ends
 # with it rather than lingering in the unit. One already gone has none.
