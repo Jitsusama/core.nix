@@ -12,12 +12,7 @@
     "inks"
     "helps"
   ];
-  cadence = [
-    "kit"
-    "exits"
-    "inks"
-    "helps"
-  ];
+  cadence = [ "inks" ];
   changed-checks = [
     "kit"
     "helps"
@@ -148,11 +143,6 @@
     "helps"
   ];
   secret-asks = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  shaper = [
     "kit"
     "exits"
     "helps"

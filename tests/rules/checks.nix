@@ -218,6 +218,7 @@
         agents = pkgs.callPackage ../../modules/agents/package.nix { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
+        cadence = pkgs.callPackage ../../modules/cadence/package.nix { };
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
@@ -275,6 +276,7 @@
         rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        shaper = pkgs.callPackage ../../modules/shaper/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
         shutdown-status = pkgs.callPackage ../../modules/systemd/shutdown-status/package.nix { };
         slack-people = slack;
