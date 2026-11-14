@@ -1184,13 +1184,33 @@ Provider {
     // resolved in case i want to see it later").
     // Narrowed to a `source` of Lately's, only what came from it, as the
     // desktop's row ends on its own History (VKCF3Z, 2026-11-09).
+    // Its rows are kept while all they're made of is the same, the notices
+    // as PastNotices.qml keeps them, the rest by identity, and the day,
+    // since each says when it was done as a moment the day's turning
+    // moves; and each notice's row while its served row is. Both verbs and
+    // targets ask for them at each step, and making all 594 to 679 of
+    // Joel's anew took 43 to 92 ms of steps of 81 to 152 (2026-11-13). A
+    // stopgap until the notices daemon serves History's rows ready, which
+    // 2RCBOJ expects merged Sun 15 20:00 (2026-11-14).
+    readonly property var historyKept: keeper()
+    readonly property var historyNotices: keeper()
     function historyRows(from) {
         const now = Date.now();
+        const served = source("notices")?.pastRows(pastOf(from)) ?? [];
+        const ours = from === undefined;
+        return keptAlike(historyKept, from ?? "", [served, cameDone,
+            ours ? looks.history : null, ours ? doneItems : null, ours ? given.done : null,
+            new Date(now).toDateString()], () => madeHistory(from, served, now));
+    }
+    function madeHistory(from, served, now) {
         const came = from === undefined ? cameDone
             : cameDone.filter(one => one.source === from);
-        // The notices done with, as the notices daemon serves History's.
-        const past = (source("notices")?.pastRows(pastOf(from)) ?? [])
-            .map(one => ({ at: one.doneAt, row: () => provider.pastRow(one) }));
+        // The notices done with, as the notices daemon serves History's;
+        // all of them asked for, those no longer served are let go.
+        if (from === undefined)
+            keepingBegun(historyNotices);
+        const past = served.map(one => ({ at: one.doneAt,
+            row: () => keptOr(historyNotices, one.key, one, () => provider.pastRow(one)) }));
         const say = forYouSaid(now);
         const ours = from === undefined ? looks.history.map(one => ({
             at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
@@ -1200,7 +1220,9 @@ Provider {
             : [];
         const rows = ours.concat(came.map(one => ({ at: one.at,
             row: () => provider.cameDoneRow(one) })), past);
-        return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+        const made = Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+        keptOnly(historyNotices);
+        return made;
     }
     // What a source gave that's done, in History as its source made it,
     // saying at its side how it went and when, "read 14:02", as every row

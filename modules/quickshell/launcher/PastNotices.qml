@@ -381,16 +381,44 @@ Provider {
 
     // History's rows of `sources` (Lately.js's pastSources), every one, in
     // the order each was done with, newest first, as the daemon orders
-    // them.
+    // them. Each list is kept while the page it's taken from is the same,
+    // and each row's copy while the daemon's row is, so stepping into
+    // History again hands back the rows it held: lining every one anew at
+    // each step made all 594 to 679 of Joel's new each time, 81 to 152 ms
+    // to the frame (2026-11-13). A stopgap until the notices daemon serves
+    // History's rows ready, which 2RCBOJ expects merged Sun 15 20:00
+    // (2026-11-14), when only the list need be kept.
     readonly property var pastPage: ({ at: -1, rows: [] })
+    readonly property var pastLined: ({ page: null, lists: ({}), copies: ({}), was: ({}) })
     function pastRows(sources) {
         if (pastPage.at !== past.placings) {
             pastPage.rows = past.rows();
             pastPage.at = past.placings;
         }
+        const page = paged(pastWhole, pastPage.rows);
+        const kept = pastLined;
+        if (kept.page !== page) {
+            kept.page = page;
+            kept.lists = {};
+            kept.was = kept.copies;
+            kept.copies = {};
+        }
+        const asked = sources.join(" ");
+        if (asked in kept.lists)
+            return kept.lists[asked];
         const wanted = new Set(sources);
-        return lined(paged(pastWhole, pastPage.rows)
-            .filter(row => wanted.has(row.pastSource)), []);
+        const rows = page.filter(row => wanted.has(row.pastSource)).map(row => pastCopy(row));
+        kept.lists[asked] = rows;
+        return rows;
+    }
+    // A row's copy as History lists it, kept while the daemon's row is
+    // the same (pastRows).
+    function pastCopy(row) {
+        const kept = pastLined;
+        const made = kept.copies[row.key] ?? kept.was[row.key];
+        const copy = made !== undefined && made.of === row ? made.copy : lined([row], [])[0];
+        kept.copies[row.key] = { of: row, copy: copy };
+        return copy;
     }
 
     // How many History keeps, as the daemon counts them, by source; told
