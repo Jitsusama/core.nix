@@ -452,16 +452,5 @@
       "test_super_v_pastes_into_the_window_it_opened_over_a_terminal_or_not"
     ],
     "test": "vm-desktop-keeps-copies"
-  },
-  {
-    "at": 1794681694,
-    "commit": "bc447920dec43f0c4be0021dba0e75efd49e8ae0",
-    "owner_pr": 4338,
-    "reason": "has been broken since #4338, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest",
-      "test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows"
-    ],
-    "test": "vm-desktop-shows-then-rests"
   }
 ]

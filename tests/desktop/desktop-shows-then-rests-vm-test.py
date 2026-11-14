@@ -352,6 +352,15 @@ QUIET = 30
 # Ten of niri's callbacks to a surface it isn't drawing.
 QUIET_LOCKED = 10
 WAKEUPS_A_SECOND = 5
+# Whether the margin's cat last said it's asleep. Awake with no keys it plays every few seconds,
+# as it's meant to, so the shell at rest is watched once it has dozed off, which it does here
+# ten seconds after a key (tests/desktop.nix), and asleep it draws nothing until the next.
+CAT_ASLEEP = (
+    "journalctl --user -u quickshell --no-pager -o cat | grep -a 'report\\[sits cat '"
+    " | tail -n 1 | grep -qF '\"asleep\":true'"
+)
+# Its doze and the moment it takes to say so, with room for a loaded builder.
+DOZING = timedelta(seconds=40)
 
 
 def woken(desktop: Desktop, pid: str) -> dict[str, int]:
@@ -376,13 +385,14 @@ def woken(desktop: Desktop, pid: str) -> dict[str, int]:
 def test_the_shell_draws_nothing_and_barely_wakes_while_nothing_shows(desktop: Desktop) -> None:
     """The shell draws no frame, and its main thread barely wakes, while nothing shows.
 
-    With the launcher closed and nothing arriving, no window has anything new to draw, so
-    each draws nothing (RSCH-20261029-0E8050's Motion and Drawing). It's watched from just
-    after a minute turns, so the margin's clock has nothing to draw either.
+    With the launcher closed, nothing arriving and the cat asleep, no window has anything new
+    to draw, so each draws nothing (RSCH-20261029-0E8050's Motion and Drawing). It's watched
+    from just after a minute turns, so the margin's clock has nothing to draw either.
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=GOING)
+    machine.wait_until_succeeds(desktop.in_session(CAT_ASLEEP), timeout=DOZING)
     pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
     machine.wait_until_succeeds("test $(date +%S) -lt 5", timeout=timedelta(seconds=70))
     desktop.as_account("qs ipc call frames start")
@@ -436,6 +446,7 @@ def test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest(desktop: Desktop
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
     for_you_lit(desktop, "Budget")
     machine.wait_until_fails(desktop.in_session(NOTICES), timeout=GOING)
+    machine.wait_until_succeeds(desktop.in_session(CAT_ASLEEP), timeout=DOZING)
     pid = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
     machine.wait_until_succeeds("test $(date +%S) -lt 5", timeout=timedelta(seconds=70))
     desktop.as_account("qs ipc call frames start")
