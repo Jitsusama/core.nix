@@ -201,10 +201,33 @@ fn mark(state: &Path) -> Vec<(String, u64, u128)> {
     marked
 }
 
-/// What was told, each with the number its notice was given, if it was
-/// given one. A list, as told.json was kept before notices were closed,
-/// is read as told with no notice to close.
-fn read_told(state: &Path) -> BTreeMap<String, Option<u32>> {
+/// A notice on screen: the number it was given, and the notices server
+/// that gave it, by its name on the bus. The number means that notice only
+/// while the same server runs, since one started again, as each switch
+/// starts the shell again, numbers its notices from the start (2RCBOJ).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Shown {
+    id: u32,
+    server: String,
+}
+
+impl Shown {
+    fn kept(&self) -> Value {
+        json!({"id": self.id, "server": self.server})
+    }
+
+    fn read(kept: &Value) -> Option<Self> {
+        Some(Self {
+            id: u32::try_from(kept["id"].as_u64()?).ok()?,
+            server: kept["server"].as_str()?.to_owned(),
+        })
+    }
+}
+
+/// What was told, each with the notice it put on screen, if one it can
+/// close. A list, as told.json was kept before notices were closed, is
+/// read as told with no notice to close.
+fn read_told(state: &Path) -> BTreeMap<String, Option<Shown>> {
     let kept = fs::read_to_string(state.join("told.json"))
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok());
@@ -216,7 +239,7 @@ fn read_told(state: &Path) -> BTreeMap<String, Option<u32>> {
             .collect(),
         Some(Value::Object(told)) => told
             .into_iter()
-            .map(|(key, id)| (key, id.as_u64().and_then(|id| u32::try_from(id).ok())))
+            .map(|(key, shown)| (key, Shown::read(&shown)))
             .collect(),
         _ => BTreeMap::new(),
     }
@@ -248,14 +271,14 @@ fn tell_new(
     served: &[Value],
     shadow: &[Value],
     knocking: &Knocking,
-    told: &mut BTreeMap<String, Option<u32>>,
+    told: &mut BTreeMap<String, Option<Shown>>,
 ) {
     let standing: BTreeSet<String> = served.iter().chain(shadow).map(told_as).collect();
     let before = told.len();
-    told.retain(|key, id| {
+    told.retain(|key, shown| {
         let stands = standing.contains(key);
-        if let (false, Some(id), Some(busctl)) = (stands, *id, knocking.busctl) {
-            close(busctl, id);
+        if let (false, Some(shown), Some(busctl)) = (stands, shown.as_ref(), knocking.busctl) {
+            close(busctl, shown);
         }
         stands
     });
@@ -271,6 +294,12 @@ fn tell_new(
             _ => Knock::Missed,
         };
         let knocked = matches!(knock, Knock::Sent(_));
+        let shown = match (knock, knocking.busctl) {
+            (Knock::Sent(Some(id)), Some(busctl)) => {
+                server(busctl).map(|server| Shown { id, server })
+            }
+            _ => None,
+        };
         let would = json!({
             "at": now_ms(),
             "key": row["key"],
@@ -284,19 +313,16 @@ fn tell_new(
         if let Err(error) = record::append(&state.join("would-tell.jsonl"), &would) {
             eprintln!("<4>couldn't write what it would tell: {error}");
         }
-        told.insert(
-            key,
-            if let Knock::Sent(id) = knock {
-                id
-            } else {
-                None
-            },
-        );
+        told.insert(key, shown);
         moved = true;
     }
     if moved {
+        let kept: serde_json::Map<String, Value> = told
+            .iter()
+            .map(|(key, shown)| (key.clone(), shown.as_ref().map_or(Value::Null, Shown::kept)))
+            .collect();
         let written = state.join("told.new");
-        let saved = fs::write(&written, json!(told).to_string())
+        let saved = fs::write(&written, Value::Object(kept).to_string())
             .and_then(|()| fs::rename(&written, state.join("told.json")));
         if let Err(error) = saved {
             eprintln!("<4>couldn't keep what it told: {error}");
@@ -344,10 +370,50 @@ fn notice(notify: &Path, row: &Value) -> Knock {
     }
 }
 
+/// The notices server's name on the bus now, which changes whenever it
+/// starts again.
+fn server(busctl: &Path) -> Option<String> {
+    let asked = Command::new(busctl)
+        .args([
+            "--user",
+            "call",
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            "s",
+            "org.freedesktop.Notifications",
+        ])
+        .output();
+    match asked {
+        // busctl says a string as `s ":1.42"`.
+        Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .strip_prefix("s ")
+            .map(|name| name.trim_matches('"').to_owned())
+            .filter(|name| !name.is_empty()),
+        Ok(output) => {
+            eprintln!("<5>no notices server on the bus: {}", output.status);
+            None
+        }
+        Err(error) => {
+            eprintln!("<4>couldn't run busctl: {error}");
+            None
+        }
+    }
+}
+
 /// Closes a notice by its number, as its sender may, once what it knocked
-/// for no longer stands; one the notices daemon has already let go is
-/// refused, which changes nothing.
-fn close(busctl: &Path, id: u32) {
+/// for no longer stands, but only while the server that numbered it still
+/// runs: a number from one since started again would close another
+/// program's notice. One the notices daemon has already let go is refused,
+/// which changes nothing.
+fn close(busctl: &Path, shown: &Shown) {
+    let Shown { id, server: gave } = shown;
+    if server(busctl).as_ref() != Some(gave) {
+        eprintln!("<6>notice {id} went with the notices server that showed it");
+        return;
+    }
     let closed = Command::new(busctl)
         .args([
             "--user",
