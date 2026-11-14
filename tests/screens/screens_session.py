@@ -254,10 +254,10 @@ class Screens:
 
     # The launcher is how Joel reaches everything, so it must work on whichever
     # screen he's on after any of these: Super+Space opens it there and gives
-    # it the keys, typing finds a row, Return runs it and the launcher closes,
-    # and :q closes it too, from the normal mode Escape gives, as Escape never
-    # closes. The row is Keep Awake, whose unit says it ran; each
-    # run turns it the other way, so it's typed by the name it has now.
+    # it the keys, typing finds a row, Return runs it, and :q closes it, from
+    # the normal mode Escape gives, as Escape never closes. The row is Keep
+    # Awake, whose unit says it ran; each run turns it the other way, so it's
+    # typed by the name it has now.
 
     def launcher_shows(self) -> dict[str, Any]:
         """Give what the launcher says it shows, from its showing call."""
@@ -344,18 +344,16 @@ class Screens:
             lambda shown: shown["typed"] == typed and (shown["selected"] or {}).get("name") == row,
             f"found {row!r} on {screen}",
         )
-        # Keep Awake is a setting, which Return does and stays to show;
-        # Ctrl+], from normal mode, then Return does it and closes.
+        # Keep Awake is a setting, which Return in normal does and stays to show.
+        # Its acts lie on its row, so Ctrl+] no longer steps into it (#4136).
         self.machine.send_key("esc")
         self.launcher_until(lambda shown: shown["mode"] == "normal", f"normal on {screen}")
-        self.machine.send_key("ctrl-bracket_right")
-        self.launcher_until(lambda shown: len(shown["held"]) > 0, f"stepped into {row!r}")
         self.machine.send_key("ret")
-        self.launcher_until(lambda shown: not shown["open"], f"closed once {row!r} ran on {screen}")
         deadline = time.monotonic() + 30
         while self.awake() == was:
             assert time.monotonic() < deadline, f"{row!r} did nothing on {screen}"
             time.sleep(0.5)
+        self.close_launcher(f"on {screen}")
         self.super_space_on(screen)
         self.close_launcher(f"on {screen}")
 
