@@ -147,3 +147,38 @@ fn a_stop_that_typed_nothing_says_why_before_idle() {
     ours.read_to_string(&mut heard).expect("what was said");
     assert_eq!(heard, "heard-nothing short\nidle\n");
 }
+
+#[test]
+fn a_tidy_in_time_is_typed() {
+    let mut waiting = Some((2, "um hello".to_owned()));
+    assert_eq!(
+        settle(&mut waiting, 2, Some("Hello.".to_owned())).as_deref(),
+        Some("Hello.")
+    );
+    assert!(waiting.is_none(), "a take typed still waits on its tidy");
+}
+
+#[test]
+fn a_take_with_no_tidy_is_typed_as_heard() {
+    let mut waiting = Some((2, "um hello".to_owned()));
+    assert_eq!(settle(&mut waiting, 2, None).as_deref(), Some("um hello"));
+}
+
+#[test]
+fn a_tidy_after_its_time_is_dropped() {
+    let mut waiting = Some((2, "um hello".to_owned()));
+    // The time ran out, which typed the take as heard; its tidy then
+    // comes, and is typed nowhere.
+    assert_eq!(settle(&mut waiting, 2, None).as_deref(), Some("um hello"));
+    assert_eq!(settle(&mut waiting, 2, Some("Hello.".to_owned())), None);
+}
+
+#[test]
+fn an_older_takes_tidy_isnt_the_new_ones() {
+    let mut waiting = Some((3, "the new take".to_owned()));
+    assert_eq!(
+        settle(&mut waiting, 2, Some("The old take.".to_owned())),
+        None
+    );
+    assert_eq!(waiting, Some((3, "the new take".to_owned())));
+}

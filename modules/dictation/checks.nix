@@ -257,6 +257,48 @@
       touch $out
     '';
 
+  # The tidying model is data alone: its IRs and its JSON, each fetched by
+  # hash, with no code, no library and no chat template of the export's,
+  # whose Jinja GenAI would otherwise render (tidy-model.nix).
+  dictation-tidies-from-data-alone =
+    let
+      inherit (pkgs.callPackage ./tidy-model.nix { }) files;
+      data = lib.all (
+        name: builtins.match "openvino_[a-z_]+\\.(xml|bin)|([a-z]+_)?config\\.json" name != null
+      ) files;
+    in
+    holds "dictation-tidies-from-data-alone"
+      "The tidying model fetches a file that isn't an IR or a config: ${toString files}"
+      (data && !(lib.elem "tokenizer_config.json" files));
+
+  # A take is tidied whole: its filler words and false start gone, every
+  # other word kept, punctuated, on the CPU as a machine with no GPU runs
+  # it. A take the model mustn't change reads the same after: on the CPU it
+  # spells the 2 out, which the guard refuses, so the take is typed as said.
+  dictation-tidies-a-take =
+    let
+      dictation = pkgs.callPackage ./package.nix { };
+      model = pkgs.callPackage ./tidy-model.nix { };
+      takes = pkgs.writeText "dictation-takes" ''
+        um so I think we should uh we should merge it tomorrow morning
+        Don't merge it until the 2 reviews are in.
+      '';
+      want = pkgs.writeText "dictation-tidies" ''
+        So I think we should merge it tomorrow morning.
+        Don't merge it until the 2 reviews are in.
+      '';
+    in
+    pkgs.runCommand "dictation-tidies-a-take" { } ''
+      export DICTATION_TIDY_DEVICE=CPU
+      export OPENVINO_TOKENIZERS_PATH_GENAI=${dictation.openvino-tokenizers}/lib/libopenvino_tokenizers.so
+      ${lib.getExe dictation} tidy ${model} < ${takes} > tidied
+      if ! diff -u ${want} tidied; then
+        echo "dictation tidied the takes wrong"
+        exit 1
+      fi
+      touch $out
+    '';
+
   # clippy finds nothing in dictation, its tests included.
   dictation-passes-clippy = passesClippy "dictation-passes-clippy" (
     pkgs.callPackage ./package.nix { }

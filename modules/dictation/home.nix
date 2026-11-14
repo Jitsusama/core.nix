@@ -18,6 +18,14 @@
 # Whisper writes a name it doesn't know as a word it does, Sarnia as
 # "Sanita", so the words Joel uses that it gets wrong are declared, and it
 # reads them before each transcription as what came before (src/words.rs).
+#
+# Where the account names a device for it, a small model there tidies each
+# take that lands as prose before it's typed: punctuation, capitals, filler
+# words and false starts, never a word of its own (tidy-model.nix, and
+# src/tidy.rs on what it may change). A take waits 2 s at most for it, and
+# a terminal's never does. Elsewhere nothing is tidied and the model isn't
+# fetched. It reads the take and nothing else, and what it compiles is
+# kept in a cache of its own.
 { quickshell }:
 {
   config,
@@ -28,7 +36,7 @@
 let
   dictation = pkgs.callPackage ./package.nix { };
   model = pkgs.callPackage ./model.nix { };
-  inherit (config.jitsusama.dictation) words;
+  inherit (config.jitsusama.dictation) words tidyDevice;
   wordsFile = pkgs.writeText "dictation-words" (lib.concatLines words);
 in
 {
@@ -45,6 +53,18 @@ in
       Words and names Whisper should write as they're given here, one
       word or phrase each. Whisper reads them before each transcription,
       as text it already heard, and leans toward their spelling.
+    '';
+  };
+
+  options.jitsusama.dictation.tidyDevice = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "GPU";
+    description = ''
+      The OpenVINO device a small model tidies each take on before it's
+      typed, taking out filler words and false starts and punctuating
+      what's left, within 2 s or not at all; or null, which types each
+      take as heard.
     '';
   };
 
@@ -81,7 +101,10 @@ in
       };
       Service = {
         ExecStart = "${lib.getExe dictation} serve ${model}";
-        CacheDirectory = "dictation";
+        CacheDirectory = [
+          "dictation"
+          "dictation-tidy"
+        ];
         Environment = [
           "DICTATION_CACHE=%C/dictation"
           "LD_LIBRARY_PATH=${lib.makeLibraryPath [ pkgs.level-zero ]}"
@@ -96,7 +119,12 @@ in
             ]
           }"
         ]
-        ++ lib.optional (words != [ ]) "DICTATION_WORDS=${wordsFile}";
+        ++ lib.optional (words != [ ]) "DICTATION_WORDS=${wordsFile}"
+        ++ lib.optionals (tidyDevice != null) [
+          "DICTATION_TIDY=${pkgs.callPackage ./tidy-model.nix { }}"
+          "DICTATION_TIDY_DEVICE=${tidyDevice}"
+          "DICTATION_TIDY_CACHE=%C/dictation-tidy"
+        ];
       };
     };
   };
