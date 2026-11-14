@@ -3878,6 +3878,10 @@
     the Surface Laptop 4 writes a reserve of 1 GiB to /sys/power/reserved_size at every start, so
     a hibernation leaves room for what amdgpu copies out as it stops
   '';
+  the-surface-touchscreen-keeps-off-a-removed-workqueue = ''
+    the Surface Laptop 4's touchscreen driver, as its source stands once patched, names system_wq
+    nowhere, the queue Linux 7.3 says it will remove and warns of once a boot
+  '';
   the-surface-watchdog-wakes-again = ''
     the Surface Laptop 4 arms systemd's runtime watchdog at 30 s, and its sleep hook, run with an
     empty PATH against a stand-in of busctl, stops that watchdog before a sleep and starts it again

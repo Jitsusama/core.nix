@@ -66,6 +66,33 @@
         && lib.hasInfix "EVDEV_ABS_36=::173" services.udev.extraHwdb
       );
 
+  # The touchscreen's driver, patched as it's built, queues its work on
+  # system_percpu_wq, never system_wq, which Linux 7.3 says it will remove
+  # and warns of once a boot. Only the source is read, so no kernel builds.
+  the-surface-touchscreen-keeps-off-a-removed-workqueue =
+    let
+      surface = bareNixos [
+        self.nixosModules.laptop
+        self.nixosModules.microsoft-surface-laptop-4-1958
+      ];
+      driver = lib.findFirst (
+        package: lib.hasPrefix "sl4a-touchscreen-" package.name
+      ) (throw "no touchscreen driver") surface.config.boot.extraModulePackages;
+    in
+    driver.overrideAttrs {
+      pname = "the-surface-touchscreen-keeps-off-a-removed-workqueue";
+      nativeBuildInputs = [ ];
+      makeFlags = [ ];
+      installFlags = [ ];
+      buildPhase = ''
+        if grep -nw system_wq -- *.c *.h; then
+          echo "The touchscreen's driver queues work on system_wq, which Linux is removing."
+          exit 1
+        fi
+      '';
+      installPhase = "touch $out";
+    };
+
   # fwupd, run against this model's ESRT with the UEFI and the TPM behind,
   # offers the UEFI's update from the remote the module writes and nothing
   # for the TPM (firmware/tests/offers-its-firmware.sh). Building the remote's

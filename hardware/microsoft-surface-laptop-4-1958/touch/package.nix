@@ -42,6 +42,13 @@ stdenv.mkDerivation {
     ./heat-stops-while-the-lid-is-shut.patch
   ];
 
+  # Linux 7.3 says system_wq will be removed, and warns once a boot when work
+  # is queued on it. system_percpu_wq is the queue it stood for, and the one
+  # schedule_delayed_work already uses, so the driver works as it did.
+  postPatch = ''
+    substituteInPlace spi-hid-core.c --replace-fail "(system_wq," "(system_percpu_wq,"
+  '';
+
   nativeBuildInputs = kernel.moduleBuildDependencies;
   makeFlags = kernelModuleMakeFlags ++ [
     "KDIR=${kernel.dev}/lib/modules/${kernel.modDirVersion}/build"
