@@ -12131,9 +12131,10 @@ Scope {
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
-                        // saying only the Return that answers it, in the
-                        // accent as an armed row's is, since it's the one
-                        // key that does anything; nor does an operator
+                        // saying only the Return that answers it, its key
+                        // in text and its verb strong, as an armed row's
+                        // is (VKCF3Z's ink ruling, df110a81, keeps the
+                        // accent off the foot); nor does an operator
                         // waiting, since no key of the row's does what it
                         // says until it's done: what it will take has
                         // their room (modeWord's pending).
@@ -12141,8 +12142,8 @@ Scope {
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
                             : prompt.asking !== "" ? [["\u21b5",
-                                (Words.field.hints ?? {}).confirm ?? "", Theme.accent,
-                                Theme.accent]]
+                                (Words.field.hints ?? {}).confirm ?? "", Theme.text,
+                                Theme.strong]]
                             : root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.sayingNow ? root.saying : root.keysFor(choice)

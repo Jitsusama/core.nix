@@ -2675,7 +2675,7 @@ head while it stands, the path giving way whole and back once it's
 answered. Where even the head can't hold it, what stays gives way from its
 end at a whole word, behind an ellipsis, never what it does or to what.
 Return answers it, as a second Return does an armed row, the foot saying
-"↵ confirm" in the accent; any other key, y and n among them, lets it go
+"↵ confirm", the key in text and the verb strong; any other key, y and n among them, lets it go
 and reaches nothing, keys pressed in the first 300 ms are ignored, and !
 skips the ask. What asks comes from the act's own data, never a list kept
 in the shell: the language's `costly` on forgetting, sharing the screen,
