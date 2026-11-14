@@ -5,6 +5,8 @@
 
 // A slash or several closing a path, which a cwd may or may not end with.
 const TRAILING_SLASHES = /\/+$/;
+// What the broker's worktrees' names open with, which says nothing to Joel.
+const WORKTREE_PREFIX = /^worktree-/;
 
 // The sessions a holder belongs to, from sessions as Sessions lists them,
 // each with `changed`, when its record last changed, and the guard's
@@ -38,7 +40,7 @@ function quests(holders) {
 function called(holder, worded, titled, home) {
     const owner = holder.owner ?? {};
     const name = owner.kind === "quest" ? titled(owner.name) || owner.name
-        : owner.kind === "worktree" ? String(owner.name).replace(/^worktree-/, "")
+        : owner.kind === "worktree" ? String(owner.name).replace(WORKTREE_PREFIX, "")
         : owner.kind === "other" ? holder.path.replace(home, "~")
         : owner.name;
     const made = (worded ?? "{name}").replace("{name}", name);
