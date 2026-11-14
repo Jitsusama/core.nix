@@ -5,7 +5,8 @@ are the realm's own mycelium node's, which reads the presence records laid here 
 them, each owned by this test's own process so the node judges it alive; the shell knows them
 from the node alone. A listening session's Return asks what to say to it, and a paused one's
 lands on Resume, which a second Return sends it; Ctrl+] still steps into all of either's acts.
-What Joel says to one shows under the field, sent, then waiting on it, then its answer.
+What Joel says to one shows under the field, sent, then how its row says it stands, then its
+answer.
 A session's Close asks first, saying what of it stays, and y steers it a close from Joel.
 A drawer's eyebrow names the repo a record says, rather than the folder it works in. One past
 80% of its context says how full first, in the warning's hue, and its drawer its figures. A
@@ -427,8 +428,8 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
 
     Talk opened over empty rows and said nothing once sent (Joel at 19:30 on 2026-11-13: "no
     feedback, they need to feel more like the void"). Before any talk the card is the field
-    and its foot alone; his words then stand with sent, waiting on the session once it's
-    delivered, and its answer in their place, which is told read once shown two seconds. How
+    and its foot alone; his words then stand with sent, then delivered as the session's row
+    says it, and its answer in their place, which is told read once shown two seconds. How
     each stage reads is tests/talk-line.qml's.
     """
     words, answer = "is the tide in yet", "Rising, and full by six."
@@ -471,7 +472,7 @@ def test_a_talk_shows_under_its_field_sent_then_waiting_then_answered(
         delivered = {"stage": "delivered", "at": now(), "session": "s-listen", "from": "joel",
             "text": words}  # fmt: skip
         talk.write_text(json.dumps(delivered) + "\n")
-        waits = "waiting on Listening Quest"
+        waits = "delivered"
         shell.launcher_until(lambda shown: standing(shown) == (1, words, "", waits, [], ""))
         shoot("talk-waiting")
         replied = {"stage": "replied", "at": now(), "text": answer}

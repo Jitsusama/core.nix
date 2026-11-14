@@ -325,7 +325,10 @@ QtObject {
             // Talk to It in the launcher shows the talk under the field as the line does,
             // from the session's own talk lines (Joel at 19:30 on 2026-11-13: "they need to
             // feel more like the void").
-            const toIt = { sent: "sent", waiting: "waiting on {who}", unsent: "not delivered" };
+            // Once the session has it, it breathes the word its row says, so one talk is told
+            // one way wherever Joel looks (VKCF3Z [2dbb1c2f]).
+            const toIt = { sent: "sent", waiting: "waiting on {who}", unsent: "not delivered",
+                stages: { delivered: "delivered", reading: "reading", replying: "replying" } };
             const when = (hour, minute, second) => new Date(2026, 10, 13, hour, minute,
                 second ?? 0).getTime();
             const talkAt = (hour, minute, words, stage, reply) => ({ id: `talk-${when(hour,
@@ -336,14 +339,17 @@ QtObject {
                 Session.spoken(justSent, "Tune the launcher", toIt),
                 { line: "is the fix in?", answers: [], waiting: "", stands: "sent", by: "",
                     side: "20:30" });
-            Expect.same("delivered, it waits on the session by its name",
+            Expect.same("delivered, and then read, it says so as its row does",
+                ["delivered", "reading"].map(stage => Session.spoken(talkAt(20, 30,
+                    "is the fix in?", stage), "Tune the launcher", toIt).waiting),
+                ["delivered", "reading"]);
+            Expect.same("a stage its row has no word for still waits on the session by name",
                 Session.spoken(talkAt(20, 30, "is the fix in?", "delivered"), "Tune the launcher",
-                    toIt).waiting, "waiting on Tune the launcher");
+                    { waiting: "waiting on {who}" }).waiting, "waiting on Tune the launcher");
             const writing = Session.spoken(talkAt(20, 30, "is the fix in?", "replying", "Yes, "),
                 "Tune the launcher", toIt);
-            Expect.same("what it's writing shows as it writes, still waiting on it",
-                [writing.answers, writing.waiting, writing.by],
-                [["Yes,"], "waiting on Tune the launcher", ""]);
+            Expect.same("what it's writing shows as it writes, replying",
+                [writing.answers, writing.waiting, writing.by], [["Yes,"], "replying", ""]);
             const itReplied = Session.spoken(talkAt(20, 30, "is the fix in?", "replied",
                 "Yes, merged at 20:28."), "Tune the launcher", toIt);
             Expect.same("replied, the answer stands in place, who answered at its right",
