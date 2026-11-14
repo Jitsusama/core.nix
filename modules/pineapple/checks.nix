@@ -31,15 +31,15 @@ onLinux {
   );
   # pineapple-slack starts at login, reads pi's Slack sign-in from the
   # keyring as slack-unreads does, comes back as the new one after a
-  # switch and after it fails, runs in the background slice, and reads as
-  # its own name in ps.
+  # switch and after it fails, runs in the background slice, reads as its
+  # own name in ps, and runs live.
   pineapple-slack-starts-with-the-sign-in =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple-slack;
     in
     holds "pineapple-slack-starts-with-the-sign-in"
-      "pineapple-slack lacks its login start, keyring, switch restart, restart, slice or name."
+      "pineapple-slack lacks its login start, keyring, switch restart, restart, slice, name or --live."
       (
         lib.elem "default.target" unit.Install.WantedBy
         && !(home.systemd.user.paths ? pineapple-slack)
@@ -48,27 +48,27 @@ onLinux {
         && unit.Service.Restart == "on-failure"
         && unit.Service.Slice == "background.slice"
         # As home-manager takes ExecStart, each start is listed.
-        && lib.any (lib.hasSuffix "/bin/pineapple-slack pineapple-slack run") (
+        && lib.any (lib.hasSuffix "/bin/pineapple-slack pineapple-slack run --live") (
           lib.toList unit.Service.ExecStart
         )
       );
   # pineapple-github starts at login, reads Joel's GitHub sign-in through
   # gh, comes back as the new one after a switch and after it fails, runs
-  # in the background slice, and reads as its own name in ps.
+  # in the background slice, reads as its own name in ps, and runs live.
   pineapple-github-starts-with-the-sign-in =
     let
       home = account (bareNixos [ { home-manager.sharedModules = [ self.homeModules.pineapple ]; } ]);
       unit = home.systemd.user.services.pineapple-github;
     in
     holds "pineapple-github-starts-with-the-sign-in"
-      "pineapple-github lacks its login start, sign-in, switch restart, restart, slice or name."
+      "pineapple-github lacks its login start, sign-in, switch restart, restart, slice, name or --live."
       (
         lib.elem "default.target" unit.Install.WantedBy
         && lib.any (lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/") (lib.toList unit.Service.Environment)
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.Restart == "on-failure"
         && unit.Service.Slice == "background.slice"
-        && lib.any (lib.hasSuffix "/bin/pineapple-github pineapple-github run") (
+        && lib.any (lib.hasSuffix "/bin/pineapple-github pineapple-github run --live") (
           lib.toList unit.Service.ExecStart
         )
       );

@@ -1,6 +1,6 @@
 # pineapple: whether a message someone wrote is the safe word that stops
 # Joel's agents, and what it stops. The library judges (src/lib.rs says
-# how the pieces fit); pineapple-slack reads Slack for it, in shadow
+# how the pieces fit); pineapple-slack reads Slack for it
 # (src/bin/pineapple-slack.rs), pineapple-github reads GitHub
 # (src/bin/pineapple-github.rs), and pineapple is Joel's own command to
 # list stops and resume them (src/bin/pineapple.rs), refused under pi,

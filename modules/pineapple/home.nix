@@ -1,9 +1,11 @@
 # The safe word that stops Joel's agents, read where it's said: Slack and
 # GitHub, and any site speaking GitHub's API that a machine names in
-# jitsusama.pineapple.sites, through Joel's own sign-ins, only read. Each is
-# read in shadow until it goes live, so its stops are written down and
-# nothing acts on them yet (src/lib.rs says how the pieces fit). A machine
-# signed in to Slack as Joel imports it.
+# jitsusama.pineapple.sites, through Joel's own sign-ins, only read. Slack
+# and GitHub are live since Joel read two days of their shadow logs: their
+# stops stand, Slack answers where asked, and both tell his phone. A named
+# site is in shadow, its stops written down with nothing acting on them, until
+# its own are read and the machine says it's live (src/lib.rs says how the
+# pieces fit). A machine signed in to Slack as Joel imports it.
 {
   config,
   lib,
@@ -30,7 +32,7 @@ let
   # the pull requests Joel opened in the repositories named, since such a
   # site has no notifications to read (src/bin/pineapple-github.rs). A site
   # stays in shadow until a machine says it's live, each once Joel has read
-  # two days of its own, as Slack and GitHub go live after theirs.
+  # two days of its own, as Slack and GitHub went live after theirs.
   siteReader =
     name: site:
     lib.nameValuePair "pineapple-${name}" {
@@ -156,7 +158,7 @@ in
 
       systemd.user.services.pineapple-slack = {
         Unit = {
-          Description = "Reads Slack for the safe word that stops Joel's agents, in shadow";
+          Description = "Reads Slack for the safe word that stops Joel's agents";
           # Restarted after a switch reloads the units, it comes back as the
           # new one.
           X-SwitchMethod = "restart";
@@ -164,7 +166,9 @@ in
         Service = {
           Slice = "background.slice";
           # Shown in ps by its name, not its store path (docs/daemons.md).
-          ExecStart = "@${lib.getExe pineapple} pineapple-slack run";
+          # Without --live it only writes down what it would do; taking the
+          # word out is the way back to shadow.
+          ExecStart = "@${lib.getExe pineapple} pineapple-slack run --live";
           # The keyring's reader, run each round, so a sign-in made or renewed
           # while it runs is read without a restart. With none, it says so in
           # the journal and reads nothing until there is one.
@@ -179,17 +183,18 @@ in
 
       # The same reader for GitHub (src/bin/pineapple-github.rs): every minute,
       # the pull requests and issues Joel takes part in that changed, and
-      # what was said on them, only asked, in shadow. Its stops go where the
+      # what was said on them, only asked. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take
       # them alike; it answers nobody on GitHub.
       systemd.user.services.pineapple-github = {
         Unit = {
-          Description = "Reads GitHub for the safe word that stops Joel's agents, in shadow";
+          Description = "Reads GitHub for the safe word that stops Joel's agents";
           X-SwitchMethod = "restart";
         };
         Service = {
           Slice = "background.slice";
-          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run";
+          # As Slack's: without --live it only writes down what it would do.
+          ExecStart = "@${pineapple}/bin/pineapple-github pineapple-github run --live";
           # Run each round, so a sign-in renewed while it runs is read without
           # a restart; with none, it says so and reads nothing.
           Environment = [ "SIGN_IN_KEYRING=${githubSignIn}" ];
