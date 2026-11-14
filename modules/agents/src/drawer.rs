@@ -434,13 +434,21 @@ mod tests {
             "presence": presence})
     }
 
-    /// Each fact as `label=value`, a figure's shape after a colon, a
-    /// time's form after an at, words marked so.
+    /// Each fact of its glance as `label=value`, a figure's shape after a
+    /// colon, a time's form after an at, words marked so.
     fn facts(drawn: &Value) -> String {
-        drawn["drawer"]["facts"]
-            .as_array()
-            .expect("facts")
-            .iter()
+        listed(&drawn["drawer"]["facts"])
+    }
+
+    /// Each bit folded under z a, as `facts` says a fact.
+    fn folded(drawn: &Value) -> String {
+        listed(&drawn["drawer"]["nerd"])
+    }
+
+    fn listed(list: &Value) -> String {
+        list.as_array()
+            .into_iter()
+            .flatten()
             .map(|fact| {
                 let mut said = format!(
                     "{}={}",
@@ -462,51 +470,106 @@ mod tests {
             .join("; ")
     }
 
-    #[test]
-    fn its_first_screen_holds_what_matters_in_order() {
-        let presence = json!({
+    /// A session with everything to say, as one working all day says it.
+    fn busy() -> Value {
+        json!({
             "addresses": ["8IDU4E"], "session": "s-1", "quest": "QEST-1",
             "worksOn": "A Quest: what it's for, at length",
             "stepDetail": {"kind": "tool", "name": "edit", "detail": "/src/core.nix/Drawer.qml"},
-            "wants": {"said": "which way?"},
             "questInfo": {"id": "QEST-1", "title": "A Quest", "status": "active"},
+            "groups": ["#desk"],
             "landings": [
                 {"what": "older", "ref": "core.nix#0", "at": "2026-11-10T20:00:00Z"},
                 {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}],
-            "usage": {"context": {"used": 84_000, "limit": 200_000}}
-        });
+            "usage": {
+                "day": "2026-11-10",
+                "gen_ai.request.model": "claude-opus-5-5",
+                "last": {"gen_ai.usage.output_tokens": 4100},
+                "today": {"gen_ai.usage.input_tokens": 786,
+                    "gen_ai.usage.output_tokens": 272_470,
+                    "gen_ai.usage.cache_read.input_tokens": 124_620_036,
+                    "gen_ai.usage.cache_creation.input_tokens": 1_194_960},
+                "context": {"used": 84_000, "limit": 200_000},
+                "turns": {"today": 359,
+                    "last": {"duration_ms": 38000, "first_token_ms": 900}}
+            }
+        })
+    }
+
+    /// Its glance holds six facts at most, in VKCF3Z's order (2b03e43c):
+    /// what it's doing, what it works on, its last turn, what it spent
+    /// with its councils on that line, how full its context is, then its
+    /// host where that isn't here. A session here stops at five, nothing
+    /// moving up. The rest is folded under z a, its wiring first, then
+    /// every other fact it had, so none is lost.
+    #[test]
+    fn its_glance_holds_six_facts_in_order_and_folds_the_rest() {
         let spend = json!({"sessions": {"s-1": "$4.20"},
+            "helpers": {"s-1": [{"on": "councils", "spent": "$4.00"}]},
             "sessionsToday": {"s-1": {"graph": {"shape": "spark", "values": [0, 1]},
                 "rebuilt": "$1.20"}}});
         let budgets = json!({"sessions": {"s-1": "proxy"}, "budgets": [
             {"name": "proxy", "label": "Your AI proxy token", "standing": "$24,349 of $40,000"}]});
+        let glance = "Doing=edit Drawer.qml; Working On=what it's for, at length:words; \
+                      Last Turn=38 s \u{b7} 4.1k out \u{b7} 0.9 s first token; \
+                      Spent Today=$4.20 \u{b7} councils $4.00:spark; Context=84k of 200k:stroke";
+        let fold = "Model=claude-opus-5-5; Turns Today=359; Tokens=126M in \u{b7} 272k out; \
+                    Cache=99.0% read; Session=s-1; Context Rebuilt=$1.20; Hears=#desk; \
+                    Last Landing=Serve rows \u{b7} core.nix#1@clock; \
+                    Budget=Your AI proxy token \u{b7} $24,349 of $40,000; Quest=QEST-1";
+        for (here, sixth, last) in [(false, "; Host=skiff", ""), (true, "", "; Machine=skiff")] {
+            let mut record = record(&busy());
+            record["here"] = json!(here);
+            let drawn = drawer(
+                Session(&record),
+                false,
+                &words(),
+                &known(Some(&spend), Some(&budgets)),
+            );
+            assert_eq!(facts(&drawn), format!("{glance}{sixth}"), "here: {here}");
+            assert_eq!(folded(&drawn), format!("{fold}{last}"), "here: {here}");
+            assert_eq!(
+                drawn["drawer"]["facts"][3]["figure"]["warn"],
+                json!(false),
+                "the spark never warns"
+            );
+            assert_eq!(drawn["key"], "drawer:agents:8IDU4E");
+            assert_eq!(drawn["kind"], "drawer");
+            assert_eq!(drawn["drawer"]["title"], "A Quest");
+        }
+    }
+
+    /// What it needs Joel for takes Doing's place rather than a seventh,
+    /// since a waiting session's step would only say so again (VKCF3Z,
+    /// 2026-11-14).
+    #[test]
+    fn what_it_needs_joel_for_takes_doings_place() {
+        let mut presence = busy();
+        presence["wants"] = json!({"said": "which way?"});
         let needs = |quest: &str| {
             assert_eq!(quest, "QEST-1", "asked for its own quest's needs");
             vec!["Sign In".to_owned()]
         };
         let known = Known {
             needs: &needs,
-            ..known(Some(&spend), Some(&budgets))
+            ..known(None, None)
         };
         let drawn = drawer(Session(&record(&presence)), false, &words(), &known);
-        assert_eq!(
-            facts(&drawn),
-            "Doing=edit Drawer.qml; Needs You For=which way? \u{b7} Sign In; \
-             Last Landing=Serve rows \u{b7} core.nix#1@clock; Spent Today=$4.20:spark; \
-             Budget=Your AI proxy token \u{b7} $24,349 of $40,000; Context=84k of 200k:stroke; \
-             Context Rebuilt=$1.20; Quest=QEST-1; Machine=skiff; \
-             Working On=what it's for, at length:words"
+        let facts = facts(&drawn);
+        assert!(
+            facts.starts_with("Needs You For=which way? \u{b7} Sign In; Working On="),
+            "{facts}"
         );
-        assert_eq!(drawn["key"], "drawer:agents:8IDU4E");
-        assert_eq!(drawn["kind"], "drawer");
-        assert_eq!(drawn["drawer"]["title"], "A Quest");
+        assert!(
+            !facts.contains("Doing") && !folded(&drawn).contains("Doing"),
+            "it said its step as well: {facts}"
+        );
     }
 
-    /// Its last landing breaks only between its title, its change and
-    /// when, never inside one (Y2YBTS, 2026-11-12: "i hate gross line
-    /// wraps"), each whole on its line, its value still all of it.
+    /// Its last landing is folded whole, its title, its change and when,
+    /// as the shell words it.
     #[test]
-    fn its_last_landing_is_said_as_its_title_its_change_and_when() {
+    fn its_last_landing_is_folded_with_when() {
         let presence = json!({"addresses": ["8IDU4E"], "session": "s-1", "landings": [
             {"what": "Serve rows", "ref": "core.nix#1", "at": "2026-11-10T20:44:00Z"}]});
         let drawn = drawer(
@@ -515,18 +578,17 @@ mod tests {
             &words(),
             &known(None, None),
         );
-        let landing = &drawn["drawer"]["facts"][0];
+        assert_eq!(facts(&drawn), "", "a landing in the glance");
         assert_eq!(
-            landing["valueItems"],
-            json!([{"said": "Serve rows", "whole": true},
-                {"said": "core.nix#1", "whole": true}]),
-            "its title and its change as items"
+            folded(&drawn),
+            "Session=s-1; Last Landing=Serve rows \u{b7} core.nix#1@clock; Machine=skiff"
         );
         assert_eq!(
-            landing["value"], "Serve rows \u{b7} core.nix#1",
-            "copied whole"
+            drawn["drawer"]["nerd"][1],
+            json!({"label": "Last Landing", "value": "Serve rows \u{b7} core.nix#1",
+                "at": {"at": 1_794_343_440_000_i64, "as": "clock"}}),
+            "a folded bit is its name, its value and when, nothing drawn beside it"
         );
-        assert_eq!(landing["at"]["as"], "clock", "when, for the shell to say");
     }
 
     #[test]
@@ -543,10 +605,19 @@ mod tests {
         );
         assert_eq!(
             facts(&drawn),
-            "Spent Today=$14.20 in all; Its Own=$3.10:spark; Its Sessions=$11.10; Machine=skiff"
+            "Spent Today=$14.20 in all; Its Sessions=$11.10"
         );
-        let graph = &drawn["drawer"]["facts"][1]["figure"];
-        assert_eq!(graph["warn"], json!(false), "the spark never warns");
+        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Machine=skiff");
+        // Elsewhere, its sessions keep the sixth place, and its host is
+        // folded where its machine was.
+        let mut away = record(&presence);
+        away["here"] = json!(false);
+        let drawn = drawer(Session(&away), true, &words(), &known(Some(&spend), None));
+        assert_eq!(
+            facts(&drawn),
+            "Spent Today=$14.20 in all; Its Sessions=$11.10"
+        );
+        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Host=skiff");
     }
 
     #[test]
@@ -564,12 +635,12 @@ mod tests {
         );
         assert_eq!(
             facts(&drawn),
-            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10; Machine=skiff",
+            "Spent Today=$12.50 \u{b7} councils $4.00 \u{b7} fleets $1.10",
             "what its helpers spent is a part of its spend"
         );
         assert_eq!(
-            drawn["drawer"]["nerd"],
-            json!([{"label": "Hears", "value": "#desk, #quest/reef"}]),
+            folded(&drawn),
+            "Session=s-a; Hears=#desk, #quest/reef; Machine=skiff",
             "what it hears is its wiring, folded"
         );
     }
@@ -588,7 +659,8 @@ mod tests {
             ..known(Some(&spend), Some(&budgets))
         };
         let drawn = drawer(Session(&record(&presence)), true, &words(), &known);
-        assert_eq!(facts(&drawn), "Machine=skiff");
+        assert_eq!(facts(&drawn), "");
+        assert_eq!(folded(&drawn), "Session=s-o; Machine=skiff");
     }
 
     #[test]
@@ -601,7 +673,7 @@ mod tests {
             &words(),
             &known(None, None),
         );
-        assert_eq!(facts(&drawn), "Quest=QEST-1 \u{b7} paused; Machine=skiff");
+        assert_eq!(folded(&drawn), "Quest=QEST-1 \u{b7} paused; Machine=skiff");
     }
 
     #[test]
@@ -705,7 +777,7 @@ mod tests {
             &known(None, None),
         );
         assert_eq!(
-            facts(&drawn),
+            folded(&drawn),
             "Machine=skiff",
             "yesterday's turns are not today's"
         );

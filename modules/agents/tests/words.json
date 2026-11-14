@@ -130,6 +130,45 @@
       "term": "Agents/context"
     },
     {
+      "id": "agents:last-turn",
+      "in": "agents",
+      "name": "Last Turn"
+    },
+    {
+      "id": "agents:model",
+      "in": "agents",
+      "name": "Model",
+      "term": "Agents/model"
+    },
+    {
+      "id": "agents:turns",
+      "in": "agents",
+      "name": "Turns Today"
+    },
+    {
+      "id": "agents:tokens",
+      "in": "agents",
+      "name": "Tokens",
+      "term": "Agents/tokens"
+    },
+    {
+      "id": "agents:cache",
+      "in": "agents",
+      "name": "Cache",
+      "term": "Agents/cache"
+    },
+    {
+      "id": "agents:session",
+      "in": "agents",
+      "name": "Session",
+      "term": "Agents/session"
+    },
+    {
+      "id": "agents:host",
+      "in": "agents",
+      "name": "Host"
+    },
+    {
       "id": "agents:rebuilt",
       "in": "agents",
       "name": "Context Rebuilt"
