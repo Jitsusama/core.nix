@@ -3,10 +3,26 @@
 //! saying nothing on stdout and leaving no socket behind.
 
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::sync::Mutex;
+
+use daemon_client::until;
+
+/// The daemon as it runs, killed if a test ends before it does, so a
+/// daemon that never ends fails its test rather than holding it.
+struct Running(Mutex<Option<Child>>);
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.lock().expect("the daemon").take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
 
 /// What the daemon says and ends with, run with `args` and `niri` as its
-/// `NIRI_SOCKET`, or none.
+/// `NIRI_SOCKET`, or none, once it ends by itself.
 fn ran(args: &[&Path], niri: Option<&Path>) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_windows"));
     command
@@ -18,7 +34,24 @@ fn ran(args: &[&Path], niri: Option<&Path>) -> Output {
         Some(niri) => command.env("NIRI_SOCKET", niri),
         None => command.env_remove("NIRI_SOCKET"),
     };
-    command.output().expect("windows ran")
+    let child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("windows ran");
+    let running = Running(Mutex::new(Some(child)));
+    until(&format!("{args:?} never ended"), || {
+        let mut held = running.0.lock().expect("the daemon");
+        held.as_mut()
+            .is_some_and(|child| child.try_wait().ok().flatten().is_some())
+    });
+    let child = running
+        .0
+        .lock()
+        .expect("the daemon")
+        .take()
+        .expect("the daemon");
+    child.wait_with_output().expect("its output")
 }
 
 #[test]
