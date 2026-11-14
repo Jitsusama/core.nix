@@ -2289,7 +2289,8 @@
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
     counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
     vi's paragraph, heading, view, bracket and file moves land, whole-word search, the command line
-    read as Neovim reads it, and gO's outline
+    read as Neovim reads it, gO's outline, and the window's title from the document's title or else
+    its file's name
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,

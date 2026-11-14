@@ -553,6 +553,8 @@ pub struct First {
     /// Each part of the set, with its time and the time of it spent waiting
     /// for a processor, in milliseconds.
     pub parts: Vec<(&'static str, f64, f64)>,
+    /// The window's title for the file.
+    pub title: String,
 }
 
 /// Times a part of the set into `parts`.
@@ -612,6 +614,7 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         }
     });
     let about = about(std::path::Path::new(file), &markdown);
+    let title = crate::title::of(std::path::Path::new(file), &markdown);
     let program = timed(&mut parts, "walk", || {
         walk::program(&markdown, &about, base, &pieces, &world, width, &mut costs)
     });
@@ -649,6 +652,7 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         ms,
         rest,
         parts,
+        title,
     })
 }
 
@@ -660,6 +664,7 @@ pub struct Setter {
     world: PageWorld,
     pieces: Pieces,
     width: Width,
+    title: String,
 }
 
 impl Setter {
@@ -669,6 +674,7 @@ impl Setter {
             world: new_world(),
             pieces: Pieces::new(),
             width: Width::whole(),
+            title: String::new(),
         }
     }
 
@@ -688,12 +694,18 @@ impl Setter {
         &self.file
     }
 
+    /// The window's title for the file, as it was last set.
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+
     /// The whole file as it is now, as one tall page, and how long that took.
     pub fn set(&mut self) -> Result<(Page, f64), String> {
         let start = Instant::now();
         let markdown =
             std::fs::read_to_string(&self.file).map_err(|e| format!("{}: {e}", self.file))?;
         let path = std::path::Path::new(&self.file);
+        self.title = crate::title::of(path, &markdown);
         let base = path.parent().map(|dir| {
             if dir.as_os_str().is_empty() {
                 std::path::Path::new(".")
