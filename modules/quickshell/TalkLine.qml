@@ -18,6 +18,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
+import "Columns.js" as Columns
 import "TalkLine.js" as Said
 import "When.js" as When
 
@@ -451,6 +452,11 @@ Scope {
                         // Its own frame, not the launcher's, so the lead stands at the inset
                         // as the first capital does, rather than on the launcher's columns.
                         glyphWidth: 0
+                        // Held on a mark's column (Columns.js), as the launcher's lead is,
+                        // so what's typed and what's attached start on one text column, a
+                        // mark rung clear of the rows' marks under the lead.
+                        leadColumn: Columns.across(0, 0, Columns.ofMark(Theme.level.name.pitch),
+                            Theme.space.rung).text
                         hint: root.hears === null ? root.said.nobody ?? "" : root.words.ask ?? ""
                         aside: ""
                         registers: true
