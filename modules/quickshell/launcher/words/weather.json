@@ -147,6 +147,16 @@
       "id": "weather:tomorrow",
       "in": "weather",
       "name": "Tomorrow"
+    },
+    {
+      "id": "weather:place",
+      "in": "weather",
+      "name": "Forecast For"
+    },
+    {
+      "id": "weather:next",
+      "in": "weather",
+      "name": "Next {hours} Hours"
     }
   ]
 }

@@ -29,6 +29,7 @@
 import qs
 import QtQuick
 import "Moment.js" as Moment
+import "NowDrawers.js" as NowDrawers
 import "Numbers.js" as Numbers
 
 Provider {
@@ -570,8 +571,46 @@ Provider {
         return {
             headline: headline,
             rows: rows,
-            note: note
+            note: note,
+            // The weather is a thing with a drawer, as its neighbours in
+            // Now are, saying it in brief (NowDrawers.js), made only as
+            // it's shown.
+            thing: true,
+            drawer: () => weatherDrawer(forecast, next, note)
         };
+    }
+
+    // Weather's drawer: what it's like now, where, the next hours and the
+    // rain when it's due, then each day as its row says it.
+    function weatherDrawer(forecast, next, note) {
+        const now = forecast.current;
+        const daily = forecast.daily ?? {};
+        const warmths = next.map(hour => hour.at.temperature_2m).filter(known);
+        const wet = next.findIndex(hour => hour.chance >= likely);
+        const dayName = i => i === 0 ? Words.name("weather:today")
+            : i === 1 ? Words.name("weather:tomorrow")
+            : Qt.formatDate(dateOf(daily.time[i]), "dddd");
+        return NowDrawers.weather({
+            sky: said(now.weather_code),
+            warmth: degrees(now.temperature_2m) ?? "",
+            feels: degrees(now.apparent_temperature),
+            // The place as the footer says it, without who forecast it.
+            place: note.split(" \u00b7 ")[0],
+            hours: next.length,
+            low: warmths.length === 0 ? null : degrees(Math.min(...warmths)),
+            high: warmths.length === 0 ? null : degrees(Math.max(...warmths)),
+            rainFrom: wet < 0 ? "" : wet === 0 ? "now" : next[wet].clock,
+            rain: wet < 0 ? "" : rainSaid(next),
+            days: (daily.time ?? []).map((day, i) => ({
+                name: dayName(i),
+                low: degrees(daily.temperature_2m_min[i]),
+                high: degrees(daily.temperature_2m_max[i]),
+                sky: said(daily.weather_code[i])
+            })),
+            said: Words.of("weather").said ?? {},
+            names: { title: Words.name("weather"), place: Words.name("weather:place"),
+                next: Words.name("weather:next"), rain: Words.name("weather:rain") }
+        });
     }
 
     function waiting(entry, who) {

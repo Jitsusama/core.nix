@@ -218,6 +218,19 @@ ShellRoot {
             now.verbs()[0].verb);
         expect("now's drawer says every figure", now.drawer().facts.length === 11,
             JSON.stringify(now.drawer()));
+        // The weather itself is a thing whose drawer says it in brief, as
+        // Now's other rows' do: now and the rain to come, where, the next
+        // twelve hours, the rain, then each of the seven days.
+        const brief = here.thing === true ? here.drawer() : null;
+        const briefFacts = brief ? brief.facts.map(fact => `${fact.label}: ${fact.value}`) : [];
+        expect("the weather's drawer says now and the rain", brief?.body
+            === "Mostly clear at 12\u00b0, feeling like 10\u00b0; rain likely from 15:00.",
+            JSON.stringify(brief));
+        expect("the weather's drawer says where, the hours, the rain and the days",
+            briefFacts.slice(0, 4).join(", ") === "Forecast For: Toronto, from your time zone, "
+                + "Next 12 Hours: 0\u00b0 to 12\u00b0, Rain: from 15:00 \u00b7 70%, "
+                + "Today: 6\u00b0 to 14\u00b0 \u00b7 light rain" && briefFacts.length === 10,
+            briefFacts.join(", "));
         expect("today", today.side === "6\u00b0 to 14\u00b0 \u00b7 light rain"
             && today.note === "90% chance", `${today.side} ${today.note}`);
         expect("tomorrow", tomorrow.side === "3\u00b0 to 9\u00b0 \u00b7 overcast"
