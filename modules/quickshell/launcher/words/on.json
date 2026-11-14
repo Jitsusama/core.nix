@@ -792,7 +792,15 @@
       "name": "Pause",
       "term": "Programs/pause",
       "verb": "pause",
-      "glyph": "pause"
+      "glyph": "pause",
+      "states": {
+        "paused": {
+          "command": "resume",
+          "name": "Play",
+          "verb": "play",
+          "glyph": "resume"
+        }
+      }
     },
     {
       "id": "verb:on:playing:next",

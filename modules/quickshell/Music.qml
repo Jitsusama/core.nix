@@ -7,14 +7,16 @@ pragma ComponentBehavior: Bound
 //
 // The media keys come here (`qs ipc call music toggle`, `next`, `previous`)
 // rather than to playerctl, so they act on the player the shell shows. Each
-// press shows the card (Notifications.qml), about the player it acted on,
-// even while notices are held, since Joel asked for it; a track changing by
-// itself shows it only while they aren't, so it never breaks into a call or
-// a screen share, and never over the card a key just put up.
+// press shows what's playing for a moment (`arrival`), about the player it
+// acted on, even while notices are held, since Joel asked for it; a track
+// changing by itself shows it only while they aren't, so it never breaks
+// into a call or a screen share, and never over what a key just put up
+// (Music.js's calls). It's one row, the one Now's Playing row is (`row`),
+// which the arrival line draws, and until it does the stack's card.
 //
 // Mpris says when a track or a state changes, so nothing is asked, but for
 // the position, which it never reports: that's read once a second, only
-// while the card is up and the music plays.
+// while the moment is up and the music plays.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -48,7 +50,90 @@ Singleton {
         return Players.name(other, Mpris.players.values);
     }
 
-    // Whether the card is up, for a moment after it's called for.
+    // What Now calls it, the name of its row on every surface.
+    readonly property string heading: "Playing"
+
+    // What's playing as Now's row says it, in the ready-row form
+    // (Music.js's row): the track, who plays it and on what, and its acts,
+    // play or pause first; null with no player. Where in the track isn't
+    // on it, since that's read only while the moment is up; Now's drawer
+    // says it, read as its own clock turns.
+    readonly property var row: Players.row(trackOf(player, ""), heading, actsOf(player))
+    // The same row, with where in the track, while what's playing shows
+    // itself for a moment, of the player a key acted on; null otherwise.
+    // The arrival line draws it, and until it does the stack's card.
+    readonly property var arrival: shown && featured !== null
+        ? Players.row(trackOf(featured, card.where), heading, actsOf(featured)) : null
+
+    // Lets the moment go before its time, as a click on it does.
+    function dismiss(): void {
+        hide.stop();
+        shown = false;
+        told = null;
+    }
+
+    // A player as a row says it, with where in the track as given.
+    function trackOf(about: MprisPlayer, where: string): var {
+        return about === null ? null : {
+            title: about.trackTitle,
+            artist: about.trackArtist,
+            album: about.trackAlbum,
+            from: about.identity,
+            revealable: revealableOf(about),
+            art: about.trackArtUrl,
+            where: where
+        };
+    }
+
+    // The chord bound to a music command, beside the act that does it.
+    function chord(command: string): var {
+        return (Shortcuts.actions.find(action => action.run.join(" ")
+            === `qs ipc call music ${command}`) ?? { chord: [] }).chord;
+    }
+
+    // A player's acts as a row holds them (Piece.qml's actions), each in
+    // words.json's words for how it stands, and each acting on that
+    // player. Only the one that matters now offers to pause the others.
+    function actsOf(about: MprisPlayer): var {
+        return Players.offered(about, revealableOf(about), about === player ? others : [])
+            .map(one => actOf(about, one));
+    }
+
+    function actOf(about: MprisPlayer, one: var): var {
+        const id = `verb:on:playing:${one.act === "toggle" ? "pause" : one.act}`;
+        if (one.act === "show")
+            return {
+                glyph: Players.mark(about.desktopEntry),
+                name: Words.name(id, "", { player: about.identity }),
+                verb: Words.verb(id),
+                run: () => root.reveal(about)
+            };
+        if (one.act === "pauseOther") {
+            const called = root.name(one.other);
+            return {
+                glyph: Words.glyph(id),
+                name: Words.name(id, "", { player: called }),
+                // The player isn't the row's, so the : line fills its
+                // :pause {player} from here, as the name is.
+                fill: { player: called },
+                verb: Words.verb(id),
+                stays: true,
+                run: () => one.other.pause()
+            };
+        }
+        return {
+            glyph: Words.glyph(id, one.state),
+            name: Words.name(id, one.state),
+            verb: Words.verb(id, one.state),
+            chord: chord(one.act),
+            stays: true,
+            run: () => one.act === "toggle" ? root.toggleOf(about)
+                : one.act === "next" ? root.nextOf(about) : root.previousOf(about)
+        };
+    }
+
+    // Whether what's playing is showing itself, for a moment after it's
+    // called for.
     property bool shown: false
     // How long it stays: long enough to read a title and an artist.
     readonly property int moment: 4000
@@ -80,19 +165,15 @@ Singleton {
 
     // A player's own change, which shows only while notices aren't held,
     // and never over what a key just did. It shows once for each track a
-    // player plays, whichever order MPRIS says it took over, began playing
-    // and changed track in, so a player starting shows itself every time.
+    // player plays, so a player starting shows itself every time.
     function arrived(): void {
         // Read from the player itself: when it goes, this can run before
         // playing and title have heard it's gone.
-        const current = root.player;
-        if (current === null || !current.isPlaying)
-            return;
-        const now = `${current.dbusName} ${current.trackTitle}`;
-        if (now === announced)
+        const now = Players.announcement(root.player, announced);
+        if (now === "")
             return;
         announced = now;
-        if (!Quiet.on && !(shown && told !== null))
+        if (Players.calls(false, Quiet.on, shown && told !== null))
             show(null);
     }
 
@@ -108,8 +189,11 @@ Singleton {
     // holds, named as its desktop entry is, or a way to raise its own. One
     // with neither, mpv playing only sound, has nothing to show, and
     // starting its program would only open a second player.
-    readonly property bool revealable: player !== null
-        && (windowOf(player) !== undefined || player.canRaise)
+    readonly property bool revealable: revealableOf(player)
+
+    function revealableOf(about: MprisPlayer): bool {
+        return about !== null && (windowOf(about) !== undefined || about.canRaise);
+    }
 
     function windowOf(player: MprisPlayer): var {
         if (!player)
@@ -128,8 +212,22 @@ Singleton {
             player.raise();
     }
 
+    // The media keys, on the player that matters now, and a row's acts, on
+    // the player it's of. Each is a key's press, which shows what it did
+    // whether notices are held or not (Music.js's calls).
     function toggle(): void {
-        const acted = player;
+        toggleOf(player);
+    }
+
+    function next(): void {
+        nextOf(player);
+    }
+
+    function previous(): void {
+        previousOf(player);
+    }
+
+    function toggleOf(acted: MprisPlayer): void {
         if (!acted)
             return;
         if (acted.isPlaying)
@@ -139,15 +237,13 @@ Singleton {
         show(acted);
     }
 
-    function next(): void {
-        const acted = player;
+    function nextOf(acted: MprisPlayer): void {
         if (acted && acted.canGoNext)
             acted.next();
         show(acted);
     }
 
-    function previous(): void {
-        const acted = player;
+    function previousOf(acted: MprisPlayer): void {
         if (acted && acted.canGoPrevious)
             acted.previous();
         show(acted);

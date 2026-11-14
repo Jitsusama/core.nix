@@ -3299,7 +3299,8 @@
     muted source alone
   '';
   the-music-follows-the-player = ''
-    the music is the player that started last, never playerctld's echo
+    the music is the player that started last, never playerctld's echo,
+    and it shows itself as one row, on a key always, on a track unless held
   '';
   the-notices-are-a-quickfix-list = ''
     the held notices are Vim's quickfix list: the newest first, each motion's landing, what an

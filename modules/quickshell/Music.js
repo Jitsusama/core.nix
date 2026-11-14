@@ -65,6 +65,74 @@ function where(position, length, playing) {
     return length > 0 ? `${time(position)} of ${time(length)}` : time(position);
 }
 
+// Whether what's playing shows itself for a moment, on the arrival line: a
+// media key's press (`byKey`) always, even while notices are held, since
+// Joel asked for it; a player's own change only while they aren't
+// (`held`, Quiet.on, which a shared screen turns on), so it never breaks
+// into a call or a share, and never while a key's moment is up (`keyed`),
+// which keeps saying what the key did.
+function calls(byKey, held, keyed) {
+    return byKey || (!held && !keyed);
+}
+
+// What a player's own change says of it, its player and its track, so it
+// shows once for each track a player plays, whichever order MPRIS says it
+// took over, began playing and changed track in; "" where it says nothing
+// new: no player, one not playing, or the track it last said (`announced`).
+function announcement(player, announced) {
+    if (!player || !player.isPlaying) {
+        return "";
+    }
+    const now = `${player.dbusName} ${player.trackTitle}`;
+    return now === announced ? "" : now;
+}
+
+// The acts a player's row offers, Return's first, each as the act it is
+// (`act`) and words.json's state for its words (`state`): play where it's
+// paused and can, else pause; the next and the previous track where it can
+// go to them; going to it where it has somewhere to go (`revealable`); and
+// pausing each other player playing beside it (`others`), as `other`.
+function offered(player, revealable, others) {
+    if (!player) {
+        return [];
+    }
+    const paused = !player.isPlaying;
+    return [].concat(
+        !paused || player.canPlay ? [{ act: "toggle", state: paused ? "paused" : "" }] : [],
+        player.canGoNext ? [{ act: "next", state: "" }] : [],
+        player.canGoPrevious ? [{ act: "previous", state: "" }] : [],
+        revealable ? [{ act: "show", state: "" }] : [],
+        (others ?? []).map(other => ({ act: "pauseOther", state: "", other })));
+}
+
+// What's playing as a launcher row, in the ready-row form a daemon serves
+// its rows in (name, note, side, glyph, hue, acts), so Now's Playing row
+// and the arrival line draw the one row. `track` says it: its `title`,
+// `artist`, `album`, its player (`from`), whether an act names that player
+// (`revealable`), its cover (`art`) and `where` in it, "" where it isn't
+// read. Its name is Now's for it (`name`); its side the track and where in
+// it, the track kept longest; its note who plays it, the album, and the
+// player once, unless an act names it. Null with nothing playing.
+function row(track, name, acts) {
+    if (!track) {
+        return null;
+    }
+    const side = [{ said: track.title, keep: 2 }]
+        .concat(track.where ? [{ said: track.where, keep: 1 }] : []);
+    return {
+        key: "on:playing",
+        kind: "playing",
+        name,
+        side,
+        note: [track.artist, track.album, track.revealable ? "" : track.from]
+            .filter(said => said).join(" \u00b7 "),
+        glyph: "playing",
+        hue: "program",
+        picture: track.art ?? "",
+        acts
+    };
+}
+
 // How a player stands, as the Media place's row says it at its far end,
 // its state first as a timer's is (VKCF3Z, 2026-11-08): "1:38 of 6:43"
 // playing, and paused as `paused` says it, in words.json's media said
