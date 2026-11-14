@@ -127,7 +127,7 @@ fn address(said: &Value) -> Result<String, (&'static str, String)> {
 /// where there are any.
 pub async fn act(
     asks: mpsc::Sender<Ask>,
-    state: watch::Receiver<State>,
+    air: watch::Receiver<State>,
     id: Value,
     said: Value,
     told: mpsc::Sender<String>,
@@ -163,7 +163,7 @@ pub async fn act(
             });
         }
         Ok(Asking::Roam(bssid)) => {
-            tell(match roam(&asks, state, &bssid).await {
+            tell(match roam(&asks, air, &bssid).await {
                 Ok(()) => json!({"id": id, "done": true}),
                 Err(why) => refused(&why),
             });
@@ -207,7 +207,7 @@ const LOOKING: Duration = Duration::from_secs(15);
 /// apart from the main loop, which hears it end.
 async fn roam(
     asks: &mpsc::Sender<Ask>,
-    mut state: watch::Receiver<State>,
+    mut air: watch::Receiver<State>,
     bssid: &str,
 ) -> Result<(), Refused> {
     let roaming = |done| Ask::Roam {
@@ -218,11 +218,11 @@ async fn roam(
         Err(Refused::NotNearby) => {}
         answered => return answered,
     }
-    let before = state.borrow_and_update().looks();
+    let before = air.borrow_and_update().looks();
     once(asks, |done| Ask::Scan { done }).await?;
     // Only whether it ended is kept, since the state it's read from is
     // held locked for as long as it's borrowed.
-    let looked = state.wait_for(|now| now.looks() != before);
+    let looked = air.wait_for(|now| now.looks() != before);
     let ended = tokio::time::timeout(LOOKING, looked)
         .await
         .map(|ended| ended.is_ok());
