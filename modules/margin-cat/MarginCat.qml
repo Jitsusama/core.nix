@@ -90,15 +90,12 @@ Scope {
     // and the scene waiting comes to, or null where none comes.
     property var beats: []
     property var coming: null
-    // A hop under way, its rise's `ms` and how many `cells` up, and how far
-    // up it is now, from none to its height (1), each frame the screen
-    // draws; null and 0 on the ground.
-    property var hop: null
-    property real lift: 0
-    // A wander's cells and way, for the screen whose cat takes it.
+    // A wander's cells and way, and a play's kind and how long it thinks,
+    // for the screen whose cat takes it.
     property var wandering: null
-    // Where a stroll asks the cat to walk, "wander" or "column", or "" when
-    // none is under way; and whether a screen's cat took the walk, so a
+    property var playing: null
+    // Where a stroll asks the cat to go, "wander", "play" or "column", or ""
+    // when none is under way; and whether a screen's cat took it, so a
     // stroll nothing could take moves on rather than waiting.
     property string strollTo: ""
     property bool strollTaken: false
@@ -124,7 +121,6 @@ Scope {
 
     function begin(): void {
         beating.stop();
-        land();
         beats = [];
         posed = "";
         strollTo = "";
@@ -147,42 +143,23 @@ Scope {
             begin();
             return;
         }
-        land();
         const next = beats[0];
         beats = beats.slice(1);
-        if (next.walk === true) {
+        if (next.walk === true || next.play !== undefined) {
             posed = "";
             strollTaken = false;
             if (next.to === "wander")
                 wandering = { cells: next.cells, way: next.way };
-            strollTo = next.to;
+            if (next.play !== undefined)
+                playing = { kind: next.play, pause: next.pause };
+            strollTo = next.play !== undefined ? "play" : next.to;
             if (!strollTaken)
                 beat();
             return;
         }
         posed = next.pose;
-        if (next.hop === true) {
-            hop = { ms: next.ms, cells: next.cells };
-            hopper.restart();
-        }
         beating.interval = next.ms;
         beating.restart();
-    }
-
-    // Back on the ground, a hop over or cut short.
-    function land(): void {
-        hopper.stop();
-        hop = null;
-        lift = 0;
-    }
-
-    // A hop's rise each frame the screen draws, and none on the ground.
-    FrameAnimation {
-        id: hopper
-        onTriggered: {
-            if (root.hop !== null)
-                root.lift = Plays.hopped(hopper.elapsedTime * 1000, root.hop.ms, 1);
-        }
     }
 
     Daemon {

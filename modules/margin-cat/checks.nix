@@ -12,8 +12,9 @@ onLinux {
   # Where the cat sits, over its column and off the margin's marks, how big
   # it's drawn, and its ways about the windows, as tests/margin-cat.qml holds
   # them, and the rules its journeys over generated layouts keep, as
-  # tests/margin-cat-journeys.qml holds them, and how it reads niri's layout,
-  # as tests/margin-cat-tiles.qml holds it, in Qt's own engine.
+  # tests/margin-cat-journeys.qml holds them, how it reads niri's layout,
+  # as tests/margin-cat-tiles.qml holds it, and the plays that move it, as
+  # tests/margin-cat-games.qml holds them, in Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -22,12 +23,14 @@ onLinux {
         fileset = pkgs.lib.fileset.unions [
           ./MarginCat.js
           ./MarginCatFalls.js
+          ./MarginCatGames.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
           ./MarginCatRoutes.js
           ./MarginCatTiles.js
           ./MarginCatWays.js
           ./tests/margin-cat.qml
+          ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
           ./tests/margin-cat-tiles.qml
         ];
