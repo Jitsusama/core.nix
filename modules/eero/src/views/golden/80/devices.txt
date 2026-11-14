@@ -1,4 +1,4 @@
-home · 15 devices on now · read 1 min 7 s ago
+home · 15 devices on now · read 1 m 7 s ago
 
 node   device              band       signal         rx       down         up
 Hall   generic 3           2.4 GHz   −48 dBm  72.2 Mb/s  98.2 b/s    154 b/s
@@ -21,13 +21,13 @@ Den    generic 2           5 GHz     −37 dBm  1.20 Gb/s     0 b/s      0 b/s
 
 9 devices not on now
 
-node   device              band      last on          made by
-Study  game console 2      5 GHz     1 h 17 min ago   AzureWave Technology Inc.
-Den    phone 1             5 GHz     2 h 58 min ago   –
-Hall   generic 5           Ethernet  9 h 40 min ago   Dell Inc.
-Den    02:00:00:00:00:1b   5 GHz     9 h 42 min ago   –
-Den    02:00:00:00:00:1c   2.4 GHz   10 h 21 min ago  –
-Study  unknown computer 2  5 GHz     12 h 51 min ago  Intel Corporate
-Den    phone 2             2.4 GHz   22 h 56 min ago  –
-Den    02:00:00:00:00:1f   5 GHz     2 d ago          –
-Study  02:00:00:00:00:20   2.4 GHz   4 d ago          –
+node   device              band      last on        made by
+Study  game console 2      5 GHz     1 h 17 m ago   AzureWave Technology Inc.
+Den    phone 1             5 GHz     2 h 58 m ago   –
+Hall   generic 5           Ethernet  9 h 40 m ago   Dell Inc.
+Den    02:00:00:00:00:1b   5 GHz     9 h 42 m ago   –
+Den    02:00:00:00:00:1c   2.4 GHz   10 h 21 m ago  –
+Study  unknown computer 2  5 GHz     12 h 51 m ago  Intel Corporate
+Den    phone 2             2.4 GHz   22 h 56 m ago  –
+Den    02:00:00:00:00:1f   5 GHz     2 d ago        –
+Study  02:00:00:00:00:20   2.4 GHz   4 d ago        –
