@@ -12,7 +12,8 @@
 //! beside each to-do as its owner wrote it, Joel's own word on it, the
 //! looks the agents left him, and what waits counted whole (stream.rs),
 //! so the bar's For You mark lights from one record rather than the
-//! shell watching three folders.
+//! shell watching three folders; and each look done with as For You's
+//! History lists it, a row ready to draw (history.rs).
 //!
 //! Usage: `to-do WAITING VERDICTS SIGNINS CORE [--root DIR] [--follower
 //! UNIT] [--git GIT] [--journalctl JOURNALCTL] [--systemctl SYSTEMCTL]
@@ -34,7 +35,8 @@
 //!
 //! It wakes only for a change: a to-do file, a sign-in, the system
 //! profile, a file a to-do waits on, a journal line, a check falling
-//! due, or a check's run ending. A device has no event here, so while a to-do waits on one the
+//! due, a check's run ending, or a look waiting going to History by the
+//! clock. A device has no event here, so while a to-do waits on one the
 //! devices are read each ten seconds. A to-do found done stays done,
 //! through a restart too, until it leaves its file, so a check that
 //! passed once isn't run again to be taken back.
@@ -45,6 +47,7 @@
 
 mod acts;
 mod bounded;
+mod history;
 mod interface;
 mod judge;
 mod looked;
@@ -152,6 +155,8 @@ struct Daemon {
     todos: Vec<ToDo>,
     /// The looks and Joel's word as last read, for the shell.
     beside: stream::Beside,
+    /// History's rows of looks, as last made from them.
+    history: history::History,
     /// What the shell is told, where a socket is served.
     shared: Option<(Arc<Shared>, Arc<Acts>)>,
     /// The words each to-do is said in for For You, where it's given them.
@@ -163,6 +168,15 @@ fn now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .ok()
         .and_then(|d| i64::try_from(d.as_secs()).ok())
+        .unwrap_or_default()
+}
+
+/// Now, in milliseconds, as a look's times are.
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .and_then(|d| i64::try_from(d.as_millis()).ok())
         .unwrap_or_default()
 }
 
@@ -470,18 +484,24 @@ impl Daemon {
                     .any(|k| matches!(k, Some(Knowing::Signal(Signal::Device(_)))))
             }))
         .then_some(at + DEVICES_EVERY);
-        checks.chain(devices).chain(self.fetch_again).min()
+        checks
+            .chain(devices)
+            .chain(self.fetch_again)
+            .chain(self.history.due())
+            .min()
     }
 
     /// Reads the looks and Joel's word again, as inotify says they changed.
     fn read_beside(&mut self) {
         self.beside
             .read(self.paths.looks.as_deref(), self.paths.settled.as_deref());
+        self.history.looks_changed();
     }
 
     /// Tells the shell every record as it stands, where a socket is
-    /// served; only those that changed reach a watch.
-    fn tell_shell(&self) {
+    /// served; only those that changed reach a watch. History's rows are
+    /// told only where the launcher's words are, which say them.
+    fn tell_shell(&mut self) {
         let Some((shared, acts)) = &self.shared else {
             return;
         };
@@ -490,13 +510,16 @@ impl Daemon {
             "looks": self.beside.looks_standing,
             "settled": self.beside.settled_standing,
         });
-        let records = stream::records(
+        let mut records = stream::records(
             &self.todos,
             &self.found,
             &self.beside.looks,
             &self.beside.settled,
             self.words.as_ref(),
         );
+        if let Some(words) = &self.words {
+            records.extend(self.history.records(&self.beside.looks, words, now_ms()));
+        }
         acts.told(&records);
         shared.change(records, sources);
     }
@@ -674,6 +697,7 @@ fn run(
         tell,
         todos: Vec::new(),
         beside: stream::Beside::default(),
+        history: history::History::default(),
         shared,
         words: vocabulary,
     };
@@ -759,6 +783,7 @@ fn wake(daemon: &mut Daemon, woken: &Receiver<Woken>) -> io::Result<()> {
             next = daemon.tick();
         } else {
             daemon.tell_shell();
+            next = next.into_iter().chain(daemon.history.due()).min();
         }
     }
 }

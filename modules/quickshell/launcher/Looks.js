@@ -1,7 +1,8 @@
 // The looks folder's files, as For You reads them (Now.qml, ForYouHolds.qml): what each look is,
 // which wait on Joel and which are history, and how one is written again once it's done with.
-// They're read apart from the launcher, so tests/for-you.qml holds them in Qt's own engine. A
-// stopgap: KP0L6A's agents daemon takes the looks over by Sat 14 Nov, and serves them ready.
+// They're read apart from the launcher, so tests/for-you.qml holds them in Qt's own engine. The
+// to-do daemon reads the looks for the shell (KP0L6A's #4032), and serves each done with as
+// History's row ready to draw (modules/to-do/src/history.rs), which these rules must agree with.
 .pragma library
 .import "ForYou.js" as ForYou
 .import "Order.js" as Order
