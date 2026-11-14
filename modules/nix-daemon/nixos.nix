@@ -257,6 +257,11 @@ in
 
   systemd.user.services."nix-untrusted@" = {
     description = "The Nix daemon, for one untrusted connection";
+    # One unit a connection, gone once it ends, even failed: a client that
+    # hangs up before speaking ends its daemon with "unexpected end-of-file",
+    # and on 13 November one such was left a failed unit for every sweep
+    # to find. What it said stays in the journal.
+    unitConfig.CollectMode = "inactive-or-failed";
     serviceConfig = {
       ExecStart = untrusted;
       StandardInput = "socket";
