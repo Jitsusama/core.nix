@@ -2193,6 +2193,23 @@ impl Guard {
 
     /// Runs a pass over what lies on the watched filesystem `device` and
     /// journals it.
+    /// The watched filesystems but `device`'s, as their last measure left
+    /// them, for a pass there to give way to.
+    fn elsewhere(&self, device: u64) -> Vec<Elsewhere> {
+        self.watched
+            .iter()
+            .filter(|&(&other, _)| other != device)
+            .filter_map(|(_, watched)| {
+                let space = watched.space?;
+                Some(Elsewhere {
+                    path: watched.path.clone(),
+                    thresholds: Thresholds::new(&self.config.bands, space.total),
+                    band: watched.band,
+                })
+            })
+            .collect()
+    }
+
     fn pass_on(
         &mut self,
         tick: &Tick,
@@ -2214,23 +2231,10 @@ impl Guard {
         let gentle = band < Band::NearlyFull;
         let pacer = Rc::new(RefCell::new(self.pacer(&path, band, thresholds)));
         let images = self.images(device, here);
-        let elsewhere = self
-            .watched
-            .iter()
-            .filter(|&(&other, _)| other != device)
-            .filter_map(|(_, watched)| {
-                let space = watched.space?;
-                Some(Elsewhere {
-                    path: watched.path.clone(),
-                    thresholds: Thresholds::new(&self.config.bands, space.total),
-                    band: watched.band,
-                })
-            })
-            .collect();
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
             .paced(Rc::clone(&pacer))
-            .giving_way(elsewhere);
+            .giving_way(self.elsewhere(device));
         let mut reclaim = Journaled {
             inner: if gentle {
                 reclaimer.gently()
