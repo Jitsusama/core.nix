@@ -449,7 +449,8 @@ Provider {
         }
         all();
         const rows = kept.keys.map(key => foundRow(kept, key)).filter(row => row !== null);
-        return { rows: listed(rows, words), grade: rows.length > 0 ? 0 : 3 };
+        // With how many the daemon found, as it lists at most 60.
+        return { rows: listed(rows, words), grade: rows.length > 0 ? 0 : 3, found: kept.found };
     }
 
     // The row of `key` a kept answer found: the place's where it serves
@@ -510,7 +511,7 @@ Provider {
             return;
         answers.kept = answers.kept.filter(one => one.words !== asked)
             .concat([{ words: asked, keys: answer.keys, rows: answer.rows ?? {}, made: {},
-                at: at }]).slice(-answersKept);
+                found: answer.found ?? answer.keys.length, at: at }]).slice(-answersKept);
         if (answers.wanted === asked)
             provider.foundMore(false);
     }

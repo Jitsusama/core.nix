@@ -5595,6 +5595,11 @@ Scope {
 
     property string typed: ""
     property var matches: []
+    // How many more a held place's daemon found for what's typed than it
+    // listed, as the notices list 60 of the 971 Joel's "s" finds
+    // (modules/notices' search.rs), so the field says so rather than
+    // "60 found".
+    property int foundPast: 0
     property int current: 0
     property var pending: null
 
@@ -5720,6 +5725,7 @@ Scope {
         if (acted && (letters !== acted.typed || held.length !== acted.depth))
             acted = null;
         words = Fuzzy.words(letters);
+        foundPast = 0;
         const wordedAt = Date.now();
         // A step whose line holds its words is told each change to them.
         if (holdsWords)
@@ -5779,9 +5785,12 @@ Scope {
             let found = [];
             if (from && words.length === 0)
                 found = listedWhole(from);
-            else if (from)
+            else if (from) {
+                const searched = from.search(letters);
                 found = within(partsOf(from), letters)
-                        .concat(learnedFirst(from.search(letters).rows, letters));
+                        .concat(learnedFirst(searched.rows, letters));
+                foundPast = Math.max(0, (searched.found ?? 0) - searched.rows.length);
+            }
             // A step's rows, all of them in their order until something's
             // typed, then those it finds, best first, and with them the
             // choices of a part that offers them (a display's Scale), so
@@ -9625,7 +9634,7 @@ Scope {
             open = true;
         wakeBegan = KeyTimes.now();
         feltSpan("filling", began);
-        afterFrame(wakeNext);
+        wakeLater();
         if (openAsked >= 0)
             fillEarly = KeyTimes.now() - began;
         else
@@ -9644,6 +9653,29 @@ Scope {
     property real wakeBegan: 0
     // Half a frame, so a slice and its frame's drawing fit in one.
     readonly property real wakeBudget: 8
+    // Which wait for the next slice is the live one, so the frame and the
+    // fallback after it (wakeFallback) wake it once between them.
+    property int wakeTurn: 0
+
+    // The next slice waits for the frame that draws this one's rows, or
+    // for wakeFallback where that frame doesn't come. Niri sends no frame
+    // to a surface it doesn't need drawn, and Joel's opening at 04:56:30
+    // (2026-11-13) drew its first frame in 89 ms, then waited 6,962 ms for
+    // its second slice, until a key drew one: usable 7,877 ms after its
+    // chord, every key in it waiting on what hadn't woken.
+    function wakeLater() {
+        const turn = wakeTurn + 1;
+        wakeTurn = turn;
+        afterFrame(() => wakeAgain(turn));
+        wakeFallback.restart();
+    }
+    function wakeAgain(turn) {
+        if (turn !== wakeTurn)
+            return;
+        wakeTurn = turn + 1;
+        wakeFallback.stop();
+        wakeNext();
+    }
 
     // Those home's rows read, in home's order, so the rows shown fill
     // first, then the rest; none that says what it holds itself, whose rows
@@ -9672,6 +9704,7 @@ Scope {
         const budget = typed === "" ? wakeBudget : Infinity;
         const began = KeyTimes.now();
         const slice = [];
+        const from = began - wakeBegan;
         while (wakeQueue.length > 0 && KeyTimes.now() - began < budget) {
             const source = wakeQueue[0];
             wakeQueue = wakeQueue.slice(1);
@@ -9679,10 +9712,10 @@ Scope {
             source.asleep = false;
             slice.push({ name: source.settings.name, took: KeyTimes.now() - at });
         }
-        wakeSlices = wakeSlices.concat([{ took: KeyTimes.now() - began, woke: slice }]);
+        wakeSlices = wakeSlices.concat([{ from, took: KeyTimes.now() - began, woke: slice }]);
         feltSpan("waking", began);
         if (wakeQueue.length > 0) {
-            afterFrame(wakeNext);
+            wakeLater();
             return;
         }
         waking = false;
@@ -9697,23 +9730,32 @@ Scope {
             source.asleep = false;
         wakeQueue = [];
         waking = false;
+        wakeTurn += 1;
+        wakeFallback.stop();
     }
 
     // How the sources woke, said once the last has, with the opening it
     // filled in, so its slices, the longest and what ended each are read.
     function wokeSaid(span) {
-        const slices = wakeSlices.map(one => ({ took: Math.round(one.took),
-            woke: one.woke.map(each => each.name) }));
+        const slices = wakeSlices.map(one => ({ from: Math.round(one.from),
+            took: Math.round(one.took), woke: one.woke.map(each => each.name) }));
         const longest = slices.reduce((most, one) => Math.max(most, one.took), 0);
+        // The longest a slice waited after the one before ended, or the
+        // first after the opening filled in, for its frame or the fallback
+        // in its place.
+        const waited = Math.round(wakeSlices.reduce((most, one, at) => Math.max(most,
+            at === 0 ? one.from : one.from - wakeSlices[at - 1].from - wakeSlices[at - 1].took),
+            0));
         const last = openingsTimed[openingsTimed.length - 1];
         if (last?.kept && last.slices === undefined) {
-            openingsTimed = openingsTimed.slice(0, -1)
-                .concat([Object.assign({}, last, { slices, longestSlice: longest })]);
+            openingsTimed = openingsTimed.slice(0, -1).concat([Object.assign({}, last,
+                { slices, longestSlice: longest, longestWake: waited })]);
         }
         const said = wakeSlices.map(one => one.woke.map(each =>
             `${each.name} ${Math.round(each.took)}`).join(", ")).join("; ");
         console.info(`launcher: woke the opening's sources in ${slices.length} slices over`
-            + ` ${Math.round(span)} ms, the longest ${longest} ms (${said})`);
+            + ` ${Math.round(span)} ms, the longest ${longest} ms, the longest wait between`
+            + ` them ${waited} ms (${said})`);
     }
 
     // Shut again before it was filled in, as a second press of the chord
@@ -10310,6 +10352,16 @@ Scope {
     // ready. Read on the third letter instead, as it was, it held that
     // key 115 to 250 ms once every opening (launcher-trials.json,
     // 2026-10-26: "wha" 252 ms, "cpu" 248, "key" 211).
+    // A waking opening's next slice where no frame came for the last
+    // (wakeLater): two frames at 60 Hz, so a frame that comes wakes it
+    // first, and one that doesn't holds the rest back no longer than that.
+    Timer {
+        id: wakeFallback
+
+        interval: 33
+        onTriggered: root.wakeAgain(root.wakeTurn)
+    }
+
     Timer {
         id: spotsLater
 
@@ -10945,9 +10997,12 @@ Scope {
                         aside: ""
                         // A find narrowing the rows says how many it found,
                         // in normal.
-                        narrowed: root.typed !== "" && root.matches.length > 0
-                            ? (Words.field.found ?? "").replace("{count}",
-                                String(root.matches.length)) : ""
+                        narrowed: root.typed === "" || root.matches.length === 0 ? ""
+                            : root.foundPast > 0 ? (Words.field.foundOf ?? "")
+                                .replace("{count}", String(root.matches.length))
+                                .replace("{all}", String(root.matches.length + root.foundPast))
+                            : (Words.field.found ?? "").replace("{count}",
+                                String(root.matches.length))
                         onPressing: root.filled("key")
                         // A talk's caret is kept with its words, moved by
                         // a vi motion as much as by typing.

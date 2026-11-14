@@ -315,6 +315,7 @@
   ],
   "field": {
     "found": "{count} found",
+    "foundOf": "{count} of {all} found",
     "byMeaning": "found by its meaning",
     "matched": "{at} of {all}",
     "waiting": "{count} new",
