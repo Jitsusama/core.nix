@@ -6,6 +6,7 @@
   "PiSource.qml"
   "PiSource.js"
   "Sessions.qml"
+  "SessionTalks.js"
   "SessionWindows.js"
   "TalkAttached.qml"
   "TalkExchanges.qml"

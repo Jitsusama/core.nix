@@ -74,6 +74,10 @@
     "Waiting.js"
     "launcher/Order.js"
   ];
+  "SessionTalks.js" = [
+    "TalkLine.js"
+    "Told.js"
+  ];
   "SetWords.js" = [ "Commands.js" ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];

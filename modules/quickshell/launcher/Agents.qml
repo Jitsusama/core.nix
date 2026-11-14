@@ -40,7 +40,7 @@ import Quickshell
 import QtQuick
 import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
-import "../TalkLine.js" as Said
+import "../SessionTalks.js" as Said
 import "../When.js" as When
 import "Landed.js" as Landed
 import "Moment.js" as Moment
@@ -842,13 +842,13 @@ Provider {
     property string told: ""
 
     // The talks said to each session from the launcher, by its address in capitals, newest
-    // first, until its talks say each was delivered (TalkLine.js's toSession), so Return shows
+    // first, until its talks say each was delivered (SessionTalks.js's toSession), so Return shows
     // the words sent at once.
     property var saidTo: ({})
 
     // What a talk to the session at `address` asks with its words, for the launcher to show
     // the talk under the field as Super+S's line does: the talks shown, newest first
-    // (TalkLine.js's spoken), named by `name`; the words sent once he's said them; and, once
+    // (SessionTalks.js's spoken), named by `name`; the words sent once he's said them; and, once
     // it shows an answer he hasn't heard, that he has, so the daemon keeps it no longer open.
     function talking(address, name) {
         const to = String(address).toUpperCase();
