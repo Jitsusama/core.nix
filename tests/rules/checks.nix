@@ -154,12 +154,18 @@
         };
         lock-for-sleep = script "lock-for-sleep" ../../modules/swayidle/lock-for-sleep.sh { };
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
+        mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
+        niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
+        pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
         se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
         shots-changed = script "shots-changed" ../../tools/shots-changed/shots-changed.sh { };
         sign = script "sign" ../../modules/signing/sign.sh { before = "export name=sign"; };
         ssh-askpass = script "ssh-askpass" ../../modules/quickshell/askpass.sh { };
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
+        swayimg-command = script "swayimg-command" ../../modules/swayimg/command.sh { };
+        switch-system = script "switch-system" ../../modules/switch-system/switch-system.sh { };
+        xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };

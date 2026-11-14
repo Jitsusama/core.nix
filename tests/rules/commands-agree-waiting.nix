@@ -142,7 +142,6 @@
     "exits"
     "helps"
   ];
-  mpv-command = [ "helps" ];
   mpv-stopped = [ "helps" ];
   mypy = [ "helps" ];
   network-revive = [
@@ -155,7 +154,6 @@
     "exits"
     "helps"
   ];
-  niri-off-cpu = [ "helps" ];
   niri-off-cpu-as-root = [ "helps" ];
   niri-off-cpu-begun = [ "helps" ];
   nix-offload = [
@@ -204,7 +202,6 @@
   ];
   pi-ask = [ "helps" ];
   pi-carry = [ "helps" ];
-  pi-claude = [ "helps" ];
   pi-host-down = [ "helps" ];
   pi-keys = [
     "kit"
@@ -275,8 +272,6 @@
     "helps"
   ];
   swap-file-grows = [ "helps" ];
-  swayimg-command = [ "helps" ];
-  switch-system = [ "helps" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
@@ -329,7 +324,6 @@
     "exits"
     "helps"
   ];
-  xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
   zoom-opens = [ "helps" ];
 }
