@@ -183,7 +183,8 @@ exit 0
 /// strace as changed-checks asks it: the trace it writes is `trace`, each
 /// SOURCE in it the flake's source, and it runs what it traces, leaving
 /// `traced` to say it began. A check evaluated alone, NAME, is traced as
-/// `trace.NAME` says, once a test writes it.
+/// `trace.NAME` says, once a test writes it, and waits first until a test
+/// has opened and closed `holds.NAME`, a pipe, once it makes one.
 const STRACE: &str = r#"#!/bin/sh
 touch "$STAND_IN/traced"
 trace="$STAND_IN/trace"
@@ -191,7 +192,8 @@ for word in "$@"; do
   case "$word" in
     *'checks: builtins.mapAttrs'*)
       name=$(printf '%s' "$word" | sed -n 's/.*\["\([^" ]*\)"\].*/\1/p')
-      [ -n "$name" ] && [ -e "$STAND_IN/trace.$name" ] && trace="$STAND_IN/trace.$name" ;;
+      [ -n "$name" ] && [ -e "$STAND_IN/trace.$name" ] && trace="$STAND_IN/trace.$name"
+      [ -n "$name" ] && [ -p "$STAND_IN/holds.$name" ] && read -r _ < "$STAND_IN/holds.$name" ;;
   esac
 done
 while [ "$1" != -o ]; do shift; done
@@ -1679,10 +1681,7 @@ fn a_keep_beside_a_gate_traces_its_vm_tests_alone_one_at_a_time() {
     // On 13 November every live keep began its VM tests as a gate ran, so
     // traced none, and copying a record forward carried none on.
     let stand_in = traced_alone("vm-alone-gating");
-    let lock = stand_in.path("cache/changed-checks/gating.lock");
-    fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
-    let gate = fs::File::create(&lock).expect("the gate's lock");
-    gate.lock_shared().expect("held as a gate holds it");
+    let gate = gate_held(&stand_in);
 
     let ran = stand_in.run(&KEEPING);
 
@@ -1845,16 +1844,115 @@ const VM_MOVED: &str =
 /// reading its own file, vm-y tests/x.nix, and the two together `TRACE`'s
 /// too; whose tree moves only the VM tests, and whose change is `diff`.
 fn vm_alone(test: &str, diff: &str) -> StandIn {
-    let stand_in = traced_alone(test);
-    stand_in.checks("base", VM_BASE);
-    fs::write(stand_in.path("trace"), format!("{TRACE}{VM_ALONE}")).expect("written");
-    fs::write(stand_in.path("trace.vm-x"), VM_ALONE).expect("written");
-    fs::write(stand_in.path("trace.vm-y"), VM_Y_ALONE).expect("written");
+    let stand_in = vm_traced_alone(test);
     let ran = stand_in.run(&KEEPING);
     assert!(ran.status.success(), "{}", text(&ran.stderr));
     stand_in.checks("working", VM_MOVED);
     fs::write(stand_in.path("diff"), diff).expect("written");
     stand_in
+}
+
+/// A stand-in whose base has two VM tests, each traced alone as
+/// `vm_alone` says.
+fn vm_traced_alone(test: &str) -> StandIn {
+    let stand_in = traced_alone(test);
+    stand_in.checks("base", VM_BASE);
+    fs::write(stand_in.path("trace"), format!("{TRACE}{VM_ALONE}")).expect("written");
+    fs::write(stand_in.path("trace.vm-x"), VM_ALONE).expect("written");
+    fs::write(stand_in.path("trace.vm-y"), VM_Y_ALONE).expect("written");
+    stand_in
+}
+
+/// Hold the stand-in's gating lock, shared, as a running gate holds it.
+fn gate_held(stand_in: &StandIn) -> fs::File {
+    let lock = stand_in.path("cache/changed-checks/gating.lock");
+    fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
+    let gate = fs::File::create(&lock).expect("the gate's lock");
+    gate.lock_shared().expect("held as a gate holds it");
+    gate
+}
+
+#[test]
+fn a_keep_beside_a_gate_keeps_the_record_after_each_vm_test_it_traces() {
+    // A keep stopped part way, as a switch stops one, keeps what it traced.
+    let stand_in = vm_traced_alone("vm-alone-each");
+    let gate = gate_held(&stand_in);
+    let holds = stand_in.path("holds.vm-y");
+    let made = Command::new("mkfifo")
+        .arg(&holds)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success(), "no pipe to hold vm-y's trace on");
+
+    let keep = stand_in.started(&KEEPING, &[]);
+    // Open once vm-y's trace waits on it, so vm-x's is done.
+    let holding = fs::File::options()
+        .write(true)
+        .open(&holds)
+        .expect("opened");
+    let kept = alone_record(&stand_in, ALONE);
+    drop(holding);
+    let ran = keep.wait_with_output().expect("changed-checks runs");
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        !kept["checks"]["vm-x"].is_null(),
+        "vm-x's reads weren't kept before vm-y's trace began: {kept}"
+    );
+    assert!(kept["checks"]["vm-y"].is_null(), "{kept}");
+    assert!(kept["waiting"]["vm-y"].is_u64(), "{kept}");
+    let kept = alone_record(&stand_in, ALONE);
+    assert!(!kept["checks"]["vm-y"].is_null(), "{kept}");
+    assert_eq!(kept["waiting"], serde_json::json!({}), "{kept}");
+    drop(gate);
+}
+
+#[test]
+fn keeps_beside_a_gate_past_their_bound_trace_the_vm_tests_left_longest_first() {
+    // On 13 November gates judged from records 50 to 160 files behind
+    // main, so beside a gate a keep begins no VM trace past a bound but
+    // its first; were what it left not first next time, a busy main would
+    // spend each keep on the same few.
+    let stand_in = vm_traced_alone("vm-alone-bounded");
+    let gate = gate_held(&stand_in);
+    let bounded = [("CHANGED_CHECKS_BESIDE_A_GATE", "0")];
+
+    let first = stand_in.run_told(&KEEPING, &bounded);
+
+    assert!(first.status.success(), "{}", text(&first.stderr));
+    let kept = alone_record(&stand_in, ALONE);
+    assert!(!kept["checks"]["vm-x"].is_null(), "{kept}");
+    assert!(
+        kept["checks"]["vm-y"].is_null(),
+        "a keep past its bound began another VM test's trace: {kept}"
+    );
+    assert!(
+        kept["waiting"]["vm-y"].is_u64(),
+        "the record didn't say vm-y waits: {kept}"
+    );
+    assert!(
+        text(&first.stderr).contains(
+            "traced 1 of the 2 VM tests x86_64-linux had to trace alone at 0123456789ab, \
+             leaving 1 for a later keep"
+        ),
+        "{}",
+        text(&first.stderr)
+    );
+
+    // Main moved what vm-x read, so the next keep has both to trace.
+    filed_as(&stand_in, RECORDED);
+    fs::write(stand_in.path("diff.between"), "M\tvm-x.nix\n").expect("written");
+    let second = stand_in.run_told(&KEEPING, &bounded);
+
+    assert!(second.status.success(), "{}", text(&second.stderr));
+    let kept = alone_record(&stand_in, ALONE);
+    assert!(
+        !kept["checks"]["vm-y"].is_null(),
+        "the keep traced what main reached before what a keep left: {kept}"
+    );
+    assert!(kept["checks"]["vm-x"].is_null(), "{kept}");
+    assert!(kept["waiting"]["vm-x"].is_u64(), "{kept}");
+    drop(gate);
 }
 
 #[test]
