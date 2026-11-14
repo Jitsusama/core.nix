@@ -69,6 +69,7 @@ onLinux {
   # the file's own markdown, where vi's paragraph, heading, view, bracket
   # and file moves land, a whole word searched for, a command line read as
   # Neovim reads it, gO's outline chosen, moved and searched through, the
+  # window's title from the document's title or else its file's name, the
   # motion's curve, and a worker let go only once its job in hand and its
   # thread have ended, the rest skipped.
   reader-sets-its-pages = pkgs.callPackage ./package.nix { };

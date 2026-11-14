@@ -98,6 +98,8 @@ pub(crate) struct Incoming {
     /// The file it's of, when it's another file a link or a jump opened
     /// in this window rather than this one saved.
     opens: Option<std::path::PathBuf>,
+    /// The window's title once it shows.
+    title: String,
 }
 
 /// A place on the jump list: a file, how far down it the view's top was,
@@ -134,10 +136,11 @@ pub(crate) enum Reload {
     Fit(page::Width),
 }
 
-/// A page the reloader set, of the file it names, or why it couldn't.
+/// A page the reloader set, of the file it names, with the window's title
+/// for it, or why it couldn't.
 type Reset = (
     String,
-    Result<(typst_layout::Page, f64, Vec<text::Line>), String>,
+    Result<(typst_layout::Page, f64, Vec<text::Line>, String), String>,
 );
 
 /// What the loader is told of a band, to know it again when its texture
