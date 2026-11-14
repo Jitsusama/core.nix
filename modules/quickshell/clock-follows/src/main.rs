@@ -34,8 +34,12 @@
 //!
 //!     clock-follows follow <whereabouts' socket> <state folder> <timedatectl>
 //!     clock-follows put-back <state folder> <timedatectl>
+//!
+//! Run bare, or as `show`, it says what its state folder holds: the
+//! clock's last move and any zone held, as text or, with `--json`, as
+//! JSON (docs/commands.md). It takes that shape through the terminal kit,
+//! which marks a failure's lines as errors for the journal.
 
-use std::env;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -44,7 +48,8 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
+use terminal_kit::{Context, Exit, Failure, Help, layout, time};
 
 /// The key whereabouts says where the laptop is by.
 const HERE: &str = "here:laptop";
@@ -327,30 +332,131 @@ fn put_back(state: &Path, timedatectl: &str) -> io::Result<()> {
     fs::remove_file(moved_path)
 }
 
-fn main() -> ExitCode {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let done = match args
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .as_slice()
-    {
-        ["follow", socket, state, timedatectl] => fs::create_dir_all(state)
-            .and_then(|()| follow(Path::new(socket), Path::new(state), timedatectl)),
-        ["put-back", state, timedatectl] => put_back(Path::new(state), timedatectl),
-        _ => {
-            eprintln!("usage: clock-follows follow <whereabouts' socket> <state> <timedatectl>");
-            eprintln!("       clock-follows put-back <state> <timedatectl>");
-            return ExitCode::from(64);
-        }
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("<3>{error}");
-            ExitCode::FAILURE
-        }
+/// Where the account's unit keeps its state, `%S/clock-follows`, for a
+/// run by hand that names none.
+fn kept_state() -> Option<PathBuf> {
+    let home = || std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/state"));
+    let states = std::env::var_os("XDG_STATE_HOME")
+        .filter(|states| !states.is_empty())
+        .map(PathBuf::from)
+        .or_else(home)?;
+    Some(states.join("clock-follows"))
+}
+
+/// What the state folder holds, as JSON: the last move and any zone held,
+/// each null where there's none.
+fn shown(state: &Path) -> Value {
+    let moved = read::<Moved>(&state.join("moved.json")).map(|moved| {
+        json!({
+            "from": moved.from,
+            "to": moved.to,
+            "place": moved.place,
+            "moved_at": i64::try_from(moved.when).ok().map(time::rfc3339),
+        })
+    });
+    let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
+    json!({ "schema": "clock-follows.show/1", "moved": moved, "held": held })
+}
+
+/// The same for a person, as facts, the move's time said as how long
+/// before `now` it was.
+fn said(state: &Path, now: u64, context: &Context) -> String {
+    let moved = read::<Moved>(&state.join("moved.json"));
+    let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
+    let ago = moved
+        .as_ref()
+        .map(|moved| format!("{} ago", time::span(now.saturating_sub(moved.when))));
+    let mut facts = Vec::new();
+    if let Some(moved) = &moved {
+        facts.push(("moved to", Some(moved.to.as_str())));
+        facts.push(("from", Some(moved.from.as_str())));
+        facts.push(("found in", moved.place.as_deref()));
+        facts.push(("when", ago.as_deref()));
+    } else {
+        facts.push(("moved", Some("not since it was last put back, or ever")));
     }
+    facts.push((
+        "held",
+        Some(held.as_deref().unwrap_or("nothing, so the clock follows")),
+    ));
+    let mut lines = layout::facts(&facts, "unknown", &context.out, context.room).join("\n");
+    lines.push('\n');
+    lines
+}
+
+fn help() -> Help {
+    Help::new(
+        "clock-follows",
+        "moves the clock's zone to where the laptop is",
+    )
+    .command(
+        "show [STATE]",
+        "its last move and any zone held; the bare run",
+    )
+    .command(
+        "follow SOCKET STATE PROGRAM",
+        "watches whereabouts and sets the zone",
+    )
+    .command("put-back STATE PROGRAM", "puts the zone back where it was")
+    .example(
+        "clock-follows",
+        "what moved the clock last, and any zone held",
+    )
+    .example("clock-follows --json", "the same, as JSON")
+    .exit(Exit::Failed, "the zone couldn't be set, or its state kept")
+    .exit(
+        Exit::Config,
+        "no state folder named, and no XDG_STATE_HOME or HOME",
+    )
+}
+
+fn asked_wrongly(what: &str) -> Failure {
+    Failure::new(Exit::Usage, what).try_this("clock-follows --help")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let args: Vec<&str> = context.args.iter().map(String::as_str).collect();
+        let failed = |what: &'static str| {
+            move |error: io::Error| Failure::new(Exit::Failed, what).because(error.to_string())
+        };
+        match args.as_slice() {
+            [] | ["show"] | ["show", _] => {
+                let state = args
+                    .get(1)
+                    .map(PathBuf::from)
+                    .or_else(kept_state)
+                    .ok_or_else(|| {
+                        Failure::new(Exit::Config, "there's no state folder to read")
+                            .because("neither XDG_STATE_HOME nor HOME is set")
+                            .try_this("clock-follows show STATE")
+                    })?;
+                if context.format().is_json() {
+                    context.answer(&shown(&state))
+                } else {
+                    context.say(&said(&state, now(), context))
+                }
+                .map_err(failed("what it holds couldn't be said"))
+            }
+            ["follow", socket, state, timedatectl] => fs::create_dir_all(state)
+                .and_then(|()| follow(Path::new(socket), Path::new(state), timedatectl))
+                .map_err(failed("the clock couldn't follow the laptop")),
+            ["put-back", state, timedatectl] => put_back(Path::new(state), timedatectl)
+                .map_err(failed("the clock couldn't be put back")),
+            ["show", ..] => Err(asked_wrongly("show takes one state folder at most")),
+            ["follow", ..] => Err(asked_wrongly(
+                "follow takes whereabouts' socket, a state folder and timedatectl",
+            )),
+            ["put-back", ..] => Err(asked_wrongly(
+                "put-back takes a state folder and timedatectl",
+            )),
+            [word, ..] => Err(terminal_kit::flags::unknown(
+                "command",
+                word,
+                &["show", "follow", "put-back"],
+            )),
+        }
+    })
 }
 
 #[cfg(test)]
@@ -567,6 +673,41 @@ mod tests {
             ),
             Decision::Unhold
         );
+    }
+
+    #[test]
+    fn the_state_is_shown_with_its_times_and_nulls() {
+        let state = std::env::temp_dir().join(format!("clock-follows-show-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).unwrap();
+        let nothing = shown(&state);
+        assert_eq!(nothing["schema"], "clock-follows.show/1");
+        assert_eq!(nothing["moved"], Value::Null, "nothing moved says null");
+        assert_eq!(nothing["held"], Value::Null);
+        let moved = Moved {
+            from: "America/Toronto".into(),
+            to: "America/Edmonton".into(),
+            place: None,
+            when: 1_794_556_320,
+        };
+        write(&state.join("moved.json"), &moved).unwrap();
+        write(
+            &state.join("held.json"),
+            &Held {
+                refused: Some("America/Vancouver".into()),
+            },
+        )
+        .unwrap();
+        let some = shown(&state);
+        assert_eq!(
+            some["moved"],
+            json!({
+                "from": "America/Toronto", "to": "America/Edmonton",
+                "place": null, "moved_at": "2026-11-13T07:52:00Z",
+            })
+        );
+        assert_eq!(some["held"], "America/Vancouver");
+        fs::remove_dir_all(&state).unwrap();
     }
 
     #[test]

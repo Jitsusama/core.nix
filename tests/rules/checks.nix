@@ -158,6 +158,7 @@
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
+        clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };
@@ -190,6 +191,8 @@
           '';
       in
       {
+        # A clock moved hours ago, with a zone put back from and held.
+        clock-follows = [ { state = ../../modules/quickshell/clock-follows/tests/a-moved-clock; } ];
         # A laptop with a failed device, a missing one and a disk's fault.
         device-check = [
           {

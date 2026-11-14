@@ -18,6 +18,27 @@ pub fn rfc3339(seconds: i64) -> String {
     )
 }
 
+/// How long `seconds` is, for a person, in its two largest units, the
+/// second left off where it's nought: `4 s`, `2 m 14 s`, `3 h`, `1 d 2 h`.
+/// as durations read (docs/commands.md, Figures and Words). The kit holds
+/// no time zone, so a moment is said to a person as how long ago it was,
+/// which reads at a glance where a time in UTC wouldn't.
+pub fn span(seconds: u64) -> String {
+    const UNITS: [(u64, &str); 4] = [(86_400, "d"), (3_600, "h"), (60, "m"), (1, "s")];
+    let first = UNITS
+        .iter()
+        .position(|(size, _)| seconds >= *size)
+        .unwrap_or(UNITS.len() - 1);
+    let (size, unit) = UNITS[first];
+    let whole = format!("{} {unit}", seconds / size);
+    match UNITS.get(first + 1) {
+        Some((next, unit)) if seconds % size / next > 0 => {
+            format!("{whole} {} {unit}", seconds % size / next)
+        }
+        _ => whole,
+    }
+}
+
 /// The year, month and day `days` after 1970 began.
 fn civil(days: i64) -> (i64, i64, i64) {
     // Counted from 1 March of year 0, so a leap day ends its year.
@@ -55,6 +76,21 @@ mod tests {
     fn a_leap_day_is_kept() {
         assert_eq!(rfc3339(951_782_400), "2000-02-29T00:00:00Z");
         assert_eq!(rfc3339(951_868_800), "2000-03-01T00:00:00Z");
+    }
+
+    #[test]
+    fn a_span_reads_in_its_two_largest_units() {
+        assert_eq!(span(0), "0 s");
+        assert_eq!(span(4), "4 s");
+        assert_eq!(span(134), "2 m 14 s");
+        assert_eq!(span(3 * 3600 + 12 * 60 + 9), "3 h 12 m");
+        assert_eq!(span(26 * 3600), "1 d 2 h");
+    }
+
+    #[test]
+    fn a_span_leaves_off_a_unit_of_nought() {
+        assert_eq!(span(3 * 3600), "3 h");
+        assert_eq!(span(120), "2 m");
     }
 
     #[test]

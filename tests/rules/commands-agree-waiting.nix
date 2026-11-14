@@ -79,11 +79,6 @@
     "exits"
     "helps"
   ];
-  clock-follows = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   code-health = [
     "kit"
     "exits"

@@ -20,12 +20,13 @@ pub mod layout;
 pub mod time;
 pub mod wait;
 
+use std::cell::{Cell, RefCell};
 use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::io::{self, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
-use std::sync::{Arc, Mutex};
+use std::sync::Once;
 
 use serde_json::{Value, json};
 
@@ -283,36 +284,47 @@ pub fn run_os(
     }
 }
 
+thread_local! {
+    /// Whether this thread is in a body `caught` runs, and what its panic
+    /// said once it has.
+    static CATCHING: Cell<bool> = const { Cell::new(false) };
+    static SAID: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
 /// The body's outcome, a panic in it a bug whose words are the panic's.
+/// The panic hook is the whole process's, so it's set once and keeps the
+/// words only of a thread in a body, handing every other panic to the
+/// hook it found: swapped in and out around each body, two at once on
+/// two threads would put back each other's.
 fn caught(body: impl FnOnce() -> Result<(), Failure>) -> Result<(), Failure> {
-    let said: Arc<Mutex<Option<String>>> = Arc::default();
-    let into = Arc::clone(&said);
-    let before = panic::take_hook();
-    // The panic is said as a failure, so the default hook's lines, which
-    // would break stderr's JSON, are kept back.
-    panic::set_hook(Box::new(move |info| {
-        let words = info
-            .payload()
-            .downcast_ref::<&str>()
-            .map(|words| (*words).to_owned())
-            .or_else(|| info.payload().downcast_ref::<String>().cloned())
-            .unwrap_or_default();
-        let place = info
-            .location()
-            .map(|place| format!(" at {}:{}", place.file(), place.line()))
-            .unwrap_or_default();
-        if let Ok(mut said) = into.lock() {
-            *said = Some(format!("{words}{place}"));
-        }
-    }));
+    static HOOK: Once = Once::new();
+    HOOK.call_once(|| {
+        let before = panic::take_hook();
+        // The panic is said as a failure, so the default hook's lines,
+        // which would break stderr's JSON, are kept back.
+        panic::set_hook(Box::new(move |info| {
+            if !CATCHING.get() {
+                return before(info);
+            }
+            let words = info
+                .payload()
+                .downcast_ref::<&str>()
+                .map(|words| (*words).to_owned())
+                .or_else(|| info.payload().downcast_ref::<String>().cloned())
+                .unwrap_or_default();
+            let place = info
+                .location()
+                .map(|place| format!(" at {}:{}", place.file(), place.line()))
+                .unwrap_or_default();
+            SAID.set(Some(format!("{words}{place}")));
+        }));
+    });
+    SAID.set(None);
+    CATCHING.set(true);
     let outcome = panic::catch_unwind(AssertUnwindSafe(body));
-    panic::set_hook(before);
+    CATCHING.set(false);
     outcome.unwrap_or_else(|_| {
-        let why = said
-            .lock()
-            .ok()
-            .and_then(|said| said.clone())
-            .unwrap_or_default();
+        let why = SAID.take().unwrap_or_default();
         Err(Failure::new(Exit::Bug, "it broke where it shouldn't have").because(why))
     })
 }
@@ -435,6 +447,29 @@ mod tests {
             ending.stdout,
             "{\"exit\":75,\"outcome\":\"failed\",\"type\":\"end\"}\n"
         );
+    }
+
+    #[test]
+    fn panics_on_two_threads_each_keep_their_words() {
+        let ran: Vec<_> = (0..8)
+            .map(|row| {
+                std::thread::spawn(move || {
+                    let ending = ran("go", |_| panic!("row {row} was gone"));
+                    (row, ending)
+                })
+            })
+            .collect();
+        for done in ran {
+            let (row, ending) = done
+                .join()
+                .expect("a body's panic was caught on its thread");
+            assert_eq!(ending.exit, Exit::Bug);
+            assert!(
+                ending.stderr.contains(&format!("row {row} was gone")),
+                "row {row} lost its words: {}",
+                ending.stderr
+            );
+        }
     }
 
     #[test]
