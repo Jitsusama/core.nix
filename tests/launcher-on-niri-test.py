@@ -1335,24 +1335,6 @@ LOOKS_WAITING = 12
 WEIGHED_BY_AN_ACT = 2
 
 
-# How long the rows weighed must hold still before a count of them is read.
-WEIGHED_STILL = 1.0
-
-
-def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:
-    """Give how many rows the launcher has weighed, once that holds still for WEIGHED_STILL."""
-    deadline = time.monotonic() + timeout
-    last: int = shell.showing()["weighed"]
-    since = time.monotonic()
-    while time.monotonic() - since < WEIGHED_STILL:
-        assert time.monotonic() < deadline, f"the rows weighed never held still: {last}"
-        time.sleep(0.1)
-        now = shell.showing()["weighed"]
-        if now != last:
-            last, since = now, time.monotonic()
-    return last
-
-
 def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
     """Clearing one look in To Look At weighs its own row's keys again, and no other's.
 
@@ -1393,7 +1375,7 @@ def test_an_act_on_one_look_weighs_the_keys_of_no_other(shell: Shell) -> None:
         # before the act, as the rows shown again or the keys' face measured, can land
         # after it and count as its (one act weighed 9, 85PKB2, 2026-11-12). Clearing a
         # look asks nothing, so dd is the act.
-        before = weighed_held_still(shell)
+        before = launcher_on_niri.weighed_held_still(shell)
         since = shell.mark()
         shell.send_chars("dd")
         shell.reported("act shown in ", lambda _rest: True, since)
