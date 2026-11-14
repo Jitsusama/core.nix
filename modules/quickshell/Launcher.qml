@@ -7721,7 +7721,10 @@ Scope {
             restsOn = selected;
             return;
         }
-        restsOn = null;
+        // Set only as it changes, so an arrow while nothing rests asks
+        // nothing of every provider's Seen.seen again.
+        if (restsOn !== null)
+            restsOn = null;
         if (open && selected !== null)
             selectionResting.restart();
         else
