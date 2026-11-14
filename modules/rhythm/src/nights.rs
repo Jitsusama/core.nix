@@ -355,6 +355,54 @@ mod tests {
     }
 
     #[test]
+    fn a_touch_in_the_night_breaks_no_sleep() {
+        // Friday 13 November 2026: asleep from 00:40 to 08:58, the mouse
+        // or a key brushed at 03:10, 04:24 and 06:10.
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 24, 40));
+        seen.push(at(WEDNESDAY, 27, 10));
+        seen.extend(busy(at(WEDNESDAY, 28, 24), at(WEDNESDAY, 28, 25)));
+        seen.extend(busy(at(WEDNESDAY, 30, 10), at(WEDNESDAY, 30, 11)));
+        seen.extend(busy(at(WEDNESDAY, 32, 58), at(WEDNESDAY, 33, 30)));
+        let found = nights(&seen, 0, fixed(TORONTO));
+        assert_eq!(found.len(), 1, "one night in {found:?}");
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "00:40",
+            "slept through the touches"
+        );
+    }
+
+    #[test]
+    fn awake_in_the_night_is_seen() {
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 0));
+        seen.extend(busy(at(WEDNESDAY, 26, 0), at(WEDNESDAY, 26, 20)));
+        seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
+        let found = nights(&seen, 0, fixed(TORONTO));
+        assert_eq!(found.len(), 1, "one night in {found:?}");
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "02:20",
+            "up from 02:00 to 02:20"
+        );
+    }
+
+    #[test]
+    fn a_seeded_minute_in_the_night_is_joel_there() {
+        // A seeded minute is a command or a message he sent, never a
+        // brush of the mouse, so one at 03:00 is him up then.
+        let mut seen = busy(at(WEDNESDAY, 19, 0), at(WEDNESDAY, 23, 0));
+        seen.push(at(WEDNESDAY, 27, 0));
+        seen.extend(busy(at(WEDNESDAY, 33, 0), at(WEDNESDAY, 33, 30)));
+        let watched = at(WEDNESDAY, 40, 0);
+        let found = nights(&seen, watched, fixed(TORONTO));
+        assert_eq!(
+            clock_of(found[0].after_six),
+            "03:00",
+            "the seeded message at 03:00"
+        );
+    }
+
+    #[test]
     fn a_seeded_night_stops_at_its_last_minute() {
         // The logs hold a command or a message now and then, never a
         // stray key, so a lone late one is where the night stopped.
