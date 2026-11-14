@@ -22,8 +22,9 @@ QtObject {
 
     function window(id, fields) {
         return Object.assign({
-            key: `window:${id}`, id: id, order: 1000500 + id, title: `window ${id}`,
-            app_id: "foot", opened: "foot", session: false, pid: 100 + id, workspace: 1,
+            key: `window:${id}`, id: id, order: 1000500 + id, title: `window ${id} - Foot`,
+            named: `window ${id}`, untitled: false, program: "Foot", app_id: "foot",
+            opened: "foot", session: false, pid: 100 + id, workspace: 1,
             floating: false, urgent: false, column: id, down: 1
         }, fields ?? {});
     }
@@ -50,11 +51,21 @@ QtObject {
         Expect.expect("and makes the workspaces anew", told.spaces, "it doesn't");
         Expect.same("and says every window opened", told.opened.map(w => w.id), [1, 2, 3]);
         Expect.same("a window in niri's shape", held.windows[1], {
-            id: 1, title: "window 1", app_id: "foot", opened: "foot", pid: 101,
+            id: 1, title: "window 1 - Foot", named: "window 1", untitled: false,
+            program: "Foot", app_id: "foot", opened: "foot", pid: 101,
             workspace_id: 1, is_focused: true, is_floating: false, is_urgent: false,
             focus_timestamp: { secs: 1000, nanos: 501000000 },
             layout: { pos_in_scrolling_layout: [1, 1] }
         });
+        // Super+S's line says a window by its name without its program's,
+        // as the daemon tidies it, rather than shaping the title again.
+        Expect.expect("the watch is told each window's name, whether it has one, and whose",
+            ["named", "untitled", "program"].every(field =>
+                NiriRecords.WINDOW_FIELDS.includes(field)), "it isn't");
+        Expect.same("a window with no title of its own says so",
+            NiriRecords.take(NiriRecords.held(), [window(4, { title: "Foot", named: "Foot",
+                untitled: true })], []).opened.map(w => [w.named, w.untitled]),
+            [["Foot", true]]);
         Expect.same("a session's window is kitty's, saying so",
             [held.windows[2].app_id, held.windows[2].opened, held.windows[2].session],
             ["kitty", "pi-session.3", true]);
@@ -71,8 +82,10 @@ QtObject {
 
         const windows = held.windows;
         told = NiriRecords.take(held, [window(2, { app_id: "kitty", opened: "pi-session.3",
-            session: true, title: "pi: letters" })], []);
+            session: true, title: "pi: letters", named: "pi: letters" })], []);
         Expect.expect("a retitle is a change a list shows", told.listed, "it isn't");
+        Expect.same("and says its title without its program's name, as the daemon names it",
+            held.windows[2].named, "pi: letters");
         Expect.same("and says its window changed", told.opened.map(w => w.title), ["pi: letters"]);
         Expect.expect("in place, as niri's events changed it", held.windows === windows,
             "the windows were made anew");
