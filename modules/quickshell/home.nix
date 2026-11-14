@@ -1832,22 +1832,29 @@ in
     # shows a run's answer through jq (launcher/Runs.qml). A paste with no
     # clipboard history kept presses its window's paste keys through wtype
     # (Pasting.qml).
-    home.packages = lib.optional followsTheLaptop whereabouts ++ [
-      askpass
-      launcherInATerminal
-      launcherSay
-      pkgs.quickshell
-      # What the timer writes to the journal, at hand: typed in a terminal,
-      # it says what the shell weighs now, part by part.
-      shellWeighs
-      pkgs.wf-recorder
-      (pkgs.callPackage ./record-window/package.nix { })
-      pkgs.jq
-      pkgs.grim
-      pkgs.wl-clipboard
-      pkgs.wtype
-      pkgs.libnotify
-    ];
+    # Where the clock follows the laptop, clock-follows too, which typed
+    # bare says where it last moved the clock from the service's state.
+    home.packages =
+      lib.optionals followsTheLaptop [
+        whereabouts
+        clockFollows
+      ]
+      ++ [
+        askpass
+        launcherInATerminal
+        launcherSay
+        pkgs.quickshell
+        # What the timer writes to the journal, at hand: typed in a terminal,
+        # it says what the shell weighs now, part by part.
+        shellWeighs
+        pkgs.wf-recorder
+        (pkgs.callPackage ./record-window/package.nix { })
+        pkgs.jq
+        pkgs.grim
+        pkgs.wl-clipboard
+        pkgs.wtype
+        pkgs.libnotify
+      ];
 
     # For shells and for the services systemd starts, ssh-tpm-agent among
     # them.

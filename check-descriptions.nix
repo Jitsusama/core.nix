@@ -504,6 +504,10 @@
     clippy finds nothing in shell-weighs, which says in the journal what the shell weighs, part
     by part, or its tests
   '';
+  clock-follows-is-on-the-path = ''
+    clock-follows, which says where the clock last moved when typed bare, is on the path of a
+    graphical account, where its service moves the clock's zone to follow the laptop
+  '';
   clock-follows-passes-clippy = ''
     clippy finds nothing in clock-follows, which moves the clock's zone to where the laptop is,
     or its tests
