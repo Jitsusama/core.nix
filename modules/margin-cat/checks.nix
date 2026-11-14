@@ -13,8 +13,9 @@ onLinux {
   # it's drawn, and its ways about the windows, as tests/margin-cat.qml holds
   # them, its ways on and off floating windows, as
   # tests/margin-cat-floats.qml holds them, the rules its journeys over
-  # generated layouts keep, as tests/margin-cat-journeys.qml holds them, and
-  # how it reads niri's layout, as tests/margin-cat-tiles.qml holds it, in
+  # generated layouts keep, as tests/margin-cat-journeys.qml holds them,
+  # how it reads niri's layout, as tests/margin-cat-tiles.qml holds it, and
+  # the plays that move it, as tests/margin-cat-games.qml holds them, in
   # Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
@@ -25,6 +26,7 @@ onLinux {
           ./MarginCat.js
           ./MarginCatFalls.js
           ./MarginCatFloats.js
+          ./MarginCatGames.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
           ./MarginCatRoutes.js
@@ -32,6 +34,7 @@ onLinux {
           ./MarginCatWays.js
           ./tests/margin-cat.qml
           ./tests/margin-cat-floats.qml
+          ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
           ./tests/margin-cat-tiles.qml
         ];

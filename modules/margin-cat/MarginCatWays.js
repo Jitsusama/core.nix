@@ -38,10 +38,15 @@ const STRIDING = { goes: WALKS, climbs: WALKS };
 // The pose of each beat it holds still, or nearly: standing as it turns,
 // thinks or settles; crouched as it gathers itself, lands or perches on
 // a mark or shoved by a window; batting at the first mark before it hops
-// on; and shaking itself off after a fall.
+// on; and shaking itself off after a fall. At play (MarginCatGames.js):
+// sitting as the yarn comes, as it watches it go and as it sends it off;
+// its ears up as it notices, its tail going as it eyes it, crouched as it
+// wiggles, a paw on the yarn, and its ears again as it looks about.
 const HOLDS = { turns: "walkingB", thinks: "walkingB", settles: "walkingB",
     crouches: "pouncing", lands: "pouncing", perches: "pouncing", shoved: "pouncing",
-    bats: "batting", shakes: "grooming" };
+    bats: "batting", shakes: "grooming", waits: "nothingHere", watches: "nothingHere",
+    sends: "nothingHere", notices: "earFlick", eyes: "tailSwish", wiggles: "pouncing",
+    pins: "batting", looks: "earFlick" };
 
 // A way begun at `from`, the legs it takes added as it goes, each from
 // where the last left it.

@@ -169,15 +169,6 @@ QtObject {
         expect("nowhere where neither way fits",
             wanders({ seat: { x: 10, y: 3 }, across: 30 }), null);
         expect("nor with no seat", wanders({ seat: null }), null);
-
-        // A hop's rise, in its cells: none as it leaves and lands, its
-        // height midway, as a thing thrown up falls.
-        expect("a hop leaves and lands on the ground",
-            [Plays.hopped(0, 400, 2), Plays.hopped(400, 400, 2)], [0, 0]);
-        expect("and is highest midway", Plays.hopped(200, 400, 2), 2);
-        expect("rising as it falls", Plays.hopped(100, 400, 2), Plays.hopped(300, 400, 2));
-        expect("and never below the ground",
-            [Plays.hopped(-10, 400, 2), Plays.hopped(410, 400, 2)], [0, 0]);
     }
 
     // Each scene, drawn from a run of chances (`draws`), as Math.random
@@ -190,7 +181,7 @@ QtObject {
         };
         const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
         const inPlace = ["tailFlick", "batting", "stretch", "lookingAbout", "grooming"];
-        const moves = ["hop", "wander"];
+        const moves = ["hop", "pounce", "wander", "yarn"];
         const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
 
         const typed = chances.map(chance => Plays.scene("typing", draws(chance), ""));
@@ -222,13 +213,18 @@ QtObject {
         const moved = chances.map(chance => Plays.scene("idle", draws(0.8, chance), ""));
         expect("and one in four a move",
             Array.from(new Set(moved.map(played => played.name))).sort(), moves);
-        const hop = moved.find(played => played.name === "hop").beats;
-        expect("a hop crouches, rises and lands crouched",
-            hop.map(beat => [beat.pose, beat.hop === true]),
-            [["pouncing", false], ["pouncing", true], ["pouncing", false]]);
-        expect("a cell up, never so high it reads as a leap",
-            moved.filter(played => played.name === "hop").map(played => played.beats[1].cells),
-            moved.filter(played => played.name === "hop").map(() => 1));
+        // How each moves is MarginCatGames.js's, tested beside it.
+        expect("a hop is a play, where it sat",
+            moved.find(played => played.name === "hop").beats, [{ play: "hop", pause: 0 }]);
+        const yarn = moved.find(played => played.name === "yarn").beats;
+        expect("the yarn is a play, then the walk back over its column",
+            [yarn[0].play, yarn[1].walk, yarn[1].to], ["yarn", true, "column"]);
+        expect("as a pounce is",
+            moved.find(played => played.name === "pounce").beats.map(beat => beat.play ?? beat.to),
+            ["pounce", "column"]);
+        expect("each thinking 150 to 450 ms first",
+            [Plays.scene("idle", draws(0.8, 0.9, 0), "").beats[0].pause,
+                Plays.scene("idle", draws(0.8, 0.9, 1), "").beats[0].pause], [150, 450]);
         const wander = moved.find(played => played.name === "wander").beats;
         expect("a wander walks off, sits a moment, and walks back",
             [wander[0].to, wander[1].pose, wander[2].to], ["wander", "nothingHere", "column"]);
@@ -245,7 +241,7 @@ QtObject {
         // Eight poses a second at the most: no beat under 125 ms.
         expect("no beat is quicker than an eighth of a second",
             [...typed, ...paused, ...idle, ...moved].every(played => played.beats.every(beat =>
-                beat.walk === true || beat.ms >= 125)), true);
+                beat.walk === true || beat.play !== undefined || beat.ms >= 125)), true);
         expect("asleep there's no scene", Plays.scene("asleep", draws(0), "").beats, []);
         expect("nor in Do Not Disturb", Plays.scene("still", draws(0), "").beats, []);
 
@@ -254,8 +250,8 @@ QtObject {
         // draws are taken as ever, so the rest of the scene varies alike.
         const asked = name => Plays.scene("idle", draws(0), "", name);
         expect("a play asked for comes next",
-            [asked("hop").name, asked("wander").name, asked("grooming").name],
-            ["hop", "wander", "grooming"]);
+            [asked("hop").name, asked("wander").name, asked("yarn").name, asked("pounce").name,
+                asked("grooming").name], ["hop", "wander", "yarn", "pounce", "grooming"]);
         expect("even just after the same one",
             Plays.scene("idle", draws(0), "hop", "hop").name, "hop");
         expect("but never a move while he reads",
