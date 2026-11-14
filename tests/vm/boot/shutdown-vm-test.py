@@ -70,7 +70,10 @@ class Reboot:
 def reboot(machine: QemuMachine) -> Reboot:
     """Ask the machine to reboot, and give when and how much its console had said."""
     said = len(machine.get_console_log())
-    machine.succeed("systemctl --no-block reboot")
+    # The reboot can close the test's shell before the shell says how
+    # systemctl exited, so the ask doesn't wait for an answer; every
+    # caller waits for the shutdown instead.
+    machine.execute("systemctl --no-block reboot", check_output=False)
     return Reboot(machine, time.monotonic(), said)
 
 

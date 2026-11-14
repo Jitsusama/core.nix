@@ -447,17 +447,6 @@
     "test": "vm-desktop-launcher-waits-on-joel"
   },
   {
-    "at": 1794651379,
-    "commit": "22f5439da8800b25dd8a767b1f595bb33537aaf7",
-    "owner_pr": 4279,
-    "reason": "has been broken since #4279, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_service_that_wont_stop_holds_a_reboot_a_minute",
-      "test_an_accounts_units_that_wont_stop_cant_hold_a_reboot"
-    ],
-    "test": "vm-reboot-cannot-hang"
-  },
-  {
     "at": 1794652172,
     "commit": "ec4bf1f43e1390a0fb0844c61747ed977d800fbd",
     "owner_pr": 4303,
