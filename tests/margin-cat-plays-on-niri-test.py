@@ -308,21 +308,26 @@ def test_away_it_wanders_and_a_key_brings_it_back(shell: Shell) -> None:
     assert any(walking(at) for at in found), f"it came back over {sat} unwalked"
 
 
+def behind_its_edge(yarn: Json, size: float) -> bool:
+    """Whether some of the yarn, `size` across, is past the edge of the room it's drawn in."""
+    return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
+
+
 def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
     """Away, a ball of yarn rolls in, is batted and pounced on, and goes; it walks back.
 
-    Its beats come in order, the yarn coming into sight, shown whole and then fading as it's
-    sent off, and niri shows every frame of it.
+    Its beats come in order, the yarn rolling out from behind its room's edge and going back
+    behind it, never appearing or going in open space, and niri shows every frame of it.
     """
     frames, shown, _ = plays_out(shell, "yarn")
     beats = beats_of(frames)
     assert in_order(beats, YARN), f"the yarn's beats came as {beats}"
     assert set(beats) >= YARN_SEEN, f"the yarn's beats came as {beats}"
-    seen = [at["walk"]["yarn"]["opacity"] for at in frames if at["walk"]["yarn"]]
-    whole = seen.index(1) if 1 in seen else None
-    assert whole is not None, f"the yarn was never shown whole: {seen}"
-    assert min(seen[:whole] or [1]) < 1, f"the yarn came from nowhere: {seen}"
-    assert min(seen[whole:]) < 1, f"the yarn never faded as it went: {seen}"
+    seen = [at["walk"]["yarn"] for at in frames if at["walk"]["yarn"]]
+    assert seen, f"the yarn was never shown: {frames}"
+    size = frames[0]["size"]
+    assert behind_its_edge(seen[0], size), f"the yarn came from nowhere: {seen[0]}"
+    assert behind_its_edge(seen[-1], size), f"the yarn went in open space: {seen[-1]}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
 
 

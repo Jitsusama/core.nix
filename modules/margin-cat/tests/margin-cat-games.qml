@@ -96,17 +96,25 @@ QtObject {
         const left = Games.play("yarn", sat({ seat: { x: 500, y: 20 },
             column: { left: 0, top: 30, width: 528 } }));
         expect("it plays toward the more room", [played.way, left.way], [1, -1]);
-        expect("the yarn comes from twenty cells past its side, unseen yet",
-            [at(0).yarn.x, at(0).yarn.y, at(0).yarn.opacity], [128, 20, 0]);
-        expect("and comes to rest two cells short of its paws, whole",
-            [last("waits").yarn.x, last("waits").yarn.opacity], [110, 1]);
+        expect("the yarn comes from just behind its column's edge, drawn only within it",
+            [at(0).yarn.x, at(0).yarn.y, at(0).yarn.within], [1001, 20, { left: 0, right: 1000 }]);
+        expect("whichever side it comes from",
+            [Games.frame(left, 0).yarn.x, Games.frame(left, 0).yarn.within],
+            [-9, { left: 0, right: 528 }]);
         const rolling = during(played, "waits");
+        expect("and comes to rest two cells short of its paws", last("waits").yarn.x, 110);
+        const near = Games.play("yarn", sat({ column: { left: 92, top: 30, width: 48 } }));
+        expect("from far, it comes faster, at most a fifth of a cell a millisecond",
+            [beat("waits").ends - beat("waits").begins, near.beats[0].ends], [8910, 1200]);
         expect("it turns as it rolls, toward the cat",
             [Array.from(new Set(rolling.map(frame => frame.yarn.pose))).sort(),
                 rolling[1].yarn.facing], [["yarnRollingA", "yarnRollingB"], -1]);
-        expect("each drawing of its roll two cells of ground, never a moment's",
-            rolling.every(frame => frame.yarn.pose === ["yarnRollingA", "yarnRollingB"][
-                Math.floor((128 - frame.yarn.x) / 2) % 2]), true);
+        // Whether each drawing of a roll from `from` covers `every` cells.
+        const turnsBy = (them, from, every) => them.every(frame => frame.yarn.pose
+            === ["yarnRollingA", "yarnRollingB"][
+                Math.max(0, Math.ceil(Math.abs(from - frame.yarn.x) / every - 1e-6) - 1) % 2]);
+        expect("each drawing of its roll the same ground, two cells from near, seven from far",
+            [turnsBy(during(near, "waits"), 141, 2), turnsBy(rolling, 1001, 7)], [true, true]);
         expect("the cat sits as it sat while it comes",
             [at(100).pose, at(100).facing, at(100).x], ["nothingHere", 0, 100]);
         expect("then turns its head to it, ears up",
@@ -114,7 +122,8 @@ QtObject {
             ["earFlick", 1]);
         expect("and eyes it as long as it thinks, the yarn lying still",
             [beat("eyes").ends - beat("eyes").begins, at(beat("eyes").begins).yarn.pose,
-                at(beat("eyes").begins).yarn.facing], [650, "yarn", 0]);
+                at(beat("eyes").begins).yarn.facing], [650, "yarn", -1]);
+        expect("and lies, once batted, as it rolled", at(beat("crouches").begins).yarn.facing, 1);
         expect("a bat sends it seven cells on",
             [at(beat("bats").begins).pose, last("watches").yarn.x], ["batting", 117]);
         expect("it crouches a cell back",
@@ -132,10 +141,8 @@ QtObject {
             ["pouncing", 111, 20]);
         expect("holds it with a paw", at(beat("pins").begins).pose, "batting");
         const sent = during(played, "sends");
-        expect("and sends it off the way it came, fading as it goes",
-            [Math.round(sent[0].yarn.opacity * 100) / 100,
-                Math.round(sent[sent.length - 1].yarn.opacity * 100) / 100,
-                sent[sent.length - 1].yarn.x, sent[1].yarn.facing], [1, 0, 127, 1]);
+        expect("and sends it back behind its column's edge",
+            [sent[sent.length - 1].yarn.x, sent[1].yarn.facing], [1000, 1]);
         expect("it's done where it landed, the yarn gone",
             [at(played.ends).done, at(played.ends).x, played.to, at(played.ends).yarn],
             [true, 111, { x: 111, y: 20 }, null]);

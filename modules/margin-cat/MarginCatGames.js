@@ -16,8 +16,8 @@
 // rolling up as it sits, its ears going up, eyeing it (as long as it
 // thinks, besides), the bat, watching it go, each wiggle before it leaps,
 // holding it under a paw, sending it off, and looking about after a pounce.
-// The yarn comes slowly enough that each drawing of its roll holds two
-// frames at 60 Hz as it sets off, its fastest.
+// The yarn's roll in and its sending off take at least these, and longer
+// from further off (FASTEST).
 const ROLLS_IN = 1200;
 const NOTICES = 140;
 const EYES = 450;
@@ -30,16 +30,20 @@ const LOOKS = 500;
 // A hop's crouch and landing (VKCF3Z, 5e211585).
 const HOP = { crouches: 220, lands: 160 };
 // How far things go, in the cat's own cells: where the yarn stops beside
-// its paws, how far a bat sends it, how far a pounce leaps, how far the
-// yarn comes from at most, how high it leaps, and how much ground the yarn
-// covers for each drawing of its roll, so it turns as it goes rather than
-// sliding.
+// its paws, how far a bat sends it, how far a pounce leaps, how high it
+// leaps, and how much ground the yarn covers for each drawing of its roll,
+// so it turns as it goes rather than sliding.
 const NEAR = 2;
 const KNOCKS = 7;
 const POUNCES = 7;
-const COMES_FROM = 20;
 const LEAPS_UP = 3;
 const TURNS_EVERY = 2;
+// The yarn comes from its window's column's edge, which may be hundreds of
+// cells off, so it's set off as fast as this at most, in cells a ms, and
+// slows from there; and however fast it goes, each drawing of its roll
+// holds this long, two frames at 60 Hz (VKCF3Z, edf2b2c2).
+const FASTEST = 0.2;
+const HOLDS = 34;
 // Its wiggle, back a cell and forth again, so many times.
 const TIMES = 2;
 
@@ -83,17 +87,31 @@ function played(kind, way, dir, yarn) {
     return Object.assign(Ways.timed(way), { kind, way: dir, yarn: yarn ?? null });
 }
 
-// The yarn: rolling up from `gone` to lie `near` its paws as it sits, batted
-// on to `knocked` as it watches, lying there as it leaps on it, and sent
-// back off to `gone`, coming into sight and fading from it as it goes.
-function yarnOf(gone, near, knocked) {
-    const lies = still => ({ from: still, to: still });
+// The yarn: rolling out from `gone`, just behind its room's edge, to lie
+// `near` its paws as it sits, batted on to `knocked` as it watches, lying
+// there as it leaps on it, and sent back behind the edge to `gone`; drawn
+// only `within` its room, so it comes out from behind the edge and goes
+// back behind it, never appearing or going in open space (VKCF3Z,
+// edf2b2c2). Its track by the cat's beats; lying, it faces the way it
+// last rolled, `dir` once batted.
+function yarnOf({ gone, near, knocked }, dir, within) {
+    const lies = (still, facing) => ({ from: still, to: still, facing });
     return {
-        waits: { from: gone, to: near, appears: true }, notices: lies(near), eyes: lies(near),
-        bats: lies(near), watches: { from: near, to: knocked }, crouches: lies(knocked),
-        wiggles: lies(knocked), leaps: lies(knocked), lands: lies(knocked), pins: lies(knocked),
-        sends: { from: knocked, to: gone, fades: true }
+        within,
+        tracks: {
+            waits: { from: gone, to: near }, notices: lies(near, -dir), eyes: lies(near, -dir),
+            bats: lies(near, -dir), watches: { from: near, to: knocked },
+            crouches: lies(knocked, dir), wiggles: lies(knocked, dir),
+            leaps: lies(knocked, dir), lands: lies(knocked, dir), pins: lies(knocked, dir),
+            sends: { from: knocked, to: gone }
+        }
     };
+}
+
+// How long the yarn takes to roll `cells`, slowing as it goes: `least`, or
+// longer where that would set it off faster than FASTEST.
+function rolls(cells, least) {
+    return Math.max(least, (2 * cells) / FASTEST);
 }
 
 // A play from where the cat sits, `at`: its `seat`, the `column` under it,
@@ -122,19 +140,25 @@ function play(kind, at) {
     const ahead = dir > 0 ? spare.right : spare.left;
     const behind = dir > 0 ? spare.left : spare.right;
     const x = at.seat.x;
-    if (behind < 2 * c || ahead < (kind === "yarn" ? NEAR + KNOCKS + MarginCat.CELLS
-        : POUNCES) * c) {
+    // The yarn needs room to lie, be batted on and sent a roll further.
+    const needs = kind === "yarn" ? NEAR + KNOCKS + TURNS_EVERY + MarginCat.CELLS : POUNCES;
+    if (behind < 2 * c || ahead < needs * c) {
         return null;
     }
-    // Where something `cells` past the cat's side would put its own left.
+    // Where something `cells` past the cat's side would put its own left,
+    // and how far past it the yarn is wholly behind its room's edge.
     const past = cells => (dir > 0 ? x + at.wide + cells * c : x - at.wide - cells * c);
-    const far = Math.min(COMES_FROM, Math.floor(ahead / c) - MarginCat.CELLS);
-    const yarn = kind === "yarn" ? yarnOf(past(far), past(NEAR), past(NEAR + KNOCKS)) : null;
+    const far = Math.floor(ahead / c) + 1;
+    const within = { left: x - spare.left, right: x + at.wide + spare.right };
+    const yarn = kind === "yarn"
+        ? yarnOf({ gone: past(far), near: past(NEAR), knocked: past(NEAR + KNOCKS) }, dir, within)
+        : null;
     // A pounce lands seven cells on; on the yarn, its front paws on it, a
     // cell short of its middle.
-    const lands = yarn ? yarn.watches.to - dir * (MarginCat.CELLS - 2) * c : x + dir * POUNCES * c;
+    const lands = yarn ? yarn.tracks.watches.to - dir * (MarginCat.CELLS - 2) * c
+        : x + dir * POUNCES * c;
     if (yarn) {
-        Ways.holds(way, "waits", ROLLS_IN);
+        Ways.holds(way, "waits", rolls(far - NEAR, ROLLS_IN));
     }
     way.facing = dir;
     Ways.holds(way, "notices", NOTICES);
@@ -148,7 +172,7 @@ function play(kind, at) {
     Ways.holds(way, "lands", MarginCat.LANDS);
     if (yarn) {
         Ways.holds(way, "pins", PINS);
-        Ways.holds(way, "sends", SENDS);
+        Ways.holds(way, "sends", rolls(far - NEAR - KNOCKS, SENDS));
     } else {
         Ways.holds(way, "looks", LOOKS);
     }
@@ -165,27 +189,31 @@ function rolled(p) {
 
 // Where a play has the cat `t` ms in, as Ways.frame says, and its `yarn`:
 // its left `x` and `y`, its drawing by the theme's name, the way it faces
-// (0 lying as drawn, else the way it rolls) and how opaque it is; null
-// where the play has none, or is done.
+// (the way it rolls, or last rolled) and the room it's drawn `within`;
+// null where the play has none, or is done. Its drawing turns every TURNS_EVERY cells, or
+// over more ground where it's set off so fast that a drawing would show
+// for less than HOLDS ms; it only slows from there. It turns just past
+// each stretch, so never on the cell it stops on.
 function frame(playing, t) {
     const now = Ways.frame(playing, t);
     const beat = playing.beats.find(one => t < one.ends);
-    const track = beat && playing.yarn ? playing.yarn[beat.name] : null;
+    const track = beat && playing.yarn ? playing.yarn.tracks[beat.name] : null;
     if (!track) {
         return Object.assign(now, { yarn: null });
     }
+    const c = playing.cell;
     const p = (t - beat.begins) / (beat.ends - beat.begins);
-    const x = Ways.onCells(track.from + (track.to - track.from) * rolled(p),
-        track.from, track.to, playing.cell);
-    const rolls = track.to !== track.from;
-    const turns = Math.floor(Math.abs(x - track.from) / (TURNS_EVERY * playing.cell) + 1e-6);
-    const opacity = track.appears ? Math.min(1, 2 * p) : track.fades ? 1 - MarginCat.easeOut(p)
-        : 1;
+    const along = track.from + (track.to - track.from) * rolled(p);
+    const x = Ways.onCells(along, track.from, track.to, c);
+    const moving = track.to !== track.from;
+    const fastest = (2 * Math.abs(track.to - track.from)) / (beat.ends - beat.begins);
+    const every = Math.max(TURNS_EVERY * c, Math.ceil((fastest * HOLDS) / c) * c);
+    const turns = Math.max(0, Math.ceil(Math.abs(x - track.from) / every - 1e-6) - 1);
     return Object.assign(now, { yarn: {
         x,
         y: playing.from.y,
-        pose: rolls ? ["yarnRollingA", "yarnRollingB"][turns % 2] : "yarn",
-        facing: rolls ? Math.sign(track.to - track.from) : 0,
-        opacity
+        pose: moving ? ["yarnRollingA", "yarnRollingB"][turns % 2] : "yarn",
+        facing: moving ? Math.sign(track.to - track.from) : track.facing,
+        within: playing.yarn.within
     } });
 }

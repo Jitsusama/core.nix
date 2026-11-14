@@ -889,30 +889,47 @@ PanelWindow {
     }
 
     // Its ball of yarn, where a play has it, in the cat's own cells and
-    // hue, on the screen's own pixels as the cat is.
+    // hue, on the screen's own pixels as the cat is, and drawn only within
+    // its room, so it rolls out from behind the room's edge and back
+    // behind it.
     Item {
-        x: window.yarnAt ? Math.round(window.yarnAt.x * window.ratio) / window.ratio : 0
-        y: window.yarnAt ? Math.round(window.yarnAt.y * window.ratio) / window.ratio : 0
-        width: window.size
-        height: window.size
-        opacity: window.yarnAt ? window.yarnAt.opacity * window.yarnLeft : 0
-        visible: opacity > 0
+        x: window.yarnAt ? window.snapped(window.yarnAt.within.left) : 0
+        width: window.yarnAt
+            ? window.snapped(window.yarnAt.within.right) - window.snapped(window.yarnAt.within.left)
+            : 0
+        height: parent.height
+        clip: true
+        opacity: window.yarnLeft
+        visible: window.yarnAt !== null
 
-        Repeater {
-            model: Pixels.runs(window.yarnAt
-                ? MarginCat.turned(Theme.pixels[window.yarnAt.pose] ?? [], window.yarnAt.facing)
-                : [])
+        Item {
+            x: window.yarnAt ? window.snapped(window.yarnAt.x) - parent.x : 0
+            y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+            width: window.size
+            height: window.size
 
-            Rectangle {
-                required property var modelData
+            Repeater {
+                model: Pixels.runs(window.yarnAt
+                    ? MarginCat.turned(Theme.pixels[window.yarnAt.pose] ?? [],
+                        window.yarnAt.facing)
+                    : [])
 
-                x: modelData.x * window.cell
-                y: modelData.y * window.cell
-                width: modelData.across * window.cell
-                height: window.cell
-                antialiasing: false
-                color: Theme.voice
+                Rectangle {
+                    required property var modelData
+
+                    x: modelData.x * window.cell
+                    y: modelData.y * window.cell
+                    width: modelData.across * window.cell
+                    height: window.cell
+                    antialiasing: false
+                    color: Theme.voice
+                }
             }
         }
+    }
+
+    // Where `at` logical pixels falls on one of the screen's own.
+    function snapped(at: real): real {
+        return Math.round(at * ratio) / ratio;
     }
 }
