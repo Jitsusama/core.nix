@@ -34,8 +34,9 @@
 //! launcher's words.json, whose `terminal` section holds what it says of
 //! its own. A step that names nothing, or an act not done since the
 //! answer was no, exits 1; a shell that doesn't answer exits 2; an act
-//! with no terminal to ask on and no `--yes` exits 3; each said on stderr
-//! but the no, which the terminal already shows.
+//! with no terminal to ask on and no `--yes` exits 3; a place the launcher
+//! didn't get into, as Passwords refuses a walk from outside, exits 4; each
+//! said on stderr but the no, which the terminal already shows.
 
 mod asking;
 mod layout;
@@ -148,6 +149,7 @@ fn asked(arguments: &[String]) -> Asked {
 const NOTHING_CALLED: u8 = 1;
 const SHELL_SILENT: u8 = 2;
 const NOT_SURE: u8 = 3;
+const WONT_OPEN: u8 = 4;
 const MISUSED: u8 = 64;
 
 fn main() -> ExitCode {
@@ -269,6 +271,12 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Exi
             fail(&errors(), &words.takes(name, &ask));
             return ExitCode::from(MISUSED);
         }
+        if answer.get("unopened").and_then(Value::as_bool) == Some(true) {
+            let names = asking::strings(answer.get("in"));
+            let name = names.last().map_or("", String::as_str);
+            fail(&errors(), &words.unopened(name));
+            return ExitCode::from(WONT_OPEN);
+        }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
             let name = steps.last().map_or("", String::as_str);
             fail(&errors(), &words.failed(name));
@@ -388,6 +396,26 @@ mod tests {
                 &said
             ),
             ExitCode::from(SHELL_SILENT)
+        );
+    }
+
+    #[test]
+    fn a_place_that_wouldnt_open_exits_apart_from_one_done() {
+        let said = Words::from_value(&serde_json::json!({"terminal": {
+            "unopened": "{name} won't open from a terminal"}}));
+        assert_eq!(
+            done(
+                &asking::stand_in::qs("unopened"),
+                &words(&["Passwords"]),
+                "",
+                false,
+                &said
+            ),
+            ExitCode::from(WONT_OPEN)
+        );
+        assert_eq!(
+            said.unopened("Passwords"),
+            "Passwords won't open from a terminal"
         );
     }
 

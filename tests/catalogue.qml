@@ -7,8 +7,11 @@
 // one that ends something is only offered, and what's only a figure, a
 // copy or a command's start isn't listed at all. A step into a row, as the
 // right arrow and the catalogue both show it, leads with Return's own act.
+// A place asked open is said opened only where the walk got
+// (launcher/Reached.js, which the check copies beside it too).
 import QtQuick
 import "Catalogue.js" as Catalogue
+import "Reached.js" as Reached
 
 QtObject {
     Component.onCompleted: {
@@ -540,5 +543,16 @@ QtObject {
         expect("a place at home, from home, goes nowhere",
             Catalogue.followed(["category:desktop"], []), null);
         expect("nor does what lives nowhere", Catalogue.followed(null, []), null);
+        // A place asked open from outside is said opened only where the
+        // walk got: one that refused its step, as Passwords does while
+        // it's walked from outside, leaves the launcher short of it.
+        const passwords = ["category:secrets", "collection:passwords"];
+        expect("walked all the way, it's reached",
+            Reached.reached(["category:secrets", "collection:passwords"], passwords), true);
+        expect("stopped short, it isn't", Reached.reached(["category:secrets"], passwords),
+            false);
+        expect("left at home, it isn't", Reached.reached([], passwords), false);
+        expect("somewhere else as deep, it isn't",
+            Reached.reached(["category:secrets", "collection:keys"], passwords), false);
     }
 }

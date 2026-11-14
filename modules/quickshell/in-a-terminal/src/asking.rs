@@ -379,7 +379,7 @@ pub mod stand_in {
     use std::{env, fs, process};
 
     /// Each stand-in's name and the answer it prints.
-    const ANSWERS: [(&str, &str); 5] = [
+    const ANSWERS: [(&str, &str); 6] = [
         (
             "missed-reading",
             r#"{"missing":"speed","near":[],"in":["Network","Office"],"reading":true}"#,
@@ -397,6 +397,7 @@ pub mod stand_in {
             r#"{"reading":false,"in":[],"path":[],"row":null,"rows":[]}"#,
         ),
         ("failed", r#"{"failed":true}"#),
+        ("unopened", r#"{"unopened":true,"in":["Passwords"]}"#),
     ];
 
     /// The stand-in giving the answer `name` names, to run as qs.
