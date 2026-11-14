@@ -10,7 +10,8 @@ the check's result, that its layer is one taking no keys, that it goes in fullsc
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it hold its ground through niri's slide,
-a second move cutting it short holding on from where the first got to.
+a second move cutting it short holding on from where the first got to, and that on a workspace
+with no windows it sits on the floor until one opens there.
 """
 
 from __future__ import annotations
@@ -683,6 +684,37 @@ def test_the_cat_holds_its_ground_through_a_slide_between_workspaces(shell: Shel
     kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
     kept.mkdir(exist_ok=True)
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
+
+
+def on_the_floor(said: str) -> bool:
+    """Say whether a report has the cat sitting on the screen's floor, still."""
+    at = placed(said)
+    return at is not None and not at.get("walk") and at["y"] + at["size"] == at["reach"]
+
+
+def test_an_empty_workspace_has_it_fall_to_the_floor_and_climb_back(shell: Shell) -> None:
+    """On a workspace with no windows it sits on the floor, and climbs to one opened there.
+
+    Its fall and climb are MarginCatPaths.js's, frame by frame in Qt's engine; here, only that
+    niri's empty workspace reaches it: it's never nowhere from the move on, and sits still at
+    the screen's foot until a window comes (VKCF3Z, e5a3ee44).
+    """
+    since = shell.mark()
+    above = shell.opened("a workspace to leave for an empty one")
+    sits_over(shell, above, since)
+    holding = {window["workspace_id"] for window in shell.windows()}
+    spaces = json.loads(shell.as_account("niri msg --json workspaces"))
+    empty = next(space for space in spaces if space["id"] not in holding)
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-workspace {empty['idx']}")
+    heard(shell, on_the_floor, since)
+    said, _ = shell.said_since(since)
+    reports = [report[len(SITS) :] for report in said if report.startswith(SITS)]
+    nowhere = [report for report in reports if placed(report) is None]
+    assert not nowhere, f"the cat went from the screen: {nowhere[:2]}"
+    since = shell.mark()
+    there = shell.opened("a window come to an empty workspace")
+    sits_over(shell, there, since)
 
 
 def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> None:

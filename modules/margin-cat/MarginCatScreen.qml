@@ -5,6 +5,9 @@
 // screen draws while it moves and none at rest. What it plays, and when, is the
 // scene's (MarginCat.qml), which every screen's cat shares, so a stroll is
 // taken by one screen alone.
+// Long because its place, walks, moves and frames all hang on one surface's
+// state as niri says the layout; its ways and their logic are already the
+// .js files beside it, tested in Qt's engine.
 pragma ComponentBehavior: Bound
 import qs
 import Quickshell
@@ -71,6 +74,20 @@ PanelWindow {
     // work it out again inside its own change, a binding loop.
     readonly property var there: column === null ? null
         : strolled ?? seat(column)
+    // Whether the workspace this screen shows has no windows, where it
+    // has no seat but the screen's floor: it falls there and sits, and
+    // climbs back by an edge as windows come (VKCF3Z, 2026-11-14,
+    // e5a3ee44). Never in the overview or a shared screen, where it
+    // goes as ever.
+    readonly property bool emptied: {
+        void Niri.revision;
+        return space !== null && !window.scene.shared && !Niri.overview
+            && tilesOf(space.id).length === 0;
+    }
+    onEmptiedChanged: {
+        if (emptied)
+            follow();
+    }
     // A stroll's: the seat it wanders to or sits at, or null for
     // its column; whether the walk under way is a scene's, which
     // hands the scene its next beat as it sits; and whether the next
@@ -187,8 +204,12 @@ PanelWindow {
             return;
         }
         if (there === null) {
-            if (place !== null)
+            if (emptied) {
+                leaving.stop();
+                floors();
+            } else if (place !== null) {
                 leaving.restart();
+            }
             return;
         }
         leaving.stop();
@@ -227,10 +248,34 @@ PanelWindow {
     // 450 ms, so no two walks begin alike; riding what niri moved of
     // the windows it `saw` (MarginCatFalls.js's rides).
     function walkFrom(hurried: bool, saw: var): void {
-        roams = null;
-        if (place === null || there === null)
+        walkTo(hurried, saw, there);
+    }
+
+    // Its workspace emptied, it falls from where it is to the floor
+    // below and sits there, crossing only the backdrop; with nowhere
+    // to fall from, the shell just started, it's there at once, in the
+    // middle of the floor. Said again as niri says the layout, a fall
+    // under way or done goes on as it is. It rides nothing: the windows
+    // it stood on are gone, not moved.
+    function floors(): void {
+        const floor = modelData.height - size;
+        if (place === null) {
+            place = { x: (modelData.width - size) / 2, y: floor };
             return;
-        const plan = Paths.walk({ x: place.x, y: place.y }, { x: there.x, y: there.y }, {
+        }
+        if (moving !== null || (going !== null && Math.abs(going.to.y - floor) < 0.5)
+            || (going === null && Math.abs(place.y - floor) < 0.5))
+            return;
+        resting.stop();
+        endStroll();
+        walkTo(true, null, { x: place.x, y: floor });
+    }
+
+    function walkTo(hurried: bool, saw: var, to: var): void {
+        roams = null;
+        if (place === null || to === null)
+            return;
+        const plan = Paths.walk({ x: place.x, y: place.y }, { x: to.x, y: to.y }, {
             cell,
             ratio,
             wide: size,
@@ -254,7 +299,7 @@ PanelWindow {
         if (plan === null) {
             halt();
             sat = wanted;
-            place = there;
+            place = to;
             sits();
             return;
         }
@@ -354,7 +399,11 @@ PanelWindow {
         turn = 0;
         halt();
         sat = wanted;
-        place = there;
+        // Its hold done over an empty workspace, it falls to the floor.
+        if (there === null && emptied && place !== null)
+            floors();
+        else
+            place = there;
     }
 
     onSpaceChanged: {
@@ -548,7 +597,7 @@ PanelWindow {
         id: leaving
         interval: MarginCat.LEAVES
         onTriggered: {
-            if (window.there !== null)
+            if (window.there !== null || window.emptied)
                 return;
             window.halt();
             window.endStroll();
@@ -592,8 +641,8 @@ PanelWindow {
         id: mover
         onTriggered: {
             const now = Paths.frame(window.moving, mover.elapsedTime * 1000);
-            // A hold with no column at its end leaves it nowhere, as
-            // an empty workspace has no seat for it.
+            // A hold with no column at its end arrives at once: on an
+            // empty workspace it falls to the floor (arrive).
             if (now.done
                 || (now.beat !== window.moving.beats[0].name && window.movingTo === null)) {
                 window.arrive();
