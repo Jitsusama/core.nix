@@ -358,6 +358,81 @@ pub fn stalls(day: Option<&BTreeMap<String, f64>>) -> Vec<Reading> {
     ]
 }
 
+/// The day's worst moments in each place he works, as the pain-points
+/// detector placed them and health sums them per place (80ECO2, from 13
+/// November), so the week's review can hold each place's pains to a
+/// reading from his side, each with the owner of that place.
+#[must_use]
+pub fn places(s: &Sources) -> Vec<Reading> {
+    vec![
+        lost(
+            s,
+            "time lost to pi in the day's worst moments {}",
+            "pi",
+            "85PKB2",
+        ),
+        lost(
+            s,
+            "time lost to the launcher in the day's worst moments {}",
+            "launcher",
+            "Y2YBTS",
+        ),
+        lost(
+            s,
+            "time lost to chrome in the day's worst moments {}",
+            "chrome",
+            "80ECO2",
+        ),
+    ]
+}
+
+/// One place's worst moments. A place health wrote no figure for, on a
+/// day it wrote the total, lost nothing.
+fn lost(s: &Sources, says: &'static str, place: &str, owner: &'static str) -> Reading {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let total = figure("health.feel.lost-minutes");
+    Reading::new(
+        says,
+        figure(&format!("health.feel.{place}.lost-minutes")).or(total.map(|_| 0.0)),
+        " min",
+        owner,
+    )
+    .bar(Bar::AtMost(0.0))
+    .from("health's day file, from its feel of his tasks")
+    .his()
+}
+
+/// The agents he stopped or corrected in the day's worst moments, as the
+/// pain-points detector signs them on his sessions and health counts them
+/// (80ECO2, from 13 November); a correction outside one isn't counted. Most of the week's pained lines that named no place were
+/// him correcting an agent's judgement (the first blind-spot review,
+/// 2026-11-13), so this is collaboration read from his side, and every
+/// one is a pain point: the bar is none. 1JQPPC, who routes his pains,
+/// owns it.
+#[must_use]
+pub fn corrected(s: &Sources) -> Reading {
+    let figure = |key: &str| s.health.as_ref().and_then(|f| f.get(key).copied());
+    let stopped = figure("health.feel.stopped");
+    let corrections = figure("health.feel.corrections");
+    let both = stopped.zip(corrections);
+    Reading::new(
+        "agents he stopped or corrected in the day's worst moments {}",
+        both.map(|(s, c)| s + c),
+        "",
+        "1JQPPC",
+    )
+    .bar(Bar::AtMost(0.0))
+    .detail(both.map(|(s, c)| {
+        format!(
+            "{} stopped mid-turn, {} corrected",
+            shown(s, ""),
+            shown(c, "")
+        )
+    }))
+    .from("health's day file, from its feel of his tasks")
+    .his()
+}
+
 fn count(n: usize) -> f64 {
     f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
@@ -603,6 +678,58 @@ mod tests {
             read[3].detail.as_deref(),
             Some("a median 90 ms, the slowest 1,300 ms; timed from the program starting"),
             "an opening says its spread and that it's timed from our side"
+        );
+    }
+
+    #[test]
+    fn each_place_says_its_worst_moments_and_a_quiet_one_lost_none() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.feel.lost-minutes".to_owned(), 16.3),
+                ("health.feel.pi.lost-minutes".to_owned(), 15.5),
+                ("health.feel.launcher.lost-minutes".to_owned(), 0.8),
+            ])),
+            ..Sources::default()
+        };
+        let places: Vec<(Option<f64>, &str, bool)> =
+            places(&s).iter().map(|r| (r.now, r.owner, r.his)).collect();
+        assert_eq!(
+            places,
+            [
+                (Some(15.5), "85PKB2", true),
+                (Some(0.8), "Y2YBTS", true),
+                (Some(0.0), "80ECO2", true),
+            ],
+            "chrome had no worst moment today, so it lost none rather than reading unread"
+        );
+    }
+
+    #[test]
+    fn the_agents_he_stopped_or_corrected_are_his_side() {
+        let s = Sources {
+            health: Some(BTreeMap::from([
+                ("health.feel.stopped".to_owned(), 2.0),
+                ("health.feel.corrections".to_owned(), 3.0),
+            ])),
+            ..Sources::default()
+        };
+        let read = corrected(&s);
+        assert_eq!(
+            read.words(),
+            "agents he stopped or corrected in the day's worst moments 5, at most 0"
+        );
+        assert_eq!(
+            read.detail.as_deref(),
+            Some("2 stopped mid-turn, 3 corrected")
+        );
+        assert!(
+            read.his && read.out(),
+            "five agents corrected was in spec, or read from our side"
+        );
+        assert_eq!(
+            corrected(&Sources::default()).now,
+            None,
+            "before health counts them, it reads unread, not none"
         );
     }
 

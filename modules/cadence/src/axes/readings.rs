@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
-use super::{counted, landings, launcher, measure, network, plans};
+use super::{asks, counted, landings, launcher, measure, network, plans};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -36,6 +36,8 @@ pub struct Sources {
     pub quests: String,
     /// Each file under `mission/waiting/`.
     pub waiting: Vec<String>,
+    /// `mission/asks.jsonl`, the orchestrator's record of his asks.
+    pub asks: String,
     /// `niri msg -j windows`, when niri answered.
     pub windows: Option<String>,
     /// `notices/notices.json`.
@@ -105,6 +107,7 @@ pub fn read(s: &Sources) -> Vec<Axis> {
                 launcher::readings(&s.counted),
                 counted::stalls(s.day.as_ref().map(|d| &d.figures)),
                 counted::responds(&s.counted),
+                counted::places(&s.counted),
             ]
             .concat(),
         ),
@@ -164,33 +167,35 @@ fn time(s: &Sources) -> Axis {
         // merge to on is running.
         waiting.iter().copied().reduce(f64::max)
     });
-    axis(
-        "time to done",
-        vec![
-            Reading::new("merge to on {}", on, " min", "80ECO2")
-                .bar(Bar::AtMost(18.0))
-                .detail(
-                    (!waiting.is_empty()).then(|| format!("{} merges not on yet", waiting.len())),
-                )
-                .from("cadence's card"),
-            Reading::new(
-                "last commit to merge {}",
-                card_median(&s.card, "Last commit to merge"),
-                " min",
-                "80ECO2",
-            )
-            .bar(Bar::AtMost(20.0))
+    // His asks first, read from his words to his laptop; the card's
+    // three follow, each starting at a merge he never sees.
+    let mut readings = asks::readings(&s.asks, s.now);
+    readings.extend([
+        Reading::new("merge to on {}", on, " min", "80ECO2")
+            .bar(Bar::AtMost(18.0))
+            .detail((!waiting.is_empty()).then(|| match waiting.len() {
+                1 => "1 merge not on yet".to_owned(),
+                n => format!("{n} merges not on yet"),
+            }))
             .from("cadence's card"),
-            Reading::new(
-                "VM wait {}",
-                card_median(&s.card, "VM wait"),
-                " min",
-                "5FWIUS",
-            )
-            .bar(Bar::AtMost(2.0))
-            .from("cadence's card"),
-        ],
-    )
+        Reading::new(
+            "last commit to merge {}",
+            card_median(&s.card, "Last commit to merge"),
+            " min",
+            "80ECO2",
+        )
+        .bar(Bar::AtMost(20.0))
+        .from("cadence's card"),
+        Reading::new(
+            "VM wait {}",
+            card_median(&s.card, "VM wait"),
+            " min",
+            "5FWIUS",
+        )
+        .bar(Bar::AtMost(2.0))
+        .from("cadence's card"),
+    ]);
+    axis("time to done", readings)
 }
 
 fn quality(s: &Sources) -> Axis {
@@ -265,6 +270,7 @@ fn collaboration(s: &Sources) -> Axis {
     axis(
         "collaboration",
         vec![
+            counted::corrected(&s.counted),
             Reading::new(
                 "{} of the mesh's messages are fyi",
                 read.then(|| percent(fyi, all)),
@@ -590,6 +596,7 @@ pub fn gather(folder: &Path, state_home: &Path, now: i64) -> Sources {
             .flatten()
             .map(|e| text(e.path()))
             .collect(),
+        asks: asks::gather(state_home),
         windows: command("niri", &["msg", "-j", "windows"]).ok(),
         notices: text(state_home.join("notices/notices.json")),
         pressure: text(PathBuf::from("/proc/pressure/cpu")),
@@ -644,8 +651,10 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             card: CARD.into(),
             ..Sources::default()
         };
-        let on = &time(&s).readings[0];
+        // His asks' two come first, and the card's merge to on after them.
+        let on = &time(&s).readings[2];
         assert_eq!(on.now, Some(177.0));
+        assert_eq!(on.detail.as_deref(), Some("3 merges not on yet"));
         assert!(on.out(), "a merge waiting 177 min was in spec");
     }
 
@@ -695,10 +704,12 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
             ],
             ..Sources::default()
         };
+        // The agents he corrected come first, from health; the mesh's two
+        // follow.
         let readings = collaboration(&s).readings;
-        assert_eq!(readings[0].now, Some(25.0));
+        assert_eq!(readings[1].now, Some(25.0));
         // B alone: A was answered, and C was asked under 30 min ago.
-        assert_eq!(readings[1].now, Some(1.0));
+        assert_eq!(readings[2].now, Some(1.0));
     }
 
     #[test]
