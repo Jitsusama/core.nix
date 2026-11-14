@@ -50,7 +50,6 @@
     "kit"
     "helps"
   ];
-  chrome-open-tabs = [ "subcommands" ];
   chrome-recent-sites = [ "subcommands" ];
   chrony-network-servers = [ "helps" ];
   clipboard-history = [

@@ -397,13 +397,15 @@ in
         // lib.optionalAttrs (openTabs != null) {
           go = [
             openTabs
-            "go"
+            "tabs"
             "{id}"
+            "go"
           ];
           close = [
             openTabs
-            "close"
+            "tabs"
             "{id}"
+            "close"
           ];
         }
       )

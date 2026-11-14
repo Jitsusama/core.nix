@@ -4,7 +4,7 @@
 //! file otherwise, with no process started for either.
 //!
 //! The two name a tab apart. The host gives the id Chrome's tabs have for
-//! an extension, which `chrome-open-tabs go` and `close` take; the file
+//! an extension, which `chrome-open-tabs tabs ID go` and `close` take; the file
 //! gives the id Chrome wrote it under, which may be from a Chrome before
 //! the one running, so it's never said, and a tab read from the file has
 //! no id. The launcher's Go To and Close It hand a tab's id to the host,
