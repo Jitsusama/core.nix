@@ -58,7 +58,8 @@
 # asked of it there.
 #
 # The tuple command completes in zsh through Tuple's own completion, which
-# its command writes, so it knows every command and flag the version has.
+# its command writes, so it knows every command and flag the version has;
+# the package carries it (./package.nix).
 #
 # Tuple's daemon writes its log afresh each time it starts, so the service
 # keeps the last three before it does: the log of whatever went wrong in a
@@ -101,18 +102,6 @@ let
     exec ${lib.getExe pkgs.bash} ${./opens.sh} ${tuple} ${lib.getExe' pkgs.libnotify "notify-send"} "$@"
   '';
 
-  # zsh's completion for the tuple command, as Tuple's command writes it,
-  # which needs only somewhere to keep its files. The command runs behind
-  # nixpkgs' wrapper as .tuple-wrapped and writes the completion for that
-  # name, which zsh would never use for tuple, so it's named for tuple.
-  completion = pkgs.runCommandLocal "tuple-zsh-completion" { } ''
-    export HOME=$PWD XDG_RUNTIME_DIR=$PWD/run
-    mkdir -m 700 run
-    mkdir -p $out/share/zsh/site-functions
-    ${tuple} completion zsh | sed 's/\.tuple-wrapped/tuple/g' > $out/share/zsh/site-functions/_tuple
-    grep -q '^#compdef tuple$' $out/share/zsh/site-functions/_tuple
-  '';
-
   # Keeps the daemon's last three logs before it writes a new one; an empty
   # log is nothing to keep, so it leaves the others where they are.
   keepsLogs = pkgs.writeShellScript "tuple-keeps-logs" ''
@@ -131,10 +120,7 @@ in
     quickshell
   ];
 
-  home.packages = [
-    package
-    completion
-  ];
+  home.packages = [ package ];
 
   xdg.configFile = {
     "quickshell/Tuple.qml".source = ./Tuple.qml;
