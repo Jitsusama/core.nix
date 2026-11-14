@@ -526,14 +526,20 @@ fn watched(waiting: impl Fn(u32) -> bool) -> u32 {
 fn a_stop_a_step_holds_up_is_left_for_within_its_patience() {
     let looks = watched(|look| look >= 3);
     // Ten looks of 50 ms is the 500 ms it may wait, after the three before it.
-    assert_eq!(looks, 13, "left {looks} looks in, not as soon as 500 ms had passed");
+    assert_eq!(
+        looks, 13,
+        "left {looks} looks in, not as soon as 500 ms had passed"
+    );
 }
 
 #[test]
 fn a_stop_the_loop_takes_between_steps_is_never_left_for() {
     // Waiting for 9 looks, under its patience, then taken; a second stop at 20.
     let looks = watched(|look| (3..12).contains(&look) || look >= 20);
-    assert_eq!(looks, 30, "left {looks} looks in, for a stop the loop had taken");
+    assert_eq!(
+        looks, 30,
+        "left {looks} looks in, for a stop the loop had taken"
+    );
 }
 
 #[test]

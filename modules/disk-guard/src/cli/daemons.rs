@@ -13,6 +13,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use terminal_kit::{Exit, Failure};
 
+/// The signals that stop a daemon.
+const STOPS: &[i32] = &[libc::SIGTERM, libc::SIGINT, libc::SIGHUP];
+
 /// How often a daemon steps.
 const STEP_EVERY: Duration = Duration::from_secs(5);
 
@@ -25,7 +28,7 @@ pub(super) fn daemon(
     err: &mut dyn Write,
 ) -> Result<(), Failure> {
     // Before any thread starts, so every thread blocks them too.
-    let mut wait = stopping(&[libc::SIGTERM, libc::SIGINT, libc::SIGHUP]).map_err(failed)?;
+    let mut wait = stopping(STOPS).map_err(failed)?;
     let (default_config, default_state, name) = match scope {
         Scope::User => (&env.config, &env.state, "user"),
         Scope::System => (&env.system_config, &env.system_state, "system"),
@@ -103,7 +106,7 @@ pub(super) fn daemon(
     // held one for 35 s; the survey asks as it goes and ends early.
     guard.stop_when(Box::new(crate::commands::stop_waiting));
     // A step that doesn't ask, as some walks don't, is left mid-way.
-    leave_when_held_up(io::stderr()).map_err(failed)?;
+    leave_when_held_up(STOPS, io::stderr()).map_err(failed)?;
     if let Some(hearing) = hearing {
         guard.hear(hearing);
     }
