@@ -86,29 +86,9 @@ impl Releaser for Experiment {
         None
     }
 
-    /// Whether the session in front, the account's display, is locked,
-    /// as logind says; one logind can't say is taken as locked.
+    /// Whether the session in front is locked, as logind says.
     fn locked(&self) -> bool {
-        let asked = |args: &[&str]| {
-            Command::new(&self.loginctl)
-                .args(args)
-                .stdin(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .ok()
-                .filter(|ran| ran.status.success())
-                .map(|ran| String::from_utf8_lossy(&ran.stdout).trim().to_owned())
-        };
-        let uid = std::fs::metadata("/proc/self").map(|meta| {
-            use std::os::unix::fs::MetadataExt;
-            meta.uid().to_string()
-        });
-        let Ok(uid) = uid else { return true };
-        let Some(display) = asked(&["show-user", &uid, "--property=Display", "--value"]) else {
-            return true;
-        };
-        let hint = asked(&["show-session", &display, "--property=LockedHint", "--value"]);
-        hint.as_deref() != Some("no")
+        engine::session_locked(&self.loginctl)
     }
 
     /// The one item's value, read by op, which asks Joel through

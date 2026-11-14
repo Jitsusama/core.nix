@@ -162,6 +162,18 @@ pub enum Ask {
         id: Value,
         asked: bool,
     },
+    /// The shell's yes to a secret ask, as its row's act says it, with
+    /// how long the line was shown and which opening said it; answered
+    /// by the engine (secret-asks), which checks all of it again.
+    Release {
+        id: Value,
+        said: Value,
+    },
+    /// The shell's no to a secret ask.
+    Refuse {
+        id: Value,
+        said: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -276,6 +288,8 @@ pub fn ask(line: &str) -> Ask {
             id,
             asked: flag("asked"),
         },
+        "release" => Ask::Release { id, said },
+        "refuse" => Ask::Refuse { id, said },
         other => Ask::Unknown {
             id,
             ask: other.to_owned(),

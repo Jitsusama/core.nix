@@ -1,7 +1,8 @@
 # Joel's passwords, held ready for the shell and the command line: one
-# resident program that runs each password manager as a child and answers
-# over a socket in the shell's daemon interface, and the `passwords`
-# command that asks it (src/main.rs says how). An audit, run only when
+# resident program that runs each password manager as a child, answers
+# over a socket in the shell's daemon interface and answers the secret
+# asks listed for it, and the `passwords` command that asks it
+# (src/main.rs says how). An audit, run only when
 # Joel asks, hashes each password with ring's SHA-1 and asks Have I Been
 # Pwned's range of each hash's first five characters through ureq, the
 # client every other module here reaches the web with (src/audit.rs).
@@ -17,6 +18,9 @@ publish = false
 # spaced order, and figures said as the launcher says them.
 ready-rows = { path = "../ready-rows" }
 ring = "0.17"
+# Secret asks' engine, which watches their folder, holds each as a row and
+# answers the shell's yes (src/asks.rs says what the daemon adds).
+secret-asks = { path = "../secret-asks" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }

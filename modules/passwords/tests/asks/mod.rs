@@ -9,12 +9,10 @@
 //! drawn releases nothing; and the value never reaches an answer, the
 //! journal or a command line.
 
-mod common;
-
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use common::{Client, RELEASED_VALUE, Running, until};
+use crate::common::{Client, RELEASED_VALUE, Running, until};
 use serde_json::{Value, json};
 
 /// The one reference listed, and one that isn't.

@@ -82,6 +82,32 @@ pub fn write_whole(path: &Path, said: &Value) -> std::io::Result<()> {
     std::fs::rename(&writing, path)
 }
 
+/// Whether the session in front, the account's display, is locked, as
+/// logind says through `loginctl`; one logind can't say is taken as
+/// locked, so no yes is taken where nobody can tell.
+pub fn session_locked(loginctl: &Path) -> bool {
+    let asked = |args: &[&str]| {
+        Command::new(loginctl)
+            .args(args)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|ran| ran.status.success())
+            .map(|ran| String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+    };
+    let uid = std::fs::metadata("/proc/self").map(|meta| {
+        use std::os::unix::fs::MetadataExt;
+        meta.uid().to_string()
+    });
+    let Ok(uid) = uid else { return true };
+    let Some(display) = asked(&["show-user", &uid, "--property=Display", "--value"]) else {
+        return true;
+    };
+    let hint = asked(&["show-session", &display, "--property=LockedHint", "--value"]);
+    hint.as_deref() != Some("no")
+}
+
 /// A value read to be released, its bytes zeroed once it's let go.
 pub struct Secret(String);
 
