@@ -1340,8 +1340,9 @@ Item {
     // left still draws nothing (the launcher audit's finding 34, held by
     // goes-places' frame count). In a modal line it blinks, and only insert
     // draws it. A bar stands between letters, never on one's ink: at a
-    // line's start, in the room before its first letter, which the field
-    // would clip, so it's drawn beside it; after the last, in the room past
+    // line's start, in the room before its first letter, a pixel short of
+    // it, since a face with no room before its S met the bar there, and
+    // the field would clip that room, so it's drawn beside it; after the last, in the room past
     // it; between two letters, centred on where they meet. Drawn from the
     // caret's place, it lay over a hint's first letter, cutting the S of
     // "Say anything" (VKCF3Z, 2026-11-14).
@@ -1351,7 +1352,7 @@ Item {
         readonly property rect at: input.cursorRectangle
         readonly property bool starts: at.x <= input.leftPadding + 0.5
         readonly property bool ends: input.cursorPosition === input.length
-        x: shown.x + input.x + at.x - (starts ? width : ends ? 0 : width / 2)
+        x: shown.x + input.x + at.x - (starts ? width + 1 : ends ? 0 : width / 2)
         y: shown.y + input.y + at.y
         width: prompt.caretWidth
         height: at.height

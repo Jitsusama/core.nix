@@ -1360,14 +1360,14 @@ ShellRoot {
             expect("the caret stands at the hint's start, as at a typed word's",
                 Math.abs(startCaret - firstLetter) <= 0.5,
                 `caret at ${startCaret}, a typed letter at ${firstLetter}`);
-            // Its bar is drawn in the room before that letter, never on its
-            // ink: drawn from the caret's place, it cut the S of "Say
-            // anything" (VKCF3Z, 2026-11-14).
+            // Its bar is drawn in the room before that letter, a pixel apart,
+            // never on its ink: drawn from the caret's place, it cut the S of
+            // "Say anything" (VKCF3Z, 2026-11-14).
             const bar = root.byName(voicedField, "caret");
             const barEnd = bar === null ? Infinity
                 : bar.mapToItem(null, bar.width, 0).x;
-            expect("the caret's bar ends where the hint's first letter starts, off its ink",
-                bar !== null && bar.width > 0 && Math.abs(barEnd - firstLetter) <= 0.5,
+            expect("the caret's bar ends a pixel short of the hint's first letter, off its ink",
+                bar !== null && bar.width > 0 && Math.abs(barEnd + 1 - firstLetter) <= 0.5,
                 `bar ends at ${barEnd}, the letter at ${firstLetter}`);
             // After the last letter typed it starts where that letter ends.
             typedInput.cursorPosition = typedInput.length;
