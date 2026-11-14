@@ -25,9 +25,10 @@ pebble = "#B7B5AC"   # base-300
 slate = "#6F6E69"    # base-600
 graphite = "#403E3C" # base-800
 ink = "#100F0F"      # black
-# Ours: base-600 darkened just enough to read on flax, the darkest surface
-# that carries muted text.
-pewter = "#666560"
+# Ours: base-700, so muted text reaches WCAG AAA's 7:1 on paper (7.14) and
+# still reads at AA on flax (5.75), the darkest surface that carries it,
+# while staying a step under text.
+pewter = "#575653"
 brick = "#AF3029"    # red-600
 garnet = "#942822"   # red-700
 rust = "#BC5215"     # orange-600

@@ -52,10 +52,14 @@ published, however good it looks, and none is traded for another or for a
 deadline. A model reading this cold weighs them first, before the craft
 that follows; `checks.md` runs them in this order before every publish.
 
-1. **Accessibility, with WCAG 2.2 AA as the floor, measured.** A page some
+1. **Accessibility, with WCAG 2.2 AA as the floor and AAA wherever text
+   allows, measured, and every site worked by keyboard alone.** A page some
    readers can't use is broken for them, whatever it looks like to the rest:
-   "accessibility cannot be a third class person" (2026-10-22). It's proven
-   by the browser's checks, never by eye.
+   "accessibility cannot be a third class person" (2026-10-22). "I don't want
+   to have to click. i want to support clicking, but all sites need to be
+   able to be intuitively navigated by keyboard and meet insane levels of
+   WCAG AA+ accessibility" (2026-11-14). It's proven by the browser's checks
+   and by a cold walk with the keyboard alone, never by eye.
 2. **The writing.** His voice, plain words for a reader who wasn't there,
    Title Case or whole sentences for headings, Canadian spelling and no
    emdash (`writing.md`). A page that isn't understood on its first read has
@@ -543,6 +547,26 @@ destroyed by it" (2026-11-11).
 
 ### Keys
 
+- **Nothing needs a click** (standing rule, 2026-11-14). The pointer is
+  supported everywhere, and the keyboard comes first: a site is designed
+  around its keys and then given the pointer, never the other way round, as
+  the desktop's first principle says. A reader who has never seen the site
+  finds their way with the keyboard alone, without being told how.
+  - **A picture is walked, not only looked at.** A map, graph, chart or
+    diagram that holds things is a structure the keys move through: the
+    arrows or h, j, k and l step along its links to the nearest thing that
+    way, Return opens what the cursor is on (centring it and showing its
+    details), / finds and jumps, and - steps back out. Pan and zoom have
+    keys, and ? lists them all.
+  - **A screen reader gets the same structure**, as a tree, grid or list
+    with names and states, never a picture with a caption. Each thing says
+    what it is, how it stands and what it links to.
+  - **Focus always shows**, in the one ring, and is never lost: after an act,
+    a close or a redraw it stays on the thing or moves to its nearest
+    neighbour, never back to the top.
+  - **Reduced motion stops what moves on its own**: pulses, drifting
+    particles, autoplay. What the reader moved still moves, without the
+    flourish.
 - **Everything works from the keyboard, and a Vim user feels at home.** "we
   need to think about insane accessibility, mobile support, and vi support
   together" (2026-09-05). Tab reaches each list once, and j and k move in it;
@@ -577,11 +601,15 @@ destroyed by it" (2026-11-11).
 - **WCAG 2.2 AA is the floor, with APCA beside it**, for every disability, on
   a phone and everything between: "the latest WCAG is like a minimal bar.
   Screen readers, assistive device users, keyboard only users, colour blind of
-  various sorts" (2026-09-09). One focus ring everywhere, which never moves
+  various sorts" (2026-09-09), and AAA wherever text allows (2026-11-14):
+  text and muted text at 7:1 on the page's own ground, in both looks, with
+  AA's 4.5:1 only for muted text on a raised surface. The accent is never
+  text. One focus ring everywhere, which never moves
   layout ("we now have different focus highlighting than the rest of the site,
   FFS", 2026-09-08); a skip link set as carefully as the masthead; targets of
-  24 px, 44 on touch; content at 320 px wide with no sideways scroll; 200% and
-  400% zoom; forced colours and more contrast.
+  44 px (WCAG 2.5.5), reached by padding the hit area rather than growing
+  the type, but for links in running text; content at 320 px wide with no
+  sideways scroll; 200% and 400% zoom; forced colours and more contrast.
 - **Light on the machine.** No request to anyone else's server: fonts,
   scripts and images come from the site. Budgets in `checks.md`. Idle means
   zero: no frames, timers or polling while nothing changes, and a background
