@@ -618,6 +618,25 @@ Provider {
     // while a drawer's binding is being worked out.
     readonly property var making: ({ parts: null })
 
+    // How long program rows' notes and counts have spent reading what each
+    // program holds, as they're drawn, which the launcher zeroes as each
+    // showing begins and reads as it ends (Launcher.qml's readingSpent):
+    // Programs showed 20 new rows in 132 ms under load with 78 of them
+    // untold (2026-11-14). Plain, as making is, so timing notifies nothing.
+    readonly property var reading: ({ ms: 0 })
+
+    // A row's getter that reads `take`, timed into reading.
+    function readTimed(take) {
+        return () => {
+            const began = KeyTimes.now();
+            try {
+                return take();
+            } finally {
+                reading.ms += KeyTimes.now() - began;
+            }
+        };
+    }
+
     // The answer of `work`, a making of `what` timed by its parts, and
     // said in the journal by them when it's slow (Program.makingSaid).
     // One made inside another's is timed as part of it.
@@ -1869,7 +1888,7 @@ Provider {
         });
         // Each row is made again with its getters rather than a field
         // turned into one (Provider's gotten), its note among them.
-        const noted = () => provider.noteOf(entry);
+        const noted = provider.readTimed(() => provider.noteOf(entry));
         if (provider.stepsIn(entry)) {
             const stepping = provider.gotten(row, { note: noted });
             return Object.assign(stepping, {
@@ -1896,12 +1915,12 @@ Provider {
             // A closed one has no windows to count, so it asks nothing
             // of what it holds: a step into Programs reads every row it
             // draws (2026-11-10).
-            count: () => {
+            count: provider.readTimed(() => {
                 const windows = provider.windowCount(entry);
                 return [entry.genericName.toLowerCase(),
                     windows !== "" && provider.holding(entry) === "" ? windows : ""]
                     .filter(part => part !== "").join(" \u00b7 ");
-            },
+            }),
             // The layer of its own keys it holds as Shortcuts, so the
             // layer, named as the program is, isn't listed beside it
             // (Rank.js's keysHeld).
@@ -1927,10 +1946,10 @@ Provider {
         // Made again with its getters (Provider's gotten); its verb and
         // run stay fields, so they're only written.
         return Object.assign(provider.gotten(row, {
-            note: () => provider.noteOf(entry),
+            note: provider.readTimed(() => provider.noteOf(entry)),
             // A closed one asks nothing of what it holds.
-            count: () => served.count === served.what || provider.holding(entry) === ""
-                ? served.count : served.what,
+            count: provider.readTimed(() => served.count === served.what
+                || provider.holding(entry) === "" ? served.count : served.what),
             actsOnly: () => provider.startsOnly(entry, start, row.below),
             ownLayer: () => provider.ownLayer(entry)
         }), {
