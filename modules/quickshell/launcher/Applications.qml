@@ -1670,14 +1670,14 @@ Provider {
     // order, never starting.
     // Either way, what's given it to copy comes after everything, as Meet's
     // Copy a New Meeting's Link does, since Copy is last. Each made is
-    // counted (stepsMade).
+    // counted (made).
     function controls(entry, start, below) {
         // A program held open as its desktop entries are read again, as on
         // a switch, keeps the entry that's gone, which has no id or name;
         // it offers nothing until the step is drawn from the new one.
         if (entry.id === undefined || entry.name === undefined)
             return [];
-        stepsMade += 1;
+        made.steps += 1;
         return timedMaking(`${entry.id}'s acts`, () => controlsMade(entry, start, below));
     }
 
@@ -1757,8 +1757,10 @@ Provider {
     }
 
     // How many programs' steps were made, for the check that asking
-    // whether one starts only makes none where it's plain it doesn't.
-    property int stepsMade: 0
+    // whether one starts only makes none where it's plain it doesn't. A
+    // plain field, as making's, since a counting property notified inside
+    // the foot's binding that asked, a binding loop on niri (2026-11-14).
+    readonly property var made: ({ steps: 0 })
 
     // The names a program's own acts have here, which its desktop entry's
     // actions of the same name leave to them.
