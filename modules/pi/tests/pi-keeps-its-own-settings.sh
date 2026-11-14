@@ -31,6 +31,7 @@ echo '{"theme":"jitsusama","lastChangelogVersion":"1.3.0",'\
 holds '.theme == "jitsusama" and .lastChangelogVersion == "1.3.0"' "a key pi wrote went"
 holds '.compaction == {"enabled": true, "reserveTokens": 64000, "keepRecentTokens": 10000}' "core's compaction didn't go in"
 holds '.terminal == {"showImages": false, "hyperlinks": true}' "core's links didn't go in beside pi's own terminal settings"
+holds '.steeringMode == "all"' "messages typed during a turn would still arrive one per model call"
 
 touch -d 2000-01-01 "$file"
 "$program" "$file"

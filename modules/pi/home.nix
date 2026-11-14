@@ -596,6 +596,13 @@ in
     # links, and in fullscreen it takes every click, so a click opens nothing.
     jitsusama.pi.settings.terminal.hyperlinks = lib.mkDefault true;
 
+    # Every message typed during a turn reaches the agent at its next
+    # boundary, rather than one per model call. Joel types in runs: on 13
+    # November 57 of his messages queued behind a turn for 3,279 s in all,
+    # and handing each run over together would have made it 1,668 s. Each
+    # message, a peer's included, still arrives as its own.
+    jitsusama.pi.settings.steeringMode = lib.mkDefault "all";
+
     home.activation.piTakesCoresSettings =
       lib.hm.dag.entryAfter
         [
