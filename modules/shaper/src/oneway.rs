@@ -83,6 +83,10 @@ const UNSEEN_DRAIN_S: f64 = 5.0;
 /// only the VPN's round trip meets cuts it to: the line carried that, and
 /// a line that fell further is met by the probes on the link.
 const UNSEEN_FLOOR: f64 = 0.5;
+/// How long a start counts the plateau it learned before as reached: the
+/// seconds every flow takes to start again, after which a line that fell
+/// under what was learned is found from what the stay carries.
+const STARTING_S: f64 = 30.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
 const CLIMB: f64 = 1.05;
@@ -332,6 +336,10 @@ pub struct Way {
     /// carried for that long, queue or not, in this stay.
     carrying: VecDeque<(f64, f64)>,
     reached: f64,
+    /// The plateau a start took from what it learned before, which counts
+    /// as reached until `STARTING_S` into the stay, and until when.
+    started_from: f64,
+    starting_until: Option<f64>,
     /// Since when data has waited with our CAKE holding nothing, and what
     /// got through each moment of it.
     elsewhere: Option<(f64, f64, u32)>,
@@ -374,6 +382,8 @@ impl Way {
             crowded: VecDeque::new(),
             carrying: VecDeque::new(),
             reached: 0.0,
+            started_from: 0.0,
+            starting_until: None,
             elsewhere: None,
             plateau: None,
             next_probe: 0.0,
@@ -399,6 +409,12 @@ impl Way {
         if let Some(plateau) = plateau {
             way.plateau = Some(plateau);
             way.rate = way.rate.min((plateau * HOLD).max(LEAST_KBIT));
+            // The link carried the plateau on this network, so the start
+            // counts it as reached. With nothing reached, the seconds after
+            // a start, while every flow starts again, passed for the line:
+            // at 03:41 on 14 November they taught a plateau of 1,404 over
+            // one of about 7,600.
+            way.started_from = plateau;
         }
         way
     }
@@ -412,6 +428,16 @@ impl Way {
             // the plateau sets.
             base: self.base.map(|base| base.max(self.proven * 0.9)),
             plateau: self.plateau,
+        }
+    }
+
+    /// The most the line is known to carry in this stay: what it carried,
+    /// or through a start's own seconds, the plateau it started from.
+    fn reached(&self, at: f64) -> f64 {
+        if self.starting_until.is_some_and(|until| at < until) {
+            self.reached.max(self.started_from)
+        } else {
+            self.reached
         }
     }
 
@@ -477,8 +503,8 @@ impl Way {
         let elsewhere = ours.waiting
             && held_back
             && through > FLOWING_KBIT
-            && self.reached > 0.0
-            && through >= self.reached * REACHED;
+            && self.reached(at) > 0.0
+            && through >= self.reached(at) * REACHED;
         if elsewhere {
             let (since, sum, n) = self.elsewhere.get_or_insert((at, 0.0, 0));
             *sum += through;
@@ -592,6 +618,7 @@ impl Way {
         // moment, not a climb all through it.
         let dt = self.last_at.map_or(0.0, |last| (at - last).clamp(0.0, 1.0));
         self.last_at = Some(at);
+        self.starting_until.get_or_insert(at + STARTING_S);
         // What crossed the line is what CAKE sent, where the shaper
         // counted it: the link sends the home network's traffic too.
         let line = ours
@@ -674,7 +701,11 @@ impl Way {
                     .iter()
                     .map(|&(_, c)| c)
                     .fold(carried, f64::max);
-                self.plateau = Some(plateau.min(most / HOLD).max(self.reached * UNSEEN_FLOOR));
+                self.plateau = Some(
+                    plateau
+                        .min(most / HOLD)
+                        .max(self.reached(at) * UNSEEN_FLOOR),
+                );
             }
             self.elsewhere = None;
             // Only the line sets what got through while something of ours
@@ -687,7 +718,7 @@ impl Way {
             let filled = ours.is_some_and(|ours| ours.waiting);
             self.cut(at, delay_ms, carried, filled);
             if unseen {
-                self.rate = self.rate.max(self.reached * UNSEEN_FLOOR);
+                self.rate = self.rate.max(self.reached(at) * UNSEEN_FLOOR);
             }
         } else if let Some(ours) = ours
             && !standing
@@ -1085,6 +1116,79 @@ mod tests {
         assert!(
             !near(at(&held, 4.0), 11_400.0),
             "a network never met found its plateau as soon, so this shows nothing"
+        );
+    }
+
+    // As at 03:41 on 14 November: a switch restarted the shaper with a
+    // plateau of about 7,600 learned, and in the seconds after, the
+    // agents' flows, starting again, sent 1.4 Mbit/s with data waiting.
+    // With nothing yet carried in the stay, that was taken for a queue
+    // past CAKE: the plateau fell to 1,404, the upload was held at 1.3
+    // Mbit/s where it had carried 9.9 just before, and the stay saved it.
+    #[test]
+    fn the_slow_seconds_after_a_start_don_t_teach_a_small_plateau() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(7_600.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        run(&mut c, 0.0, 20.0, |at| Seen {
+            up_ours: Some(Ours {
+                waiting: true,
+                ..Ours::default()
+            }),
+            ..quiet(1_400.0, 300.0)(at)
+        });
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(
+            plateau >= 3_800.0,
+            "a start's slow seconds taught {plateau}"
+        );
+    }
+
+    // The same seconds behind a VPN whose round trip stands over what it
+    // was, with our CAKE holding a queue for it: a queue only the VPN
+    // meets lowers the plateau to what got through, and with nothing yet
+    // carried in the stay, nothing held it over that.
+    #[test]
+    fn a_start_behind_a_slow_vpn_keeps_half_its_plateau() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(7_600.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        run(&mut c, 0.0, 20.0, |at| Seen {
+            up_ours: Some(Ours {
+                queued: true,
+                in_vpn: true,
+                vpn_queued: true,
+                waiting: true,
+                ..Ours::default()
+            }),
+            vpn_ms: Some(if at < 5.0 { 80.0 } else { 130.0 }),
+            ..quiet(1_400.0, 300.0)(at)
+        });
+        let plateau = c.up.plateau.expect("a plateau");
+        assert!(
+            plateau >= 3_800.0,
+            "a start behind a slow VPN taught {plateau}"
+        );
+    }
+
+    // A network whose line fell to half what was learned of it: the
+    // router's hidden queue is still taken back under the line, once the
+    // start's own seconds have passed.
+    #[test]
+    fn a_line_fallen_under_its_learned_plateau_is_still_found() {
+        let learned = Learned {
+            base: None,
+            plateau: Some(12_000.0),
+        };
+        let mut c = Controller::from_learned(learned, Learned::default());
+        let limits = run_flow_queued(&mut c, 0.0, 90.0, 6_000.0);
+        assert!(
+            near(limits, 5_700.0),
+            "held under the fallen line: {limits:?}"
         );
     }
 
