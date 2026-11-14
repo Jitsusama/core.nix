@@ -1441,7 +1441,8 @@ fn list_still_red(
         short(base),
         short(head)
     );
-    let listed = (!listed_on_main(world, head, test))
+    let by_subtests = listed_by_subtests_on_main(world, test, &failing);
+    let listed = (!by_subtests && !listed_on_main(world, head, test))
         .then(|| world.quarantine(test, &failing, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
@@ -1454,6 +1455,9 @@ fn list_still_red(
     let after = match &listed {
         Some(Ok(made)) => format!("listed as quarantined in #{}, owned by {what}", made.pr),
         Some(Err(why)) => format!("listing it as quarantined failed: {why}"),
+        None if by_subtests => {
+            "main lists it by subtests already, so its list stays as it is".to_owned()
+        }
         None => "main lists it as quarantined now".to_owned(),
     };
     state.say(&format!(
@@ -3805,6 +3809,43 @@ mod tests {
         assert!(world.reverted.lock().unwrap().is_empty());
         assert!(state.hold().is_none());
         assert_eq!(findings(&state)[0]["kind"], "failed-before");
+    }
+
+    #[test]
+    fn a_test_the_base_failed_twice_in_none_named_is_left_where_main_lists_it() {
+        // A run killed at its timeout names no subtest, and a list never
+        // lists whole a test it lists by subtests, so listing it made an
+        // empty change git refused, as for a flaky one at 20:11 on 13
+        // November.
+        let state = state("still-red-held-subtest");
+        let log = state.log("s", "vm-a", 1);
+        for _ in 0..FAILURES {
+            state
+                .record("s", "vm-a", Ran::Failed, Some(1), &log)
+                .unwrap();
+        }
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            listed_by_subtest: vec![("vm-a".into(), names("test_b"))],
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1]);
+        round(&world, &state, "s").unwrap();
+        assert!(
+            world.put_in_quarantine.lock().unwrap().is_empty(),
+            "main lists vm-a by test_b, yet the net listed it again"
+        );
+        let found = findings(&state);
+        assert_eq!(
+            found[0]["kind"], "failed-before",
+            "its owner isn't told: {found:?}"
+        );
+        assert!(
+            found[0]["quarantine_error"].is_null(),
+            "a test main lists was said to have failed listing: {found:?}"
+        );
     }
 
     #[test]
