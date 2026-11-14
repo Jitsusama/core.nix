@@ -487,8 +487,10 @@ Provider {
     // start and lights there, since a row coming later goes below those
     // drawn (Steady.js). One signed out is asked nothing, so holds none.
     // The held act is a row made here, against every row being served: a
-    // stopgap until slack-people serves it itself while it's asked, by
-    // Wed 18 Nov, when `holds` goes.
+    // stopgap for the moment before slack-people's own looking line, said
+    // at once as it's asked (its main.rs), reaches here, until the people
+    // daemon serves that act with each person ahead, by Wed 18 Nov, when
+    // `holds` goes.
     function servedActs(person, name, holds) {
         const key = `person:${person.key}`;
         const served = servedEntry(person, name)?.acts ?? [];
