@@ -191,6 +191,7 @@
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
+        shutdown-status = pkgs.callPackage ../../modules/systemd/shutdown-status/package.nix { };
         slack-people = slack;
         slack-unreads = slack;
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };

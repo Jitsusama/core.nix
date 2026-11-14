@@ -293,11 +293,6 @@
     "exits"
     "helps"
   ];
-  shutdown-status = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   sound = [
     "kit"
     "exits"
