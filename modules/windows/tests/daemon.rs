@@ -520,7 +520,10 @@ fn an_entry_added_names_its_windows_program() {
 fn a_reader_window_says_the_file_it_shows() {
     let running = Running::new("shows");
     let (mut client, records) = running.watching();
-    assert!(records.iter().all(|record| record.get("file").is_none()));
+    assert!(
+        records.iter().all(|record| record.get("file").is_none()),
+        "a window said a file before any reader said one: {records:?}"
+    );
     let showing = running.path("state/reader/showing");
     std::fs::create_dir_all(&showing).unwrap();
     std::fs::write(showing.join("120"), "120\t/notes/sanderling.md\n").unwrap();
