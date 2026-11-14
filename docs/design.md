@@ -1071,6 +1071,13 @@ moves in a way that delays input or focus, every animation holds the panel's
 refresh rate, the first frame of every surface is complete, and nothing jumps
 when its content changes size. Anything that stutters is a bug.
 
+Motion ends, with one exception, at Joel's word: a line in Super+S still
+waiting on its answer breathes, down to a fifth of its ink and back, for as
+long as the line is up and it waits (2026-11-13 17:46: "the breathing should
+be more pronounced and continue while waiting"). It says something is still
+being done for him, which a still line can't, and it stops the moment the
+answer comes or the line is put away.
+
 ## Latency Budgets
 
 Joel types the moment he presses a chord, so a surface that takes the keys
