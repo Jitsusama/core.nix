@@ -1,14 +1,16 @@
 //! The Google account, as the harness keeps it.
 //!
 //! The harness signs Joel in (pi's `/google-auth`) and keeps the OAuth
-//! app, its accounts and each account's tokens in one file. This program
-//! only reads it: pi rewrites the file each time it refreshes a token, so a
-//! second writer could lose one of pi's writes or leave the file half
-//! written for both. A token this program refreshes is kept in memory
+//! app, its accounts and each account's tokens as one JSON document, in the
+//! desktop's keyring, or in a file as pi kept it before it moved sign-ins
+//! there. This program only reads it: pi rewrites it each time it refreshes
+//! a token, so a second writer could lose one of pi's writes or leave it
+//! half written for both. A token this program refreshes is kept in memory
 //! instead (token.rs).
 
 use std::fs;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 
@@ -82,11 +84,28 @@ struct Tokens {
     scope: String,
 }
 
-/// The account `name` names, else the file's default, else its first, as
-/// the harness itself picks one.
-pub fn read(path: &Path, name: Option<&str>) -> Result<Account, Missing> {
-    let text = fs::read_to_string(path).map_err(|_| Missing::NoFile)?;
+/// The account `name` names, else the sign-in's default, else its first,
+/// as the harness itself picks one. The sign-in is the keyring's, printed
+/// by the program `keyring`, while it has one; else the file at `path`.
+pub fn read(keyring: Option<&Path>, path: &Path, name: Option<&str>) -> Result<Account, Missing> {
+    let text = keyring
+        .and_then(kept)
+        .or_else(|| fs::read_to_string(path).ok())
+        .ok_or(Missing::NoFile)?;
     parse(&text, name)
+}
+
+/// The sign-in the program `keyring` prints, or none when it can't be run,
+/// fails, as it does for an item the keyring lacks, or prints nothing. What
+/// it says otherwise is let go, so no part of a sign-in reaches the journal.
+fn kept(keyring: &Path) -> Option<String> {
+    let out = Command::new(keyring)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8(out.stdout).ok()?;
+    (out.status.success() && !text.trim().is_empty()).then_some(text)
 }
 
 fn parse(text: &str, name: Option<&str>) -> Result<Account, Missing> {
@@ -175,9 +194,51 @@ mod tests {
     #[test]
     fn a_missing_or_broken_file_is_no_file() {
         assert_eq!(
-            read(Path::new("/nonexistent/credentials.json"), None),
+            read(None, Path::new("/nonexistent/credentials.json"), None),
             Err(Missing::NoFile)
         );
         assert_eq!(parse("{", None), Err(Missing::NoFile));
+    }
+
+    /// A folder of the test's own, holding the file with `file`'s sign-in
+    /// and a keyring reader that runs `reader`.
+    fn kept(test: &str, file: &str, reader: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = std::env::temp_dir().join(format!("google-account-{test}"));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("the test's folder is made");
+        let path = folder.join("credentials.json");
+        fs::write(&path, file).expect("the file is written");
+        let keyring = folder.join("keyring");
+        fs::write(&keyring, format!("#!/bin/sh\n{reader}\n")).expect("the reader is written");
+        fs::set_permissions(&keyring, fs::Permissions::from_mode(0o755)).expect("the reader runs");
+        (keyring, path)
+    }
+
+    #[test]
+    fn the_keyrings_sign_in_is_read_over_the_file() {
+        let keyring = FILE.replace(r#""refresh_token": "wr""#, r#""refresh_token": "kr""#);
+        let (reader, path) = kept("keyring", FILE, &format!("cat <<'END'\n{keyring}\nEND"));
+        let account = read(Some(&reader), &path, None).expect("the keyring's sign-in is read");
+        assert_eq!(
+            account.refresh_token, "kr",
+            "the file was read over the keyring"
+        );
+    }
+
+    #[test]
+    fn the_file_is_read_while_the_keyring_holds_no_sign_in() {
+        for (test, reader) in [("refused", "exit 1"), ("empty", "exit 0")] {
+            let (reader, path) = kept(test, FILE, reader);
+            let account = read(Some(&reader), &path, None).expect("the file's sign-in is read");
+            assert_eq!(account.refresh_token, "wr", "{test}: the file wasn't read");
+        }
+        let (_, path) = kept("unreadable", FILE, "");
+        let nowhere = Path::new("/nonexistent/keyring");
+        assert_eq!(
+            read(Some(nowhere), &path, None).map(|account| account.refresh_token),
+            Ok("wr".to_owned()),
+            "a keyring that can't be read hid the file"
+        );
     }
 }

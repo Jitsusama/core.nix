@@ -17,11 +17,13 @@ onLinux {
   # shell reads is never the one from before the switch.
   google-switches-to-the-new-one =
     holds "google-switches-to-the-new-one"
-      "A switch stops google before reloading, so google.path starts the old one again."
+      "A switch stops google before reloading, so its socket starts the old one again."
       (((account graphical).systemd.user.services.google.Unit.X-SwitchMethod or null) == "restart");
 
-  # google serves the daemon interface on a socket systemd holds, made only
-  # once pi has signed in, as google itself starts only then.
+  # google serves the daemon interface on a socket systemd holds, and both
+  # start at login whether or not the file pi kept its sign-in in before
+  # the keyring is there, reading the keyring's through a reader of pi's
+  # own item, so a sign-in moved into the keyring is still read.
   google-answers-on-systemds-socket =
     let
       user = (account graphical).systemd.user;
@@ -29,10 +31,16 @@ onLinux {
       unit = user.services.google;
     in
     holds "google-answers-on-systemds-socket"
-      "google's daemon socket isn't systemd's, made once pi signs in, or google's to serve."
+      "google's socket isn't systemd's or google's, waits on a file, or misses the keyring."
       (
         socket.Socket.ListenStream == "%t/daemons/google.sock"
-        && socket.Unit.ConditionPathExists == user.paths.google.Path.PathExists
+        && !(socket.Unit ? ConditionPathExists)
+        && !(user.paths ? google)
+        && lib.elem "default.target" unit.Install.WantedBy
+        && lib.any (
+          setting:
+          lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/" setting && lib.hasSuffix "-google-sign-in" setting
+        ) (lib.toList unit.Service.Environment)
         && lib.elem "google.socket" unit.Unit.Requires
         && lib.any (lib.hasInfix " %t/daemons/google.sock") (lib.toList unit.Service.ExecStart)
       );

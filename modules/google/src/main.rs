@@ -39,8 +39,9 @@
 //! token, a meeting or anything else the account holds.
 //!
 //! usage: google CREDENTIALS DAEMON [WORDS], CREDENTIALS the harness's
-//! file, the account asked as being the file's default, as pi's own is,
-//! DAEMON the daemon interface's socket, and WORDS the launcher's
+//! file, the account asked as being its default, as pi's own is, read
+//! over by the keyring's while `SIGN_IN_KEYRING` names a program that
+//! prints it, as pi has kept it since moving sign-ins there, DAEMON the daemon interface's socket, and WORDS the launcher's
 //! vocabulary (launcher/words.json), which its ready rows are said in;
 //! without it, it serves no rows.
 //!
@@ -148,6 +149,7 @@ fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Fail
     }
     let places = places();
     let mut watch = Watch::new(Google::new(Origins::default()), credentials, None);
+    watch.keyring = env::var_os("SIGN_IN_KEYRING").map(PathBuf::from);
     watch.weigh(&places);
     let mut wait = EVERY;
     let mut failures: u32 = 0;
