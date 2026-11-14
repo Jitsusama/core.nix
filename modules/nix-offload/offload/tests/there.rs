@@ -7,6 +7,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::time::Duration;
 
+/// Where a run says it wants `dir`'s lender to lend, as `there::wants_of`
+/// says: beside the folder, by its name.
+fn wants_of(dir: &Path) -> PathBuf {
+    dir.with_file_name("offload-wants")
+        .join(dir.file_name().expect("a lender's folder has a name"))
+}
+
 /// ssh as the builder answers: it writes its verbose log where `-E` says,
 /// records every word it was given and its last two (the host and the
 /// command) apart, each command after the last in `ssh-commands` and each
@@ -2319,8 +2326,7 @@ fn a_tree_is_built_at_the_commit_it_was_at_when_asked_however_long_it_waits() {
         .spawn()
         .unwrap();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    let asking =
-        || fs::read_dir(offload.join("wanted")).is_ok_and(|mut wanted| wanted.next().is_some());
+    let asking = || fs::read_dir(wants_of(offload)).is_ok_and(|mut wanted| wanted.next().is_some());
     while !asking() {
         assert!(
             std::time::Instant::now() < deadline,
@@ -4468,7 +4474,7 @@ fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 0, "{built:?}");
     assert!(said.contains("so VM tests go to the warm one"), "{said}");
     assert!(
-        !rig.third.join("wanted").exists(),
+        !wants_of(&rig.third).exists(),
         "the warming one is room enough to come: {said}"
     );
 
@@ -4476,7 +4482,7 @@ fn vm_tests_go_to_a_warm_vm_builder_while_one_stands() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 14, "{built:?} {said}");
     assert!(said.contains("and 1 more is asked for"), "{said}");
     assert_eq!(
-        fs::read_dir(rig.third.join("wanted")).unwrap().count(),
+        fs::read_dir(wants_of(&rig.third)).unwrap().count(),
         1,
         "the third is asked for while the run waits: {said}"
     );

@@ -2660,6 +2660,14 @@ fn serve(settings: &Settings) -> bool {
             lender.display()
         );
     }
+    // And held locked while it runs, since a fenced run has a pid
+    // namespace of its own, where the pid names nothing. Shared, as the
+    // lender it supersedes holds it too until it ends.
+    let _lends = fs::File::open(&lender).and_then(|file| file.lock_shared().map(|()| file));
+    // Runs once said they wanted a builder in the lender's folder, which
+    // a fence gives its commands only to read; they say it beside it now
+    // (there::wants_of).
+    let _ = fs::remove_dir_all(dir.join("wanted"));
     let mut lent = start(settings, &mut machines, into_day());
     let mut leaving: Vec<Leaving> = Vec::new();
     let mut hold = decide::Hold::default();
