@@ -456,5 +456,15 @@
       "test_ctrl_print_over_the_launcher_records_it_in"
     ],
     "test": "vm-desktop-captures"
+  },
+  {
+    "at": 1794642888,
+    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
+    "owner_pr": 4252,
+    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "subtests": [
+      "test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest"
+    ],
+    "test": "vm-desktop-shows-then-rests"
   }
 ]
