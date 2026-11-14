@@ -11,7 +11,14 @@
 //! Answered `ENOSYS`, the guest's FUSE stops asking, and a test's files
 //! are thrown away anyway.
 //!
-//! Usage: `without-syncfs PROGRAM [ARGUMENT]...`
+//! Usage: `without-syncfs [--] PROGRAM [ARGUMENT]...`
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md), but only from its own flags, those before PROGRAM
+//! or a `--`, as `env` and `timeout` do: the kit would take a `--help`
+//! anywhere, and what follows PROGRAM is the program's, untouched and not
+//! read as text. Anything it says before running the program goes to
+//! standard error at once, since the program takes over the process.
 //!
 //! The refusal is a seccomp filter, which needs no privilege once the
 //! program, and everything it starts, is barred from gaining any
@@ -22,10 +29,12 @@
 //! so, since a test that runs beats one that fails over the disk's wear.
 
 use std::env;
-use std::ffi::{c_int, c_ulong};
-use std::io;
+use std::ffi::{OsString, c_int, c_ulong};
+use std::io::{self, Write};
 use std::os::unix::process::CommandExt;
 use std::process::{Command, ExitCode};
+
+use terminal_kit::{Environment, Exit, Failure, Help};
 
 /// One instruction of a classic BPF program, laid out as the kernel reads
 /// one (`struct sock_filter`).
@@ -128,31 +137,114 @@ fn refuse_syncfs() -> io::Result<()> {
     Ok(())
 }
 
-/// What a shell answers for a program it can't run.
-const NOT_RUN: u8 = 127;
-/// What this answers when it isn't told what to run.
-const MISUSED: u8 = 2;
+fn help() -> Help {
+    Help::new("without-syncfs", "runs a program refused syncfs")
+        .command("PROGRAM [ARGUMENT]...", "runs it, its exit this one's")
+        .example(
+            "without-syncfs virtiofsd --shared-dir=/nix/store",
+            "how core's VM tests start virtiofsd",
+        )
+        .exit(Exit::NotFound, "there's no PROGRAM by that name")
+        .exit(Exit::Refused, "PROGRAM may not be run")
+}
+
+/// The arguments parted into this program's own flags, those before the
+/// first word that isn't one, and the program's command line. A `--` ends
+/// the flags and goes with neither; `--format` and `--color` take the word
+/// after them as their value.
+fn parted(arguments: Vec<OsString>) -> (Vec<OsString>, Vec<OsString>) {
+    let mut flags = 0;
+    while let Some(word) = arguments.get(flags) {
+        if word == "--" || !word.to_string_lossy().starts_with('-') {
+            break;
+        }
+        flags += if word == "--format" || word == "--color" {
+            2
+        } else {
+            1
+        };
+    }
+    let flags = flags.min(arguments.len());
+    let mut own = arguments;
+    let mut program = own.split_off(flags);
+    if program.first().is_some_and(|word| word == "--") {
+        program.remove(0);
+    }
+    (own, program)
+}
 
 fn main() -> ExitCode {
-    let mut arguments = env::args_os().skip(1);
-    let Some(program) = arguments.next() else {
-        eprintln!("Usage: without-syncfs PROGRAM [ARGUMENT]...");
-        return ExitCode::from(MISUSED);
+    let (own, program) = parted(env::args_os().skip(1).collect());
+    let ending = terminal_kit::run_os(
+        &help(),
+        env!("CARGO_PKG_VERSION"),
+        &Environment::here(),
+        own,
+        |context| {
+            if let Some(word) = context.args.first() {
+                return Err(Failure::new(Exit::Usage, format!("{word} isn't its flag"))
+                    .try_this("without-syncfs --help"));
+            }
+            run(&program)
+        },
+    );
+    let _ = io::stdout().lock().write_all(ending.stdout.as_bytes());
+    let _ = io::stderr().lock().write_all(ending.stderr.as_bytes());
+    ending.exit.into()
+}
+
+/// Runs the program in this process's place, refused syncfs where the
+/// filter can be put in place; it returns only when the program can't run.
+fn run(program: &[OsString]) -> Result<(), Failure> {
+    let Some((name, arguments)) = program.split_first() else {
+        return Err(
+            Failure::new(Exit::Usage, "it takes PROGRAM, then its arguments")
+                .try_this("without-syncfs --help"),
+        );
     };
     if let Err(error) = refuse_syncfs() {
         eprintln!("without-syncfs: runs without refusing syncfs, since {error}.");
     }
-    let error = Command::new(&program).args(arguments).exec();
-    eprintln!(
-        "without-syncfs: can't run {}: {error}.",
-        program.to_string_lossy()
-    );
-    ExitCode::from(NOT_RUN)
+    let error = Command::new(name).args(arguments).exec();
+    // The program's own exits pass through, so this one's stay among
+    // sysexits.h's, apart from the small numbers a program uses.
+    let exit = match error.kind() {
+        io::ErrorKind::NotFound => Exit::NotFound,
+        io::ErrorKind::PermissionDenied => Exit::Refused,
+        _ => Exit::Unavailable,
+    };
+    Err(
+        Failure::new(exit, format!("{} couldn't run", name.to_string_lossy()))
+            .because(error.to_string()),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn words(line: &str) -> Vec<OsString> {
+        line.split_whitespace().map(OsString::from).collect()
+    }
+
+    #[test]
+    fn only_the_flags_before_the_program_are_its_own() {
+        assert_eq!(
+            parted(words("--color never virtiofsd --help -v")),
+            (words("--color never"), words("virtiofsd --help -v")),
+            "a flag after PROGRAM was taken from it"
+        );
+        assert_eq!(
+            parted(words("-- --odd --help")),
+            (words(""), words("--odd --help")),
+            "a -- should end its flags and go with neither"
+        );
+        assert_eq!(
+            parted(words("--help")),
+            (words("--help"), words("")),
+            "its own flags alone should be all its own"
+        );
+    }
 
     /// What the kernel would answer a call by `FILTER`, run as classic BPF
     /// runs its few instructions here.

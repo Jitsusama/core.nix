@@ -352,11 +352,6 @@
     "exits"
     "helps"
   ];
-  without-syncfs = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
   zoom-opens = [ "helps" ];
