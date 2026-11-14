@@ -13,7 +13,10 @@
 #   !include linux-builder.conf
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
-# x86_64 VM, so a VM test is never sent there to crawl. A machine adds
+# x86_64 VM, so a VM test is never sent there to crawl. Nor `uid-range` and
+# `devnet`, which nixpkgs's guest offers since 26.11 for tests in nspawn
+# containers: this line leaves those tests, x86_64 ones under Rosetta
+# among them, to the Linux builders that run them natively. A machine adds
 # features of its own in `features`, such as one that marks code allowed
 # only on its own builders.
 #
