@@ -22,9 +22,6 @@
     "kit"
     "helps"
   ];
-  bluetooth-pairing-seal = [ "helps" ];
-  boot-fell-back = [ "helps" ];
-  boot-fell-back-told = [ "helps" ];
   boot-stopped = [
     "inks"
     "helps"
@@ -40,21 +37,16 @@
     "exits"
     "helps"
   ];
-  cargo-builds = [ "helps" ];
   changed-checks = [
     "kit"
     "helps"
   ];
-  chrony-network-servers = [ "helps" ];
   clipboard-history = [
     "kit"
     "exits"
     "helps"
   ];
-  collect = [ "helps" ];
-  console-setup = [ "helps" ];
   eero = [ "inks" ];
-  gnome-keyring-unlock = [ "helps" ];
   guide = [
     "kit"
     "exits"
@@ -66,7 +58,6 @@
     "exits"
     "helps"
   ];
-  ir-camera-pipeline = [ "helps" ];
   jobs-broker = [
     "kit"
     "exits"
@@ -76,7 +67,6 @@
     "kit"
     "helps"
   ];
-  launched = [ "helps" ];
   launcher = [
     "kit"
     "exits"
@@ -87,8 +77,6 @@
     "kit"
     "helps"
   ];
-  lid-held = [ "helps" ];
-  loader-first-in-boot-order = [ "helps" ];
   location = [
     "kit"
     "exits"
@@ -136,7 +124,6 @@
     "kit"
     "helps"
   ];
-  option-rom-check = [ "helps" ];
   pain-points = [
     "kit"
     "exits"
@@ -163,7 +150,6 @@
   ];
   pi-ask = [ "helps" ];
   pi-carry = [ "helps" ];
-  pi-host-down = [ "helps" ];
   pi-keys = [
     "kit"
     "exits"
@@ -185,7 +171,6 @@
     "exits"
     "helps"
   ];
-  quickshell-starts-warm = [ "helps" ];
   record-window = [
     "kit"
     "exits"
@@ -195,13 +180,11 @@
     "kit"
     "helps"
   ];
-  saves-while-open = [ "helps" ];
   secret-asks = [
     "kit"
     "exits"
     "helps"
   ];
-  secure-boot-signed-check = [ "helps" ];
   shaper = [
     "kit"
     "exits"
@@ -221,7 +204,6 @@
     "kit"
     "helps"
   ];
-  swap-file-grows = [ "helps" ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
@@ -239,7 +221,6 @@
     "exits"
     "helps"
   ];
-  tpm-follows-a-firmware-update = [ "helps" ];
   tuple-call = [
     "kit"
     "exits"
@@ -254,13 +235,11 @@
     "kit"
     "helps"
   ];
-  watchdog-wakes-again = [ "helps" ];
   whereabouts = [
     "kit"
     "exits"
     "helps"
   ];
-  wifi-power-save = [ "helps" ];
   wifid = [
     "kit"
     "helps"

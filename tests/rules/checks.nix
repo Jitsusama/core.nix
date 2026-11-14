@@ -147,33 +147,70 @@
           '';
       in
       {
+        bluetooth-pairing-seal =
+          script "bluetooth-pairing-seal" ../../modules/bluetooth-disk-prompt/seal.sh
+            { };
+        boot-fell-back = script "boot-fell-back" ../../modules/lanzaboote/fell-back.sh { };
+        boot-fell-back-told = script "boot-fell-back-told" ../../modules/lanzaboote/fell-back-told.sh { };
         camera = script "camera" ../../modules/camera/camera.sh { };
+        cargo-builds = script "cargo-builds" ../../modules/cargo/builds.sh { };
+        chrony-network-servers =
+          script "chrony-network-servers" ../../modules/chrony/network-servers.sh
+            { };
+        collect = script "collect" ../../modules/linux-builder/collect.sh { };
+        console-setup = script "console-setup" ../../modules/console/setup.sh { };
         declared-last = script "declared-last" ../../modules/git/declared-last.sh { };
         disk-guard-merged-on-github =
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
+        gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };
         google-opens = script "google-opens" ../../modules/google/opens.sh {
           words = "a-window an-opener";
         };
         inkscape-drawings = script "inkscape-drawings" ../../modules/inkscape/drawings.sh { };
+        ir-camera-pipeline =
+          script "ir-camera-pipeline" ../../hardware/dell-xps-14-da14260/camera/ir-camera-pipeline.sh
+            { };
+        launched = script "launched" ../../modules/open-with/launched.sh { };
+        lid-held = script "lid-held" ../../modules/quickshell/lid-held.sh { };
+        loader-first-in-boot-order =
+          script "loader-first-in-boot-order" ../../modules/lanzaboote/loader-first.sh
+            { };
         lock-for-sleep = script "lock-for-sleep" ../../modules/swayidle/lock-for-sleep.sh { };
         lock-screen = script "lock-screen" ../../modules/swayidle/lock-screen.sh { };
         mpv-command = script "mpv-command" ../../modules/mpv/command.sh { };
         mpv-stopped = script "mpv-stopped" ../../modules/mpv/stopped.sh { };
         niri-deadline = script "niri-deadline" ../../modules/niri/niri-deadline.sh { };
         niri-off-cpu = script "niri-off-cpu" ../../modules/niri-off-cpu/niri-off-cpu.sh { };
+        option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
         pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
+        pi-host-down = script "pi-host-down" ../../modules/pi/host-down.sh { };
         pi-settings = script "pi-settings" ../../modules/pi/settings.sh { };
+        quickshell-starts-warm =
+          script "quickshell-starts-warm" ../../modules/quickshell/starts-warm.sh
+            { };
+        saves-while-open = script "saves-while-open" ../../modules/backlight/saves-while-open.sh { };
         screen-kept = script "screen-kept" ../../modules/swayidle/screen-kept.sh { };
         se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
+        secure-boot-signed-check =
+          script "secure-boot-signed-check" ../../modules/lanzaboote/signed-check.sh
+            { };
         shots-changed = script "shots-changed" ../../tools/shots-changed/shots-changed.sh { };
         sign = script "sign" ../../modules/signing/sign.sh { before = "export name=sign"; };
         ssh-askpass = script "ssh-askpass" ../../modules/quickshell/askpass.sh { };
+        swap-file-grows = script "swap-file-grows" ../../modules/disko/swap-file-grows.sh { };
         swayidle-away = script "swayidle-away" ../../modules/swayidle/away.sh { };
         swayimg-command = script "swayimg-command" ../../modules/swayimg/command.sh { };
         switch-system = script "switch-system" ../../modules/switch-system/switch-system.sh { };
+        tpm-follows-a-firmware-update =
+          script "tpm-follows-a-firmware-update" ../../modules/lanzaboote/firmware-update.sh
+            { };
+        watchdog-wakes-again =
+          script "watchdog-wakes-again" ../../hardware/microsoft-surface-laptop-4-1958/watchdog-wakes-again.sh
+            { };
+        wifi-power-save = script "wifi-power-save" ../../modules/wpa_supplicant/power-save.sh { };
         xdg-open = script "xdg-open" ../../modules/open-with/xdg-open.sh { };
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
