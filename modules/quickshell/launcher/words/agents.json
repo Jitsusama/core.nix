@@ -114,6 +114,11 @@
         "selection": "selection",
         "clipboard": "clipboard",
         "lines": "{count} lines"
+      },
+      "states": {
+        "thread": {
+          "ask": "Reply, and the void passes it to whoever has it."
+        }
       }
     },
     {

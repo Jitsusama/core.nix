@@ -79,15 +79,28 @@ Item {
                     // His words and the answers in the words' face, the rest in the voice.
                     readonly property bool voiced: !modelData.answer && !modelData.mine
                     readonly property bool folded: nerd.visible
+                    // As tall as its words, or as who and when stacked at its right.
+                    readonly property int stands: Math.max(said.lineCount, by.visible ? 2 : 1)
+                    // The one text column every line holds, up to where a time stands,
+                    // as the list's answers do, so the paragraph keeps one right edge
+                    // (VKCF3Z [fd1e4e67]).
+                    readonly property real column: width - clock.width
+                        - Theme.space.rung.groups - thread.textAt
 
                     width: thread.width
-                    height: (said.lineCount + (folded ? 1 : 0)) * pitch
+                    height: (stands + (folded ? 1 : 0)) * pitch
+
+                    TextMetrics {
+                        id: clock
+                        font: side.font
+                        text: "00:00"
+                    }
 
                     Text {
                         id: said
                         x: thread.textAt
                         y: entry.pitch - baselineOffset
-                        width: entry.width - x
+                        width: entry.column
                         text: entry.modelData.text
                         textFormat: Text.PlainText
                         color: entry.modelData.answer ? Theme.text : Theme.muted
@@ -101,31 +114,46 @@ Item {
                             : Theme.level.words.pointSize
                         font.variableAxes: entry.voiced ? Theme.level.voice.variableAxes
                             : Theme.level.words.variableAxes
-                        // Its first line alone gives way to who and when, as the list's
-                        // answers give way to who answered.
+                        // Its first line gives way to a when wider than a time, an earlier
+                        // day's, and its second to who wrote it.
                         onLineLaidOut: laid => {
                             if (laid.number === 0)
                                 laid.width = Math.min(laid.width,
                                     side.x - Theme.space.rung.groups - said.x);
+                            else if (laid.number === 1 && by.visible)
+                                laid.width = Math.min(laid.width,
+                                    by.x - Theme.space.rung.groups - said.x);
                         }
                     }
 
-                    // Who wrote it and when, at the right of its first line in the note face,
-                    // its right edge on the frame's text edge; a long name gives way at a
-                    // third of the line.
+                    // When, at the right of its first line in the note face, its right edge on
+                    // the frame's text edge, as the list says when he said a line.
                     Text {
                         id: side
                         x: entry.width - width
-                        width: Math.min(implicitWidth, entry.width / 3)
                         anchors.baseline: said.baseline
-                        text: entry.modelData.by === "" ? entry.modelData.side
-                            : `${entry.modelData.by} \u00b7 ${entry.modelData.side}`
+                        text: entry.modelData.side
                         textFormat: Text.PlainText
                         color: Theme.muted
-                        elide: Text.ElideLeft
                         font.family: Theme.level.note.family
                         font.pointSize: Theme.level.note.pointSize
                         font.features: { "tnum": 1 }
+                        onXChanged: said.forceLayout()
+                    }
+
+                    // Who wrote it, under when, as the list stacks who answered under the
+                    // time (VKCF3Z [fd1e4e67]); a long name gives way at a third of the line.
+                    Text {
+                        id: by
+                        visible: text !== ""
+                        x: entry.width - width
+                        y: side.y + entry.pitch
+                        width: Math.min(implicitWidth, entry.width / 3)
+                        text: entry.modelData.by
+                        textFormat: Text.PlainText
+                        color: Theme.muted
+                        elide: Text.ElideRight
+                        font: side.font
                         onXChanged: said.forceLayout()
                     }
 
@@ -134,7 +162,7 @@ Item {
                         id: nerd
                         visible: thread.nerdy && text !== ""
                         x: thread.textAt
-                        y: (said.lineCount + 1) * entry.pitch - baselineOffset
+                        y: (entry.stands + 1) * entry.pitch - baselineOffset
                         width: entry.width - x
                         text: entry.modelData.nerd
                         textFormat: Text.PlainText

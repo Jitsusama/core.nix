@@ -2170,6 +2170,9 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     # As far from the screen's foot as its top stands from the screen's top.
     stands = shell.showing()["line"]
     assert 0 < stands["bottom"] <= stands["screen"] - stands["top"], stands
+    # A key of another keymap first, since the line's first key was read by the last keymap
+    # and lost, its Escape at 1.5x leaving the line in insert. F24 does nothing here.
+    shell.send_key("F24")
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     # j picks the newest, and a line picked far down is scrolled into view.
@@ -2199,5 +2202,164 @@ def test_super_s_line_fits_the_screen_and_scrolls_a_line_at_a_time(
     )
     # Pictured once the keys have come back round, so a surface still taking its size is not.
     shoot("many")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: Shell) -> None:
+    """What's typed in an open thread goes to the void as its reply, shown in it at once.
+
+    Joel wanted to "continue those threads of conversation" (2026-11-13 17:48, [851e94b2]).
+    A reply's first line names its thread by its key, which the void sends on to whoever has
+    it and writes as `replied` (QCXZEB [5eaea432], 8GYNJ6 [0543317b]).
+    """
+    inbox = STEER / "VOID"
+    replies = inbox / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    (STATE / "void").mkdir(parents=True, exist_ok=True)
+    at = datetime.now().astimezone()
+    clock = at.strftime("%H:%M")
+    key = f"{at.strftime('%Y-%m-%d')} {clock}"
+    asked = "is the thread fix in?"
+
+    def lay(talk: str, said: str) -> None:
+        """Lay what the void kept of a talk, as its inbox's replies hold it."""
+        lines = [
+            {"stage": "delivered", "at": at.isoformat(), "session": "s-void", "from": "joel",
+             "text": said},
+            {"stage": "replied", "at": at.isoformat(),
+             "text": f"Your orchestrator has it \u00b7 undo {clock}"},
+        ]  # fmt: skip
+        laid = replies / f"{talk}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+
+    def steered(words: str) -> dict[str, Any]:
+        """Give the steer these words went to the void in, once it's in the inbox."""
+        deadline = time.monotonic() + 10
+        while not (
+            sent := [
+                steer
+                for one in set(inbox.glob("*.json")) - before
+                if str((steer := json.loads(one.read_text())).get("text", "")).endswith(words)
+            ]
+        ):
+            assert time.monotonic() < deadline, "the void's inbox never had the reply"
+            time.sleep(0.1)
+        return cast("dict[str, Any]", sent[0])
+
+    lay(f"talk-{int(at.timestamp() * 1000)}", asked)
+    events = [
+        {"msg": "t1", "owner": "WCJQSG", "who": "Your orchestrator", "event": "routed"},
+        {"msg": "t2", "re": "t1", "who": "Your orchestrator", "event": "answered",
+         "text": "Not yet; tonight."},
+    ]  # fmt: skip
+    with (STATE / "void" / "answers.jsonl").open("a") as file:
+        file.writelines(json.dumps({"line": key, "at": clock} | one) + "\n" for one in events)
+    before = set(inbox.glob("*.json"))
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["keys"] and asked in [one["line"] for one in shown["line"]["talks"]]
+        )
+    )
+    # A key of another keymap first, as the case before does, so Escape isn't lost.
+    shell.send_key("F24")
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    at_line = [one["line"] for one in shell.showing()["line"]["talks"]].index(asked)
+    shell.send_chars(f"{at_line + 1}j")
+    shell.launcher_until(lambda shown: shown["line"]["picked"] == at_line)
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: (shown["line"]["thread"] or {}).get("key") == key)
+    words = "and the reply?"
+    shell.send_chars("i")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "insert")
+    shell.send_chars(words)
+    shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
+    shell.send_key("ret")
+    # It shows in the thread as his at once, before the void has written it.
+    shell.launcher_until(
+        lambda shown: (
+            [[step["text"], step["mine"]] for step in (shown["line"]["thread"] or {})["steps"]][-1:]
+            == [[words, True]]
+        )
+    )
+    sent = steered(words)
+    assert sent["text"] == f"reply {key}\n{words}", sent
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as_a_line(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """A reply the void kept and wrote as `replied` shows once, in its thread, as his.
+
+    The void keeps a reply as a talk of its own, whose words name its thread first, and
+    writes it to the thread's key as `replied` (QCXZEB [5eaea432], 8GYNJ6 [0543317b]); so
+    the line shows it in its thread, never as a line of its own beside it.
+    """
+    replies = STEER / "VOID" / "replies"
+    replies.mkdir(parents=True, exist_ok=True)
+    (STATE / "void").mkdir(parents=True, exist_ok=True)
+    # Minutes before the case before it, so the two threads keep keys apart.
+    at = datetime.now().astimezone() - timedelta(minutes=3)
+    clock = at.strftime("%H:%M")
+    key = f"{at.strftime('%Y-%m-%d')} {clock}"
+    asked = "is the reply fix in?"
+    words = "and after the switch?"
+
+    def lay(since: datetime, said: str) -> None:
+        """Lay what the void kept of a talk, as its inbox's replies hold it."""
+        lines = [
+            {"stage": "delivered", "at": since.isoformat(), "session": "s-void",
+             "from": "joel", "text": said},
+            {"stage": "replied", "at": since.isoformat(),
+             "text": f"Your orchestrator has it \u00b7 undo {since.strftime('%H:%M')}"},
+        ]  # fmt: skip
+        laid = replies / f"talk-{int(since.timestamp() * 1000)}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+
+    def mine(shown: dict[str, Any]) -> list[list[Any]]:
+        """Give the open thread's steps in these words, whether his, and their fold."""
+        steps = (shown["line"]["thread"] or {}).get("steps", [])
+        return [[step["text"], step["mine"], step["nerd"]] for step in steps
+                if step["text"] == words]  # fmt: skip
+
+    lay(at, asked)
+    lay(at + timedelta(seconds=20), f"reply {key}\n{words}")
+    events = [
+        {"msg": "w1", "owner": "WCJQSG", "who": "Your orchestrator", "event": "routed"},
+        {"msg": "w2", "re": "w1", "who": "Your orchestrator", "event": "answered",
+         "text": "Tonight, with the rest."},
+        {"msg": "w3", "re": "w2", "owner": "WCJQSG", "who": "Your orchestrator",
+         "event": "replied", "text": words},
+    ]  # fmt: skip
+    with (STATE / "void" / "answers.jsonl").open("a") as file:
+        file.writelines(json.dumps({"line": key, "at": clock} | one) + "\n" for one in events)
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["keys"] and asked in [one["line"] for one in shown["line"]["talks"]]
+        )
+    )
+    talks = [one["line"] for one in shell.showing()["line"]["talks"]]
+    assert not [one for one in talks if one.startswith("reply ") or one == words], talks
+    # A key of another keymap first, as the cases before do, so Escape isn't lost.
+    shell.send_key("F24")
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    shell.send_chars(f"{talks.index(asked) + 1}j")
+    shell.launcher_until(lambda shown: shown["line"]["picked"] == talks.index(asked))
+    shell.send_key("ret")
+    fold = "replied \u00b7 msg w3 \u00b7 re w2 \u00b7 to WCJQSG"
+    shell.launcher_until(lambda shown: mine(shown) == [[words, True, fold]])
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["line"]["nerdy"] and shown["line"]["sized"])
+    shoot("replied")
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
