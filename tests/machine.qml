@@ -35,10 +35,25 @@ ShellRoot {
         // What a terminal's `launcher show` sees, as Launcher.qml starts it,
         // so Machine's bindings read it rather than throwing on its absence.
         property var terminalSees: ({ walked: [], listed: [] })
+        // Quests as Machine reads it, saying which ids it was asked to title.
+        property var sources: [theQuests]
 
         // No frame is drawn here, so what waits on one runs at once.
         function afterFrame(then) {
             then();
+        }
+    }
+
+    QtObject {
+        id: theQuests
+
+        readonly property var settings: ({ name: "quests" })
+        property var asked: []
+        signal titlesHeard
+
+        function titleOf(id) {
+            asked = asked.concat([id]);
+            return undefined;
         }
     }
 
@@ -100,6 +115,16 @@ ShellRoot {
                 filling.side === "10 B free"
                 && filling.note === "on /var/cache/cargo-builds, the least of 2",
                 `${filling.side}; ${filling.note}`);
+            // A quest filling the disk is named to Quests as the guard's
+            // holders arrive, so its title is known before Machine opens
+            // (VKCF3Z, 2026-11-13); a worktree holder is no quest.
+            theQuests.asked = [];
+            machine.titleHolders({ holders: [
+                { owner: { kind: "quest", name: "QEST-20250105-BANNER" } },
+                { owner: { kind: "worktree", name: "worktree-a" } }] });
+            expect("a quest holding the disk is titled ahead",
+                JSON.stringify(theQuests.asked) === '["QEST-20250105-BANNER"]',
+                JSON.stringify(theQuests.asked));
             theLauncher.placed = ["energy", "machine:cpu", "machine:memory", "heat"];
             expect("Machine's place asks the daemon", machine.shown, "it didn't");
             expect("Machine's place asks nothing of the disks", !machine.disksWanted, "it did");

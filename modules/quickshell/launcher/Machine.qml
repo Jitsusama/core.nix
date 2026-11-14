@@ -358,6 +358,10 @@ Provider {
             if (provider.shown)
                 provider.answered();
         }
+
+        function onHoldersChanged() {
+            provider.titleHolders(provider.guard);
+        }
     }
 
     Connections {
@@ -370,15 +374,30 @@ Provider {
     }
 
     // Quests, which names a quest filling the disk by its id (filling); an
-    // ended one's title comes a moment after it's first named.
+    // ended one's title comes a moment after it's first named, so each is
+    // named as the guard's holders arrive, open or shut, and the first
+    // opening after the shell starts already has it (VKCF3Z, 2026-11-13).
     readonly property var quests: (launcher?.sources ?? [])
         .find(one => one.settings.name === "quests") ?? null
+    onQuestsChanged: titleHolders(guard)
+    onGuardChanged: titleHolders(guard)
     Connections {
         target: provider.quests
 
         function onTitlesHeard() {
             if (provider.shown)
                 provider.answered();
+        }
+    }
+
+    // Each quest filling the disk named to Quests, which asks the titles
+    // it doesn't know yet.
+    function titleHolders(guard) {
+        if (!quests || !guard)
+            return;
+        for (const holder of guard.holders ?? []) {
+            if (holder.owner?.kind === "quest")
+                quests.titleOf(holder.owner.name);
         }
     }
 
