@@ -35,8 +35,10 @@ onLinux {
   # Joel's yes on its own key, for what was drawn and once it was shown
   # long enough, releases the value, into the asked command alone in a
   # stand-in bubblewrap, masked in what it prints. The daemon can't be
-  # read through /proc by the account's other processes, and ends as soon
-  # as whatever ran it closes its end. The command's tests run too: no
+  # read through /proc by the account's other processes, says nothing of
+  # its own on the shell's pipe whether it ends well, fails or panics, and
+  # ends as soon as whatever ran it closes its end. The command's tests
+  # run too: no
   # command reaches an entry or a secret, each refused as asked wrongly
   # with nothing on stdout and nothing typed after it said back; each
   # mistyped one says what it needs; and a bare run and the help, which

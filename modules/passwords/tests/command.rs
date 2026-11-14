@@ -2,7 +2,8 @@
 //! entry or a secret, since the daemon answers the shell alone, each such
 //! command being refused as asked wrongly with nothing on stdout and
 //! nothing typed after it said back; a bare run and the help say where
-//! passwords are now, in the terminal kit's shape.
+//! passwords are now, in the terminal kit's shape; and the daemon says
+//! nothing of its own on the shell's pipe, ending well or failing.
 
 use std::process::{Command, Output};
 
@@ -71,6 +72,32 @@ fn a_bare_run_and_the_help_say_passwords_are_in_the_launcher() {
     let said = passwords(&["--help", "--json"]);
     let help: Value = serde_json::from_str(&text(&said.stdout)).unwrap();
     assert_eq!(help["schema"], "help/1", "the help isn't help/1: {help}");
+}
+
+/// Its standard output is the shell's pipe, so the daemon run as the kit
+/// ends it says nothing there of its own, ending well or failing.
+#[test]
+fn the_daemon_says_nothing_of_its_own_on_the_shells_pipe() {
+    let folder = std::env::temp_dir().join(format!("passwords-pipe-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let none = folder.join("managers.json");
+    std::fs::write(&none, r#"{"managers": []}"#).unwrap();
+    for (managers, exit) in [(none, 0), (folder.join("unwritten.json"), 78)] {
+        let ran = Command::new(env!("CARGO_BIN_EXE_passwords"))
+            .arg("daemon")
+            .arg(&managers)
+            .env("XDG_STATE_HOME", folder.join("state"))
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert_eq!(ran.status.code(), Some(exit), "{}", text(&ran.stderr));
+        assert!(
+            ran.stdout.is_empty(),
+            "the daemon ending {exit} wrote {:?} to the shell's pipe",
+            text(&ran.stdout)
+        );
+    }
 }
 
 #[test]
