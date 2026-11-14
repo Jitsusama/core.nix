@@ -211,10 +211,11 @@ fn set_facts(indent: usize, facts: Vec<(String, Line)>, room: Room) -> Vec<Line>
     lines
 }
 
-/// How many columns a run of text takes. Every character the views set,
-/// braille and the marks among them, takes one.
+/// How many cells a run of text takes, by Unicode's width, as the
+/// terminal kit counts the names it shortens and the cells it cuts: a
+/// device's name may hold an emoji or a CJK letter two cells wide.
 pub fn width(text: &str) -> usize {
-    text.chars().count()
+    terminal_kit::layout::width(text)
 }
 
 fn line_width(runs: &[Run]) -> usize {
@@ -648,6 +649,23 @@ mod tests {
             "device             kind           speed\n\
              laptop computer 1  laptop   11.5 Mbit/s\n\
              printer            printer  98 bit/s\n"
+        );
+    }
+
+    #[test]
+    fn a_name_two_cells_wide_a_letter_lines_up_by_its_cells() {
+        let mut table = Table::new(&[Align::Left, Align::Right]);
+        table.header(&["device", "speed"]);
+        table.row(vec![vec![plain("\u{1f4f1} phone")], vec![plain("2 Mb/s")]]);
+        table.row(vec![vec![plain("printer")], vec![plain("98 b/s")]]);
+        let mut page = Page::default();
+        page.table(0, table);
+        assert_eq!(
+            set(page, Room::Unbounded),
+            "device     speed\n\
+             \u{1f4f1} phone  2 Mb/s\n\
+             printer   98 b/s\n",
+            "an emoji takes two cells, so its row pads one fewer space"
         );
     }
 

@@ -202,10 +202,11 @@ fn words(line: &[Run], measure: usize) -> Vec<Line> {
     };
     let mut lines: Vec<Vec<Line>> = vec![Vec::new()];
     for piece in pieces {
-        let set = if piece.len() > measure {
-            shorter(&runs(&piece), measure)
+        let whole = runs(&piece);
+        let set = if line_width(&whole) > measure {
+            shorter(&whole, measure)
         } else {
-            runs(&piece)
+            whole
         };
         let Some(current) = lines.last_mut() else {
             continue;

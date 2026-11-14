@@ -32,7 +32,7 @@ fn socket() -> Result<PathBuf, String> {
         .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())
 }
 
-/// How a watch draws: which view, as text or JSON, with what ink, and
+/// How a watch draws: which view, as text or JSON, with what ink,
 /// and in what room: a terminal's width, drawn over the last page, or a
 /// pipe's, after it.
 pub struct Watch<'a> {
