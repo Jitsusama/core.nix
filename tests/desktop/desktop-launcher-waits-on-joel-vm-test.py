@@ -29,6 +29,7 @@ from desktop_session import (
     PI_WINDOW,
     STARTING,
     drawn_held_still,
+    for_you_read,
     kept,
     laid_out,
     retry,
@@ -991,6 +992,12 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
         retry(lambda _: resumed() == "joel", timeout=dt.timedelta(seconds=10))
     finally:
         desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
+        # The live stop knocked with a critical notice, which would stand in front of every
+        # card after it and, put away unread, keep For You's tray lit, so it's read.
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
+        desktop.as_account("qs ipc call notices putAway || true")
+        for_you_read(desktop)
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
