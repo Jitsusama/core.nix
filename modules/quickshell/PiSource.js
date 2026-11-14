@@ -24,10 +24,13 @@ function placed(key, session) {
     }
     const changed = Date.parse(session.at ?? "") || 0;
     // One parked keeps the window its holder keeps, where the node knows
-    // it, so the cutover can keep its place before it wakes it.
+    // it, so the cutover can keep its place before it wakes it, and the
+    // words to view it, since one asleep in pi's host wakes only as it's
+    // viewed.
     if (session.standing === "parked") {
         return { into: "resting", entry: {
-            file: id, presence, window: session.window ?? null, held: session.held ?? null
+            file: id, presence, window: session.window ?? null, held: session.held ?? null,
+            attach: session.attach ?? null
         } };
     }
     if (session.standing === "closed") {
