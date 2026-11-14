@@ -122,8 +122,9 @@ impl Niri {
 }
 
 /// A stand-in for the machine daemon's socket, which answers a watch with
-/// a backlight lighting eDP-1 at half and holds each connection until the
-/// daemon hangs up, keeping what it was asked and how many stay open.
+/// a backlight lighting eDP-1 at half, and an act done, as the machine
+/// daemon does, and holds each connection until the daemon hangs up,
+/// keeping what it was asked and how many stay open.
 struct Machine {
     asked: Arc<Mutex<Vec<Value>>>,
     open: Arc<Mutex<usize>>,
@@ -146,12 +147,12 @@ impl Machine {
                     let backlight = json!({"key": "backlight:intel_backlight",
                         "kind": "backlight", "device": "intel_backlight", "brightness": 48,
                         "max_brightness": 96, "connector": "eDP-1"});
-                    writeln!(
-                        stream,
-                        "{}",
+                    let answer = if watch["ask"] == "act" {
+                        json!({"id": watch["id"], "done": true})
+                    } else {
                         json!({"id": watch["id"], "records": [backlight]})
-                    )
-                    .unwrap();
+                    };
+                    writeln!(stream, "{answer}").unwrap();
                     kept.lock().unwrap().push(watch);
                     *counted.lock().unwrap() += 1;
                     // Until the daemon hangs up.
@@ -722,11 +723,11 @@ fn a_screen_looked_at_reads_its_light_from_the_machine_daemon_until_it_isnt() {
         Some("Brightness"),
         "a screen nothing looks at says its light: {records}"
     );
-    assert_eq!(
-        running.machine.open(),
-        0,
-        "the light is watched while nothing looks"
-    );
+    // Read once as the daemon starts, the light is hung up on at once.
+    until("the light is watched while nothing looks", || {
+        running.machine.open() == 0
+    });
+    let read = running.machine.asked.lock().unwrap().len();
     // The shell's watch ahead, as a screen is selected.
     let mut ahead = running.daemon.client();
     ahead.ask(&json!({"id": "ahead", "ask": "watch", "kind": "row",
@@ -734,7 +735,7 @@ fn a_screen_looked_at_reads_its_light_from_the_machine_daemon_until_it_isnt() {
     until("the light was never watched", || {
         running.machine.open() == 1
     });
-    let asked = running.machine.asked.lock().unwrap()[0].clone();
+    let asked = running.machine.asked.lock().unwrap()[read].clone();
     assert_eq!(
         asked["kind"],
         json!(["backlight", "light", "brightness", "warmth"]),
@@ -761,6 +762,29 @@ fn a_screen_looked_at_reads_its_light_from_the_machine_daemon_until_it_isnt() {
         leading(&said["changed"]).map(|(name, _)| name).as_deref(),
         Some("Brightness"),
         "a screen no longer looked at still says its light: {said}"
+    );
+}
+
+#[test]
+fn a_warmth_switch_is_asked_of_the_machine_daemon_and_answered_as_it_answers() {
+    let running = Running::worded("warmth", &json!({"eDP-1": screen("BOE", Some(2.0))}));
+    let mut client = running.daemon.client();
+    let done = client.ask(&json!({"id": 3, "ask": "light", "do": "night-light", "on": true}));
+    assert_eq!(
+        done,
+        json!({"id": 3, "done": true}),
+        "the switch was answered otherwise"
+    );
+    let asked = running.machine.asked.lock().unwrap().clone();
+    assert_eq!(
+        asked.last(),
+        Some(&json!({"id": 3, "ask": "act", "act": "night-light", "on": true})),
+        "the machine daemon was asked otherwise: {asked:?}"
+    );
+    let refused = client.ask(&json!({"id": 4, "ask": "light", "do": "dim"}));
+    assert_eq!(
+        refused["error"]["code"], "unknown-act",
+        "a light act it doesn't know was answered otherwise: {refused}"
     );
 }
 

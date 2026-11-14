@@ -30,9 +30,13 @@
 //! shell's watch ahead does once a screen is selected, and the drawer of
 //! the screen holding it says it (light.rs); the machine daemon reads the
 //! light each second while it's watched, so it isn't watched otherwise.
+//! It's read once as the daemon starts, so the Warmth inside that screen
+//! is served from the first (light/warmth.rs), and a switch of the
+//! Warmth's asks this daemon, which asks the machine daemon, `light`.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::net::Shutdown;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -60,9 +64,14 @@ const NIRI_AGAIN: Duration = Duration::from_secs(2);
 /// How long to wait before asking the machine daemon again while a
 /// screen is looked at and it isn't answering.
 const MACHINE_AGAIN: Duration = Duration::from_secs(2);
+/// How long the machine daemon may take to answer: a whole answer of the
+/// light as the daemon starts, or a switch of the Warmth's, which sets
+/// one property on the session's bus.
+const ASKING: Duration = Duration::from_secs(2);
 /// The daemon's own asks, each answered on a thread of its own, since
-/// both ask niri, so no ask after one waits on niri.
-const SLOW: &[&str] = &["look", "screen"];
+/// each asks niri or the machine daemon, so no ask after one waits on
+/// either.
+const SLOW: &[&str] = &["look", "screen", "light"];
 
 /// What the records are made from.
 struct Daemon {
@@ -96,6 +105,8 @@ struct Shared {
     niri: PathBuf,
     /// Wakes the light's thread as a screen comes to be looked at.
     looked: Condvar,
+    /// The machine daemon's socket, which the Warmth's switches ask.
+    machine: Option<PathBuf>,
 }
 
 fn main() {
@@ -165,6 +176,7 @@ fn main() {
         folders,
         niri: niri.clone(),
         looked: Condvar::new(),
+        machine: machine.clone(),
     });
     let _ = found.set(Arc::clone(&shared));
     refresh(&served, &mut lock(&shared.daemon));
@@ -329,13 +341,14 @@ fn refresh(served: &Served, daemon: &mut Daemon) {
     records.sort_by_key(listed);
     if let Some(words) = words {
         let held = light.light();
-        let seen = light.looking.then(|| Seen {
+        let seen = Seen {
             light: &held,
             reading: light.reading,
             now: now_ms(),
-        });
+            looked: light.looking,
+        };
         rows.take(
-            screens::rows(outputs, desk, desktop.output(), *each, seen.as_ref(), words),
+            screens::rows(outputs, desk, desktop.output(), *each, &seen, words),
             Vec::new(),
         );
         records.extend(rows.all().cloned());
@@ -416,6 +429,7 @@ fn looks_changed(shared: &Shared, daemon: &mut Daemon, looking: bool) {
 /// Watches the screen's light on the machine daemon's socket for as long
 /// as a screen is looked at, and waits for the next look between.
 fn follow_light(shared: &Shared, socket: &Path) {
+    read_light(shared, socket);
     let mut warned = false;
     loop {
         let looked = shared
@@ -448,6 +462,27 @@ fn follow_light(shared: &Shared, socket: &Path) {
             drop(daemon);
             std::thread::sleep(MACHINE_AGAIN);
         }
+    }
+}
+
+/// Reads the light once as the daemon starts, though nothing looks, so
+/// the Warmth inside the screen holding it is served from the first, as
+/// the shell read it once as it started (Displays.qml, until 2026-11-14);
+/// the machine daemon is hung up on at its first answer.
+fn read_light(shared: &Shared, socket: &Path) {
+    let Ok(mut stream) = UnixStream::connect(socket) else {
+        return;
+    };
+    let mut line = String::new();
+    let read = stream.set_read_timeout(Some(ASKING)).is_ok()
+        && writeln!(stream, "{}", Held::watch()).is_ok()
+        && BufReader::new(&stream)
+            .read_line(&mut line)
+            .is_ok_and(|read| read > 0);
+    let _ = stream.shutdown(Shutdown::Both);
+    let mut daemon = lock(&shared.daemon);
+    if read && daemon.light.heard(&line) {
+        refresh(&shared.served, &mut daemon);
     }
 }
 
@@ -527,8 +562,47 @@ fn owned(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
     match said["ask"].as_str()? {
         "look" => Some(json!({"id": id, "looked": looked(shared)})),
         "screen" => Some(screen_done(shared, &id, said)),
+        "light" => Some(light_done(shared, &id, said)),
         _ => None,
     }
+}
+
+/// Has the machine daemon turn the night light on or off, or the warmth
+/// follow the room or not, as a switch of the Warmth's asks
+/// (light/warmth.rs), and answers as the machine daemon did. The warmth
+/// changing is heard as the light is, while the screen is looked at.
+fn light_done(shared: &Shared, id: &Value, said: &Value) -> Value {
+    let Some(socket) = shared.machine.as_deref() else {
+        return error(id, "no-light", "no machine daemon was handed, so no light");
+    };
+    let act = match said["do"].as_str() {
+        Some(act @ "night-light") => {
+            json!({"id": id, "ask": "act", "act": act, "on": said["on"]})
+        }
+        Some(act @ "follow-the-room") => {
+            json!({"id": id, "ask": "act", "act": act, "follows": said["follows"]})
+        }
+        _ => {
+            let why = format!("no light act {} here", said["do"]);
+            return error(id, "unknown-act", &why);
+        }
+    };
+    asked_of(socket, &act).unwrap_or_else(|why| {
+        let why = format!("the machine daemon didn't answer: {why}");
+        error(id, "unanswered", &why)
+    })
+}
+
+/// One ask of the machine daemon's, on a connection of its own, and its
+/// answer.
+fn asked_of(socket: &Path, ask: &Value) -> std::io::Result<Value> {
+    let mut stream = UnixStream::connect(socket)?;
+    stream.set_read_timeout(Some(ASKING))?;
+    writeln!(stream, "{ask}")?;
+    let mut line = String::new();
+    BufReader::new(&stream).read_line(&mut line)?;
+    let _ = stream.shutdown(Shutdown::Both);
+    serde_json::from_str(&line).map_err(std::io::Error::other)
 }
 
 /// Does the act a screen's row asked, and answers it.
