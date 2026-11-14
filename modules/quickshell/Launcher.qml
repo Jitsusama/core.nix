@@ -2694,22 +2694,24 @@ Scope {
                 [":", hints.commands ?? ""]]
                 .concat(operatorKeys(choice), [[hintKey("keys", "visual"), hints.keys ?? ""]]);
         }
-        // The row landed on says the act a second Return does, in the
-        // accent, since it's the one key that changes something now; the
-        // rest is normal's foot, as a landing is normal, so its shape never
-        // changes (VKCF3Z, 2026-11-05).
+        // The row landed on says the act a second Return does, its verb in
+        // strong and its key in text, as the selected row's name and note
+        // are, since it's the one key that changes something now and rank
+        // says so where a hue would be one accent too many; the rest is
+        // normal's foot, as a landing is normal, so its shape never changes
+        // (VKCF3Z, 2026-11-05, its ink 2026-11-13 [df110a81]).
         if (choice === selected && landedOn(choice)) {
             const hints = Words.field.hints ?? {};
-            return [["\u21b5", verbOf(choice), Theme.accent, Theme.accent],
+            return [["\u21b5", verbOf(choice), Theme.text, Theme.strong],
                 [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]];
         }
         // A row that arms says its act until a first Return arms it, then
-        // what a second does, in the accent, as a landing does (VKCF3Z,
-        // 2026-11-12), normal's foot keeping its shape.
+        // what a second does, in strong, as a landing does (VKCF3Z,
+        // 2026-11-12, its ink 2026-11-13), normal's foot keeping its shape.
         if (arms(choice)) {
             const hints = Words.field.hints ?? {};
             const first = choice === selected && armedOn(choice)
-                ? ["\u21b5", armedSaid(choice), Theme.accent, Theme.accent]
+                ? ["\u21b5", armedSaid(choice), Theme.text, Theme.strong]
                 : ["\u21b5", verbOf(choice)];
             return prompt.modal && prompt.mode === "normal"
                 ? [first, [":", hints.commands ?? ""], [hintKey("keys"), hints.keys ?? ""]]
@@ -12443,7 +12445,7 @@ Scope {
                                 : sought ? `${sought.forward ? "/" : "?"}${sought.pattern}${ofAll}`
                                 : ""
                             // A pending operator and what it will take, in
-                            // the accent as a mode's word is, the row's name
+                            // strong as the count is, the row's name
                             // whole in the keys' room as well as its own
                             // (VKCF3Z and Y2YBTS, 2026-11-05: "d \u00b7 close
                             // Notes" read as a whole name where two windows
@@ -12522,7 +12524,10 @@ Scope {
                             // and what the place says its first.
                             elide: counted !== "" ? Text.ElideLeft
                                 : said === root.placeSays ? Text.ElideRight : Text.ElideNone
-                            color: counted !== "" ? Theme.strong : Theme.accent
+                            // Strong, whatever it says: the accent is only where
+                            // the keys go, and NOR's mark keeps it off Normal
+                            // (VKCF3Z, 2026-11-13 [df110a81]).
+                            color: Theme.strong
                             font: measure.font
                         }
 

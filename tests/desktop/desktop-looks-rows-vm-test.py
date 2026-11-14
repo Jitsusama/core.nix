@@ -495,9 +495,9 @@ def takes_the_head(desktop: Desktop, scale: str) -> None:
 def lands_on_a_setting(desktop: Desktop, scale: str) -> None:
     """Find Keep Awake and Return, which lands on it in normal, and shoot it there.
 
-    Its side and the foot say what a second Return does, in the accent, and nothing is done. A
-    landing is normal, so its foot keeps normal's command line and key list before Return, its
-    shape never changing; only the accent marks it (VKCF3Z, 2026-11-05).
+    Its side and the foot say what a second Return does, its verb in strong, and nothing is done.
+    A landing is normal, so its foot keeps normal's command line and key list before Return, its
+    shape never changing; only rank marks it (VKCF3Z, 2026-11-05, its ink 2026-11-13).
     """
     machine = desktop.machine
     desktop.on_find()

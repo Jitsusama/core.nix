@@ -643,7 +643,7 @@ Rectangle {
             level: Theme.level.note
             // Muted reads under the Lc 60 any text needs on the selection.
             color: row.flashed ? row.flashInk
-                : row.landed !== "" ? Theme.accent
+                : row.landed !== "" ? Theme.text
                 : row.alerts && row.kind === "" ? Theme.alert
                 : row.warns && row.kind === "" ? Theme.warning
                 : row.selected ? Theme.text : Theme.muted
