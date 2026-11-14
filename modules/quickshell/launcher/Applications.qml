@@ -838,19 +838,20 @@ Provider {
     // Notifications: those it sent, newest first, each as the collection
     // of them has it (PastNotices.qml), so Return on one does what it does
     // there, and the right arrow steps into what else can be done to one.
-    // Without that collection in the launcher, there's none to hold.
+    // Without that collection in the launcher, there's none to hold. They're
+    // counted without copying one, and listed only once it's stepped into.
     function notices(same) {
         const past = (provider.launcher?.sources ?? [])
             .find(source => typeof source.sentBy === "function") ?? null;
-        const sent = past ? past.sentBy(same) : [];
-        if (sent.length === 0)
+        const sent = past ? past.sentCount(same) : { count: 0, unread: 0 };
+        if (sent.count === 0)
             return [];
-        const unread = sent.filter(row => row.unread).length;
+        const unread = sent.unread;
         return [said("program:notices", "", {
             hue: "program",
             // Its figures at its right, where a row's stand (VKCF3Z,
             // 2026-11-05: one place for each kind of fact).
-            side: unread > 0 ? `${sent.length} \u00b7 ${unread} unread` : String(sent.length),
+            side: unread > 0 ? `${sent.count} \u00b7 ${unread} unread` : String(sent.count),
             ask: "which?",
             nested: true,
             targets: () => past.sentBy(same)

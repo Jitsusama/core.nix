@@ -133,3 +133,21 @@ function lining(row, searched, holds) {
     }
     return copy;
 }
+
+// How many notices each sender sent, and how many of those are unread,
+// { count, unread } by its name, one with none under "", in an object with
+// no prototype, so a sender named as one of its fields still counts. A
+// program's row of its notices sums its own senders', where copying every
+// notice Slack sent only to count them took 142 ms of its acts on Joel's
+// shell (2026-11-13).
+function bySender(rows) {
+    const tally = Object.create(null);
+    for (const row of rows) {
+        const sender = String(row.sender ?? "");
+        const one = tally[sender] ?? { count: 0, unread: 0 };
+        one.count += 1;
+        one.unread += row.unread ? 1 : 0;
+        tally[sender] = one;
+    }
+    return tally;
+}

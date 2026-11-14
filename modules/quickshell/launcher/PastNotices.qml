@@ -239,6 +239,27 @@ Provider {
         return lined(every().filter(row => sent(row.sender)), []);
     }
 
+    // How many of those there are, { count, unread }, without copying one:
+    // each sender's counted once for each list of every notice
+    // (Notice.js's bySender), and `sent` asked only of each sender's name.
+    readonly property var tallied: ({ of: null, by: null })
+    function sentCount(sent) {
+        const rows = every();
+        if (tallied.of !== rows) {
+            tallied.by = Notice.bySender(rows);
+            tallied.of = rows;
+        }
+        let count = 0;
+        let unread = 0;
+        for (const sender of Object.keys(tallied.by)) {
+            if (sent(sender)) {
+                count += tallied.by[sender].count;
+                unread += tallied.by[sender].unread;
+            }
+        }
+        return { count: count, unread: unread };
+    }
+
     // A notice's row as last served, by the place or past its page by an
     // answer still kept: null for one no longer served.
     function servedRow(key) {
