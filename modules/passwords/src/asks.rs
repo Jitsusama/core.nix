@@ -69,6 +69,23 @@ const FENCE_VERSION: u32 = 1;
 /// `GIT_WRITTEN` are: never its settings or hooks, which run code.
 const GIT_WRITTEN: [&str; 5] = ["objects", "refs", "logs", "lfs", "rr-cache"];
 
+/// The files in a worktree's own git folder that say where its
+/// repository and its tree are, kept read-only in a folder otherwise
+/// written, since one pointed elsewhere would bring another's settings
+/// to every later git run in the tree.
+const WORKTREE_POINTERS: [&str; 2] = ["commondir", "gitdir"];
+
+/// The caches outside ~/.cache the tools a release runs write as they
+/// fetch and publish: npm's, cargo's and gem's, but never npx's
+/// packages, cargo's settings or its programs, which later runs start.
+const TOOL_CACHES: [&str; 5] = [
+    ".npm/_cacache",
+    ".npm/_logs",
+    ".cargo/registry",
+    ".cargo/git",
+    ".gem",
+];
+
 /// A setting in npm's settings that is a credential, bare or for one
 /// registry, as `fence-npmrc.ts` finds it.
 const NPM_CREDENTIAL: &str = r"^\s*((?:[^=;#\s]*:)?_(?:authToken|auth|password))\s*=";
@@ -191,27 +208,30 @@ impl Passwords {
     }
 
     /// bubblewrap's arguments for what the command may write: its tree,
-    /// the parts of the tree's git folder git writes, read-only else, and
-    /// ~/.cache.
+    /// its repository's history, ~/.cache but Nix's, and the tools'
+    /// caches beside it.
     fn writable(&self, tree: &Path) -> Vec<OsString> {
         let mut args = Vec::new();
-        let mut bind = |how: &str, path: &Path| {
-            args.extend([how.into(), path.into(), path.into()]);
-        };
-        bind("--bind", tree);
-        let git = tree.join(".git");
-        if is_folder(&git) {
-            bind("--ro-bind", &git);
-            for written in GIT_WRITTEN {
-                let written = git.join(written);
-                if is_folder(&written) {
-                    bind("--bind", &written);
-                }
-            }
-        }
+        bound(&mut args, "--bind", tree);
+        args.extend(history(tree));
         let cache = self.home.join(".cache");
         if is_folder(&cache) {
-            bind("--bind", &cache);
+            bound(&mut args, "--bind", &cache);
+            // Nix's fetcher cache says which store path each address
+            // fetched to, and Joel's later unfenced runs trust it.
+            let nix = cache.join("nix");
+            if is_folder(&nix) {
+                bound(&mut args, "--ro-bind", &nix);
+            } else {
+                args.extend(["--tmpfs".into(), nix.clone().into()]);
+                args.extend(["--remount-ro".into(), nix.into()]);
+            }
+        }
+        for written in TOOL_CACHES {
+            let written = self.home.join(written);
+            if is_folder(&written) {
+                bound(&mut args, "--bind", &written);
+            }
         }
         args
     }
@@ -335,6 +355,76 @@ impl Passwords {
             .filter(|folder| folder.is_dir())
             .collect()
     }
+}
+
+/// Adds bubblewrap's argument `how` binding a path where it is.
+fn bound(args: &mut Vec<OsString>, how: &str, path: &Path) {
+    args.extend([how.into(), path.into(), path.into()]);
+}
+
+/// bubblewrap's arguments for what the command may write of the history
+/// of the repository its tree is in: never `.git` itself, nor its
+/// settings or hooks, which run code in Joel's later git runs. A tree
+/// in a repository's own checkout writes its objects and refs alone,
+/// since its index sits beside its settings, where a written folder
+/// could gain a `commondir` leading git elsewhere. One in a worktree
+/// writes those and the worktree's own folder too, so it can commit.
+fn history(tree: &Path) -> Vec<OsString> {
+    let mut args = Vec::new();
+    let Some(dot_git) = tree
+        .ancestors()
+        .map(|folder| folder.join(".git"))
+        .find(|dot_git| std::fs::symlink_metadata(dot_git).is_ok())
+    else {
+        return args;
+    };
+    bound(&mut args, "--ro-bind", &dot_git);
+    let (common, own) = if is_folder(&dot_git) {
+        (dot_git, None)
+    } else if let Some((common, own)) = worktree(&dot_git) {
+        (common, Some(own))
+    } else {
+        return args;
+    };
+    for written in GIT_WRITTEN {
+        let written = common.join(written);
+        if is_folder(&written) {
+            bound(&mut args, "--bind", &written);
+        }
+    }
+    if let Some(own) = own {
+        bound(&mut args, "--bind", &own);
+        for pointer in WORKTREE_POINTERS {
+            bound(&mut args, "--ro-bind", &own.join(pointer));
+        }
+        // Read only where the repository's settings ask, but held
+        // either way, since those may change after.
+        let settings = own.join("config.worktree");
+        if is_file(&settings) {
+            bound(&mut args, "--ro-bind", &settings);
+        } else {
+            args.extend(["--ro-bind".into(), "/dev/null".into(), settings.into()]);
+        }
+    }
+    args
+}
+
+/// The repository and the worktree's own git folder a worktree's `.git`
+/// file names, where git's own record agrees: the folder is one of the
+/// repository's worktrees and says it is this one, so a `.git` file a
+/// command wrote can't open another's history.
+fn worktree(dot_git: &Path) -> Option<(PathBuf, PathBuf)> {
+    let read = |path: &Path| std::fs::read_to_string(path).ok();
+    let text = read(dot_git)?;
+    let named = text.strip_prefix("gitdir:")?.trim();
+    let own = real(&dot_git.parent()?.join(named))?;
+    let common = real(&own.join(read(&own.join("commondir"))?.trim()))?;
+    let back = real(&own.join(read(&own.join("gitdir"))?.trim()))?;
+    let belongs = own.parent() == Some(common.join("worktrees").as_path())
+        && Some(back) == real(dot_git)
+        && is_folder(&own)
+        && is_folder(&common.join("objects"));
+    belongs.then_some((common, own))
 }
 
 /// Where a path really is, its links followed, or none where it isn't
