@@ -13,9 +13,11 @@ use std::path::Path;
 
 use serde_json::{Map, Value};
 
-/// The facts of a to-do's drawer this daemon says, by their ids.
-pub const FACTS: [&str; 10] = [
+/// The facts of a to-do's drawer, and of a look's in History, this daemon
+/// says, by their ids.
+pub const FACTS: [&str; 13] = [
     "due", "set-for", "takes", "since", "checked", "clears", "machine", "address", "check", "item",
+    "resolved", "target", "look",
 ];
 
 /// For You's words, as far as a to-do needs them.
