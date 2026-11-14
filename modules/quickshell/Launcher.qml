@@ -375,6 +375,7 @@ Scope {
         const ending = held.length === 0 && typed.trim() !== "" ? endings(typed) : [];
         list.keptLast = null;
         keysWeighing = 0;
+        readingBegun();
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         matches = listedAs(composed);
@@ -391,7 +392,8 @@ Scope {
         else if (current >= 0)
             current = Rank.pinned(matches, was, current + rows.length - before);
         composeParts = { asking: askedAll - composing, placing: placedAll - askedAll,
-            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing };
+            showing: Date.now() - placedAll, kept: list.keptLast, weighing: keysWeighing,
+            reading: readingSpent() };
     }
 
     // The rows with what the first thing found by its name holds listed
@@ -4718,13 +4720,22 @@ Scope {
     // in and a second after it only ever show (Catalogue.js's quietFirst).
     // Anywhere else its own order stands: a setting's act still leads its
     // step, a sound output's use, and an answer's levels its copy. Null
-    // where it holds nothing.
-    function inside(row, things) {
+    // where it holds nothing. `spent`, where given, is told how long its
+    // acts, its parts and their ordering took, so a step's line says which
+    // of its making to cut (Trials.steppedMaking).
+    function inside(row, things, spent) {
+        const began = KeyTimes.now();
         const own = stepRows(row, things);
+        const acted = KeyTimes.now();
         const parts = things ? partsIn(row) : [];
+        const parted = KeyTimes.now();
         const into = parts.length > 0 ? (own ?? []).concat(parts) : own;
-        return into && things && stepsThing(row)
+        const ordered = into && things && stepsThing(row)
             ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
+        if (spent)
+            Object.assign(spent, { acts: acted - began, parts: parted - acted,
+                ordering: KeyTimes.now() - parted });
+        return ordered;
     }
 
     // Steps into a row: a thing's verbs, or a verb's targets. Says whether
@@ -4768,7 +4779,8 @@ Scope {
         if (steppedAsLed(row))
             return went();
         const things = asThing(row, held.length === 0 || collecting);
-        const into = inside(row, things);
+        const spent = {};
+        const into = inside(row, things, spent);
         // A collection with nothing in it still holds the places its
         // vocabulary names, which a step into it shows: Agents with no
         // agent running still leads to its Quests and Runs. A row
@@ -4814,7 +4826,7 @@ Scope {
         // stepping took, and the search that drew its rows, whose parts
         // restart() left.
         searchParts = trials.stepped(searchParts, { began, made, pushed, opened,
-            ended: Date.now() });
+            ended: Date.now(), making: spent });
         keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected);
         return went();
     }
@@ -5902,6 +5914,7 @@ Scope {
             const livedAt = Date.now();
             list.keptLast = null;
             keysWeighing = 0;
+            readingBegun();
             matches = listedAs(lived);
             // What's typed taken away whole leaves the selection on the row
             // it was on, now among them all.
@@ -5920,7 +5933,7 @@ Scope {
                 answers: Date.now() - foundAt, each: {}, within: null,
                 composing: { asking: 0, placing: livedAt - foundAt,
                     showing: Date.now() - livedAt, kept: list.keptLast,
-                    weighing: keysWeighing } };
+                    weighing: keysWeighing, reading: readingSpent() } };
             return;
         }
         // What the search spends its time on, said with a key that's slow
@@ -9096,6 +9109,20 @@ Scope {
     }
     onCataloguingChanged: tallyMarked()
     onSourcesChanged: tallyMarked()
+
+    // How long the rows shown spent reading what they hold, from each
+    // source that keeps a plain `reading` (Applications.qml's), counted
+    // afresh for each showing, so a showing's line says it apart from
+    // laying the rows out (Trials.readingSaid).
+    function readingBegun() {
+        for (const source of sources) {
+            if (source.reading)
+                source.reading.ms = 0;
+        }
+    }
+    function readingSpent() {
+        return sources.reduce((sum, source) => sum + (source.reading?.ms ?? 0), 0);
+    }
 
     onOpenChanged: {
         tallyMarked();

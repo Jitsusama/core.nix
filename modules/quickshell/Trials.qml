@@ -80,7 +80,7 @@ Scope {
         trial = Trials.timed(trial, searched, drawn, parts);
         if (Trials.felt(drawn))
             console.info(`launcher: "${typed}" took ${drawn} ms to its frame, ${searched} ms`
-                + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each)},`
+                + " searching" + (parts ? ` (lists ${parts.lists}${slowest(parts.each, parts.makingSplit)},`
                     + ` rows ${parts.rows}${matched(parts.rows, parts.within)},`
                     + ` answers ${parts.answers}${composed(parts.composing)}`
                     + `${parts.before ? `, before ${parts.before}${setting(parts.beforeParts)}`
@@ -141,7 +141,8 @@ Scope {
         return parts ? `: asking ${parts.asking}, placing ${parts.placing}, showing ${parts.showing}`
             + (parts.kept && parts.kept.fresh + parts.kept.laying > 0
                 ? ` (${parts.kept.fresh} rows new, ${parts.kept.laying}`
-                + ` laying them out${laid(parts.kept)}${weighed(parts.weighing)})` : "")
+                + ` laying them out${laid(parts.kept)}${weighed(parts.weighing)}`
+                + `${Trials.readingSaid(parts.reading)})` : "")
             : "";
     }
 
@@ -183,11 +184,14 @@ Scope {
         return Trials.stepped(inner, at);
     }
 
-    // The three collections that took longest, if any took a millisecond.
-    function slowest(each) {
+    // The three collections that took longest, if any took a millisecond,
+    // a step's own making with what it went on (Trials.steppedMaking).
+    function slowest(each, split) {
         const named = Object.keys(each ?? {}).filter(name => each[name] > 0)
             .sort((a, b) => each[b] - each[a]).slice(0, 3);
-        return named.length === 0 ? "" : `: ${named.map(name => `${name} ${each[name]}`).join(", ")}`;
+        const said = name => `${name} ${each[name]}`
+            + (name === "making" ? Trials.steppedMaking(each[name], split) : "");
+        return named.length === 0 ? "" : `: ${named.map(said).join(", ")}`;
     }
 
     // What an answer is counted as when it's picked (Trials.js).

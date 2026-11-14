@@ -1,0 +1,210 @@
+A host resolves an MCP server's headers without holding its process, once
+for a burst of conversations.
+
+Every conversation a host starts or wakes opens its own MCP connections,
+and each resolves the server's headers afresh, running any command they
+name with execSync. A command that fetches a token through a few
+programs can take about 0.27 s, during which every conversation in the
+host stands still; ten waking together stand still ten times.
+
+Run the command through exec instead, and let every connection opened
+within 30 s share that one run, so a burst runs it once. Its value is
+held in memory for those 30 s, so a command whose token lives shorter
+than that would hand out a stale one. A run that resolved nothing isn't
+kept, so the next connection tries again, and
+clearing the config value cache clears these runs too. A transport
+factory may now answer with a promise, and a connection shut down while
+its headers resolve stops there. Only MCP transports take this path:
+provider keys and headers resolve as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/resolve-config-value.ts
++++ b/packages/coding-agent/src/core/resolve-config-value.ts
+@@ -3,7 +3,7 @@
+  * Used by auth-storage.ts and model-registry.ts.
+  */
+ 
+-import { execSync, spawnSync } from "child_process";
++import { exec, execSync, spawnSync } from "child_process";
+ import { getShellConfig } from "../utils/shell.ts";
+ 
+ // Cache for shell command results (persists for process lifetime)
+@@ -215,6 +215,76 @@ function executeCommand(commandConfig: string): string | undefined {
+ 	return result;
+ }
+ 
++// pi-host: a host opens every conversation's MCP connections in its one
++// process, and each resolves its headers afresh, running any command they
++// name while the whole host waits. Run the command without holding the
++// host, and let the connections opened within FRESH_COMMAND_MS share its one
++// run, so a burst of wakes runs it once. A run that resolved nothing isn't
++// kept, so the next connection tries again.
++const FRESH_COMMAND_MS = 30_000;
++const freshCommandRuns = new Map<string, { at: number; value: Promise<string | undefined> }>();
++
++function executeCommandAsync(commandConfig: string): Promise<string | undefined> {
++	if (process.platform === "win32") return Promise.resolve(executeCommandUncached(commandConfig));
++	return new Promise((resolve) => {
++		const child = exec(commandConfig.slice(1), { encoding: "utf-8", timeout: 10000 }, (error, stdout) => {
++			resolve(error ? undefined : stdout.trim() || undefined);
++		});
++		child.stdin?.end();
++	});
++}
++
++function executeCommandFresh(commandConfig: string): Promise<string | undefined> {
++	const now = Date.now();
++	const held = freshCommandRuns.get(commandConfig);
++	if (held && now - held.at < FRESH_COMMAND_MS) return held.value;
++	const run = { at: now, value: executeCommandAsync(commandConfig) };
++	freshCommandRuns.set(commandConfig, run);
++	void run.value.then((value) => {
++		if (value === undefined && freshCommandRuns.get(commandConfig) === run) freshCommandRuns.delete(commandConfig);
++	});
++	return run.value;
++}
++
++/**
++ * pi-host: resolve a config value as resolveConfigValueUncached does, but run a command without
++ * blocking, sharing a run made within the last FRESH_COMMAND_MS.
++ */
++export function resolveConfigValueFresh(config: string, env?: Record<string, string>): Promise<string | undefined> {
++	const reference = parseConfigValueReference(config);
++	if (reference.type === "command") {
++		return executeCommandFresh(reference.config);
++	}
++	return Promise.resolve(resolveTemplate(reference.parts, env));
++}
++
++/** pi-host: resolveConfigValueOrThrow through resolveConfigValueFresh. */
++export async function resolveConfigValueFreshOrThrow(
++	config: string,
++	description: string,
++	env?: Record<string, string>,
++): Promise<string> {
++	const resolvedValue = await resolveConfigValueFresh(config, env);
++	if (resolvedValue !== undefined) {
++		return resolvedValue;
++	}
++	throw unresolvedError(config, description, env);
++}
++
++/** pi-host: resolveHeadersOrThrow through resolveConfigValueFresh. */
++export async function resolveHeadersFreshOrThrow(
++	headers: Record<string, string> | undefined,
++	description: string,
++	env?: Record<string, string>,
++): Promise<Record<string, string> | undefined> {
++	if (!headers) return undefined;
++	const resolved: Record<string, string> = {};
++	for (const [key, value] of Object.entries(headers)) {
++		resolved[key] = await resolveConfigValueFreshOrThrow(value, `${description} header "${key}"`, env);
++	}
++	return Object.keys(resolved).length > 0 ? resolved : undefined;
++}
++
+ /**
+  * Resolve all header values using the same resolution logic as API keys.
+  */
+@@ -231,23 +301,26 @@ export function resolveConfigValueOrThrow(config: string, description: string, e
+ 	if (resolvedValue !== undefined) {
+ 		return resolvedValue;
+ 	}
++	throw unresolvedError(config, description, env);
++}
+ 
++function unresolvedError(config: string, description: string, env?: Record<string, string>): Error {
+ 	const reference = parseConfigValueReference(config);
+ 	if (reference.type === "command") {
+-		throw new Error(`Failed to resolve ${description} from shell command: ${reference.config.slice(1)}`);
++		return new Error(`Failed to resolve ${description} from shell command: ${reference.config.slice(1)}`);
+ 	}
+ 
+ 	if (reference.type === "template") {
+ 		const missingEnvVars = getMissingConfigValueEnvVarNames(config, env);
+ 		if (missingEnvVars.length === 1) {
+-			throw new Error(`Failed to resolve ${description} from environment variable: ${missingEnvVars[0]}`);
++			return new Error(`Failed to resolve ${description} from environment variable: ${missingEnvVars[0]}`);
+ 		}
+ 		if (missingEnvVars.length > 1) {
+-			throw new Error(`Failed to resolve ${description} from environment variables: ${missingEnvVars.join(", ")}`);
++			return new Error(`Failed to resolve ${description} from environment variables: ${missingEnvVars.join(", ")}`);
+ 		}
+ 	}
+ 
+-	throw new Error(`Failed to resolve ${description}`);
++	return new Error(`Failed to resolve ${description}`);
+ }
+ 
+ /**
+@@ -284,4 +357,5 @@ export function resolveHeadersOrThrow(
+ /** Clear the config value command cache. Exported for testing. */
+ export function clearConfigValueCache(): void {
+ 	commandResultCache.clear();
++	freshCommandRuns.clear();
+ }
+--- a/packages/coding-agent/src/extensions/mcp/runtime.ts
++++ b/packages/coding-agent/src/extensions/mcp/runtime.ts
+@@ -30,7 +30,11 @@ import {
+ } from "@earendil-works/pi-mcp";
+ import { McpOAuthAuthorizationRequiredError, type OAuthChallenge } from "@earendil-works/pi-mcp/oauth";
+ import { VERSION } from "../../config.ts";
+-import { resolveConfigValueOrThrow, resolveHeadersOrThrow } from "../../core/resolve-config-value.ts";
++import {
++	resolveConfigValueFreshOrThrow,
++	resolveConfigValueOrThrow,
++	resolveHeadersFreshOrThrow,
++} from "../../core/resolve-config-value.ts";
+ import type { McpServerEntry } from "./config.ts";
+ import type { McpServerLog } from "./log.ts";
+ import {
+@@ -60,7 +64,7 @@ export type McpTransportFactory = (
+ 	entry: McpServerEntry,
+ 	cwd: string,
+ 	authProvider: AuthProvider | undefined,
+-) => McpTransport;
++) => McpTransport | Promise<McpTransport>;
+ 
+ function errorMessage(error: unknown): string {
+ 	return error instanceof Error ? error.message : String(error);
+@@ -95,22 +99,24 @@ function expandHome(value: string): string {
+ 	return value;
+ }
+ 
+-export function createDefaultTransport(
++// pi-host: resolve headers and env without blocking, so a host opening many conversations'
++// connections runs a command they name once a burst rather than once a connection, holding nothing.
++export async function createDefaultTransport(
+ 	entry: McpServerEntry,
+ 	cwd: string,
+ 	authProvider: AuthProvider | undefined,
+-): McpTransport {
++): Promise<McpTransport> {
+ 	const { config, name } = entry;
+ 	if ("url" in config) {
+ 		return new StreamableHttpTransport({
+ 			url: config.url,
+-			headers: resolveHeadersOrThrow(config.headers, `MCP server "${name}"`),
++			headers: await resolveHeadersFreshOrThrow(config.headers, `MCP server "${name}"`),
+ 			authProvider,
+ 		});
+ 	}
+ 	const env: Record<string, string> = {};
+ 	for (const [key, value] of Object.entries(config.env ?? {})) {
+-		env[key] = resolveConfigValueOrThrow(value, `MCP server "${name}" env "${key}"`);
++		env[key] = await resolveConfigValueFreshOrThrow(value, `MCP server "${name}" env "${key}"`);
+ 	}
+ 	return new StdioTransport({
+ 		command: expandHome(config.command),
+@@ -375,7 +381,8 @@ export class McpServerConnection implements McpToolCaller, McpResourceServer {
+ 		this.shutdown.signal.addEventListener("abort", closeClient, { once: true });
+ 		let transport: McpTransport | undefined;
+ 		try {
+-			transport = this.createTransport(this.entry, this.cwd, this.authProvider);
++			transport = await this.createTransport(this.entry, this.cwd, this.authProvider);
++			if (this.closed) throw new Error("shut down while connecting");
+ 			await client.connect(transport);
+ 			client.onNotification("notifications/tools/list_changed", () => {
+ 				void this.refreshTools(client);
