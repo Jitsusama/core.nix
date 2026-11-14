@@ -6,6 +6,15 @@ request settings, provider hooks, cache warming and context transform, so a
 host that rebuilt the session by hand would drift from pi. Let a host build
 the agent from those same options instead.
 
+A hosted agent can also queue words itself, as a conversation reopens and
+the host carries on a turn a restart cut off. pi's screen draws its pending
+list from the session's own queue, which only steer, followUp and prompt
+fill, and each of those runs the extensions' input handlers again and
+queues the words on the agent a second time. showQueued puts words the
+agent already holds on that list, so they show as pending as pi's own do;
+pi takes them off as their message starts or on clearQueue, as it does its
+own. Nothing in pi calls it, so a pi no host drives behaves as before.
+
 Offered upstream as the structural AgentSession execution seam. Apply only
 to the host's private pi build; ordinary interactive pi stays unchanged.
 
@@ -24,17 +33,36 @@ to the host's private pi build; ordinary interactive pi stays unchanged.
  	sessionManager: SessionManager;
  	settingsManager: SettingsManager;
  	cwd: string;
-@@ -392,7 +395,9 @@
+@@ -392,7 +395,11 @@
  // ============================================================================
  
  export class AgentSession {
 -	readonly agent: Agent;
 +	/** Hosts refuse an unpatched runtime rather than casting a different execution object to Agent. */
 +	static readonly hostAgentInterfaceVersion = 1;
++	/** Hosts show words their agent queued with showQueued, and say so when a runtime lacks it. */
++	static readonly hostQueueDisplay = true;
 +	readonly agent: SessionAgent;
  	readonly sessionManager: SessionManager;
  	readonly settingsManager: SettingsManager;
  
+@@ -2533,6 +2540,16 @@
+ 	}
+ 
+ 	/**
++	 * Show words the agent already holds as pending, as pi shows its own queued input, without
++	 * queueing them again or running input handlers on them. A host whose agent queued words
++	 * itself calls this; pi takes them off the list as their message starts, or on clearQueue.
++	 */
++	showQueued(text: string, mode: "steer" | "followUp"): void {
++		(mode === "steer" ? this._steeringMessages : this._followUpMessages).push(text);
++		this._emitQueueUpdate();
++	}
++
++	/**
+ 	 * Clear all queued messages and return them.
+ 	 * Useful for restoring to editor when user aborts.
+ 	 * @returns Object with steering and followUp arrays
 --- a/packages/coding-agent/src/core/sdk.ts
 +++ b/packages/coding-agent/src/core/sdk.ts
 @@ -4,7 +4,8 @@

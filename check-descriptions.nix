@@ -1988,7 +1988,8 @@
   pi-hosted-keeps-turns-its-own = ''
     pi built with the host's patches, applied exactly, shows both seams a host detects, builds a
     session's agent from pi's own options through the host, and a turn its durable generation
-    commits waits for the host to end or continue it, once, across recovery
+    commits waits for the host to end or continue it, once, across recovery; words the host's agent
+    queued show as pending, never queued on the agent again, until a dequeue clears them
   '';
   pi-hosted-loads-where-a-link-points = ''
     pi built with the host's patches, applied exactly, loads a linked extension through the file
