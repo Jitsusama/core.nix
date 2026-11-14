@@ -36,8 +36,8 @@ WORK = "/srv/work"
 
 # What `update-to-main ask` exits with for each ending (src/main.rs).
 FAILED = 1
-REFUSED = 2
-UNASKED = 3
+REFUSED = 77
+UNASKED = 69
 
 # A flake whose system is a link to one already on the machine, made in the sandbox by the
 # busybox the machine puts there, and marked light when asked.

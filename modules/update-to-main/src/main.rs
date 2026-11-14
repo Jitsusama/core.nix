@@ -8,8 +8,8 @@
 //!   at its main's head; the commit must be on its main, signed, and past
 //!   what the machine last followed, and holds still judge it.
 //!   Otherwise it's as `ask`. It exits 0 when the machine runs main
-//!   or already did, 1 when the update failed, 2 when it was refused and 3
-//!   when the daemon couldn't be asked or stopped answering.
+//!   or already did, 1 when the update failed, 77 when it was refused and
+//!   69 when the daemon couldn't be asked or stopped answering.
 //! - `update-to-main stop [--socket FILE]`: stops the update the daemon is
 //!   fetching or building, one a hold was given for too, and prints what
 //!   it did. A switch runs on.
@@ -18,14 +18,17 @@
 //!   while a person's ask still updates; and `update-to-main
 //!   hold|lift COMMIT [--socket FILE]` refuses any main holding the
 //!   commit, by its full id, until lifted (src/held.rs). Each prints what
-//!   holds now, and exits 0, or 2 when the daemon refused the ask.
+//!   holds now, and exits 0, or 77 when the daemon refused the ask.
 //! - `update-to-main follow [--config FILE] [--every SECONDS]`: an
 //!   account's service that asks whenever main moves (src/follow.rs), and
 //!   at least every SECONDS, 600 unless given. It runs until the system's
 //!   path holds another update-to-main, so its service starts the newest.
 //! - `update-to-main job FOLDER`: a job the daemon starts in an account's
 //!   login session on a Mac, running the command written in FOLDER
-//!   (src/session.rs).
+//!   (src/session.rs). Root reads how the command ended from the folder;
+//!   the job itself ends 0, or 1 when its command didn't.
+//!
+//! Each takes the terminal kit's shape, its help its own (`help()`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -33,6 +36,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
+use terminal_kit::{Exit, Failure, Help};
 use update_to_main::config::Config;
 use update_to_main::follow::{self, Follower};
 use update_to_main::follows::Followed;
@@ -53,58 +57,153 @@ const CONFIG: &str = "/etc/update-to-main/config.json";
 /// How often a follower asks at least, for a main it can't read cheaply.
 const FOLLOW_EVERY: u64 = 600;
 
-const USAGE: &str = "usage: update-to-main serve --config FILE
-       update-to-main ask [--at INPUT=COMMIT] [--socket FILE]
-       update-to-main stop [--socket FILE]
-       update-to-main pause|resume [--socket FILE]
-       update-to-main hold|lift COMMIT [--socket FILE]
-       update-to-main follow [--config FILE] [--every SECONDS]
-       update-to-main job FOLDER";
+/// Where `--socket` says the daemon is, as each asking command takes it.
+fn socketed(help: Help) -> Help {
+    help.option("--socket FILE", "the daemon's, unless the usual")
+        .exit(Exit::Unavailable, "the daemon couldn't be asked")
+}
+
+/// A command that asks the daemon to hold or let go, as `--help` says it.
+fn holding(name: &str, about: &str, example: &str) -> Help {
+    socketed(
+        Help::new(name, about)
+            .example(
+                &format!("update-to-main {example}"),
+                "and says what holds now",
+            )
+            .exit(Exit::Refused, "the daemon refused the ask"),
+    )
+}
+
+/// What `update-to-main --help` says, and each command's own.
+fn help() -> Help {
+    Help::new("update-to-main", "updates this machine to its main")
+        .example("update-to-main ask", "updates now, saying each step")
+        .example("update-to-main stop", "stops the update under way")
+        .subcommand(socketed(
+            Help::new("ask", "asks for an update, saying each step")
+                .example("update-to-main ask", "at main's head")
+                .example(
+                    "update-to-main ask --at core=COMMIT",
+                    "one input at a commit on its main",
+                )
+                .option("--at INPUT=COMMIT", "builds INPUT at COMMIT")
+                .exit(Exit::Failed, "the update failed")
+                .exit(Exit::Refused, "the update was refused"),
+        ))
+        .subcommand(socketed(
+            Help::new("stop", "stops the update being fetched or built")
+                .example("update-to-main stop", "a switch under way runs on"),
+        ))
+        .subcommand(holding(
+            "pause",
+            "refuses the follower's updates until resumed",
+            "pause",
+        ))
+        .subcommand(holding(
+            "resume",
+            "lets the follower update again",
+            "resume",
+        ))
+        .subcommand(
+            holding("hold", "refuses any main holding a commit", "hold COMMIT")
+                .argument("<commit>", "its full id"),
+        )
+        .subcommand(
+            holding("lift", "lets a held commit through again", "lift COMMIT")
+                .argument("<commit>", "its full id"),
+        )
+        .subcommand(
+            Help::new("serve", "root's daemon, on the config's socket")
+                .example("update-to-main serve --config FILE", "as its unit runs it")
+                .option("--config FILE", "what it serves by")
+                .exit(Exit::Failed, "it couldn't serve")
+                .exit(Exit::Config, "its config couldn't be read"),
+        )
+        .subcommand(
+            Help::new("follow", "asks for an update whenever main moves")
+                .example("update-to-main follow", "as an account's service")
+                .option("--config FILE", "the system's, unless given")
+                .option("--every SECONDS", "asks at least this often, 600")
+                .exit(Exit::Config, "its config couldn't be read"),
+        )
+        .subcommand(
+            Help::new("job", "runs a command in a Mac's login session")
+                .example("update-to-main job FOLDER", "as launchd starts it")
+                .argument("<folder>", "the command, and where it ends")
+                .exit(Exit::Failed, "its command didn't succeed")
+                .unlisted(),
+        )
+}
+
+/// The words a command was given that it doesn't take.
+fn unasked(command: &str) -> Failure {
+    Failure::new(
+        Exit::Usage,
+        format!("update-to-main {command} doesn't take those words"),
+    )
+    .try_this(format!("update-to-main {command} --help"))
+}
+
+/// Why the daemon couldn't be asked, as the kit says a failure.
+fn unanswered(socket: &Path, e: &std::io::Error) -> Failure {
+    let failure = Failure::new(Exit::Unavailable, "the daemon couldn't be asked");
+    match ask::unanswered(socket, e) {
+        Line::Refused { why, .. } => failure.because(why),
+        _ => failure.because(e.to_string()),
+    }
+}
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        run(&context.args)
+    })
+}
+
+/// The command these words name, run.
+fn run(args: &[String]) -> Result<(), Failure> {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     match args.as_slice() {
         ["serve", "--config", file] => {
-            match Config::read(&PathBuf::from(file)).and_then(serve::serve) {
-                Ok(()) => ExitCode::SUCCESS,
-                Err(e) => {
-                    eprintln!("update-to-main: {e}");
-                    ExitCode::from(3)
-                }
-            }
+            let config = Config::read(&PathBuf::from(file)).map_err(|e| {
+                Failure::new(Exit::Config, "its config couldn't be read").because(e.to_string())
+            })?;
+            serve::serve(config)
+                .map_err(|e| Failure::new(Exit::Failed, "it couldn't serve").because(e.to_string()))
         }
         ["ask"] => asked(Path::new(SOCKET), None),
         ["ask", "--socket", file] => asked(Path::new(file), None),
-        ["ask", "--at", at] => {
-            at_args(at).map_or_else(usage, |at| asked(Path::new(SOCKET), Some(at)))
-        }
+        ["ask", "--at", at] => asked(Path::new(SOCKET), Some(at_args(at)?)),
         ["ask", "--at", at, "--socket", file] | ["ask", "--socket", file, "--at", at] => {
-            at_args(at).map_or_else(usage, |at| asked(Path::new(file), Some(at)))
+            asked(Path::new(file), Some(at_args(at)?))
         }
         ["stop"] => stopped(Path::new(SOCKET)),
         ["stop", "--socket", file] => stopped(Path::new(file)),
         [how @ ("pause" | "resume")] => held(Path::new(SOCKET), how),
         [how @ ("pause" | "resume"), "--socket", file] => held(Path::new(file), how),
+        [how @ ("hold" | "lift")] | [how @ ("hold" | "lift"), "--socket", _] => Err(Failure::new(
+            Exit::Usage,
+            format!("update-to-main {how} needs a commit"),
+        )
+        .try_this(format!("update-to-main {how} --help"))),
         [how @ ("hold" | "lift"), commit] => held(Path::new(SOCKET), &format!("{how} {commit}")),
         [how @ ("hold" | "lift"), commit, "--socket", file] => {
             held(Path::new(file), &format!("{how} {commit}"))
         }
         ["follow", rest @ ..] => {
-            if let Some((config, every)) = follow_args(rest) {
-                followed(&config, Duration::from_secs(every))
-            } else {
-                eprintln!("{USAGE}");
-                ExitCode::from(64)
-            }
+            let (config, every) = follow_args(rest).ok_or_else(|| unasked("follow"))?;
+            followed(&config, Duration::from_secs(every))
         }
-        ["job", folder] => {
-            ExitCode::from(u8::try_from(session::job(Path::new(folder))).unwrap_or(1))
-        }
-        _ => {
-            eprintln!("{USAGE}");
-            ExitCode::from(64)
-        }
+        ["job", folder] => match session::job(Path::new(folder)) {
+            0 => Ok(()),
+            status => Err(Failure::new(
+                Exit::Failed,
+                format!("the job's command ended {status}"),
+            )),
+        },
+        [command, ..] => Err(unasked(command)),
+        [] => Err(Failure::new(Exit::Usage, "update-to-main needs a command")
+            .try_this("update-to-main --help")),
     }
 }
 
@@ -123,7 +222,7 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
 /// Follows main until the system's path holds another update-to-main, or
 /// the config can't be read. The config is read again each time, since a
 /// switch may change it.
-fn followed(file: &Path, every: Duration) -> ExitCode {
+fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     let mut follower = Follower::default();
     let mut unread = None;
@@ -133,15 +232,15 @@ fn followed(file: &Path, every: Duration) -> ExitCode {
         let config = match Config::read(file) {
             Ok(config) => config,
             Err(e) => {
-                eprintln!("update-to-main: {e}");
-                return ExitCode::from(3);
+                return Err(Failure::new(Exit::Config, "its config couldn't be read")
+                    .because(e.to_string()));
             }
         };
         if let Some(program) = &config.program
             && fs::canonicalize(program).ok() != started
         {
             println!("the system holds another update-to-main; starting again");
-            return ExitCode::SUCCESS;
+            return Ok(());
         }
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
@@ -258,67 +357,50 @@ fn told(config: &Config, why: &str) {
     }
 }
 
-fn stopped(socket: &Path) -> ExitCode {
-    match ask::stop(socket) {
-        Ok(line) => {
-            println!("{}", line.json());
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
-                eprintln!("update-to-main: {why}");
-            }
-            ExitCode::from(3)
-        }
-    }
+fn stopped(socket: &Path) -> Result<(), Failure> {
+    let line = ask::stop(socket).map_err(|e| unanswered(socket, &e))?;
+    println!("{}", line.json());
+    Ok(())
 }
 
-fn held(socket: &Path, how: &str) -> ExitCode {
+fn held(socket: &Path, how: &str) -> Result<(), Failure> {
     match ask::once(socket, how) {
         Ok(Line::Refused { why, .. }) if update_to_main::held::says(&why) => {
             println!("{why}");
-            ExitCode::SUCCESS
+            Ok(())
         }
         Ok(line) => {
-            eprintln!("update-to-main: {}", line.json());
-            ExitCode::from(2)
+            Err(Failure::new(Exit::Refused, "the daemon refused the ask").because(line.json()))
         }
-        Err(e) => {
-            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
-                eprintln!("update-to-main: {why}");
-            }
-            ExitCode::from(3)
-        }
+        Err(e) => Err(unanswered(socket, &e)),
     }
 }
 
-fn usage() -> ExitCode {
-    eprintln!("{USAGE}");
-    ExitCode::from(64)
-}
-
 /// The input and commit `--at` names, as INPUT=COMMIT.
-fn at_args(at: &str) -> Option<(&str, &str)> {
+fn at_args(at: &str) -> Result<(&str, &str), Failure> {
     at.split_once('=')
         .filter(|(input, commit)| !input.is_empty() && !commit.is_empty())
+        .ok_or_else(|| {
+            Failure::new(Exit::Usage, format!("--at takes INPUT=COMMIT, not {at}"))
+                .try_this("update-to-main ask --help")
+        })
 }
 
-fn asked(socket: &Path, at: Option<(&str, &str)>) -> ExitCode {
+fn asked(socket: &Path, at: Option<(&str, &str)>) -> Result<(), Failure> {
     let hear = &mut |line: &Line| println!("{}", line.json());
     let ending = match at {
         Some((input, commit)) => ask::ask_at(socket, input, commit, hear),
         None => ask::ask(socket, hear),
     };
+    // Each line, the ending's too, is already said on stdout.
     match ending {
-        Ok(Line::Done { .. } | Line::Unchanged { .. }) => ExitCode::SUCCESS,
-        Ok(Line::Failed { .. }) => ExitCode::from(1),
-        Ok(Line::Refused { .. }) => ExitCode::from(2),
-        Ok(_) => ExitCode::from(3),
-        Err(e) => {
-            if let Line::Refused { why, .. } = ask::unanswered(socket, &e) {
-                eprintln!("update-to-main: {why}");
-            }
-            ExitCode::from(3)
-        }
+        Ok(Line::Done { .. } | Line::Unchanged { .. }) => Ok(()),
+        Ok(Line::Failed { .. }) => Err(Failure::new(Exit::Failed, "the update failed")),
+        Ok(Line::Refused { .. }) => Err(Failure::new(Exit::Refused, "the update was refused")),
+        Ok(_) => Err(Failure::new(
+            Exit::Unavailable,
+            "the daemon stopped answering before the update ended",
+        )),
+        Err(e) => Err(unanswered(socket, &e)),
     }
 }
