@@ -2,14 +2,15 @@
 //! and the one way it says it.
 //!
 //! Joel's rules (the plan's picks 6 and 7) hold it narrow. A reply goes
-//! from Joel's own account, opening with a line saying it is automated
-//! and not him, so no bot or app stands in for him. It says one of two
-//! fixed things, what stopped or that Joel was asked, in words he said
-//! yes to, and only in the thread of the message that asked: a [`Post`]
-//! takes its conversation and thread from that message and from nothing
-//! else. Its words are replies.json's, beside this crate, and a reply
-//! with any of them missing is never said, so nothing goes out until his
-//! yes is written there. Which replies go at all is src/gate.rs's call.
+//! from Joel's own account, opening by saying it is automated and not
+//! him, so no bot or app stands in for him. It says one of two fixed
+//! things, what stopped or that Joel was asked, in words he said yes to
+//! (2026-11-14), and only in the thread of the message that asked: a
+//! [`Post`] takes its conversation and thread from that message and from
+//! nothing else. Its words are replies.json's, beside this crate, and a
+//! reply with any of them missing is never said. The opening and what
+//! follows make one line, as he said yes to them. Which replies go at all
+//! is src/gate.rs's call.
 
 use std::time::Duration;
 
@@ -35,7 +36,7 @@ pub struct Post {
     pub channel: String,
     /// The thread it's in, or the one it starts.
     pub thread_ts: String,
-    /// What it says, its first line saying it is automated and not Joel.
+    /// What it says, opening by saying it is automated and not Joel.
     pub text: String,
 }
 
@@ -56,7 +57,7 @@ pub fn post(message: &Message, reply: Reply, reaches: &[String], words: &Words) 
     Some(Post {
         channel: message.channel.clone(),
         thread_ts: message.thread.clone().unwrap_or_else(|| message.ts.clone()),
-        text: format!("{opening}\n{said}"),
+        text: format!("{opening} {said}"),
     })
 }
 
@@ -152,7 +153,7 @@ mod tests {
             Some(Post {
                 channel: "C0ONE00001".to_owned(),
                 thread_ts: "1700000000.000001".to_owned(),
-                text: "Automated, not Joel.\nStopped: pull request example/shop#12.".to_owned(),
+                text: "Automated, not Joel. Stopped: pull request example/shop#12.".to_owned(),
             }),
             "it says what stopped, under its opening, where it was asked"
         );
@@ -192,13 +193,31 @@ mod tests {
     }
 
     #[test]
-    fn the_words_kept_beside_the_crate_say_nothing_until_joel_says_yes() {
+    fn the_words_kept_beside_the_crate_are_the_ones_joel_said_yes_to() {
         let kept = Words::from_object(include_str!("../replies.json")).expect("replies.json");
-        let reaches = ["everything".to_owned()];
+        let said = |reply, reach: &str| {
+            post(&asking(None), reply, &[reach.to_owned()], &kept).map(|post| post.text)
+        };
         assert_eq!(
-            post(&asking(None), Reply::WhatStopped, &reaches, &kept),
-            None,
-            "until his yes is written in replies.json, no reply has words"
+            said(Reply::WhatStopped, "pr:shop/world#12").as_deref(),
+            Some(
+                "Automated reply, not Joel: his agents have stopped work on pull request \
+                 shop/world#12. Only he can restart them, and he's been told."
+            ),
+            "what stopped is said in his words, naming the narrowest thing stopped"
+        );
+        assert_eq!(
+            said(Reply::WhatStopped, "everything").as_deref(),
+            Some(
+                "Automated reply, not Joel: his agents have stopped work on everything. \
+                 Only he can restart them, and he's been told."
+            ),
+            "a stop naming nothing narrower says everything"
+        );
+        assert_eq!(
+            said(Reply::JoelAsked, "everything").as_deref(),
+            Some("Automated reply, not Joel: only he can restart his agents, and he's been asked."),
+            "that Joel was asked is said in his words"
         );
     }
 }

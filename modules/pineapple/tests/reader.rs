@@ -139,6 +139,15 @@ fn home() -> PathBuf {
 }
 
 /// One field of each decision, in the order they were written.
+/// The one reply the reader let through, as replies.jsonl keeps it.
+fn the_one_reply(home: &Path) -> Value {
+    let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
+        .expect("the replies let through are kept");
+    assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
+    serde_json::from_str(replies.lines().next().unwrap_or_default())
+        .expect("a reply's line is JSON")
+}
+
 fn each<'a>(said: &'a [Value], field: &str) -> Vec<&'a str> {
     said.iter().filter_map(|one| one[field].as_str()).collect()
 }
@@ -215,15 +224,15 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
         "the thread's pull request is what stops"
     );
     assert_eq!(said[1]["shadow"], true, "it is in shadow");
-    let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
-        .expect("the replies let through are kept");
-    assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
-    let reply: Value = serde_json::from_str(replies.lines().next().unwrap_or_default())
-        .expect("a reply's line is JSON");
     assert_eq!(
-        reply["post"],
-        Value::Null,
-        "no reply has words until Joel's yes is written in replies.json"
+        the_one_reply(&home)["post"],
+        json!({
+            "channel": "C0ONE00001",
+            "thread_ts": "1700000000.000001",
+            "text": "Automated reply, not Joel: his agents have stopped work on pull request \
+                     example/shop#12. Only he can restart them, and he's been told."
+        }),
+        "the reply it would say is kept, in the thread that asked, in Joel's words"
     );
 
     let stops: Vec<PathBuf> = std::fs::read_dir(home.join("state/pineapple/stops"))

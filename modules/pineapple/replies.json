@@ -1,12 +1,12 @@
 {
-  "opening": "",
-  "what-stopped": "",
-  "joel-asked": "",
-  "reach:everything": "",
-  "reach:pr": "",
-  "reach:branch": "",
-  "reach:repo": "",
-  "reach:quest": "",
-  "reach:realm": "",
-  "reach:named": ""
+  "opening": "Automated reply, not Joel:",
+  "what-stopped": "his agents have stopped work on {reach}. Only he can restart them, and he's been told.",
+  "joel-asked": "only he can restart his agents, and he's been asked.",
+  "reach:everything": "everything",
+  "reach:pr": "pull request {repo}#{number}",
+  "reach:branch": "branch {branch} of {repo}",
+  "reach:repo": "the {repo} repository",
+  "reach:quest": "quest {quest}",
+  "reach:realm": "the {realm} realm",
+  "reach:named": "{name}"
 }
