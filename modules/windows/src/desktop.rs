@@ -17,7 +17,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::capture::Captures;
-use crate::entries::{Entries, tidy};
+use crate::entries::{Entries, own_name};
 use crate::order::{Order, Putting};
 
 /// What hearing one event did.
@@ -239,9 +239,9 @@ impl Desktop {
         // column.
         let titled: Vec<(String, bool)> = seen
             .iter()
-            .map(|(window, _, _, named)| {
+            .map(|(window, _, session, named)| {
                 let title = window["title"].as_str().unwrap_or("");
-                let own = tidy(title, &named.program);
+                let own = own_name(title, &named.program, *session);
                 let shown = if own.is_empty() {
                     named.program.clone()
                 } else {
