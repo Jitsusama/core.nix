@@ -31,6 +31,7 @@ mod face;
 mod frequencies;
 mod link;
 mod lookup;
+mod measure;
 mod network;
 mod nl80211;
 mod page;
