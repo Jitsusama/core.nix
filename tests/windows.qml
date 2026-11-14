@@ -316,6 +316,23 @@ ShellRoot {
             Expect.expect("an opening on the same window makes no act again",
                 capture.fixed === acts && capture.tally.rows === actsMade,
                 `${capture.tally.rows - actsMade} rows made again`);
+            // An opening on another window makes again only the two acts
+            // that name it: the rest say nothing of the window, so they're
+            // kept, each with the chord it looked up. Joel's step into
+            // Capture took 123 ms making its seven (2026-11-13 16:10).
+            const unnamed = row => !row.key.startsWith("capture:window")
+                && !row.key.startsWith("capture:record-window");
+            const before = capture.fixed.filter(unnamed);
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: true }),
+                Object.assign({}, movedTo, { focused: false })] }, desktop(logbook));
+            Expect.same("an opening on another window names it", fixedNamed("capture:window"),
+                "This Window \u00b7 Logbook");
+            const after = capture.fixed.filter(unnamed);
+            Expect.same("and keeps every act that names no window",
+                after.filter((row, at) => row !== before[at]).map(row => row.key).join(", "),
+                "");
+            told({ id: "all", records: [Object.assign({}, logbook, { focused: false }),
+                movedTo] }, desktop(movedTo));
             Niri.focused = 11;
             Niri.revision += 1;
 
