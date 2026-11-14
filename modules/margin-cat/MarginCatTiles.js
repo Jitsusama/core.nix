@@ -7,7 +7,8 @@
 .pragma library
 
 // A window's tile where it's on the shown workspace of the screen named
-// `output`, null where it isn't: its left, top and width.
+// `output`, null where it isn't: its left, top and width, and whether it
+// floats, being in no column of niri's scrolling layout.
 function tile(windows, workspaces, output, id) {
     const shown = id === null ? undefined : windows[id];
     const at = shown?.layout?.tile_pos_in_workspace_view;
@@ -15,7 +16,12 @@ function tile(windows, workspaces, output, id) {
     if (!at || workspace?.output !== output || !workspace.is_active) {
         return null;
     }
-    return { left: at[0], top: at[1], width: shown.layout.tile_size[0] };
+    return {
+        left: at[0],
+        top: at[1],
+        width: shown.layout.tile_size[0],
+        floats: !shown.layout.pos_in_scrolling_layout
+    };
 }
 
 // The tiles of a workspace's windows, each with its column and its row in
