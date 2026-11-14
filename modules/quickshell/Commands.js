@@ -135,12 +135,11 @@ function listed(from) {
 }
 
 // An act's line. It's named by the command its words give it, with the
-// argument telling it from another of that name, or else by its verb. What
-// asks first is what d asks before (Operators.asks): what the language says
-// changes, unless the act says how it's put back (its undo), and a command
-// it doesn't name asks nothing; an act takes a ! only where it would ask,
-// its ! saying don't. A guarded one asks nothing on one thing, only once on
-// more, so takes ! too. A bare close, its words naming no command, only
+// argument telling it from another of that name, or else by its verb. An
+// act takes a ! where the language says it changes and the act has no
+// undo, since there it could ask (Operators.asks); its ! says don't, and
+// on one that costs little only runs it. A command the language doesn't
+// name takes none. A bare close, its words naming no command, only
 // closes the launcher, as a row with nothing to copy does: it's :quit, the
 // launcher's close, and stands for the :q every surface has.
 // One its words give a bang of its own is banged: the bang is its line's,

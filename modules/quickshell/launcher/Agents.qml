@@ -929,8 +929,22 @@ Provider {
     // to-dos, as the agents daemon serves it with its row's Close (row.rs's
     // act); "" before its row is told.
     function leaves(session) {
+        return String(served(session)?.leaves ?? "");
+    }
+
+    // Whether Close costs enough to ask first, as the agents daemon serves
+    // it by the work a session has in flight, or nothing while it says
+    // neither way, which asks as long as Close says what stays
+    // (Operators.asks).
+    function costly(session) {
+        const said = served(session)?.costly;
+        return typeof said === "boolean" ? { costly: said } : {};
+    }
+
+    // A session's Close as its row serves it, or undefined before it's told.
+    function served(session) {
         const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
-        return String(acts.find(one => one.key === "verb:agent:close")?.leaves ?? "");
+        return acts.find(one => one.key === "verb:agent:close");
     }
 
     // Whether a session has a window to go to: its own here, or one its
@@ -1064,7 +1078,7 @@ Provider {
             // names it by its address, since the step-in's path above
             // already says its title, which left no room for the ask.
             close: () => act("close", Object.assign({ run: steered("close"),
-                leaves: leaves(session), askedAs: session.address },
+                leaves: leaves(session), askedAs: session.address }, costly(session),
                 Words.ending("verb:agent:close")))
         };
         return made[id]();
@@ -1242,7 +1256,10 @@ Provider {
             ? `~${folder.slice(home.length)}` : folder;
         const reopen = one => Sessions.reopen(one, cwd => provider.launcher?.tellOnOpen([
             [homely(cwd), String(oneSaid.isGone ?? ""), Theme.alert]]));
-        const forget = one => act("forget", { run: () => Sessions.forgetReopen(one) });
+        // Forgetting one whose folder has gone costs nothing, since it can't
+        // be reopened anyway, so d does it at once, though :forget is costly.
+        const forget = one => act("forget", { run: () => Sessions.forgetReopen(one),
+            costly: false });
         const worded = (one, fields) => Object.assign({
             key: `agents:to-reopen:${one.id}`,
             name: String(rowOf(one).name ?? one.id),

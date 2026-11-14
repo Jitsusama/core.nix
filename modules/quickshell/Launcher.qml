@@ -1672,9 +1672,14 @@ Scope {
             return { done: true, opened: true, in: names };
         }
         const act = returnOf(target);
-        const asking = CommandBinding.asking({ command: commandNamed(act).command }, [act],
-            { all: 1, bang: false }, Options.commands ?? {});
-        if (!sure && (asking.ask !== "" || Catalogue.disruptive(target) || actEnds(target))) {
+        // A terminal asks before whatever changes and can't be put back,
+        // costly or not, since what types there is as often an agent as
+        // Joel, and --yes says it's sure; the launcher's own keys ask only
+        // before what costs a lot (Operators.asks).
+        const command = commandNamed(act).command;
+        const changes = (Options.commands ?? {})[command]?.changes === true
+            && !Commands.neverAsks(command) && typeof act.undo !== "function";
+        if (!sure && (changes || Catalogue.disruptive(target) || actEnds(target))) {
             // As the line asks it (commandAsked): a row that's its own act,
             // as a window's Close, is an act of what holds it; any other is
             // its own act's thing.
@@ -4443,8 +4448,8 @@ Scope {
     // Runs a line's acts on what it's bound to, `found` each act with its
     // thing, asking once first where CommandBinding.asking says, by d's
     // rule, through the one ask (askOnce), in d's words for one thing or
-    // many (Confirm.question), the rows it covers tinted: y runs them past
-    // their own confirm, as a ! does; n, Escape and Ctrl+C leave them be.
+    // many (Confirm.question), the rows it covers tinted: Return runs them
+    // past their own confirm, as a ! does; any other key leaves them be.
     function commandAsked(entry, found, all, bang) {
         const words = Words.field.command ?? {};
         const acts = found.map(one => one.act);
@@ -4460,7 +4465,7 @@ Scope {
         }
         // A line that would end the session from the row it stands on, as
         // :reboot on Reboot, arms that row in place, as its Return does,
-        // rather than asking y/n (VKCF3Z, 2026-11-12 [b6b6b98d]): the next
+        // rather than asking (VKCF3Z, 2026-11-12 [b6b6b98d]): the next
         // Return does it and any other key lets it go. A ! still does it.
         // The act is the line's own copy of the row, so it's the row the
         // cursor is on, and the act, that are read.
@@ -6243,19 +6248,21 @@ Scope {
     // Vim's operators over the rows (QueryKeys.js reads them, Operators.js
     // says what each does to a row): d does each row's ending action, as
     // dd deletes a line, and y copies each, as yy yanks one. What d does
-    // that can't be put back it asks about once, as Vim's ask_yesno asks
-    // (Confirm.js): the launcher's one ask, said whole on the line in the
-    // find's place (Prompt.qml's asking), as the file picker's "Replace
-    // notes.md? (y/n)" is, one place on every surface (VKCF3Z,
-    // 2026-11-05). While it stands every key is its answer (Prompt.qml's
-    // confirming): after its first 300 ms, y does it, n, Escape or Ctrl+C
-    // lets it go, and any other key does nothing.
+    // that can't be put back and costs a lot it asks about once
+    // (Confirm.js, Operators.asks): the launcher's one ask, said whole on
+    // the line in the find's place (Prompt.qml's asking), as the file
+    // picker's "Replace notes.md?" is, one place on every surface (VKCF3Z,
+    // 2026-11-05), the foot saying "↵ confirm". While it stands every key
+    // is its answer (Prompt.qml's confirming), as an armed row's is: after
+    // its first 300 ms, Return does it and any other key lets it go (Joel,
+    // 2026-11-13: "having to say y/n for launcher items when others allow a
+    // double enter is stupid").
     property var asked: null
     // The rows it covers, by their places, which wear visual's tint while
     // it stands, so every one it would end shows as included.
     property var askedOver: []
 
-    // Asks once, `yes` done on y and `no` on n, Escape or Ctrl+C, or as the
+    // Asks once, `yes` done on Return and `no` on any other key, or as the
     // launcher closes, `covering` the places of the rows it covers, or none.
     function askOnce(question, yes, no, covering) {
         asked = Confirm.asked(question, yes, no ?? (() => {}), Date.now());
@@ -6271,7 +6278,7 @@ Scope {
         if (ask === null)
             return;
         const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early" || said === "nothing")
+        if (said === "early")
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -6634,7 +6641,8 @@ Scope {
     }
 
     // d: every ending action over the rows, asked about once where any
-    // can't be put back, the rows with none passed over.
+    // costs a lot and can't be put back (Operators.asks), the rows with
+    // none passed over.
     function ended(taken) {
         const words = Words.field.operators ?? {};
         const endings = Operators.endings(taken, actionsOf);
@@ -12123,14 +12131,19 @@ Scope {
                         // A parting word stands where Return was, its
                         // mark in the success colour.
                         // A question asked once takes no key of the row's,
-                        // its own (y/n) saying how it's answered, and nor
-                        // does an operator waiting, since no key of the
-                        // row's does what it says until it's done: what it
-                        // will take has their room (modeWord's pending).
+                        // saying only the Return that answers it, in the
+                        // accent as an armed row's is, since it's the one
+                        // key that does anything; nor does an operator
+                        // waiting, since no key of the row's does what it
+                        // says until it's done: what it will take has
+                        // their room (modeWord's pending).
                         readonly property var toldNow: root.parting !== ""
                             ? [[Theme.glyph.done, root.parting, Theme.success]]
                             : operatorWord !== null ? [operatorWord]
-                            : prompt.asking !== "" || root.pendingSaid !== "" ? []
+                            : prompt.asking !== "" ? [["\u21b5",
+                                (Words.field.hints ?? {}).confirm ?? "", Theme.accent,
+                                Theme.accent]]
+                            : root.pendingSaid !== "" ? []
                             : root.commanding !== null ? root.commandKeys()
                             : root.sayingNow ? root.saying : root.keysFor(choice)
                         // As the card last showed them, while it's closed

@@ -1,12 +1,16 @@
-// How the launcher asks once before what can't be put back, as Vim's
-// ask_yesno asks: what it asks, which keys answer, and how soon. Where the
-// ask is drawn is the launcher's to say. Read apart from it so
-// tests/query-keys.qml can hold it in Qt's own engine.
+// How the launcher asks once before what costs a lot and can't be put
+// back: what it asks, which keys answer, and how soon. It's answered as
+// an armed row is (Arming.js): the Return or d that asked was the first
+// press, a second Return does it, and any other key lets it go, never
+// y or n (Joel, 2026-11-13: "having to say y/n for launcher items when
+// others allow a double enter is stupid"). Where the ask is drawn is the
+// launcher's to say. Read apart from it so tests/query-keys.qml can hold
+// it in Qt's own engine.
 .pragma library
 
 // An ask standing: what it asks, whole and in its parts (questionParts),
-// what y does and what n does, and when it was put, in ms. `asks` is its
-// words, or its parts where it says what stays.
+// what Return does and what letting it go does, and when it was put, in
+// ms. `asks` is its words, or its parts where it says what stays.
 function asked(asks, yes, no, now) {
     const whole = typeof asks === "string" ? { head: asks, clause: "", tail: "" } : asks;
     return { question: joined(whole), parts: whole, yes, no, at: now };
@@ -20,7 +24,7 @@ function joined(ask) {
 // An ask as it fits where `fits(words)` says it's drawn: whole, else its
 // clause saying what stays giving way from its end a whole word at a time
 // behind an ellipsis, so what it does, to what, and its keys are always
-// read, as "Close TESTQC? Its folder\u2026(y/n)" (VKCF3Z, 2026-11-07). One
+// read, as "Close TESTQC? Its folder\u2026" (VKCF3Z, 2026-11-07). One
 // with no clause is said whole, and its line cuts it.
 function fitted(ask, fits) {
     const whole = joined(ask);
@@ -37,35 +41,33 @@ function fitted(ask, fits) {
     return `${ask.head} \u2026${ask.tail}`;
 }
 
-// The keys that answer no, as Vim's ask_yesno takes them.
-const NO = ["n", "Escape", "Ctrl+c"];
+// The keys that answer yes: Return, the main one or the keypad's.
+const YES = ["Return", "Enter"];
 
-// What a key says to an ask: "early" in its first `guard` ms, so a key
-// typed on from what asked can't answer it, or for no key at all, as a
-// modifier alone; "yes" for y alone; "no" for n, Escape and Ctrl+C; and
-// "nothing" for any other, which ask_yesno lets by, so a stray key never
-// answers.
+// What a key says to an ask: "early" in its first `guard` ms, so the
+// Return that asked, doubled or bounced, and a key typed on from it
+// neither answer nor reach the line, or for no key at all, as a modifier
+// alone; "yes" for Return; and "no" for any other, Escape, - and y among
+// them, as any other key lets an armed row go.
 function answer(ask, key, now, guard) {
     if (key === "" || now - ask.at < guard) {
         return "early";
     }
-    if (key === "y") {
-        return "yes";
-    }
-    return NO.includes(key) ? "no" : "nothing";
+    return YES.includes(key) ? "yes" : "no";
 }
 
 // What d asks over the rows it would end, each { ends, name, kind }: the
-// one row by its name, as "Close Notes? (y/n)", and more by their count
-// and kind, each verb with its own in the order they come, as "Close 2
-// windows and forget 1 copy? (y/n)", so Joel needn't look to see what
-// they are (VKCF3Z, 2026-11-05). One row that says what its ending
-// leaves (`leaves`) says it before y/n, as "Close Lamplight? Its worktree
-// stays. (y/n)", so ending a session never reads as losing its work,
-// begun as the sentence it is. One row with words of its own for the
-// ask (`asked`) is asked in them whole: the act on its thing, then what it
-// ends, as "Reboot the Machine, Closing 12 Windows? (y/n)", never a
-// place's name joined to the act's (VKCF3Z, 2026-11-08).
+// one row by its name, as "Close Notes?", and more by their count and
+// kind, each verb with its own in the order they come, as "Close 2
+// windows and forget 1 copy?", so Joel needn't look to see what they are
+// (VKCF3Z, 2026-11-05). One row that says what its ending leaves
+// (`leaves`) says it after, as "Close Lamplight? Its worktree stays.", so
+// ending a session never reads as losing its work, begun as the sentence
+// it is. One row with words of its own for the ask (`asked`) is asked in
+// them whole: the act on its thing, then what it ends, as "Reboot the
+// Machine, Closing 12 Windows?", never a place's name joined to the act's
+// (VKCF3Z, 2026-11-08). The foot says what Return does, as an armed
+// row's does.
 function question(rows, words) {
     return joined(questionParts(rows, words));
 }
@@ -81,11 +83,15 @@ function actOf(holder, act, holderKind) {
 
 // What a served act's ask says of it, where its daemon serves that: whom
 // it names (`askedAs`) and what stays once it's done (`leaves`), as
-// Agents' Close says "Close 8IDU4E? Its worktree and 1 to-do stay.";
-// nothing for one that serves neither (ReadyRows.qml).
+// Agents' Close says "Close 8IDU4E? Its worktree and 1 to-do stay."; and
+// whether it costs enough to ask at all (`costly`, Operators.asks), as
+// agentsd says of a Close with work in flight. Nothing for one that
+// serves none of them (ReadyRows.qml).
 function asking(act) {
     const leaves = String(act?.leaves ?? "");
-    return leaves === "" ? {} : { askedAs: String(act.askedAs ?? ""), leaves };
+    const costly = typeof act?.costly === "boolean" ? { costly: act.costly } : {};
+    return Object.assign(leaves === "" ? {} : { askedAs: String(act.askedAs ?? ""), leaves },
+        costly);
 }
 
 // The same ask in its parts: its head, what it does and to what; the

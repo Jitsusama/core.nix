@@ -49,8 +49,8 @@
 // to save as, a prompt's words rather than a find, the caret before its
 // extension, kept from folder to folder; each folder, here or there whose
 // place gives `saveTo`, leads with it, and a name already there (`names`)
-// asks once, "Replace notes.md? (y/n)" (VKCF3Z's vi-paradigm spec, The
-// File Picker). Return in a place there makes it the place said to save in, here,
+// asks once, "Replace notes.md?", a second Return saving over it (VKCF3Z's
+// vi-paradigm spec, The File Picker; Joel, 2026-11-13). Return in a place there makes it the place said to save in, here,
 // and then answers the path, which the place takes from there (VKCF3Z,
 // 2026-10-30). An ask from inside the shell for a local folder alone
 // (`local`) is given no places. A program's save staged there is marked
