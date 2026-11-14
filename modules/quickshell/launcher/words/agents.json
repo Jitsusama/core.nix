@@ -107,7 +107,8 @@
         "taken": "taken back",
         "waiting": "waiting on {who}",
         "void": "the void",
-        "letGo": "{who} let it go"
+        "letGo": "{who} let it go",
+        "yesterday": "yesterday"
       }
     },
     {

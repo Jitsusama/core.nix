@@ -12,12 +12,14 @@
 // Escape gives normal and never puts it away; the chord again does, or :q, the words kept, as
 // a switch keeps them (Drafts.qml). TalkLine.js says what it says and sends.
 pragma ComponentBehavior: Bound
+import qs
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
 import "TalkLine.js" as Said
+import "When.js" as When
 
 Scope {
     id: root
@@ -35,10 +37,34 @@ Scope {
     property var session: null
     readonly property var rows: Said.attached(window, program, session)
     property string program: ""
-    // The talks the last Returns began (TalkLine.js's begun and kept), newest first, and the
-    // newest, or null before any, which :take acts on.
-    property var talks: []
+    // The talks Returns in this shell began (TalkLine.js's begun), newest first, as each goes.
+    property var saidHere: []
+    // Every line the line shows: those said here and those the void keeps, which outlive the
+    // shell, lines still open first (TalkLine.js's gathered); and the first, or null before
+    // any, which :take acts on.
+    readonly property var talks: Said.gathered(saidHere,
+        heard.filter(one => !Said.unanswered(one)).map(one => Said.fromServed(hears.to, one)),
+        events, seen)
     readonly property var talk: talks.length > 0 ? talks[0] : null
+
+    // How many of each line's answers he has seen, by its key in the void's day file, kept
+    // on disk so a restart shows again only what he hasn't; written as the line is put away,
+    // what it showed then being what he saw (WCJQSG [a2eb9575]).
+    property var seen: ({})
+    FileView {
+        id: seenFile
+        path: Quickshell.statePath("talk-line-seen.json")
+        blockLoading: true
+        printErrors: false
+    }
+    Component.onCompleted: seen = Said.seenIn(seenFile.text())
+    function sawShown() {
+        const after = Said.seenAfter(seen, talks, events, Date.now());
+        if (JSON.stringify(after) === JSON.stringify(seen))
+            return;
+        seen = after;
+        seenFile.setText(JSON.stringify(after));
+    }
     // Whether the command line has the keys, in the field's place.
     property bool commanding: false
     // What's typed on the line is kept under its own name until it's sent.
@@ -111,7 +137,6 @@ Scope {
         prompt.typing();
         if (kept.text !== "")
             prompt.caretTo(kept.caret);
-        breathing.restart();
         look();
     }
 
@@ -165,6 +190,8 @@ Scope {
     }
 
     function putAway() {
+        if (up)
+            sawShown();
         launcher.drafts.flush();
         commanding = false;
         up = false;
@@ -179,8 +206,7 @@ Scope {
         const sent = Said.said(text, rows);
         launcher.drafts.handed(key, hears.to, sent);
         agents()?.say(hears, sent);
-        talks = Said.kept(talks, Said.begun(hears.to, text, sent, Date.now()));
-        breathing.restart();
+        saidHere = [Said.begun(hears.to, text, sent, Date.now())].concat(saidHere);
         prompt.clear();
     }
 
@@ -188,42 +214,51 @@ Scope {
     // answer that came while it was put away is there as it opens.
     // It reads the talks as Agents folds them, so it hears them once folded rather than
     // when the sources change, which comes first.
-    readonly property var heard: talk === null ? [] : agents()?.talksOf(talk.to) ?? []
+    // The void's talks, which it keeps through restarts, are the line's too.
+    readonly property var heard: hears === null ? [] : agents()?.talksOf(hears.to) ?? []
     onHeardChanged: follow()
     function follow() {
         let moved = false;
-        const now = talks.map(one => {
+        const now = saidHere.map(one => {
             const next = Said.followed(one, heard);
             moved = moved || next !== null;
             return next ?? one;
         });
         if (moved)
-            talks = now;
+            saidHere = now;
     }
 
     // What became of each line past the void, as the void writes it: every answer, one
-    // superseding another, and who has it meanwhile (8GYNJ6 [a9490eb0]). A stopgap reading the
-    // void's file, while the line is up and has talked, until KP0L6A's agents daemon serves it
-    // as `void-answers`, due Fri 13 November 13:00 ([38a732e1]).
-    FileView {
-        id: answersFile
-        path: root.up && root.talks.length > 0
-            ? `${Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"}`
-                + "/void/answers.jsonl" : ""
-        watchChanges: true
-        printErrors: false
-        onFileChanged: reload()
-        onLoaded: root.events = Said.eventsIn(text())
-    }
-    property var events: []
-    readonly property var exchanges: talks.map(one => Said.exchange(one, events, said))
+    // superseding another, and who has it meanwhile (8GYNJ6 [a9490eb0]). The home realm's
+    // node serves the void's file as one `void-answers` record, its lines in the order written
+    // (modules/mycelium/home.nix), so the shell opens no file of the void's and is told each
+    // line as the node hears it, rather than reading the whole file again on each. Watched only
+    // while the line is up, the one time anything of it is drawn.
+    readonly property var answersKind: answersLink.item
+    LazyLoader {
+        id: answersLink
+        active: Sessions.nodePath !== ""
 
-    // A line waiting on someone breathes, quietly, from the moment it's up or said for as long
-    // as the caret blinks, then holds still, so a line left open draws nothing more
-    // (docs/design.md: motion that never ends ranks nothing).
-    Timer {
-        id: breathing
-        interval: Options.caret.stopsAfter
+        Daemon {
+            socket: Sessions.nodePath
+            kind: "void-answers"
+            live: root.up
+            changesDiffer: true
+            answersWhole: true
+            keptThroughGap: true
+        }
+    }
+    // The node's one record of the void's answers, keyed by the machine's name.
+    readonly property var events: {
+        void answersKind?.revision;
+        return Said.eventsOf(Object.values(answersKind?.held ?? {})[0]?.lines);
+    }
+    // Each line as it shows, one said on an earlier day saying which beside its time.
+    readonly property var exchanges: {
+        const days = { yesterday: String(said.yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        return talks.map(one => Said.exchange(one, events, said,
+            since => When.day(since, Date.now(), days)));
     }
 
     // :take, while the void can undo what it did with the line.
@@ -231,7 +266,8 @@ Scope {
         const asked = Said.taking(talk, Date.now());
         if (asked === null)
             return;
-        talks = [asked.talk].concat(talks.slice(1));
+        // A line the void kept from before is said here from now, as it's taken back.
+        saidHere = [asked.talk].concat(saidHere.filter(one => !Said.same(one, talk)));
         agents()?.talkTo(talk.to, asked.asked);
     }
 
@@ -416,6 +452,17 @@ Scope {
 
                             width: spoken.width
                             height: (saidLines + answerLines + (stands.visible ? 1 : 0)) * pitch
+                            // The one text column every answer holds, up to where a time
+                            // stands, whoever answered, so no answer is pushed in by a long
+                            // name (Joel at 17:49 on 2026-11-13, [0adc518f]).
+                            readonly property real column: width - clock.width
+                                - Theme.space.rung.groups - body.textAt
+
+                            TextMetrics {
+                                id: clock
+                                font: side.font
+                                text: "00:00"
+                            }
 
                             Text {
                                 id: line
@@ -452,8 +499,7 @@ Scope {
                                 visible: told.modelData.answers.length > 0
                                 x: body.textAt
                                 y: (told.saidLines + 1) * told.pitch - baselineOffset
-                                width: (by.text === "" ? told.width : by.x - Theme.space.rung.groups)
-                                    - x
+                                width: told.column
                                 text: told.modelData.answers.join("\n")
                                 textFormat: Text.PlainText
                                 color: Theme.text
@@ -465,20 +511,31 @@ Scope {
                                 font.family: Theme.level.words.family
                                 font.pointSize: Theme.level.words.pointSize
                                 font.variableAxes: Theme.level.words.variableAxes
+                                // Its first line alone gives way to who answered, as his
+                                // words give way to when he said them.
+                                onLineLaidOut: laid => {
+                                    if (laid.number === 0 && by.visible)
+                                        laid.width = Math.min(laid.width,
+                                            by.x - Theme.space.rung.groups - answers.x);
+                                }
                             }
 
-                            // Who answered, at the right of its first line as when he said it
-                            // stands at his words' right, so each side means one thing.
+                            // Who answered, at the right of its first line in the time's own
+                            // face, its right edge on the time's, as when he said it stands at
+                            // his words' right, so each side means one thing; a long name
+                            // gives way at a third of the line.
                             Text {
                                 id: by
                                 visible: answers.visible && text !== ""
                                 x: told.width - width
+                                width: Math.min(implicitWidth, told.width / 3)
                                 anchors.baseline: answers.baseline
                                 text: told.modelData.by
                                 textFormat: Text.PlainText
                                 color: Theme.muted
-                                font.family: Theme.level.note.family
-                                font.pointSize: Theme.level.note.pointSize
+                                elide: Text.ElideRight
+                                font: side.font
+                                onXChanged: answers.forceLayout()
                             }
 
                             Text {
@@ -500,13 +557,16 @@ Scope {
 
                                 // In and out over twice the caret's fade, on a soft curve
                                 // rather than its linear one, so it reads as breath rather
-                                // than a blink; it rests whole (the designer's choice).
+                                // than a blink, deeply, and for as long as it waits, so a
+                                // line still being worked on reads as alive: Joel's word
+                                // over motion that ends (8GYNJ6 [cdffbffc], 17:46 on
+                                // 2026-11-13). Answered or put away it rests whole.
                                 SequentialAnimation on opacity {
-                                    running: root.up && stands.waits && breathing.running
+                                    running: root.up && stands.waits
                                     loops: Animation.Infinite
                                     onStopped: stands.opacity = 1
                                     NumberAnimation {
-                                        to: 0.4
+                                        to: 0.2
                                         duration: 2 * Options.caret.fade
                                         easing.type: Easing.InOutSine
                                     }

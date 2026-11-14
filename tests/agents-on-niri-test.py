@@ -252,10 +252,15 @@ def shell() -> Iterator[Shell]:
     logs = Path(os.environ["LOGS"])
     logs.mkdir(parents=True, exist_ok=True)
     # It serves the harness's quests, as the account's node does (modules/mycelium/home.nix),
-    # which say how each closed orchestrator reopens, and the talks in the steer inboxes.
+    # which say how each closed orchestrator reopens, the talks in the steer inboxes, and what
+    # the void wrote of each line past it, as one record.
     serves = logs / "serves.json"
     quest = {"file": str(WORKFLOW / "quests.json"), "records": "quests", "key": "id"}
-    serves.write_text(json.dumps({"quest": quest, "talk": {"talks": str(STEER)}}))
+    answers = {"file": str(STATE / "void/answers.jsonl"), "whole": True}
+    (STATE / "void").mkdir(parents=True, exist_ok=True)
+    serves.write_text(
+        json.dumps({"quest": quest, "talk": {"talks": str(STEER)}, "void-answers": answers})
+    )
     # The node serves no talks from a folder missing as it starts, as Joel's never is: run
     # alone, Super+S's cases laid the first steer after it, and their answers never came.
     STEER.mkdir(parents=True, exist_ok=True)
@@ -1567,16 +1572,27 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
             time.sleep(0.1)
 
     def replied(asked: str, answer: str) -> None:
-        """Lay the void's talk of these words as delivered now, then replied to, as pi does."""
+        """Lay the void's talk of these words as delivered now, then replied to, as pi does.
+
+        pi names a talk by the id the line gave it as it was said, so the line knows it
+        for the one it said however late the void answers.
+        """
         replies = STEER / "VOID" / "replies"
         replies.mkdir(parents=True, exist_ok=True)
         now = datetime.now(UTC)
+        ids = [
+            str(steer.get("id", ""))
+            for one in (STEER / "VOID").glob("*.json")
+            if (steer := json.loads(one.read_text())).get("text") == asked
+        ]
+        named = ids[0] if ids and ids[0].startswith("talk-") else ""
+        talk = named or f"talk-{int(now.timestamp() * 1000)}"
         lines = [
             {"stage": "delivered", "at": now.isoformat(), "session": "s-void", "from": "joel",
              "text": asked},
             {"stage": "replied", "at": now.isoformat(), "text": answer},
         ]  # fmt: skip
-        laid = replies / f"talk-{int(now.timestamp() * 1000)}.jsonl.tmp"
+        laid = replies / f"{talk}.jsonl.tmp"
         laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
         laid.rename(laid.with_suffix(""))
 
@@ -1729,4 +1745,63 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
     standing = shell.showing()["line"]["standing"]
     assert standing == "The cat's clips, and the void.", shell.showing()["line"]
     shell.as_account(shell.ipc("line"))
+    shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def test_super_s_line_shows_every_line_still_open_after_a_restart_an_earlier_days_too(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """After the shell restarts, every line still waiting or answered unseen shows first.
+
+    Joel sent several lines, didn't wait for their answers, and after a switch restarted the
+    shell the line showed none of them (WCJQSG [a2eb9575], 2026-11-13 18:05: "now going in
+    shows me nothing"). The void keeps every talk and answer, so the line is made from what
+    it keeps, and what he has seen is kept on disk: the two answered lines the case before
+    showed stay after them, one still waiting and an answer from yesterday he hasn't seen
+    come first.
+    """
+    replies = STEER / "VOID" / "replies"
+    now = datetime.now(UTC)
+    yesterday = now - timedelta(days=1)
+
+    def kept(at: datetime, words: str, undo: str) -> None:
+        """Lay a talk the void kept, said at `at` and taken by your orchestrator at `undo`."""
+        lines = [
+            {"stage": "delivered", "at": at.isoformat(), "session": "s-void", "from": "joel",
+             "text": words},
+            {"stage": "replied", "at": at.isoformat(),
+             "text": f"Your orchestrator has it \u00b7 undo {undo}"},
+        ]  # fmt: skip
+        laid = replies / f"talk-{int(at.timestamp() * 1000)}.jsonl.tmp"
+        laid.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        laid.rename(laid.with_suffix(""))
+
+    kept(yesterday, "is the beacon fixed?", "09:05")
+    kept(now, "move the windows back", "07:50")
+    day = datetime.now().astimezone().strftime("%Y-%m-%d")
+    before = yesterday.astimezone().strftime("%Y-%m-%d")
+    events = [
+        {"line": f"{before} 09:05", "msg": "y1", "who": "Delta", "event": "routed"},
+        {"line": f"{before} 09:05", "msg": "y2", "who": "Delta", "event": "answered",
+         "at": "09:20", "text": "Fixed, and merged."},
+        {"line": f"{day} 07:50", "msg": "w1", "who": "your orchestrator", "event": "routed"},
+    ]  # fmt: skip
+    with (STATE / "void" / "answers.jsonl").open("a") as file:
+        file.writelines(json.dumps(event) + "\n" for event in events)
+    shell.restart()
+    line = shell.ipc("line")
+    shell.as_account(line)
+    shell.launcher_until(lambda shown: shown["line"]["up"])
+    said = ["move the windows back", "is the beacon fixed?", "what is being worked on?",
+            "how is it going?"]  # fmt: skip
+    shell.launcher_until(
+        lambda shown: [talk["line"] for talk in shown["line"]["talks"]][:4] == said
+    )
+    talks = shell.showing()["line"]["talks"]
+    assert talks[0]["waiting"] == "waiting on your orchestrator", talks
+    assert (talks[1]["answers"], talks[1]["by"]) == (["Fixed, and merged."], "Delta"), talks
+    assert re.fullmatch(r"\S+ \d\d:\d\d", talks[1]["side"]), talks
+    assert talks[2]["answers"] == ["The cat's clips, and the void."], talks
+    shoot("restarted")
+    shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
