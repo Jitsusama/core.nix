@@ -62,6 +62,10 @@ pub struct Signs {
     /// Chrome's reloads and visits back.
     pub reloads: u32,
     pub backs: u32,
+    /// In pi, the turns he stopped and the messages that corrected an
+    /// agent: the agents' judgement as he felt it.
+    pub stopped: u32,
+    pub corrections: u32,
 }
 
 /// The day's pains from `folder`, worst first; a line that isn't one is

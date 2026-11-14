@@ -109,6 +109,31 @@ pub const MEASURES: &[Measure] = &[
         None,
         2.0,
     ),
+    // Each place's own, read by whoever owns it: pi, the launcher, Chrome.
+    measure(
+        "health.feel.*.lost-minutes",
+        "polish",
+        "minutes lost in the day's worst moments",
+        " min",
+        None,
+        2.0,
+    ),
+    measure(
+        "health.feel.stopped",
+        "collaboration",
+        "agents' turns he stopped in the day's worst moments",
+        "",
+        Some(0.0),
+        1.0,
+    ),
+    measure(
+        "health.feel.corrections",
+        "collaboration",
+        "agents he corrected in the day's worst moments",
+        "",
+        Some(0.0),
+        1.0,
+    ),
     measure(
         "health.memory.pi.most-mib",
         "resources",
@@ -168,11 +193,13 @@ pub const MEASURES: &[Measure] = &[
         10.0,
     ),
     // Past 90% used, a tenth free, is where the disk guard's nearly-full
-    // band begins unless a machine sets its own.
+    // band begins unless a machine sets its own. Each disk by its mount,
+    // so a full one is named where it is: on 13 November the day said
+    // only that some disk was at 100%.
     measure(
-        "health.disk.most-used-percent",
+        "health.disk.*.most-used-percent",
         "resources",
-        "the most of any disk in use",
+        "the most in use of the disk",
         "%",
         Some(90.0),
         5.0,
@@ -197,7 +224,7 @@ pub fn figures(json: &str) -> BTreeMap<String, f64> {
         .figures
         .into_iter()
         .map(|(key, figure)| (format!("health.{key}"), figure))
-        .filter(|(key, _)| MEASURES.iter().any(|measure| measure.key == key))
+        .filter(|(key, _)| MEASURES.iter().any(|measure| measure.holds(key)))
         .collect()
 }
 
@@ -228,7 +255,7 @@ mod tests {
         let figures = figures(
             r#"{"date": "2026-11-12", "things": {},
                 "figures": {"boot.seconds": 27.0, "agents.died": 4, "unheard-of": 3,
-                "asks.unread-yeses": 1, "disk.most-used-percent": 71.5}}"#,
+                "asks.unread-yeses": 1, "disk./.most-used-percent": 71.5}}"#,
         );
         assert_eq!(
             figures,
@@ -236,7 +263,7 @@ mod tests {
                 ("health.agents.died".to_owned(), 4.0),
                 ("health.asks.unread-yeses".to_owned(), 1.0),
                 ("health.boot.seconds".to_owned(), 27.0),
-                ("health.disk.most-used-percent".to_owned(), 71.5),
+                ("health.disk./.most-used-percent".to_owned(), 71.5),
             ]),
             "a figure of health's was lost, or one no measure holds was kept"
         );
@@ -304,6 +331,48 @@ mod tests {
                 .any(|finding| finding.key == "health.boot.seconds" && finding.bar == Some(30.0)),
             "a 41.5 s boot wasn't held against its 30 s bar: {:?}",
             judged.worse
+        );
+    }
+
+    #[test]
+    fn a_full_disk_is_named_by_its_mount() {
+        let day = Day {
+            figures: figures(
+                r#"{"figures": {"disk.most-used-percent": 100.0,
+                    "disk./var/cache/builds.most-used-percent": 100.0,
+                    "disk./.most-used-percent": 40.0}}"#,
+            ),
+            ..Day::default()
+        };
+        let words: Vec<String> = judge(&day, &[])
+            .worse
+            .into_iter()
+            .map(|finding| finding.words)
+            .collect();
+        assert_eq!(
+            words,
+            ["the most in use of the disk at /var/cache/builds was 100%, past its bar of 90%"],
+            "a disk past its bar wasn't named by its mount, or was said twice"
+        );
+    }
+
+    #[test]
+    fn each_places_lost_minutes_and_his_stops_and_corrections_are_kept() {
+        let figures = figures(
+            r#"{"figures": {"feel.lost-minutes": 16.0, "feel.pi.lost-minutes": 15.0,
+                "feel.launcher.lost-minutes": 1.0, "feel.stopped": 2.0,
+                "feel.corrections": 1.0}}"#,
+        );
+        assert_eq!(
+            figures.keys().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "health.feel.corrections",
+                "health.feel.launcher.lost-minutes",
+                "health.feel.lost-minutes",
+                "health.feel.pi.lost-minutes",
+                "health.feel.stopped",
+            ],
+            "a place's lost minutes, his stops or his corrections weren't kept"
         );
     }
 }

@@ -57,10 +57,12 @@ pub fn judge(day: &Day, before: &[Day]) -> Judged {
             .iter()
             .filter_map(|d| d.figures.get(key).copied())
             .collect();
-        let says = whose.map_or_else(
-            || measure.says.to_owned(),
-            |whose| format!("{whose}'s {}", measure.says),
-        );
+        // A disk is whose by its mount, which reads as where, not whose.
+        let says = match whose {
+            None => measure.says.to_owned(),
+            Some(mount) if mount.starts_with('/') => format!("{} at {mount}", measure.says),
+            Some(whose) => format!("{whose}'s {}", measure.says),
+        };
         let worse = measure.worse();
         let middle = (past.len() >= ENOUGH).then(|| median(&past)).flatten();
         if middle.is_some() {
