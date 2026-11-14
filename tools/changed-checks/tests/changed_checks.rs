@@ -1608,6 +1608,31 @@ fn a_keep_evaluates_whole_once_six_keeps_in_a_row_carried() {
 }
 
 #[test]
+fn a_keep_evaluates_whole_once_six_keeps_in_a_row_carried_though_a_gate_kept_its_base() {
+    // On 14 November keeps at 06:02 and 06:18 said they evaluated whole,
+    // but a gate had kept each base first, so they evaluated nothing and
+    // counted a seventh and an eighth carry.
+    let stand_in = past_a_carry("carry-six-gated", 6, std::time::Duration::ZERO);
+    fs::create_dir_all(stand_in.path("cache/changed-checks")).expect("made");
+    fs::write(
+        stand_in.path(KEPT),
+        r#"{"a": "a.drv", "b": "b7.drv", "gone": "g.drv", "vm-x": "v.drv"}"#,
+    )
+    .expect("kept as a gate would");
+
+    assert_kept_whole(
+        &stand_in,
+        "evaluated whole at 0123456789ab, x86_64-linux's b came to other derivations than a \
+         gate kept",
+    );
+    assert_eq!(
+        kept_derivations(&stand_in),
+        serde_json::from_str::<serde_json::Value>(BASE).expect("JSON"),
+        "a whole keep left what a gate kept in place of what it evaluated"
+    );
+}
+
+#[test]
 fn a_keep_evaluates_whole_once_the_record_it_would_carry_from_is_two_hours_old() {
     let stand_in = past_a_carry("carry-old", 1, std::time::Duration::from_hours(3));
 
