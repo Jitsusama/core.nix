@@ -362,5 +362,15 @@
       "test_the_first_letter_typed_at_home_makes_a_few_rows_after_one_arrived_while_shut"
     ],
     "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
+    "at": 1794620016,
+    "commit": "93eeb7412debd50edf5d9bcc77d90d702b7ceee9",
+    "owner_pr": 4157,
+    "reason": "failed, then passed, at 93eeb7412deb",
+    "subtests": [
+      "test_a_session_whose_attach_its_host_refuses_keeps_its_window"
+    ],
+    "test": "vm-desktop-moves-keep-their-window"
   }
 ]
