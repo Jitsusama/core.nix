@@ -61,7 +61,7 @@
 // daemon words for its entry.
 //
 // By default such a source's part of someone is drawn as the daemon
-// serves it (Y2YBTS, 67770006), so a source serving it whole needs no file
+// serves it, so a source serving it whole needs no file
 // (Slack's): its entry's `acts`, on ready-rows.md's forms, `main` on the
 // one leading the ways to reach them, one with no form held in place
 // dimmed with its `side` saying why; and its `between`, each { at, key,

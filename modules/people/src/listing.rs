@@ -170,8 +170,7 @@ pub fn stood(entry: &Value, stands: &Stands) -> Option<Stood> {
 /// What each source said of someone, each entry with how it has them
 /// stand where its source says how anyone stands, as `stood`, `{ said,
 /// order }` in People's words and its `mark` where it gives one, so the
-/// shell words nobody's stand itself, a source of its or not (Y2YBTS,
-/// 67770006).
+/// shell words nobody's stand itself, a source of its or not.
 #[must_use]
 pub fn sourced(record: &Record, sources: &[(String, Option<Stands>)]) -> Value {
     let mut said = serde_json::Map::new();

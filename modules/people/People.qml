@@ -27,7 +27,7 @@
 // finds, asked of the daemon as each text is typed, and whoever Joel
 // steps into, asked of every source then. One the daemon serves whole, as
 // Slack's, has no file: its acts, what's between them and how they stand
-// are drawn as served, no row of its made here (Y2YBTS, 67770006).
+// are drawn as served, no row of its made here.
 // Holding Tuple's 7,731 contacts here made 23,276 rows at each opening
 // and held Joel's first key a second (2026-10-31, 09:31).
 //
@@ -100,8 +100,8 @@ Provider {
 
     // Whoever Joel steps into, asked of every source through the daemon as
     // he does, and watched while he's inside them, so what a source learns
-    // of them only once asked, as Slack's act, comes as it changes (XY9H5C,
-    // 87688ce0). Each address is asked at most once a minute.
+    // of them only once asked, as Slack's act, comes as it changes. Each
+    // address is asked at most once a minute.
     Daemon {
         id: stepper
 
@@ -110,7 +110,7 @@ Provider {
         watching: ({ keys: [] })
         ahead: provider.within
         // Nothing heard with the launcher shut wakes the shell, as one told
-        // just after it shut would (XY9H5C, be3bdeac). It's its being open
+        // just after it shut would, since nobody's looking. It's its being open
         // rather than People's being wanted, since a person lent to mail or
         // a meeting is stepped into where People's own rows aren't.
         onHeard: {
@@ -120,7 +120,7 @@ Provider {
     }
     // The keys of whoever Joel's inside now, wherever they were lent: as he
     // leaves them, or the launcher shuts, their watch goes, so the shell at
-    // rest hears nothing of those he looked at (XY9H5C, be3bdeac).
+    // rest hears nothing of those he looked at.
     readonly property var within: {
         const launcher = provider.launcher;
         const steps = launcher?.open ? launcher.held ?? [] : [];

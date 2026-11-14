@@ -743,7 +743,7 @@ ShellRoot {
         {
             // Whoever Joel's inside is watched, lent or not, and let go as
             // he leaves them or the launcher shuts, so the shell at rest
-            // hears nothing of those he looked at (XY9H5C, be3bdeac).
+            // hears nothing of those he looked at.
             what: "only whoever Joel's inside is watched",
             check: () => {
                 const zoe = people.personOf("Zoe@example.com");

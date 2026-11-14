@@ -15,8 +15,7 @@
 # $XDG_RUNTIME_DIR/daemons/people.sock in the shell's daemon interface,
 # for the shell and anything else that asks. A source the daemon serves
 # whole, its acts, what's between them and how they stand ready in its
-# lines, needs no QML file: People draws what's served (Y2YBTS,
-# 67770006).
+# lines, needs no QML file: People draws what's served.
 { quickshell }:
 {
   config,

@@ -3,7 +3,7 @@
 //! between them and Joel beside it, worded from the launcher's vocabulary,
 //! so the people daemon merges Slack's part of a person as it is and People
 //! draws it as it's served, with no QML source of Slack's (Y2YBTS's data
-//! rule, 2026-11-10, and 67770006). The facts are on ready-rows.md's
+//! rule, 2026-11-10). The facts are on ready-rows.md's
 //! forms: `{ name, said }`, and the time zone as `{ name, zone, as:
 //! "zone" }`, unworded, since the time there reads the clock and the shell
 //! says it as it ticks. How they stand is the people daemon's to word,
