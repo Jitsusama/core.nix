@@ -331,6 +331,5 @@
   ];
   xdg-open = [ "helps" ];
   yubikey-once-in = [ "helps" ];
-  zathura-command = [ "subcommands" ];
   zoom-opens = [ "helps" ];
 }
