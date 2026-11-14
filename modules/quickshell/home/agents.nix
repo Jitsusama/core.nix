@@ -11,6 +11,7 @@
   "SessionTalks.js"
   "SessionWindows.js"
   "TalkAttached.qml"
+  "TalkCommands.qml"
   "TalkLine.qml"
   "TalkLine.js"
   "TalkLineMark.qml"

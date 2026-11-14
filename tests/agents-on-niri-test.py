@@ -1990,7 +1990,24 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     # :take in normal tells the void to undo it, and its undone reads taken back, in the line.
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
-    shell.send_chars(":take")
+    # Its : lists what it runs, under what's typed, as every other command line does, and
+    # Tab completes what's typed (Joel, 2026-11-14 16:25: "the void lacks any Ex command
+    # completion like other windows do"), all of it over the foot.
+    shell.send_chars(":")
+    shell.launcher_until(
+        lambda shown: shown["line"]["menu"] == ["take", "q[uit]"]
+        and shown["line"]["menuDrawn"] == 2
+    )
+    listed = shell.showing()["line"]
+    assert listed["menuEnds"] < listed["footAt"], listed
+    shoot("commands")
+    shell.send_chars("t")
+    shell.launcher_until(lambda shown: shown["line"]["menu"] == ["take"])
+    shell.send_key("tab")
+    shell.launcher_until(lambda shown: shown["line"]["command"] == "take")
+    taken = shell.showing()["line"]
+    assert taken["menuChosen"] == 0, taken
+    shoot("completed")
     shell.send_key("ret")
     shell.launcher_until(lambda shown: shown["line"]["talk"] == "taking")
     replied(steered(lambda text: text == "undo 04:58"), "undone")

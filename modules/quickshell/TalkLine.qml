@@ -611,7 +611,7 @@ Scope {
 
                 // What's attached its region, inset to inset, never meeting the frame.
                 Rectangle {
-                    visible: body.attaching
+                    visible: body.attaching && !root.commanding
                     y: body.attachedRuleAt
                     width: parent.width
                     height: Theme.border
@@ -621,7 +621,7 @@ Scope {
                 // What goes with the line once it's sent, a muted row each.
                 TalkAttached {
                     id: attached
-                    visible: body.attaching
+                    visible: body.attaching && !root.commanding
                     y: body.attachedAt - body.pitch
                     width: parent.width
                     rows: root.shownRows
@@ -630,7 +630,7 @@ Scope {
 
                 // The talk's region, inset to inset, never meeting the frame.
                 Rectangle {
-                    visible: body.talking
+                    visible: body.talking && !root.commanding
                     y: body.ruleAt
                     width: parent.width
                     height: Theme.border
@@ -641,7 +641,7 @@ Scope {
                 // field and over the foot, the rest a scroll away (TalkSpoken.qml).
                 TalkSpoken {
                     id: spoken
-                    visible: body.talking && root.thread === null
+                    visible: body.talking && root.thread === null && !root.commanding
                     y: body.lineAt - body.pitch
                     width: parent.width
                     exchanges: root.exchanges
@@ -656,7 +656,7 @@ Scope {
                 // A line opened as its thread, in the list's place (TalkThread.qml).
                 TalkThread {
                     id: threadView
-                    visible: body.talking && root.thread !== null
+                    visible: body.talking && root.thread !== null && !root.commanding
                     y: body.lineAt - body.pitch
                     width: parent.width
                     shown: root.thread
@@ -664,6 +664,20 @@ Scope {
                     gap: body.pitch
                     nerdy: root.nerdy
                     room: body.talksRoom
+                }
+
+                // While : is open, its menu in what's attached's and the talks' place, as
+                // many lines as stand over the foot (TalkCommands.qml).
+                TalkCommands {
+                    id: commandMenu
+                    visible: root.commanding
+                    y: body.typedEnds
+                    width: parent.width
+                    shown: root.commanding ? commandLine.shown : []
+                    chosen: commandLine.choosing.at
+                    reach: card.inset
+                    room: body.framed - body.typedEnds - body.pitch - body.beat
+                    up: root.up
                 }
 
                 // The foot, a group under the last line: who hears it and the window it's
@@ -737,7 +751,10 @@ Scope {
             about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
                 text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
-            takes: offer.visible, commanding,
+            takes: offer.visible, commanding, command: commandLine.text,
+            menu: commandMenu.shown.map(one => commandMenu.named(one)),
+            menuDrawn: commandMenu.drawn, menuChosen: commandMenu.chosen,
+            menuEnds: commandMenu.y + commandMenu.height, footAt: foot.y,
             top: up ? surface.margins.top + card.reach : -1,
             bottom: up ? surface.margins.top + card.reach + card.height : -1,
             screen: surface.screen?.height ?? 0, scrolled: spoken.scrolled, picked,
