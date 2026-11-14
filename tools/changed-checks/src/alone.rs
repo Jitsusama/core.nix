@@ -90,12 +90,14 @@ pub fn keeping(cache: &Path, base: &str, system: &str) -> PathBuf {
 /// Keep what each of a base's ordinary checks read, traced alone once its
 /// derivations are kept, unless it's kept already, saying why when it
 /// can't be: every gate on the base then evaluates them all, as before.
-pub fn keep(root: &str, base: &str, system: &str, noted: &mut Run) {
+/// The record says how many keeps in a row `carried` to the base's
+/// derivations (`carry.rs`).
+pub fn keep(root: &str, base: &str, system: &str, carried: u64, noted: &mut Run) {
     let at = keeping(&crate::cache(), base, system);
     if at.exists() {
         return;
     }
-    if let Err(why) = record(root, base, system, &at, noted) {
+    if let Err(why) = record(root, (base, carried), system, &at, noted) {
         eprintln!(
             "changed-checks: couldn't record what {system}'s checks each read at {}: {why}",
             short(base)
@@ -169,7 +171,13 @@ fn now() -> u64 {
 /// with them after each, the longest waiting first, and one at a time while
 /// a gate runs beside the keep, which begins none past a bound but the
 /// first (`gating.rs`).
-fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> Result<(), String> {
+fn record(
+    root: &str,
+    (base, carried): (&str, u64),
+    system: &str,
+    at: &Path,
+    noted: &mut Run,
+) -> Result<(), String> {
     let derivations = checks::read_kept(&checks::keeping(&crate::cache(), base, system))?
         .ok_or("its derivations aren't kept")?;
     let (tree, source) = reads::source(root, base)?;
@@ -185,11 +193,7 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
         .as_ref()
         .map(|(head, _)| waiting(head, system))
         .unwrap_or_default();
-    let traced_whole = if traced_whole == 0 {
-        now()
-    } else {
-        traced_whole
-    };
+    let traced_whole = Some(traced_whole).filter(|&at| at != 0).unwrap_or_else(now);
     let (mut vm, ordinary): (Vec<&String>, Vec<&String>) = derivations
         .keys()
         .filter(|name| !whole.contains(name.as_str()) && !copied.contains_key(*name))
@@ -235,7 +239,12 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     let mut each = ungathered(each);
     each.extend(copied);
     let record = |each: &BTreeMap<&str, Reads>| {
-        written(at, (&tree, traced_whole), &derivations, (each, &left(each)))
+        written(
+            at,
+            (&tree, traced_whole, carried),
+            &derivations,
+            (each, &left(each)),
+        )
     };
     record(&each)?;
     if !vm.is_empty() {
@@ -334,11 +343,12 @@ fn narrowed<'a>(
 }
 
 /// Keep at `at` the record of what `each` read of `tree`, whole, by rename,
-/// saying when every check was last traced alone and since when each VM
-/// test `left` names has waited to be.
+/// saying when every check was last traced alone, how many keeps in a row
+/// carried to the derivations, and since when each VM test `left` names has
+/// waited to be.
 fn written(
     at: &Path,
-    (tree, traced_whole): (&str, u64),
+    (tree, traced_whole, carried): (&str, u64, u64),
     derivations: &Derivations,
     (each, left): (&BTreeMap<&str, Reads>, &BTreeMap<&str, u64>),
 ) -> Result<(), String> {
@@ -346,6 +356,7 @@ fn written(
     let failed = |error: std::io::Error| format!("{}: {error}", at.display());
     let mut record = kept(tree, derivations.keys(), each);
     record["whole"] = json!(traced_whole);
+    record["carried"] = json!(carried);
     record["waiting"] = json!(left);
     fs::write(&writing, record.to_string()).map_err(failed)?;
     fs::rename(&writing, at).map_err(failed)
@@ -592,19 +603,59 @@ pub fn unreached(
     (known_of(known, unreached.iter()).collect(), left)
 }
 
-/// The base's derivations when it came after the recorded head: each check
-/// main reached nothing of since keeps the head's, the VM tests too when
-/// main reached nothing they read, and only the rest are evaluated at the
-/// base. Nothing when the base is the head, or main's change can't be
-/// judged, so the whole base is evaluated.
-pub fn past(
+/// What a base past a recorded head takes from it: the head's derivation
+/// of each check main reached nothing of since, and the checks left to
+/// evaluate at the base.
+pub struct Carry {
+    /// The head's derivation of each check main reached nothing of.
+    pub known: Derivations,
+    /// The base's ordinary checks left to evaluate, and how many it has.
+    pub left: Vec<String>,
+    pub ordinary: usize,
+    /// The base's VM tests left to evaluate, and how many it has.
+    pub vm_left: Vec<String>,
+    pub vm: usize,
+    /// Whether main reached nothing the VM tests read together, so each
+    /// keeps the head's derivation.
+    pub vm_kept: bool,
+}
+
+impl Carry {
+    /// The base's derivations, `flake`'s: those carried, and the rest
+    /// evaluated.
+    pub fn evaluated(
+        &self,
+        flake: &str,
+        system: &str,
+        noted: &mut Run,
+    ) -> Result<Derivations, String> {
+        let mut asked = self.left.clone();
+        asked.extend(self.vm_left.iter().cloned());
+        let mut evaluation = Run::evaluating("base");
+        let mut derivations = if asked.is_empty() {
+            Derivations::new()
+        } else {
+            evaluating::evaluated(flake, system, &asked, &mut evaluation)?
+        };
+        noted.evaluated(evaluation);
+        let wanted: BTreeSet<&String> = asked.iter().collect();
+        derivations.retain(|name, _| wanted.contains(name));
+        derivations.extend(self.known.clone());
+        Ok(derivations)
+    }
+}
+
+/// What `base` takes from the record of `head`, a head of main it came
+/// after, with its derivations `known`: each check main reached nothing of
+/// since keeps the head's, the VM tests too when main reached nothing they
+/// read, and only the rest are evaluated at the base. Nothing when main's
+/// change can't be judged, so the whole base is evaluated.
+pub fn carry(
     root: &str,
     base: &str,
     system: &str,
-    recorded: Option<&(String, Derivations)>,
-    noted: &mut Run,
-) -> Option<Derivations> {
-    let (head, known) = recorded.filter(|(head, _)| head != base)?;
+    (head, known): (&str, &Derivations),
+) -> Option<Carry> {
     let flake = format!("git+file://{root}?rev={base}");
     let named = evaluating::names(&flake, system).ok()?;
     let (vm, ordinary): (Vec<String>, Vec<String>) = named
@@ -622,37 +673,49 @@ pub fn past(
     } else {
         partitioned(root, (head, known), Some(base), system, &vm).unwrap_or((Vec::new(), vm))
     };
-    let mut asked = left.clone();
-    asked.extend(vm_left.iter().cloned());
-    let mut evaluation = Run::evaluating("base");
-    let mut derivations = if asked.is_empty() {
-        Derivations::new()
-    } else {
-        evaluating::evaluated(&flake, system, &asked, &mut evaluation).ok()?
-    };
-    noted.evaluated(evaluation);
-    let wanted: BTreeSet<&String> = asked.iter().collect();
-    derivations.retain(|name, _| wanted.contains(name));
-    derivations.extend(known_of(known, unreached.iter().chain(&vm_unreached)));
-    if !vm_kept {
+    Some(Carry {
+        known: known_of(known, unreached.iter().chain(&vm_unreached)).collect(),
+        left,
+        ordinary: ordinary.len(),
+        vm: vm_left.len() + vm_unreached.len(),
+        vm_left,
+        vm_kept,
+    })
+}
+
+/// The base's derivations when it came after the recorded head, as `carry`
+/// gives them. Nothing when the base is the head, or main's change can't
+/// be judged, so the whole base is evaluated.
+pub fn past(
+    root: &str,
+    base: &str,
+    system: &str,
+    recorded: Option<&(String, Derivations)>,
+    noted: &mut Run,
+) -> Option<Derivations> {
+    let (head, known) = recorded.filter(|(head, _)| head != base)?;
+    let carry = carry(root, base, system, (head, known))?;
+    let flake = format!("git+file://{root}?rev={base}");
+    let derivations = carry.evaluated(&flake, system, noted).ok()?;
+    if !carry.vm_kept {
         eprintln!(
             "changed-checks: evaluates {} of {system}'s {} VM tests at the base {}, since main \
              from {} reaches nothing the other {} read",
-            vm_left.len(),
-            vm_left.len() + vm_unreached.len(),
+            carry.vm_left.len(),
+            carry.vm,
             short(base),
             short(head),
-            vm_unreached.len()
+            carry.vm - carry.vm_left.len()
         );
     }
     eprintln!(
         "changed-checks: evaluates {} of {system}'s {} other checks at the base {}, since main \
          from {} reaches nothing the other {} read",
-        left.len(),
-        ordinary.len(),
+        carry.left.len(),
+        carry.ordinary,
         short(base),
         short(head),
-        unreached.len()
+        carry.ordinary - carry.left.len()
     );
     Some(derivations)
 }
