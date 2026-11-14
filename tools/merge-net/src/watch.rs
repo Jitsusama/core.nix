@@ -3519,6 +3519,49 @@ mod tests {
     }
 
     #[test]
+    fn a_net_leaving_as_a_settle_ends_keeps_nothing_it_settled() {
+        // 14 November: a watcher told at 02:55 that another build was
+        // installed left the moment its settle listed shows-then-rests in
+        // #4288, at 03:08, before letting the search go, and the next
+        // build searched the test again, ten VM runs to 03:21.
+        let state = state("leaves-settled");
+        state
+            .set_hold(&json!({ "test": "vm-z", "bad": "b", "revert_commit": null }))
+            .unwrap();
+        let world = Stand {
+            head: "n".into(),
+            runs_for: Duration::from_millis(200),
+            ..Stand::default()
+        };
+        let settler = Settler::new(&world, &state);
+        settler.hand(Job::Forward {
+            head: "h".into(),
+            newest: "n".into(),
+            test: "vm-z".into(),
+        });
+        let kept = std::thread::scope(|scope| {
+            settler.start(scope);
+            world.wait_while(|built| built.is_empty(), "the held test's run");
+            // The worker lets the job go only once it has the queue, so a
+            // net leaving between the two finds the job as it was left.
+            let kept = settler.holding_the_queue(|| {
+                let until = std::time::Instant::now() + Duration::from_secs(10);
+                while state.hold().is_some() && std::time::Instant::now() < until {
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                assert!(state.hold().is_none(), "the pass never cleared the hold");
+                settler.leave(|| state.settling().len())
+            });
+            settler.close();
+            kept
+        });
+        assert_eq!(
+            kept, 0,
+            "a job settled as the net left was kept for the next build to do again"
+        );
+    }
+
+    #[test]
     fn a_search_cut_short_by_a_restart_is_taken_up_again() {
         let state = state("search-taken-up");
         state.set_heads("h", "h").unwrap();
