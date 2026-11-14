@@ -195,9 +195,8 @@ fn is_pi(pid: u32) -> bool {
         .collect();
     let first = words.first().map(String::as_str).unwrap_or_default();
     first.rsplit('/').next() == Some("pi")
-        || words.iter().take(3).any(|word| {
-            word.contains("pi-host")
-                || word.contains("pi-coding-agent")
-                || word.contains("pi-monorepo")
-        })
+        || words
+            .iter()
+            .take(3)
+            .any(|word| word.contains("pi-host") || word.contains("pi-coding-agent"))
 }
