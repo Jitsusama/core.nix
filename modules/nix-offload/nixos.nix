@@ -459,6 +459,9 @@ in
     systemd.services."nix-offload-standing@" = lib.mkIf (lines != null) {
       description = "The Nix daemon, for one untrusted connection to the standing builders";
       after = [ "nix-daemon.socket" ];
+      # One unit a connection, gone once it ends, even failed, as the
+      # sandboxes' door's are (modules/nix-daemon/nixos.nix says why).
+      unitConfig.CollectMode = "inactive-or-failed";
       # Through the daemon, said rather than left to Nix finding the store
       # unwritable, since root could open the store itself and build here,
       # outside the daemon's slice and settings.

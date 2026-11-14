@@ -297,6 +297,10 @@
     wake rather than a reset, so the power-off after finds it answering and the hibernation goes
     through
   '';
+  bluetooth-recovers-from-an-unread-exception = ''
+    the XPS 14's kernel resets Bluetooth's chip after a hardware exception whose dump it couldn't
+    read, rather than leaving it halted until a reboot
+  '';
   bluetooth-links-passes-clippy = ''
     clippy finds nothing in bluetooth-links or its tests
   '';
@@ -1546,6 +1550,10 @@
   '';
   niri-starts-able-to-go-first = ''
     the session's niri starts through its wrapper, which holds CAP_SYS_NICE
+  '';
+  a-mac-signs-what-it-builds = ''
+    a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
+    or the Mac's own
   '';
   nix-builds-yield-to-the-person = ''
     Nix's builds run at a lower weight than the person's programs
@@ -3938,8 +3946,8 @@
     behind a router sharing 90 Mbit/s down and 15 up flow by flow under fq_codel, with the jobs
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443 as best effort, lose at most a hundredth of their datagrams
-    coming down, where without the shaper they lose none; and while a call is on, an app's call
-    to 443 goes in the video tin and is seen as real-time traffic
+    coming down, as they do without the shaper; and while a call is on, an app's call to 443
+    goes in the video tin and is seen as real-time traffic
   '';
   vm-a-hidden-queue-is-taken-back = ''
     behind a router sharing 8 Mbit/s flow by flow under fq_codel, which delays no probe, the

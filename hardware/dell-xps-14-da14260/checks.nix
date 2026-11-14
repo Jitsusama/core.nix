@@ -51,6 +51,24 @@ in
       touch $out
     '';
 
+  # Bluetooth's chip once halted with an exception dump the driver couldn't
+  # read, and as only a dump it could read led to a reset, the chip stayed
+  # dead, mouse and all, until a reboot. So an exception that passed no event
+  # on must still raise the Hardware Error that resets it
+  # (btintel-pcie-resets-unread-dump).
+  bluetooth-recovers-from-an-unread-exception =
+    let
+      driver = "drivers/bluetooth/btintel_pcie.c";
+    in
+    pkgs.runCommandLocal "bluetooth-recovers-from-an-unread-exception" { } ''
+      source=${kernelSource [ driver ]}/${driver}
+      if ! grep -q '^[[:space:]]*btintel_pcie_hwexp_unread(data);$' "$source"; then
+        echo "Bluetooth's chip is left halted when its exception dump can't be read." >&2
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A model runs on the NPU only once its compiler has turned it into the
   # NPU's program, and the driver looks for the compiler in its own
   # directory, so both have to be in the graphics driver directory that

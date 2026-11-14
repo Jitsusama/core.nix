@@ -89,7 +89,9 @@ let
         # starts it, so Joel is told at once. A crash or a watchdog's kill it
         # is restarted from doesn't reach this, since RestartMode below skips
         # the failed state a restart would pass through; the journal and
-        # cadence's evening read keep those.
+        # cadence's evening read keep those. A restart asked of systemd whose
+        # stop exits failing does reach it, starting again at once, so the
+        # notice stays quiet while the unit starts again.
         OnFailure = [ "pi-host-down@%N.service" ];
       };
       Service = {

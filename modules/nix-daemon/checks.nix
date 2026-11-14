@@ -1,15 +1,41 @@
 # The checks of nix-daemon, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareDarwin,
   holds,
   lib,
+  macWorkstation,
   onLinux,
   passesClippy,
   pkgs,
+  self,
   workstation,
   ...
 }:
 {
+  # A Mac's daemon signs only if the line naming its key is written for its
+  # Nix to include, and the key is made before /etc is, under the name it
+  # was given or, with none, the Mac's own. Nothing else would say a Mac
+  # signed nothing until another machine refused what it built.
+  a-mac-signs-what-it-builds =
+    let
+      inherit (macWorkstation) config;
+      made = config.system.activationScripts.preActivation.text;
+      named =
+        (bareDarwin [
+          self.darwinModules.nix-daemon
+          { jitsusama.nix-daemon.keyName = "mac-1"; }
+        ]).config.system.activationScripts.preActivation.text;
+    in
+    holds "a-mac-signs-what-it-builds"
+      "A Mac's Nix isn't told to sign with /etc/nix/signing-key, or the key isn't made under its name."
+      (
+        config.environment.etc."nix/signing.conf".text == "secret-key-files = /etc/nix/signing-key\n"
+        && lib.hasInfix "-signing-key.sh " made
+        && lib.hasInfix "scutil --get LocalHostName)-1" made
+        && lib.hasInfix " mac-1 /etc/nix/signing-key /etc/nix/signing-key.pub" named
+      );
+
   # Nix's builds yield to the person's programs only if their slice sits beside
   # user.slice, at a lower weight. A dash in its name nests it in a parent at
   # the default weight, and nothing says so.
