@@ -95,13 +95,6 @@ in
           && refusal.why == "someone is at the machine"
           && refusal.followerWaitsAtMost == 45 * 60
         ) nixos.jitsusama.update-to-main.refuseWhile
-        && lib.any (
-          refusal:
-          refusal.followerWaits
-          && refusal.why == "the launcher is open, or closed under 30 s ago"
-          && refusal.everyAskWaits
-          && refusal.followerWaitsAtMost == null
-        ) nixos.jitsusama.update-to-main.refuseWhile
       );
   # A Mac's follower is its primary user's launchd agent, started again
   # whenever follow ends, as it does for a newer update-to-main, and

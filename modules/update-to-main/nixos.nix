@@ -84,27 +84,9 @@ in
         followerWaits = true;
         followerWaitsAtMost = 45 * 60;
       }
-      # On 12 November a switch Joel's orchestrator asked for restarted the shell
-      # while he typed into the launcher, and the line was lost. So every
-      # ask waits while it's open, and for 30 s after it closes
-      # (./the-launcher-is-in-use.sh).
-      {
-        command = [
-          (lib.getExe (
-            pkgs.writeShellApplication {
-              name = "update-to-main-the-launcher-is-in-use";
-              runtimeInputs = [
-                pkgs.coreutils
-                pkgs.gnugrep
-              ];
-              text = builtins.readFile ./the-launcher-is-in-use.sh;
-            }
-          ))
-        ];
-        why = "the launcher is open, or closed under 30 s ago";
-        followerWaits = true;
-        everyAskWaits = true;
-      }
+      # No ask waits on the launcher: a switch leaves the shell running, and
+      # the shell takes its new files itself once the launcher is idle
+      # (../quickshell/takes-new-files.sh).
     ];
 
     users.groups.update-ask.members = cfg.askers;

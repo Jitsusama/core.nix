@@ -2185,7 +2185,8 @@
     files don't export and Qt enum parameters
   '';
   quickshell-restarts-with-its-files = ''
-    a switch restarts the shell when a file it reads changes
+    a switch that changes a file the shell reads leaves it running, and every switch starts the
+    companion that restarts it onto its files once the launcher is idle
   '';
   quickshell-takes-its-shape-from-the-theme = ''
     every corner and border in the shell and in each module's surface is the theme's
@@ -3604,6 +3605,11 @@
   the-shell-is-given-a-token-on-niri = ''
     the shell's QML asks niri for an activation token through Quickshell.activationToken and is
     given one rather than nothing
+  '';
+  the-shell-takes-a-switchs-files-at-idle = ''
+    after a switch the shell is restarted onto its new files once the launcher has been shut 30 s,
+    or at its bound while the launcher stays in use, and a shell already on its files, or one
+    stopped, is left be
   '';
   the-shell-starts-nothing = ''
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
