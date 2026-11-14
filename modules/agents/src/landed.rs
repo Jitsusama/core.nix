@@ -228,10 +228,11 @@ fn acts(line: &str) -> bool {
         .any(|first| ACTS.iter().any(|act| first.eq_ignore_ascii_case(act)))
 }
 
-/// A line's first sentence, its stop left off, and what follows it: a
-/// stop ends one only before a space or the line's end, so one in
-/// "core.nix" doesn't.
-fn first_sentence(line: &str) -> (&str, &str) {
+/// A line's first sentence, its stop kept, or given one where the line
+/// has none, since a name is a whole sentence with its stop or Title Case
+/// (VKCF3Z, 2026-11-13); and what follows it. A stop ends one only before
+/// a space or the line's end, so one in "core.nix" doesn't.
+fn first_sentence(line: &str) -> (String, &str) {
     let line = line.trim();
     let ends = line.char_indices().find(|&(at, letter)| {
         matches!(letter, '.' | '?' | '!')
@@ -241,12 +242,11 @@ fn first_sentence(line: &str) -> (&str, &str) {
                 .is_none_or(char::is_whitespace)
     });
     match ends {
-        Some((at, '.')) => (&line[..at], line[at + 1..].trim_start()),
         Some((at, letter)) => (
-            &line[..at + letter.len_utf8()],
+            line[..at + letter.len_utf8()].to_owned(),
             line[at + letter.len_utf8()..].trim_start(),
         ),
-        None => (line, ""),
+        None => (format!("{line}."), ""),
     }
 }
 
@@ -315,7 +315,7 @@ fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Valu
     // what landed (VKCF3Z, c2d01d53). The same wherever it's listed, as
     // one thing has one name.
     let name = if tries(&person) {
-        first_sentence(&person).0.to_owned()
+        first_sentence(&person).0
     } else {
         what.clone()
     };
@@ -962,13 +962,13 @@ mod tests {
         let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
         assert_eq!(
             records[0]["landed"]["name"],
-            "Open Machine \u{203a} Heat; it costs the laptop less now",
-            "named by what it asks, its first sentence without its stop"
+            "Open Machine \u{203a} Heat; it costs the laptop less now.",
+            "named by what it asks, its first sentence with its stop"
         );
         assert_eq!(
             drawer_of(&records, 0),
             &json!({
-                "title": "Open Machine \u{203a} Heat; it costs the laptop less now",
+                "title": "Open Machine \u{203a} Heat; it costs the laptop less now.",
                 "whole": true,
                 "prose": true,
                 "eyebrow": [{"said": "The s-here Quest", "keep": 2},
@@ -1020,9 +1020,9 @@ mod tests {
             named,
             [
                 (&json!("Land o#1"), &json!(false)),
-                (&json!("After the next switch, open Agents"), &json!(true)),
+                (&json!("After the next switch, open Agents."), &json!(true)),
                 (
-                    &json!("Once core pins it, type ergodox --help and then press Return"),
+                    &json!("Once core pins it, type ergodox --help and then press Return."),
                     &json!(true)
                 ),
             ],
@@ -1034,18 +1034,21 @@ mod tests {
     fn a_lines_first_sentence_ends_only_at_a_stop_before_a_space() {
         assert_eq!(
             first_sentence("Try core.nix's help in a terminal. Then more."),
-            ("Try core.nix's help in a terminal", "Then more."),
-            "a stop inside a word goes on; the first before a space ends it, left off"
+            (
+                "Try core.nix's help in a terminal.".to_owned(),
+                "Then more."
+            ),
+            "a stop inside a word goes on; the first before a space ends it, kept"
         );
         assert_eq!(
             first_sentence("Does it wake? It should."),
-            ("Does it wake?", "It should."),
+            ("Does it wake?".to_owned(), "It should."),
             "a question keeps its mark"
         );
         assert_eq!(
             first_sentence("Open Agents"),
-            ("Open Agents", ""),
-            "one with no stop is all its first sentence"
+            ("Open Agents.".to_owned(), ""),
+            "one with no stop is all its first sentence, given one"
         );
     }
 
