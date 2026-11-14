@@ -228,10 +228,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  plymouth-waits = [
-    "kit"
-    "helps"
-  ];
   processor-telemetry = [
     "kit"
     "helps"

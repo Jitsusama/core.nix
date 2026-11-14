@@ -707,7 +707,12 @@ in
             "reboot.target"
           ];
           unitConfig.DefaultDependencies = false;
-          serviceConfig.ExecStart = lib.getExe waits;
+          serviceConfig = {
+            ExecStart = lib.getExe waits;
+            # Its own lines name their priority; any other, such as the
+            # terminal kit's failure, is an error.
+            SyslogLevel = "err";
+          };
         };
       };
   };

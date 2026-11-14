@@ -11,3 +11,4 @@ publish = false
 # libdbus rather than zbus: systemd signs what it sends on its own socket
 # with its well-known name, which zbus can't read past.
 dbus = "0.9"
+terminal-kit = { path = "../../terminal-kit" }
