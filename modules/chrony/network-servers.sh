@@ -2,7 +2,29 @@
 # Tells chrony the time servers the networks name, as networkd keeps them in
 # each link's state file, as one file of sources in chrony's source folder,
 # and has chrony read it again only when it changed. It's run as networkd
-# writes a link's state, and once as the machine starts.
+# writes a link's state, and once as the machine starts. Its help takes the
+# shape every command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+chrony-network-servers  tell chrony the networks' servers
+
+  Writes the time servers networkd's links name as one
+  file of chrony's sources, and has chrony read it again
+  when it changed. A link's change and the machine's
+  start run it.
+
+EXAMPLES
+  chrony-network-servers
+
+EXIT
+  0   told, or nothing changed
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 links=/run/systemd/netif/links
 sources=/run/chrony-network/network.sources
 

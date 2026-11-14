@@ -8,7 +8,36 @@
 # waiting. It takes the host's unit name without its suffix, as %N gives it,
 # and says which host, why it was left down and how to bring it back, with
 # its conversations still on its roster. The journal keeps the words too,
-# for when no notice can show.
+# for when no notice can show. Its help and failures take the shape every
+# command of ours does (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+pi-host-down  say a pi host was left down
+
+  Each host's OnFailure= runs it with the host's unit
+  name. Unless the host is starting again, a notice says
+  which host is down, why, and how to bring it back.
+
+EXAMPLES
+  pi-host-down pi-host-personal-attended
+
+EXIT
+  0   told, or it's starting again
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' "pi-host-down takes the host's unit name" \
+    "  try  pi-host-down --help" >&2
+  exit 64
+fi
+
 name="$1"
 unit="$name.service"
 # systemd hands an OnFailure= unit what the failure was. By the time this

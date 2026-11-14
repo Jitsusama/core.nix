@@ -5,7 +5,30 @@
 # would refuse the disk at every boot after it; PCR 0 comes out of the
 # policy now, and the first boot on the new firmware locks it again
 # (systemd-pcrlock-firmware-code). Any other BootNext leaves the policy as
-# it is.
+# it is. Its help takes the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+tpm-follows-a-firmware-update  free the TPM for new firmware
+
+  When fwupd has a firmware update waiting at the next
+  start, PCR 0 leaves the disk's TPM policy until the new
+  firmware boots. Any other next boot changes nothing.
+  The machine's shutdown runs it.
+
+EXAMPLES
+  tpm-follows-a-firmware-update
+
+EXIT
+  0   done, or no update waits
+  else efibootmgr's or systemd-pcrlock's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 
 listed=$(efibootmgr)
 next=$(sed -n 's/^BootNext: \([0-9A-F]\{4\}\)$/\1/p' <<<"$listed")

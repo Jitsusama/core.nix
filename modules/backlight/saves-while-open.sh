@@ -5,8 +5,38 @@
 # 2026-10-26), which the next boot comes up at. So the level saved while the
 # lid was open stays. Any other backlight, such as a keyboard's, is saved as
 # it reads.
-# usage: saves-while-open <instance>, as the unit gives it, with $save naming
-# systemd-backlight and $LIDS the lids' folder (/proc/acpi/button/lid).
+# It takes the instance as the unit gives it, with $save naming
+# systemd-backlight and $LIDS the lids' folder (/proc/acpi/button/lid). Its
+# help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+saves-while-open  save a backlight's level as it stops
+
+  As systemd-backlight does at shutdown, except the
+  screen's while a lid is shut, when it reads dark: the
+  level saved while the lid was open stays.
+
+EXAMPLES
+  saves-while-open backlight:intel_backlight
+
+EXIT
+  0   saved, or kept while a lid is shut
+  64  asked wrongly
+  else systemd-backlight's own
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' "saves-while-open takes the backlight's instance" \
+    "  try  saves-while-open --help" >&2
+  exit 64
+fi
 
 instance=$1
 if [[ $instance == backlight:* ]]; then

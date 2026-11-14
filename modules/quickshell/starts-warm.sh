@@ -10,6 +10,35 @@
 # the names the shell looks them up by. Nothing here fails a switch: without a
 # Wayland session to compile against, as before the first login, or with the
 # warmer refusing, the shell starts as it would have, compiling as it goes.
+# Its help and failures take the shape every command of ours does
+# (docs/commands.md), by hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+quickshell-starts-warm  compile the shell's files ahead
+
+  Compiles the QML files WARMS lists, as JSON, into
+  Quickshell's cache before the shell restarts onto
+  them. A switch runs it, and nothing here fails one.
+
+EXAMPLES
+  quickshell-starts-warm warms.json
+
+EXIT
+  0   compiled, or left for the shell to compile
+  64  asked wrongly
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
+
+if [ "$#" -ne 1 ]; then
+  printf '%s\n' "quickshell-starts-warm takes the list of files" \
+    "  try  quickshell-starts-warm --help" >&2
+  exit 64
+fi
 
 warms=$1
 folder="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell"

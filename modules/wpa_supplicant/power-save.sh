@@ -8,6 +8,28 @@
 # next wakes. Some access points hold what's marked as voice or video for
 # seconds while anything else downloads, which is a call breaking up. A
 # machine with no battery has nothing to save, so its cards stay awake too.
+# Its help takes the shape every command of ours does (docs/commands.md), by
+# hand.
+
+case "${1:-}" in
+-h | --help)
+  cat << 'EOF'
+wifi-power-save  set each Wi-Fi card's power save
+
+  On the charger every card stays awake; on battery each
+  dozes between the access point's beacons. udev runs it
+  as a card appears or a charger comes or goes.
+
+EXAMPLES
+  wifi-power-save
+
+EXIT
+  0   set, or already as wanted
+EOF
+  exit 0
+  ;;
+*) ;;
+esac
 battery=no
 charger=no
 for supply in /sys/class/power_supply/*; do
