@@ -1,0 +1,22 @@
+# transcripts-people: the calls call-transcripts wrote down, as People's
+# source for them, each the thing between Joel and whoever it was with,
+# ready to draw (src/main.rs says how). It's small and apart from the
+# dictation crate call-transcripts is built in, so it builds and tests in
+# seconds without OpenVINO.
+[package]
+name = "transcripts-people"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+# What call-transcripts' daemon holds, followed over calls.sock as every
+# daemon follows another's (../daemon-serve's watch).
+daemon-serve = { path = "../daemon-serve" }
+# The one form every daemon's rows take, its times worded by the shell
+# (../ready-rows).
+ready-rows = { path = "../ready-rows" }
+serde_json = "1.0"
+# The shape every command of ours takes (docs/commands.md).
+terminal-kit = { path = "../terminal-kit" }

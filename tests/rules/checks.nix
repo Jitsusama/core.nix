@@ -291,6 +291,7 @@
             { };
         timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
+        transcripts-people = pkgs.callPackage ../../modules/call-transcripts/package.nix { };
         update-to-main = pkgs.callPackage ../../modules/update-to-main/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         warp = pkgs.callPackage ../../modules/warp/package.nix { };

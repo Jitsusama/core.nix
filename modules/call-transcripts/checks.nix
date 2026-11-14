@@ -1,6 +1,7 @@
 # The checks of call-transcripts' shell half, which checks.nix gathers with
 # every other folder's; its opening comment says what each kind of check
-# proves. The program itself is dictation's, checked with it.
+# proves. The program itself is dictation's, checked with it; its people
+# source, transcripts-people, is this folder's crate.
 {
   account,
   bareNixos,
@@ -8,6 +9,7 @@
   holds,
   lib,
   onLinux,
+  passesClippy,
   pkgs,
   self,
   shellFolderLint,
@@ -15,6 +17,20 @@
 }:
 # The transcripts serve the Linux desktop's shell, and build only on Linux.
 onLinux {
+  # transcripts-people's tests run as it builds: each call with someone is
+  # said as the thing they met at, named by the meeting, by who Tuple said
+  # was on it, by their address or by when it began; its note says when
+  # and how long, or that it's being written down; its acts open its
+  # transcript or folder and copy a path; and its drawer sets its summary
+  # or its opening from markdown, nothing it said read as markup. An
+  # address is answered at once, in any case, and again as a call with it
+  # changes or goes, over a stand-in of call-transcripts' socket.
+  transcripts-people-says-each-call = pkgs.callPackage ./package.nix { };
+  # clippy finds nothing in transcripts-people, its tests included.
+  transcripts-people-passes-clippy = passesClippy "transcripts-people-passes-clippy" (
+    pkgs.callPackage ./package.nix { }
+  );
+
   # Only a machine whose hardware names a device for the summarizer sums
   # calls up, on that device; any other graphical machine is given no
   # summarizer, so never fetches its 15 GB model.

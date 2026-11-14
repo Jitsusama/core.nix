@@ -39,9 +39,10 @@
 # transcript in the reader, and inside it can be opened, its folder
 # opened or its path copied, with its summary, or its first lines, in
 # the drawer.
-# It's in the Recent of whoever a Tuple call was with
-# (TranscriptSource.qml), and a meeting whose call was written down
-# offers Open the Transcript.
+# It's in the Last Met of whoever a Tuple call was with, served whole by
+# the people daemon through transcripts-people (src/main.rs), which
+# follows the same socket, so People makes no row of it itself; and a
+# meeting whose call was written down offers Open the Transcript.
 { people, quickshell }:
 {
   config,
@@ -54,6 +55,9 @@
 }:
 let
   dictation = pkgs.callPackage ../dictation/package.nix { };
+  transcriptsPeople = pkgs.callPackage ./package.nix { };
+  # The launcher's words, which transcripts-people says each call in.
+  words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
   model = pkgs.callPackage ../dictation/parakeet.nix { };
   device = config.jitsusama.call-transcripts.summarizerDevice;
   # The program the daemon asks a summary's questions of.
@@ -89,10 +93,18 @@ in
   };
 
   # After the programs that know who someone is, since it knows nobody of
-  # its own and only lists what was said with them.
+  # its own and only lists what was said with them. The people daemon runs
+  # it, asking it of whoever it lists, finds or Joel steps into, and it
+  # answers each at once from what call-transcripts' daemon holds. It's
+  # handed the vocabulary through env, which becomes transcripts-people,
+  # since the daemon runs a source's command as it's given.
   config.jitsusama.people.sources.transcripts = {
     order = 40;
-    source = ./TranscriptSource.qml;
+    daemon = [
+      "${pkgs.coreutils}/bin/env"
+      "LAUNCHER_WORDS=${words}"
+      (lib.getExe transcriptsPeople)
+    ];
   };
 
   # What Whisper compiled for calls before they moved to Parakeet, 0.9 GB

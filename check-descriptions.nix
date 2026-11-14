@@ -4000,6 +4000,14 @@
     checks on the user manager's environment as it is when each runs, its socket systemd's and
     the harness's looks and Joel's word read beside it, and a switch restarts it
   '';
+  transcripts-people-passes-clippy = ''
+    clippy finds nothing in transcripts-people or its tests
+  '';
+  transcripts-people-says-each-call = ''
+    transcripts-people answers an address at once with each call with it as the thing they met
+    at, named, noted, acted on and drawn as the launcher's Transcripts show it, and again as
+    call-transcripts' daemon says a call with it changed or went
+  '';
   tuple-call-holds-the-call = ''
     tuple-call follows Tuple's stream only while Tuple's daemon answers, at once when its log says
     it started, and tells a watch of a call, a sign-in gone and a stream ended as they happen, of a
