@@ -3,14 +3,16 @@
 //! serves them on its socket in the shell's daemon interface
 //! (docs/daemons.md), for Needs You; it takes Joel's presses back as
 //! asks (src/acts.rs), only from his shell (src/peer.rs); and as a row
-//! first appears, it sends a notice that knocks even in a call.
+//! first appears, it sends a notice that knocks even in a call, and
+//! closes it once the row stops standing, resumed or left, so Joel's
+//! alarm doesn't outlive what it was about.
 //!
 //! While the safe word is in shadow, every stop and alert is too, and
 //! the daemon serves none of them and sends no notice: it writes each row
 //! it would have shown, once, to would-tell.jsonl, with the message it
 //! would send to Joel's own Slack, which nothing sends yet either.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -58,6 +60,9 @@ pub struct Serving {
     pub words: Words,
     /// notify-send, to knock with; none sends no notice.
     pub notify: Option<PathBuf>,
+    /// busctl, to close a notice with once its row stops standing; none
+    /// leaves it for Joel to dismiss.
+    pub busctl: Option<PathBuf>,
     /// How often it looks for a change.
     pub every: Duration,
 }
@@ -81,6 +86,7 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
         state,
         words,
         notify,
+        busctl,
         every,
     } = serving;
     let words = Arc::new(words);
@@ -112,7 +118,11 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
             let rows = tell::rows(&tell::kept(&state), now_ms(), &words);
             let (served, shadow): (Vec<Value>, Vec<Value>) =
                 rows.into_iter().partition(|row| row["shadow"] == false);
-            tell_new(&state, &served, &shadow, notify.as_deref(), &mut told);
+            let knocking = Knocking {
+                notify: notify.as_deref(),
+                busctl: busctl.as_deref(),
+            };
+            tell_new(&state, &served, &shadow, &knocking, &mut told);
             shared.change(served, json!({"stops": "answering"}));
             looked = Some(mark);
             made = Instant::now();
@@ -191,13 +201,31 @@ fn mark(state: &Path) -> Vec<(String, u64, u128)> {
     marked
 }
 
-fn read_told(state: &Path) -> BTreeSet<String> {
-    fs::read_to_string(state.join("told.json"))
+/// What was told, each with the number its notice was given, if it was
+/// given one. A list, as told.json was kept before notices were closed,
+/// is read as told with no notice to close.
+fn read_told(state: &Path) -> BTreeMap<String, Option<u32>> {
+    let kept = fs::read_to_string(state.join("told.json"))
         .ok()
-        .and_then(|text| serde_json::from_str::<Vec<String>>(&text).ok())
-        .unwrap_or_default()
-        .into_iter()
-        .collect()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    match kept {
+        Some(Value::Array(keys)) => keys
+            .iter()
+            .filter_map(Value::as_str)
+            .map(|key| (key.to_owned(), None))
+            .collect(),
+        Some(Value::Object(told)) => told
+            .into_iter()
+            .map(|(key, id)| (key, id.as_u64().and_then(|id| u32::try_from(id).ok())))
+            .collect(),
+        _ => BTreeMap::new(),
+    }
+}
+
+/// The programs a notice is sent and closed with.
+struct Knocking<'a> {
+    notify: Option<&'a Path>,
+    busctl: Option<&'a Path>,
 }
 
 /// What a row is told as: its key and the saying it shows, so an alert
@@ -213,25 +241,36 @@ fn told_as(row: &Value) -> String {
 /// Tells each row new since the last: a notice for a live one, and for
 /// every one a line in would-tell.jsonl with the message Joel's own Slack
 /// would be sent, which nothing sends yet. What's told is kept only for
-/// rows standing, so it never grows past them.
+/// rows standing, so it never grows past them, and the notice of one that
+/// no longer stands is closed.
 fn tell_new(
     state: &Path,
     served: &[Value],
     shadow: &[Value],
-    notify: Option<&Path>,
-    told: &mut BTreeSet<String>,
+    knocking: &Knocking,
+    told: &mut BTreeMap<String, Option<u32>>,
 ) {
     let standing: BTreeSet<String> = served.iter().chain(shadow).map(told_as).collect();
     let before = told.len();
-    told.retain(|key| standing.contains(key));
+    told.retain(|key, id| {
+        let stands = standing.contains(key);
+        if let (false, Some(id), Some(busctl)) = (stands, *id, knocking.busctl) {
+            close(busctl, id);
+        }
+        stands
+    });
     let mut moved = told.len() != before;
     for row in served.iter().chain(shadow) {
         let key = told_as(row);
-        if told.contains(&key) {
+        if told.contains_key(&key) {
             continue;
         }
         let live = row["shadow"] == false;
-        let knocked = live && notify.is_some_and(|program| notice(program, row));
+        let knock = match knocking.notify {
+            Some(program) if live => notice(program, row),
+            _ => Knock::Missed,
+        };
+        let knocked = matches!(knock, Knock::Sent(_));
         let would = json!({
             "at": now_ms(),
             "key": row["key"],
@@ -245,7 +284,14 @@ fn tell_new(
         if let Err(error) = record::append(&state.join("would-tell.jsonl"), &would) {
             eprintln!("<4>couldn't write what it would tell: {error}");
         }
-        told.insert(key);
+        told.insert(
+            key,
+            if let Knock::Sent(id) = knock {
+                id
+            } else {
+                None
+            },
+        );
         moved = true;
     }
     if moved {
@@ -258,9 +304,15 @@ fn tell_new(
     }
 }
 
+/// Whether a notice went, and the number it was given, which closes it.
+enum Knock {
+    Missed,
+    Sent(Option<u32>),
+}
+
 /// Knocks: a notice that sounds even while notices are held or Joel is in
 /// a call, which the notices daemon gives this category (2RCBOJ).
-fn notice(notify: &Path, row: &Value) -> bool {
+fn notice(notify: &Path, row: &Value) -> Knock {
     let title = row["title"].as_str().unwrap_or_default();
     let body = format!(
         "{}\n{}",
@@ -272,20 +324,46 @@ fn notice(notify: &Path, row: &Value) -> bool {
             "--urgency=critical",
             "--category=pineapple.stop",
             "--app-name=pineapple",
+            "--print-id",
             title,
             &body,
         ])
-        .status();
+        .output();
     match sent {
-        Ok(status) if status.success() => true,
-        Ok(status) => {
-            eprintln!("<4>notify-send ended {status}");
-            false
+        Ok(output) if output.status.success() => {
+            Knock::Sent(String::from_utf8_lossy(&output.stdout).trim().parse().ok())
+        }
+        Ok(output) => {
+            eprintln!("<4>notify-send ended {}", output.status);
+            Knock::Missed
         }
         Err(error) => {
             eprintln!("<4>couldn't run notify-send: {error}");
-            false
+            Knock::Missed
         }
+    }
+}
+
+/// Closes a notice by its number, as its sender may, once what it knocked
+/// for no longer stands; one the notices daemon has already let go is
+/// refused, which changes nothing.
+fn close(busctl: &Path, id: u32) {
+    let closed = Command::new(busctl)
+        .args([
+            "--user",
+            "call",
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "CloseNotification",
+            "u",
+            &id.to_string(),
+        ])
+        .output();
+    match closed {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => eprintln!("<5>notice {id} wasn't closed: {}", output.status),
+        Err(error) => eprintln!("<4>couldn't run busctl: {error}"),
     }
 }
 
