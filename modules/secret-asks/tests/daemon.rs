@@ -376,28 +376,22 @@ fn an_act_names_the_ask_alone_and_a_yes_keyed_by_its_row_reads_nothing() {
 }
 
 #[test]
-fn a_yes_to_a_line_shown_too_briefly_to_read_reads_nothing() {
-    let setting = Setting::new("brief");
+fn the_experiments_yes_needs_no_time_shown_since_its_asks_says_none() {
+    let setting = Setting::new("untimed");
     let mut client = setting.watching();
     let id = setting.ask(ITEM);
     let drawn = row(&mut client, &id);
-    // A yes before the line was on screen half a second, or with no time
-    // said at all, is no yes to what it shows.
-    for shown in [json!(120), Value::Null] {
-        let mut yes = acting(&drawn, 0);
-        yes["shown"] = shown;
-        let said = client.ask(&yes);
-        assert_eq!(said["error"]["code"], "refused", "a brief yes: {said}");
-        assert_eq!(
-            said["error"]["said"], "read it before you release it",
-            "the launcher can't say why: {said}"
-        );
-    }
-    assert_eq!(setting.op_ran(), 0, "op ran for a brief yes");
+    // The experiment's Asks (Asks.qml) sends no `shown`; the half-second
+    // floor is the passwords child's, whose launcher counts it
+    // (modules/passwords/tests/asks).
+    let mut yes = acting(&drawn, 0);
+    yes["shown"] = Value::Null;
+    let said = client.ask(&yes);
+    assert_eq!(said["releasing"], true, "an untimed yes: {said}");
     assert_eq!(
-        act(&mut client, &drawn, 0)["releasing"],
-        true,
-        "a yes once it was read failed"
+        setting.answer(&id)["state"],
+        "ran",
+        "the untimed yes didn't run"
     );
 }
 
