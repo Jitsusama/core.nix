@@ -107,14 +107,22 @@ pub fn app_id(environ: &[u8]) -> Option<String> {
         .map(|id| String::from_utf8_lossy(id).into_owned())
 }
 
-/// pi's process among a scope's, by pid and name: the first started, since
-/// a pi a session runs, such as a subagent, starts after it.
-pub fn pi_of(processes: &[(u32, String)]) -> Option<u32> {
-    processes
-        .iter()
-        .filter(|(_, name)| name == "pi")
-        .map(|(pid, _)| *pid)
-        .min()
+/// A running process: its pid, its parent's and its name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Process {
+    pub pid: u32,
+    pub parent: u32,
+    pub name: String,
+}
+
+/// The session's pi below a window's scope: the nearest pi among the
+/// scope's processes and theirs, wherever they run, and the first started
+/// of the nearest, since a pi a session runs, such as a subagent, sits
+/// below it. A session's holder runs in a scope of its own, apart from the
+/// window's, with pi under it, so pi is followed by parent, not by scope.
+pub fn pi_below(scope: &[u32], processes: &[Process]) -> Option<u32> {
+    let _ = (scope, processes);
+    None
 }
 
 #[cfg(test)]
@@ -225,15 +233,46 @@ mod tests {
         assert_eq!(app_id(b"HOME=/h\0"), None);
     }
 
+    fn process(pid: u32, parent: u32, name: &str) -> Process {
+        Process {
+            pid,
+            parent,
+            name: name.into(),
+        }
+    }
+
     #[test]
     fn the_first_pi_in_a_scope_is_the_session_s() {
         let processes = [
-            (900, "zsh".to_string()),
-            (1200, "pi".into()),
-            (950, "pi".into()),
-            (960, "mycelium".into()),
+            process(900, 1, "zsh"),
+            process(1200, 900, "pi"),
+            process(950, 900, "pi"),
+            process(960, 900, "mycelium"),
         ];
-        assert_eq!(pi_of(&processes), Some(950));
-        assert_eq!(pi_of(&[(900, "zsh".into())]), None);
+        assert_eq!(pi_below(&[900, 1200, 950, 960], &processes), Some(950));
+        assert_eq!(
+            pi_below(&[900], &[process(900, 1, "zsh")]),
+            None,
+            "no pi"
+        );
+    }
+
+    #[test]
+    fn pi_under_a_holder_apart_from_the_window_s_scope_is_found() {
+        // As on 13 Nov: the window's scope holds the client alone, its
+        // holder runs in a scope of its own, and pi runs under that.
+        let processes = [
+            process(2830, 1, ".kitty-wrapped"),
+            process(8889, 2830, "mycelium"),
+            process(9005, 8889, "mycelium"),
+            process(9008, 9005, "pi"),
+            process(9100, 9008, "pi"),
+            process(7000, 1, "pi"),
+        ];
+        assert_eq!(
+            pi_below(&[8889], &processes),
+            Some(9008),
+            "the holder's pi, not its subagent's nor another window's"
+        );
     }
 }
