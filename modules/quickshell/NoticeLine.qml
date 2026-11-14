@@ -84,8 +84,15 @@ Scope {
     // From the daemon saying a notice came to niri presenting the line with it, held to Joel's
     // 50 ms (2026-11-12: "time from trigger to visible on the screen"), said once for each
     // notice the line shows as it comes; null once said, or once it's plain the line won't
-    // show it.
+    // show it. It's said apart, since a median of 86 ms and a p90 of 621 ms over the 30
+    // notices Joel had in the day to 2026-11-14 didn't say which to make quicker: whether
+    // its layer was mapped for it, then until the first frame after began its sync (a new
+    // layer waits there on niri's configure), then that frame's sync, render and swap, then
+    // until niri showed it.
     property var timing: null
+    // When its layer was last mapped, which happens as the front changes, just before the
+    // notice it names is said to have come.
+    property real mappedAt: 0
     Connections {
         target: Notices
 
@@ -100,6 +107,19 @@ Scope {
         timing = { heard: KeyTimes.now(), id, after };
         surface.FramePresentation.ask();
     }
+    // The line's time said apart by the render thread's own times of its frame
+    // (frame-presentation.patch's timesOf), or "" where the frame kept none.
+    function split(frame, at) {
+        const times = surface.FramePresentation.timesOf(frame);
+        if (!times.synchronizing || !times.swapped)
+            return "";
+        const since = (from, to) => Math.round(to - from);
+        // Mapped in the same moment it came, as a quiet line is, or up already.
+        const mapped = mappedAt > timing.heard - 50 ? "mapped for it" : "up already";
+        return `: ${mapped}, ${since(timing.heard, times.synchronizing)} until its frame began, `
+            + `${since(times.synchronizing, times.swapped)} drawing it and `
+            + `${since(times.swapped, at)} until niri showed it`;
+    }
     function presented(frame, at) {
         if (timing === null)
             return;
@@ -109,7 +129,7 @@ Scope {
         }
         const took = Math.round(at - timing.heard);
         if (up && chosen === timing.id)
-            console.info(`notice line: up ${took} ms after the daemon said it`);
+            console.info(`notice line: up ${took} ms after the daemon said it${split(frame, at)}`);
         timing = null;
     }
 
@@ -119,7 +139,13 @@ Scope {
         Counted { name: "notice-line" }
         visible: root.up
         // Mapped as it comes up, its first frame is the one the timing waits for.
-        onVisibleChanged: if (visible && root.timing !== null) surface.FramePresentation.ask()
+        onVisibleChanged: {
+            if (!visible)
+                return;
+            root.mappedAt = KeyTimes.now();
+            if (root.timing !== null)
+                surface.FramePresentation.ask();
+        }
         screen: root.launcher?.focusedScreen ?? Quickshell.screens[0] ?? null
         anchors.top: true
         anchors.left: true
