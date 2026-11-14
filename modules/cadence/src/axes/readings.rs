@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use super::messages::{self, Note};
 use super::{Axis, Bar, Reading, shown};
-use super::{asks, counted, faults, landings, launcher, measure, network, plans};
+use super::{asks, counted, faults, landings, launcher, measure, network, plans, responds};
 use crate::day::Day;
 use crate::mesh::{self, Mesh};
 use crate::{DAY, command};
@@ -108,10 +108,10 @@ pub fn read(s: &Sources) -> Vec<Axis> {
             "responsiveness",
             [
                 launcher::readings(&s.counted),
-                counted::stalls(s.day.as_ref().map(|d| &d.figures)),
-                counted::responds(&s.counted),
-                counted::places(&s.counted),
-                vec![counted::typing(&s.counted)],
+                responds::stalls(s.day.as_ref().map(|d| &d.figures)),
+                responds::responds(&s.counted),
+                responds::places(&s.counted),
+                vec![responds::typing(&s.counted)],
             ]
             .concat(),
         ),
