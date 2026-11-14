@@ -1796,10 +1796,11 @@ works the same way everywhere.
   November). **An act that ends or takes away
   never runs on Return**, from any mode: Disconnect It, Forget It, Close
   It, Turn Off, Stop, an agent's Close, Done, and the session's Lock,
-  Sleep, Log Out, Reboot and Power Off. An agent's Close always asks,
-  naming the session by its address, since the path above says its title,
-  and its ask says what stays, "Close 8IDU4E? Its worktree and 1 to-do
-  stay. (y/n)", so ending one never reads as losing its work.
+  Sleep, Log Out, Reboot and Power Off. An agent's Close asks while it
+  leaves something behind, unless the agents daemon says closing it costs
+  nothing, naming the session by its address, since the path above says
+  its title, and its ask says what stays, "Close 8IDU4E? Its worktree and
+  1 to-do stay.", so ending one never reads as losing its work.
   Return on its row puts its command on the command line,
   `:disconnect`, the menu saying what it acts on, and a fresh Return there
   runs it; the row and the foot name the key that carries it, "d
@@ -2164,9 +2165,10 @@ works the same way everywhere.
   into the folders and k back up to the name, Return on a folder opens
   it and - steps out, as oil's do, the name kept, and Return on the name
   saves there. A name already there asks once in the line's place, "Replace
-  notes.md? (y/n)", as Vim's :w says E13: y saves over it, n, Escape or
-  Ctrl+C let it go, and any other key, or one in its first 300 ms, does
-  nothing. :w [name] and :x save from anywhere, asking the same, and :w!
+  notes.md?", as Vim's :w says E13: Return saves over it, as it does an
+  armed row, the foot saying "↵ confirm", any other key lets it go, and
+  one in its first 300 ms does nothing. :w [name] and :x save from
+  anywhere, asking the same, and :w!
   saves over a name already there without asking.
 - **Google Drive is a folder among his own** (Joel's Mac mounted it for
   every dialog, 2026-10-29: "i've used the folder a little bit but not a
@@ -2665,21 +2667,30 @@ visual tints it, and the mode word's room says what it will hit. Operators,
 | . | the last change again | the same | the same | nothing | the same |
 | u, Ctrl+R | every change with an inverse, while the surface is open | the same | the cards back, still read | nothing | from the trash |
 
-What can't be undone asks once on the command line, as Vim's `confirm()`
-does ("Forget Home-5G and its password? (y/n)"), taking the whole head while
-it stands, the path giving way whole and back once it's answered. Where even
-the head can't hold it, what stays gives way from its end at a whole word,
-behind an ellipsis, never what it does, to what, or its keys. Only y answers
-yes, keys
-pressed in the first 300 ms are ignored, and ! skips the ask; what asks
-comes from the language's `undoable`, never a list kept by hand. An act
-the language marks guarded keeps its own work, so one doesn't ask, though it can't be
-undone: closing a window, whose program asks before losing anything, as
-Vim's :close refuses a modified buffer, and interrupting an agent, whose
-session :reopen brings back. A range of more than one guarded thing asks
-once, with the count, and a prompt's Return, as :reply's, is its own
-asking. Anything else acts at once, and the foot says how to take it back: "3 done · u
-brings them back".
+Only what costs a lot and can't be undone asks (Joel, 2026-11-13: "we
+should only require confirmation if it is really a dangerous action or an
+action of significant consequence"), once, on the command line, as Vim's
+`confirm()` does ("Forget Home-5G and its password?"), taking the whole
+head while it stands, the path giving way whole and back once it's
+answered. Where even the head can't hold it, what stays gives way from its
+end at a whole word, behind an ellipsis, never what it does or to what.
+Return answers it, as a second Return does an armed row, the foot saying
+"↵ confirm" in the accent; any other key, y and n among them, lets it go
+and reaches nothing, keys pressed in the first 300 ms are ignored, and !
+skips the ask. What asks comes from the act's own data, never a list kept
+in the shell: the language's `costly` on forgetting, sharing the screen,
+cancelling a meeting, installing, flashing, logging out, rebooting and
+powering off, or a `costly` the act's source serves, which wins; an act
+that leaves something behind, as an agent's Close, asks unless its source
+says it costs nothing. An act with an undo never asks, nor one the
+language marks guarded, which keeps its own work: closing a window, whose
+program asks before losing anything, as Vim's :close refuses a modified
+buffer, and interrupting an agent, whose session :reopen brings back. A
+range asks only where an act in it costs, and a prompt's Return, as
+:reply's, is its own asking. Anything else acts at once, and the foot says
+how to take it back: "3 done · u brings them back". `launcher do` in a
+terminal, where agents type, still asks before anything it can't undo,
+answered by y, and `--yes` says yes.
 
 **Return** opens, from the find line and from normal alike, but for one
 case (Joel, 2026-11-04: "it is quite dangerous how in insert mode i can

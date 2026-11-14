@@ -3524,13 +3524,15 @@
     Ctrl+W, Ctrl+U and Ctrl+H, the rows' keys and Ctrl+Y, Escape into normal, and normal's i a I
     A, cc and S into insert, normal's ]b and [b to the place beside and gx, on a prompt's words
     h l w b e 0 $ x dw cw and u editing them as Vim's do and - stepping out with them, a question
-    asked once answered by y alone and let go by n, Escape or Ctrl+C, but not in its first moment,
+    asked once answered by Return alone and let go by any other key, y and n among them and
+    reaching nothing, but not in its first moment,
     with an Escape that cancels a c or a count begun before it steps back, normal's moves through
     the rows as Vim's, with counts: j k, gg G, H M L and Ctrl+D U F B, its - out, its q, ZZ and
     Space w closing, its : opening the command line with the range a count before it gives, Tab
     to the place used last, and Space ? and F1 listing every key, while / ? n N search nothing on
     the rows; and Vim's d and y over the rows, dd 3dd d3j dgg dG yy y{motion}, each row's ending
-    action and copy, the (y/n) ask once before what can't be put back, and yG or dG over 400 rows
+    action and copy, the ask once before what costs a lot and can't be put back, the rest done
+    at once, and yG or dG over 400 rows
     within half a key's 4 ms
   '';
   the-queue-is-heard-from-the-node = ''
