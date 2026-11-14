@@ -459,8 +459,16 @@ Scope {
         screen: root.screen ?? root.launcher.focusedScreen
         anchors.top: true
         anchors.left: true
+        // Where the card's top stands: a quarter down, where the launcher's opens
+        // (Launcher.qml's cardTop), and never nearer the edge than a screen rung. Its talks
+        // stand no lower than as far above the screen's foot, so the line keeps equal margins
+        // above and below at its tallest and never moves while it grows (Joel, 2026-11-14
+        // 09:44: "super-s kinda goes to top of screen and does not have co-equal top and
+        // bottom margins, but launcher does").
+        readonly property real top: Math.round(Math.max(Theme.space.rung.screen,
+            (screen?.height ?? 0) / 4))
         // Quickshell's type files can't place margins, so qmllint can't.
-        margins.top: root.up ? Theme.space.rung.screen - card.reach // qmllint disable unqualified
+        margins.top: root.up ? surface.top - card.reach // qmllint disable unqualified
             : 1 - implicitHeight
         // The same holds for the left margin.
         margins.left: !root.up || !surface.screen ? 1 - implicitWidth // qmllint disable unqualified
@@ -523,10 +531,10 @@ Scope {
                 readonly property real talksEnd: lineAt - pitch
                     + (root.thread === null ? spoken.height : threadView.height)
                 readonly property real textAt: prompt.fieldX - card.inset
-                // The talks' room: the screen's a screen rung from each edge, less the frame,
+                // The talks' room: the screen's, the card's top from each edge, less the frame,
                 // the card's inset over and under, everything above them and the foot below.
                 readonly property real talksRoom: (surface.screen?.height ?? Infinity)
-                    - 2 * Theme.space.rung.screen - 2 * (card.inset + Theme.border)
+                    - 2 * surface.top - 2 * (card.inset + Theme.border)
                     - (lineAt - pitch) - pitch - beat
 
                 width: card.contentWidth

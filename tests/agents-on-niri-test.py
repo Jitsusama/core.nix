@@ -1744,8 +1744,9 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
     shown = shell.showing()
     assert not shown["open"], shown
     assert shown["line"]["mode"] == "insert", shown["line"]
-    # A step inside the top, as niri lays an overlay: the window under it keeps the rest.
-    assert 0 < shown["line"]["top"] < 100, shown["line"]  # noqa: PLR2004
+    # A quarter down, where the launcher opens, so the two sit as one (Joel, 2026-11-14 09:44:
+    # "i want them to feel like more of part of the same").
+    assert abs(shown["line"]["top"] - shown["line"]["screen"] / 4) < 1, shown["line"]
     shoot("empty")
     shell.send_chars(words)
     # A sentence or two wraps at a whole word, never scrolling off its start.
