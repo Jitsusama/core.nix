@@ -358,10 +358,6 @@ Provider {
             if (provider.shown)
                 provider.answered();
         }
-
-        function onHoldersChanged() {
-            provider.titleHolders(provider.guard);
-        }
     }
 
     Connections {
@@ -373,14 +369,13 @@ Provider {
         }
     }
 
-    // Quests, which names a quest filling the disk by its id (filling); an
-    // ended one's title comes a moment after it's first named, so each is
-    // named as the guard's holders arrive, open or shut, and the first
-    // opening after the shell starts already has it (VKCF3Z, 2026-11-13).
+    // Quests, which titles a quest filling the disk by its id (filling), each
+    // named as the guard's holders arrive, open or shut, so no opening shows one.
     readonly property var quests: (launcher?.sources ?? [])
         .find(one => one.settings.name === "quests") ?? null
+    readonly property var heldQuests: Holders.quests(guard?.holders)
+    onHeldQuestsChanged: titleHolders(guard)
     onQuestsChanged: titleHolders(guard)
-    onGuardChanged: titleHolders(guard)
     Connections {
         target: provider.quests
 
@@ -390,15 +385,9 @@ Provider {
         }
     }
 
-    // Each quest filling the disk named to Quests, which asks the titles
-    // it doesn't know yet.
     function titleHolders(guard) {
-        if (!quests || !guard)
-            return;
-        for (const holder of guard.holders ?? []) {
-            if (holder.owner?.kind === "quest")
-                quests.titleOf(holder.owner.name);
-        }
+        for (const id of Holders.quests(guard?.holders))
+            quests?.titleOf(id);
     }
 
     // The Disk, as the daemon serves it ready, its room on / beside it;
@@ -445,16 +434,8 @@ Provider {
     // biggest, so what matters most is seen without a step in.
     function filling(guard, chip) {
         const said = Words.of("machine:disk:filling").said ?? {};
-        const titled = id => provider.quests?.titleOf(id);
-        const called = holder => {
-            const owner = holder.owner ?? {};
-            const name = owner.kind === "quest" ? titled(owner.name) || owner.name
-                : owner.kind === "worktree" ? String(owner.name).replace(/^worktree-/, "")
-                : owner.kind === "other" ? holder.path.replace(Sessions.home, "~")
-                : owner.name;
-            const made = (said[owner.kind] ?? "{name}").replace("{name}", name);
-            return made.charAt(0).toUpperCase() + made.slice(1);
-        };
+        const called = holder => Holders.called(holder, said[holder.owner?.kind],
+            id => provider.quests?.titleOf(id), Sessions.home);
         const each = holder => {
             const disk = guard.holding(holder.path) ?? guard.worst;
             return thingRow({

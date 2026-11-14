@@ -299,6 +299,34 @@ QtObject {
         if (Holders.talkSide("Reef", "").length !== 1)
             failures.push("a talk row with no state says an empty item");
 
+        // Only quests among the disk's holders are titled ahead, and each
+        // is called by its title once known, else by its id (VKCF3Z).
+        const reef = { path: "/home/ada/.cache/scratch/REEF",
+            owner: { kind: "quest", name: "REEF" } };
+        const tree = { path: "/home/ada/trees/tide",
+            owner: { kind: "worktree", name: "worktree-tide" } };
+        const other = { path: "/home/ada/junk", owner: { kind: "other", name: "junk" } };
+        const held = Holders.quests([reef, tree, other]).join(" ");
+        if (held !== "REEF")
+            failures.push(`the quests holding the disk are "${held}", not "REEF"`);
+        if (Holders.quests(undefined).length !== 0)
+            failures.push("a guard with no holders names quests");
+        const titles = { REEF: "Mend the reef" };
+        const called = (holder, worded) => Holders.called(holder, worded, id => titles[id],
+            "/home/ada");
+        const calls = [
+            ["a quest by its title", called(reef, "{name}'s workspace"),
+                "Mend the reef's workspace"],
+            ["a quest not titled yet by its id",
+                Holders.called(reef, undefined, () => undefined, "/home/ada"), "REEF"],
+            ["a worktree without its prefix", called(tree, undefined), "Tide"],
+            ["another folder from home", called(other, undefined), "~/junk"]
+        ];
+        for (const [what, said, want] of calls) {
+            if (said !== want)
+                failures.push(`${what}: "${said}", not "${want}"`);
+        }
+
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
         Qt.exit(failures.length === 0 ? 0 : 1);
