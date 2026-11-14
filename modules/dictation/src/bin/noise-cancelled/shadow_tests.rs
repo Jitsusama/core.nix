@@ -4,6 +4,7 @@
 use serde_json::json;
 
 use super::*;
+use crate::denoise::Cleaner;
 
 /// A frame at `amplitude`, steady, so its level is the amplitude's in dB.
 fn steady(amplitude: f32) -> [f32; FRAME] {
@@ -92,7 +93,7 @@ fn a_calls_line_is_numbers_and_names_alone() {
             key: "home=6366013+screen=10ac41a1000000022022".to_owned(),
             name: "the desk".to_owned(),
         },
-        running: Cleaner::DeepFilterNet,
+        running: Way::Cleaned(Cleaner::DeepFilterNet),
         speech: vec![0.5; LEAST],
     };
     let marks = BTreeMap::from([("raw", marks(2.9)), ("rnnoise", marks(3.4))]);
@@ -114,6 +115,26 @@ fn a_calls_line_is_numbers_and_names_alone() {
                 "rnnoise": {"voice": 4.0, "background": 3.5, "overall": 3.4},
             },
         }),
+    );
+}
+
+#[test]
+fn a_call_that_skipped_noise_cancelling_ran_raw() {
+    let call = Call {
+        node: "alsa_input.usb-Shure_Inc_Shure_MV7-00.analog-mono".to_owned(),
+        microphone: "Shure MV7".to_owned(),
+        spot: Spot {
+            key: "home=6366013".to_owned(),
+            name: "home".to_owned(),
+        },
+        running: Way::Raw,
+        speech: vec![0.5; LEAST],
+    };
+    let marks = BTreeMap::from([("raw", marks(2.9)), ("rnnoise", marks(3.4))]);
+    let line = said(&call, &marks, 1);
+    assert_eq!(
+        line["running"], "raw",
+        "a call on the microphone itself didn't say it ran raw: {line}"
     );
 }
 

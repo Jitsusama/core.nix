@@ -12,7 +12,8 @@
 # written beside the picks, as the service writes one after a call, the
 # trial hears and tells, until it's taken. Plugged in again after a
 # cleaned pick, the microphone's twin ranks one above it, and unranked
-# before. The tests
+# before. A call recording from the microphone itself, skipping its twin,
+# is heard to be judged, loading no cleaner, until it ends. The tests
 # are noise-cancelled-vm-test.py, which pytest runs inside the driver.
 { self, pkgs }:
 let
@@ -45,6 +46,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       dictation
       pkgs.jq
       pkgs.netcat-openbsd
+      # pacat, copied as a stand-in call app.
+      pkgs.pulseaudio
       pkgs.sox
     ];
     environment.etc."noise-cancelled-clips".source = clips;

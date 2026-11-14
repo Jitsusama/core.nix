@@ -299,6 +299,11 @@ fn a_call_in_a_room_far_from_its_picks_offers_choose_by_ear_again() {
 /// The MV7 recorded from for `lasted`, speaking `frames` of speech over a
 /// quiet room after its warm-up, then let go: the calls it leaves to judge.
 fn spoke(lasted: Duration, frames: usize) -> Vec<Call> {
+    spoken(lasted, frames, false)
+}
+
+/// As [`spoke`], with the microphone `listened` to by a call too.
+fn spoken(lasted: Duration, frames: usize, listened: bool) -> Vec<Call> {
     let chosen = Chosen::new(None, Cleaner::DeepFilterNet).within(Where::at(
         &std::env::temp_dir().join("worker-spoke-nowhere"),
     ));
@@ -306,6 +311,11 @@ fn spoke(lasted: Duration, frames: usize) -> Vec<Call> {
     let mut microphones = HashMap::from([(1, named("mv7").0)]);
     settle(&mut microphones, &chosen);
     let microphone = microphones.get_mut(&1).expect("the MV7 is there");
+    microphone
+        .ends
+        .shared
+        .listened
+        .store(listened, Ordering::Release);
     let began = microphone.began.as_mut().expect("its recording began");
     began.0 = Instant::now()
         .checked_sub(lasted)
@@ -337,7 +347,7 @@ fn a_call_that_spoke_enough_is_judged_once_it_ends() {
     assert_eq!(call.node, "mv7");
     assert_eq!(
         call.running,
-        Cleaner::DeepFilterNet,
+        Way::Cleaned(Cleaner::DeepFilterNet),
         "it ran with the default"
     );
     assert_eq!(
@@ -345,6 +355,71 @@ fn a_call_that_spoke_enough_is_judged_once_it_ends() {
         400 * FRAME,
         "the room was judged as speech"
     );
+}
+
+#[test]
+fn a_twins_call_is_judged_as_the_twins_while_a_call_hears_its_microphone() {
+    let calls = spoken(Duration::from_mins(2), 400, true);
+    assert_eq!(
+        calls.first().map(|call| call.running),
+        Some(Way::Cleaned(Cleaner::DeepFilterNet)),
+        "the twin's call wasn't judged as cleaned"
+    );
+}
+
+#[test]
+fn a_call_that_skips_noise_cancelling_is_heard_and_judged_raw() {
+    let folder = std::env::temp_dir().join(format!("worker-plain-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    let chosen = Chosen::new(Some(folder.join("cleaner")), Cleaner::DeepFilterNet)
+        .within(Where::at(&folder.join("nowhere")));
+    let mut offers = Offers::new(&chosen, Vec::new());
+    let (microphone, mut hears, mut out) = named("mv7");
+    let shared = Arc::clone(&microphone.ends.shared);
+    shared.wanted.store(false, Ordering::Release);
+    shared.listened.store(true, Ordering::Release);
+    let mut microphones = HashMap::from([(1, microphone)]);
+    let wanted = settled(&mut microphones, &chosen, &mut offers, &mut Vec::new());
+    assert!(wanted.is_empty(), "a cleaner was loaded for {wanted:?}");
+    assert!(hearing(&microphones), "the call wasn't being heard");
+    let microphone = microphones.get_mut(&1).expect("the MV7 is there");
+    let began = microphone.began.as_mut().expect("hearing the call began");
+    began.0 = Instant::now()
+        .checked_sub(Duration::from_mins(2))
+        .expect("the clock goes back");
+    for at in 0..50 {
+        let amplitude = if at < 12 { 0.001 } else { 0.1 };
+        for _ in 0..10 {
+            hears
+                .push_entire_slice(&hum(amplitude))
+                .expect("the ring has room");
+        }
+        clean(microphone, None);
+        assert!(
+            drained(&mut out).is_empty(),
+            "what a call on the microphone itself said was given to its twin"
+        );
+    }
+    shared.listened.store(false, Ordering::Release);
+    let mut calls = Vec::new();
+    settled(&mut microphones, &chosen, &mut offers, &mut calls);
+    assert!(!hearing(&microphones), "the call was heard after it ended");
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| (call.running, call.speech.len()))
+            .collect::<Vec<_>>(),
+        vec![(Way::Raw, 380 * FRAME)],
+        "the call wasn't left to judge as raw, with its speech"
+    );
+    offers.stand(&chosen);
+    let offer = chosen.beside("offer").expect("picks are kept");
+    let said = std::fs::read_to_string(&offer).unwrap_or_default();
+    assert!(
+        said.contains("\"node\":\"mv7\""),
+        "the call didn't offer Choose by Ear for the MV7: {said:?}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
 }
 
 #[test]

@@ -165,7 +165,8 @@ in
         "${chosen}"
         "${refusals}"
       ];
-      Environment = npu;
+      # pw-dump, which follows calls that skip noise cancelling.
+      Environment = npu ++ [ "PATH=${lib.makeBinPath [ pkgs.pipewire ]}" ];
       Slice = "session.slice";
       Restart = "on-failure";
       RestartSec = 5;

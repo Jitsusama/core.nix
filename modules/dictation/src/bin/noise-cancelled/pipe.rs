@@ -1,6 +1,7 @@
 //! PipeWire's side: for each microphone, a source of its own named for it,
 //! "‹microphone›, Noise Cancelled", and a capture of the microphone that
-//! wakes only while something records from that source.
+//! wakes only while something records from that source, or while a call
+//! records from the microphone itself, to be heard and judged (plain.rs).
 //!
 //! Both streams run in PipeWire's real-time thread, where nothing may wait,
 //! so they only move samples through lock-free rings to and from the
@@ -10,7 +11,7 @@
 //! that cleans late, and gives silence again for any it's still short of.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -32,6 +33,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use crate::chosen::Chosen;
 use crate::denoise::{FRAME, RATE};
 use crate::offer::Offers;
+use crate::plain;
 use crate::worker::{Ends, Shared, Worker};
 
 /// What each source's node name starts with, so they're never taken for
@@ -120,6 +122,7 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     // Each link from a source, by its id, to the microphone whose pair
     // the source is, so its going is known by its id alone.
     let links: Rc<RefCell<HashMap<u32, u32>>> = Rc::default();
+    let (_told, heard) = following(&main_loop, &pairs);
 
     let quit = main_loop.downgrade();
     let went: Rc<RefCell<Option<String>>> = Rc::default();
@@ -168,8 +171,9 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
                 };
                 let ranked = rank(microphone.priority.as_deref(), &ranking);
                 match Pair::new(&core, &worker, global.id, &microphone, ranked) {
-                    Ok(pair) => {
+                    Ok(mut pair) => {
                         eprintln!("noise-cancelled: offering {}", pair.description);
+                        pair.heard(heard.borrow().contains(&pair.microphone));
                         pairs.borrow_mut().insert(global.id, pair);
                     }
                     Err(why) => eprintln!(
@@ -202,8 +206,39 @@ pub fn serve(models: &Path, chosen: Chosen, offers: Offers) -> Result<(), String
     ))
 }
 
+/// Follows calls that record from a microphone itself (plain.rs), telling
+/// each of `pairs` on PipeWire's loop whether one records from its
+/// microphone. Answers what hears the follower, kept while serving, and
+/// the microphones it last told, by node name, for one that comes
+/// mid-call.
+fn following<'a>(
+    main_loop: &'a MainLoopRc,
+    pairs: &Rc<RefCell<HashMap<u32, Pair>>>,
+) -> (
+    pw::channel::AttachedReceiver<'a, BTreeSet<String>>,
+    Rc<RefCell<BTreeSet<String>>>,
+) {
+    let heard: Rc<RefCell<BTreeSet<String>>> = Rc::default();
+    let (tell, told) = pw::channel::channel::<BTreeSet<String>>();
+    let attached = told.attach(main_loop.loop_(), {
+        let (pairs, heard) = (Rc::clone(pairs), Rc::clone(&heard));
+        move |microphones| {
+            for pair in pairs.borrow_mut().values_mut() {
+                pair.heard(microphones.contains(&pair.microphone));
+            }
+            *heard.borrow_mut() = microphones;
+        }
+    });
+    plain::follow(move |microphones| {
+        let _ = tell.send(microphones);
+    });
+    (attached, heard)
+}
+
 /// One microphone's capture and source, and what listens to them.
 struct Pair {
+    /// The microphone's node name.
+    microphone: String,
     description: String,
     capture: StreamRc,
     source: StreamRc,
@@ -211,6 +246,8 @@ struct Pair {
     waker: Thread,
     /// How many links take what the source gives: whatever records it.
     links: usize,
+    /// Whether a call records from the microphone itself, to be heard.
+    listened: bool,
     _heard: StreamListener<Capturing>,
     _given: StreamListener<Giving>,
 }
@@ -321,12 +358,14 @@ impl Pair {
             .map_err(|why| format!("connecting its source: {why}"))?;
 
         Ok(Self {
+            microphone: microphone.name.clone(),
             description,
             capture,
             source,
             shared,
             waker: worker.waker(),
             links: 0,
+            listened: false,
             _heard: heard_listener,
             _given: given_listener,
         })
@@ -348,10 +387,32 @@ impl Pair {
         }
     }
 
-    /// Wakes the capture while something records from the source, and
-    /// rests it otherwise, so the microphone is only heard while it's
-    /// wanted. It goes by the source's links rather than its state: the
-    /// two streams are one node group, so a running capture would keep
+    /// A call began or stopped recording from the microphone itself.
+    fn heard(&mut self, listened: bool) {
+        if self.listened != listened {
+            self.listened = listened;
+            self.shared.listened.store(listened, Ordering::Release);
+            self.woken();
+        }
+    }
+
+    /// Wakes the capture while something records from the source or a
+    /// call from the microphone itself, and rests it otherwise, so the
+    /// microphone is only heard while it's wanted.
+    fn woken(&self) {
+        let awake = self.links > 0 || self.listened;
+        if let Err(why) = self.capture.set_active(awake) {
+            eprintln!(
+                "noise-cancelled: {}'s capture wouldn't change: {why}",
+                self.description
+            );
+        }
+        self.waker.unpark();
+    }
+
+    /// Says whether something records from the source, and wakes or rests
+    /// the capture. It goes by the source's links rather than its state:
+    /// the two streams are one node group, so a running capture would keep
     /// the source running with nothing recording it, and never rest.
     fn recorded(&self, wanted: bool) {
         let (shared, description) = (&self.shared, &self.description);
@@ -369,10 +430,7 @@ impl Pair {
                 shared.lost.load(Ordering::Relaxed)
             );
         }
-        if let Err(why) = self.capture.set_active(wanted) {
-            eprintln!("noise-cancelled: {description}'s capture wouldn't change: {why}");
-        }
-        self.waker.unpark();
+        self.woken();
     }
 }
 
