@@ -5,6 +5,7 @@
 //! followed as every daemon of the shell follows one (daemon-serve's
 //! `watch`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::thread;
@@ -16,8 +17,10 @@ use crate::answered;
 use crate::arrangement::Arrangement;
 use crate::carried::{Carried, Said};
 use crate::file::{self, Files};
+use crate::inboxes::{self, Inboxes};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
+use crate::talks::Talk;
 
 /// Something a source said.
 #[derive(Debug)]
@@ -60,6 +63,9 @@ pub enum Heard {
     /// The line kept of Joel's words on a landing sent as a talk, whose
     /// drawer says how it went (feedback.rs).
     FedBack(Value),
+    /// The talks waiting in each session's inbox, all of them, as one
+    /// lands or is taken (inboxes.rs).
+    Inboxes(HashMap<String, Vec<Talk>>),
 }
 
 /// Where the files the rows are made from are kept.
@@ -151,6 +157,23 @@ impl Paths {
     }
 }
 
+/// Follows the talks waiting in each session's inbox under `steer`,
+/// handing them all to `to` at the start and again as one lands or is
+/// taken.
+pub fn follow_inboxes(steer: &Path, to: Sender<Heard>) -> std::io::Result<()> {
+    let mut watched = Inboxes::open(steer)?;
+    let root = steer.to_owned();
+    let _ = to.send(Heard::Inboxes(inboxes::waiting(&root)));
+    thread::spawn(move || {
+        while watched.heard().is_ok() {
+            if to.send(Heard::Inboxes(inboxes::waiting(&root))).is_err() {
+                return;
+            }
+        }
+    });
+    Ok(())
+}
+
 /// Follows the files the rows are made from, handing each that lands to
 /// `to`, after handing them all once, as they stand at the start.
 pub fn follow_files(paths: &Paths, to: Sender<Heard>) -> std::io::Result<()> {
@@ -239,6 +262,7 @@ impl Inputs {
                 self.kept_places = kept;
             }
             Heard::FedBack(line) => self.fed_back.push(line),
+            Heard::Inboxes(waiting) => self.unsent = waiting,
         }
     }
 

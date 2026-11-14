@@ -372,6 +372,10 @@ fn main() -> ExitCode {
         steer: args.steer,
         shells: args.shells,
     };
+    if let Err(why) = sources::follow_inboxes(&paths.steer, to.clone()) {
+        eprintln!("agents: can't hear the sessions' inboxes: {why}");
+        return ExitCode::FAILURE;
+    }
     if let Err(why) = sources::follow_files(&paths, to) {
         eprintln!("agents: can't hear the files it reads: {why}");
         return ExitCode::FAILURE;
