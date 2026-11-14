@@ -12,8 +12,9 @@
 rustPlatform.buildRustPackage {
   pname = "passwords";
   version = "0.1.0";
-  # The ready-rows crate it names by path comes beside it, and it builds
-  # from its own folder within.
+  # The crates it names by path come beside it, secret-asks with the
+  # serving side it answers errors in, and it builds from its own folder
+  # within.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -21,8 +22,12 @@ rustPlatform.buildRustPackage {
       ./Cargo.lock
       ./src
       ./tests
+      ../daemon-serve/Cargo.toml
+      ../daemon-serve/src
       ../ready-rows/Cargo.toml
       ../ready-rows/src
+      ../secret-asks/Cargo.toml
+      ../secret-asks/src
     ];
   };
   sourceRoot = "source/passwords";

@@ -1846,6 +1846,11 @@
     keeps what an audit found in the state folder for Joel alone, holding no secret nor any hash,
     dresses the entries with it again once the daemon starts again, holds since when trouble was
     found until a check finds none, and tells a watch each change;
+    answers a secret ask only for a reference listed to release, drawing it as a row of its own
+    and refusing one not listed unseen, and with none listed draws none; releases the value only
+    on Joel's yes on the ask's own key, for what was drawn and once it was shown long enough,
+    refuses on a no, refuses a program outside the root-owned folders, and runs the asked command
+    alone in a stand-in bubblewrap with the value masked in what it prints;
     and no passwords command reaches an entry or a secret, each refused as mistyped, the usage
     saying passwords are in the launcher's Passwords place
   '';

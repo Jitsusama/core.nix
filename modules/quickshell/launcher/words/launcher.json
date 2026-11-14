@@ -78,6 +78,7 @@
         "answered": "that ask is already answered",
         "locked": "not while the screen is locked",
         "changed": "it changed since it was shown; read it again",
+        "unread": "read it before you release it",
         "none": "none waiting",
         "one": "1 waiting",
         "waiting": "{count} waiting"

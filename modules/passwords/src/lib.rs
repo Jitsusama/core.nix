@@ -162,6 +162,18 @@ pub enum Ask {
         id: Value,
         asked: bool,
     },
+    /// The shell's yes to a secret ask, as its row's act says it, with
+    /// how long the line was shown and which opening said it; answered
+    /// by the engine (secret-asks), which checks all of it again.
+    Release {
+        id: Value,
+        said: Value,
+    },
+    /// The shell's no to a secret ask.
+    Refuse {
+        id: Value,
+        said: Value,
+    },
     /// A kind this daemon doesn't keep.
     UnknownKind {
         id: Value,
@@ -253,20 +265,7 @@ pub fn ask(line: &str) -> Ask {
             words: text("words").unwrap_or_default(),
             limit: count("limit").unwrap_or(SEARCHED),
         },
-        "reveal" | "copy" | "code" => {
-            let Some(key) = text("key").filter(|key| named(key).is_some()) else {
-                return Ask::Unknown {
-                    id,
-                    ask: format!("{asked} without an entry's key"),
-                };
-            };
-            let detail = text("detail");
-            match asked {
-                "reveal" => Ask::Reveal { id, key, detail },
-                "copy" => Ask::Copy { id, key, detail },
-                _ => Ask::Code { id, key },
-            }
-        }
+        "reveal" | "copy" | "code" => entry_act(id, asked, text("key"), text("detail")),
         "let-in" => Ask::LetIn {
             id,
             manager: text("manager").unwrap_or_default(),
@@ -276,10 +275,28 @@ pub fn ask(line: &str) -> Ask {
             id,
             asked: flag("asked"),
         },
+        "release" => Ask::Release { id, said },
+        "refuse" => Ask::Refuse { id, said },
         other => Ask::Unknown {
             id,
             ask: other.to_owned(),
         },
+    }
+}
+
+/// A reveal, copy or code, which names one entry by its key, or an
+/// unknown ask when it names none.
+fn entry_act(id: Value, asked: &str, key: Option<String>, detail: Option<String>) -> Ask {
+    let Some(key) = key.filter(|key| named(key).is_some()) else {
+        return Ask::Unknown {
+            id,
+            ask: format!("{asked} without an entry's key"),
+        };
+    };
+    match asked {
+        "reveal" => Ask::Reveal { id, key, detail },
+        "copy" => Ask::Copy { id, key, detail },
+        _ => Ask::Code { id, key },
     }
 }
 

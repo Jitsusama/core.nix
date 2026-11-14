@@ -32,7 +32,11 @@ onLinux {
   # outlives the daemon, and holds since when trouble was found until a
   # check finds none, each told to a watch. The daemon can't be read
   # through /proc by the account's other processes, and ends as soon as
-  # whatever ran it closes its end. The command's tests run too: no
+  # whatever ran it closes its end. A secret ask is drawn only for a
+  # reference listed to release, none listed drawing none, and only Joel's
+  # yes on its own key, for what was drawn and once it was shown long
+  # enough, releases the value, into the asked command alone in a stand-in
+  # bubblewrap, masked in what it prints. The command's tests run too: no
   # command reaches an entry or a secret, and each mistyped one says what
   # it needs. Its rows are said in the account's own vocabulary, every
   # word of them its, as the shell says them.

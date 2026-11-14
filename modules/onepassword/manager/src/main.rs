@@ -88,6 +88,7 @@ fn main() -> ExitCode {
         settings,
         opener: given.opener,
         reaching: None,
+        releases: given.releases,
     };
     for line in std::io::stdin().lock().lines() {
         let Ok(line) = line else { break };
@@ -122,6 +123,8 @@ fn harden() -> std::io::Result<()> {
 /// What the manager was started with.
 struct Given {
     op: String,
+    /// The references a release may read, each given with `--release`.
+    releases: Vec<String>,
     opener: Option<Opener>,
 }
 
@@ -139,9 +142,11 @@ fn given() -> Given {
     let mut opened = None;
     let mut unit = None;
     let mut systemctl = "systemctl".to_owned();
+    let mut releases = Vec::new();
     while let (Some(flag), Some(value)) = (args.next(), args.next()) {
         match flag.as_str() {
             "--op" => op = value,
+            "--release" => releases.push(value),
             "--opened" => opened = Some(PathBuf::from(value)),
             "--open-unit" => unit = Some(value),
             "--systemctl" => systemctl = value,
@@ -156,12 +161,34 @@ fn given() -> Given {
     });
     Given {
         op,
+        releases,
         opener: unit.zip(opened).map(|(unit, opened)| Opener {
             opened,
             unit,
             systemctl,
         }),
     }
+}
+
+/// Whether a release may read `reference`: only as Joel's own ask, never
+/// with a query, which would read something other than what's listed, and
+/// only a reference the manager was started listing, matched byte for
+/// byte, so nothing the ask says widens what it reaches.
+fn may_release(listed: &[String], reference: &str, joels: bool) -> Result<(), Failed> {
+    if !joels {
+        return Err(Failed::only(
+            "a secret is released only on your yes".to_owned(),
+        ));
+    }
+    if reference.contains('?') {
+        return Err(Failed::only(
+            "a reference with a query is never released".to_owned(),
+        ));
+    }
+    if !listed.iter().any(|listed| listed == reference) {
+        return Err(Failed::only("not listed".to_owned()));
+    }
+    Ok(())
 }
 
 /// What the watch and the asks both know of 1Password.
@@ -274,6 +301,8 @@ struct Manager {
     opener: Option<Opener>,
     /// Until when op may be run again for an ask whose app it just opened.
     reaching: Option<Instant>,
+    /// The references a release may read, as its configuration lists them.
+    releases: Vec<String>,
 }
 
 /// How an ask failed. One where op couldn't be asked (`stands`) says how
@@ -303,26 +332,37 @@ impl Manager {
         let joels = asked.get("asked").and_then(Value::as_bool) == Some(true);
         let item = asked.get("entry").and_then(Value::as_str).unwrap_or("");
         let ask = asked.get("ask").and_then(Value::as_str);
-        // Only Joel's own key opens the app, as only it has op prompt.
-        let opens = joels || matches!(ask, Some("let-in" | "reveal" | "code"));
-        let result = if opens && self.known.open() == Some(false) {
-            self.open_the_app()
+        let reference = asked.get("reference").and_then(Value::as_str).unwrap_or("");
+        // A release is refused before the app is opened for it.
+        let gate = if ask == Some("release") {
+            may_release(&self.releases, reference, joels)
         } else {
             Ok(())
-        }
-        .and_then(|()| match ask {
-            Some("list") => self.list(joels),
-            Some("get") => self.get(item, joels),
-            Some("reveal") => self.reveal(item, asked.get("detail").and_then(Value::as_str)),
-            Some("code") => self.code(item),
-            Some("audit") => self.audit(joels),
-            Some("let-in") => self
-                .run(&["vault", "list", "--format", "json"])
-                .map(|_| json!({})),
-            other => Err(Failed::only(format!(
-                "1Password's manager can't answer {other:?}"
-            ))),
-        });
+        };
+        // Only Joel's own key opens the app, as only it has op prompt.
+        let opens = joels || matches!(ask, Some("let-in" | "reveal" | "code"));
+        let result = gate
+            .and_then(|()| {
+                if opens && self.known.open() == Some(false) {
+                    self.open_the_app()
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| match ask {
+                Some("list") => self.list(joels),
+                Some("get") => self.get(item, joels),
+                Some("reveal") => self.reveal(item, asked.get("detail").and_then(Value::as_str)),
+                Some("code") => self.code(item),
+                Some("release") => self.release(reference),
+                Some("audit") => self.audit(joels),
+                Some("let-in") => self
+                    .run(&["vault", "list", "--format", "json"])
+                    .map(|_| json!({})),
+                other => Err(Failed::only(format!(
+                    "1Password's manager can't answer {other:?}"
+                ))),
+            });
         self.reaching = None;
         let mut answer = match result {
             Ok(Value::Object(answer)) => answer,
@@ -482,6 +522,14 @@ impl Manager {
         let wanted = detail.unwrap_or("password");
         let value =
             value(&got, wanted).ok_or_else(|| Failed::only(format!("it has no {wanted}")))?;
+        Ok(json!({"value": value}))
+    }
+
+    /// The value at a reference [`may_release`] let through, read by op
+    /// as it's stored, with no newline added, for one command Joel said
+    /// yes to. It goes in the answer alone, never in a log.
+    fn release(&mut self, reference: &str) -> Result<Value, Failed> {
+        let value = self.run(&["read", "--no-newline", reference])?;
         Ok(json!({"value": value}))
     }
 

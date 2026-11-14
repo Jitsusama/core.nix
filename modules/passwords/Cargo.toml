@@ -2,7 +2,8 @@
 # as its own child, which runs each password manager as a child of its
 # own and answers over its standard input and output in the shell's
 # daemon interface, and the `passwords` command, which reaches it not
-# (src/main.rs says how). libc keeps its memory from the account's other
+# (src/main.rs says how), and answers the secret asks listed for it.
+# libc keeps its memory from the account's other
 # processes and ends it with the shell. An audit, run only when Joel
 # asks, hashes each password with ring's SHA-1 and asks Have I Been
 # Pwned's range of each hash's first five characters through ureq, the
@@ -20,6 +21,9 @@ libc = "0.2"
 # spaced order, and figures said as the launcher says them.
 ready-rows = { path = "../ready-rows" }
 ring = "0.17"
+# Secret asks' engine, which watches their folder, holds each as a row and
+# answers the shell's yes (src/asks.rs says what the daemon adds).
+secret-asks = { path = "../secret-asks" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "3", features = ["json"] }

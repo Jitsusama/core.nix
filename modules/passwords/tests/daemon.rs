@@ -19,8 +19,10 @@
 //! kept in the state folder, readable by Joel alone and holding no secret
 //! nor any hash, and dresses the entries again once the daemon starts
 //! again; and since when trouble's been found holds while it does, and
-//! clears once a check finds none, each told to a watch.
+//! clears once a check finds none, each told to a watch. Secret asks the
+//! daemon answers are its own module's (asks/mod.rs).
 
+mod asks;
 mod common;
 
 use std::os::unix::fs::PermissionsExt;
