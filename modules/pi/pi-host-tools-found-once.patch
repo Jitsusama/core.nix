@@ -1,0 +1,35 @@
+A host looks a tool up on the path once it has found it.
+
+Each conversation's start asks whether fd and rg are installed by running
+each with --version, about 0.05 s a start, in the one process every
+conversation of a host shares. A tool found stays found for the process;
+one missing is looked for again each time, so a tool installed later is
+still seen, as before.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/utils/tools-manager.ts
++++ b/packages/coding-agent/src/utils/tools-manager.ts
+@@ -57,12 +57,20 @@ const TOOLS: Record<string, ToolConfig> = {
+ 	},
+ };
+ 
++// pi-host: a host starts every conversation in one process, and each start ran each tool to
++// see it's there. A command found stays found for the process; one missing is looked for again,
++// so a tool installed later is still seen.
++const commandsFound = new Set<string>();
++
+ // Check if a command exists in PATH by trying to run it
+ function commandExists(cmd: string): boolean {
++	if (commandsFound.has(cmd)) return true;
+ 	try {
+ 		const result = spawnSync(cmd, ["--version"], { stdio: "pipe" });
+ 		// Check for ENOENT error (command not found)
+-		return result.error === undefined || result.error === null;
++		const found = result.error === undefined || result.error === null;
++		if (found) commandsFound.add(cmd);
++		return found;
+ 	} catch {
+ 		return false;
+ 	}

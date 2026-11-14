@@ -2046,6 +2046,12 @@
     lacks, refuses header variables where it can't read the context, and reads the process for a
     runtime given none, as ordinary pi does
   '';
+  pi-hosted-starts-conversations-lightly = ''
+    pi built with the host's patches, applied exactly, runs an MCP server's header command without
+    blocking and once for the connections opened within 30 seconds, runs one that resolved nothing
+    again and once its cache is cleared, finds a tool on the path once and looks again for one
+    missing, and hands a provider the store's own copy of its catalogue without a second clone
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
