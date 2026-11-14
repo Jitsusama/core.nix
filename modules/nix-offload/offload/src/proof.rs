@@ -939,7 +939,10 @@ mod tests {
             ),
         );
         let scratch = dir.path().join("proving");
-        assert!(carries(STORE, &scratch, &nix, CARRYING));
+        assert!(
+            carries(STORE, &scratch, &nix, CARRYING),
+            "a copy that lands carries"
+        );
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
         let words: Vec<&str> = given.lines().collect();
         assert_eq!(
@@ -967,7 +970,7 @@ mod tests {
             fs::read_dir(&scratch).unwrap().next().is_none(),
             "what it carried is cleaned up here"
         );
-        assert!(carries(STORE, &scratch, &nix, CARRYING));
+        assert!(carries(STORE, &scratch, &nix, CARRYING), "it carries again");
         let second = fs::read(dir.path().join("carried")).unwrap();
         assert_ne!(first, second, "each proof carries what no store holds");
 
@@ -976,7 +979,10 @@ mod tests {
             "nix",
             "case \"$1 $2\" in \"store add\") echo /nix/store/aaaa-c; exit 0 ;; esac; exit 1",
         );
-        assert!(!carries(STORE, &scratch, &failing, CARRYING));
+        assert!(
+            !carries(STORE, &scratch, &failing, CARRYING),
+            "a copy that fails doesn't carry"
+        );
         let hanging = stand_in(
             dir.path(),
             "nix",
@@ -984,13 +990,19 @@ mod tests {
              exec tail -f /dev/null",
         );
         let began = Instant::now();
-        assert!(!carries(STORE, &scratch, &hanging, Duration::from_secs(1)));
+        assert!(
+            !carries(STORE, &scratch, &hanging, Duration::from_secs(1)),
+            "a copy past its time doesn't carry"
+        );
         assert!(
             began.elapsed() < Duration::from_secs(10),
             "a copy that stalls is cut"
         );
         let unadded = stand_in(dir.path(), "nix", "exit 1");
-        assert!(!carries(STORE, &scratch, &unadded, CARRYING));
+        assert!(
+            !carries(STORE, &scratch, &unadded, CARRYING),
+            "nothing to carry, no carry"
+        );
         assert!(!carries("", &scratch, &nix, CARRYING), "no store, no carry");
     }
 

@@ -4280,16 +4280,16 @@ exit 0
         let (ssh, nix) = (ssh.display().to_string(), nix.display().to_string());
         let mut keeper = None;
         let began = Instant::now();
-        assert!(!proven_at(&settings, &mut keeper, &builder, began, &ssh));
-        assert!(proven_at(
-            &settings,
-            &mut keeper,
-            &builder,
-            began + proof::EVERY,
-            &ssh
-        ));
+        assert!(
+            !proven_at(&settings, &mut keeper, &builder, began, &ssh),
+            "one failure is a blip"
+        );
+        assert!(
+            proven_at(&settings, &mut keeper, &builder, began + proof::EVERY, &ssh),
+            "two in a row name it nowhere"
+        );
         let health = &keeper.as_ref().expect("kept").health;
-        assert!(health.stalled);
+        assert!(health.stalled, "it built, so it's stalled: {health:?}");
         assert_eq!(health.state(), State::Dropped);
         let mut said = SaidKept::default();
         assert!(
@@ -4304,8 +4304,11 @@ exit 0
             ),
             "no build reaches it, but it isn't lost"
         );
-        assert!(said.stalled && !said.reached);
-        assert!(runs(&mut builder.helper));
+        assert!(
+            said.stalled && !said.reached,
+            "it says it's kept as one that can't carry"
+        );
+        assert!(runs(&mut builder.helper), "its helper still runs");
         end(&mut builder.helper);
     }
 
