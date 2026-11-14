@@ -125,9 +125,34 @@
 # from other builders, stay as they came. Activation runs before the daemon
 # starts, at boot and at a switch, so the daemon never looks for a key that
 # isn't there yet, which would fail every build.
-{ config, pkgs, ... }:
+#
+# Tools that fetch private sources hand Nix their credentials as impure-env
+# entries, which a fixed-output build reads from its environment, and stock
+# Nix takes impure-env only from a trusted user. So an account left out of
+# trusted-users, or a sandbox at the door, couldn't fetch them at all. The
+# daemon here takes, from a client that isn't trusted, only the variables a
+# machine names in untrusted-impure-env-names, and drops the rest, naming
+# each but never its value (untrusted-named-impure-env.patch). That gives
+# such a client nothing over others: the variables reach only fixed-output
+# builds, whose outputs are checked against their hashes, so a client hands
+# its own credentials to its own downloads. Each connection has a daemon
+# process of its own, so one client's values never reach another's builds.
+# A machine that names none gets stock Nix's answer.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   gib = 1024 * 1024 * 1024;
+  # Only 2.34's daemon is patched, so a newer Nix fails
+  # an-untrusted-client-passes-only-named-env until the patch is carried to it.
+  nix =
+    if pkgs.nix ? appendPatches && lib.versions.majorMinor pkgs.nix.version == "2.34" then
+      pkgs.nix.appendPatches [ ./untrusted-named-impure-env.patch ]
+    else
+      pkgs.nix;
   vmFirst = pkgs.callPackage ./vm-first/package.nix { };
   untrusted = builtins.concatStringsSep " " [
     "${config.nix.package}/bin/nix"
@@ -138,6 +163,7 @@ let
   ];
 in
 {
+  nix.package = lib.mkDefault nix;
   nix.daemonCPUSchedPolicy = "idle";
   nix.daemonIOSchedClass = "idle";
 

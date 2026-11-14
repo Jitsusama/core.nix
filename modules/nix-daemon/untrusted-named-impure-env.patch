@@ -1,0 +1,71 @@
+diff --git a/src/libstore/daemon.cc b/src/libstore/daemon.cc
+--- a/src/libstore/daemon.cc
++++ b/src/libstore/daemon.cc
+@@ -294,6 +294,40 @@
+                         "Ignoring the client-specified plugin-files.\n"
+                         "The client specifying plugins to the daemon never made sense, and was removed in Nix >=2.14.");
+                 } else if (
++                    !trusted
++                    && (name == settings.getLocalSettings().impureEnv.name
++                        || name == "extra-" + settings.getLocalSettings().impureEnv.name)) {
++                    /* A client that isn't trusted may set only the
++                       variables the daemon's own configuration names, and
++                       only adds them to what the daemon set itself. They
++                       reach nothing but fixed-output derivations, whose
++                       outputs are checked against their hashes. A value
++                       may be a credential, so a warning names the
++                       variable and never its value, and an entry that
++                       isn't name=value is dropped without echoing it. */
++                    auto & allowed = settings.getLocalSettings().untrustedImpureEnvNames.get();
++                    StringMap kept;
++                    for (const auto & entry : tokenizeString<Strings>(value)) {
++                        auto eq = entry.find('=');
++                        if (eq == entry.npos) {
++                            warn("ignoring a client-specified impure-env entry that isn't name=value");
++                            continue;
++                        }
++                        std::string var(entry, 0, eq);
++                        if (allowed.count(var))
++                            kept.insert_or_assign(var, std::string(entry, eq + 1));
++                        else
++                            warn(
++                                "ignoring the client-specified impure-env variable '%s', because it isn't in "
++                                "untrusted-impure-env-names and you are not a trusted user",
++                                var);
++                    }
++                    auto & impureEnv = settings.getLocalSettings().impureEnv;
++                    auto merged = impureEnv.get();
++                    for (auto & [var, val] : kept)
++                        merged.insert_or_assign(var, val);
++                    impureEnv.assign(merged);
++                } else if (
+                     trusted || name == settings.getWorkerSettings().buildTimeout.name
+                     || name == settings.getWorkerSettings().maxSilentTime.name
+                     || name == settings.getWorkerSettings().pollInterval.name || name == "connect-timeout"
+diff --git a/src/libstore/include/nix/store/local-settings.hh b/src/libstore/include/nix/store/local-settings.hh
+--- a/src/libstore/include/nix/store/local-settings.hh
++++ b/src/libstore/include/nix/store/local-settings.hh
+@@ -620,6 +620,23 @@
+         true, // document default
+         Xp::ConfigurableImpureEnv};
+ 
++    Setting<StringSet> untrustedImpureEnvNames{
++        this,
++        {},
++        "untrusted-impure-env-names",
++        R"(
++          Names of environment variables that a client which isn't trusted
++          may set through [`impure-env`](#conf-impure-env). The daemon keeps
++          a client's entry for a name listed here and drops any other, naming
++          the variable but never its value.
++
++          A name set this way reaches only a fixed-output derivation that
++          lists it in `impureEnvVars`, and such a derivation's output is
++          checked against its hash, so a client can give only its own builds
++          its own credentials, as a trusted client can, without being
++          trusted with the rest of the daemon.
++        )"};
++
+     Setting<Strings> hashedMirrors{
+         this,
+         {},

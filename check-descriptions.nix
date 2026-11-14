@@ -268,6 +268,11 @@
     a Quickshell IPC reply of a million characters reaches `qs ipc call` whole, and a call to a
     function that isn't there ends qs with a failure
   '';
+  an-untrusted-client-passes-only-named-env = ''
+    the Nix daemon hands a client that isn't trusted only the impure-env variables the machine
+    names, and only to fixed-output builds, however the client asks, and logs no value, so a
+    private fetch works without trusting the account that asks
+  '';
   an-unasked-switch-never-brings-back-a-touch-alone = ''
     polkit lets a switch to a system the profile holds go unasked, but not to one whose PAM took a
     YubiKey's touch alone, in a service other than polkit's or in polkit's without the check that
