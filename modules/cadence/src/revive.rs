@@ -555,8 +555,12 @@ mod tests {
 
     #[test]
     fn the_realm_is_read_from_the_restart_words() {
+        assert_eq!(
+            realm_of("mycelium --realm work holds add -- pi"),
+            Some("work")
+        );
         assert_eq!(realm_of("mycelium --realm work hold -- pi"), Some("work"));
-        assert_eq!(realm_of("mycelium hold -- pi"), None);
+        assert_eq!(realm_of("mycelium holds add -- pi"), None);
     }
 
     #[test]

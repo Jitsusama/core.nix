@@ -575,6 +575,7 @@ mod tests {
         for viewer in [
             b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
             b"/nix/store/x-mycelium/bin/mycelium\0attach\0s\0",
+            b"/nix/store/x-mycelium/bin/mycelium\0holds\0s\0attach\0",
         ] {
             assert!(
                 views(viewer),
@@ -586,6 +587,7 @@ mod tests {
             b"node\0/h/agentic-harness.pi/scripts/pi-host.ts\0".as_slice(),
             b"zsh\0-c\0mycelium attach s\0",
             b"/bin/mycelium\0held\0",
+            b"/bin/mycelium\0holds\0",
         ] {
             assert!(
                 !views(other),
