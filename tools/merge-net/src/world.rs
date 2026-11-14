@@ -11,6 +11,7 @@ use std::fs;
 use std::io::{BufRead as _, BufReader, Read as _, Seek as _, SeekFrom, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -116,12 +117,12 @@ pub struct Real {
     /// The branch it follows and lands its changes on: main, or a
     /// throwaway branch to prove the net on.
     pub branch: String,
-    /// Held by whatever moves the checkout's head, as a change landing and
-    /// a comparison do, so the two can't take turns in it. They run on
-    /// two threads, the settler's and the round's, and at 06:01 on 11
-    /// November a comparison checked out main's head under a quarantine
-    /// being cut. Its commit went on the detached head, the tree was left
-    /// changed, and its checks refused to run.
+    /// Held by whatever moves the checkout's head, as a change landing
+    /// does, so two can't take turns in it. At 06:01 on 11 November a
+    /// comparison checked out main's head under a quarantine being cut.
+    /// Its commit went on the detached head, the tree was left changed,
+    /// and its checks refused to run. Comparisons now each take a
+    /// checkout of their own ([`Comparing`]) and never hold this.
     pub moving: Mutex<()>,
     /// The runs nothing needs now, by commit and check, which are stopped.
     pub dropped: Mutex<BTreeSet<(String, String)>>,
@@ -697,8 +698,7 @@ impl World for Real {
         if let Ok(said) = fs::read_to_string(&kept) {
             return Ok(Changed::parse(&said));
         }
-        let _moving = self.moving();
-        self.git(&["checkout", "--quiet", "--force", "--detach", head])?;
+        let apart = Comparing::at(self, head)?;
         let log = self
             .state
             .join("logs")
@@ -712,7 +712,7 @@ impl World for Real {
                 &self.system,
                 FIRST,
             ])
-            .current_dir(self.checkout())
+            .current_dir(&apart.folder)
             .stderr(file(&log)?)
             .output()
             .map_err(|error| format!("running changed-checks: {error}"))?;
@@ -1078,6 +1078,71 @@ pub fn plain(line: &str) -> String {
 }
 
 /// Open a log for writing, new each time, with its folder made.
+/// A checkout of its own for one comparison, at the head it compares, so
+/// it never waits on the net's checkout or another comparison. Holding the
+/// net's checkout for a whole changed-checks run, minutes each, kept each
+/// round's comparison behind the quick look's on 14 November: 4 to 17
+/// minutes before a round's first VM test began. It's given back when
+/// dropped.
+struct Comparing<'a> {
+    net: &'a Real,
+    folder: PathBuf,
+}
+
+/// How many comparisons this net has made, so each checkout is named apart.
+static COMPARISONS: AtomicU64 = AtomicU64::new(0);
+
+impl<'a> Comparing<'a> {
+    fn at(net: &'a Real, head: &str) -> Result<Self, String> {
+        let within = net.state.join("compare");
+        clear_ended(net, &within);
+        let nth = COMPARISONS.fetch_add(1, Ordering::Relaxed);
+        let folder = within.join(format!("{}-{nth}-{}", std::process::id(), short(head)));
+        let path = folder.display().to_string();
+        net.git(&[
+            "worktree", "add", "--quiet", "--force", "--detach", &path, head,
+        ])?;
+        Ok(Self { net, folder })
+    }
+}
+
+impl Drop for Comparing<'_> {
+    fn drop(&mut self) {
+        let path = self.folder.display().to_string();
+        if self
+            .net
+            .git(&["worktree", "remove", "--force", &path])
+            .is_err()
+        {
+            let _ = fs::remove_dir_all(&self.folder);
+            let _ = self.net.git(&["worktree", "prune"]);
+        }
+    }
+}
+
+/// Take back the comparisons' checkouts a net that ended left, as one
+/// stopped mid-run does. Each is named by its net's process first, and
+/// two nets overlap while one moves to a new build, so only those of a
+/// process that's gone are cleared.
+fn clear_ended(net: &Real, within: &Path) {
+    let Ok(entries) = fs::read_dir(within) else {
+        return;
+    };
+    let mut cleared = false;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let process = name.split('-').next().unwrap_or_default();
+        if process.is_empty() || Path::new("/proc").join(process).exists() {
+            continue;
+        }
+        let _ = fs::remove_dir_all(entry.path());
+        cleared = true;
+    }
+    if cleared {
+        let _ = net.git(&["worktree", "prune"]);
+    }
+}
+
 fn file(path: &Path) -> Result<fs::File, String> {
     if let Some(folder) = path.parent() {
         fs::create_dir_all(folder)
@@ -1610,25 +1675,69 @@ mod tests {
     }
 
     #[test]
-    fn a_comparison_waits_while_a_change_is_landing_in_the_checkout() {
-        let (net, root) = a_net("moving", &json!([]));
-        let head = git_in(&root.join("main"), &["rev-parse", "HEAD"]);
+    fn a_comparison_leaves_the_checkout_to_a_landing() {
+        let (net, root) = a_net("apart", &json!([]));
+        let main = root.join("main");
+        let base = git_in(&main, &["rev-parse", "HEAD"]);
+        fs::write(main.join("other"), "moved\n").unwrap();
+        git_in(&main, &["add", "other"]);
+        git_in(&main, &["commit", "-qm", "moved"]);
+        git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
+        let head = git_in(&main, &["rev-parse", "HEAD"]);
+        git_in(&net.checkout(), &["fetch", "-q", "origin", "main"]);
+        let before = git_in(&net.checkout(), &["rev-parse", "HEAD"]);
         let (tell, told) = std::sync::mpsc::channel();
         std::thread::scope(|scope| {
             let landing = net.moving();
-            scope.spawn(|| tell.send(net.changed(&head, &head).is_ok()));
-            // A comparison that took no turn moves the head at once, so a
-            // third of a second is time enough to have seen it go.
-            assert!(
-                told.recv_timeout(Duration::from_millis(300)).is_err(),
-                "a comparison moved the checkout while a change was landing"
-            );
-            drop(landing);
+            scope.spawn(|| tell.send(net.changed(&base, &head).is_ok()));
             assert!(
                 told.recv_timeout(Duration::from_secs(30)).is_ok(),
-                "a comparison never took its turn once the landing ended"
+                "a comparison waited for a change landing in the checkout"
             );
+            drop(landing);
         });
+        assert_eq!(
+            git_in(&net.checkout(), &["rev-parse", "HEAD"]),
+            before,
+            "a comparison moved the checkout a landing works in"
+        );
+        let left: Vec<_> = fs::read_dir(net.state.join("compare"))
+            .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+            .unwrap_or_default();
+        assert!(
+            left.is_empty(),
+            "a comparison left its checkout behind: {left:?}"
+        );
+        assert!(
+            !git_in(&net.checkout(), &["worktree", "list"]).contains("compare"),
+            "git still lists a comparison's checkout"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_comparison_left_by_a_net_that_ended_is_cleared() {
+        let (net, root) = a_net("stale", &json!([]));
+        let head = git_in(&root.join("main"), &["rev-parse", "HEAD"]);
+        // No process has this id: Linux's ids stop well below it.
+        let stale = net.state.join("compare").join("99999999-0-abc");
+        git_in(
+            &net.checkout(),
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &stale.display().to_string(),
+                &head,
+            ],
+        );
+        let _ = net.changed(&head, &head);
+        assert!(!stale.exists(), "a dead net's comparison checkout was kept");
+        assert!(
+            !git_in(&net.checkout(), &["worktree", "list"]).contains("99999999"),
+            "git still lists a dead net's comparison checkout"
+        );
         fs::remove_dir_all(&root).unwrap();
     }
 
