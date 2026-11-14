@@ -105,6 +105,11 @@ impl Follow {
         self.floor.as_ref()
     }
 
+    /// Whether a program that keeps its own colours is in front (front.rs).
+    pub fn keep_still(&mut self, still: bool) {
+        let _ = still;
+    }
+
     /// Whether a brightness Joel picked holds for the rest of the evening.
     pub fn holding(&self) -> bool {
         self.hold == Hold::Held
@@ -1025,5 +1030,34 @@ mod tests {
         assert_eq!(keys_after_the_hold(&mut keys, start), Some(1));
         keys.unset(0);
         assert!(!keys.saw(0));
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_holds_the_light_till_it_leaves() {
+        let start = Instant::now();
+        let mut follow = following(1000.0, 0.8, start);
+        follow.keep_still(true);
+        let _ = follow.heard(10.0, 0.8, start);
+        assert_eq!(
+            follow.wake(start),
+            None,
+            "a dimmer room is waited on in front of GIMP"
+        );
+        assert_eq!(
+            follow.start(0.8, start + LATER),
+            None,
+            "the screen dimmed in front of GIMP"
+        );
+        follow.keep_still(false);
+        assert!(
+            follow
+                .wake(start + LATER)
+                .is_some_and(|due| due <= start + LATER),
+            "the move waiting on the dimmer room was lost"
+        );
+        assert!(
+            moved(&mut follow, 0.8, start + LATER).is_some_and(|level| (level - 0.2).abs() < 1e-9),
+            "the dimmer room wasn't followed once GIMP left the front"
+        );
     }
 }

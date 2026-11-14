@@ -138,6 +138,11 @@ impl Warmth {
         }
     }
 
+    /// Whether a program that keeps its own colours is in front (front.rs).
+    pub fn keep_white(&mut self, kept: bool, now: Instant) {
+        let _ = (kept, now);
+    }
+
     /// Joel said whether the screen should follow the room.
     pub fn follow_the_room(&mut self, follows: bool, now: Instant) {
         if self.follows != follows {
@@ -646,6 +651,51 @@ mod tests {
             glide(&mut warmth, now).last(),
             Some(&5000),
             "the room's by day"
+        );
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_takes_the_screen_to_its_own_white() {
+        let now = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, now);
+        glide(&mut warmth, now);
+        warmth.keep_white(true, now);
+        assert_eq!(
+            glide(&mut warmth, now).last(),
+            Some(&WHITE),
+            "the night held in front of GIMP"
+        );
+        warmth.night(3950, now);
+        warmth.light(100.0, now);
+        warmth.room(2700.0, now);
+        assert_eq!(
+            warmth.wake(),
+            None,
+            "the night or the room reached a screen held white"
+        );
+    }
+
+    #[test]
+    fn once_it_leaves_the_front_the_night_comes_back_at_its_own_pace() {
+        let start = Instant::now();
+        let mut warmth = Warmth::new(WHITE);
+        warmth.night(4000, start);
+        warmth.keep_white(true, start);
+        glide(&mut warmth, start);
+        warmth.keep_white(false, start);
+        let mut at = start;
+        while let Some(due) = warmth.wake() {
+            at = at.max(due);
+            if let Some(kelvin) = warmth.step(at) {
+                warmth.set(kelvin, at);
+            }
+        }
+        assert_eq!(warmth.stands(), 4000, "the night didn't come back");
+        let took = at - start;
+        assert!(
+            took >= Duration::from_secs(55) && took <= Duration::from_secs(65),
+            "the night's 2500 K came back in {took:?}"
         );
     }
 }

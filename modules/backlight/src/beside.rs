@@ -134,6 +134,19 @@ impl Beside {
         self.due = Some(self.rests.map_or(now, |rests| rests.max(now)));
     }
 
+    /// Whether a program that keeps its own colours is in front
+    /// (front.rs), when the screens hold their own white whatever the
+    /// night; they're looked at once when that changes.
+    pub fn keep_white(&mut self, kept: bool, now: Instant) {
+        let _ = (kept, now);
+    }
+
+    /// Whether the screens hold their own white whatever the night.
+    #[must_use]
+    pub fn keeps_white(&self) -> bool {
+        false
+    }
+
     /// The relay started again at its own white, so every screen is set
     /// again, at once.
     pub fn forget(&mut self, now: Instant) {
@@ -315,6 +328,25 @@ mod tests {
             beside.wake(),
             Some(until + Duration::from_secs(1)),
             "the night's step after the rest waits"
+        );
+    }
+
+    #[test]
+    fn a_program_keeping_its_colours_gives_the_screens_their_white_at_once() {
+        let now = Instant::now();
+        let mut beside = Beside::new(now);
+        beside.looked(now);
+        let later = now + Duration::from_secs(1);
+        beside.keep_white(true, later);
+        assert!(
+            beside.keeps_white(),
+            "the screens took the night in front of GIMP"
+        );
+        assert_eq!(beside.wake(), Some(later), "GIMP's white waits for a look");
+        beside.keep_white(false, later);
+        assert!(
+            !beside.keeps_white(),
+            "the night didn't come back once GIMP left"
         );
     }
 }

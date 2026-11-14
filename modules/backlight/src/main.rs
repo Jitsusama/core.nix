@@ -85,6 +85,7 @@ mod dbus;
 mod evening;
 mod facts;
 mod follow;
+mod front;
 mod keep;
 mod keyboard;
 mod light;
