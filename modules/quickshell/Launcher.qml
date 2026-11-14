@@ -4761,7 +4761,7 @@ Scope {
         // through it, so the path says where it lives.
         if (held.length === 0 && row.category && placesAbove(row.category).length > 0) {
             if (meant)
-                picks.picked(typed, row.key, knowing());
+                learnAfterFrame(typed, row.key);
             intoCategory(row.category, typed);
             return went();
         }
@@ -4778,7 +4778,7 @@ Scope {
         if ((!into || into.length === 0) && places === 0 && !row.empty)
             return false;
         if (meant)
-            picks.picked(typed, row.key, knowing());
+            learnAfterFrame(typed, row.key);
         const made = Date.now();
         // Going back lands on the row stepped into, as oil's - lands on the
         // folder it came from, though it was stepped into without being
@@ -6937,6 +6937,16 @@ Scope {
         return out;
     }
 
+    // A step into a place from what's typed learns it once the step's frame
+    // is drawn, with what was typed as it was then. Learning reads every
+    // row's key and forgets the picks of rows gone, which took 25 to 66 ms
+    // over 2,111 keys in a lab's steps into Capture and Windows, all of it
+    // before their rows showed (ZINAWZ, 2026-11-14); nothing reads it
+    // before the next opening's search.
+    function learnAfterFrame(said, key) {
+        afterFrame(() => picks.picked(said, key, knowing()));
+    }
+
     // Acting on a thing says it was what was meant by what was typed; in a
     // collection or a category, the one picked from it was. Learned before
     // the launcher closes, while what's typed and held is still there.
@@ -7024,7 +7034,7 @@ Scope {
         }
         // One that opens a collection steps into it, the launcher kept open.
         if (choice.opens) {
-            picks.picked(typed, choice.key, knowing());
+            learnAfterFrame(typed, choice.key);
             trials.picked(choice, typed, held.length);
             into(choice.opens);
             return;
