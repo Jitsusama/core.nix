@@ -4790,7 +4790,7 @@ Scope {
         ? held[held.length - 1].row : null
 
     // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
-    // field where the rows go, as Super+S's line does (TalkExchanges.qml), from what its place
+    // field where the rows go, as Super+S's line does (TalkSpoken.qml), from what its place
     // serves, rather than over an empty box (Joel at 19:30 on 2026-11-13: "they need to feel
     // more like the void"). The card is as tall as its talks, the field and the foot alone
     // before there are any, its top where it was.
@@ -11556,16 +11556,18 @@ Scope {
                         // A talk's talks, newest first, on the rows' names'
                         // column out to the inset, the room under the last
                         // baseline the room over the first capital, as the
-                        // line keeps its own.
-                        TalkExchanges {
+                        // line keeps its own. Being few, they stand whole, with
+                        // no room set to bound them.
+                        TalkSpoken {
                             id: talksShown
                             readonly property real tall: root.talkless ? 0
-                                : implicitHeight + Theme.level.words.pitch
+                                : whole + Theme.level.words.pitch
                                     - talkCaps.tightBoundingRect.height
                             visible: root.talkAsked && !root.talkless
                             width: parent.width - card.inset
                             textAt: card.inset + root.columns.text
-                            breathing: root.open
+                            gap: Theme.level.figure.pitch
+                            up: root.open
                             exchanges: root.talks
 
                             TextMetrics {

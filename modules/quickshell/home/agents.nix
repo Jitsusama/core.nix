@@ -9,7 +9,6 @@
   "SessionTalks.js"
   "SessionWindows.js"
   "TalkAttached.qml"
-  "TalkExchanges.qml"
   "TalkLine.qml"
   "TalkLine.js"
   "TalkLineMark.qml"
