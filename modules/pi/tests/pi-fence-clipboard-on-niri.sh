@@ -58,6 +58,7 @@ for privileged in \
   zwlr_layer_shell_v1 \
   ext_session_lock_manager_v1 \
   zwp_input_method_manager_v2 \
+  ext_idle_notifier_v1 \
   wp_security_context_manager_v1; do
   grep -qx "$privileged" "$logs/raw.txt" || fail "niri's own display lacks $privileged, so its absence proves nothing"
   ! grep -qx "$privileged" "$logs/filtered.txt" || fail "the sandboxed display offers $privileged"
