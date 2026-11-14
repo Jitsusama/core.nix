@@ -100,6 +100,32 @@ QtObject {
             [at(2026, 11, 11, 9, 0), at(2026, 11, 16, 9, 0), at(2026, 11, 17, 9, 0),
                 at(2026, 11, 10, 20, 0)].map(day => When.day(day, now, days)),
             ["tomorrow", "Monday", "17 Nov", ""]);
+        // A place's rows say their days as it's drawn, most on the same
+        // few, each day's midnight worked out once rather than for each
+        // row, and each the midnight the engine works out.
+        const workedOut = When.midnightsWorkedOut();
+        const rows = Array.from({ length: 200 },
+            (_, row) => at(2026, 11, 9 + row % 2, row % 24, row % 60));
+        expect("200 rows on two days said as each is said alone",
+            rows.map(time => When.day(time, now, days)),
+            rows.map((_, row) => row % 2 === 0 ? "yesterday" : ""));
+        expect("and three midnights worked out for them, now's among them",
+            When.midnightsWorkedOut() - workedOut <= 3, true);
+        expect("each the day's own midnight, its last moment and its first",
+            [at(2026, 11, 9, 23, 59) + 59_999, at(2026, 11, 10, 0, 0)]
+                .map(time => When.midnight(new Date(time))),
+            [at(2026, 11, 9, 0, 0), at(2026, 11, 10, 0, 0)]);
+        // The day summer time ends is 25 hours long where the check's
+        // zone keeps it (TZ=Europe/Berlin), so its last hour is still
+        // that day once its first was kept.
+        expect("a day summer time ends keeps all its hours",
+            [at(2026, 10, 25, 0, 30), at(2026, 10, 25, 23, 30), at(2026, 10, 26, 0, 30)]
+                .map(time => When.midnight(new Date(time))),
+            [at(2026, 10, 25, 0, 0), at(2026, 10, 25, 0, 0), at(2026, 10, 26, 0, 0)]);
+        expect("and the day it begins, 23 hours long, none of the next",
+            [at(2026, 3, 29, 0, 30), at(2026, 3, 30, 0, 30)]
+                .map(time => When.midnight(new Date(time))),
+            [at(2026, 3, 29, 0, 0), at(2026, 3, 30, 0, 0)]);
 
         const file = { folder: false, size: 2_400_000, modified: at(2026, 10, 28, 14, 32) };
         expect("a file's row says its size and its day", FileFacts.side(file, undefined, now, words),

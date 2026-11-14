@@ -24,17 +24,23 @@
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "a-file-says-its-size-and-when-it-changed" { } ''
-      cp ${../../../tests/file-facts.qml} file-facts.qml
-      ${copied [ "FileFacts.js" ]}
-      cp ${(import ../launcher/words.nix).file} words.json
-      export QML_XHR_ALLOW_FILE_READ=1
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml file-facts.qml
-      touch $out
-    '';
+    pkgs.runCommandLocal "a-file-says-its-size-and-when-it-changed"
+      {
+        # A zone with summer time, so a day 25 hours long is said as one.
+        TZ = "Europe/Berlin";
+        TZDIR = "${pkgs.tzdata}/share/zoneinfo";
+      }
+      ''
+        cp ${../../../tests/file-facts.qml} file-facts.qml
+        ${copied [ "FileFacts.js" ]}
+        cp ${(import ../launcher/words.nix).file} words.json
+        export QML_XHR_ALLOW_FILE_READ=1
+        export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+        export FONTCONFIG_FILE=${noFonts}
+        ${shellFolderLint}
+        QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml file-facts.qml
+        touch $out
+      '';
 
   # The launcher chooses the files a program opens or saves, as open-with
   # asks it (tests/file-chooser.qml): in folders made here, with the files
