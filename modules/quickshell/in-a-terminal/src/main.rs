@@ -5,11 +5,11 @@
 //! shell (`qs ipc call launcher show`, launcher/Showing.js), which walks the
 //! same rows Return does, and only lays out what comes back.
 //!
-//!     launcher show [--drawers] [--json] [step ...] [-- step ...]
+//!     launcher [show] [--drawers] [--json] [step ...] [-- step ...]
 //!
 //! Each step is a row's name, in any case, a hyphen for a space, or the
 //! start of only one: `launcher show machine disk`. With none it shows
-//! home. Text is set as the launcher sets a row, in the theme's roles;
+//! home, as a bare `launcher` does. Text is set as the launcher sets a row, in the theme's roles;
 //! `--drawers` asks the shell for each row's drawer too (`launcher
 //! drawers` over its IPC, since it builds them only then) and sets them
 //! after the rows, and `--json` prints the shell's answer as it came.
@@ -32,11 +32,12 @@
 //! its words: `LAUNCHER_QS`, Quickshell's `qs`; `LAUNCHER_LOOK`, the
 //! theme's roles as escapes and its marks' stand-ins; `LAUNCHER_WORDS`, the
 //! launcher's words.json, whose `terminal` section holds what it says of
-//! its own. A step that names nothing, or an act not done since the
-//! answer was no, exits 1; a shell that doesn't answer exits 2; an act
-//! with no terminal to ask on and no `--yes` exits 3; a place the launcher
-//! didn't get into, as Passwords refuses a walk from outside, exits 4; each
-//! said on stderr but the no, which the terminal already shows.
+//! its own. Its help, its failures and its exits take the terminal kit's
+//! shape (`help()`), `--json` among the kit's flags: a step that names
+//! nothing exits 66; a shell that doesn't answer 69; an act asked
+//! about and answered no, or with no terminal to ask on and no `--yes`,
+//! or a place the launcher didn't get into, as Passwords refuses a walk
+//! from outside, 77; an act the shell failed at 1.
 
 mod asking;
 mod layout;
@@ -49,7 +50,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::ExitCode;
 
 use serde_json::Value;
-use unicode_width::UnicodeWidthStr;
+use terminal_kit::{Exit, Failure, Help};
 
 use crate::asking::Answer;
 use crate::layout::Room;
@@ -61,11 +62,7 @@ use crate::words::Words;
 enum Asked {
     /// A place or a row, by its steps, as text or JSON, and with every
     /// row's drawer or only its own.
-    Show {
-        steps: Vec<String>,
-        json: bool,
-        drawers: bool,
-    },
+    Show { steps: Vec<String>, drawers: bool },
     /// What a row does, or an act a place offers, by its steps, with the
     /// words it asks for and whether it's done unasked.
     Do {
@@ -77,20 +74,90 @@ enum Asked {
     Names { steps: Vec<String> },
     /// zsh's completion itself.
     Completion,
-    /// How it's used.
-    Help,
+    /// `completion` with no shell named.
+    NoShell,
     /// Something it doesn't take, said back.
     Unknown(String),
 }
 
-/// The flags `show` takes, anywhere among its steps.
-const SHOW_FLAGS: [&str; 2] = ["--json", "--drawers"];
+/// The flag `show` takes of its own, anywhere among its steps; `--json`
+/// is the kit's.
+const SHOW_FLAGS: [&str; 1] = ["--drawers"];
 
-/// Reads the arguments after the program's name.
+/// What `launcher --help` says, and each command's own.
+fn help() -> Help {
+    let step = "a row's name, a hyphen for a space, or its start";
+    Help::new("launcher", "the launcher's places, in a terminal")
+        .example("launcher", "home, as the launcher opens on it")
+        .example(
+            "launcher show machine disk",
+            "the disk's row and what it holds",
+        )
+        .example(
+            "launcher do programs kitty",
+            "what Return does on kitty's row",
+        )
+        .subcommand(
+            Help::new("show", "a place or a row, as the launcher shows it")
+                .example(
+                    "launcher show machine disk",
+                    "the disk's row and what it holds",
+                )
+                .example("launcher show --drawers", "home, with every row's drawer")
+                .example(
+                    "launcher show --json network",
+                    "what the shell says, as JSON",
+                )
+                .argument("<step>...", step)
+                .option("--drawers", "every row's drawer, after the rows")
+                .exit(Exit::NotFound, "a step named nothing")
+                .exit(Exit::Unavailable, "the shell isn't answering"),
+        )
+        .subcommand(
+            Help::new("do", "what a row does, or an act a place offers")
+                .example(
+                    "launcher do programs kitty",
+                    "what Return does on kitty's row",
+                )
+                .example(
+                    "launcher do machine power reboot --yes",
+                    "unasked, with no one to answer",
+                )
+                .argument("<step>...", step)
+                .option("--yes", "does an act that asks first, unasked")
+                .exit(Exit::Failed, "the shell failed at it")
+                .exit(Exit::NotFound, "a step named nothing")
+                .exit(Exit::Unavailable, "the shell isn't answering")
+                .exit(Exit::Bug, "the shell asked again once told yes")
+                .exit(Exit::Refused, "answered no, or no one to ask"),
+        )
+        .subcommand(
+            Help::new("completion", "writes a shell's completion")
+                .example("launcher completion zsh", "offers each place's rows")
+                .argument("<shell>", "zsh, the one it writes")
+                .exit(Exit::Done, "it always writes it"),
+        )
+        .subcommand(
+            Help::new("names", "the rows a place holds, for completion")
+                .example("launcher names machine", "Machine's rows, one a line")
+                .argument("<step>...", step)
+                .exit(Exit::NotFound, "a step named nothing")
+                .exit(Exit::Unavailable, "the shell isn't answering")
+                .unlisted(),
+        )
+        .exit(Exit::NotFound, "a step named nothing")
+        .exit(Exit::Unavailable, "the shell isn't answering")
+}
+
+/// Reads the arguments after the program's name, the kit's flags taken.
 fn asked(arguments: &[String]) -> Asked {
     let rest = arguments.get(1..).unwrap_or_default();
     match arguments.first().map(String::as_str) {
-        None | Some("-h" | "--help" | "help") => Asked::Help,
+        // Bare, it shows what's true now, home, as docs/commands.md says.
+        None => Asked::Show {
+            steps: Vec::new(),
+            drawers: false,
+        },
         Some("show") => {
             // After `--`, every argument is a step, so one starting with a
             // hyphen can be named too.
@@ -112,7 +179,6 @@ fn asked(arguments: &[String]) -> Asked {
                     .chain(named)
                     .cloned()
                     .collect(),
-                json: flagged.iter().any(|one| one == "--json"),
                 drawers: flagged.iter().any(|one| one == "--drawers"),
             }
         }
@@ -140,34 +206,35 @@ fn asked(arguments: &[String]) -> Asked {
         Some("names") => Asked::Names {
             steps: rest.to_vec(),
         },
-        Some("completion") if rest == ["zsh"] => Asked::Completion,
+        Some("completion") => match rest {
+            [shell] if shell == "zsh" => Asked::Completion,
+            [shell, ..] => Asked::Unknown(shell.clone()),
+            [] => Asked::NoShell,
+        },
         Some(other) => Asked::Unknown(other.to_string()),
     }
 }
 
-/// How the program exits, by what went wrong.
-const NOTHING_CALLED: u8 = 1;
-const SHELL_SILENT: u8 = 2;
-const NOT_SURE: u8 = 3;
-const WONT_OPEN: u8 = 4;
-const MISUSED: u8 = 64;
-
 fn main() -> ExitCode {
-    let arguments: Vec<String> = env::args().skip(1).collect();
-    let words = Words::read(env::var_os("LAUNCHER_WORDS").as_deref());
-    match asked(&arguments) {
-        Asked::Help => {
-            print!("{}", words.usage());
-            ExitCode::SUCCESS
-        }
-        Asked::Unknown(what) => {
-            fail(&errors(), &words.unknown(&what));
-            eprint!("{}", words.usage());
-            ExitCode::from(MISUSED)
-        }
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let words = Words::read(env::var_os("LAUNCHER_WORDS").as_deref());
+        run(asked(&context.args), context.format().is_json(), &words)
+    })
+}
+
+/// Asked wrongly, in the launcher's words, pointing at the help.
+fn misused(said: String) -> Failure {
+    Failure::new(Exit::Usage, said).try_this("launcher --help")
+}
+
+/// Does what was asked: shows, as JSON where `json` says, or does.
+fn run(asked: Asked, json: bool, words: &Words) -> Result<(), Failure> {
+    match asked {
+        Asked::Unknown(what) => Err(misused(words.unknown(&what))),
+        Asked::NoShell => Err(misused(words.no_shell())),
         Asked::Completion => {
-            print!("{}", names::completion(&words));
-            ExitCode::SUCCESS
+            print!("{}", names::completion(words));
+            Ok(())
         }
         Asked::Do {
             steps,
@@ -175,46 +242,34 @@ fn main() -> ExitCode {
             yes,
         } => {
             if steps.is_empty() {
-                fail(&errors(), &words.nothing_to_do());
-                eprint!("{}", words.usage());
-                return ExitCode::from(MISUSED);
+                return Err(misused(words.nothing_to_do()));
             }
             if steps.iter().any(|one| one.trim().is_empty()) {
-                fail(&errors(), &words.blank_step());
-                return ExitCode::from(MISUSED);
+                return Err(Failure::new(Exit::Usage, words.blank_step()));
             }
-            done(&qs(), &steps, &said, yes, &words)
+            done(&qs(), &steps, &said, yes, words)
         }
         // Completion wants only names, so it doesn't wait for figures.
-        Asked::Names { steps } => match ask(&steps, Ask::Names, &words) {
-            Ok(shown) => {
-                print!("{}", names::for_zsh(&shown));
-                ExitCode::SUCCESS
-            }
-            Err(code) => code,
-        },
-        Asked::Show {
-            steps,
-            json,
-            drawers,
-        } => match ask(&steps, Ask::Settled { drawers }, &words) {
-            Ok(shown) => {
-                let out = if json {
-                    format!(
-                        "{}\n",
-                        serde_json::to_string_pretty(&shown).unwrap_or_default()
-                    )
-                } else {
-                    let look =
-                        Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stdout());
-                    layout::shown(&shown, &look, Room::of_stdout(), &words, drawers)
-                };
-                // A pipe closed early, as `| head` does, isn't a failure.
-                let _ = io::stdout().write_all(out.as_bytes());
-                ExitCode::SUCCESS
-            }
-            Err(code) => code,
-        },
+        Asked::Names { steps } => {
+            let shown = ask(&steps, Ask::Names, words)?;
+            print!("{}", names::for_zsh(&shown));
+            Ok(())
+        }
+        Asked::Show { steps, drawers } => {
+            let shown = ask(&steps, Ask::Settled { drawers }, words)?;
+            let out = if json {
+                format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&shown).unwrap_or_default()
+                )
+            } else {
+                let look = Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stdout());
+                layout::shown(&shown, &look, Room::of_stdout(), words, drawers)
+            };
+            // A pipe closed early, as `| head` does, isn't a failure.
+            let _ = io::stdout().write_all(out.as_bytes());
+            Ok(())
+        }
     }
 }
 
@@ -224,7 +279,7 @@ fn main() -> ExitCode {
 /// start. Once asked, it's the row asked about that's done, by the
 /// steady ids the shell gave with its question, so rows moving between
 /// the question and the y can't put another in its place.
-fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> ExitCode {
+fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Result<(), Failure> {
     // A row its provider's daemon makes, as Power's Charge Limit, is there
     // only once the provider is seen, and with the launcher closed only a
     // terminal's show sees it (Launcher.qml's terminalSees). So the place
@@ -238,55 +293,46 @@ fn done(qs: &str, steps: &[String], said: &str, yes: bool, words: &Words) -> Exi
     let mut sure = yes;
     let mut path = Vec::new();
     loop {
-        let answer = match heard(asking::doing(qs, steps, &path, said, sure), words) {
-            Ok(answer) => answer,
-            Err(code) => return code,
-        };
+        let answer = heard(asking::doing(qs, steps, &path, said, sure), words)?;
         let text = |key: &str| answer.get(key).and_then(Value::as_str).map(str::to_string);
         if let Some(question) = text("asks") {
             if sure {
                 // The shell asking again once told it's sure is its own
                 // failure, never a second ask.
-                fail(&errors(), &question);
-                return ExitCode::from(SHELL_SILENT);
+                return Err(Failure::new(Exit::Bug, question));
             }
             if !(io::stdin().is_terminal() && io::stderr().is_terminal()) {
-                fail(&errors(), &words.unsure(&question));
-                return ExitCode::from(NOT_SURE);
+                return Err(Failure::new(Exit::Refused, words.unsure(&question)));
             }
             if !answered_yes(
                 &words.asks(&question),
                 &mut io::stdin().lock(),
                 &mut io::stderr(),
             ) {
-                return ExitCode::from(NOTHING_CALLED);
+                return Err(Failure::new(Exit::Refused, words.answered_no(&question)));
             }
             path = asking::strings(answer.get("path"));
             sure = true;
             continue;
         }
         if answer.get("nothing").and_then(Value::as_bool) == Some(true) {
-            fail(&errors(), &words.nothing_to_do());
-            return ExitCode::from(MISUSED);
+            return Err(misused(words.nothing_to_do()));
         }
         if let Some(ask) = text("takes") {
             let names = asking::strings(answer.get("in"));
             let name = names.last().map_or("", String::as_str);
-            fail(&errors(), &words.takes(name, &ask));
-            return ExitCode::from(MISUSED);
+            return Err(Failure::new(Exit::Usage, words.takes(name, &ask)));
         }
         if answer.get("unopened").and_then(Value::as_bool) == Some(true) {
             let names = asking::strings(answer.get("in"));
             let name = names.last().map_or("", String::as_str);
-            fail(&errors(), &words.unopened(name));
-            return ExitCode::from(WONT_OPEN);
+            return Err(Failure::new(Exit::Refused, words.unopened(name)));
         }
         if answer.get("failed").and_then(Value::as_bool) == Some(true) {
             let name = steps.last().map_or("", String::as_str);
-            fail(&errors(), &words.failed(name));
-            return ExitCode::from(SHELL_SILENT);
+            return Err(Failure::new(Exit::Failed, words.failed(name)));
         }
-        return ExitCode::SUCCESS;
+        return Ok(());
     }
 }
 
@@ -310,11 +356,6 @@ fn is_yes(line: &str) -> bool {
     typed.strip_suffix('\r').unwrap_or(typed) == "y"
 }
 
-/// How what goes to stderr is inked.
-fn errors() -> Look {
-    Look::read(env::var_os("LAUNCHER_LOOK").as_deref(), Ink::for_stderr())
-}
-
 /// How a place is asked: for its names alone, or settled, with every
 /// row's drawer where `drawers` says.
 #[derive(Clone, Copy)]
@@ -325,7 +366,7 @@ enum Ask {
 
 /// What the shell shows at the steps, or how to exit, said on stderr,
 /// where a step names nothing or the shell doesn't answer.
-fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, ExitCode> {
+fn ask(steps: &[String], how: Ask, words: &Words) -> Result<Value, Failure> {
     let qs = qs();
     let answer = match how {
         Ask::Names => asking::names(&qs, steps),
@@ -341,42 +382,24 @@ fn qs() -> String {
 
 /// What the shell answered, or how to exit, said on stderr, where a step
 /// names nothing or the shell doesn't answer.
-fn heard(answer: Result<Answer, String>, words: &Words) -> Result<Value, ExitCode> {
+fn heard(answer: Result<Answer, String>, words: &Words) -> Result<Value, Failure> {
     match answer {
         Ok(Answer::Shown(shown)) => Ok(shown),
         Ok(Answer::Missing {
             step, near, within, ..
-        }) => {
-            fail(&errors(), &words.missing(&step, &within, &near));
-            Err(ExitCode::from(NOTHING_CALLED))
-        }
+        }) => Err(Failure::new(
+            Exit::NotFound,
+            words.missing(&step, &within, &near),
+        )),
         Err(why) => {
-            fail(&errors(), &words.silent());
-            if !why.is_empty() {
-                eprintln!("{why}");
-            }
-            Err(ExitCode::from(SHELL_SILENT))
+            let failure = Failure::new(Exit::Unavailable, words.silent());
+            Err(if why.is_empty() {
+                failure
+            } else {
+                failure.because(why)
+            })
         }
     }
-}
-
-/// Says what went wrong on stderr, after the theme's failure mark in alert,
-/// fitted to the terminal by whole words as everything it shows is.
-fn fail(look: &Look, said: &str) {
-    let mark = look.failure();
-    let room = Room::of_stderr();
-    let line = if mark.is_empty() {
-        layout::hung(said, 0, room)
-    } else {
-        let lead = UnicodeWidthStr::width(mark.as_str()) + 1;
-        format!(
-            "{} {}",
-            look.ink("alert", &mark),
-            layout::hung(said, lead, room)
-        )
-    };
-    eprintln!("{line}");
-    let _ = io::stderr().flush();
 }
 
 #[cfg(test)]
@@ -398,8 +421,9 @@ mod tests {
                 "",
                 true,
                 &said
-            ),
-            ExitCode::from(SHELL_SILENT)
+            )
+            .map_err(|failure| failure.exit),
+            Err(Exit::Failed)
         );
     }
 
@@ -414,8 +438,9 @@ mod tests {
                 "",
                 false,
                 &said
-            ),
-            ExitCode::from(WONT_OPEN)
+            )
+            .map_err(|failure| failure.exit),
+            Err(Exit::Refused)
         );
         assert_eq!(
             said.unopened("Passwords"),
@@ -424,26 +449,29 @@ mod tests {
     }
 
     #[test]
-    fn nothing_asked_is_help() {
-        assert_eq!(asked(&[]), Asked::Help);
-        assert_eq!(asked(&words(&["--help"])), Asked::Help);
+    fn nothing_asked_shows_home() {
+        assert_eq!(
+            asked(&[]),
+            Asked::Show {
+                steps: vec![],
+                drawers: false,
+            }
+        );
     }
 
     #[test]
     fn show_takes_its_steps_and_flags_anywhere() {
         assert_eq!(
-            asked(&words(&["show", "machine", "--json", "disk"])),
+            asked(&words(&["show", "machine", "--drawers", "disk"])),
             Asked::Show {
                 steps: words(&["machine", "disk"]),
-                json: true,
-                drawers: false,
+                drawers: true,
             }
         );
         assert_eq!(
             asked(&words(&["show", "--drawers", "machine"])),
             Asked::Show {
                 steps: words(&["machine"]),
-                json: false,
                 drawers: true,
             }
         );
@@ -451,7 +479,6 @@ mod tests {
             asked(&words(&["show"])),
             Asked::Show {
                 steps: vec![],
-                json: false,
                 drawers: false,
             }
         );
@@ -460,11 +487,10 @@ mod tests {
     #[test]
     fn after_two_hyphens_every_word_is_a_step() {
         assert_eq!(
-            asked(&words(&["show", "--json", "--", "-5 dB", "--json"])),
+            asked(&words(&["show", "--drawers", "--", "-5 dB", "--drawers"])),
             Asked::Show {
-                steps: words(&["-5 dB", "--json"]),
-                json: true,
-                drawers: false,
+                steps: words(&["-5 dB", "--drawers"]),
+                drawers: true,
             }
         );
     }
@@ -480,8 +506,9 @@ mod tests {
         assert_eq!(asked(&words(&["completion", "zsh"])), Asked::Completion);
         assert_eq!(
             asked(&words(&["completion", "bash"])),
-            Asked::Unknown("completion".to_string())
+            Asked::Unknown("bash".to_string())
         );
+        assert_eq!(asked(&words(&["completion"])), Asked::NoShell);
     }
 
     #[test]

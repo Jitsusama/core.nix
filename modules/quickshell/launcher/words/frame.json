@@ -730,26 +730,6 @@
     }
   ],
   "terminal": {
-    "usage": [
-      "launcher show [--drawers] [--json] [step ...] [-- step ...]",
-      "launcher do [--yes] step ... [-- words]",
-      "",
-      "Shows a place or a row the launcher holds, its drawer and what is inside it,",
-      "as the launcher would: launcher show machine disk. Each step is a row's name,",
-      "in any case, a hyphen for a space, or the start of only one. With none, it",
-      "shows home. --drawers shows every row's drawer after the rows. --json prints",
-      "what the launcher says as JSON, with every row's drawer given --drawers.",
-      "After --, every word is a step, so one starting with a hyphen can be named.",
-      "",
-      "launcher do does what a row does on Return, and any act a place offers among",
-      "its rows, as : offers it: launcher do programs kitty. One that ends something",
-      "asks first, as the launcher does, and with no terminal to answer on it's done",
-      "only with --yes. Words an act asks for follow --. A place opens in the",
-      "launcher.",
-      "",
-      "launcher completion zsh writes zsh's completion, which offers each place's",
-      "rows as you type."
-    ],
     "offers": {
       "show": "any place, row or drawer the launcher holds",
       "do": "what a row does, or an act a place offers"
@@ -766,9 +746,11 @@
     "waiting": "\u2026",
     "unsure": "{question} \u00b7 nothing to answer on, so --yes does it",
     "asks": "{question} (y/n)",
+    "answeredNo": "{question} \u00b7 not done, as answered",
     "takes": "{name} takes words \u00b7 {ask} \u00b7 give them after --",
     "takesWords": "{name} not done \u00b7 give its words after --",
     "nothingToDo": "launcher do needs a row to do",
-    "blankStep": "a blank step names no row"
+    "blankStep": "a blank step names no row",
+    "noShell": "launcher completion needs its shell \u00b7 zsh"
   }
 }

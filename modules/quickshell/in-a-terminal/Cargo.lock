@@ -13,6 +13,7 @@ name = "launcher"
 version = "0.1.0"
 dependencies = [
  "serde_json",
+ "terminal-kit",
  "unicode-width",
 ]
 
@@ -91,6 +92,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "terminal-kit"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "unicode-width",
 ]
 
 [[package]]

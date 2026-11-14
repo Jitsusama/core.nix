@@ -38,11 +38,6 @@ impl Ink {
         Self::of(io::stdout().is_terminal())
     }
 
-    /// How stderr is inked, by the terminal it reaches.
-    pub fn for_stderr() -> Self {
-        Self::of(io::stderr().is_terminal())
-    }
-
     fn of(terminal: bool) -> Self {
         Self::by(
             terminal,
@@ -84,7 +79,6 @@ pub struct Look {
     roles: HashMap<String, Role>,
     /// Each mark's console stand-in, by the mark.
     stand_ins: HashMap<String, String>,
-    failed: String,
 }
 
 impl Look {
@@ -122,7 +116,7 @@ impl Look {
                     .collect()
             })
             .unwrap_or_default();
-        let mut stand_ins: HashMap<String, String> = value
+        let stand_ins: HashMap<String, String> = value
             .get("marks")
             .and_then(Value::as_array)
             .map(|marks| {
@@ -132,20 +126,10 @@ impl Look {
                     .collect()
             })
             .unwrap_or_default();
-        // The failure mark carries its own stand-in, since it's said
-        // on stderr whether or not a row's marks hold it.
-        let failed = value
-            .get("failed")
-            .map(|mark| text(mark, "glyph"))
-            .unwrap_or_default();
-        if let Some(console) = value.get("failed").map(|mark| text(mark, "console")) {
-            stand_ins.insert(failed.clone(), console);
-        }
         Self {
             ink,
             roles,
             stand_ins,
-            failed,
         }
     }
 
@@ -187,11 +171,6 @@ impl Look {
             glyph.to_string()
         }
     }
-
-    /// The theme's mark for a failure, as this terminal draws it.
-    pub fn failure(&self) -> String {
-        self.mark(&self.failed)
-    }
 }
 
 #[cfg(test)]
@@ -202,8 +181,7 @@ mod tests {
         let value: Value = serde_json::from_str(
             r#"{"roles":{"strong":{"truecolour":"38;2;247;232;178","sixteen":"97"},
                 "muted":{"truecolour":"38;2;183;182;157","sixteen":"39"}},
-               "marks":[{"glyph":"\u25c6","console":"*"}],
-               "failed":{"glyph":"\u2715","console":"x"}}"#,
+               "marks":[{"glyph":"\u25c6","console":"*"}]}"#,
         )
         .expect("the look parses");
         Look::from_value(&value, ink)
@@ -258,7 +236,6 @@ mod tests {
         };
         assert!(Ink::by(true, false, "", "linux").console);
         assert_eq!(look(console).mark("\u{25c6}"), "*");
-        assert_eq!(look(console).failure(), "x");
         assert_eq!(look(SIXTEEN).mark("\u{25c6}"), "\u{25c6}");
     }
 
