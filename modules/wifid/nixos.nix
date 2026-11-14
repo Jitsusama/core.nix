@@ -21,6 +21,11 @@ let
   wifid = pkgs.callPackage ./package.nix { };
 in
 {
+  imports = [
+    ../systemd-networkd/nixos.nix
+    ../wpa_supplicant/nixos.nix
+  ];
+
   # Kept off a frequency, a card joins and roams on the others alone, which
   # differs by the networks a machine is taken to (daemon/src/frequencies.rs).
   options.jitsusama.wifid.avoid = lib.mkOption {
@@ -58,11 +63,6 @@ in
   };
 
   config = {
-    imports = [
-      ../systemd-networkd/nixos.nix
-      ../wpa_supplicant/nixos.nix
-    ];
-
     environment.etc."wifid/wifid.conf".source = ./wifid.conf;
     environment.etc."wifid/avoid.json".text = builtins.toJSON config.jitsusama.wifid.avoid;
 
