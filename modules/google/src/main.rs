@@ -43,6 +43,11 @@
 //! DAEMON the daemon interface's socket, and WORDS the launcher's
 //! vocabulary (launcher/words.json), which its ready rows are said in;
 //! without it, it serves no rows.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit: `--help` and `--version` answer without
+//! serving anything, and a wrong command line exits 64. It writes nothing
+//! to stdout, so `--format` says only how a failure is told.
 
 use std::env;
 use std::path::Path;
@@ -64,6 +69,7 @@ use google::rows::Vocabulary;
 use google::saves;
 use google::state::{Standing, State};
 use google::watch::Watch;
+use terminal_kit::{Exit, Failure, Help};
 
 /// How often Google is asked while it answers.
 const EVERY: Duration = Duration::from_secs(60);
@@ -76,27 +82,53 @@ const TICK: Duration = Duration::from_secs(10);
 /// shell's follow says at once.
 const CALLS_EVERY: Duration = Duration::from_secs(30);
 
+fn help() -> Help {
+    Help::new("google", "holds the Google account for the launcher")
+        .command(
+            "CREDENTIALS SOCKET [WORDS]",
+            "serves the account pi signed in on SOCKET, its rows said in WORDS",
+        )
+        .example(
+            "google credentials.json google.sock",
+            "serves the account, as its unit does",
+        )
+        .exit(Exit::Failed, "it couldn't serve on SOCKET")
+}
+
 fn main() -> ExitCode {
-    let mut args = env::args_os().skip(1);
-    let (Some(credentials), Some(at)) = (
-        args.next().map(PathBuf::from),
-        args.next().map(PathBuf::from),
-    ) else {
-        eprintln!("<3>usage: google CREDENTIALS DAEMON [WORDS]");
-        return ExitCode::from(2);
-    };
+    terminal_kit::main(
+        &help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.as_slice() {
+            [credentials, at] => serve(Path::new(credentials), Path::new(at), None),
+            [credentials, at, words] => serve(
+                Path::new(credentials),
+                Path::new(at),
+                Some(Path::new(words)),
+            ),
+            _ => Err(Failure::new(
+                Exit::Usage,
+                "google takes CREDENTIALS, SOCKET and, if it serves rows, WORDS",
+            )
+            .try_this("google --help")),
+        },
+    )
+}
+
+/// Serves the account signed in at `credentials` on the socket `at`, its
+/// rows said in the vocabulary at `words`, until it's stopped.
+fn serve(credentials: &Path, at: &Path, words: Option<&Path>) -> Result<(), Failure> {
+    let credentials = credentials.to_path_buf();
     let (asks, asked) = mpsc::channel();
-    let daemon = match Daemon::listen(&at, asks.clone(), Timestamp::now().as_millisecond()) {
-        Ok(listening) => listening,
-        Err(error) => {
-            eprintln!("<3>couldn't serve at {}: {error}", at.display());
-            return ExitCode::FAILURE;
-        }
-    };
-    if let Some(words) = args.next().map(PathBuf::from) {
+    let daemon =
+        Daemon::listen(at, asks.clone(), Timestamp::now().as_millisecond()).map_err(|error| {
+            Failure::new(Exit::Failed, "google couldn't serve on its socket")
+                .because(format!("{}: {error}", at.display()))
+        })?;
+    if let Some(words) = words {
         // Said, never silent: a place whose words didn't read serves no
         // rows, and the rest serve theirs.
-        match vocabulary(&words) {
+        match vocabulary(words) {
             Ok((read, lacking)) => {
                 for lack in lacking {
                     eprintln!("<3>serving no rows of {lack}, in {}", words.display());

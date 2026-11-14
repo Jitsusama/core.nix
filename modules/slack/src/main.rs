@@ -29,17 +29,23 @@
 //! holds their drawer's facts and Write in Slack, worded (person.rs), so
 //! the people daemon takes Slack's part of them ready. Without it, or
 //! when it can't be read, lines say who they are alone. ORIGIN is Slack's,
-//! unless a
-//! test names a stand-in.
+//! unless a test names a stand-in.
+//!
+//! It takes the shape every command of ours does (docs/commands.md),
+//! through the terminal kit. Its lines are the people daemon's to parse,
+//! so they stay as they are in every form, and `--format` says only how a
+//! failure is told.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use slack_people::person::{self, Words};
 use slack_people::{Account, Found, Kept, Refused, Slack, asked, now};
+use terminal_kit::{Exit, Failure, Help};
 
 /// How long the next look-up ahead waits for each search Slack was asked
 /// since the last, a step-in's too: an enterprise grid's search allows
@@ -53,13 +59,41 @@ const SETTLE: Duration = Duration::from_millis(100);
 /// What's said with no sign-in to ask with.
 const NOT_SIGNED_IN: &str = r#"{"signedIn":false}"#;
 
-fn main() {
-    let mut args = std::env::args().skip(1);
-    let Some(credentials) = args.next().map(PathBuf::from) else {
-        eprintln!("usage: slack-people CREDENTIALS [ORIGIN]");
-        std::process::exit(64);
-    };
-    let slack = Slack::new(args.next().unwrap_or_else(|| "https://slack.com".into()));
+fn help() -> Help {
+    Help::new(
+        "slack-people",
+        "who Slack knows by an email address, for People",
+    )
+    .command(
+        "CREDENTIALS [ORIGIN]",
+        "reads an address a line on stdin, says who each is in Slack",
+    )
+    .example(
+        "echo ada@example.com | slack-people credentials.json",
+        "who Slack knows by that address, as a line of JSON",
+    )
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(
+        &help(),
+        env!("CARGO_PKG_VERSION"),
+        |context| match context.args.as_slice() {
+            [credentials] => answer(PathBuf::from(credentials), "https://slack.com".into()),
+            [credentials, origin] => answer(PathBuf::from(credentials), origin.clone()),
+            _ => Err(Failure::new(
+                Exit::Usage,
+                "slack-people takes the sign-in's file and, for a stand-in, an origin",
+            )
+            .try_this("slack-people --help")),
+        },
+    )
+}
+
+/// Answers each line the shell writes, asking Slack as the account signed
+/// in at `credentials`, until the shell stops writing.
+fn answer(credentials: PathBuf, origin: String) -> Result<(), Failure> {
+    let slack = Slack::new(origin);
     let mut asker = Asker {
         slack,
         credentials,
@@ -137,6 +171,7 @@ fn main() {
             break;
         }
     }
+    Ok(())
 }
 
 /// Whether the shell has gone, with nothing more to read.

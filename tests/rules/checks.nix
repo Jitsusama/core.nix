@@ -126,6 +126,8 @@
     commands =
       let
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
+        google = pkgs.callPackage ../../modules/google/package.nix { };
+        slack = pkgs.callPackage ../../modules/slack/package.nix { };
         recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
         # A script whose help is in our shape, run as its module's wrapper
         # runs it: `before` sets what the wrapper sets, and `words` go ahead
@@ -171,6 +173,9 @@
         firmware-settings = pkgs.callPackage ../../modules/firmware-settings/package.nix { };
         gcloud-broker = pkgs.callPackage ../../modules/gcloud-broker/package.nix { };
         github-broker = pkgs.callPackage ../../modules/github-broker/package.nix { };
+        inherit google;
+        google-people = google;
+        google-rows = google;
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
@@ -181,6 +186,8 @@
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
+        slack-people = slack;
+        slack-unreads = slack;
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };

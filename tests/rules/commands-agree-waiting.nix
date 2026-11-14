@@ -104,21 +104,6 @@
     "helps"
   ];
   gnome-keyring-unlock = [ "helps" ];
-  google = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  google-people = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  google-rows = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   guide = [
     "kit"
     "exits"
@@ -330,16 +315,6 @@
     "helps"
   ];
   shutdown-status = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  slack-people = [
-    "kit"
-    "exits"
-    "helps"
-  ];
-  slack-unreads = [
     "kit"
     "exits"
     "helps"
