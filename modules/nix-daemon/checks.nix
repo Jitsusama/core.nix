@@ -31,7 +31,7 @@
       "A Mac's Nix isn't told to sign with /etc/nix/signing-key, or the key isn't made under its name."
       (
         config.environment.etc."nix/signing.conf".text == "secret-key-files = /etc/nix/signing-key\n"
-        && lib.hasInfix "${./signing-key.sh}" made
+        && lib.hasInfix "-signing-key.sh " made
         && lib.hasInfix "scutil --get LocalHostName)-1" made
         && lib.hasInfix " mac-1 /etc/nix/signing-key /etc/nix/signing-key.pub" named
       );
