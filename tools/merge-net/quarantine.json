@@ -423,51 +423,6 @@
     "test": "vm-boot-asks-in-the-theme"
   },
   {
-    "at": 1794639395,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "owner_pr": 4252,
-    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_rows_words_are_in_the_serif_on_its_names_baseline"
-    ],
-    "test": "vm-desktop-looks-rows"
-  },
-  {
-    "at": 1794640138,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "owner_pr": 4252,
-    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_a_tuple_call_ringing_wants_joel_and_one_not_answered_is_kept_as_missed",
-      "test_a_tuple_call_shows_in_the_margin_while_it_lasts",
-      "test_a_tuple_call_that_ended_is_in_tuples_recent_to_call_again",
-      "test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave"
-    ],
-    "test": "vm-desktop-takes-calls"
-  },
-  {
-    "at": 1794642127,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "owner_pr": 4252,
-    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_capture_holds_what_it_took_lately_a_picture_shown_in_the_drawer",
-      "test_capture_records_the_window_and_says_why_when_niri_cant_share_it",
-      "test_ctrl_print_over_the_launcher_records_it_in"
-    ],
-    "test": "vm-desktop-captures"
-  },
-  {
-    "at": 1794642888,
-    "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
-    "owner_pr": 4252,
-    "reason": "has been broken since #4252, whose revert won't apply; its owner fixes it forward and takes it off this list",
-    "subtests": [
-      "test_for_yous_tray_lit_costs_no_more_than_the_shell_at_rest"
-    ],
-    "test": "vm-desktop-shows-then-rests"
-  },
-  {
     "at": 1794644284,
     "commit": "fb51cf3f90b06cfa8db754e4275e9faaf6b05190",
     "owner_pr": 4266,

@@ -902,8 +902,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       };
       home-manager.users.${account} = {
         # Slack, as a machine that brings it imports it, so Now's Slack piece
-        # reads the file a test writes in slack-unreads' place. Nobody signs
-        # in to Slack here, so slack-unreads itself never starts. Only where
+        # reads the file a test writes in slack-unreads' place. Only where
         # an area reads it.
         imports =
           lib.optional bringsSlack self.homeModules.slack
@@ -1023,7 +1022,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The google program would ask Google, as an account nobody signed
         # in to in the VM; the test starts the stand-in when it wants it.
         # It has Calendar's rows made by the program's own google-rows, in
-        # the launcher's words, as the program says them.
+        # the launcher's words, as the program says them. Neither it nor
+        # its socket starts at login, as google does from the keyring, and
+        # it binds its own name: its meetings are timed from when it starts,
+        # and one serving from boot held the margin up after every call and
+        # put its files among others' rows (2026-11-14).
+        systemd.user.sockets.google.Install.WantedBy = lib.mkForce [ ];
+        systemd.user.services.google.Install.WantedBy = lib.mkForce [ ];
+        systemd.user.services.google.Unit.Requires = lib.mkForce [ ];
+        systemd.user.services.google.Unit.After = lib.mkForce [ ];
         systemd.user.services.google.Service.ExecStart = lib.mkForce (
           lib.concatStringsSep " " [
             "${standInGoogle}"
@@ -1156,6 +1163,15 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # test's search ends with it.
         systemd.user.services.slack-stand-in.Service.ExecStart =
           "${standInSlack} %t/daemons/slack-unreads.sock";
+        # Slack's own, which starts at login to read the keyring, would
+        # hold the stand-in's name from boot, signed out, so neither it nor
+        # its socket starts here.
+        systemd.user.sockets.slack-unreads = lib.mkIf bringsSlack {
+          Install.WantedBy = lib.mkForce [ ];
+        };
+        systemd.user.services.slack-unreads = lib.mkIf bringsSlack {
+          Install.WantedBy = lib.mkForce [ ];
+        };
         # The eero daemon would ask eero's cloud, which the VM can't reach.
         # Its stand-in serves the model the daemon's parsers are tested
         # against (modules/eero) on its socket, so the Home Network has a
