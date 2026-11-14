@@ -96,9 +96,14 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
 
 
 def opened(shell: Shell) -> None:
-    """Open Passwords, as its row at home or "passwords" typed steps into it."""
-    shell.as_account(shell.ipc("collection", "passwords"))
-    shell.launcher_ready()
+    """Open Passwords as Joel does, by keys: "passwords" typed at home, and Return.
+
+    A place opened by a line from outside the launcher asks nothing as his (the test of
+    `collection`), so only keys niri delivered step in as Joel.
+    """
+    shell.answer("passwords")
+    shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Passwords")
+    shell.step_in()
     shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
 
 
@@ -354,3 +359,20 @@ def test_a_walk_from_outside_the_launcher_reaches_no_entry(shell: Shell) -> None
     assert done.get("missing") == "GitHub", f"a do from outside reached GitHub: {done}"
     assert len(asked()) == before, f"a walk from outside asked: {asked()[before:]}"
     shell.launcher_until(lambda shown: not shown["open"])
+
+
+def test_a_place_opened_from_outside_the_launcher_asks_nothing_as_joel(shell: Shell) -> None:
+    """Passwords opened by `collection`, which any process of the account's can call, asks as none.
+
+    Only a key niri delivered to the launcher is Joel's, so a place opened over qs ipc or the
+    launcher's socket lists without `asked`, and 1Password is never brought to ask him.
+    """
+    shell.launcher_until(lambda shown: not shown["open"])
+    before = len(asked())
+    shell.as_account(shell.ipc("collection", "passwords"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["passwords"])
+    shell.launcher_until(lambda _: "list" in asks()[before:])
+    since = asked()[before:]
+    assert all(one.get("asked") is not True for one in since), f"asked as Joel: {since}"
+    assert "let-in" not in asks()[before:], f"it asked to be let in: {since}"
