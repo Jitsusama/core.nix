@@ -88,21 +88,41 @@ QtObject {
         // No drawing alone (RSCH-20261113-24R2QV, finding 4): outside a
         // ride, each pose it's seen in holds two frames at 60 Hz or more,
         // but its first and its last, which go on from and into what's
-        // before and after the journey.
+        // before and after the journey. And no skid (Joel, 2026-11-14 17:19:
+        // "i never want the kitty to skid into place, i always want to see
+        // its paws moving when it is walking or running"): walking, no
+        // drawing held while it goes more than its stride and a cell, and
+        // nothing backward in a drawing held as it walks, stops or turns.
+        const walking = ["goes", "turns", "thinks", "settles", "lands", "shakes"];
         const flashes = (journey, said) => {
             let run = null;
+            const skids = () => {
+                const went = Math.abs(run.last.x - run.first.x)
+                    + Math.abs(run.last.y - run.first.y);
+                if (run.walks && run.goes && went > journey.stride + at.cell + 0.01)
+                    wrong.push(`${said} glides ${Math.round(went / at.cell)} cells in one `
+                        + `${run.pose} at ${run.begins} ms`);
+                if (run.walks && (run.last.x - run.first.x) * run.first.facing < -0.01)
+                    wrong.push(`${said} slides back in one ${run.pose} at ${run.begins} ms`);
+            };
             for (let t = 0; t <= journey.ends; t += 1) {
                 const one = Paths.frame(journey, t);
                 const shown = one.y + at.tall > 0 && one.y < at.height;
                 const pose = shown && one.beat !== "rides" ? one.pose : undefined;
                 if (run !== null && pose === run.pose) {
                     run.ends = t;
+                    run.last = one;
+                    run.walks = run.walks && walking.includes(one.beat);
+                    run.goes = run.goes || one.beat === "goes";
                     continue;
                 }
                 const ms = run === null ? 0 : run.ends - run.begins + 1;
                 if (run !== null && run.begins > 0 && run.pose && ms < 33)
                     wrong.push(`${said} shows ${run.pose} ${ms} ms at ${run.begins} ms`);
-                run = { pose, begins: t, ends: t };
+                if (run !== null && run.pose)
+                    skids();
+                run = { pose, begins: t, ends: t, first: one, last: one,
+                    walks: walking.includes(one.beat), goes: one.beat === "goes" };
             }
         };
         // Every frame of `journey` a cat's, in none of `solid`'s windows
