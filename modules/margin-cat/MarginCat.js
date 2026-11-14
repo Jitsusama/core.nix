@@ -2,7 +2,7 @@
 // the top edge of the column Joel is in, in the gap the windows leave above
 // them, so it covers nothing of his and moves only where he already looks;
 // the beats and paces of its walk, which MarginCatPaths.js lays its ways
-// with; how niri's slide between workspaces moves the world it rides; and
+// with; how niri's motion moves the windows it holds through or rides; and
 // how it's drawn turned and told.
 .pragma library
 
@@ -127,8 +127,10 @@ function easeInOut(p) {
 // How far niri's workspace slide has gone `t` ms after it set off, from 0
 // to 1, on the spring niri's `workspace-switch` rides (the theme's
 // motion.spring, with niri's mass of 1), slowed as niri slows its clock,
-// so the cat rides its column exactly as the world moves. The spring
-// sets off still: the cat never moves before the world does.
+// as a resize's edge goes on the same spring, so the cat rides a window's
+// top exactly as it moves, and holds through a slide for as long as it
+// lasts. The spring sets off still: the cat never moves before the world
+// does.
 function slid(t, spring) {
     const w = Math.sqrt(spring.stiffness);
     const beta = spring.damping * w;

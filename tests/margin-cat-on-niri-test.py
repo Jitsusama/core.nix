@@ -9,8 +9,8 @@ every frame with none dropped, and never for a tap along the columns, each walk'
 the check's result, that its layer is one taking no keys, that it goes in fullscreen, where the
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
-check's result, and that a move between workspaces has it ride off and climb to its new seat,
-a second move cutting it short riding on from where the first got to.
+check's result, and that a move between workspaces has it hold its ground through niri's slide,
+a second move cutting it short holding on from where the first got to.
 """
 
 from __future__ import annotations
@@ -635,73 +635,63 @@ def moving(said: str) -> bool:
     return at is not None and bool(at.get("move"))
 
 
-def climbed(shell: Shell, since: int, way: int, beats: list[str]) -> list[Json]:
-    """Give a move's steps once it sits, held to its way's order and to its climb's one way.
+def held(shell: Shell, since: int, way: int) -> list[Json]:
+    """Give a move's steps once it sits, held still and on the screen while niri slides.
 
-    Its way is the one it found last, as niri said the new workspace's windows on the ride.
-    Only the ride, these beats, and the landing on its seat must be seen: much of a move is
-    off the screen, and hurried there, so its other beats may fall between two frames.
+    Its hold is every step said before its first of another beat, at the one place it sat as
+    the move began (Paths.moves). It's never off the screen's top or bottom, the layer's
+    reach being the screen's on a move, nor rides back after it set off from its hold.
     """
     took = moved(shell, since)
     said = [step["move"]["beat"] for step in took]
     runs = [beat for at, beat in enumerate(said) if at == 0 or beat != said[at - 1]]
-    found = took[-1]["move"]["beats"]
     assert runs[0] == "rides", f"the cat's move came as {runs}"
-    assert runs[-1] == "lands", f"the cat's move came as {runs}"
-    assert set(beats) <= set(runs), f"the cat's move came as {runs}, its way {found}"
-    at = 0
-    for beat in runs[1:]:
-        assert beat in found[at:], f"the cat's move came as {runs}, its way {found}"
-        at = found.index(beat, at) + 1
+    assert "rides" not in runs[1:], f"the cat's move came as {runs}"
+    holding = [(step["x"], step["y"]) for step in took if step["move"]["beat"] == "rides"]
+    assert len(set(holding)) == 1, f"it moved as it held: {holding}"
+    gone = [step for step in took if step["y"] < 0 or step["y"] + step["size"] > step["reach"]]
+    assert not gone, f"it went off the screen: {gone[:3]}"
     assert {step["move"]["way"] for step in took} == {way}, f"it moved {took[:3]}"
-    # Head first down a side, belly to the window, and head first up one (Paths.clings).
-    climbing = [step for step in took if step["move"]["beat"] == "climbs"]
-    gone = [(after["y"] - before["y"]) * way for before, after in itertools.pairwise(climbing)]
-    assert min(gone, default=0) >= 0, f"it climbed back: {[s['y'] for s in climbing]}"
-    held = {(step["move"]["facing"], step["move"]["turn"]) for step in climbing}
-    assert all(facing == turn * way != 0 for facing, turn in held), f"it climbed {held}"
     return took
 
 
-def test_the_cat_finds_its_way_up_and_down_between_workspaces(shell: Shell) -> None:
-    """Between workspaces, it rides its column away and finds its way to the new one.
+def test_the_cat_holds_its_ground_through_a_slide_between_workspaces(shell: Shell) -> None:
+    """Between workspaces, it holds where it sat as niri slides, then sits on the new one.
 
     Its ways are MarginCatPaths.js's, frame by frame in Qt's engine; here, only that niri's
-    workspaces and their windows reach it: up one, it rides its column down, leaps onto a new
-    column's side, climbs it and mantles over its top; down one, it rides its column up out
-    of sight and drops onto the column below (Joel, 2026-11-13: "it should stay on top of
-    the previous workspaces window ... i also want it to climb up"). Each move's steps are
-    kept as the check's result, for a strip of it.
+    workspaces and their windows reach it, up one and down one, and that it's seen through
+    the slide, never ridden off the screen to come back in somewhere else (VKCF3Z 4138e938,
+    4d18ade4). Each move's steps are kept as the check's result, for a strip of it.
     """
     since = shell.mark()
-    upper = shell.opened("a workspace to climb up to")
+    upper = shell.opened("a workspace to go up to")
     sits_over(shell, upper, since)
     shell.as_account("niri msg action focus-workspace-down")
     since = shell.mark()
-    lower = shell.opened("a workspace to climb down to")
+    lower = shell.opened("a workspace to go down to")
     sits_over(shell, lower, since)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-up")
     heard(shell, moving, since)
     sits_over(shell, upper, since)
-    up = climbed(shell, since, -1, ["climbs", "mantles"])
+    up = held(shell, since, -1)
     since = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
     heard(shell, moving, since)
     sits_over(shell, lower, since)
-    down = climbed(shell, since, 1, ["drops"])
+    down = held(shell, since, 1)
     kept = Path(os.environ["out"])  # noqa: SIM112, the check's own result, as Nix names it
     kept.mkdir(exist_ok=True)
     (kept / "moves.json").write_text(json.dumps({"up": up, "down": down}))
 
 
-def test_a_second_move_rides_on_from_where_the_first_got_to(shell: Shell) -> None:
-    """A move between workspaces as it climbs from the last moves it on from where it got to.
+def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> None:
+    """A move between workspaces as the last still holds moves it on from where it got to.
 
     It's never put anywhere it didn't get to (WCJQSG, 2bd7c7c6): its first place said after
-    the second move is made is a step from its last before, and it moves back the other way
-    to its seat rather than being set there. A step of the first move said as the second is
-    made may come after the mark, and is a step on too.
+    the second move is made is a step from its last before, and the second move is one of its
+    own, back the other way. A step of the first move said as the second is made may come
+    after the mark, and is a step on too.
     """
     since = shell.mark()
     upper = shell.opened("a workspace moved back to")
@@ -715,7 +705,7 @@ def test_a_second_move_rides_on_from_where_the_first_got_to(shell: Shell) -> Non
     sits_over(shell, upper, since)
     first = shell.mark()
     shell.as_account("niri msg action focus-workspace-down")
-    heard(shell, lambda said: moving(said) and '"beat":"rides"' not in said, first)
+    heard(shell, moving, first)
     before, since = shell.said_since(first)
     shell.as_account("niri msg action focus-workspace-up")
     sits_over(shell, upper, since)

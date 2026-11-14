@@ -109,8 +109,7 @@ function fallen(speed, s) {
 }
 
 // Riding niri's motion to `to` over `ride.ms`, `ride.edge` its share of
-// the way at each ms of the leg, the shell hearing of it `ride.late` ms
-// in. Its first frames catch up to the edge without a jump (VKCF3Z,
+// the way at each ms of the leg. Its first frames catch up to the edge without a jump (VKCF3Z,
 // 2026-11-13 a36e05f9). Carried, its seat coming up into it, it closes
 // within two frames in the pose it has. Left in the air, its seat going
 // from under it (`ride.away`), it goes on with the edge and falls the gap
@@ -121,9 +120,8 @@ function fallen(speed, s) {
 // than two frames at 60 Hz.
 function rides(way, to, ride) {
     const at = way.at;
-    const late = ride.late ?? 0;
-    const edge = t => ride.edge(t + late);
-    const ms = ride.ms - late;
+    const edge = ride.edge;
+    const ms = ride.ms;
     const ground = Math.hypot(to.x - way.x, to.y - way.y);
     // Carried, it closes over two frames, never shorter than two at 60 Hz:
     // niri drew a resize's frames 16 ms apart on a 120 Hz rig.
@@ -157,8 +155,7 @@ function rides(way, to, ride) {
                 : t >= lands && t < crouches ? "pouncing" : null;
         }
     }
-    leg(way, "rides", to, { ms: ride.ms, slide: t => slide(t - late),
-        posed: t => posed(t - late) });
+    leg(way, "rides", to, { ms, slide, posed });
 }
 
 // Up or down a column's side to `y`, the top of its box, each gap between

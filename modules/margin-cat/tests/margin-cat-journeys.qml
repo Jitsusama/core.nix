@@ -49,7 +49,7 @@ QtObject {
         };
         const cell = 4 / 3;
         const at = { cell, ratio: 1.5, wide: 8 * cell, tall: 8 * cell, air: cell, across: 1276,
-            height: 773, step: 789, facing: 1, pause: 0, marks: Paths.marks(3, 1276, 16),
+            height: 773, facing: 1, pause: 0, marks: Paths.marks(3, 1276, 16),
             spring: { damping: 1, stiffness: 1600, epsilon: 0.001 } };
         const layout = () => {
             const tiles = [];
@@ -106,22 +106,24 @@ QtObject {
                 if (walks.some(walked => Math.abs(pace(beat) - walked) > walked / 5))
                     wrong.push(`${said} climbs at ${Math.round(pace(beat))} cells a second, `
                         + `walking at ${walks.map(Math.round).join(", ")}`);
-            // Down a workspace only by the ways a cat could go, a fall
-            // straight down from the edge it let go of onto what's under
-            // it, never over across the air between them (Joel, 2026-11-13
-            // 17:22, by WCJQSG fc3f716a: "it would not be able to drop
-            // down near the center of a window below"). Falling beside a
-            // window, it may push off the wall onto the near edge of one
-            // below, two of its widths across at most.
-            for (const beat of journey.beats.filter(one => one.name === "drops"))
-                if (Math.abs(beat.to.x - beat.from.x) > 2 * at.wide + 0.01)
-                    wrong.push(`${said} drops from ${Math.round(beat.from.x)} `
+            // Every fall straight down onto what's under it, never across
+            // the air (Joel, 2026-11-13 17:22, by WCJQSG fc3f716a: "it
+            // would not be able to drop down near the center of a window
+            // below").
+            for (const beat of journey.beats.filter(one => one.kind === "falls"))
+                if (Math.abs(beat.to.x - beat.from.x) > 0.01)
+                    wrong.push(`${said} falls from ${Math.round(beat.from.x)} `
                         + `to ${Math.round(beat.to.x)}`);
             let before = null;
             for (let t = 0; t <= journey.ends && wrong.length < 5; t += 1000 / 120) {
                 const one = Paths.frame(journey, t);
                 const shown = one.y + at.tall > 0 && one.y < at.height;
-                if (one.beat !== "rides" && one.beat !== "shoved"
+                // Never gone from the screen, holding through a slide
+                // rather than riding off it (VKCF3Z 4138e938); a hop off
+                // the bar may still arc past its top.
+                if (!shown)
+                    wrong.push(`${said} is off the screen at ${t} ms, ${one.beat}`);
+                else if (one.beat !== "rides" && one.beat !== "shoved"
                     && solid.some(tile => inside(one.x, one.y, tile)))
                     wrong.push(`${said} is inside a window at ${t} ms, ${one.beat}`);
                 else if (shown && one.beat !== "hops" && one.beat !== "perches"
@@ -146,14 +148,12 @@ QtObject {
                 continue;
             const journey = way === 0
                 ? Paths.walk(from, to, Object.assign({ cols: Paths.columns(now, 0) }, at))
-                : Paths.moves(from, to, Object.assign({ way, was, now }, at));
+                : Paths.moves(from, to, Object.assign({ way, now }, at));
             if (journey === null)
                 continue;
             made += 1;
-            const solid = now.concat(was.map(tile => Object.assign({}, tile,
-                { top: tile.top - way * at.step })));
             const said = `${n} (${way}, ${JSON.stringify(from)} to ${JSON.stringify(to)})`;
-            check(journey, solid, said, to);
+            check(journey, now, said, to);
             // And the windows changed under it somewhere on its way past
             // the slide, its way found again from where it's got to.
             const t = journey.beats[0].ends + random() * (journey.ends - journey.beats[0].ends);
