@@ -3,7 +3,7 @@
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
 // ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, DrawerValue.js, Search.js,
-// Reading.js,
+// Reading.js, Changes.js,
 // LineEditing.js, Operators.js, Finding.js and Confirm.js beside this file and runs
 // `qml -platform offscreen query-keys.qml`.
 import QtQuick
@@ -21,6 +21,8 @@ import "DrawerFigure.js" as Figure
 import "DrawerProse.js" as Prose
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
+import "Changes.js" as Changes
+import "Search.js" as Search
 
 QtObject {
     // What failed, said as the test ends, or as it throws.
@@ -932,6 +934,30 @@ QtObject {
     // lands; n and N go on to the next match the way it went and the
     // other. It moves the cursor and narrows nothing, so it's a page's
     // search, never the rows' find.
+    // u and Ctrl+R over the rows' changes, as Vim's undo list (Changes.js), and how a page's
+    // search matches, by smartcase (Search.js).
+    function takingBack(holds) {
+        // Qt's engine has no flatMap, so each change's rows are joined by concat.
+        const ids = done => done.reduce((all, change) => all.concat(change.ids), []);
+        let history = Changes.changes();
+        history = Changes.changed(history, { ids: [1, 2], kind: "done" });
+        history = Changes.changed(history, { ids: [3], kind: "forget" });
+        holds("what's done is every change's rows", ids(history.done), [1, 2, 3]);
+        const undone = Changes.undo(history, 0);
+        holds("u takes back the last", undone.moved, [{ ids: [3], kind: "forget" }]);
+        holds("leaving the one before", ids(undone.history.done), [1, 2]);
+        const redone = Changes.redo(undone.history, 0);
+        holds("Ctrl+R does it again", ids(redone.history.done), [1, 2, 3]);
+        holds("2u takes back two", ids(Changes.undo(history, 2).history.done), []);
+        holds("u with nothing done does nothing", Changes.undo(Changes.changes(), 0).moved, null);
+        holds("a new change forgets what was taken back",
+            Changes.changed(undone.history, { ids: [4], kind: "done" }).undone, []);
+
+        holds("lowercase finds either case", Search.found("build", "Build log, build"),
+            [[0, 5], [11, 16]]);
+        holds("a capital finds only itself", Search.found("Build", "build Build"), [[6, 11]]);
+    }
+
     function drawerSearch(holds) {
         const into = ["Escape", "Ctrl+w", "l"];
         // [what, the keys typed from going in, the acts done, what's sought]
@@ -2288,6 +2314,7 @@ QtObject {
         editing(holds);
         drawerKeys(holds);
         drawerPage(holds);
+        takingBack(holds);
         drawerSearch(holds);
         drawerVisual(holds);
         drawerRefusals(holds);

@@ -40,8 +40,8 @@ Item {
     property var choosing: Commands.typing("")
     // Whether Ctrl+Y or Ctrl+E has put the menu away, until the next letter.
     property bool away: false
-    // Whether Ctrl+R waits for the register it puts, as the held notices'
-    // lines read it (LineEditing.js).
+    // Whether Ctrl+R waits for the register it puts, as the launcher's
+    // line reads it (LineEditing.js).
     property bool register: false
     // The menu as typed narrows it, which Tab and the arrows choose among.
     readonly property var shown: away ? [] : Commands.narrowed(menu, choosing.typed, argued)

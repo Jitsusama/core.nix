@@ -98,9 +98,6 @@ FOLLOWED_THE_ROOM = 15
 # How far a pixel can be from the action's colour, summed over red, green and blue, and
 # still be its glyph's.
 NEAR_THE_ACTION = 40
-# How far in from the screen's right edge, in pixels, the window under the notices rests,
-# so its edge is far from the corner's.
-FROM_THE_CORNER = 100
 # The longest a program may take to start and show its window. A wait
 # ends when it does, so this is only a ceiling: on a host busy with
 # other machines and builds, a cold kitty or GIMP took past 30
@@ -156,10 +153,10 @@ PI_WINDOW = "\u03c0 - TESTQA A quest of\u2026 - my-tree"
 MARGIN = "niri msg layers | grep -q margin"
 # The margin's cells: the theme's gap, open or shut, since nothing grows.
 CELL = 12
-NOTICES = "niri msg layers | grep -q notifications"
-# The arrival line showing a notice: its layer stays mapped while it's
-# quiet, off the screen, so the shell says rather than niri's layers.
-NOTICE_LINE = "qs ipc call notices shows | grep -q ."
+# The arrival line showing a notice or what's playing: its layer stays
+# mapped while it's quiet, off the screen, so the shell says rather than
+# niri's layers.
+NOTICES = "qs ipc call notices shows | grep -q ."
 
 # Tuple's log, where tuple-call hears a call ring, which only a call
 # writes, and which the daemon rewrites as it starts.
@@ -747,19 +744,6 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_chars("A")
         self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
-    def hold_notices(self) -> None:
-        """Hold the stack by the keys as Vim's quickfix list, as Super+N did before.
-
-        Super+N opens the notices in the launcher now, on the card in front, and the stack is
-        held by its own ask until the launcher's notices take its place whole.
-        """
-        self.as_account("qs ipc call notices hold")
-
-    def notices_history(self) -> None:
-        """From the held notices, open every notice in the launcher, as :e Notices does."""
-        self.machine.send_chars(":e Notices\n", delay=KEY_PACE)
-        self.launcher_ready()
-
     def close_launcher(self) -> None:
         """Press Escape until normal is at rest, then close the launcher by :q, as Joel does.
 
@@ -910,6 +894,20 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
             else:
                 self.previous_row()
         self.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == name)
+
+    def row_starting(self, words: str) -> str:
+        """Wait until the launcher lists a row whose name starts with the words, and give it.
+
+        A notice's row is named by its title and more, so a test names it by how it starts.
+        """
+        found: list[str] = []
+
+        def listed(shown: Json) -> bool:
+            found.extend(row for row in shown["rows"] if row.startswith(words))
+            return bool(found)
+
+        self.launcher_until(listed)
+        return found[0]
 
     def row_keys(self) -> tuple[str, str]:
         """Give the keys to the next row and the one before, as the launcher's mode takes them.

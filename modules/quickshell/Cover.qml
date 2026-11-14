@@ -1,6 +1,6 @@
 // A picture standing in a card's mark column, as music's cover and a
-// notice's own image do (docs/design.md, The launcher and held notices are
-// one family): two Name pitches square from the capitals of the line it
+// notice's own image do (docs/design.md, The launcher and notices are one
+// family): two Name pitches square from the capitals of the line it
 // starts on, its corners the theme's inner radius, and the raised colour
 // until it arrives. Whoever places it gives its top; one piece draws them
 // all, so the two can't drift apart.

@@ -2,7 +2,7 @@
 // made to answer what the shell read of Quickshell's own Notification while
 // the shell served them: its words, its sender, its actions, and the acts
 // it's put away, let go or answered by, each now an ask of the daemon. The
-// cards, the held list and the launcher's acts keep reading it as they did
+// arrival line and the launcher's acts keep reading it as they did
 // (Notices.qml's live). Worked out apart from Notices.qml so
 // tests/live-notice.qml can hold it in Qt's own engine.
 .pragma library

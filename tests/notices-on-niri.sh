@@ -1,9 +1,8 @@
 # shellcheck shell=bash
 # Starts the shell's notices (notices.qml, in the account's shell folder) on
 # the niri nested-niri.sh runs, sends a notice as a program does, and checks
-# the shell drew its card on a layer niri lists as the notices', and showed
-# it on the arrival line, an overlay layer that takes no keys and stays
-# mapped, off the screen, while it's quiet. Then a
+# the shell showed it on the arrival line, niri's notices layer, an overlay
+# that takes no keys and stays mapped, off the screen, while it's quiet. Then a
 # critical one, which stays until it's dealt with, is put away by what
 # Super+Shift+N runs, and kept in the history unread. And a sender whose
 # notices are missed until seen keeps one that answers what Joel just did,
@@ -36,7 +35,8 @@ drawing=$!
 trap "kill $drawing 2> /dev/null || true" EXIT
 
 says "Configuration Loaded"
-# That the line shows what's given, "notice", or nothing while it's quiet.
+# That the line shows what's given, "notice" or "playing", or nothing while
+# it's quiet.
 shows() {
   local showing
   showing=$(qs -p "$shell" ipc call notices shows)
@@ -47,7 +47,7 @@ shows() {
 }
 # Whether niri lists the arrival line, an overlay layer that never takes the
 # keys, waiting while a loaded machine sends its first frame.
-line='any(.[]; .namespace == "notice-line" and .layer == "Overlay"
+line='any(.[]; .namespace == "notifications" and .layer == "Overlay"
   and .keyboard_interactivity == "None")'
 listed() {
   for _ in $(seq "$saying"); do
@@ -67,28 +67,7 @@ says "report[shows card A notice]"
 says "report[lines notice A notice]"
 shows notice "with a notice to show"
 listed "with a notice on it"
-# The card is made before its window is drawn, and niri lists the layer
-# once it has the window's first frame, which a loaded machine can take a
-# while to send.
 says "report[drawn notifications]"
-listed=false
-layers=""
-for _ in $(seq "$saying"); do
-  # Read whole before it's matched: piped into grep -q, niri could still be
-  # writing when grep stops at the match, and its broken pipe would fail the
-  # pipeline under pipefail, as if the layer were missing.
-  layers=$(niri msg layers)
-  if grep -q notifications <<< "$layers"; then
-    listed=true
-    break
-  fi
-  sleep 0.1
-done
-if [ "$listed" != true ]; then
-  echo "niri lists no notices' layer:" >&2
-  echo "$layers" >&2
-  exit 1
-fi
 
 notify-send --app-name="Google Drive" --hint=string:x-answers:save \
   "Saved to Google Drive" "Notes.txt, in My Drive"

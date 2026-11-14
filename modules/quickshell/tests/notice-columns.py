@@ -1,16 +1,14 @@
 """Read a notice's cards back to the ink (notices-stand-on-the-cards-columns).
 
-tests/notice-columns.qml draws a notice on the one card twice, as the pop-up
-does with no gutter and as the held list does with one, keeps a picture of
-each at the scale the shell ran at, and says where its frame and columns
-were meant to stand. This finds the ink in each picture, in the device's
-pixels, and fails, saying which, unless:
+tests/notice-columns.qml draws a notice on the one card, as the arrival line
+does, keeps a picture of it at the scale the shell ran at, and says where its
+frame and columns were meant to stand. This finds the ink in the picture, in
+the device's pixels, and fails, saying which, unless:
 
 - the ink stands the inset from the frame's inside edge on every side, to
   within a device pixel, the mark's included (VKCF3Z, 2026-11-06);
 - the signing line's name starts on the text column, the inset and a mark's
-  column in from the frame on the pop-up;
-- the held card's text column is the pop-up's moved by the gutter alone;
+  column in from the frame;
 - the mark's ink centres on the title's capitals, to within a device pixel.
 
 Usage: notice-columns.py FOLDER LOG
@@ -116,56 +114,40 @@ class Card:
 
 
 def main(folder: Path, log: Path) -> int:
-    """Measure both cards, printing each case that fails, and answer 1 if any does."""
+    """Measure the card, printing each case that fails, and answer 1 if any does."""
     said = meant(log)
-    pop = Card(folder / "pop.png", (said["width"], said["heights"][0]), said)
-    held = Card(folder / "held.png", (said["width"], said["heights"][1]), said)
+    card = Card(folder / "pop.png", (said["width"], said["height"]), said)
     failed: list[str] = []
-    tolerance = 1 / pop.scale
+    tolerance = 1 / card.scale
     inset = said["inset"]
 
-    # The held card's gutter has no number in it here, so its left ink is
-    # the mark's, the gutter past the inset.
-    for name, card, gutter in [("pop-up", pop, 0), ("held", held, said["gutter"])]:
-        for side, stands in card.insets().items():
-            meant_to = inset + (gutter if side == "left" else 0)
-            if abs(stands - meant_to) > tolerance:
-                failed.append(
-                    f"the {name} card's ink stands {stands} from its {side} edge, not {meant_to}"
-                )
+    for side, stands in card.insets().items():
+        if abs(stands - inset) > tolerance:
+            failed.append(f"the card's ink stands {stands} from its {side} edge, not {inset}")
 
     # The signing line is the last band; its name's ink starts the text column.
-    columns = {}
-    for name, card in [("pop-up", pop), ("held", held)]:
-        signing = card.lines()[-1]
-        columns[name] = card.logical(card.left_in(signing) - card.inside[0])
-    if abs(columns["pop-up"] - (inset + said["text"])) > tolerance:
+    signing = card.lines()[-1]
+    column = card.logical(card.left_in(signing) - card.inside[0])
+    if abs(column - (inset + said["text"])) > tolerance:
         failed.append(
-            f"the pop-up's text column stands {columns['pop-up']} in, "
+            f"the text column stands {column} in, "
             f"not the inset and a mark's column, {inset + said['text']}"
-        )
-    if abs(columns["held"] - columns["pop-up"] - said["gutter"]) > tolerance:
-        failed.append(
-            f"the held card's text column is {columns['held'] - columns['pop-up']} past the "
-            f"pop-up's, not the gutter alone, {said['gutter']}"
         )
 
     # The title's first line is the first band; the mark is the ink left of
     # the text column in it, the capitals the ink from the column on.
-    for name, card in [("pop-up", pop), ("held", held)]:
-        title = card.lines()[0]
-        text = round(columns[name] * card.scale + card.inside[0])
-        mark = card.middle_in(title, 0, text)
-        capitals = card.middle_in(title, text, card.picture.width)
-        if abs(mark - capitals) > 1:
-            failed.append(
-                f"the {name} card's mark centres {card.logical(mark - capitals)} from its "
-                "title's capitals"
-            )
+    title = card.lines()[0]
+    text = round(column * card.scale + card.inside[0])
+    mark = card.middle_in(title, 0, text)
+    capitals = card.middle_in(title, text, card.picture.width)
+    if abs(mark - capitals) > 1:
+        failed.append(
+            f"the card's mark centres {card.logical(mark - capitals)} from its title's capitals"
+        )
 
     for failure in failed:
         print(f"FAIL {failure}")
-    print(f"at {pop.scale}: insets {pop.insets()}, columns {columns}")
+    print(f"at {card.scale}: insets {card.insets()}, text column {column}")
     return 1 if failed else 0
 
 

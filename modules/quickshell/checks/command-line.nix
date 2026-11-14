@@ -90,7 +90,8 @@
   # into it and back, with DrawerPage.js to where its keys take its cursor
   # and view, DrawerFigure.js to where a fact's figure stands, DrawerProse.js to where
   # its prose is cut and DrawerValue.js to how its value is laid on lines; Operators.js to what d and y do to the rows they take; and
-  # Confirm.js to how the launcher asks once, answered by Return as an armed row is.
+  # Confirm.js to how the launcher asks once, answered by Return as an armed row is; and
+  # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's search matches.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -98,6 +99,7 @@
     pkgs.runCommandLocal "the-query-field-takes-vi-modes" { } ''
       cp ${../../../tests/query-keys.qml} query-keys.qml
       ${copied [
+        "Changes.js"
         "Confirm.js"
         "DrawerFigure.js"
         "DrawerPage.js"

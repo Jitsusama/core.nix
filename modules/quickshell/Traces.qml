@@ -8,10 +8,6 @@
 // in the journal with its trace's id, so the void Joel saw can be found in
 // the trace that holds it. Work already done when it's heard of, as a
 // refresh of what a source changed is, is a span kept ended at once.
-//
-// The held notices are traced by one of their own (HeldNotices.qml), as
-// the service "notices": each hold the root, from the keys taken to their
-// letting go, and each key's act a span under it (Y2YBTS, 2026-11-07).
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -41,7 +37,7 @@ Scope {
     }
 
     // Work in the opening already done, from `start` until now, kept ended
-    // at once: a refresh, or a key's act on the held notices.
+    // at once, as a refresh.
     function did(name, start, about) {
         if (opening === null)
             return;

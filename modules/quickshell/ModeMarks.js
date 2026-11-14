@@ -2,7 +2,7 @@
 // (Joel, 2026-11-05: "the mode should be 3 letters, in caps, and in a place
 // where they are more obvious and not lost with other things"), worked out
 // apart from the foot so tests/query-keys.qml can hold it in Qt's own
-// engine, as held notices' own is (NoticeKeys.js).
+// engine.
 .pragma library
 .import "QueryKeys.js" as QueryKeys
 

@@ -1,6 +1,6 @@
-// A notice as a row of its card, the pop-up's and the held list's alike,
-// standing in its card's columns (Columns.js) so a notice reads the same
-// wherever it's drawn (VKCF3Z, 2026-11-06). Three groups, as Joel reads a
+// A notice as a row of its card, the arrival line's, standing in the
+// card's columns (Columns.js) as a launcher row does, so a notice reads as
+// the launcher's rows do (VKCF3Z, 2026-11-06). Three groups, as Joel reads a
 // notice: who or what it's about, what it says, and the signature of what
 // sent it with when, each at its level, so the sizes rank rather than
 // jostle: who and what at the launcher's size, lines of one saying a pitch
@@ -36,9 +36,6 @@ import "Columns.js" as Columns
 Item {
     id: row
 
-    // How wide the card's gutter is: 0 on the pop-up, which isn't a list,
-    // or the held list's digits and the tie after them.
-    property real gutter: 0
     property string mark
     property color hue: Theme.text
     // The notice's own picture, or none.
@@ -58,7 +55,7 @@ Item {
 
     readonly property bool pictured: picture !== ""
     readonly property color markHue: quiet ? Theme.muted : hue
-    readonly property var columns: Columns.across(width, gutter, pictured
+    readonly property var columns: Columns.across(width, 0, pictured
         ? Columns.ofPicture(cover.width) : Columns.ofMark(Theme.level.name.pitch),
         Theme.space.rung)
     // Where the title's first baseline stands, which its mark centres on.

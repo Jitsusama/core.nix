@@ -16,7 +16,7 @@ QtObject {
         }
     }
 
-    // A surface's commands, as the held notices have them.
+    // A surface's commands, as a list of rows has them.
     readonly property var commands: [
         { command: "delete", short: "d", ranged: true },
         { command: "forget", short: "forg", ranged: true },

@@ -3,8 +3,8 @@
 // written, never as a regular expression, so every list searches alike and
 // nothing is compiled per key, ignoring case until it has a capital, as his
 // ignorecase and smartcase do, and each place it's found is washed as his
-// Search draws it. The notices' stack (Notifications.qml) searches through
-// it, and tests/notice-keys.qml holds it in Qt's own engine.
+// Search draws it. The launcher's pages search through it, and
+// tests/query-keys.qml holds it in Qt's own engine.
 .pragma library
 
 const ampersand = /&/g;

@@ -1,4 +1,4 @@
-// A card's status line, the launcher's and held notices' alike, worked out
+// A card's status line, the launcher's as any card's, worked out
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `a-card-says-how-it-stands-in-one-row` check copies
 // modules/quickshell/StatusLine.js beside this file and runs

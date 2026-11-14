@@ -113,18 +113,17 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     desktop.shoot("notice-joined")
     with desktop.told("shows card Someone left the call"):
         desktop.tuple_streams(call)
-    # Its card goes by itself after ten seconds, which a busy host spends
-    # on what follows, so the stack is held at once: held, it waits.
-    with desktop.told("keys notices"):
-        desktop.hold_notices()
     machine.succeed(offered.format("leave"))
     desktop.shoot("notice-alone")
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's
-    # stream says the call's over. :e Notices opens the history on its
-    # first row, the newest notice, whose offers are commands from normal
-    # mode, as its card's are. Leaving costs little, since one can join
-    # again, so the line leaves at once, asking nothing.
-    desktop.notices_history()
+    # stream says the call's over. Super+N opens the notices in the
+    # launcher, on the one the line shows while it's there and among the
+    # unread once it has gone by itself, whose offers are commands from
+    # normal mode. Leaving costs little, since one can join again, so the
+    # line leaves at once, asking nothing.
+    machine.send_key("meta_l-n")
+    desktop.launcher_ready()
+    desktop.down_to(desktop.row_starting("Someone left the call"))
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Someone left the call")
     )

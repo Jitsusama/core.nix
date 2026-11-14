@@ -1,8 +1,7 @@
 // A line that's typed in, edited as Vim's command line and insert edit
-// one: the find, the command line and a reply's prompt on the held notices
-// (NoticeKeys.js reads which keys are a mode's own first), and where Vim's
-// w, b and e go in its words. Apart from the shell, so tests/notice-keys.qml
-// holds it in Qt's own engine.
+// one: the launcher's find and command line, and where Vim's w, b and e go
+// in its words. Apart from the shell, so tests/query-keys.qml holds it in
+// Qt's own engine, through Finding.js.
 .pragma library
 
 const space = /\s/;

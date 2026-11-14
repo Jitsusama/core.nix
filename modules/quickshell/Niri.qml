@@ -5,7 +5,7 @@
 // niri's own event stream. niri says every tile moving at each resize and
 // scroll, and each window's every retitle and use, and the shell woke for
 // each, launcher shut or open; the daemon tells only the fields read here,
-// and tiles only while something draws them (wantTiles), so the shell
+// and a tile only while something sits over it (wantTile), so the shell
 // wakes for less than niri says. While the daemon isn't answering, niri's
 // own stream stands in for it, so nothing here stops for a daemon down.
 //
@@ -125,8 +125,8 @@ Singleton {
     }
 
     // A window opened, changed what it shows, or given the keys; one
-    // closed; some moved in their layout, or, while tiles are wanted, any
-    // tile did.
+    // closed; some moved in their layout, or the tile something sits over
+    // did.
     signal windowOpenedOrChanged(var window)
     signal windowClosed(var id)
     signal layoutsChanged
@@ -174,24 +174,6 @@ Singleton {
     readonly property string daemonSocket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/windows.sock`
     property var kept: NiriRecords.held()
 
-    // What draws tiles, by name, as notices do while they're up, beside
-    // the window under them; the daemon tells tiles only while one does.
-    property var tilesFor: ({})
-    readonly property bool tilesWanted: Object.keys(tilesFor).length > 0
-    // Whether the tiles held are current: once the daemon's watch of them
-    // has answered, or while niri's own stream, which says them, stands in.
-    readonly property bool tilesReady: standIn || tilesHeard.answeredThisWatch
-    function wantTiles(who: string, wanted: bool): void {
-        if ((who in tilesFor) === wanted)
-            return;
-        const now = Object.assign({}, tilesFor);
-        if (wanted)
-            now[who] = true;
-        else
-            delete now[who];
-        tilesFor = now;
-    }
-
     // What sits over one window's tile, by name, as the cat sits over the
     // window with the keys: that tile alone is told, so a window resized
     // or scrolled beside it wakes nothing (2026-11-12: the cat watching
@@ -215,15 +197,12 @@ Singleton {
     // window moved unheard: sitting over it later waits the moment its
     // watch takes to answer, rather than drawing where it was.
     function forgetTiles(): void {
-        if (tilesWanted)
-            return;
         const following = new Set(tilesAhead);
         const stale = Object.keys(tilesHeard.held).filter(key => !following.has(key));
         if (stale.length > 0)
             tilesHeard.took([], stale, false);
     }
     onTilesAheadChanged: forgetTiles()
-    onTilesWantedChanged: forgetTiles()
 
     // Whether niri's own stream stands in for the daemon, since it isn't
     // answering, so what it held is made again from the daemon's whole
@@ -309,14 +288,14 @@ Singleton {
         onHeard: (changed, gone) => root.took(placesHeard, changed, gone)
     }
 
-    // Each window's tile, only while something draws tiles, and the one
-    // something sits over.
+    // The tiles something sits over, and no other: nothing draws every
+    // window's tile since the side notices went.
     Daemon {
         id: tilesHeard
 
         socket: root.daemonSocket
         kind: "layout"
-        live: root.tilesWanted
+        live: false
         ahead: root.tilesAhead
         answersWhole: true
         onHeard: (changed, gone) => root.took(tilesHeard, changed, gone)

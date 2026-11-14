@@ -86,11 +86,17 @@ Provider {
         function onHeard() {
             provider.changed();
         }
+        function onActed(key, one) {
+            provider.forwarding(past, key, one);
+        }
     }
     Connections {
         target: mixed
         function onHeard() {
             provider.changed();
+        }
+        function onActed(key, one) {
+            provider.forwarding(mixed, key, one);
         }
     }
     Connections {
@@ -98,6 +104,19 @@ Provider {
         function onHeard() {
             provider.changed();
         }
+        function onActed(key, one) {
+            provider.forwarding(desktop, key, one);
+        }
+    }
+
+    // An act done with a token, as Return opening one still open, brings its sender forward
+    // where it didn't come by itself, since Slack and Chrome ask niri for a token of their own,
+    // which niri refuses, and would open behind the launcher's window (Notices.qml). The
+    // daemon has no hand on niri's windows, so the shell does it beside the ask.
+    function forwarding(ready, key, one) {
+        const app = ready.served(key)?.held?.app ?? "";
+        if (one.token === true && one.ask?.ask === "invoke" && app !== "")
+            Notices.bringForward(app);
     }
 
     // A served row as the launcher holds a notice's, the place's `ready`.
@@ -176,7 +195,7 @@ Provider {
             return copy;
         // d reads it, at its sender where it offers Read, as the daemon's
         // Mark It Read does then, and only forgets it where not, so it
-        // says which, as the held notices' d does.
+        // says which.
         const marking = held.read === true ? null
             : acts.find(one => one.key === "verb:notice:read") ?? null;
         const read = marking?.ask?.ask === "invoke"
@@ -185,9 +204,8 @@ Provider {
             read, done(held, forgetting, marking))].concat(copy);
     }
 
-    // d's done, as the held notices' is (HeldNotices.qml's finish): read at
-    // once, at its sender too where it offers Read, and let go as the
-    // launcher closes, a dismissed notice being gone for good, so u brings
+    // d's done: read at once, at its sender too where it offers Read, and
+    // let go as the launcher closes, a dismissed notice being gone for good, so u brings
     // it back until then, its read state staying, as the spec's notices do.
     // Each is asked through the place every notice is in, which stays
     // watched as the launcher closes, where Desktop's is let go.

@@ -41,7 +41,7 @@ notify-send --app-name=Check --expire-time="$lasting" "While away" "Still here w
 says "report[shows card While away]"
 # Long past its time, it's still on screen and never started counting.
 sleep "$staying"
-if grep -qF -e "report[counts card While away]" -e "report[gone notifications]" "$said"; then
+if grep -qF -e "report[rests While away]" -e "report[gone notifications]" "$said"; then
   echo "The notice counted down while Joel was away:" >&2
   cat "$said" >&2
   exit 1

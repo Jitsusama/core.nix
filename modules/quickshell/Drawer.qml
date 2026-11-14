@@ -106,8 +106,8 @@ Floating {
         // neighbours, where a selection changes only fill and colour.
         property color ink: Theme.text
 
-        // Search's wash, strong ink on raised, as the held notices wash what
-        // they find (Notifications.qml), drawn by the reader on the Text's
+        // Search's wash, strong ink on raised, as the launcher washes what
+        // its find matches, drawn by the reader on the Text's
         // letters, which a search, only ever run in the drawer, has.
         readonly property var wash: ({ ink: `${Theme.strong}`, ground: `${Theme.raised}` })
         // Whether its share of what the drawer's visual chose is flashing,

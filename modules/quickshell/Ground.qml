@@ -4,7 +4,7 @@
 // rows above and below (VKCF3Z, 2026-11-06, for Joel's "rows in the
 // launcher should have padding instead of margins"). It replaced a ground
 // close round the ink, a margin round a highlight. Every list's rows draw
-// theirs through it, the launcher's and the held notices', so none can
+// theirs through it, as the launcher's do, so none can
 // draw one of its own (every-card-is-the-one-card). Whoever stands it says
 // how wide and tall its band is and where it is down the list, which the
 // launcher's selection stands on; it says only where it starts across

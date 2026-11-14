@@ -265,7 +265,7 @@ or a copy, can be opened, copied or forgotten.
 | margin | the row of marks at the top of the screen saying what's true now | corner | `Margin.qml`, `margin.pieces`, `Pieces.qml` |
 | margin's cat | the small cat sitting in the gap above the column Joel is in, which says nothing | | `modules/margin-cat`, `MarginCat.qml`, `MarginCatScreen.qml` |
 | meter | a level shown while it changes, such as the volume | overlay | `Meter.qml` |
-| card | the one frame the launcher, held notices and a notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
+| card | the one frame the launcher and the arrival line's notice are drawn in, all it holds the inset from its edge | | `Card.qml` |
 | drawer | the card's continuation out of its right side, a plate about the selected row: what it has beyond its one line | | `Drawer.qml`, a row's `drawer` |
 | plate | a small page about one thing: its eyebrow, name, facts, preview and description | | |
 | eyebrow | a plate's first line, above its name, saying where the thing is and then its kind, never its state | | a drawer's `eyebrow` |
@@ -286,7 +286,7 @@ or a copy, can be opened, copied or forgotten.
 | turn on | the action starting a setting, a radio or a light | | |
 | turn off | the action stopping a setting, a radio or a light | | |
 | forget | the action taking an item out of its list, such as a notice, a copy or what's waiting | let it go | |
-| foot | the status line at the bottom of the launcher and held notices: the mode, the position and what the keys do | | `foot` |
+| foot | the status line at the bottom of the launcher: the mode, the glance and what the keys do | | `foot` |
 | Now | the launcher's view of what's on and waiting, on Super+O | What's on | `Now.qml` |
 | For You | the one place for what needs Joel and what came for him, with where each came from: Now's first row, weighed, the most pressing first | | `ForYou.js` |
 | to-do | what only Joel can do, raised by the session that needs him and listed in For You | Needs You item, waiting on you | `WaitingOnYou.qml` |

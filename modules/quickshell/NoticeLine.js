@@ -18,14 +18,46 @@ function chosen(front, held) {
 }
 
 // Whether the line is up with a notice chosen. It steps aside while the
-// notices are gathered where the keys reach them, the launcher's or the
-// held list's, so each is in one place; and under the talk line, which sits in
-// the same place, only a critical one shows, since he's saying something.
+// notices are gathered where the launcher's keys reach them, so each is in
+// one place; and under the talk line, which sits in the same place, only a
+// critical one shows, since he's saying something.
 function up(chosenId, gathered, talking, critical) {
     if (chosenId < 0 || gathered) {
         return false;
     }
     return !talking || critical;
+}
+
+// What the line shows: "notice", "playing" or nothing. What's playing
+// shows for its moment (Music.qml's arrival) over a notice that can wait,
+// since a media key Joel just pressed put it there, but never over a
+// critical one, nor where the notice would step aside: in the launcher's
+// notices or under the talk line.
+function shows({ noticeUp, critical, playing, gathered, talking }) {
+    if (noticeUp && critical) {
+        return "notice";
+    }
+    if (playing && !gathered && !talking) {
+        return "playing";
+    }
+    return noticeUp ? "notice" : "";
+}
+
+// Plain text as styled text, which a notice's words are, so what's playing
+// can stand where they do with an artist's name read as written.
+function escaped(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// How long a notice stays on the line before it rests, in milliseconds:
+// what its sender asked, or five seconds, ten for one offering something
+// to do. Quickshell's documents call the sender's timeout seconds, but it
+// passes on what the sender said, which is milliseconds.
+function lasts(expireTimeout, actions) {
+    if (expireTimeout > 0) {
+        return expireTimeout;
+    }
+    return actions > 0 ? 10000 : 5000;
 }
 
 // How many others wait behind the one shown, which the line counts at its

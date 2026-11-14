@@ -115,7 +115,7 @@ Singleton {
         starting = true;
         settled.restart();
         // Its size is asked of niri as it's recorded, since Niri.qml holds
-        // tiles only while something draws them.
+        // a tile only while something sits over it.
         Niri.request("Outputs", answer => Niri.request("Windows", windows => {
             const workspace = Niri.workspaces[target.workspace_id] ?? null;
             const output = workspace === null ? null : answer.Outputs[workspace.output] ?? null;

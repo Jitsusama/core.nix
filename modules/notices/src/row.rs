@@ -236,6 +236,15 @@ fn acts(notice: &Notice, sender: &Sender, read: &Body, said: &str, words: &Words
                 "glyph": glyph, "ask": invoke(&offer.id), "token": true,
             }));
         }
+        // A reply typed in place asks for its words in the launcher's
+        // field first, as a network asks its password, and the daemon
+        // sends it to the sender, which closes the notice.
+        if notice.reply.is_some() {
+            acts.push(json!({
+                "key": "verb:notice:reply", "ask": { "ask": "reply", "notice": notice.id },
+                "fields": [{ "ask": "notices:asks:reply", "into": "text" }],
+            }));
+        }
     }
     // Each link keyed by the words it's said in, which the shell tells
     // apart by where it goes (Y2YBTS, 19edbd31).
@@ -867,6 +876,27 @@ mod tests {
             "Slack": { "count": PAGE + 1, "unread": 0 },
         });
         assert_eq!(senders, &wanted, "each sender's, those past the page too");
+    }
+
+    #[test]
+    fn one_taking_a_reply_typed_here_asks_for_its_words_first() {
+        let chat = notice(9, &json!({ "live": true, "reply": "Reply to Bo" }));
+        let [mixed, ..] = making(&[chat], &[]);
+        let acts = mixed[0]["acts"].as_array().cloned().unwrap_or_default();
+        let reply = acts.iter().find(|act| act["key"] == "verb:notice:reply");
+        assert_eq!(
+            reply.map(|act| (&act["ask"], &act["fields"])),
+            Some((
+                &json!({ "ask": "reply", "notice": 9 }),
+                &json!([{ "ask": "notices:asks:reply", "into": "text" }])
+            )),
+            "a reply typed here asks for its words, then the daemon: {acts:?}"
+        );
+        let [closed, ..] = making(&[notice(10, &json!({ "reply": "Reply" }))], &[]);
+        assert!(
+            !act_keys(&closed[0]).contains(&"verb:notice:reply"),
+            "a closed notice takes no reply"
+        );
     }
 
     fn act_keys(row: &Value) -> Vec<&str> {
