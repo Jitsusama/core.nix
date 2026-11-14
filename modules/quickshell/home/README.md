@@ -1,6 +1,7 @@
 # The Shell's Files, by Place
 
-Every QML and JavaScript file the shell links into its folder as it is, in
+Every QML and JavaScript file the shell links into its folder as it is, and
+each script its views run from beside them (`opens-in-sessions.sh`), in
 one list for each place the launcher names and for each surface beside it,
 named as `checks/` names them: `heat.nix` for Heat, `clipboard.nix` for
 Copies. Two places' changes then never share a file, where one list in

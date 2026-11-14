@@ -213,43 +213,12 @@ Singleton {
     // earlier one gave.
     readonly property real startedAt: Date.now()
     property real openings: startedAt
-    // How a window is asked of that kitty: over its remote-control socket
-    // in a runtime folder only Joel's login opens (sessions-kitty's unit),
-    // never through kitty's single instance, whose name any program could
-    // take first and so be handed every session's window (ISXEG8,
-    // 2026-11-11). The window gets kitty's own environment and only its
-    // app id beside it. A kitty started before its unit listened has no
-    // socket until the next login, so until then it's reached the old way,
-    // but only while it is the unit's own main process, which nothing else
-    // can be. A kitty its unit is starting again, 5 s after it ended, is
-    // waited on for up to 20 s, so a window asked of it meanwhile opens once
-    // it's back rather than never; with neither by then, nothing opens, and
-    // the journal says why. It's decided as the window opens, in what niri
-    // starts, so the shell waits on nothing.
-    readonly property string opening: [
-        'sock=$1; class=$2; shift 2; dir=$HOME',
-        'if [ "$1" = --directory ]; then dir=$2; shift 2; fi',
-        'old() {',
-        '  pid=$(systemctl --user show --property=MainPID --value sessions-kitty.service)',
-        '  [ "${pid:-0}" -gt 0 ] && tr "\\0" " " < "/proc/$pid/cmdline" | grep -q -- "--instance-group pi-sessions"',
-        '}',
-        'tries=100',
-        'until [ -S "$sock" ] || old; do',
-        '  tries=$((tries - 1)); [ "$tries" -gt 0 ] || break',
-        '  sleep 0.2',
-        'done',
-        'if [ -S "$sock" ]; then',
-        '  exec kitten @ --to "unix:$sock" launch --type=os-window --os-window-class "$class" \\',
-        '    --cwd "$dir" --env "MYCELIUM_APP_ID=$class" "$@"',
-        'fi',
-        'if old; then',
-        '  exec systemd-run --user --scope --collect --quiet --slice=agents.slice -- \\',
-        '    env "MYCELIUM_APP_ID=$class" kitty -1 --instance-group pi-sessions --class "$class" \\',
-        '    --directory "$dir" "$@"',
-        'fi',
-        'echo "sessions: no sessions kitty to open $class in" >&2',
-        'exit 1'
-    ].join("\n")
+    // How a window is asked of that kitty: over its own socket, or the old
+    // way only while the unit's own process is a kitty from before it
+    // listened, as the script beside this file says, where it's linted and
+    // run by a case of its own (the-sessions-kitty-is-asked-only-its-own-way).
+    readonly property string opening: String(Qt.resolvedUrl("opens-in-sessions.sh"))
+        .replace(/^file:\/\//, "")
     function inSessions(kind, rest, into, named) {
         openings++;
         const classed = named ?? `${kind}.${openings}`;
@@ -262,7 +231,7 @@ Singleton {
         }
         const untold = kind === "pi-spawned" || placed
             ? ["env", "-u", "XDG_ACTIVATION_TOKEN", "-u", "DESKTOP_STARTUP_ID"] : [];
-        Niri.spawn(untold.concat(["sh", "-c", opening, "sessions",
+        Niri.spawn(untold.concat(["sh", opening,
             `${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`, classed], rest));
         return classed;
     }

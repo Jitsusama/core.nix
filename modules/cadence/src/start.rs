@@ -262,8 +262,8 @@ fn terminal(cwd: &str, words: &str, class: &str, door: &Door) -> Command {
     command
 }
 
-/// How a window is asked of the sessions' kitty, as Sessions.qml's
-/// `opening` asks it: over its remote-control socket in a runtime folder
+/// How a window is asked of the sessions' kitty, as the shell's
+/// modules/quickshell/opens-in-sessions.sh asks it: over its remote-control socket in a runtime folder
 /// only the login opens, never through kitty's single instance, whose
 /// name any program could take first and so be handed the window. A kitty
 /// started before its unit listened is reached the old way until the next

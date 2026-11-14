@@ -6,6 +6,8 @@
   "PiSource.qml"
   "PiSource.js"
   "Sessions.qml"
+  # Run by Sessions.qml to open a session's window in the sessions kitty.
+  "opens-in-sessions.sh"
   "SessionTalks.js"
   "SessionWindows.js"
   "TalkAttached.qml"
