@@ -1946,9 +1946,8 @@ works the same way everywhere.
   of thing it is at its right edge (Shape and Kinds).
   The windows, the copies and the notices are whole at home, and most have
   a chord that opens them: Super+V the
-  copies, Super+E the emoji, Super+N the notices (the stack on screen,
-  by the keys, where :e Notices opens the history), Super+Shift+/ the
-  shortcuts.
+  copies, Super+E the emoji, Super+N the notices (For You's Desktop, on
+  the card in front while one is up), Super+Shift+/ the shortcuts.
 - **A key's action is its row.** A key's action that a row already does
   is that row, drawing the key's chord: Super+L is the session's Lock,
   Super+Return is kitty, and Shift+Print and Alt+Print are Capture's rows.
@@ -2376,12 +2375,15 @@ top beside a layer named as it is, the program stands for both, so one
 Neovim is listed.
 
 Nothing the desktop shows is reached only by pointing. Super+O opens Now,
-the margin's glyphs in words, and Super+N takes the notices on screen as
-lines, where :e Notices gathers every notice into the launcher. Either
-way Return goes to who sent one, as the quickfix list's Return goes to
-where a line came from, and its verbs are commands: its own actions
-(:reply, Mark as read), copying what it said, and forgetting it, listed
-under its words by their names and first in the : menu.
+the margin's glyphs in words, and Super+N opens the notices in the
+launcher, on the card in front while one is up, and closes it pressed
+again. A notice is a launcher row like any other: Return goes to who
+sent it, as the quickfix list's Return goes to where a line came from,
+its acts and drawer are beside it, and d and y take it as they take any
+row. The stack on screen is still held by the keys as lines until the
+launcher's notices take its place whole, its verbs commands: its own
+actions (:reply, Mark as read), copying what it said, and forgetting
+it, listed under its words by their names and first in the : menu.
 
 On the desktop, windows sit in a grid: columns side by side, each holding
 windows stacked above and below. Super with the arrows moves focus through
@@ -2858,7 +2860,7 @@ fits whole on the laptop's plate.
   with :sort! the other way, are kept across asks; :e, :cd, :set hidden
   and :mkdir go with them, ]b [b to the folders beside, gx to a file's own
   program. :q cancels the dialog, and Escape never does.
-- **The notices,** held on Super+N, are the quickfix list: a line a card,
+- **The notices,** held, are the quickfix list: a line a card,
   the sender's glyph, who, the first words and the time, the cursor card
   whole under its line, the newest first. / finds among them; its acts are
   commands, listed under its words and first in the : menu; Return goes to

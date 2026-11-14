@@ -147,7 +147,7 @@ in
   }
   {
     chord = "Super+N";
-    does = "Take the notices by the keys, or find one that came earlier";
+    does = "Find the notices, on the one in front";
     also = "notifications alerts messages";
     action = ''spawn "qs" "ipc" "call" "notices" "take";'';
   }

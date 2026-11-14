@@ -114,9 +114,9 @@ def test_people_coming_and_going_in_a_tuple_call_are_said_and_joel_can_leave(
     with desktop.told("shows card Someone left the call"):
         desktop.tuple_streams(call)
     # Its card goes by itself after ten seconds, which a busy host spends
-    # on what follows, so Super+N takes the stack at once: held, it waits.
+    # on what follows, so the stack is held at once: held, it waits.
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     machine.succeed(offered.format("leave"))
     desktop.shoot("notice-alone")
     # Leaving asks tuple-call, which runs tuple call leave, and Tuple's

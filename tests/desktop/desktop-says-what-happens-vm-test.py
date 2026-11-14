@@ -888,7 +888,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
     # card's words piled at its top.
     log = desktop.shell_said("polish() loop")
     assert "polish() loop" not in log, "a notice's layout never settles"
-    # Super+N takes the stack as its lines, which wait while it holds the
+    # Held, the stack is its lines, which wait while it holds the
     # keys, the cursor on the card in front, the older; the newer is line
     # 1. Tab is no key of normal's, nor Backspace, h or l, and each says so: a card's acts are
     # commands, never a row stepped into (Joel, 2026-11-05: "where in vi does that step into
@@ -904,7 +904,7 @@ def test_a_notices_action_is_done_by_the_keys_and_one_not_acted_on_stays_unread(
         desktop.told("notice cursor Lunch"),
         desktop.told("notice foot ends at the frame"),
     ):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     desktop.shoot("notices-held")
     for key in ["tab", "backspace", "h", "l"]:
         with desktop.told("notice says not here"):
@@ -942,7 +942,7 @@ def test_a_notice_copied_from_its_card_says_copied(desktop: Desktop) -> None:
     with desktop.told("shows card Build log"):
         desktop.as_account("notify-send --expire-time=60000 'Build log' 'all green'")
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     # It offers nothing, so its card lists no command, and :y copies what it said, keeping
     # the keys.
     with desktop.told("copied card Build log"):
@@ -1155,7 +1155,7 @@ def signed_and_stacked_at(desktop: Desktop, scale: str) -> None:
         desktop.told("notice offers :pause"),
         desktop.told("notice rows start on the inset"),
     ):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     desktop.shoot(f"notice-held-at-{named}")
     with desktop.told("notice selects 1"):
         machine.send_chars("V")
@@ -1217,7 +1217,7 @@ def pictured_linked_and_quiet_at(desktop: Desktop, named: str) -> None:
     assert front.get("links") == [link], front
     desktop.shoot(f"notices-stacked-at-{named}")
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     desktop.shoot(f"notices-held-quiet-at-{named}")
     with desktop.told("lets notices go"):
         machine.send_chars(":q\n")
@@ -1366,10 +1366,10 @@ def test_return_on_a_notice_in_the_launcher_opens_what_its_about_with_a_token(
             "notify-send --expire-time=60000 --action=default=Open 'Thread with Sam' 'see it'"
             " > /tmp/answer 2>&1 < /dev/null &"
         )
-    # Super+N takes the stack, and :e Notices hands on to the history.
-    with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
-    desktop.notices_history()
+    # Super+N opens the notices in the launcher on the card in front,
+    # where Return opens it.
+    machine.send_key("meta_l-n")
+    desktop.launcher_ready()
     desktop.launcher_until(
         lambda shown: (shown["selected"] or {}).get("name", "").startswith("Thread with Sam")
     )
@@ -1392,7 +1392,7 @@ def test_a_notices_commands_are_what_its_launcher_row_holds(
         )
     # Its card lists what it offers, and : its menu with Return's Open first, then Play it.
     with desktop.told("keys notices"), desktop.told("notice offers :play"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     with desktop.told("notice menu chose open"):
         machine.send_chars(":", delay=KEY_PACE)
         machine.send_key("tab")
@@ -1437,7 +1437,7 @@ def test_a_notice_opened_brings_its_sender_forward_when_it_stays_behind(
             " 'Thread with Kim' 'see it' > /tmp/answer 2>&1 < /dev/null &"
         )
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     machine.send_key("ret")
     machine.wait_until_succeeds("grep -qx default /tmp/answer", timeout=timedelta(seconds=15))
     retry(
@@ -1651,14 +1651,16 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
                 f"notify-send --app-name={sender} --expire-time=60000 '{summary}' 'words'"
             )
     with desktop.told("keys notices"), desktop.told("notice cursor Alpha one"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     # Lines: Bravo two, Bravo one, Alpha two, Alpha one. Chat's run is the first two.
     pressed_and_told(desktop, EVERY_HELD_KEY)
     # Every way to let go: ZZ, Space w, Super+N and :q, never Escape (Joel, 2026-11-05: "fuck
     # escape quitting").
     letting_go: list[str | tuple[str, ...]] = ["ZZ", " w", ("meta_l-n",), ":q\n"]
     for keys in letting_go:
-        pressed_and_told(desktop, [(keys, "lets notices go"), (("meta_l-n",), "keys notices")])
+        pressed_and_told(desktop, [(keys, "lets notices go")])
+        with desktop.told("keys notices"):
+            desktop.hold_notices()
     with desktop.told("lets notices go"):
         machine.send_chars(":q\n")
     desktop.as_account("qs ipc call notices putAway")
@@ -1671,7 +1673,7 @@ def test_every_held_key_does_what_vims_does(desktop: Desktop) -> None:
                 f"notify-send --app-name=Feed --expire-time=60000 'Feed {number}' 'words'"
             )
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     pressed_and_told(desktop, HELD_SCROLLS)
     with desktop.told("notice view from 5"):
         desktop.wheel(0.85, 0.15, 3)
@@ -1803,7 +1805,7 @@ def test_a_held_notice_takes_a_reply_typed_on_it(desktop: Desktop) -> None:
             " Chat 0 '' 'Thread with Bo' 'lunch?' 2 inline-reply Reply 0 60000"
         )
     with desktop.told("keys notices"):
-        machine.send_key("meta_l-n")
+        desktop.hold_notices()
     with desktop.told("notice mode insert"), desktop.told("notice shows INS"):
         machine.send_chars(":reply\n", delay=KEY_PACE)
     machine.send_chars("on my way", delay=KEY_PACE)

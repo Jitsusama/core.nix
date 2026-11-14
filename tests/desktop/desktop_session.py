@@ -738,6 +738,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         self.machine.send_chars("A")
         self.launcher_until(lambda shown: shown["mode"] in TYPING)
 
+    def hold_notices(self) -> None:
+        """Hold the stack by the keys as Vim's quickfix list, as Super+N did before.
+
+        Super+N opens the notices in the launcher now, on the card in front, and the stack is
+        held by its own ask until the launcher's notices take its place whole.
+        """
+        self.as_account("qs ipc call notices hold")
+
     def notices_history(self) -> None:
         """From the held notices, open every notice in the launcher, as :e Notices does."""
         self.machine.send_chars(":e Notices\n", delay=KEY_PACE)

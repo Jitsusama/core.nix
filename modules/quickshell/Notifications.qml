@@ -347,11 +347,14 @@ Scope {
     }
 
     // The notices in the launcher: For You's Desktop, those unread and then
-    // History, what's read (launcher/Now.qml's leadsTo).
+    // History, what's read (launcher/Now.qml's leadsTo), the cursor on the
+    // card in front while one is up, since notices are rows of the launcher
+    // (PLAN-20261113-821NSZ).
     function history() {
         holding = false;
+        const front = shown.length > 0 ? shown[0] : -1;
         if (launcher)
-            launcher.into("notices");
+            launcher.intoOn("notices", row => front >= 0 && row.notice === front);
     }
 
     function since(then, now) {
@@ -377,15 +380,27 @@ Scope {
             root.putAway();
         }
 
-        // Super+N: the stack takes the keys while there are notices, and
-        // otherwise the history opens; asked again, it lets them go, as
-        // Vim's popups close (VKCF3Z's vi-paradigm spec, Notices).
+        // Super+N: the notices in the launcher, on the card in front, where
+        // the launcher's keys, acts and drawer do what the held stack's did
+        // (PLAN-20261113-821NSZ). Pressed again while the launcher shows
+        // them, it closes, as it let the held stack go.
         function take(): void {
             if (root.holding)
                 root.holding = false;
-            else if (root.shown.length === 0)
-                root.history();
+            else if (root.launcher?.open && Notices.gathered)
+                root.launcher.toggled();
             else
+                root.history();
+        }
+
+        // The stack taking the keys as Vim's quickfix list, as Super+N did
+        // before the notices were the launcher's; asked again, it lets them
+        // go. It stays until the stack goes, which the launcher's notices
+        // take over whole (the plan's fourth slice).
+        function hold(): void {
+            if (root.holding)
+                root.holding = false;
+            else if (root.shown.length > 0)
                 root.holding = true;
         }
 
