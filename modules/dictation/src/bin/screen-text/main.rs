@@ -44,16 +44,44 @@ use dictation::watch::{self, Change};
 use crate::find::Finder;
 use crate::read::Reader;
 use crate::shelf::{Shelf, Shot, is_picture, stamp};
+use terminal_kit::{Exit, Failure, Help};
 
-const USAGE: &str = "usage: screen-text serve SOCKET MODELS FOLDER RECORDS
-       screen-text read MODELS PICTURE...";
+fn help() -> Help {
+    Help::new("screen-text", "reads the words in screenshots")
+        .example(
+            "screen-text read ~/m shot.png",
+            "its lines, in reading order",
+        )
+        .subcommand(
+            Help::new("serve", "reads each screenshot as it lands, for the shell")
+                .argument("<socket>", "where the shell asks")
+                .argument("<models>", "the models' folder")
+                .argument("<folder>", "the screenshots' folder")
+                .argument("<records>", "where what it read is kept")
+                .example("screen-text serve S ~/m ~/shots ~/r", "what its unit runs")
+                .exit(Exit::Failed, "the models, the folder or the socket failed"),
+        )
+        .subcommand(
+            Help::new("read", "each picture's lines, in reading order")
+                .argument("<models>", "the models' folder")
+                .argument("<picture>...", "the pictures to read")
+                .example("screen-text read ~/m shot.png", "its lines")
+                .exit(Exit::Failed, "the models failed or a picture can't be read"),
+        )
+        .exit(Exit::Failed, "the models, a picture or the socket failed")
+}
 
 /// How long the models are kept once nothing waits to be read, so a run
 /// of screenshots taken together loads them once.
 const UNUSED: Duration = Duration::from_mins(2);
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        act(&context.args)
+    })
+}
+
+fn act(args: &[String]) -> Result<(), Failure> {
     let done = match args.split_first() {
         Some((ask, rest)) if ask == "read" && rest.len() >= 2 => {
             read_all(Path::new(&rest[0]), &rest[1..])
@@ -64,15 +92,19 @@ fn main() -> ExitCode {
             Path::new(folder),
             Path::new(records),
         ),
-        _ => Err(USAGE.to_owned()),
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(why) => {
-            eprintln!("screen-text: {why}");
-            ExitCode::FAILURE
+        // The kit has refused a word no subcommand answers to, so only a
+        // subcommand given too few or too many words is left.
+        Some((first, _)) => {
+            return Err(Failure::new(Exit::Usage, "those aren't the words it takes")
+                .try_this(format!("screen-text {first} --help")));
         }
-    }
+        None => {
+            return Err(
+                Failure::new(Exit::Usage, "it needs a subcommand").try_this("screen-text --help")
+            );
+        }
+    };
+    done.map_err(|why| Failure::new(Exit::Failed, why))
 }
 
 /// Both models, compiled for the device named.

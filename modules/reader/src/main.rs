@@ -67,7 +67,9 @@ use smithay_client_toolkit::shell::xdg::window::{Window, WindowDecorations};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::c_void;
 use std::io::Write;
+use std::process::ExitCode;
 use std::time::{Duration, Instant};
+use terminal_kit::{Exit, Failure, Help};
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::wl_keyboard;
 use wayland_client::{Connection, QueueHandle};
@@ -374,8 +376,14 @@ fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<(usiz
 
 /// What the reader was started with: whether it measures, the mark it
 /// opens at and the file; or nothing, once it has printed what was asked.
-fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>, String> {
-    let usage = || "usage: reader [--measure | --at LETTER] FILE, reader --keys or reader --places";
+fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>, Failure> {
+    let usage = || {
+        Failure::new(
+            Exit::Usage,
+            "the reader takes a file, with --measure or --at LETTER",
+        )
+        .try_this("reader --help")
+    };
     Ok(Some(match args {
         [flag] if flag == "--keys" => {
             print_keys();
@@ -395,7 +403,7 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
         [flag, file] if flag == "--measure" => (true, None, file.clone()),
         [flag, letter, file] if flag == "--at" => match place::letter(letter) {
             Some(letter) => (false, Some(letter), file.clone()),
-            None => return Err(usage().to_string()),
+            None => return Err(usage().because(format!("{letter} isn't a mark's letter"))),
         },
         [file] => (false, None, file.clone()),
         // Started with nothing to show, as from the launcher's Programs, it
@@ -404,11 +412,14 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
             false,
             None,
             start::page()
-                .map_err(|error| error.to_string())?
+                .map_err(|error| {
+                    Failure::new(Exit::Failed, "there's no page of files to read")
+                        .because(error.to_string())
+                })?
                 .to_string_lossy()
                 .into_owned(),
         ),
-        _ => return Err(usage().to_string()),
+        _ => return Err(usage()),
     }))
 }
 
@@ -423,11 +434,52 @@ fn first_width(measuring: bool) -> page::Width {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let Some((measuring, letter, file)) = started_with(&args)? else {
-        return Ok(());
-    };
+fn help() -> Help {
+    Help::new("reader", "shows a markdown file as a page to read")
+        .example("reader notes.md", "shows notes.md where it was left")
+        .argument("[file]", "the file; a page of files to read without one")
+        .option("--at LETTER", "opens at the mark kept under LETTER")
+        .option(
+            "--measure",
+            "says how long each frame's phases took, then closes",
+        )
+        .option("--keys", "lists every chord it takes, as JSON")
+        .option("--places", "lists where each file was left, newest first")
+        .exit(Exit::Failed, "the page couldn't be set or drawn")
+        .exit(Exit::NotFound, "there's no such file")
+        .exit(Exit::Unavailable, "there's no Wayland display to draw on")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let Some((measuring, letter, file)) = started_with(&context.args)? else {
+            return Ok(());
+        };
+        if let Err(error) = std::fs::metadata(&file) {
+            let exit = if error.kind() == std::io::ErrorKind::NotFound {
+                Exit::NotFound
+            } else {
+                Exit::Failed
+            };
+            return Err(Failure::new(exit, format!("can't read {file}")).because(error.to_string()));
+        }
+        show(measuring, letter, &file).map_err(|error| {
+            if error.is::<wayland_client::ConnectError>() {
+                Failure::new(Exit::Unavailable, "there's no Wayland display to draw on")
+                    .because(error.to_string())
+            } else {
+                Failure::new(Exit::Failed, "the reader stopped").because(error.to_string())
+            }
+        })
+    })
+}
+
+/// Shows `file` in a window until it's closed, or measures its frames.
+fn show(
+    measuring: bool,
+    letter: Option<char>,
+    file: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     let born = Instant::now();
     let scale: f64 = std::env::var("READER_SCALE")
         .ok()
@@ -438,11 +490,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let kept = if measuring {
         None
     } else {
-        place::read(std::path::Path::new(&file))
+        place::read(std::path::Path::new(file))
     };
     let width = first_width(measuring);
     let opens_at = opening_at(kept.as_ref(), letter);
-    let first = page::set_first(&file, opens_at.map(|(block, _, _)| block), width)?;
+    let first = page::set_first(file, opens_at.map(|(block, _, _)| block), width)?;
     let starts = place::starts(&first.page.frame);
     let start_pt =
         opens_at.and_then(|(block, into_pt, at_end)| start_at(block, into_pt, at_end, &starts));
@@ -480,7 +532,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let surface = surface(&globals, &qh)?;
     let opening = Opening {
-        file: std::path::PathBuf::from(&file),
+        file: std::path::PathBuf::from(file),
         page,
         born,
         scale,
@@ -504,11 +556,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(rest) = rest {
         set_rest(&handle, rest)?;
     }
-    let (reload_to, watch) = reload_on_save(&handle, &file, width)?;
+    let (reload_to, watch) = reload_on_save(&handle, file, width)?;
     app.reload_to = Some(reload_to);
     app.watch = watch;
     app.take_kept_marks();
-    if !measuring && let Err(error) = showing::keep(std::path::Path::new(&file)) {
+    if !measuring && let Err(error) = showing::keep(std::path::Path::new(file)) {
         eprintln!("reader: can't say {file} is shown: {error}");
     }
     let mut ended = Ok(());

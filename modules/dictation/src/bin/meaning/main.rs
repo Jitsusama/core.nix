@@ -55,10 +55,41 @@ use crate::quiet::Quiet;
 use crate::sight::{Looks, Words};
 use crate::store::Store;
 use crate::text::{Texts, near};
+use terminal_kit::{Exit, Failure, Help};
 
-const USAGE: &str = "usage: meaning serve SOCKET MODELS MEANINGS [SIGHT LOOKS FOLDER...]
-       meaning near MODELS WORDS [THING...]
-       meaning look SIGHT WORDS PICTURE...";
+fn help() -> Help {
+    Help::new("meaning", "finds the launcher's things by what they mean")
+        .example("meaning near ~/m 'a note' notes mail", "how near each is")
+        .example("meaning look ~/s 'a cat' a.png", "how near a.png is")
+        .subcommand(
+            Help::new("serve", "answers the shell, keeping each meaning")
+                .argument("<socket>", "where the shell asks")
+                .argument("<models>", "the words' model folder")
+                .argument("<meanings>", "where each thing's meaning is kept")
+                .argument("[sight]", "the pictures' model folder")
+                .argument("[looks]", "where each picture's look is kept")
+                .argument("[folder]...", "the folders of pictures to look at")
+                .example("meaning serve S ~/m ~/k", "what its unit runs")
+                .exit(Exit::Failed, "a model or the socket failed"),
+        )
+        .subcommand(
+            Help::new("near", "how near each thing means the words")
+                .argument("<models>", "the words' model folder")
+                .argument("<words>", "what's typed")
+                .argument("[thing]...", "what to measure; each line read if none")
+                .example("meaning near ~/m 'a note' notes mail", "nearest first")
+                .exit(Exit::Failed, "the model failed"),
+        )
+        .subcommand(
+            Help::new("look", "how near each picture is to the words")
+                .argument("<sight>", "the pictures' model folder")
+                .argument("<words>", "what's typed")
+                .argument("<picture>...", "the pictures to measure")
+                .example("meaning look ~/s 'a cat' a.png", "nearest first")
+                .exit(Exit::Failed, "the model failed or a picture can't be read"),
+        )
+        .exit(Exit::Failed, "a model, a picture or the socket failed")
+}
 
 /// How long the models are kept once nothing's been asked, so a launcher
 /// opened again soon finds them loaded.
@@ -69,7 +100,12 @@ const UNUSED: Duration = Duration::from_mins(5);
 const SAVED_EVERY: usize = 64;
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        act(&context.args)
+    })
+}
+
+fn act(args: &[String]) -> Result<(), Failure> {
     let done = match args.split_first() {
         Some((ask, [socket, models, meanings])) if ask == "serve" => serve(
             Path::new(socket),
@@ -92,15 +128,19 @@ fn main() -> ExitCode {
         Some((ask, [sight, words, pictures @ ..])) if ask == "look" && !pictures.is_empty() => {
             print_look(Path::new(sight), words, pictures)
         }
-        _ => Err(USAGE.to_owned()),
-    };
-    match done {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(why) => {
-            eprintln!("meaning: {why}");
-            ExitCode::FAILURE
+        // The kit has refused a word no subcommand answers to, so only a
+        // subcommand given too few or too many words is left.
+        Some((first, _)) => {
+            return Err(Failure::new(Exit::Usage, "those aren't the words it takes")
+                .try_this(format!("meaning {first} --help")));
         }
-    }
+        None => {
+            return Err(
+                Failure::new(Exit::Usage, "it needs a subcommand").try_this("meaning --help")
+            );
+        }
+    };
+    done.map_err(|why| Failure::new(Exit::Failed, why))
 }
 
 /// The device named for the models, the NPU unless it says otherwise.

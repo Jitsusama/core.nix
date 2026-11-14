@@ -305,6 +305,7 @@ dependencies = [
  "rtrb",
  "serde_json",
  "tempfile",
+ "terminal-kit",
  "tokenizers",
  "zune-jpeg",
 ]
@@ -1147,6 +1148,14 @@ dependencies = [
  "once_cell",
  "rustix",
  "windows-sys",
+]
+
+[[package]]
+name = "terminal-kit"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "unicode-width",
 ]
 
 [[package]]
