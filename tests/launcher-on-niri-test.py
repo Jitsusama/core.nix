@@ -2742,8 +2742,10 @@ def test_a_window_that_needs_joel_says_so_and_return_takes_him_there(shell: Shel
         until(lambda: row().get("count") == "needs you", "Its needing Joel")
         marked = row()
         assert marked.get("hue") == "alert", f"its glyph wasn't in the alert: {marked}"
-        facts = [one["label"] for one in (marked.get("drawer") or {}).get("facts", [])]
-        assert "Needs You Since" in facts, f"its drawer didn't say since when: {marked}"
+        # Only the row a path names says its drawer.
+        named = shown("\u203adesktop\u203awindows\u203asanderling notes").get("row") or {}
+        facts = [one["label"] for one in (named.get("drawer") or {}).get("facts", [])]
+        assert "Needs You Since" in facts, f"its drawer didn't say since when: {named}"
         assert counted() == "1 needs you", f"Desktop's Windows said {counted()!r}"
         said = {"steps": ["desktop", "windows", "sanderling notes"], "path": [], "words": ""}
         went = json.loads(
