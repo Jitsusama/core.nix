@@ -5,7 +5,8 @@
 //! once back, as one that put someone off is, is asked again about
 //! everyone watched; one that stops is started again and asked again
 //! about everyone watched; a roster is searched and watched by who it
-//! lists; what's held is known by key with no source asked; and an ask
+//! lists; one a source found when asked is searched with their row and
+//! drawer ready; what's held is known by key with no source asked; and an ask
 //! or kind it doesn't know is refused.
 
 use std::process::{Command, Stdio};
@@ -547,6 +548,37 @@ fn who_is_held_is_known_by_key_with_no_source_asked() {
         ["grace@example.com"],
         "knowing who's held asked a source"
     );
+}
+
+#[test]
+fn one_a_source_found_when_asked_is_searched_with_their_row_and_drawer_ready() {
+    // KNOWING says how it was asked as `way`, read here as how one stands,
+    // as Slack's presence is, which a search's row still leaves unsaid.
+    let stands = json!({"field": "way", "words": {"step": {"word": "available", "order": 0}}});
+    let running = Running::started("found", &[("slack", KNOWING)], &[("slack", stands)], &[]);
+    let mut client = running.client();
+    client
+        .ask(&json!({"id": 1, "ask": "get", "keys": ["person:ada@example.com"], "patience": 5000}));
+    // So the shell reads Slack's people from the daemon, as Tuple's and
+    // Google's, and makes none of their rows itself (Joel's journal,
+    // 2026-11-13): a search finds Ada with her row and drawer ready.
+    let said = client.ask(&json!({"id": 2, "ask": "search", "words": "ada"}));
+    assert_eq!(
+        keys_of(&said["records"]),
+        ["person:ada@example.com"],
+        "{said}"
+    );
+    let found = &said["records"][0];
+    assert_eq!(
+        (
+            &found["row"]["thing"],
+            &found["row"]["name"],
+            &found["row"]["side"]
+        ),
+        (&json!("person:ada@example.com"), &json!("ada"), &json!([])),
+        "her row, found among everyone so saying nothing of how she stands: {said}"
+    );
+    assert_eq!(found["drawer"]["title"], "ada", "and her drawer: {said}");
 }
 
 /// The keys of records, in the order told.
