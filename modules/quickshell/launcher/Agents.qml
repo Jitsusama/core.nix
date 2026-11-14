@@ -1665,6 +1665,11 @@ Provider {
             // Read where it goes nowhere, which keeps the launcher, as a
             // setting's change does, so the next landing is under the cursor.
             stays: goes(one) === "",
+            // Landings going the same way say the same keys where they
+            // aren't selected, so the foot weighs one of a run for all
+            // (Pacing.toWeigh): weighing each of 2,600 took 270 to 355 ms
+            // of every step into Landed, most of To Try's Return.
+            keysAlike: `landing:${goes(one)}`,
             run: () => {
                 if (goes(one) === "change")
                     toChange(one)();
@@ -1744,6 +1749,8 @@ Provider {
             spot: "",
             stays: true,
             changes: false,
+            // Every one says go to, so the foot weighs one of a run.
+            keysAlike: "landing:for-you",
             run: () => {
                 provider.launcher?.goTo({ trail: provider.landingTrail(one), spot: "" });
                 provider.readLanding(one.key);
