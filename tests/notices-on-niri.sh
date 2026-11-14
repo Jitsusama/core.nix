@@ -36,9 +36,14 @@ drawing=$!
 trap "kill $drawing 2> /dev/null || true" EXIT
 
 says "Configuration Loaded"
-# What the line shows, "notice", or nothing while it's quiet.
+# That the line shows what's given, "notice", or nothing while it's quiet.
 shows() {
-  qs -p "$shell" ipc call notices shows
+  local showing
+  showing=$(qs -p "$shell" ipc call notices shows)
+  if [ "$showing" != "$1" ]; then
+    echo "The arrival line shows '$showing' rather than '$1' $2." >&2
+    exit 1
+  fi
 }
 # Whether niri lists the arrival line, an overlay layer that never takes the
 # keys, waiting while a loaded machine sends its first frame.
@@ -56,17 +61,11 @@ listed() {
 # Kept mapped while quiet, a notice draws on a layer niri already has rather
 # than waiting on a new one's first frame (NoticeLine.qml).
 listed "while it's quiet"
-if [ -n "$(shows)" ]; then
-  echo "The arrival line shows '$(shows)' with no notice." >&2
-  exit 1
-fi
+shows "" "with no notice"
 notify-send --app-name=Check "A notice" "Sent as a program sends one."
 says "report[shows card A notice]"
 says "report[lines notice A notice]"
-if [ "$(shows)" != notice ]; then
-  echo "The arrival line shows '$(shows)' rather than the notice." >&2
-  exit 1
-fi
+shows notice "with a notice to show"
 listed "with a notice on it"
 # The card is made before its window is drawn, and niri lists the layer
 # once it has the window's first frame, which a loaded machine can take a
@@ -121,10 +120,7 @@ says "report[shows card Standup]"
 says "report[gone notifications]"
 # Every notice put away, the arrival line shows nothing, still mapped.
 says "report[unlines notice"
-if [ -n "$(shows)" ]; then
-  echo "The arrival line shows '$(shows)' with every notice put away." >&2
-  exit 1
-fi
+shows "" "with every notice put away"
 listed "once it's quiet again"
 # The history is written a moment after the cards go.
 unread='any(.notices[]; .summary == "Standup" and (.read | not))'
