@@ -211,6 +211,7 @@
         pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
+        reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };

@@ -216,10 +216,6 @@
     "helps"
   ];
   quickshell-starts-warm = [ "helps" ];
-  reader = [
-    "kit"
-    "helps"
-  ];
   record-window = [
     "kit"
     "exits"

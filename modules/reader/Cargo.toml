@@ -24,6 +24,8 @@ mitex = "0.2.4"
 rayon = "1"
 rustix = { version = "1.1", features = ["fs"] }
 serde_json = "1"
+# The shape every command of ours takes (docs/commands.md).
+terminal-kit = { path = "../terminal-kit" }
 smithay-client-toolkit = { version = "0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 tiny-skia = "0.12"

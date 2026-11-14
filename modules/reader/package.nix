@@ -5,7 +5,9 @@
 # build once, apart from it (../cargo/dependencies.nix), so a change to it
 # or to the key language compiles only its own crate. It takes only the
 # key language's acts it reads, so a change to a list's act, the language's
-# most common, builds nothing of it.
+# most common, builds nothing of it. It takes its shape from the terminal
+# kit (../terminal-kit), whose source both builds take, since cargo builds
+# it as one of the dependencies.
 {
   callPackage,
   copyDesktopItems,
@@ -64,6 +66,8 @@ in
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
+      ../terminal-kit/Cargo.toml
+      ../terminal-kit/src
     ];
   })
   {
@@ -79,6 +83,8 @@ in
             ./Cargo.toml
             ./Cargo.lock
             ./src
+            ../terminal-kit/Cargo.toml
+            ../terminal-kit/src
           ];
         }
       } $out
