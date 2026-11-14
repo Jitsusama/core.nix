@@ -14,41 +14,166 @@
 // never reworded with the line's own words.
 const ATTACHED = "Attached:";
 
+// How each kind of row is named in the Attached block, which the void
+// reads, so like ATTACHED these are the protocol's words, never the line's
+// (QCXZEB keeps how the void reads them); the theme's mark each wears on
+// the line, and its hue: a program's for what's a program's, and none, the
+// row's muted, for his own words.
+const KINDS = {
+    window: { named: "window", mark: "windows", hue: "program" },
+    tab: { named: "tab", mark: "web", hue: "program" },
+    session: { named: "pi session", mark: "agent", hue: "program" },
+    selection: { named: "selection", mark: "lines", hue: "" },
+    clipboard: { named: "clipboard", mark: "clipboard", hue: "" }
+};
+
+// The most of a selection or a copy a line sends, in characters, so a
+// copied log doesn't bury his words: the clipboard keeps copies far larger.
+const LONGEST = 4000;
+
+// What a window says of itself in its title, without the program's name
+// after it, as Chrome titles a window "page - Google Chrome" (Provider.qml's
+// tidy).
+function titled(title, program) {
+    const whole = String(title ?? "").trim();
+    for (const joint of [" - ", " \u2013 ", " \u2014 ", " | "]) {
+        if (program !== "" && whole.endsWith(joint + program)) {
+            return whole.slice(0, whole.length - joint.length - program.length);
+        }
+    }
+    return whole;
+}
+
+// What the programs daemon is asked for the tab in front of a browser's
+// window, by niri's id for it: it matches the window's title to that tab and
+// answers nothing where two could be it (FEH1HE, core #4190).
+function tabKey(app, window) {
+    return `front:${app}:${window}`;
+}
+
+// The tab its answer names, or null where it names none or one without an
+// address: the window it's in front of, its title and its address.
+function tabFrom(answer, app, window) {
+    const key = tabKey(app, window);
+    const front = (answer?.records ?? []).find(record => record?.key === key);
+    const address = String(front?.address ?? "");
+    if (address === "") {
+        return null;
+    }
+    return { window, title: String(front.title ?? "").trim() || address, address };
+}
+
+// One row: its kind, the mark it wears and its hue, what it says on the
+// line and its note, which gives way first where the row is short of room,
+// and the words it's sent as under the Attached heading.
+function row(kind, text, note, sent) {
+    return { kind, mark: KINDS[kind].mark, hue: KINDS[kind].hue, text, note, sent };
+}
+
+// What an address begins and ends with that its note leaves out.
+const SCHEME = /^https?:\/\/(?:www\.)?/u;
+const TRAILING_SLASH = /\/$/u;
+
+// An address as a row's note says it, without the scheme every page has,
+// so the note gives way later; it's sent whole.
+function shortAddress(address) {
+    return String(address ?? "").replace(SCHEME, "").replace(TRAILING_SLASH, "");
+}
+
 // What goes with a line, a row each: the window it's said over, as its
-// program names itself, and its title; and the pi session that window is,
-// where it's one, by its name and address. A window with no title, or none
-// focused, attaches nothing of itself.
-function attached(window, program, session) {
+// program names itself, and its title; the tab in front, where it's a
+// browser's (tabFrom); the pi session that window is, where it's one, by its
+// name and address; and what he attached of the registers (registered). A
+// window with no title, or none focused, attaches nothing of itself.
+function attached({ window, program, session, tab, registers }) {
     const rows = [];
     const title = String(window?.title ?? "").trim();
     if (title !== "") {
-        rows.push({ kind: "window", text: `${program} \u00b7 ${title}` });
+        rows.push(row("window", titled(title, program), program, `${program} \u00b7 ${title}`));
+    }
+    if (tab) {
+        rows.push(row("tab", tab.title, shortAddress(tab.address),
+            `${tab.title} \u00b7 ${tab.address}`));
     }
     if (session) {
-        rows.push({ kind: "session", text: `${session.name} \u00b7 ${session.to}` });
+        rows.push(row("session", session.name, session.to, `${session.name} \u00b7 ${session.to}`));
     }
-    return rows;
+    return rows.concat(registers ?? []);
+}
+
+// The registers Ctrl+R attaches, as Vim names them: * the selection, + the
+// clipboard.
+const REGISTERS = { "*": "selection", "+": "clipboard" };
+
+// The blank lines before what a register holds, and the space after it.
+const LEADING_BLANKS = /^(?:[ \t]*\n)+/u;
+const TRAILING_SPACE = /\s+$/u;
+
+// The registers attached once Ctrl+R and `name` put `text`, in the order
+// they were first attached: one row a register, the same again replacing
+// it where it stood; a register with nothing in it attaches nothing, and
+// lets go of what it held. Any other register is no attachment of a line's.
+// On the line, its first line, and as its note, which register, and how
+// many lines in all where it's many, in `words`' "{count} lines"; sent
+// whole, to LONGEST.
+function registered(registers, name, text, words) {
+    const kind = REGISTERS[name];
+    if (kind === undefined) {
+        return registers ?? [];
+    }
+    // Blank lines round it are dropped, and a line alone is trimmed, but
+    // the indents of many are kept, as code's mean something.
+    const trimmed = String(text ?? "").replace(LEADING_BLANKS, "").replace(TRAILING_SPACE, "");
+    const whole = trimmed.includes("\n") ? trimmed : trimmed.trim();
+    const lines = whole.split("\n");
+    const first = lines[0].trim().replace(/\s+/gu, " ");
+    const count = lines.length;
+    const named = String(words?.[kind] ?? "");
+    const note = count > 1
+        ? `${named} \u00b7 ${String(words?.lines ?? "").replace("{count}", grouped(count))}`
+        : named;
+    const cut = whole.length > LONGEST ? `${whole.slice(0, LONGEST)}\n[cut at ${LONGEST} characters]`
+        : whole;
+    const made = first === "" ? null : row(kind, first, note, cut);
+    const at = (registers ?? []).findIndex(one => one.kind === kind);
+    if (at < 0) {
+        return made === null ? registers ?? [] : (registers ?? []).concat([made]);
+    }
+    const now = registers.slice();
+    now.splice(at, 1, ...(made === null ? [] : [made]));
+    return now;
+}
+
+// A count with its thousands set off by commas, as every count of ours is.
+function grouped(count) {
+    return String(count).replace(/\B(?=(?:\d{3})+(?!\d))/gu, ",");
+}
+
+// The rows the line shows of what's attached: every one, but the window
+// where a row after it already names what it holds, as a browser's tab or a
+// pi session does, since its title says the same.
+function shownRows(rows) {
+    const named = (rows ?? []).some(one => one.kind === "tab" || one.kind === "session");
+    return (rows ?? []).filter(one => !(named && one.kind === "window"));
 }
 
 // The words a line sends: his own, then what's attached under its
-// heading, a row a line, so the void reads which window it's about.
+// heading, a row a line, so the void reads which window it's about; a
+// selection or a copy of many lines goes under its row, indented.
 function said(text, rows) {
     const words = String(text ?? "").trim();
     if ((rows ?? []).length === 0) {
         return words;
     }
-    const lines = rows.map(row => `- ${row.kind === "session" ? "pi session" : "window"}: ${row.text}`);
+    const lines = rows.map(one => {
+        const sent = String(one.sent ?? one.text);
+        const named = `- ${KINDS[one.kind]?.named ?? one.kind}:`;
+        return sent.includes("\n") ? `${named}\n  ${sent.split("\n").join("\n  ")}`
+            : `${named} ${sent}`;
+    });
     return [words, "", ATTACHED].concat(lines).join("\n");
 }
 
-// The quiet line under the field: who hears it, short, then what goes
-// with it, the window first, joined with dots. Where the window is a pi
-// session's, its title already names the session, so only the window is
-// said; the address goes with the words all the same.
-function about(hearer, rows) {
-    const window = (rows ?? []).find(row => row.kind === "window");
-    return [hearer].concat(window ? [window.text] : []).join(" \u00b7 ");
-}
 
 // A talk begun by Return: to whom, his words as shown, the words sent,
 // and since when, waiting on its answer.

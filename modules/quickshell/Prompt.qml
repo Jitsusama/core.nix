@@ -368,6 +368,14 @@ Item {
     // gives ".,.+2", or "" for none. The line holds what's typed as it
     // is, and resume() gives it the keys back.
     signal commanded(string range)
+    // Whether Ctrl+R in insert waits for a register, as Vim's does, and the
+    // next key with a letter names it, `registered` saying which, rather
+    // than the line putting anything in: Super+S's line attaches * and +
+    // as rows (TalkLine.qml). Off, Ctrl+R in insert is the table's.
+    property bool registers: false
+    // Whether Ctrl+R was pressed and the register's name is awaited.
+    property bool awaitsRegister: false
+    signal registered(string name)
     // The drawer's search run, by Return on / or ?: what it seeks, empty
     // for the last again, the way it goes, and the count typed before it.
     signal sought(string pattern, bool forward, int count)
@@ -565,6 +573,30 @@ Item {
     // its first frame from what it kept is (Launcher.qml's filled).
     signal pressing
 
+    // Ctrl+R in insert, where the line takes registers, and the key after
+    // it, a modifier alone passed over and any other key with a letter
+    // naming the register, as CommandLine.qml's does; true where it was
+    // taken. Leaving insert lets the wait go.
+    function registerKey(event: KeyEvent, key: string): bool {
+        if (!registers || mode !== "insert") {
+            awaitsRegister = false;
+            return false;
+        }
+        if (awaitsRegister && event.text !== "") {
+            awaitsRegister = false;
+            event.accepted = true;
+            if (!event.isAutoRepeat)
+                prompt.registered(event.text);
+            return true;
+        }
+        if (key === "Ctrl+r" && !event.isAutoRepeat) {
+            awaitsRegister = true;
+            event.accepted = true;
+            return true;
+        }
+        return false;
+    }
+
     function modalKey(event: KeyEvent) {
         prompt.pressing();
         const key = named(event);
@@ -575,6 +607,8 @@ Item {
         if (!event.isAutoRepeat)
             keysTaken += 1;
         woken();
+        if (registerKey(event, key))
+            return;
         // A held key's repeats never answer it.
         if (confirming) {
             event.accepted = true;

@@ -7,6 +7,7 @@
   "PiSource.js"
   "Sessions.qml"
   "SessionWindows.js"
+  "TalkAttached.qml"
   "TalkLine.qml"
   "TalkLine.js"
   "Told.js"

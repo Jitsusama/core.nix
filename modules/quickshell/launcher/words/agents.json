@@ -108,7 +108,10 @@
         "waiting": "waiting on {who}",
         "void": "the void",
         "letGo": "{who} let it go",
-        "yesterday": "yesterday"
+        "yesterday": "yesterday",
+        "selection": "selection",
+        "clipboard": "clipboard",
+        "lines": "{count} lines"
       }
     },
     {

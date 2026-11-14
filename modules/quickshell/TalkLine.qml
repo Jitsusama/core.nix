@@ -18,6 +18,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
 import KeyTimes
+import "Columns.js" as Columns
 import "TalkLine.js" as Said
 import "When.js" as When
 
@@ -35,8 +36,23 @@ Scope {
     // it comes up; the session in it comes a moment later, from the agents daemon.
     property var window: null
     property var session: null
-    readonly property var rows: Said.attached(window, program, session)
+    readonly property var rows: Said.attached({
+        window: root.window,
+        program: root.program,
+        session: root.session,
+        tab: root.tab,
+        registers: root.registers
+    })
+    // The rows shown of them under a hairline before it's sent, the window
+    // left to a tab or a session that already names it (TalkLine.js).
+    readonly property var shownRows: Said.shownRows(rows)
     property string program: ""
+    // What Ctrl+R * and Ctrl+R + attached, the selection and the clipboard
+    // as Vim names its registers, kept with the words until they're sent.
+    property var registers: []
+    // The tab in front of the Chrome window it's said over, as the programs daemon answers
+    // it (askTab), or null.
+    property var tab: null
     // The talks Returns in this shell began (TalkLine.js's begun), newest first, as each goes.
     property var saidHere: []
     // Every line the line shows: those said here and those the void keeps, which outlive the
@@ -184,6 +200,68 @@ Scope {
         }
     }
 
+    // The tab in front of a Chrome window, asked of the programs daemon by niri's id for the
+    // window as the line comes up over it, or as it's said over another, over a connection
+    // held only while it's up over one, so it reads Chrome's tabs for nothing else. The
+    // daemon matches the window's title to its front tab and answers none on a tie (FEH1HE,
+    // core #4190). The tab stands while the window does, so a title the window changes as
+    // it loads leaves the row as it was rather than dropping it to ask again.
+    readonly property string browser: "google-chrome"
+    readonly property bool browsing: up && (window?.app_id ?? "") === browser
+    Daemon {
+        id: fronts
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/programs.sock`
+        kind: "front"
+        live: false
+        connects: root.browsing
+        onWireChanged: root.askTab()
+    }
+    onBrowsingChanged: askTab()
+    onWindowChanged: askTab()
+    function askTab() {
+        const over = window?.id ?? null;
+        if (!browsing || over === null) {
+            tab = null;
+            return;
+        }
+        if (tab !== null && tab.window === over)
+            return;
+        tab = null;
+        if (fronts.wire === null)
+            return;
+        fronts.find({ ask: "get", keys: [Said.tabKey(browser, over)] }, answer => {
+            if (root.browsing && (root.window?.id ?? null) === over)
+                root.tab = Said.tabFrom(answer, root.browser, over);
+        });
+    }
+
+    // The selection, read from the clipboard's history only as Ctrl+R * asks for it and
+    // never kept but as what's attached, as On the Selection reads it (OnSelection.qml),
+    // over a connection held only while the line is up.
+    Daemon {
+        id: selection
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/clipboard-history.sock`
+        kind: "selection"
+        live: false
+        connects: root.up
+    }
+
+    // Ctrl+R and a register: * attaches the selection, + the clipboard, each a row; any
+    // other attaches nothing.
+    function attach(name) {
+        if (name === "+") {
+            registers = Said.registered(registers, name, Copied.text, said);
+            return;
+        }
+        if (name !== "*")
+            return;
+        selection.find({ ask: "get", keys: ["selection:primary"] }, answer => {
+            const record = (answer?.records ?? []).find(one => one?.key === "selection:primary");
+            if (record !== undefined)
+                root.registers = Said.registered(root.registers, name, record.text, root.said);
+        });
+    }
+
     // A window's program as it names itself, where the desktop has an entry by its app id.
     function programOf(app) {
         return (DesktopEntries.byId(app) ?? DesktopEntries.byId(app.toLowerCase()))?.name || app;
@@ -207,6 +285,7 @@ Scope {
         launcher.drafts.handed(key, hears.to, sent);
         agents()?.say(hears, sent);
         saidHere = [Said.begun(hears.to, text, sent, Date.now())].concat(saidHere);
+        registers = [];
         prompt.clear();
     }
 
@@ -346,10 +425,18 @@ Scope {
                 // Where what's typed ends: its last line's baseline.
                 readonly property real typedEnds: caps + prompt.wrapsTall
                 readonly property bool talking: root.talk !== null
-                // The talks a group under what's typed, the hairline halfway between, so the
-                // room over it and under it is the same to the ink.
-                readonly property real lineAt: typedEnds + 2 * pitch + beat
-                readonly property real ruleAt: Math.round((typedEnds + lineAt - caps) / 2)
+                // What goes with it a region under what's typed, under a hairline halfway
+                // between, so the room over it and under it is the same to the ink; the
+                // talks another under that, the same way.
+                readonly property bool attaching: root.shownRows.length > 0
+                readonly property real attachedAt: typedEnds + 2 * pitch + beat
+                readonly property real attachedRuleAt: Math.round((typedEnds + attachedAt - caps)
+                    / 2)
+                // The last row's baseline.
+                readonly property real attachedEnds: attachedAt - pitch + attached.height
+                readonly property real talksFrom: attaching ? attachedEnds : typedEnds
+                readonly property real lineAt: talksFrom + 2 * pitch + beat
+                readonly property real ruleAt: Math.round((talksFrom + lineAt - caps) / 2)
                 // The last talk's last baseline.
                 readonly property real talksEnd: lineAt - pitch + spoken.height
                 readonly property real textAt: prompt.fieldX - card.inset
@@ -384,8 +471,15 @@ Scope {
                         // Its own frame, not the launcher's, so the lead stands at the inset
                         // as the first capital does, rather than on the launcher's columns.
                         glyphWidth: 0
+                        // Held on a mark's column (Columns.js), as the launcher's lead is,
+                        // so what's typed and what's attached start on one text column, a
+                        // mark rung clear of the rows' marks under the lead.
+                        leadColumn: Columns.across(0, 0, Columns.ofMark(Theme.level.name.pitch),
+                            Theme.space.rung).text
                         hint: root.hears === null ? root.said.nobody ?? "" : root.words.ask ?? ""
                         aside: ""
+                        registers: true
+                        onRegistered: name => root.attach(name)
                         onAccepted: root.send()
                         onTextChanged: root.typed()
                         onCaretChanged: root.typed()
@@ -411,6 +505,25 @@ Scope {
                             prompt.resume("normal");
                         }
                     }
+                }
+
+                // What's attached its region, inset to inset, never meeting the frame.
+                Rectangle {
+                    visible: body.attaching
+                    y: body.attachedRuleAt
+                    width: parent.width
+                    height: Theme.border
+                    color: Theme.edge
+                }
+
+                // What goes with the line once it's sent, a muted row each.
+                TalkAttached {
+                    id: attached
+                    visible: body.attaching
+                    y: body.attachedAt - body.pitch
+                    width: parent.width
+                    rows: root.shownRows
+                    textAt: body.textAt
                 }
 
                 // The talk's region, inset to inset, never meeting the frame.
@@ -587,10 +700,11 @@ Scope {
                 Text {
                     id: foot
                     x: body.textAt
-                    y: (body.talking ? body.talksEnd : body.typedEnds) + body.pitch + body.beat
+                    y: (body.talking ? body.talksEnd : body.talksFrom) + body.pitch + body.beat
                         - baselineOffset
                     width: (offer.visible ? offer.x - Theme.space.rung.groups : parent.width) - x
-                    text: root.hears === null ? "" : Said.about(root.said.hearer ?? "", root.rows)
+                    // Who hears it alone: what goes with it is its own rows above.
+                    text: root.hears === null ? "" : root.said.hearer ?? ""
                     textFormat: Text.PlainText
                     color: Theme.muted
                     elide: Text.ElideRight
@@ -646,7 +760,8 @@ Scope {
     function shown() {
         return { up, keys: up && prompt.Window.active, typed: prompt.text, mode: prompt.mode,
             caret: prompt.caret, hears: root.hears === null ? "" : root.said.hearer ?? "",
-            about: foot.text, lines: prompt.typedLines, talk: root.talk?.said ?? "",
+            about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
+                text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
             takes: offer.visible, commanding,
             top: up ? surface.margins.top + card.reach : -1,
