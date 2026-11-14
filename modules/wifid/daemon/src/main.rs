@@ -204,6 +204,9 @@ async fn serve(
     let changes = drained(owners.receive_name_owner_changed().await?);
     let supplicant = SupplicantProxy::new(&bus).await?;
     let state = watch::Sender::new(State::default());
+    // How well each access point carries, measured from where the machine
+    // is, for choosing between them (measure.rs).
+    tokio::spawn(measure::follow(state.subscribe()));
     let avoided = avoided();
     let wifid = Wifid {
         bus: &bus,

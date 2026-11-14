@@ -1215,7 +1215,11 @@ mod tests {
             point: "02:00:00:00:01:00".into(),
             gateway: Ipv4Addr::new(10, 43, 0, 1),
         };
-        assert_eq!(state.joined(), [joined], "the access point it's on, not the other");
+        assert_eq!(
+            state.joined(),
+            [joined],
+            "the access point it's on, not the other"
+        );
     }
 
     #[test]
@@ -1232,7 +1236,10 @@ mod tests {
 
         assert_eq!(unheard.joined(), [], "its access point unheard");
         assert_eq!(unrouted.joined(), [], "its gateway gone");
-        assert!(gone.gateways.is_empty(), "a card that goes takes its gateway");
+        assert!(
+            gone.gateways.is_empty(),
+            "a card that goes takes its gateway"
+        );
     }
 
     #[test]

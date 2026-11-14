@@ -247,6 +247,19 @@ def test_and_finds_lantern_reaches_beyond_itself(wifid: Wifid) -> None:
 
 
 @pytest.mark.usefixtures("wifid")
+def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachine) -> None:
+    """And measures how well Lantern's access point carries, by echoing its gateway."""
+    point = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^bssid=//p'").strip()
+    assert len(point) == len("02:00:00:00:00:00"), point
+    # wifid says each access point's figures once a minute, so this waits for the next.
+    machine.wait_until_succeeds(
+        "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+        f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, '",
+        timeout=timedelta(seconds=90),
+    )
+
+
+@pytest.mark.usefixtures("wifid")
 def test_and_keeps_the_channel_it_joined_lantern_on_and_nothing_of_where(
     machine: BaseMachine,
 ) -> None:

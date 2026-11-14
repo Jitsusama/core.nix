@@ -54,8 +54,8 @@ impl Echoer {
         // SAFETY: the descriptor was just made, and nothing else holds it.
         let owned = unsafe { OwnedFd::from_raw_fd(fd) };
         let name = CString::new(card).map_err(io::Error::other)?;
-        let length = libc::socklen_t::try_from(name.as_bytes_with_nul().len())
-            .map_err(io::Error::other)?;
+        let length =
+            libc::socklen_t::try_from(name.as_bytes_with_nul().len()).map_err(io::Error::other)?;
         // SAFETY: the name is a C string that outlives the call, and the
         // length is its own.
         let bound = unsafe {
@@ -146,15 +146,16 @@ impl Echoer {
 /// An echo request with this sequence, its identifier and checksum left
 /// for the kernel.
 fn request(sequence: u16) -> Vec<u8> {
-    let _ = (sequence, REQUEST);
-    Vec::new()
+    let mut request = vec![REQUEST, 0, 0, 0, 0, 0];
+    request.extend(sequence.to_be_bytes());
+    request.resize(8 + CARRIED, 0);
+    request
 }
 
 /// Whether what the socket read is the answer to the echo with this
 /// sequence.
 fn answers(read: &[u8], sequence: u16) -> bool {
-    let _ = (read, sequence, REPLY);
-    false
+    read.first() == Some(&REPLY) && read.get(6..8) == Some(&sequence.to_be_bytes()[..])
 }
 
 #[cfg(test)]
@@ -183,7 +184,10 @@ mod tests {
 
         assert!(answers(&answer, 7), "an echo reply with its sequence");
         assert!(!answers(&earlier, 7), "a late answer to the one before");
-        assert!(!answers(&unreachable, 7), "a gateway unreachable isn't an answer");
+        assert!(
+            !answers(&unreachable, 7),
+            "a gateway unreachable isn't an answer"
+        );
         assert!(!answers(&answer[..4], 7), "nor is a header cut short");
     }
 }

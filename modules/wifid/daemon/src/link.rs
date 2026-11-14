@@ -231,7 +231,10 @@ mod tests {
 
         let link = Link::described(&described).unwrap();
 
-        assert_eq!(link.gateway, None, "neither a narrower route nor IPv6's is the default");
+        assert_eq!(
+            link.gateway, None,
+            "neither a narrower route nor IPv6's is the default"
+        );
     }
 
     #[test]
