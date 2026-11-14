@@ -24,9 +24,15 @@
 //! order. The table says what each glyph stands for, but the console clears
 //! the screen with slot 32 whatever it says, so the space has to be there,
 //! and kbd's setfont refuses a font whose slot 32 isn't blank.
+//!
+//! It takes its help, exits and failures from the terminal kit
+//! (docs/commands.md); it answers nothing, since what it draws goes to
+//! OUT.
 
 use std::collections::HashSet;
 use std::process::ExitCode;
+
+use terminal_kit::{Exit, Failure, Help};
 
 /// The most glyphs a font may hold and keep the console's sixteen colours.
 const MOST: usize = 256;
@@ -48,17 +54,43 @@ struct Cell {
     height: usize,
 }
 
-fn main() -> ExitCode {
-    match run(std::env::args().skip(1).collect()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(why) => {
-            eprintln!("console-font: {why}");
-            ExitCode::FAILURE
-        }
-    }
+fn help() -> Help {
+    Help::new("console-font", "draws a console font from an OpenType face")
+        .command("FACE GLYPHS OUT", "draws GLYPHS' list from FACE into OUT")
+        .option("--cell WxH", "a glyph's cell in pixels; 16x32 if not")
+        .option("--cut N", "the coverage, of 255, that inks; 100 if not")
+        .example(
+            "console-font face.otf glyphs.txt console.psf",
+            "a PSF 2 font of the listed glyphs",
+        )
+        .exit(
+            Exit::Failed,
+            "FACE or GLYPHS couldn't be read, or OUT written",
+        )
+        .exit(
+            Exit::BadInput,
+            "FACE isn't a face, or GLYPHS can't be drawn",
+        )
 }
 
-fn run(args: Vec<String>) -> Result<(), String> {
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        run(context.args.clone())
+    })
+}
+
+/// A file that couldn't be read or written.
+fn unreadable(what: String, error: &std::io::Error) -> Failure {
+    Failure::new(Exit::Failed, what).because(error.to_string())
+}
+
+/// What the face or the list holds that can't be drawn.
+fn undrawable(why: String) -> Failure {
+    Failure::new(Exit::BadInput, "the font couldn't be drawn").because(why)
+}
+
+fn run(args: Vec<String>) -> Result<(), Failure> {
+    let misused = |why: String| Failure::new(Exit::Usage, why).try_this("console-font --help");
     let mut paths = Vec::new();
     let mut cell = Cell {
         width: 16,
@@ -68,29 +100,37 @@ fn run(args: Vec<String>) -> Result<(), String> {
     let mut args = args.into_iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--cell" => cell = parse_cell(&args.next().ok_or("--cell needs a size")?)?,
+            "--cell" => {
+                let size = args
+                    .next()
+                    .ok_or_else(|| misused("--cell needs a size".into()))?;
+                cell = parse_cell(&size).map_err(misused)?;
+            }
             "--cut" => {
                 cut = args
                     .next()
-                    .ok_or("--cut needs a number")?
+                    .ok_or_else(|| misused("--cut needs a number".into()))?
                     .parse()
-                    .map_err(|_| "--cut is a number from 0 to 255")?;
+                    .map_err(|_| misused("--cut is a number from 0 to 255".into()))?;
             }
             _ => paths.push(arg),
         }
     }
     let [face, list, out] = paths.as_slice() else {
-        return Err("usage: console-font <face> <glyphs> <out> [--cell 16x32] [--cut 100]".into());
+        return Err(misused("it takes FACE, GLYPHS and OUT".into()));
     };
-    let bytes = std::fs::read(face).map_err(|e| format!("can't read {face}: {e}"))?;
-    let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default())
-        .map_err(|e| format!("can't read {face} as a face: {e}"))?;
-    let text = std::fs::read_to_string(list).map_err(|e| format!("can't read {list}: {e}"))?;
-    let glyphs = parse_glyphs(&text)?;
-    let slots = layout(&glyphs)?;
-    let drawn = draw_all(&font, &glyphs, cell, cut)?;
+    let bytes =
+        std::fs::read(face).map_err(|e| unreadable(format!("{face} couldn't be read"), &e))?;
+    let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).map_err(|e| {
+        Failure::new(Exit::BadInput, format!("{face} isn't a face")).because(e.to_string())
+    })?;
+    let text = std::fs::read_to_string(list)
+        .map_err(|e| unreadable(format!("{list} couldn't be read"), &e))?;
+    let glyphs = parse_glyphs(&text).map_err(undrawable)?;
+    let slots = layout(&glyphs).map_err(undrawable)?;
+    let drawn = draw_all(&font, &glyphs, cell, cut).map_err(undrawable)?;
     std::fs::write(out, psf(&glyphs, &drawn, &slots, cell))
-        .map_err(|e| format!("can't write {out}: {e}"))
+        .map_err(|e| unreadable(format!("{out} couldn't be written"), &e))
 }
 
 fn parse_cell(text: &str) -> Result<Cell, String> {

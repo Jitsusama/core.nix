@@ -167,6 +167,7 @@
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
         code-health = pkgs.callPackage ../../modules/code-health/package.nix { };
         collector = pkgs.callPackage ../../modules/collector/package.nix { };
+        console-font = pkgs.callPackage ../../modules/console/font/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
         disk-guard = pkgs.callPackage ../../modules/disk-guard/package.nix { };

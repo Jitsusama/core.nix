@@ -10,3 +10,4 @@ publish = false
 
 [dependencies]
 fontdue = "0.9"
+terminal-kit = { path = "../../terminal-kit" }

@@ -68,10 +68,6 @@
     "helps"
   ];
   collect = [ "helps" ];
-  console-font = [
-    "kit"
-    "helps"
-  ];
   console-setup = [ "helps" ];
   declared-last = [ "helps" ];
   dictation = [
