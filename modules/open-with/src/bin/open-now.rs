@@ -49,11 +49,38 @@ use zbus::Connection;
 
 fn help() -> Help {
     Help::new("open-now", "what a program has open now, for the launcher")
-        .command("zathura", "each document a zathura has open")
-        .command("neovim", "what each Neovim in a kitty window holds")
-        .command("neovim at SERVER", "what the Neovim at SERVER holds")
-        .command("neovim go PID:WINDOW", "brings it forward in kitty")
-        .command("kitty", "what each kitty holds")
+        .subcommand(
+            Help::new("zathura", "each document a zathura has open")
+                .example("open-now zathura", "a line each: pid, path, page, pages")
+                .exit(Exit::Unavailable, "D-Bus or a zathura didn't answer"),
+        )
+        .subcommand(
+            Help::new("neovim", "what each Neovim in a kitty window holds")
+                .example("open-now neovim", "each Neovim's window and buffers")
+                .example("open-now neovim --json", "the same, as JSON")
+                .subcommand(
+                    Help::new("at", "what one Neovim holds")
+                        .example("open-now neovim at S", "the buffers S holds")
+                        .argument("<server>", "the Neovim's server address"),
+                )
+                .subcommand(
+                    Help::new("go", "brings a Neovim's window forward in kitty")
+                        .example(
+                            "open-now neovim go 81:4 S 3",
+                            "kitty 81's window 4, then S's buffer 3",
+                        )
+                        .argument("<pid:window>", "the kitty and its window")
+                        .argument("[server]", "the Neovim, to show a buffer")
+                        .argument("[buffer]", "the buffer it shows")
+                        .exit(Exit::NotFound, "the buffer is gone from that Neovim"),
+                )
+                .exit(Exit::Unavailable, "niri, a kitty or a Neovim didn't answer"),
+        )
+        .subcommand(
+            Help::new("kitty", "what each kitty holds")
+                .example("open-now kitty", "each kitty's windows")
+                .exit(Exit::Unavailable, "niri or a kitty didn't answer"),
+        )
         .example("open-now zathura", "a line each: pid, path, page, pages")
         .example(
             "open-now neovim go 81:4 S 3",

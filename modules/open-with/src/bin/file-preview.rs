@@ -70,9 +70,21 @@ const VIDEOS: &[&str] = &["mp4", "m4v", "mkv", "webm", "mov", "avi"];
 
 fn help() -> Help {
     Help::new("file-preview", "what a file shows of itself in the chooser")
-        .command("show PATH", "a line of JSON: its facts and preview")
-        .command("items FOLDER", "how many items each folder inside shows")
-        .command("serve", "answers show and items, asked a line each")
+        .subcommand(
+            Help::new("show", "a line of JSON: its facts and preview")
+                .example("file-preview show notes.md", "its size, change and lines")
+                .argument("<path>", "the file or folder")
+                .exit(Exit::NotFound, "there's nothing at PATH"),
+        )
+        .subcommand(
+            Help::new("items", "how many items each folder inside shows")
+                .example("file-preview items ~", "each folder in home, counted")
+                .argument("<folder>", "the folder whose folders are counted"),
+        )
+        .subcommand(
+            Help::new("serve", "answers show and items, asked a line each")
+                .example("file-preview serve", "as the chooser runs it"),
+        )
         .example("file-preview show notes.md", "its size, change and lines")
         .example("file-preview items ~", "each folder in home, counted")
         .exit(Exit::Failed, "it couldn't be read, or its answer said")
