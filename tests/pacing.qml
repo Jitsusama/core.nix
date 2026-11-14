@@ -9,7 +9,9 @@
 // act is said shown by the first frame begun after its refresh; and an
 // opening says its parts slowest first, and weighs the foot's verbs only
 // once the words or the face have changed, and each row's keys once for
-// what's typed, the steps and the mode. What was presented is said by
+// what's typed, the steps and the mode; an opening's stall is said by the
+// work it ran into, each frame's rows laid out and its sync apart. What
+// was presented is said by
 // place, each change timed from the earliest line not yet drawn
 // (launcher/Presented.js). A closing makes again only the spots of the
 // things whose stamp moved (launcher/Spots.js). Long because its cases
@@ -206,6 +208,7 @@ QtObject {
         check(failures, "once usable, a later stall changes nothing",
             tick(freed, [5000]).usable, 1500);
         stalled(failures);
+        framed(failures);
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's
@@ -213,10 +216,10 @@ QtObject {
     // and the journal named only some of it (2026-11-13).
     function stalled(failures) {
         const spans = [{ name: "filling", from: 10, to: 70 },
-            { name: "drawing", from: 70, to: 120 }, { name: "waking", from: 120, to: 121 },
+            { name: "syncing", from: 70, to: 120 }, { name: "waking", from: 120, to: 121 },
             { name: "filling", from: 300, to: 310 }];
         check(failures, "a stall is said by what it ran into, most first",
-            Pacing.stallSpent(spans, 20, 170), "filling 50, drawing 50, waking 1, 49 unnamed");
+            Pacing.stallSpent(spans, 20, 170), "filling 50, syncing 50, waking 1, 49 unnamed");
         check(failures, "one that ran into nothing named is all unnamed",
             Pacing.stallSpent(spans, 150, 250), "100 unnamed");
         const nested = [{ name: "filling", from: 10, to: 70 },
@@ -225,6 +228,31 @@ QtObject {
             Pacing.stallSpent(nested, 0, 100), "filling 50, the drawer 10, 40 unnamed");
         check(failures, "one all named says nothing unnamed",
             Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
+    }
+
+    // Each frame's own work, as spans: the rows it laid out and its sync,
+    // since what Joel's openings called drawing, 23 ms of a stall, held both
+    // and whatever the thread ran after the sync (2026-11-14).
+    function framed(failures) {
+        const said = noted => JSON.stringify(noted.spans);
+        let noted = Pacing.feltFramed(Pacing.feltUnframed(), "row", 10, 12);
+        noted = Pacing.feltFramed(noted.frame, "row", 14, 18);
+        check(failures, "rows laid out are said only once their frame animates",
+            said(noted), "[]");
+        noted = Pacing.feltFramed(noted.frame, "animating", 20);
+        check(failures, "a frame's rows are laid out from the first begun to the last made",
+            said(noted), JSON.stringify([{ name: "laying out", from: 10, to: 18 }]));
+        noted = Pacing.feltFramed(noted.frame, "synced", 45);
+        check(failures, "its sync runs from its animating until the thread runs again",
+            said(noted), JSON.stringify([{ name: "syncing", from: 20, to: 45 }]));
+        check(failures, "and is said once",
+            said(Pacing.feltFramed(noted.frame, "synced", 60)), "[]");
+        const bare = Pacing.feltFramed(Pacing.feltUnframed(), "animating", 70);
+        check(failures, "a frame that made no rows laid none out", said(bare), "[]");
+        const next = Pacing.feltFramed(Pacing.feltFramed(bare.frame, "row", 72, 75).frame,
+            "animating", 90);
+        check(failures, "a row made after a frame animates is the next frame's",
+            said(next), JSON.stringify([{ name: "laying out", from: 72, to: 75 }]));
     }
 
     // Agents says how its sessions stand at home, and People is named
