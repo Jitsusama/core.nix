@@ -850,7 +850,14 @@ let
     text = builtins.readFile ./lid-held.sh;
   };
 
-  # Compiles the shell's files before a switch restarts it (./starts-warm.sh).
+  # Every file the shell reads, by its store path, and the list of them its
+  # start links, so a switch that changes any is told from one that doesn't.
+  shellFiles = lib.mapAttrsToList (_: file: "${file.source}") (
+    lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
+  );
+  shellFilesList = pkgs.writeText "quickshell-files" (lib.concatLines shellFiles);
+
+  # Compiles the shell's files before the shell restarts onto them (./starts-warm.sh).
   startsWarm = pkgs.writeShellApplication {
     name = "quickshell-starts-warm";
     runtimeInputs = [
@@ -2683,22 +2690,21 @@ in
         After = [ "graphical-session.target" ];
         # Quickshell watches its files but not the links Home Manager swaps
         # them by, so a switch would leave it drawing the old ones. Naming
-        # every file here changes the unit when any of them changes, and Home
-        # Manager restarts a changed unit.
-        X-Restart-Triggers = lib.mapAttrsToList (_: file: "${file.source}") (
-          lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) config.xdg.configFile
-        );
-        # Without a method, a switch stops a changed unit with every other it
-        # stops, waits for the slowest, and only then starts it again: the
-        # shell stayed down 91 s on 10 November while disk-guard's stop ran
-        # to its timeout, with no launcher, notices or lock client. Restarted,
-        # it's left out of that batch and runs on until its own restart after
-        # the units reload, which waits on nothing else. Until the batch ends
-        # the old shell runs with the new files already linked under it, which
-        # is safe: it made every surface and provider from its files as it
-        # started (shell.qml, Launcher.qml, Facts.qml) and loads none later, so
-        # it draws as it did until its restart brings the new ones.
-        X-SwitchMethod = "restart";
+        # every file here changes the unit when any of them changes, and the
+        # list its start links says which it runs (quickshell-takes-new-files
+        # below).
+        X-Restart-Triggers = shellFiles;
+        # A switch leaves the shell running, and quickshell-takes-new-files
+        # restarts it once the launcher is idle. Restarted inside the switch,
+        # it went whenever the switch's turn came: at 18:08 on 13 November,
+        # 60 s after the launcher closed, as Joel opened it again. Stopped
+        # with the switch's batch, it stayed down 91 s on 10 November while
+        # disk-guard's stop ran to its timeout. Until its restart the old
+        # shell runs with the new files linked under it, which is safe: it
+        # made every surface and provider from its files as it started
+        # (shell.qml, Launcher.qml, Facts.qml) and loads none later, so it
+        # draws as it did until its restart brings the new ones.
+        X-SwitchMethod = "keep-old";
       };
       Service = {
         # Quickshell turns every one of its own categories on at every level
@@ -2734,7 +2740,7 @@ in
         # Quickshell watches every file it loaded, and each one's folder, to
         # reload when one changes: one inotify holding 194 watches on Joel's
         # shell (2026-11-12). Here they are store files, which never change,
-        # and a switch restarts the unit instead (X-Restart-Triggers above),
+        # and the unit is restarted onto new ones instead (its companion below),
         # so the watch is turned off. shell-preview and the nested niri
         # checks run the working copy outside this unit, and keep it.
         Environment = [
@@ -2759,6 +2765,9 @@ in
         # The launcher's open mark says nothing once the shell is gone, so a
         # switch waiting on it never waits on a shell that died.
         ExecStopPost = "${lib.getExe' pkgs.coreutils "rm"} -f %t/quickshell-launcher";
+        # Which files this shell started from, for quickshell-takes-new-files
+        # to tell whether a switch changed them.
+        ExecStartPost = "${lib.getExe' pkgs.coreutils "ln"} -sfn ${shellFilesList} %t/quickshell-files";
         # The launcher's socket goes before the shell is told to stop, so a
         # chord said as it stops finds no socket and waits for the next shell
         # (launcher-say/src/main.rs), rather than being heard by one that
@@ -2777,5 +2786,41 @@ in
       };
       Install.WantedBy = [ "graphical-session.target" ];
     };
+
+    # Brings the shell onto a switch's files once the launcher and the talk
+    # line have been shut 30 s, or past an hour at their next close, never
+    # under Joel's hands (./takes-new-files.sh). Each
+    # switch starts it once the units reload; a switch while it waits leaves
+    # it waiting, since the restart it ends in takes the newest files.
+    systemd.user.services.quickshell-takes-new-files = {
+      Unit = {
+        Description = "Restarts Quickshell onto a switch's files once the launcher is idle";
+        After = [ "quickshell.service" ];
+        X-SwitchMethod = "keep-old";
+      };
+      Service = {
+        Type = "exec";
+        ExecStart = "${lib.getExe pkgs.bash} ${./takes-new-files.sh} ${shellFilesList}";
+        Environment = [
+          "PATH=${
+            lib.makeBinPath [
+              pkgs.coreutils
+              pkgs.gnugrep
+              pkgs.systemd
+            ]
+          }"
+        ];
+        Slice = "session.slice";
+      };
+    };
+
+    # Started without waiting, so the switch never waits on the launcher.
+    # Nothing here fails a switch: without the account's systemd, as before
+    # the first login, the shell takes its files as it starts.
+    home.activation.quickshellTakesNewFiles = lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
+      run env XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+        ${lib.getExe' pkgs.systemd "systemctl"} --user start --no-block \
+        quickshell-takes-new-files.service || true
+    '';
   };
 }

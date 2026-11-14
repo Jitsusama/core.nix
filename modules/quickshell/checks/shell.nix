@@ -92,17 +92,40 @@
       touch $out
     '';
 
-  # A switch restarts Quickshell when any file it reads changes, so the shell
-  # on screen is never the one from before the switch.
+  # Quickshell is restarted when any file it reads changes, so the shell on
+  # screen is never the one from before the switch for long: the switch
+  # leaves it running, and every switch starts its companion, which brings
+  # it onto the files once the launcher is idle.
   quickshell-restarts-with-its-files =
     let
       home = account graphical;
+      services = home.systemd.user.services;
       files = lib.filterAttrs (name: _: lib.hasPrefix "quickshell/" name) home.xdg.configFile;
-      triggers = home.systemd.user.services.quickshell.Unit.X-Restart-Triggers or [ ];
+      triggers = services.quickshell.Unit.X-Restart-Triggers or [ ];
+      takesNewFiles = services.quickshell-takes-new-files.Service.ExecStart or [ ];
+      companion = lib.concatStringsSep " " takesNewFiles;
     in
     holds "quickshell-restarts-with-its-files"
-      "A Quickshell file isn't among its unit's restart triggers, so a switch would leave the old one on screen."
-      (files != { } && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files));
+      "A Quickshell file isn't among its unit's triggers, the switch restarts the shell itself, or nothing brings it onto its new files after."
+      (
+        files != { }
+        && lib.all (file: lib.elem "${file.source}" triggers) (lib.attrValues files)
+        && (services.quickshell.Unit.X-SwitchMethod or null) == "keep-old"
+        && lib.hasInfix "takes-new-files.sh" companion
+        && home.home.activation ? quickshellTakesNewFiles
+      );
+
+  # A switch leaves the shell running and its companion restarts it onto the
+  # new files once the launcher has been shut 30 s, or at its bound however
+  # busy the launcher is, and leaves a shell already on its files, or one
+  # stopped, be (modules/quickshell/tests/takes-new-files.sh).
+  the-shell-takes-a-switchs-files-at-idle =
+    pkgs.runCommandLocal "the-shell-takes-a-switchs-files-at-idle" { }
+      ''
+        ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
+          ${../tests/takes-new-files.sh} ${../takes-new-files.sh}
+        touch $out
+      '';
 
   # The shell's allocator keeps one arena rather than one for each of its
   # threads, since each arena holds freed memory of its own that it hands
