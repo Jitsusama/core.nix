@@ -1049,7 +1049,7 @@
     {
       "id": "shortcuts:github:changes",
       "in": "shortcuts",
-      "name": "An Issue or Pull Request"
+      "name": "An Issue or Change"
     }
   ]
 }
