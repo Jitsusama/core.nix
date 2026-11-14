@@ -218,6 +218,13 @@ fn a_stop_in_a_thread_reaches_its_pull_request_in_shadow_and_is_judged_once() {
     let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
         .expect("the replies let through are kept");
     assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
+    let reply: Value = serde_json::from_str(replies.lines().next().unwrap_or_default())
+        .expect("a reply's line is JSON");
+    assert_eq!(
+        reply["post"],
+        Value::Null,
+        "no reply has words until Joel's yes is written in replies.json"
+    );
 
     let stops: Vec<PathBuf> = std::fs::read_dir(home.join("state/pineapple/stops"))
         .expect("the stops folder")

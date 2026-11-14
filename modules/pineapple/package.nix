@@ -15,6 +15,7 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./sayings.json
+      ./replies.json
       ./src
       ./tests
       ../slack/Cargo.toml

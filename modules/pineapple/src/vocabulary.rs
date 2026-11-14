@@ -34,6 +34,22 @@ impl Words {
         Ok(Self(said.collect()))
     }
 
+    /// The words an object of strings gives by its keys, as the replier's
+    /// own file (replies.json) does; a value that isn't a string is none.
+    ///
+    /// # Errors
+    ///
+    /// Where the text isn't JSON.
+    pub fn from_object(text: &str) -> serde_json::Result<Self> {
+        let object: Value = serde_json::from_str(text)?;
+        let words = object
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(key, word)| Some((key.clone(), word.as_str()?.to_owned())));
+        Ok(Self(words.collect()))
+    }
+
     /// Words given outright, as a test gives them.
     #[must_use]
     pub fn of(words: &[(&str, &str)]) -> Self {
