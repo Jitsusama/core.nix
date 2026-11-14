@@ -312,6 +312,7 @@ fn answer_asks(shared: &Shared, given: ManagersFile, words: Option<&str>) {
             home: home.to_string_lossy().into_owned(),
             words: said,
             journal: PathBuf::from(secret_asks::reading::JOURNAL),
+            least_shown_ms: Some(secret_asks::engine::LEAST_SHOWN_MS),
         },
         Box::new(asks::Passwords {
             shared: Arc::clone(shared),

@@ -162,6 +162,10 @@ pub struct Setting {
     pub words: Words,
     /// Where journald takes the readings' lines.
     pub journal: PathBuf,
+    /// How long, in milliseconds, a yes's line must have been shown, for
+    /// a launcher that counts it (the passwords child's, `LEAST_SHOWN_MS`);
+    /// none for the experiment's, which says no time.
+    pub least_shown_ms: Option<i64>,
 }
 
 /// The asks held, by id, and what to tell when they change.
@@ -427,9 +431,10 @@ impl Engine {
         }
         // A yes before the line could be read is no yes to what it said,
         // and the ask waits on for one that is.
-        if said["shown"]
-            .as_i64()
-            .is_none_or(|shown| shown < LEAST_SHOWN_MS)
+        if self
+            .setting
+            .least_shown_ms
+            .is_some_and(|least| said["shown"].as_i64().is_none_or(|shown| shown < least))
         {
             return self.refusal("refused", "the line wasn't shown long enough", "unread");
         }
