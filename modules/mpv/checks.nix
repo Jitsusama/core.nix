@@ -52,6 +52,7 @@ onLinux {
         "Applications.qml"
         "ReadyRows.qml"
         "ReadyRows.js"
+        "ActForms.js"
         "Moved.js"
         "Beneath.js"
         "Found.js"

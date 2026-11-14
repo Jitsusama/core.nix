@@ -4543,6 +4543,12 @@
     clippy finds nothing in whereabouts, which holds where the laptop is and the clock's zone for
     the shell, or its tests
   '';
+  wifi-asks-each-word-a-join-needs-first = ''
+    the launcher's Wi-Fi joins a network by the acts wifid serves it: a password asked as a
+    secret, an account's name, its server's domain and password in turn, each set in the ask and
+    sent after the last; a step out partway sends nothing and says so; a join's steps and a
+    refusal are said in the foot, never a card; and no password is shown
+  '';
   wifid-passes-clippy = ''
     clippy finds nothing in wifid, its sign-in window or their tests
   '';

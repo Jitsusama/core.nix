@@ -49,9 +49,10 @@ use ready_rows::kept::Kept;
 use ready_rows::numbers::Numbers;
 
 use crate::parts::{self, Look};
-use crate::rows::{self, Words};
+use crate::rows;
 use crate::service::{Ask, Watching};
 use crate::state::State;
+use crate::words::Words;
 
 /// The interface's version this speaks.
 pub const VERSION: u64 = 1;
@@ -339,6 +340,8 @@ impl Face {
             told,
             words: None,
             numbers: None,
+            made_in: None,
+            unworded: false,
             watches: HashMap::new(),
         };
         let mut lines = BufReader::new(reading).lines();
@@ -374,6 +377,12 @@ struct Connection {
     told: mpsc::Sender<String>,
     words: Option<String>,
     numbers: Option<String>,
+    /// The vocabulary its rows were last made in, which its acts' answers
+    /// are worded in too.
+    made_in: Option<Said>,
+    /// Whether it's been said that an act came before any vocabulary, so
+    /// it's said once a connection rather than every act.
+    unworded: bool,
     watches: HashMap<String, JoinHandle<()>>,
 }
 
@@ -423,6 +432,7 @@ impl Connection {
                 };
                 self.words = Some(words);
                 self.numbers = numbers;
+                self.made_in = Some(made_in.clone());
                 let keys: Option<Vec<String>> =
                     said.get("keys").and_then(Value::as_array).map(|keys| {
                         keys.iter()
@@ -446,7 +456,19 @@ impl Connection {
             // asks on.
             "act" => {
                 let asks = self.face.asks.clone();
-                tokio::spawn(acts::act(asks, id.clone(), said, self.told.clone()));
+                let words = self.made_in.as_ref().and_then(|made_in| {
+                    self.face
+                        .held()
+                        .get(made_in)
+                        .map(|vocabulary| vocabulary.words.clone())
+                });
+                // Its answers then say what they are by name alone, and the
+                // launcher words them as it can (cbf8dee6).
+                if words.is_none() && !self.unworded {
+                    self.unworded = true;
+                    eprintln!("<4>an act came before any rows, so its answers carry no words");
+                }
+                tokio::spawn(acts::act(asks, id.clone(), said, self.told.clone(), words));
                 None
             }
             "unwatch" => {
@@ -619,8 +641,14 @@ mod tests {
         let words = store.path().join("words.json");
         // The list's own words as the launcher says them, and the parts'
         // as their cases do.
-        let list = ["wifi:radio", "wifi:sign-in", "wifi:network"];
-        let mut things: Vec<Value> = crate::rows::launchers_words()["things"]
+        let list = [
+            "wifi:radio",
+            "wifi:sign-in",
+            "wifi:network",
+            "wifi:join",
+            "wifi:refused",
+        ];
+        let mut things: Vec<Value> = crate::words::launchers_words()["things"]
             .as_array()
             .into_iter()
             .flatten()
