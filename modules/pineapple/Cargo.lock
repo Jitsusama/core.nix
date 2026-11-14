@@ -367,6 +367,7 @@ dependencies = [
  "serde_json",
  "slack-people",
  "terminal-kit",
+ "ureq",
 ]
 
 [[package]]

@@ -17,11 +17,16 @@
 //! stop. Each reply it would have sent is put through Joel's rules against
 //! spam (src/gate.rs) all the same: the log names the rule that let it
 //! through or held it, and replies.jsonl keeps those let through, which
-//! the rules count. A line `off` in replies-switch beside them turns
-//! replies off alone, read each time, so stops and alerts carry on.
+//! the rules count, each with where it would go and what it would say
+//! (src/reply.rs), or none where replies.json holds no words Joel said
+//! yes to. A line `off` in replies-switch beside them turns replies off
+//! alone, read each time, so stops and alerts carry on.
 //!
-//! It never sends anything. It only ever reads Slack: Slack's own, unless a test names a
-//! stand-in with `--origin` and a quicker pace with `--every`.
+//! In shadow it sends nothing and only reads Slack. Out of it, its one
+//! write is such a reply, from Joel's own account, in the thread that
+//! asked, and only with words he said yes to. Slack is Slack's own, unless
+//! a test names a stand-in with `--origin` and a quicker pace with
+//! `--every`.
 //!
 //! Which messages it has judged is kept in judged.json beside the log, so a restart
 //! neither judges a message twice nor misses one said while it was down,
@@ -37,8 +42,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::gate::{Asked, gate};
 use pineapple::record::{self, Source};
+use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::slack::{Message, found, micros, root};
+use pineapple::vocabulary::Words;
 use pineapple::{Context, Heard, Joel, Platform, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
@@ -60,6 +67,10 @@ const NEWEST: usize = 20;
 /// Whether its stops are only written down: until Joel has read two days
 /// of its log and said so, they are (the plan's item 10).
 const SHADOW: bool = true;
+
+/// The replies' words, as Joel said yes to them; every one empty until
+/// he has, so no reply has words to say.
+const REPLIES: &str = include_str!("../../replies.json");
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
@@ -278,6 +289,10 @@ fn run(origin: &str, every: Duration) -> Result<(), Failure> {
     let credentials = credentials();
     let state = state();
     let slack = Slack::new(origin);
+    let replier = Replier {
+        origin: origin.to_owned(),
+        words: Words::from_object(REPLIES).unwrap_or_default(),
+    };
     let mut judged = read_judged(&state).unwrap_or_else(|| Judged {
         since: format!("{}.000000", seconds().saturating_sub(LOOK_BACK)),
         keys: Vec::new(),
@@ -285,7 +300,7 @@ fn run(origin: &str, every: Duration) -> Result<(), Failure> {
     loop {
         match Account::read(&credentials) {
             Some(account) if !account.user.is_empty() => {
-                round(&slack, &account, &state, &mut judged);
+                round(&slack, &replier, &account, &state, &mut judged);
             }
             Some(_) => eprintln!("<4>the Slack sign-in doesn't say who Joel is"),
             None => eprintln!("<4>no Slack sign-in yet, so nothing is read"),
@@ -294,8 +309,14 @@ fn run(origin: &str, every: Duration) -> Result<(), Failure> {
     }
 }
 
+/// Where replies go and the words they say.
+struct Replier {
+    origin: String,
+    words: Words,
+}
+
 /// One search of each kind, and each new message judged and written down.
-fn round(slack: &Slack, account: &Account, state: &Path, judged: &mut Judged) {
+fn round(slack: &Slack, replier: &Replier, account: &Account, state: &Path, judged: &mut Judged) {
     let joel = Joel {
         slack_ids: vec![account.user.clone()],
         logins: Vec::new(),
@@ -318,7 +339,7 @@ fn round(slack: &Slack, account: &Account, state: &Path, judged: &mut Judged) {
         .collect();
     heard.sort_by_key(|message| micros(&message.ts));
     for message in heard {
-        judge(slack, account, state, &joel, message);
+        judge(slack, replier, account, state, &joel, message);
         judged.keys.push(message.key());
     }
     let over = judged.keys.len().saturating_sub(KEPT);
@@ -353,7 +374,14 @@ fn search(slack: &Slack, account: &Account, query: &str) -> Option<Vec<Message>>
 }
 
 /// One message judged where it was said, and written down.
-fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &Message) {
+fn judge(
+    slack: &Slack,
+    replier: &Replier,
+    account: &Account,
+    state: &Path,
+    joel: &Joel,
+    message: &Message,
+) {
     let context = message
         .thread
         .as_deref()
@@ -384,10 +412,10 @@ fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &
     let read_at = now / MILLIS;
     let said_at =
         micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
-    let replies = state.join("replies.jsonl");
+    let went_out = state.join("replies.jsonl");
     // A stop Joel resumed no longer holds its thread's reply back.
     let sent = record::ledger(&resume::cleared(
-        &std::fs::read_to_string(&replies).unwrap_or_default(),
+        &std::fs::read_to_string(&went_out).unwrap_or_default(),
         &state.join("stops"),
     ));
     let asked = Asked {
@@ -404,10 +432,19 @@ fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if gated.goes() {
-        let one = record::sent(&source, decision.reply, read_at, SHADOW);
-        match record::append(&replies, &one) {
-            Ok(()) => eprintln!("<5>a reply, in shadow: {}", message.link),
-            Err(error) => eprintln!("<3>couldn't keep a reply's line: {error}"),
+        let named: Vec<String> = decision.reaches.iter().map(ToString::to_string).collect();
+        let post = reply::post(message, decision.reply, &named, &replier.words);
+        if answer(replier, account, message, post.as_ref()) {
+            let one = record::sent(
+                &source,
+                decision.reply,
+                read_at,
+                SHADOW,
+                &reply::kept(post.as_ref()),
+            );
+            if let Err(error) = record::append(&went_out, &one) {
+                eprintln!("<3>couldn't keep a reply's line: {error}");
+            }
         }
     }
     if decision.stops() {
@@ -416,6 +453,33 @@ fn judge(slack: &Slack, account: &Account, state: &Path, joel: &Joel, message: &
             Ok(true) => eprintln!("<5>a stop, in shadow: {}", message.link),
             Ok(false) => {}
             Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
+        }
+    }
+}
+
+/// Say a reply the rules let through, and whether it counts as said: in
+/// shadow each does, said or not, so the rules are tried as they will be;
+/// out of it, only one Slack took.
+fn answer(replier: &Replier, account: &Account, message: &Message, post: Option<&Post>) -> bool {
+    if SHADOW {
+        eprintln!("<5>a reply, in shadow: {}", message.link);
+        return true;
+    }
+    let Some(post) = post else {
+        eprintln!(
+            "<4>a reply has no words Joel said yes to, so none was said: {}",
+            message.link
+        );
+        return false;
+    };
+    match reply::send(&replier.origin, account, post) {
+        Ok(()) => {
+            eprintln!("<5>a reply, said: {}", message.link);
+            true
+        }
+        Err(why) => {
+            eprintln!("<3>Slack didn't take a reply: {why}");
+            false
         }
     }
 }

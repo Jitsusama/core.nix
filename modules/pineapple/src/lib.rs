@@ -15,7 +15,9 @@
 //!   stops or resumes, how loudly Joel is told, and what its writer is
 //!   answered.
 //! - [`gate`](mod@gate) says whether that answer goes out in public, by
-//!   Joel's rules against spam, and names the rule either way.
+//!   Joel's rules against spam, and names the rule either way, and
+//!   [`reply`] says what one that goes says, from Joel's own account,
+//!   only in the thread that asked, in words he said yes to.
 //! - [`slack`] turns Slack's answers into messages to judge, and
 //!   [`record`] writes down what was decided, a stop's record included.
 //! - [`resume`] lists the stops standing and marks those Joel resumes,
@@ -36,6 +38,7 @@ pub mod gate;
 mod judge;
 pub mod peer;
 pub mod record;
+pub mod reply;
 pub mod resume;
 mod scope;
 pub mod serve;
