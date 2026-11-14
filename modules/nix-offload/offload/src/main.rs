@@ -2395,17 +2395,17 @@ fn machines_of(settings: &Settings) -> Machines {
 }
 
 /// Prove `builder` with a tiny build when one is due, over `ssh` as
-/// `there` reaches it, keeping its proofs in `keeper`, which starts afresh
-/// for a builder it didn't keep: whether its last `proof::FAILS` failed.
-/// One whose helper named no store fails, since only the daemon could
-/// reach it, and the daemon takes a builder line only from an account it
-/// trusts.
+/// `there` reaches it, and then a copy up as `nix` sends one, keeping its
+/// proofs in `keeper`, which starts afresh for a builder it didn't keep:
+/// whether its last `proof::FAILS` failed. One whose helper named no store
+/// fails, since only the daemon could reach it, and the daemon takes a
+/// builder line only from an account it trusts.
 fn kept(
     settings: &Settings,
     keeper: &mut Option<Keeper>,
     builder: &Lent,
     at: Instant,
-    ssh: &str,
+    [ssh, nix]: [&str; 2],
 ) -> bool {
     if keeper
         .as_ref()
@@ -2417,16 +2417,27 @@ fn kept(
         return false;
     };
     let store = builder.store.clone();
-    let (scratch, ssh) = (settings.dir.join("proving.d"), ssh.to_owned());
+    let (scratch, ssh, nix) = (
+        settings.dir.join("proving.d"),
+        ssh.to_owned(),
+        nix.to_owned(),
+    );
     let was = keeper.health.state();
     let heard = keeper.keep(at, now(), move || {
         store.map_or_else(proof::Proven::default, |store| {
-            proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN)
+            let built = proof::over_ssh(&store, &scratch, &ssh, proof::WITHIN);
+            proof::carrying(built, || {
+                proof::carries(&store, &scratch, &nix, proof::CARRYING)
+            })
         })
     });
     let name = &builder.name;
     let state = keeper.health.state();
     match heard {
+        Some(false) if keeper.health.stalled && !keeper.health.dropped() => eprintln!(
+            "nix-offload: {name} built its proof but couldn't carry a copy up; another in a row \
+             and no new build goes there until the way to it carries one"
+        ),
         Some(false) if !keeper.health.dropped() => {
             eprintln!("nix-offload: {name} failed a proof; another in a row gives it back");
         }
@@ -2507,25 +2518,43 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
 #[derive(Default)]
 struct SaidKept {
     reached: bool,
+    stalled: bool,
     busy: bool,
 }
 
 /// Whether `builder`, which a build `reached` this tick or not, is given
-/// back as lost by its proofs in `keeper`, saying once in `said` why one
-/// failing them is kept instead.
+/// back as lost by its proofs in `keeper`, proven at `at` with `ssh` and
+/// `nix`, saying once in `said` why one failing them is kept instead.
 fn unanswered(
     settings: &Settings,
     keeper: &mut Option<Keeper>,
     builder: &Lent,
     reached: bool,
+    at: Instant,
     said: &mut SaidKept,
+    [ssh, nix]: [&str; 2],
 ) -> bool {
-    let dropped = kept(settings, keeper, builder, Instant::now(), "ssh");
+    let dropped = kept(settings, keeper, builder, at, [ssh, nix]);
     let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
-    let unanswered = decide::proven_lost(dropped, failures, reached, || {
-        answers(settings, builder, "ssh")
+    // One that builds but can't take a copy has a way to it that's full,
+    // not gone, and is kept as one builds reach is: given back, it would
+    // be lent again over the same way, cold, and a VM builder takes 17
+    // minutes to warm.
+    let stalled = keeper.as_ref().is_some_and(|keeper| keeper.health.stalled);
+    let unanswered = decide::proven_lost(dropped, failures, reached || stalled, || {
+        answers(settings, builder, ssh)
     });
-    if dropped && !unanswered && !std::mem::replace(&mut said.reached, true) {
+    if dropped && !unanswered && stalled && !std::mem::replace(&mut said.stalled, true) {
+        eprintln!(
+            "nix-offload: {} builds but couldn't carry a copy up {failures} proofs in a row, \
+             so no new build goes there, but it's kept until the way to it carries one, or \
+             once it has failed {} in a row, until it stops answering",
+            builder.name,
+            decide::FAILS_WHILE_REACHED
+        );
+    }
+    said.stalled &= dropped && stalled;
+    if dropped && !unanswered && !stalled && !std::mem::replace(&mut said.reached, true) {
         eprintln!(
             "nix-offload: {} failed {failures} proofs in a row, so no new build goes there, but \
              builds still reach it, so it's kept until they end, or once it has failed {} in a \
@@ -2661,8 +2690,16 @@ fn serve(settings: &Settings) -> bool {
                     builder.used = tick.now;
                 }
                 let gone = builder.helper.try_wait().ok().flatten().is_some();
-                let unanswered =
-                    !gone && unanswered(settings, &mut keeper, &builder, reached, &mut said_kept);
+                let unanswered = !gone
+                    && unanswered(
+                        settings,
+                        &mut keeper,
+                        &builder,
+                        reached,
+                        Instant::now(),
+                        &mut said_kept,
+                        ["ssh", "nix"],
+                    );
                 let (used, ends) = (builder.used, builder.ends);
                 match decide::give_back_proven(settings.hours, tick, used, ends, gone, unanswered) {
                     Some(event) => {
@@ -4066,6 +4103,24 @@ esac
 exit 1
 "#;
 
+    /// A `nix` whose copies up all land, for proofs whose ssh builds.
+    const CARRIES: &str = r#"#!/bin/sh
+case "$*" in
+"store add"*) echo /nix/store/aaaa-nix-offload-carried ;;
+esac
+exit 0
+"#;
+
+    /// The `nix` beside `ssh` that its proofs copy up with: one whose
+    /// copies land, unless the test wrote its own.
+    fn nix_beside(ssh: &str) -> String {
+        let nix = Path::new(ssh).with_file_name("nix");
+        if !nix.exists() {
+            executable(&nix, CARRIES);
+        }
+        nix.display().to_string()
+    }
+
     /// Whether `keeper` says the builder is left out once the proof due at
     /// `at` has ended, waiting at most 5 s.
     fn proven_at(
@@ -4075,6 +4130,7 @@ exit 1
         at: Instant,
         ssh: &str,
     ) -> bool {
+        let nix = nix_beside(ssh);
         let heard = |keeper: &Option<Keeper>| {
             keeper.as_ref().map(|keeper| {
                 let health = &keeper.health;
@@ -4084,7 +4140,7 @@ exit 1
         let before = heard(keeper);
         let ending = Instant::now() + Duration::from_secs(5);
         loop {
-            let dropped = kept(settings, keeper, builder, at, ssh);
+            let dropped = kept(settings, keeper, builder, at, [ssh, &nix]);
             let now = heard(keeper);
             if now != before && now != Some((0, None, None)) {
                 return dropped;
@@ -4195,6 +4251,60 @@ exit 1
             State::Passing,
             "a failure between passes is forgotten"
         );
+        assert!(runs(&mut builder.helper));
+        end(&mut builder.helper);
+    }
+
+    // On 13 November both lent builders built their proofs while the
+    // uplink beside them was too full to take a copy. One that builds but
+    // can't carry is named nowhere, but kept warm rather than given back
+    // to be lent cold over the same way.
+    #[test]
+    fn a_lent_builder_that_builds_but_cant_carry_a_copy_is_named_nowhere_but_kept() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let journal = r#"{"at":5,"event":"asked","name":"lend-5"}
+{"at":9,"event":"ended","name":"lend-5","seconds":4}
+"#;
+        let (settings, mut machines) = holding(folder.path(), journal);
+        executable(&settings.helper, RELAYS);
+        let mut builder = adopt(&settings, &mut machines, 3600).expect("taken back");
+        let ssh = folder.path().join("ssh");
+        executable(&ssh, "#!/bin/sh\nexit 0\n");
+        let nix = folder.path().join("nix");
+        executable(
+            &nix,
+            "#!/bin/sh\ncase \"$*\" in\n\"store add\"*) echo /nix/store/aaaa-nix-offload-carried ;;\n\
+             *) exit 1 ;;\nesac\n",
+        );
+        let (ssh, nix) = (ssh.display().to_string(), nix.display().to_string());
+        let mut keeper = None;
+        let began = Instant::now();
+        assert!(!proven_at(&settings, &mut keeper, &builder, began, &ssh));
+        assert!(proven_at(
+            &settings,
+            &mut keeper,
+            &builder,
+            began + proof::EVERY,
+            &ssh
+        ));
+        let health = &keeper.as_ref().expect("kept").health;
+        assert!(health.stalled);
+        assert_eq!(health.state(), State::Dropped);
+        let mut said = SaidKept::default();
+        assert!(
+            !unanswered(
+                &settings,
+                &mut keeper,
+                &builder,
+                false,
+                began + proof::EVERY,
+                &mut said,
+                [&ssh, &nix],
+            ),
+            "no build reaches it, but it isn't lost"
+        );
+        assert!(said.stalled && !said.reached);
         assert!(runs(&mut builder.helper));
         end(&mut builder.helper);
     }

@@ -1027,6 +1027,7 @@ mod tests {
             proof::Proven {
                 passed: true,
                 free: Some(proof::FLOOR),
+                ..proof::Proven::default()
             },
             10,
         );
@@ -1632,6 +1633,7 @@ mod tests {
             proof::Proven {
                 passed: true,
                 free: Some(proof::FLOOR - 1),
+                ..proof::Proven::default()
             },
             10,
         );

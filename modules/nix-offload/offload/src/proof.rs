@@ -8,7 +8,9 @@
 //! writing a fresh nonce to its output, so nothing caches it and only a
 //! builder that evaluates, builds and answers passes. A lent builder is
 //! proven over the ssh its `there` builds take, with its store's key and
-//! host key; a builder beside, reached only by root's ssh, through the
+//! host key, and then carries a fresh 256 KiB up over its store as a
+//! copy goes, so a way to it that can't carry a copy fails it too; a
+//! builder beside, reached only by root's ssh, through the
 //! daemon's build hook, as every build sent to it is, passing once its
 //! output comes back. The daemon takes a builder line only from an account
 //! it trusts, so where root's prover runs (`src/standing.rs`) it proves
@@ -44,8 +46,10 @@
 //! every list and gives it back, and leaves a builder beside out of every
 //! list until it passes again; `full` once one passes with its store under
 //! the floor. `freeBytes` is what its store had free when its last proof
-//! passed, null where it didn't say. `beside` is there only in a folder
-//! whose lender names builders beside.
+//! passed, null where it didn't say. `stalled` is true while its last
+//! proof built but couldn't carry what it was sent up, so the builder
+//! builds and the way to it is what fails. `beside` is there only in a
+//! folder whose lender names builders beside.
 //!
 //! Long because its tests, a third of it, stay beside the private pieces
 //! they prove, the proof's clock and what it keeps of a builder's builds.
@@ -94,17 +98,22 @@ pub const STANDING: &str = "/run/nix-offload-standing/health.json";
 /// failed for room while its proofs passed.
 pub const FLOOR: u64 = 15_000_000_000;
 
-/// How a proof ended: whether it passed, and the bytes its builder's
-/// store had free, where it said.
+/// How a proof ended: whether it passed, the bytes its builder's store
+/// had free, where it said, and whether it built but couldn't carry
+/// [`CARRIED`] bytes up.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Proven {
     pub passed: bool,
     pub free: Option<u64>,
+    pub stalled: bool,
 }
 
 impl From<bool> for Proven {
     fn from(passed: bool) -> Self {
-        Self { passed, free: None }
+        Self {
+            passed,
+            ..Self::default()
+        }
     }
 }
 
@@ -151,6 +160,9 @@ pub struct Health {
     /// The bytes its store had free when its last proof passed, where it
     /// said.
     pub free: Option<u64>,
+    /// Whether its last proof built but couldn't carry [`CARRIED`] bytes
+    /// up: the builder builds, and the way to it is what fails.
+    pub stalled: bool,
 }
 
 impl Health {
@@ -163,7 +175,12 @@ impl Health {
 
     /// Take in a proof that ended `at`.
     pub fn heard(&mut self, proven: impl Into<Proven>, at: u64) {
-        let Proven { passed, free } = proven.into();
+        let Proven {
+            passed,
+            free,
+            stalled,
+        } = proven.into();
+        self.stalled = stalled && !passed;
         if passed {
             self.free = free;
             self.last_success = Some(at);
@@ -204,6 +221,7 @@ impl Health {
             last_failure: at("lastFailure"),
             failures: u32::try_from(said["consecutiveFailures"].as_u64()?).ok()?,
             free: at("freeBytes"),
+            stalled: said["stalled"].as_bool().unwrap_or(false),
         })
     }
 
@@ -215,6 +233,7 @@ impl Health {
             "lastFailure": self.last_failure,
             "consecutiveFailures": self.failures,
             "freeBytes": self.free,
+            "stalled": self.stalled,
         })
     }
 }
@@ -431,6 +450,95 @@ pub fn answers_over_ssh(store: &str, scratch: &Path, ssh: &str, within: Duration
     answered
 }
 
+/// How many bytes a lent builder's proof carries up, fresh each time, as
+/// a copy goes: built proofs passed all through 13 November's evening
+/// while copies up to both lent builders stalled, since a proof sent
+/// next to nothing. At 6.6 Mbit/s they take about 0.3 s of the uplink a
+/// minute, under 1% of it, for each builder lent.
+pub const CARRIED: usize = 256 * 1024;
+
+/// How long carrying [`CARRIED`] bytes up may take: under 20 s is more
+/// than 105 kbit/s, and a way slower than that carries no copy worth
+/// waiting on.
+pub const CARRYING: Duration = Duration::from_secs(20);
+
+/// A proof that `built`, passing only once its builder `carries` a copy
+/// up too, and stalled where it built but couldn't. One that didn't build
+/// isn't asked to carry.
+pub fn carrying(built: Proven, carries: impl FnOnce() -> bool) -> Proven {
+    if !built.passed || carries() {
+        return built;
+    }
+    Proven {
+        passed: false,
+        stalled: true,
+        ..built
+    }
+}
+
+/// Whether the builder whose store `store` names (its first line) takes
+/// [`CARRIED`] bytes no store holds within `within`, copied up with `nix`
+/// over its store, as every copy up goes: by the relay, the tunnel and
+/// ssh-ng to its daemon. They go as a file added here, named by its
+/// content, so the builder takes it unsigned; no root holds it in either
+/// store, so each collection takes it. `scratch` holds the file while
+/// it's added.
+pub fn carries(store: &str, scratch: &Path, nix: &str, within: Duration) -> bool {
+    let Some(lent) = store
+        .lines()
+        .next()
+        .and_then(|line| there::builder(line.trim()))
+    else {
+        return false;
+    };
+    let Some(path) = added(scratch, nix) else {
+        eprintln!("nix-offload: couldn't add what a proof carries to this store");
+        return false;
+    };
+    let carried = there::carried_up(&path, &lent, nix, within);
+    if !carried {
+        eprintln!(
+            "nix-offload: {} built its proof but couldn't take {} KiB within {} s",
+            lent.host,
+            CARRIED / 1024,
+            within.as_secs()
+        );
+    }
+    carried
+}
+
+/// A fresh path of [`CARRIED`] random bytes in this store, added with
+/// `nix` from a file in `scratch`, which goes once it's added.
+fn added(scratch: &Path, nix: &str) -> Option<String> {
+    use std::io::Read;
+    fs::create_dir_all(scratch).ok()?;
+    let file = scratch.join(format!("carried-{}", nonce()));
+    let mut bytes = Vec::with_capacity(CARRIED);
+    let read = fs::File::open("/dev/urandom")
+        .and_then(|random| random.take(CARRIED as u64).read_to_end(&mut bytes));
+    let added = read.ok().filter(|read| *read == CARRIED).and_then(|_| {
+        fs::write(&file, &bytes).ok()?;
+        let mut adding = Command::new(nix);
+        adding
+            .args([
+                "store",
+                "add",
+                "--mode",
+                "flat",
+                "--name",
+                "nix-offload-carried",
+            ])
+            .arg(&file)
+            .stdin(Stdio::null())
+            .stderr(Stdio::null());
+        let out = adding.output().ok()?;
+        let path = String::from_utf8(out.stdout).ok()?.trim().to_owned();
+        (out.status.success() && path.starts_with('/')).then_some(path)
+    });
+    let _ = fs::remove_file(&file);
+    added
+}
+
 /// What Nix says once a builder has built a proof and its output comes
 /// back, which is as far as a proof through the daemon need go: this
 /// store takes nothing while a collection holds its lock, as the disk
@@ -516,7 +624,11 @@ fn ended_within(
 ) -> Proven {
     let mut free = None;
     let passed = ended(command, within, builder, answered, figures, &mut free);
-    Proven { passed, free }
+    Proven {
+        passed,
+        free,
+        stalled: false,
+    }
 }
 
 /// [`ended_within`], keeping the free bytes the proof said in `free`.
@@ -650,6 +762,7 @@ pub fn write(dir: &Path, lent: Option<&Health>, beside: Option<&[Health]>, at: u
                 "lastFailure": null,
                 "consecutiveFailures": 0,
                 "freeBytes": null,
+                "stalled": false,
             })
         },
         Health::json,
@@ -772,6 +885,115 @@ mod tests {
         assert!(fresh.dropped(), "one never proven is dropped too");
     }
 
+    // On 13 November copies up to both lent builders stalled for minutes
+    // while every proof passed: a proof built a derivation there, but
+    // carried next to nothing up.
+    #[test]
+    fn a_builder_that_builds_but_cant_carry_a_copy_up_fails_as_stalled() {
+        let built = Proven {
+            passed: true,
+            free: Some(FLOOR),
+            ..Proven::default()
+        };
+        let carried = carrying(built, || true);
+        assert!(carried.passed && !carried.stalled, "{carried:?}");
+        assert_eq!(carried.free, Some(FLOOR), "its room still counts");
+        let stalled = carrying(built, || false);
+        assert!(!stalled.passed && stalled.stalled, "{stalled:?}");
+        let mut asked = false;
+        let unbuilt = carrying(Proven::default(), || {
+            asked = true;
+            true
+        });
+        assert!(!unbuilt.passed && !unbuilt.stalled, "{unbuilt:?}");
+        assert!(!asked, "one that didn't build isn't asked to carry");
+
+        let mut health = Health::of("lend-7");
+        health.heard(built, 10);
+        health.heard(stalled, 70);
+        health.heard(stalled, 130);
+        assert!(health.dropped(), "a link that can't carry takes no builds");
+        assert!(health.stalled, "since it built");
+        assert_eq!(health.json()["stalled"], true);
+        let read = Health::from_json(&health.json()).expect("its health");
+        assert!(read.stalled, "a keeper started again reads it");
+        health.heard(false, 190);
+        assert!(!health.stalled, "one that didn't build isn't stalled");
+        health.heard(stalled, 250);
+        health.heard(built, 310);
+        assert!(!health.stalled && !health.dropped(), "carried again");
+    }
+
+    #[test]
+    fn a_lent_builder_carries_a_fresh_path_up_over_its_store_within_its_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let at = dir.path().display();
+        let nix = stand_in(
+            dir.path(),
+            "nix",
+            &format!(
+                "case \"$1 $2\" in \"store add\") for last; do :; done; \
+                 wc -c < \"$last\" > {at}/size; cp \"$last\" {at}/carried; \
+                 echo /nix/store/aaaa-nix-offload-carried; exit 0 ;; esac; \
+                 echo \"$NIX_SSHOPTS\" > {at}/sshopts; exit 0"
+            ),
+        );
+        let scratch = dir.path().join("proving");
+        assert!(carries(STORE, &scratch, &nix, CARRYING));
+        let given = fs::read_to_string(dir.path().join("given")).unwrap();
+        let words: Vec<&str> = given.lines().collect();
+        assert_eq!(
+            words,
+            [
+                "copy",
+                "--to",
+                STORE.trim(),
+                "/nix/store/aaaa-nix-offload-carried"
+            ]
+        );
+        let size = fs::read_to_string(dir.path().join("size")).unwrap();
+        assert_eq!(
+            size.trim(),
+            CARRIED.to_string(),
+            "it carries {CARRIED} bytes"
+        );
+        let first = fs::read(dir.path().join("carried")).unwrap();
+        let sshopts = fs::read_to_string(dir.path().join("sshopts")).unwrap();
+        assert!(
+            sshopts.contains("-o ServerAliveInterval=5 -o ServerAliveCountMax=3"),
+            "{sshopts}"
+        );
+        assert!(
+            fs::read_dir(&scratch).unwrap().next().is_none(),
+            "what it carried is cleaned up here"
+        );
+        assert!(carries(STORE, &scratch, &nix, CARRYING));
+        let second = fs::read(dir.path().join("carried")).unwrap();
+        assert_ne!(first, second, "each proof carries what no store holds");
+
+        let failing = stand_in(
+            dir.path(),
+            "nix",
+            "case \"$1 $2\" in \"store add\") echo /nix/store/aaaa-c; exit 0 ;; esac; exit 1",
+        );
+        assert!(!carries(STORE, &scratch, &failing, CARRYING));
+        let hanging = stand_in(
+            dir.path(),
+            "nix",
+            "case \"$1 $2\" in \"store add\") echo /nix/store/aaaa-c; exit 0 ;; esac; \
+             exec tail -f /dev/null",
+        );
+        let began = Instant::now();
+        assert!(!carries(STORE, &scratch, &hanging, Duration::from_secs(1)));
+        assert!(
+            began.elapsed() < Duration::from_secs(10),
+            "a copy that stalls is cut"
+        );
+        let unadded = stand_in(dir.path(), "nix", "exit 1");
+        assert!(!carries(STORE, &scratch, &unadded, CARRYING));
+        assert!(!carries("", &scratch, &nix, CARRYING), "no store, no carry");
+    }
+
     // On 9 November the work Mac's builder had 6 GB free, and every check
     // sent there failed for room while its proofs passed.
     #[test]
@@ -783,6 +1005,7 @@ mod tests {
             Proven {
                 passed: true,
                 free: Some(FLOOR - 1),
+                ..Proven::default()
             },
             70,
         );
@@ -803,6 +1026,7 @@ mod tests {
             Proven {
                 passed: true,
                 free: Some(FLOOR),
+                ..Proven::default()
             },
             190,
         );
@@ -819,6 +1043,7 @@ mod tests {
             Proven {
                 passed: true,
                 free: Some(FLOOR - 1),
+                ..Proven::default()
             },
             10,
         );
@@ -1045,7 +1270,8 @@ mod tests {
             proven,
             Proven {
                 passed: true,
-                free: Some(6_000_000_000)
+                free: Some(6_000_000_000),
+                ..Proven::default()
             }
         );
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
@@ -1181,7 +1407,8 @@ mod tests {
             proven,
             Proven {
                 passed: true,
-                free: Some(7_000_000_000)
+                free: Some(7_000_000_000),
+                ..Proven::default()
             }
         );
         let given = fs::read_to_string(dir.path().join("given")).unwrap();
@@ -1243,6 +1470,7 @@ mod tests {
                 "lastFailure": null,
                 "consecutiveFailures": 0,
                 "freeBytes": null,
+                "stalled": false,
                 "beside": [{
                     "builder": "work-linux",
                     "state": "dropped",
@@ -1250,6 +1478,7 @@ mod tests {
                     "lastFailure": 1050,
                     "consecutiveFailures": 2,
                     "freeBytes": null,
+                    "stalled": false,
                 }],
             })
         );
@@ -1259,6 +1488,7 @@ mod tests {
             Proven {
                 passed: true,
                 free: Some(1),
+                ..Proven::default()
             },
             1000,
         );

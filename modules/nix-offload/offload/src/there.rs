@@ -564,26 +564,37 @@ pub fn run(
     });
     let reached = reached.and_then(|sending| {
         let ran = loop {
+            let mut tried = std::time::Instant::now();
             // Copied to each builder that stands, since one stood again
             // after a loss holds none of them.
-            if asked.derivations
-                && let Err(why) = up(asked, &lent, scratch, [ssh, nix])
-            {
-                break Err(Untaken::Waits(why));
-            }
-            if let Err(why) = inputs_up(&inputs, &lent, nix) {
-                break Err(Untaken::Stays(why));
-            }
-            let bring = match (&asked.out, asked.print) {
-                (Some(out), _) => Bring::Folder(out),
-                (None, true) => Bring::Store(nix, signatures),
-                (None, false) => Bring::Nothing,
+            let copied = match all_up(asked, &inputs, &lent, scratch, [ssh, nix]) {
+                Err(untaken) => break Err(untaken),
+                Ok(copied) => copied,
             };
-            let tried = std::time::Instant::now();
-            let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
-            if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
-                break ran.map_err(Untaken::Waits);
-            }
+            let building = copied.is_ok();
+            let ran = match copied {
+                Ok(()) => {
+                    let bring = match (&asked.out, asked.print) {
+                        (Some(out), _) => Bring::Folder(out),
+                        (None, true) => Bring::Store(nix, signatures),
+                        (None, false) => Bring::Nothing,
+                    };
+                    tried = std::time::Instant::now();
+                    let ran = on_with(&lent, &sending, bring, scratch, ssh, asked.alone.wrap());
+                    if !matches!(&ran, Ok(ran) if ran.status == UNREACHED) {
+                        break ran.map_err(Untaken::Waits);
+                    }
+                    ran
+                }
+                Err(uncopied) => {
+                    eprintln!("nix-offload: {}", uncopied.why);
+                    Ok(Ran {
+                        on: Some(lent.host.clone()),
+                        status: UNREACHED,
+                        sent: None,
+                    })
+                }
+            };
             let lost = std::time::Instant::now();
             let since = match outage {
                 Some(since) if lost.duration_since(tried) < waiting.worked => since,
@@ -605,12 +616,15 @@ pub fn run(
             // `far`'s grace period, and the build sent again waits on that, so
             // it says how it ends but shows none of its log: a VM test cut off
             // mid-test on 2 November passed there, and only its exit said so.
-            eprintln!(
-                "nix-offload: if it stands again within {} minutes, what it was building \
-                 goes on there, and this shows only how it ends; `nix log` on the builder \
-                 has the rest",
-                asked.alone.lasts() / 60
-            );
+            // One lost while copying up had nothing building.
+            if building {
+                eprintln!(
+                    "nix-offload: if it stands again within {} minutes, what it was building \
+                     goes on there, and this shows only how it ends; `nix log` on the builder \
+                     has the rest",
+                    asked.alone.lasts() / 60
+                );
+            }
             match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
                 None => break ran.map_err(Untaken::Waits),
@@ -639,24 +653,49 @@ pub fn run(
     }
 }
 
+/// Copies up to `lent` what `asked` builds from: its derivations, when it
+/// names them, and the inputs this machine alone holds. A copy failing on
+/// its own account is why no builder takes it; one whose ssh lost the
+/// builder goes as a run whose ssh lost it does, to a builder standing
+/// again or the one beside.
+fn all_up(
+    asked: &Asked,
+    inputs: &kept::Inputs,
+    lent: &Builder,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+) -> Result<Result<(), Uncopied>, Untaken> {
+    match asked
+        .derivations
+        .then(|| up(asked, lent, scratch, [ssh, nix]))
+    {
+        Some(Err(uncopied)) if !uncopied.lost => Err(Untaken::Waits(uncopied.why)),
+        Some(Err(uncopied)) => Ok(Err(uncopied)),
+        _ => match inputs_up(inputs, lent, nix) {
+            Err(uncopied) if !uncopied.lost => Err(Untaken::Stays(uncopied.why)),
+            copied => Ok(copied),
+        },
+    }
+}
+
 /// Sends `lent` the store paths the flake takes from this machine alone,
 /// when it takes any.
-fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), String> {
+fn inputs_up(inputs: &kept::Inputs, lent: &Builder, nix: &str) -> Result<(), Uncopied> {
     if inputs.sent.is_empty() {
         return Ok(());
     }
     if lent_only() {
-        return Err(format!(
+        return Err(Uncopied::failed(format!(
             "it takes {} from this machine alone, and --lent-only sends none of it",
             inputs.sent.join(", ")
-        ));
+        )));
     }
     eprintln!(
         "nix-offload: sending {} the flake takes from this machine alone to {}",
         inputs.sent.join(", "),
         lent.host
     );
-    paths_up(&inputs.sent, lent, nix, send_within(0))
+    sent_up(&inputs.sent, lent, nix, send_within(0))
 }
 
 /// What the builder's shell is sent to build `asked`: its command, and the
@@ -722,7 +761,7 @@ fn upload(nix: &str) -> Command {
 fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
     // A scope runs its command in systemd-run's own process, so ending it
     // ends the copy, as when the copy runs alone.
-    systemd_run.map_or_else(
+    let mut command = systemd_run.map_or_else(
         || Command::new(nix),
         |systemd_run| {
             let mut command = Command::new(systemd_run);
@@ -737,7 +776,116 @@ fn uploading(nix: &str, systemd_run: Option<&str>) -> Command {
                 .args(["-p", UPLOAD_MEMORY, "--", nix]);
             command
         },
-    )
+    );
+    command.env("NIX_SSHOPTS", copy_sshopts());
+    command
+}
+
+/// What a copy up tells its ssh before anything `NIX_SSHOPTS` already
+/// says, so it wins: give the builder up once nothing at all has come back
+/// from it for 15 s. A builder taking what it's sent says so as it goes,
+/// ssh's window opening as its side reads, so a copy that moves, however
+/// slowly, is never cut; one nothing reaches is. On 13 November copies up
+/// to both lent builders stalled behind a full uplink and waited out the
+/// 60 s of keepalives the builder's ssh entry gives, while ssh's window
+/// and the relay's buffers held what Nix said it had sent.
+pub const COPY_ALIVE: &str = "-o ServerAliveInterval=5 -o ServerAliveCountMax=3";
+
+/// [`COPY_ALIVE`] and then what `NIX_SSHOPTS` says here.
+fn copy_sshopts() -> String {
+    match std::env::var("NIX_SSHOPTS") {
+        Ok(given) if !given.trim().is_empty() => format!("{COPY_ALIVE} {given}"),
+        _ => COPY_ALIVE.to_owned(),
+    }
+}
+
+/// What Nix, or the ssh under it, says when ssh lost the builder midway
+/// through a copy, rather than the copy failing on its own account.
+const LOST_SAID: [&str; 5] = [
+    "not responding",
+    "Nix daemon disconnected",
+    "cannot open connection to remote store",
+    "Connection closed",
+    "Connection reset",
+];
+
+/// Why a copy up failed, and whether ssh lost the builder under it, which
+/// a builder standing again, or the one beside, may take instead.
+struct Uncopied {
+    why: String,
+    lost: bool,
+}
+
+impl Uncopied {
+    fn failed(why: String) -> Self {
+        Self { why, lost: false }
+    }
+
+    /// `why`, or why and that ssh lost the builder, as `copying` heard.
+    fn of(why: String, copying: &Copying) -> Self {
+        if copying.lost() {
+            Self {
+                why: format!("{why}, since ssh lost it"),
+                lost: true,
+            }
+        } else {
+            Self::failed(why)
+        }
+    }
+}
+
+/// A copy running, whose standard error is passed on as it comes, heard
+/// for whether it says ssh lost the builder.
+struct Copying {
+    child: std::process::Child,
+    heard: std::sync::mpsc::Receiver<bool>,
+}
+
+impl Copying {
+    fn start(command: &mut Command) -> std::io::Result<Self> {
+        use std::io::BufRead;
+        let mut child = command.stderr(Stdio::piped()).spawn()?;
+        let (said, heard) = std::sync::mpsc::channel();
+        if let Some(errors) = child.stderr.take() {
+            std::thread::spawn(move || {
+                let mut lost = false;
+                for line in std::io::BufReader::new(errors)
+                    .split(b'\n')
+                    .map_while(Result::ok)
+                {
+                    let line = String::from_utf8_lossy(&line);
+                    lost |= LOST_SAID.iter().any(|said| line.contains(said));
+                    eprintln!("{line}");
+                }
+                let _ = said.send(lost);
+            });
+        }
+        Ok(Self { child, heard })
+    }
+
+    /// Whether it said ssh lost the builder, once it has ended.
+    fn lost(&self) -> bool {
+        self.heard
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap_or(false)
+    }
+}
+
+/// Whether `lent` takes the store path `path` within `within`, copied up
+/// as every copy is but alone and quiet, for a proof: nothing fetches it
+/// elsewhere, since no cache holds it.
+pub fn carried_up(path: &str, lent: &Builder, nix: &str, within: std::time::Duration) -> bool {
+    // ssh's control socket goes in TMPDIR, as when what's built comes back.
+    uploading(nix, None)
+        .args(["copy", "--to", &lent.store, path])
+        .env("TMPDIR", "/tmp")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()
+        .and_then(|mut carrying| finished_within(&mut carrying, within))
+        .is_some_and(|status| status.success())
 }
 
 /// Sends the store paths `sent` and what they reference to the lent
@@ -752,21 +900,32 @@ pub fn paths_up(
     nix: &str,
     within: std::time::Duration,
 ) -> Result<(), String> {
+    sent_up(sent, lent, nix, within).map_err(|uncopied| uncopied.why)
+}
+
+/// [`paths_up`], saying whether ssh lost the builder when it fails.
+fn sent_up(
+    sent: &[String],
+    lent: &Builder,
+    nix: &str,
+    within: std::time::Duration,
+) -> Result<(), Uncopied> {
     if sent.is_empty() {
         return Ok(());
     }
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
-    let mut copying = upload(nix)
-        .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
-        .args(sent)
-        .env("TMPDIR", "/tmp")
-        .spawn()
-        .map_err(|error| format!("couldn't run {nix}: {error}"))?;
-    match finished_within(&mut copying, within) {
+    let mut copying = Copying::start(
+        upload(nix)
+            .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
+            .args(sent)
+            .env("TMPDIR", "/tmp"),
+    )
+    .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
+    match finished_within(&mut copying.child, within) {
         Some(status) if status.success() => Ok(()),
-        _ => Err(format!(
-            "{} couldn't be sent to the builder",
-            sent.join(", ")
+        _ => Err(Uncopied::of(
+            format!("{} couldn't be sent to the builder", sent.join(", ")),
+            &copying,
         )),
     }
 }
@@ -900,7 +1059,12 @@ fn stays(asked: &Asked, nix: &str, why: &str) -> Ran {
 /// Puts what the derivations asked for are built from in the builder's
 /// store: the derivations themselves, and the outputs this machine holds
 /// of those it would build.
-fn up(asked: &Asked, lent: &Builder, scratch: &Path, [ssh, nix]: [&str; 2]) -> Result<(), String> {
+fn up(
+    asked: &Asked,
+    lent: &Builder,
+    scratch: &Path,
+    [ssh, nix]: [&str; 2],
+) -> Result<(), Uncopied> {
     let paths: Vec<&str> = asked
         .attributes
         .iter()
@@ -927,7 +1091,7 @@ fn derivations_up(
     scratch: &Path,
     rank: Rank,
     [ssh, nix]: [&str; 2],
-) -> Result<(), String> {
+) -> Result<(), Uncopied> {
     let mut copying = upload(nix);
     match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
@@ -959,14 +1123,14 @@ fn derivations_up(
     };
     let _turn = uplink_turn(rank);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
-    let copied = copying
-        .env("TMPDIR", "/tmp")
-        .status()
-        .map_err(|error| format!("couldn't run {nix}: {error}"))?;
-    if copied.success() {
-        Ok(())
-    } else {
-        Err("the derivations couldn't be copied up to the builder".to_owned())
+    let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
+        .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
+    match copied.child.wait() {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(Uncopied::of(
+            "the derivations couldn't be copied up to the builder".to_owned(),
+            &copied,
+        )),
     }
 }
 
