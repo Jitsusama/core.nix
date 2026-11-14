@@ -1500,8 +1500,9 @@ works the same way everywhere.
   Needs You For where it needs him, else Doing, its step alone ("edit
   Drawer.qml"), since how it stands is its row's, and none where it has
   no step; Last Turn; Spent Today, its councils and fleets on that
-  line; Context; then Its Sessions for an orchestration, or its Host
-  where it isn't on this machine. One with neither stops at four. What
+  line; Context; then Its Sessions for an orchestration, or its Machine
+  where it isn't on this one, never Host, which is pi's host on a session
+  given back (VKCF3Z, b6631488). One with neither stops at four. What
   its quest is about is the prose under them, with no name and without
   the title the drawer already says, drawn whole with its title, as a
   landing asking Joel something is, since z a opens the fold rather than

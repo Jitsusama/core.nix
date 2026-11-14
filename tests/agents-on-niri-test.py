@@ -613,7 +613,7 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     summary = WORKS_ON.removeprefix("Listening Quest: ")
     assert drawer["body"] == summary, drawer
     assert drawer["bodyDrawn"] == summary, drawer
-    shoot("agents-drawer-glance")
+    unfolded(shell, shoot, "agents-drawer-glance")
     nerd = drawer["nerd"]
     assert "Doing" not in nerd, drawer
     assert nerd.index("Quest") > nerd.index("Cache"), drawer
@@ -1033,7 +1033,26 @@ def test_an_orchestrations_waiting_sessions_fold_into_one_row_return_steps_into(
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["Listening Quest", "Paused Quest"])
 
 
-def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> None:
+def unfolded(shell: Shell, shoot: Callable[[str], None], name: str) -> None:
+    """Shoot a drawer as it stands, then with its fold opened on za, and fold it again.
+
+    za is normal mode's, typed on the find otherwise, so it's pressed from there and the line
+    is left typing again.
+    """
+    shoot(name)
+    shell.normal()
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is False)
+    shoot(f"{name}-open")
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.on_find()
+
+
+@pytest.mark.usefixtures("at_shots_scale")
+def test_agents_top_level_is_the_rows_its_daemon_serves_ready(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
     """Agents opens on the orchestration rows the agents daemon serves as agents-top.
 
     The shell draws them as served rather than laying them out (VKCF3Z, 3a742b67).
@@ -1059,6 +1078,7 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(shell: Shell) -> N
 
     shell.launcher_until(worded)
     assert not shell.showing()["drawer"]["eyebrowDrawn"].startswith("[object"), shell.showing()
+    unfolded(shell, shoot, "agents-drawer-orchestrator")
 
 
 def test_a_session_whose_folder_is_gone_says_so_before_return_and_is_forgotten(

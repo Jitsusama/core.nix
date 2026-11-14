@@ -460,7 +460,11 @@ fn last(session: Session, title: &str, words: &Words, known: &Known) -> Vec<Told
     .into_iter()
     .filter(|(_, value)| !value.is_empty())
     .map(|(fact, value)| {
-        let said = json!({"label": words.names.word(fact), "value": value});
+        // Where it isn't here its machine takes the glance's sixth place,
+        // still named Machine: Host is pi's host, said only on a session
+        // given back (VKCF3Z, 2026-11-14, b6631488).
+        let named = if fact == "host" { "machine" } else { fact };
+        let said = json!({"label": words.names.word(named), "value": value});
         (fact.to_owned(), said)
     })
     .collect();
@@ -604,7 +608,10 @@ mod tests {
                     Cache=99.0% read; Session=s-1; Context Rebuilt=$1.20; Hears=#desk; \
                     Last Landing=Serve rows \u{b7} core.nix#1@clock; \
                     Budget=Your AI proxy token \u{b7} $24,349 of $40,000; Quest=QEST-1";
-        for (here, sixth, last) in [(false, "; Host=skiff", ""), (true, "", "; Machine=skiff")] {
+        for (here, sixth, last) in [
+            (false, "; Machine=skiff", ""),
+            (true, "", "; Machine=skiff"),
+        ] {
             let mut record = record(&busy());
             record["here"] = json!(here);
             let drawn = drawer(
@@ -710,7 +717,7 @@ mod tests {
             facts(&drawn),
             "Spent Today=$14.20 in all; Its Sessions=$11.10"
         );
-        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Host=skiff");
+        assert_eq!(folded(&drawn), "Session=s-o; Its Own=$3.10; Machine=skiff");
     }
 
     #[test]
