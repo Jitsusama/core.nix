@@ -86,11 +86,18 @@ fn fixture(folder: &Path) -> PathBuf {
     // Chrome's profile, its session folder there before it's watched.
     std::fs::create_dir_all(folder.join("chrome/Sessions")).unwrap();
     let at = |path: &str| folder.join(path).to_string_lossy().into_owned();
-    // Each list says it was read, so a test counts its reads.
+    // Each list says it was read, so a test counts its reads. Kitty's
+    // holds while a gate is there, saying so, so a test can ask while
+    // a read runs.
     let folders = format!(
-        "echo read >> {} && cat {}",
+        concat!(
+            "echo read >> {} && if [ -e {gate} ]; then : > {}; ",
+            "while [ -e {gate} ]; do sleep 0.02; done; fi && cat {}"
+        ),
         at("lists/reads"),
-        at("lists/folders")
+        at("lists/holding"),
+        at("lists/folders"),
+        gate = at("lists/gate"),
     );
     let sites = format!(
         "echo read >> {} && printf 'https://a.example\\tA\\t1793000000\\n'",
@@ -385,6 +392,37 @@ fn a_list_isnt_read_while_nobody_watches_it() {
         json!([{"path": "/b", "used_at_s": null}])
     );
     assert_eq!(running.reads(), before + 1);
+}
+
+#[test]
+fn a_get_while_its_list_is_read_answers_what_that_read_finds() {
+    let running = Running::new("reading");
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "watch", "keys": ["recent:kitty"]}));
+    client.changed("recent:kitty");
+    // The read the change starts holds once it has begun, so the get
+    // comes while it runs and the list it holds is the old one.
+    let gate = running.path("lists/gate");
+    std::fs::write(&gate, "").unwrap();
+    std::fs::write(running.path("lists/folders"), "/b\n").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !running.path("lists/holding").exists() {
+        assert!(Instant::now() < deadline, "the change's read never began");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let opening = std::thread::spawn(move || {
+        // The get is sent and reaches the daemon while the read holds.
+        std::thread::sleep(Duration::from_millis(300));
+        std::fs::remove_file(gate).unwrap();
+    });
+    let said = running
+        .client()
+        .ask(&json!({"id": 2, "ask": "get", "keys": ["recent:kitty"]}));
+    opening.join().unwrap();
+    assert_eq!(
+        said["records"][0]["paths"],
+        json!([{"path": "/b", "used_at_s": null}])
+    );
 }
 
 #[test]
