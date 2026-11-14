@@ -212,12 +212,25 @@ fn heard(context: &terminal_kit::Context) -> Result<(), Failure> {
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
     let newest = &lines[lines.len().saturating_sub(NEWEST)..];
+    // When Slack was last read whole, so a quiet reader is told from one
+    // that isn't reading at all.
+    let read_at = std::fs::read_to_string(state().join("judged.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|kept| kept.get("read_at").and_then(Value::as_u64));
     let written = match context.format() {
-        Format::Text if newest.is_empty() => context.say("nothing heard yet\n"),
+        Format::Text if newest.is_empty() => context.say(&match read_at {
+            Some(at) => format!(
+                "nothing heard yet; Slack was last read {} s ago\n",
+                millis().saturating_sub(at) / MILLIS
+            ),
+            None => "nothing heard yet, and Slack hasn't been read yet\n".to_owned(),
+        }),
         Format::Text => context.say(&said(newest)),
         _ => context.answer(&json!({
             "schema": "pineapple-slack.heard/1",
             "heard": newest,
+            "read_at": read_at,
         })),
     };
     written.map_err(|error| {
@@ -289,8 +302,14 @@ fn round(slack: &Slack, account: &Account, state: &Path, judged: &mut Judged) {
         emails: Vec::new(),
     };
     let tag = format!("<@{}>", account.user);
-    let phrase = search(slack, account, "pineapple");
-    let tagged = search(slack, account, &tag);
+    // A round counts as read only once both searches answered, so
+    // judged.json's read_at never says Slack was read when it wasn't.
+    let (Some(phrase), Some(tagged)) = (
+        search(slack, account, "pineapple"),
+        search(slack, account, &tag),
+    ) else {
+        return;
+    };
     let mut seen = HashSet::new();
     let mut heard: Vec<&Message> = phrase
         .iter()
@@ -298,9 +317,6 @@ fn round(slack: &Slack, account: &Account, state: &Path, judged: &mut Judged) {
         .filter(|message| judged.is_new(message) && seen.insert(message.key()))
         .collect();
     heard.sort_by_key(|message| micros(&message.ts));
-    if heard.is_empty() {
-        return;
-    }
     for message in heard {
         judge(slack, account, state, &joel, message);
         judged.keys.push(message.key());
@@ -310,9 +326,9 @@ fn round(slack: &Slack, account: &Account, state: &Path, judged: &mut Judged) {
     write_judged(state, judged);
 }
 
-/// The newest messages a search finds, oldest first; none when Slack
+/// The newest messages a search finds, oldest first; nothing when Slack
 /// can't be asked now, which the next round tries again.
-fn search(slack: &Slack, account: &Account, query: &str) -> Vec<Message> {
+fn search(slack: &Slack, account: &Account, query: &str) -> Option<Vec<Message>> {
     let asked = [
         ("query", query),
         ("count", COUNT),
@@ -324,14 +340,14 @@ fn search(slack: &Slack, account: &Account, query: &str) -> Vec<Message> {
         Ok(said) => said,
         Err(why) => {
             eprintln!("<4>couldn't search Slack: {why:?}");
-            return Vec::new();
+            return None;
         }
     };
     match found(&said) {
-        Ok(messages) => messages,
+        Ok(messages) => Some(messages),
         Err(why) => {
             eprintln!("<4>Slack refused a search: {why}");
-            Vec::new()
+            None
         }
     }
 }
@@ -438,9 +454,10 @@ fn read_judged(state: &Path) -> Option<Judged> {
     Some(Judged { since, keys })
 }
 
-/// Keeps what was judged whole, through a file renamed into place.
+/// Keeps what was judged whole, and when Slack was read, through a file
+/// renamed into place. Written every round, a few hundred bytes each 30 s.
 fn write_judged(state: &Path, judged: &Judged) {
-    let kept = json!({ "since": judged.since, "keys": judged.keys });
+    let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": millis() });
     let path = state.join("judged.json");
     let written = path.with_extension("new");
     let wrote = std::fs::create_dir_all(state)
