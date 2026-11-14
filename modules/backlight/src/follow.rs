@@ -236,12 +236,12 @@ impl Follow {
         }
     }
 
-    /// Starts the move the light asked for, from `shown`, once it's due and
-    /// none is under way, and gives where it goes.
+    /// Starts the move the light asked for, from `shown`, once it's due, and
+    /// gives where it goes. One under way gives way to it from where it has
+    /// reached, since a glide down takes 25 seconds and a lamp switched on
+    /// meanwhile shouldn't wait it out; light heard mid-move is weighed
+    /// against where the move goes, so only a real change is due.
     pub fn start(&mut self, shown: f64, now: Instant) -> Option<f64> {
-        if self.ramp.is_some() {
-            return None;
-        }
         let to = self.steer.due(now)?;
         self.ramp = Some(Ramp::new(shown, to, now));
         Some(to)
