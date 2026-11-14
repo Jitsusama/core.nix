@@ -14,7 +14,7 @@ use serde_json::Value;
 
 use crate::answered;
 use crate::arrangement::Arrangement;
-use crate::carried::Carried;
+use crate::carried::{Carried, Said};
 use crate::file::{self, Files};
 use crate::inputs::Inputs;
 use crate::kept_places::KeptPlaces;
@@ -99,6 +99,9 @@ pub struct Paths {
     /// A clone of core's whose history says what that core merged, read
     /// again at each of its fetches.
     pub clone: Option<PathBuf>,
+    /// Where pi-packages installs the harness, whose `current` link says
+    /// the commit installed, read again as it moves.
+    pub harness: Option<PathBuf>,
 }
 
 impl Heard {
@@ -126,16 +129,22 @@ impl Paths {
         .into_iter()
         .chain(self.switched.clone())
         .chain(self.clone.as_ref().map(|clone| clone.join("FETCH_HEAD")))
+        .chain(self.harness.as_ref().map(|harness| harness.join("current")))
         .collect()
     }
 
-    /// Whether `path` says what of core runs, or what that holds.
+    /// Whether `path` says what of core or the harness runs, or what that
+    /// holds.
     fn says_carried(&self, path: &Path) -> bool {
         self.switched.as_deref() == Some(path)
             || self
                 .clone
                 .as_ref()
                 .is_some_and(|clone| clone.join("FETCH_HEAD") == path)
+            || self
+                .harness
+                .as_ref()
+                .is_some_and(|harness| harness.join("current") == path)
     }
 }
 
@@ -256,10 +265,13 @@ impl Inputs {
             if let Some(kept) = KeptPlaces::read(path) {
                 self.kept_places = kept;
             }
-        } else if paths.says_carried(path)
-            && let (Some(switched), Some(clone)) = (&paths.switched, &paths.clone)
-        {
-            self.carried = Carried::read(switched, &paths.carried, clone);
+        } else if paths.says_carried(path) {
+            self.carried = Carried::read(Said {
+                switched: paths.switched.as_deref(),
+                kept: &paths.carried,
+                clone: paths.clone.as_deref(),
+                harness: paths.harness.as_deref(),
+            });
         }
     }
 }
@@ -289,6 +301,7 @@ mod tests {
             switched: Some(folder.join("last.json")),
             carried: folder.join("agents").join("carried.json"),
             clone: Some(folder.join("core.git")),
+            harness: Some(folder.join("agentic-harness.pi")),
         }
     }
 

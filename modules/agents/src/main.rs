@@ -11,7 +11,7 @@
 //! Usage: `agents --vocabulary WORDS [--node NODE] --to-do TODO --windows
 //! WINDOWS --spend SPEND --orchestrators ORCHESTRATORS --restore RESTORE
 //! --kept KEPT --landed LANDED --steer STEER --shells SHELLS [--switched
-//! SWITCHED --clone CLONE] --socket SOCKET`, where
+//! SWITCHED --clone CLONE] [--harness HARNESS] --socket SOCKET`, where
 //! WORDS is the launcher's
 //! words.json, NODE the mycelium node's socket, TODO the to-do daemon's,
 //! WINDOWS the windows daemon's, SPEND spend-watch's collection (its
@@ -24,9 +24,11 @@
 //! session's talks, SHELLS the launcher's own folders, where it kept them
 //! before the daemon did, SWITCHED update-to-main's answer to its last
 //! ask and CLONE a clone of core's, which together say what of core's
-//! merges run, so a landing of core's waits for its switch before To
-//! Try holds it (carried.rs; the core is kept beside KEPT, in
-//! carried.json), and with neither nothing waits. A machine with no realm runs no node,
+//! and mycelium's merges run, so a landing of theirs waits for its
+//! switch before To Try holds it (carried.rs; the core is kept beside
+//! KEPT, in carried.json), and with neither nothing waits; HARNESS is
+//! where pi-packages installs the harness, which says the same of its
+//! landings. A machine with no realm runs no node,
 //! so it's started with none, and serves the sessions to reopen alone.
 
 use std::path::{Path, PathBuf};
@@ -84,7 +86,8 @@ const DOMAIN: Domain = Domain {
 const USAGE: &str = "usage: agents --vocabulary WORDS [--node NODE] --to-do TODO \
                      --windows WINDOWS --spend SPEND --orchestrators ORCHESTRATORS \
                      --restore RESTORE --kept KEPT --landed LANDED --steer STEER \
-                     --shells SHELLS [--switched SWITCHED --clone CLONE] --socket SOCKET";
+                     --shells SHELLS [--switched SWITCHED --clone CLONE] \
+                     [--harness HARNESS] --socket SOCKET";
 
 /// This boot, as Linux names it, or none where it isn't said, when no
 /// boot's sessions are offered as the last boot's.
@@ -105,6 +108,7 @@ struct Args {
     shells: PathBuf,
     switched: Option<PathBuf>,
     clone: Option<PathBuf>,
+    harness: Option<PathBuf>,
     socket: PathBuf,
 }
 
@@ -129,6 +133,7 @@ fn args() -> Option<Args> {
         shells: named("--shells")?,
         switched: named("--switched"),
         clone: named("--clone"),
+        harness: named("--harness"),
         socket: named("--socket")?,
     })
 }
@@ -357,6 +362,7 @@ fn main() -> ExitCode {
         kept: args.kept,
         switched: args.switched,
         clone: args.clone,
+        harness: args.harness,
         landed: args.landed,
         steer: args.steer,
         shells: args.shells,
