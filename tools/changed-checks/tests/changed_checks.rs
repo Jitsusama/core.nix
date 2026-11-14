@@ -2224,6 +2224,42 @@ fn a_gate_reaching_the_vm_tests_but_nothing_one_read_alone_keeps_its_derivation(
 }
 
 #[test]
+fn asked_only_to_name_them_it_judges_each_check_by_what_it_read_as_a_gate_does() {
+    // On 14 November each of the merge net's rounds, which only names what
+    // moved, evaluated all 930 of the tree's checks in 275 to 390 s before
+    // its first VM test, while gates beside them evaluated 100 to 600.
+    let naming = ["--system", "x86_64-linux", "--name-only"];
+    let ordinary = kept_alone("named-alone-untouched", MOVED, "M\tdocs/notes.md\n");
+    let vm = vm_alone("named-vm-alone-unreached", "M\ttests/x.nix\n");
+
+    let (ran_ordinary, ran_vm) = (ordinary.run(&naming), vm.run(&naming));
+
+    assert!(
+        ran_ordinary.status.success(),
+        "{}",
+        text(&ran_ordinary.stderr)
+    );
+    assert!(
+        text(&ran_ordinary.stderr).contains(
+            "evaluates 0 of x86_64-linux's 3 other checks, since the change reaches nothing \
+             the other 3 read at 0123456789ab"
+        ),
+        "naming them evaluated the other checks the change reaches nothing of: {}",
+        text(&ran_ordinary.stderr)
+    );
+    assert_eq!(
+        text(&ran_vm.stdout),
+        "changed  vm-y\n",
+        "only vm-y read what the change touched, yet naming them named more"
+    );
+    assert!(
+        text(&ran_vm.stderr).contains("evaluates 1 of x86_64-linux's 2 VM tests"),
+        "naming them evaluated the VM tests the change reaches nothing of: {}",
+        text(&ran_vm.stderr)
+    );
+}
+
+#[test]
 fn a_gate_evaluates_each_vm_test_its_change_reaches_or_the_record_lacks() {
     for (test, diff, lacks, moved) in [
         (
