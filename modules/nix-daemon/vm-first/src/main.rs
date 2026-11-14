@@ -40,8 +40,8 @@
 //! be found. A build's own name sits in its environment, which only its
 //! user may read, so it's known by what asked for it.
 //!
-//! Usage: vm-first [--cgroup /sys/fs/cgroup/build.slice/nix-daemon.service]
-//!        [--name nixos-test-driver\*]... [--nice -10] [--weight 1000] [--every 1000]
+//! `vm-first --help` says its flags; it takes the command kit's shape
+//! (docs/commands.md), and what it does goes to its journal on stderr.
 
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
@@ -49,9 +49,11 @@ use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::ExitCode;
 use std::thread;
 use std::time::Duration;
+
+use terminal_kit::{Context, Exit, Failure, Help};
 
 const SCHED_OTHER: i32 = 0;
 const PRIO_PROCESS: i32 = 0;
@@ -754,7 +756,7 @@ fn bring_process_ahead(pid: &str, comm: &str, settings: &Settings, warned: &mut 
     }
 }
 
-fn settings() -> Result<Settings, String> {
+fn settings(args: &[String]) -> Result<Settings, Failure> {
     let mut settings = Settings {
         cgroup: PathBuf::from("/sys/fs/cgroup/build.slice/nix-daemon.service"),
         names: Vec::new(),
@@ -762,25 +764,43 @@ fn settings() -> Result<Settings, String> {
         weight: 1000,
         every: Duration::from_millis(1000),
     };
-    let mut args = std::env::args().skip(1);
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("vm-first --help");
+    let mut args = args.iter();
     while let Some(flag) = args.next() {
-        let mut value = || args.next().ok_or(format!("{flag} needs a value"));
+        let mut value = || {
+            args.next()
+                .ok_or_else(|| wrongly(format!("{flag} needs a value")))
+        };
         match flag.as_str() {
             "--cgroup" => settings.cgroup = PathBuf::from(value()?),
-            "--name" => settings.names.push(value()?),
-            "--nice" => settings.nice = value()?.parse().map_err(|_| "--nice is a number")?,
+            "--name" => settings.names.push(value()?.clone()),
+            "--nice" => {
+                settings.nice = value()?
+                    .parse()
+                    .ok()
+                    .filter(|nice| (-20..=19).contains(nice))
+                    .ok_or_else(|| wrongly("--nice is a number from -20 to 19".into()))?;
+            }
             "--weight" => {
                 settings.weight = value()?
                     .parse()
                     .ok()
                     .filter(|weight| (1..=10_000).contains(weight))
-                    .ok_or("--weight is a number from 1 to 10000")?;
+                    .ok_or_else(|| wrongly("--weight is a number from 1 to 10000".into()))?;
             }
             "--every" => {
-                let ms = value()?.parse().map_err(|_| "--every is ms")?;
+                let ms = value()?
+                    .parse()
+                    .map_err(|_| wrongly("--every is a number of ms".into()))?;
                 settings.every = Duration::from_millis(ms);
             }
-            _ => return Err(format!("unknown argument {flag}")),
+            _ => {
+                return Err(terminal_kit::flags::unknown(
+                    "flag",
+                    flag,
+                    &["--cgroup", "--name", "--nice", "--weight", "--every"],
+                ));
+            }
         }
     }
     if settings.names.is_empty() {
@@ -789,8 +809,28 @@ fn settings() -> Result<Settings, String> {
     Ok(settings)
 }
 
-fn run() -> Result<(), String> {
-    let settings = settings()?;
+fn help() -> Help {
+    Help::new("vm-first", "puts Nix's timed checks ahead of its builds")
+        .example(
+            "vm-first",
+            "watches the daemon's builds, as its service runs",
+        )
+        .example(
+            "vm-first --name 'niri-*'",
+            "brings only niri's test programs ahead",
+        )
+        .option("--cgroup PATH", "the daemon's cgroup, its builds under it")
+        .option(
+            "--name NAME",
+            "a process to bring ahead, in the timed ones' place; * ends a prefix",
+        )
+        .option("--nice N", "the nice it brings them to; -10")
+        .option("--weight N", "their build's CPU and disk weight; 1000")
+        .option("--every MS", "how often it looks; 1000")
+}
+
+fn run(context: &Context) -> Result<(), Failure> {
+    let settings = settings(&context.args)?;
     eprintln!(
         "Bringing {} in {} ahead at nice {}.",
         settings.names.join(", "),
@@ -807,16 +847,67 @@ fn run() -> Result<(), String> {
     }
 }
 
-fn main() {
-    if let Err(error) = run() {
-        eprintln!("vm-first: {error}");
-        process::exit(1);
-    }
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), run)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn words(line: &str) -> Vec<String> {
+        line.split_whitespace().map(String::from).collect()
+    }
+
+    #[test]
+    fn no_flags_watch_the_daemon_for_every_timed_program() {
+        let settings = settings(&[]).expect("no flags should be its service's settings");
+        assert_eq!(
+            settings.cgroup,
+            PathBuf::from("/sys/fs/cgroup/build.slice/nix-daemon.service"),
+            "the daemon's own cgroup should be watched"
+        );
+        assert_eq!(
+            settings.names.len(),
+            TIMED.len(),
+            "every timed program should be named"
+        );
+    }
+
+    #[test]
+    fn named_programs_take_the_place_of_the_timed_ones() {
+        let settings = settings(&words("--name niri-* --nice -5 --every 250"))
+            .expect("each flag here should be taken");
+        assert_eq!(
+            settings.names,
+            ["niri-*"],
+            "only the named program should be brought ahead"
+        );
+        assert_eq!(settings.nice, -5, "the nice asked for should be kept");
+        assert_eq!(
+            settings.every,
+            Duration::from_millis(250),
+            "it should look as often as asked"
+        );
+    }
+
+    #[test]
+    fn a_flag_asked_wrongly_is_a_usage_failure() {
+        for line in [
+            "--nice",
+            "--nice -40",
+            "--weight 0",
+            "--every soon",
+            "--quick",
+        ] {
+            let exit = settings(&words(line)).err().map(|failure| failure.exit);
+            assert_eq!(
+                exit,
+                Some(Exit::Usage),
+                "{line} should be refused as asked wrongly"
+            );
+        }
+    }
 
     fn defaults() -> Settings {
         Settings {
@@ -888,7 +979,7 @@ mod tests {
 
     #[test]
     fn finds_the_builds_cgroups_and_nothing_else() {
-        let root = std::env::temp_dir().join(format!("vm-first-{}", process::id()));
+        let root = std::env::temp_dir().join(format!("vm-first-{}", std::process::id()));
         for dir in ["nix-daemon", "nix-build-uid-872415232", "nix-build-pid-7-0"] {
             fs::create_dir_all(root.join(dir)).unwrap();
         }
@@ -1149,7 +1240,7 @@ mod tests {
 
     #[test]
     fn finds_every_process_under_a_build_its_containers_too() {
-        let root = std::env::temp_dir().join(format!("vm-first-under-{}", process::id()));
+        let root = std::env::temp_dir().join(format!("vm-first-under-{}", std::process::id()));
         let payload = root.join("payload");
         fs::create_dir_all(payload.join("init.scope")).unwrap();
         fs::write(root.join("cgroup.procs"), "10\n11\n").unwrap();
