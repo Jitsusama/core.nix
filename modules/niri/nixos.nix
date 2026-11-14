@@ -35,7 +35,9 @@
     # so the shell couldn't keep a notice inside the window under it. The
     # patch (tiled-positions.patch) reports a tiled window's place too,
     # where the view comes to rest, so a scroll sends one change, not one a
-    # frame.
+    # frame. It says which animation moving the tile began last and how
+    # long before the report, so the margin cat can follow a moving edge
+    # in step with niri rather than a frame or more behind.
     #
     # niri casts a screen in every pixel of its mode, so a call took the
     # 4K monitor as 3840x2160, and Tuple, which ignores the size its viewer
@@ -158,10 +160,13 @@
     # terminals, it woke about 990 times a second and spent 35 to 49% of a
     # core walking them. The patch (refreshes-once-a-frame.patch)
     # walks them at most once a frame of the fastest screen, a timer taking
-    # what a wakeup puts off; input, an action, a focus change and a window
-    # coming or going still have it at once. Its tests run as niri builds,
-    # and niri-refreshes-once-a-frame counts its refreshes under a client
-    # committing a thousand times a second.
+    # what a wakeup puts off; input, an action, a focus change, a window
+    # coming or going and a commit resizing one still have it at once, so a
+    # resize's layout reaches the shell within a refresh of the terminal
+    # drawing it, not 22 to 39 ms on. Its tests run as niri builds,
+    # niri-refreshes-once-a-frame counts its refreshes under a client
+    # committing a thousand times a second, and niri-tells-a-resize-at-once
+    # times a resize's report.
     #
     # niri powers its monitors off only all at once, and any key lights
     # them all, so a laptop working through the night lit the monitor
