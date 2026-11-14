@@ -21,7 +21,9 @@ use crate::power::{self, Power};
 use crate::run::{self, Failure};
 use crate::system;
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -35,6 +37,13 @@ const BUSY_WITHIN: Duration = Duration::from_secs(30);
 
 /// How often a busy command is looked at while it runs.
 const BUSY_EVERY: Duration = Duration::from_millis(100);
+
+/// How long a busy command's last word is waited for once it has ended,
+/// should something it started still hold its error stream.
+const SAID_WITHIN: Duration = Duration::from_secs(1);
+
+/// The most of a busy command's last word a refusal carries.
+const SAID_AT_MOST: usize = 200;
 
 /// How often a built switch the follower asked for asks again whether
 /// what it waits on is over, and the longest it waits before it ends with
@@ -499,12 +508,13 @@ fn is_busy(busy: &Busy) -> Option<String> {
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
     {
         Ok(child) => child,
         Err(e) => return unsure(format!("{program}: {e}")),
     };
+    let said = last_said(child.stderr.take());
     let deadline = Instant::now() + BUSY_WITHIN;
     loop {
         match child.try_wait() {
@@ -512,7 +522,11 @@ fn is_busy(busy: &Busy) -> Option<String> {
                 return match status.code() {
                     Some(0) => Some(busy.why.clone()),
                     Some(1) => None,
-                    _ => unsure(format!("`{}` ended {status}", busy.command.join(" "))),
+                    _ => unsure(format!(
+                        "`{}` ended {status}{}",
+                        busy.command.join(" "),
+                        saying(&said)
+                    )),
                 };
             }
             Ok(None) if Instant::now() < deadline => thread::sleep(BUSY_EVERY),
@@ -521,14 +535,48 @@ fn is_busy(busy: &Busy) -> Option<String> {
                 let _ = child.kill();
                 let _ = child.wait();
                 return unsure(format!(
-                    "`{}` didn't answer within {} s",
+                    "`{}` didn't answer within {} s{}",
                     busy.command.join(" "),
-                    BUSY_WITHIN.as_secs()
+                    BUSY_WITHIN.as_secs(),
+                    saying(&said)
                 ));
             }
             Err(e) => return unsure(e.to_string()),
         }
     }
+}
+
+/// The last line a busy command says on its error stream, read beside it
+/// so a long one can't fill the pipe and stall it. A check that can't tell
+/// says why there: on 14 November the meeting check refused a switch for
+/// one of three reasons and the refusal named none, since the stream went
+/// nowhere.
+fn last_said(stream: Option<impl Read + Send + 'static>) -> Receiver<String> {
+    let (send, said) = mpsc::channel();
+    if let Some(stream) = stream {
+        thread::spawn(move || {
+            let last = BufReader::new(stream)
+                .lines()
+                .map_while(Result::ok)
+                .filter(|line| !line.trim().is_empty())
+                .last()
+                .unwrap_or_default();
+            let _ = send.send(last);
+        });
+    }
+    said
+}
+
+/// A busy command's last word, as a refusal ends with it, or nothing when
+/// it said none.
+fn saying(said: &Receiver<String>) -> String {
+    let last = said.recv_timeout(SAID_WITHIN).unwrap_or_default();
+    let last = last.trim();
+    if last.is_empty() {
+        return String::new();
+    }
+    let cut: String = last.chars().take(SAID_AT_MOST).collect();
+    format!(", saying {cut}")
 }
 
 fn failed(commit: Option<String>, failure: Failure) -> Line {
