@@ -172,7 +172,8 @@ fn worth_reading(one: &Value) -> bool {
 }
 
 /// Whether a landing's line for Joel asks him to try something, so it
-/// waits in For You's To Try: any line but one with a part opening with
+/// waits in For You's To Try and is named by it: one naming something
+/// for him to do (`acts`), but not one with a part opening with
 /// "Nothing", as "Nothing to try", "Nothing changes on screen" and "Core
 /// refuses it now; nothing to try" do (VKCF3Z, 2026-11-11), 648 lines
 /// opening so and 132 more saying it after what landed, of 1,529 on
@@ -191,7 +192,61 @@ fn tries(line: &str) -> bool {
             && !words
                 .any(|word| word.eq_ignore_ascii_case("but") || word.eq_ignore_ascii_case("else"))
     };
-    !line.trim().is_empty() && !line.split(['.', ';', ':', '?', '!']).any(says_nothing)
+    !line.trim().is_empty()
+        && !line.split(['.', ';', ':', '?', '!']).any(says_nothing)
+        && acts(line)
+}
+
+/// The verbs a part of a line opens with when it asks Joel to do
+/// something, as "Open Machine › Heat", "After the next switch, open
+/// Agents" or "Try clock-follows in a terminal" do. Of the 122 lines
+/// landed on 2026-11-13 (UTC) that asked something before this was read,
+/// 70 named nothing for him to do, as "Terminal sessions held by mycelium
+/// now let go about 25 ms after their program ends" doesn't, and To Try
+/// was those to sift
+/// (Joel, 2026-11-13: "hard to see what matters most"); they stay in
+/// Landed. A line written to the rule of 2026-11-13 (WCJQSG, ecd3b7c2)
+/// opens with one.
+const ACTS: [&str; 40] = [
+    "ask", "call", "change", "check", "choose", "click", "close", "copy", "dictate", "drag",
+    "find", "give", "go", "hold", "join", "launch", "listen", "look", "move", "open", "paste",
+    "pick", "play", "plug", "press", "put", "read", "reboot", "reopen", "run", "say", "scroll",
+    "select", "send", "speak", "start", "step", "talk", "try", "type",
+];
+
+/// Whether `line` names something for Joel to do: a part of it, between
+/// its stops and commas or after an "and" or "then", opens with one of
+/// `ACTS`.
+fn acts(line: &str) -> bool {
+    line.split(['.', ';', ':', '?', '!', ','])
+        .flat_map(|part| part.split(" and ").flat_map(|part| part.split(" then ")))
+        .filter_map(|part| {
+            part.split(|letter: char| !letter.is_alphabetic() && letter != '\'')
+                .find(|word| !word.is_empty())
+        })
+        .any(|first| ACTS.iter().any(|act| first.eq_ignore_ascii_case(act)))
+}
+
+/// A line's first sentence, its stop left off, and what follows it: a
+/// stop ends one only before a space or the line's end, so one in
+/// "core.nix" doesn't.
+fn first_sentence(line: &str) -> (&str, &str) {
+    let line = line.trim();
+    let ends = line.char_indices().find(|&(at, letter)| {
+        matches!(letter, '.' | '?' | '!')
+            && line[at + letter.len_utf8()..]
+                .chars()
+                .next()
+                .is_none_or(char::is_whitespace)
+    });
+    match ends {
+        Some((at, '.')) => (&line[..at], line[at + 1..].trim_start()),
+        Some((at, letter)) => (
+            &line[..at + letter.len_utf8()],
+            line[at + letter.len_utf8()..].trim_start(),
+        ),
+        None => (line, ""),
+    }
 }
 
 /// How long a landing asking Joel to try something waits in To Try, from
@@ -247,14 +302,30 @@ fn landing(lander: &Lander, one: &Value, now: i64) -> (String, Option<i64>, Valu
     let key = lander.key_of(one);
     let url = text(one, "url");
     let what = text(one, "what");
+    let what = if what.is_empty() {
+        text(one, "ref")
+    } else {
+        what
+    };
+    let person = text(one, "person");
     let at = clock::ms_of(&one["at"]);
+    // Named by what it asks Joel to do, the line's first sentence, where
+    // it asks anything, since that's what he scans To Try for; else by
+    // what landed (VKCF3Z, c2d01d53). The same wherever it's listed, as
+    // one thing has one name.
+    let name = if tries(&person) {
+        first_sentence(&person).0.to_owned()
+    } else {
+        what.clone()
+    };
     let said = json!({
         "key": key,
         "at": text(one, "at"),
         "ref": text(one, "ref"),
-        "what": if what.is_empty() { text(one, "ref") } else { what },
-        "person": text(one, "person"),
-        "tries": tries(&text(one, "person")) && at.is_some_and(|at| now - at < TRY_FOR_MS),
+        "name": name,
+        "what": what,
+        "person": person,
+        "tries": tries(&person) && at.is_some_and(|at| now - at < TRY_FOR_MS),
         "url": if url.starts_with("https://") { url } else { String::new() },
         "quest": text(one, "quest"),
         "repo": text(one, "repo"),
@@ -320,28 +391,54 @@ fn drawer<S: BuildHasher>(one: &Value, words: &Words, titles: &HashMap<&str, &st
         .map(|at| json!({"label": named("landed"), "value": "", "at": {"at": at, "as": "dated"}}))
         .into_iter()
         .collect();
-    let said = |pairs: [(&str, String); 2]| {
+    let said = |pairs: Vec<(&str, String)>| {
         pairs
             .into_iter()
             .filter(|(_, value)| !value.is_empty())
             .map(|(fact, value)| json!({"label": named(fact), "value": value}))
             .collect::<Vec<_>>()
     };
-    facts.extend(said([
-        ("repo", text(one, "repo")),
-        ("machine", text(one, "machine")),
-    ]));
     let kind = if is_change(&reference) {
         "change"
     } else {
         "item"
     };
+    let eyebrow = json!([{"said": who, "keep": 2}, {"said": words.landed.word("kind"), "keep": 1}]);
+    let person = text(one, "person");
+    if !tries(&person) {
+        facts.extend(said(vec![
+            ("repo", text(one, "repo")),
+            ("machine", text(one, "machine")),
+        ]));
+        return json!({
+            "title": text(one, "what"),
+            "eyebrow": eyebrow,
+            "facts": facts,
+            "body": person,
+            "nerd": said(vec![(kind, reference), ("task", quest)]),
+        });
+    }
+    // One asking Joel to try something leads with it, as its row is named,
+    // whole on as many lines as it takes, and the rest of the line after
+    // as prose, never cut, since it's one line by contract rather than a
+    // log; what landed is the one fact after when, and where it landed
+    // folds with its ids (Joel, 2026-11-13: "it truncates text, make me
+    // cursor in and manually scroll"; VKCF3Z, c2d01d53).
+    let (lead, rest) = first_sentence(&person);
+    facts.extend(said(vec![("changed", text(one, "what"))]));
     json!({
-        "title": text(one, "what"),
-        "eyebrow": [{"said": who, "keep": 2}, {"said": words.landed.word("kind"), "keep": 1}],
+        "title": lead,
+        "whole": true,
+        "prose": true,
+        "eyebrow": eyebrow,
         "facts": facts,
-        "body": text(one, "person"),
-        "nerd": said([(kind, reference), ("task", quest)]),
+        "body": rest,
+        "nerd": said(vec![
+            (kind, reference),
+            ("task", quest),
+            ("repo", text(one, "repo")),
+            ("machine", text(one, "machine")),
+        ]),
     })
 }
 
@@ -772,7 +869,7 @@ mod tests {
                 "s-here",
                 "core.nix#2140",
                 "2026-11-11T10:00:00Z",
-                "Try Stop twice.",
+                "Nothing changes on screen.",
             ),
             kept("s-gone", "core.nix#2138", "2026-11-11T09:00:00Z", "Try it."),
             bare,
@@ -792,7 +889,7 @@ mod tests {
                     {"label": "Repository", "value": "o/r"},
                     {"label": "Machine", "value": "skiff"},
                 ],
-                "body": "Try Stop twice.",
+                "body": "Nothing changes on screen.",
                 "nerd": [{"label": "Change", "value": "core.nix#2140"},
                     {"label": "Quest", "value": "QEST-1"}],
             }),
@@ -825,6 +922,109 @@ mod tests {
             records.iter().filter(|one| one["kind"] == DRAWER).count(),
             3,
             "each landing's drawer is a record of its own"
+        );
+    }
+
+    #[test]
+    fn a_landing_asking_joel_something_leads_with_it_whole_and_folds_where_it_landed() {
+        let here = session("s-here", "HERE01", &json!([]));
+        let sessions = [Session(&here)];
+        let landings = [kept(
+            "s-here",
+            "core.nix#2140",
+            "2026-11-11T10:00:00Z",
+            "Open Machine \u{203a} Heat; it costs the laptop less now. It reads slow chips every \
+             five seconds.",
+        )];
+        let (mut records, _) = landed(landings.iter(), &sessions, &Reading::default(), now());
+        drawn(&mut records, &words(), &HashMap::<&str, &str>::new());
+        let at = clock::ms_of(&json!("2026-11-11T10:00:00Z")).expect("a time");
+        assert_eq!(
+            records[0]["landed"]["name"],
+            "Open Machine \u{203a} Heat; it costs the laptop less now",
+            "named by what it asks, its first sentence without its stop"
+        );
+        assert_eq!(
+            drawer_of(&records, 0),
+            &json!({
+                "title": "Open Machine \u{203a} Heat; it costs the laptop less now",
+                "whole": true,
+                "prose": true,
+                "eyebrow": [{"said": "The s-here Quest", "keep": 2},
+                    {"said": "landing", "keep": 1}],
+                "facts": [
+                    {"label": "Landed", "value": "", "at": {"at": at, "as": "dated"}},
+                    {"label": "What Changed", "value": "Land core.nix#2140"},
+                ],
+                "body": "It reads slow chips every five seconds.",
+                "nerd": [{"label": "Change", "value": "core.nix#2140"},
+                    {"label": "Quest", "value": "QEST-1"},
+                    {"label": "Repository", "value": "o/r"},
+                    {"label": "Machine", "value": "skiff"}],
+            }),
+            "its title is its name, whole; the rest of the line its prose; what landed its one \
+             fact after when; where it landed folded with its ids"
+        );
+    }
+
+    #[test]
+    fn a_line_naming_nothing_for_joel_to_do_isnt_his_to_try_and_is_named_by_what_landed() {
+        let landings = [
+            kept(
+                "s",
+                "o#1",
+                "2026-11-11T11:00:00Z",
+                "Terminal sessions held by mycelium now let go about 25 ms after their program \
+                 ends.",
+            ),
+            kept(
+                "s",
+                "o#2",
+                "2026-11-11T10:00:00Z",
+                "After the next switch, open Agents.",
+            ),
+            kept(
+                "s",
+                "o#3",
+                "2026-11-11T09:00:00Z",
+                "Once core pins it, type ergodox --help and then press Return.",
+            ),
+        ];
+        let (records, _) = landed(landings.iter(), &[], &Reading::default(), now());
+        let named: Vec<(&Value, &Value)> = records[..3]
+            .iter()
+            .map(|one| (&one["landed"]["name"], &one["landed"]["tries"]))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                (&json!("Land o#1"), &json!(false)),
+                (&json!("After the next switch, open Agents"), &json!(true)),
+                (
+                    &json!("Once core pins it, type ergodox --help and then press Return"),
+                    &json!(true)
+                ),
+            ],
+            "only a line with a part opening with an act asks, and is named by it"
+        );
+    }
+
+    #[test]
+    fn a_lines_first_sentence_ends_only_at_a_stop_before_a_space() {
+        assert_eq!(
+            first_sentence("Try core.nix's help in a terminal. Then more."),
+            ("Try core.nix's help in a terminal", "Then more."),
+            "a stop inside a word goes on; the first before a space ends it, left off"
+        );
+        assert_eq!(
+            first_sentence("Does it wake? It should."),
+            ("Does it wake?", "It should."),
+            "a question keeps its mark"
+        );
+        assert_eq!(
+            first_sentence("Open Agents"),
+            ("Open Agents", ""),
+            "one with no stop is all its first sentence"
         );
     }
 
