@@ -330,6 +330,9 @@ Scope {
         const found = root.playing ? [track] : [];
         if (root.holding)
             return found.concat([held]);
+        // The arrival line has the notices while it's up, and draws its own.
+        if (root.lined)
+            return found;
         const front = root.shown.slice(0, root.behind + 1);
         for (let i = 0; i < cards.count; i++) {
             const card = cards.itemAt(i);
@@ -428,6 +431,19 @@ Scope {
         // wears and that glyph's hue; whether a picture of its own stands
         // in its mark column; and where its links go.
         function front(): string {
+            // While the arrival line is up, the front notice is the one it draws, where it
+            // draws it, and what niri blurs is its own frame.
+            const lined = line.where();
+            if (lined !== null) {
+                const from = line.notice.from;
+                return JSON.stringify(Object.assign({
+                    signed: from.name,
+                    glyph: from.glyph,
+                    hue: from.hue,
+                    pictured: Notices.picture(line.notice) !== "",
+                    links: line.notice.words.links.map(link => link.href)
+                }, lined));
+            }
             let card = null;
             for (let i = 0; i < cards.count && card === null; i++) {
                 if (carded.get(i).noticeId === root.shown[0])
@@ -584,6 +600,7 @@ Scope {
         launcher: root.launcher
         shown: root.shown
         talking: root.talking
+        holding: root.holding
         whenOf: (notification, more) => root.whenOf(notification, more)
         onClicked: notification => root.choose(notification)
         onLinked: href => root.follow(href)

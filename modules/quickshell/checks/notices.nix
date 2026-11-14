@@ -238,13 +238,14 @@
   # The arrival line shows the front of the stack still waiting on Joel,
   # only a critical one while notices are held or he's talking, none while
   # the launcher shows them, and counts the rest (tests/notice-line.qml).
-  the-notice-line-shows-what-still-waits =
+  the-arrival-line-shows-what-still-waits =
     let
       qt = pkgs.qt6.qtdeclarative;
     in
-    pkgs.runCommandLocal "the-notice-line-shows-what-still-waits" { } ''
+    pkgs.runCommandLocal "the-arrival-line-shows-what-still-waits" { } ''
       cp ${../../../tests/notice-line.qml} notice-line.qml
       ${copied [ "NoticeLine.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

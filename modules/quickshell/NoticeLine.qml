@@ -32,6 +32,8 @@ Scope {
     property var shown: []
     // Whether the talk line is up in the same place.
     property bool talking: false
+    // Whether the held list has the notices and the keys, until it goes with the stack.
+    property bool holding: false
     // What its signing line says on the right, given the notice and how many more wait.
     property var whenOf: (notification, more) => ""
 
@@ -40,7 +42,7 @@ Scope {
     readonly property var notice: chosen < 0 ? null : Notices.live[chosen] ?? null
     readonly property bool critical: Notices.made[chosen]?.urgency === "critical"
     readonly property bool up: notice !== null
-        && Line.up(chosen, Notices.gathered, talking, critical)
+        && Line.up(chosen, Notices.gathered || holding, talking, critical)
     readonly property int more: Line.more(shown, Notices.made, chosen)
 
     // A click on it, which Notifications.qml answers as a click on the front card did.
@@ -49,6 +51,33 @@ Scope {
     signal linked(string href)
 
     onUpChanged: Report.say(`${up ? "lines" : "unlines"} notice ${notice?.summary ?? ""}`)
+
+    // Where its card is drawn, as a fraction of its screen across and down, and what niri
+    // blurs beside what's drawn, in the surface's points, for Notifications.qml's `front` to
+    // give a test; null while it's down.
+    function where() {
+        const screen = surface.screen;
+        if (!up || !screen)
+            return null;
+        const left = surface.margins.left + card.x; // qmllint disable unqualified
+        const top = surface.margins.top + card.y; // qmllint disable unqualified
+        // Each a frame in the surface's points, on the whole points it covers.
+        const framed = one => {
+            const at = one.mapToItem(null, 0, 0);
+            const x = Math.floor(at.x);
+            const y = Math.floor(at.y);
+            return [x, y, Math.ceil(at.x + one.width) - x, Math.ceil(at.y + one.height) - y];
+        };
+        return {
+            left: left / screen.width,
+            top: top / screen.height,
+            right: (left + card.width) / screen.width,
+            bottom: (top + card.height) / screen.height,
+            foot: (top + card.height) / screen.height,
+            blurred: [framed(card.area.item)],
+            drawn: [framed(card)]
+        };
+    }
 
     // From the daemon saying a notice came to niri presenting the line with it, held to Joel's
     // 50 ms (2026-11-12: "time from trigger to visible on the screen"), said once for each

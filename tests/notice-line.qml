@@ -1,8 +1,9 @@
 // What the arrival line says, run in Qt's own JavaScript engine, the one
-// the shell runs it in. The `the-notice-line-shows-what-still-waits` check
-// copies modules/quickshell/NoticeLine.js beside this file and runs
-// `qml -platform offscreen notice-line.qml`.
+// the shell runs it in. The `the-arrival-line-shows-what-still-waits` check
+// copies modules/quickshell/NoticeLine.js and tests/lib/Expect.js beside
+// this file and runs `qml -platform offscreen notice-line.qml`.
 import QtQuick
+import "Expect.js" as Expect
 import "NoticeLine.js" as Line
 
 QtObject {
@@ -17,12 +18,6 @@ QtObject {
     }
 
     function run() {
-        const failures = [];
-        function holds(what, got, want) {
-            if (JSON.stringify(got) !== JSON.stringify(want))
-                failures.push(`${what}: ${JSON.stringify(got)}, not ${JSON.stringify(want)}`);
-        }
-
         const plain = { read: false, withdrawn: false, urgency: "normal" };
         const critical = { read: false, withdrawn: false, urgency: "critical" };
         const read = { read: true, withdrawn: false, urgency: "normal" };
@@ -42,7 +37,7 @@ QtObject {
                 { read: true }) }, true, -1]
         ];
         for (const [what, shown, records, held, want] of choosing)
-            holds(what, Line.chosen(shown, records, held), want);
+            Expect.same(what, Line.chosen(shown, records, held), want);
 
         // [what, the one chosen, gathered, talking, critical, up]
         const standing = [
@@ -54,15 +49,14 @@ QtObject {
             ["a critical one stays over the talk line", 3, false, true, true, true]
         ];
         for (const [what, chosen, gathered, talking, isCritical, want] of standing)
-            holds(what, Line.up(chosen, gathered, talking, isCritical), want);
+            Expect.same(what, Line.up(chosen, gathered, talking, isCritical), want);
 
         const behind = { 1: plain, 2: read, 3: plain, 4: plain };
-        holds("those behind still waiting are counted", Line.more([3, 1, 2, 4], behind, 3), 2);
-        holds("none behind counts none", Line.more([3], { 3: plain }, 3), 0);
-        holds("nothing chosen counts every one waiting", Line.more([3, 1], behind, -1), 2);
+        Expect.same("those behind still waiting are counted",
+            Line.more([3, 1, 2, 4], behind, 3), 2);
+        Expect.same("none behind counts none", Line.more([3], { 3: plain }, 3), 0);
+        Expect.same("nothing chosen counts every one waiting", Line.more([3, 1], behind, -1), 2);
 
-        for (const failure of failures)
-            console.warn(`FAIL ${failure}`);
-        Qt.exit(failures.length === 0 ? 0 : 1);
+        Qt.exit(0);
     }
 }

@@ -38,11 +38,8 @@ trap "kill $drawing 2> /dev/null || true" EXIT
 says "Configuration Loaded"
 # The arrival line is mapped only while it shows a notice, so a quiet
 # desktop has nothing of it to draw.
-lined() {
-  niri msg --json layers | jq -e \
-    'any(.[]; .namespace == "notice-line")' > /dev/null
-}
-if lined; then
+line='any(.[]; .namespace == "notice-line")'
+if niri msg --json layers | jq -e "$line" > /dev/null; then
   echo "The arrival line is mapped with no notice to show." >&2
   exit 1
 fi
@@ -118,10 +115,10 @@ says "report[gone notifications]"
 # Every notice put away, the arrival line goes with them.
 says "report[unlines notice"
 for _ in $(seq "$saying"); do
-  lined || break
+  niri msg --json layers | jq -e "$line" > /dev/null || break
   sleep 0.1
 done
-if lined; then
+if niri msg --json layers | jq -e "$line" > /dev/null; then
   echo "The arrival line is still mapped with every notice put away." >&2
   exit 1
 fi

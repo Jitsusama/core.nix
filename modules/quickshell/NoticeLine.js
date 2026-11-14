@@ -30,8 +30,8 @@ function waits(record) {
 }
 
 // Whether the line is up with a notice chosen. It steps aside while the
-// launcher shows the notices, where the same notice is a row the keys
-// reach, so each is in one place; and under the talk line, which sits in
+// notices are gathered where the keys reach them, the launcher's or the
+// held list's, so each is in one place; and under the talk line, which sits in
 // the same place, only a critical one shows, since he's saying something.
 function up(chosenId, gathered, talking, critical) {
     if (chosenId < 0 || gathered) {

@@ -2614,6 +2614,11 @@
     the stick for an Apple silicon Mac, aarch64-linux on Asahi's kernel and booted as BOOTAA64.EFI,
     evaluates
   '';
+  the-arrival-line-shows-what-still-waits = ''
+    the arrival line shows the front of the notices' stack that's neither read nor withdrawn, only
+    a critical one while notices are held or over the talk line, none while the launcher or the
+    held list has the notices, and counts those behind it still waiting
+  '';
   the-asks-place-releases-through-its-daemon = ''
     the launcher's Asks lists what the secret-asks daemon serves, For You holds each waiting ask,
     a first Return arms it and a second releases it, r refuses, a yes while locked is refused in
@@ -3360,11 +3365,6 @@
   the-music-follows-the-player = ''
     the music is the player that started last, never playerctld's echo,
     and it shows itself as one row, on a key always, on a track unless held
-  '';
-  the-notice-line-shows-what-still-waits = ''
-    the arrival line shows the front of the notices' stack that's neither read nor withdrawn, only
-    a critical one while notices are held or over the talk line, none while the launcher shows
-    the notices, and counts those behind it still waiting
   '';
   the-notices-are-a-quickfix-list = ''
     the held notices are Vim's quickfix list: the newest first, each motion's landing, what an
