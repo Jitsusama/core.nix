@@ -414,5 +414,12 @@
       "test_unshaped"
     ],
     "test": "vm-a-call-keeps-its-packets"
+  },
+  {
+    "at": 1794637111,
+    "commit": "4f0387b4623e6e3fee085982c9b469dbb3ddc299",
+    "owner_pr": 4243,
+    "reason": "failed, then passed, at 4f0387b4623e",
+    "test": "vm-boot-asks-in-the-theme"
   }
 ]
