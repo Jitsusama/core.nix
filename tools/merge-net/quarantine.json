@@ -38,8 +38,17 @@
     "owner_pr": 3884,
     "reason": "reopening five sessions while the focus moves timed out once at 50e4d55f9 with all five opened, Y2YBTS's by Sun 15",
     "subtests": [
-      "test_a_session_another_starts_leaves_every_key_where_joel_types",
       "test_agents_reopens_each_session_where_it_sat_whatever_joel_does_meanwhile"
+    ],
+    "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794613888,
+    "commit": "5782337e6e457780754e6e5684e6c69bd92827dd",
+    "owner_pr": 4145,
+    "reason": "failed, then passed, at 5782337e6e45",
+    "subtests": [
+      "test_a_session_another_starts_leaves_every_key_where_joel_types"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
   },
