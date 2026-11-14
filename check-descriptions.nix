@@ -2065,7 +2065,8 @@
   '';
   pineapple-judges-each-saying = ''
     every saying in sayings.json is judged the safe word, a resume, an ask to stop or a near miss as
-    the table says, and reaches what its words and its place name, or everything, said so
+    the table says, and reaches what its words and its place name, or everything, said so; and
+    Joel's own command resumes a stop only out of pi's reach, marking it rather than removing it
   '';
   pineapple-passes-clippy = ''
     clippy finds nothing in pineapple, the judge of the safe word that stops Joel's agents

@@ -18,6 +18,8 @@
 //!   Joel's rules against spam, and names the rule either way.
 //! - [`slack`] turns Slack's answers into messages to judge, and
 //!   [`record`] writes down what was decided, a stop's record included.
+//! - [`resume`] lists the stops standing and marks those Joel resumes,
+//!   for his own command (src/bin/pineapple.rs), which refuses under pi.
 //!
 //! Readers hand it sayings from each platform, Slack first
 //! (src/bin/pineapple-slack.rs), and the enforcer acts on what it
@@ -28,6 +30,7 @@ mod decide;
 pub mod gate;
 mod judge;
 pub mod record;
+pub mod resume;
 mod scope;
 pub mod slack;
 mod words;

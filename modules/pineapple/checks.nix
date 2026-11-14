@@ -18,7 +18,10 @@ onLinux {
   # about, a joke, a bot) as the table says, and reaches what its words
   # and the place it was said in name, or everything, said so; and Slack's
   # answers become messages, oldest first, a bot's told apart, with the
-  # thread each is in, and a stop's record is written whole and once.
+  # thread each is in, and a stop's record is written whole and once; and
+  # pineapple, Joel's own command, lists the stops standing, refuses a
+  # resume where pi says it runs, and otherwise marks what a scope names
+  # resumed, which clears its thread's reply.
   pineapple-judges-each-saying = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in pineapple, its tests included.
   pineapple-passes-clippy = passesClippy "pineapple-passes-clippy" (

@@ -1,5 +1,6 @@
-# pineapple and pineapple-slack, built from this directory's crate, its
-# tests run as it builds, reading sayings.json beside it. It reads Slack
+# pineapple (Joel's own command for stops) and pineapple-slack, built
+# from this directory's crate, its tests run as it builds, reading
+# sayings.json beside it. It reads Slack
 # through Slack's own module (../slack), which reads through the pieces
 # every daemon shares, and takes its shape from the terminal kit
 # (../terminal-kit), so the source is cut from the modules folder holding

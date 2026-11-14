@@ -98,8 +98,9 @@ pub fn gate(asked: &Asked<'_>, sent: &[Sent], now: u64, off: bool) -> Gate {
     if asked.age > FRESH {
         return Gate::Held("too-old");
     }
-    // A resume clearing its thread's replies comes with resuming itself
-    // (the plan's item 7); until then a thread is answered once of each.
+    // The reader leaves out the replies of stops Joel resumed
+    // (crate::resume::cleared), so a thread is answered once of each
+    // while its stop stands.
     if sent
         .iter()
         .any(|one| one.thread == asked.thread && one.reply == asked.reply)
