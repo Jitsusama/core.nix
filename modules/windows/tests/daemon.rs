@@ -152,8 +152,10 @@ impl Machine {
                     } else {
                         json!({"id": watch["id"], "records": [backlight]})
                     };
-                    writeln!(stream, "{answer}").unwrap();
+                    // Kept before it's answered, so whoever reads the
+                    // answer finds the ask among what was asked.
                     kept.lock().unwrap().push(watch);
+                    writeln!(stream, "{answer}").unwrap();
                     *counted.lock().unwrap() += 1;
                     // Until the daemon hangs up.
                     while lines.read_line(&mut line).is_ok_and(|read| read > 0) {}
@@ -798,10 +800,13 @@ fn a_warmth_switch_is_asked_of_the_machine_daemon_and_answered_as_it_answers() {
         json!({"id": 3, "done": true}),
         "the switch was answered otherwise"
     );
+    // The light's read as the daemon starts may come before the act or
+    // after it, so the act is looked for among everything asked.
     let asked = running.machine.asked.lock().unwrap().clone();
+    let acts: Vec<&Value> = asked.iter().filter(|one| one["ask"] == "act").collect();
     assert_eq!(
-        asked.last(),
-        Some(&json!({"id": 3, "ask": "act", "act": "night-light", "on": true})),
+        acts,
+        vec![&json!({"id": 3, "ask": "act", "act": "night-light", "on": true})],
         "the machine daemon was asked otherwise: {asked:?}"
     );
     let refused = client.ask(&json!({"id": 4, "ask": "light", "do": "dim"}));
