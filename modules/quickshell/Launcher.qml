@@ -1729,8 +1729,19 @@ Scope {
     // since a daemon's row knows its acts but not the parts laid in beside
     // them, as a screen's Brightness and Warmth.
     function actsAlone(row) {
-        return row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        const weighing = actsWeighing.rows;
+        if (weighing !== null && weighing.has(row))
+            actsAskedAgain += 1;
+        const alone = row.actsOnly === true && (partsOfRows[row.key] ?? []).length === 0;
+        weighing?.set(row, alone);
+        return alone;
     }
+    // While the foot weighs the rows listed (noteKeys), what each row's
+    // acts alone were found to be. Plain, so setting it wakes no binding.
+    readonly property var actsWeighing: ({ rows: null })
+    // How many times a weighing asked a row's acts alone again, for the
+    // check that a step asks each row's once.
+    property int actsAskedAgain: 0
 
     // A row's parts as they're named inside it: "Theme" in Slack.
     function partsIn(row) {
@@ -3130,6 +3141,14 @@ Scope {
     }
 
     function noteKeys() {
+        actsWeighing.rows = new Map();
+        try {
+            weighKeys();
+        } finally {
+            actsWeighing.rows = null;
+        }
+    }
+    function weighKeys() {
         // A keystroke that changes what's typed changes every row, and a row
         // no longer listed can't be named, so it holds no room: the room is
         // weighed afresh for the rows the text now lists, and grows only as
@@ -8154,6 +8173,8 @@ Scope {
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).
             weighed: root.rowsWeighed,
+            // How many times weighing them asked a row's acts alone again.
+            actsAskedAgain: root.actsAskedAgain,
             // How many times a key listed a list shown lately again.
             listedAgain: root.listedAgain,
             typed: root.typed,

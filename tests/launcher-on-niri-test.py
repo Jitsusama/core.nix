@@ -2139,6 +2139,27 @@ def test_a_closed_program_holding_only_new_windows_holds_nothing_to_go_into(
         shell.as_account("pkill -f 'foot --server' || true")
 
 
+def test_a_step_into_programs_asks_no_rows_acts_twice_as_it_weighs_their_keys(
+    shell: Shell,
+) -> None:
+    """Weighing the keys of Programs' rows asks each row whether it holds acts alone once.
+
+    The foot weighs every listed row's keys, and asked each program three times whether it
+    holds acts alone, each time asking its whole step (Applications.qml's startsOnly): 83 ms
+    of a 116 ms step into Programs under load (vm-desktop-keeps-pace, 2026-11-14).
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    before = cast("int", shell.showing()["actsAskedAgain"])
+    shell.type_in("programs", selecting="Programs")
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, "Programs"))
+    launcher_on_niri.weighed_held_still(shell)
+    again = cast("int", shell.showing()["actsAskedAgain"]) - before
+    shell.close_launcher()
+    assert again == 0, f"weighing the rows' keys asked {again} rows' acts again"
+
+
 def drawer_moved(was: str, shown: Json) -> bool:
     """Say whether the drawer is out on the selected row, titled otherwise than it was."""
     return drawer_on_selected(shown) and cast("Json", shown["drawer"])["title"] != was
