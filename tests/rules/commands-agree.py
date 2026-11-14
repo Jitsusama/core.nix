@@ -209,12 +209,8 @@ def commands(tree: Path) -> list[Command]:
         crate = tomllib.loads(manifest.read_text())
         package = crate.get("package", {}).get("name")
         source = manifest.parent / "src"
-        bins = crate.get("bin", [])
-        names = [binary["name"] for binary in bins if "name" in binary]
-        # src/main.rs builds the package's own name only where no [[bin]]
-        # has already named it, as passwords-1password and location do.
-        named_main = any(binary.get("path") == "src/main.rs" for binary in bins)
-        if package and (source / "main.rs").is_file() and not named_main:
+        names = [binary["name"] for binary in crate.get("bin", []) if "name" in binary]
+        if package and (source / "main.rs").is_file():
             names.append(package)
         if (source / "bin").is_dir():
             names += [path.stem for path in (source / "bin").glob("*.rs")]

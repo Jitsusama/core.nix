@@ -1,8 +1,7 @@
 # How the clock is kept, for the launcher's Time, built from this
 # directory, its tests run as it builds. When the sun sets is a crate it
-# shares with the backlight's night light (../../sun), and its shape comes
-# from the terminal kit (../../terminal-kit), so the source is cut from the
-# modules folder holding them, and built from this one.
+# shares with the backlight's night light (../../sun), so the source is cut
+# from the modules folder holding both, and built from this one.
 { lib, rustPlatform }:
 rustPlatform.buildRustPackage rec {
   pname = "timekeeping";
@@ -18,8 +17,6 @@ rustPlatform.buildRustPackage rec {
       ./calendars-reading.json
       ../../sun/Cargo.toml
       ../../sun/src
-      ../../terminal-kit/Cargo.toml
-      ../../terminal-kit/src
     ];
   };
   sourceRoot = "${src.name}/quickshell/timekeeping";
