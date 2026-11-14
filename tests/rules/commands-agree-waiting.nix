@@ -119,11 +119,6 @@
     "kit"
     "helps"
   ];
-  key-counts = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   launched = [ "helps" ];
   launcher = [
     "kit"

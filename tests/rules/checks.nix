@@ -180,6 +180,7 @@
         google-people = google;
         google-rows = google;
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
+        key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
         load-proof = pkgs.callPackage ../../modules/load-proof/package.nix { };
