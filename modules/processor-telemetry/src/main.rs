@@ -11,6 +11,9 @@
 //! waits, costing nothing. Their layouts are Panther Lake's (src/layout.rs
 //! and src/resting.rs); on another processor it answers that it has no
 //! region it knows.
+//!
+//! Its unit alone starts it, in the terminal kit's shape, as
+//! `processor-telemetry --help` says (`help()`).
 
 mod clusters;
 mod layout;
@@ -21,10 +24,45 @@ mod service;
 use std::path::Path;
 use std::process::ExitCode;
 
+use terminal_kit::{Exit, Failure, Help};
 use zlink::Server;
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> ExitCode {
+/// What `processor-telemetry --help` says: how its unit runs it, and how
+/// it ends.
+fn help() -> Help {
+    Help::new(
+        "processor-telemetry",
+        "answers the shell with the processor's own telemetry",
+    )
+    .example(
+        "processor-telemetry",
+        "as its unit runs it, on the socket systemd hands it",
+    )
+    .exit(Exit::Failed, "its socket couldn't be taken or answered on")
+    .exit(Exit::Config, "systemd handed it no socket")
+}
+
+/// It runs as long as its socket's unit does, so it only ends by failing.
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        if !context.args.is_empty() {
+            return Err(
+                Failure::new(Exit::Usage, "processor-telemetry takes no words")
+                    .because("systemd hands it its socket")
+                    .try_this("processor-telemetry --help"),
+            );
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| {
+                Failure::new(Exit::Failed, "it couldn't start").because(error.to_string())
+            })?;
+        runtime.block_on(serve())
+    })
+}
+
+async fn serve() -> Result<(), Failure> {
     let class = Path::new("/sys/class/intel_pmt");
     let region = service::find(class, layout::GUID);
     let resting = service::find(class, resting::GUID);
@@ -44,27 +82,25 @@ async fn main() -> ExitCode {
         ),
         None => println!("<5>no region says what keeps the package from resting"),
     }
-    let listener = match service::listener() {
-        Ok(Some(listener)) => listener,
-        Ok(None) => {
-            println!("<3>systemd passed no socket, so nobody can ask anything");
-            return ExitCode::FAILURE;
-        }
-        Err(error) => {
-            println!("<3>can't take the socket: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
+    let listener = service::listener()
+        .map_err(|error| {
+            Failure::new(Exit::Failed, "it can't take the socket").because(error.to_string())
+        })?
+        .ok_or_else(|| {
+            Failure::new(Exit::Config, "systemd handed it no socket")
+                .because("so nobody can ask anything")
+                .try_this("systemctl start processor-telemetry.socket")
+        })?;
     let telemetry = service::Telemetry {
         region,
         resting,
         clusters,
     };
-    match Server::new(listener, telemetry).run().await {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            println!("<3>stopped answering on the socket: {error}");
-            ExitCode::FAILURE
-        }
-    }
+    Server::new(listener, telemetry)
+        .run()
+        .await
+        .map_err(|error| {
+            Failure::new(Exit::Failed, "it stopped answering on the socket")
+                .because(error.to_string())
+        })
 }

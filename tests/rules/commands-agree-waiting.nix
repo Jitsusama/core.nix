@@ -18,10 +18,6 @@
     "kit"
     "helps"
   ];
-  bluetooth-links = [
-    "kit"
-    "helps"
-  ];
   boot-stopped = [
     "inks"
     "helps"
@@ -30,11 +26,6 @@
     "kit"
     "exits"
     "inks"
-    "helps"
-  ];
-  calls = [
-    "kit"
-    "exits"
     "helps"
   ];
   changed-checks = [
@@ -120,10 +111,6 @@
     "exits"
     "helps"
   ];
-  onepassword-manager = [
-    "kit"
-    "helps"
-  ];
   pain-points = [
     "kit"
     "exits"
@@ -156,10 +143,6 @@
     "helps"
   ];
   pi-verbs = [ "helps" ];
-  processor-telemetry = [
-    "kit"
-    "helps"
-  ];
   programs = [
     "kit"
     "exits"
@@ -174,10 +157,6 @@
   record-window = [
     "kit"
     "exits"
-    "helps"
-  ];
-  rhythm = [
-    "kit"
     "helps"
   ];
   secret-asks = [
@@ -195,17 +174,9 @@
     "exits"
     "helps"
   ];
-  surface-clock = [
-    "kit"
-    "helps"
-  ];
   switch-system-as-root = [ "helps" ];
   switch-system-known = [ "helps" ];
   systemd-run = [ "helps" ];
-  timekeeping = [
-    "kit"
-    "helps"
-  ];
   to-do = [
     "kit"
     "exits"
@@ -223,11 +194,6 @@
   ];
   warp = [
     "kit"
-    "helps"
-  ];
-  whereabouts = [
-    "kit"
-    "exits"
     "helps"
   ];
   wifid = [

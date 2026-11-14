@@ -215,6 +215,7 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         zoom-opens = script "zoom-opens" ../../modules/zoom/opens.sh { words = "a-window"; };
         bluetooth-again = pkgs.callPackage ../../modules/bluetooth-again/package.nix { };
+        bluetooth-links = pkgs.callPackage ../../modules/bluetooth-links/package.nix { };
         call-transcripts = dictation;
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
@@ -262,9 +263,11 @@
         inherit pineapple;
         pineapple-slack = pineapple;
         plymouth-waits = pkgs.callPackage ../../modules/plymouth/waits/package.nix { };
+        processor-telemetry = pkgs.callPackage ../../modules/processor-telemetry/package.nix { };
         quickshell-hands-over = import ../../modules/quickshell/hands-over.nix { inherit pkgs; };
         reader = pkgs.callPackage ../../modules/reader/package.nix { };
         recent-files = recentFiles;
+        rhythm = pkgs.callPackage ../../modules/rhythm/package.nix { };
         screen-text = dictation;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
         shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
@@ -274,6 +277,10 @@
         sound = pkgs.callPackage ../../modules/sound/package.nix { };
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
         spotify-recent = pkgs.callPackage ../../modules/spotify/spotify-recent/package.nix { };
+        surface-clock =
+          pkgs.callPackage ../../hardware/microsoft-surface-laptop-4-1958/clock/package.nix
+            { };
+        timekeeping = pkgs.callPackage ../../modules/quickshell/timekeeping/package.nix { };
         timers = pkgs.callPackage ../../modules/quickshell/timers/package.nix { };
         vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         without-syncfs = pkgs.callPackage ../../modules/nix-daemon/without-syncfs/package.nix { };

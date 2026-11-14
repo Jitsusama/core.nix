@@ -12,12 +12,17 @@
 //! Both talk to the Aggregator through its character device, with the
 //! requests the Aggregator answers for its clock: 0x10 reads it and 0x0f sets
 //! it, each as a little-endian 32-bit Unix time.
+//!
+//! Its units alone run it, in the terminal kit's shape, as
+//! `surface-clock --help` says (`help()`).
 
 use std::fs::{self, File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use terminal_kit::{Exit, Failure, Help};
 
 const DEVICE: &str = "/dev/surface/aggregator";
 const SSAM_CDEV_REQUEST: u64 = 0xC028_A501;
@@ -251,24 +256,61 @@ fn keep(state: &Path) -> Result<String, String> {
     ))
 }
 
-fn main() -> ExitCode {
-    let state = std::env::var_os("STATE_DIRECTORY").map(PathBuf::from);
-    let result = match (std::env::args().nth(1).as_deref(), state) {
-        (Some("calibrate"), Some(state)) => calibrate(&state),
-        (Some("keep"), Some(state)) => keep(&state),
-        (_, None) => Err("STATE_DIRECTORY isn't set; run it from its systemd unit".into()),
-        _ => Err("usage: surface-clock calibrate|keep".into()),
+const NO_STATE: &str = "there's no STATE_DIRECTORY to keep the offset in";
+
+/// What `surface-clock --help` says: the two steps its units run.
+fn help() -> Help {
+    let step = |name: &str, about: &str, example: &str, failed: &str| {
+        Help::new(name, about)
+            .example(&format!("surface-clock {name}"), example)
+            .exit(Exit::Failed, failed)
+            .exit(Exit::Config, NO_STATE)
     };
-    match result {
-        Ok(said) => {
-            println!("{said}");
-            ExitCode::SUCCESS
-        }
-        Err(error) => {
-            eprintln!("{error}");
-            ExitCode::FAILURE
-        }
-    }
+    Help::new("surface-clock", "keeps the clock the firmware starts from")
+        .example(
+            "surface-clock calibrate",
+            "at boot, before the clocks are set",
+        )
+        .example("surface-clock keep", "hourly and at shutdown, once in sync")
+        .subcommand(step(
+            "calibrate",
+            "keeps the firmware's offset between its clocks",
+            "as its unit runs it at boot",
+            "a clock couldn't be read or the offset kept",
+        ))
+        .subcommand(step(
+            "keep",
+            "sets the Aggregator's clock to the true time",
+            "as its unit runs it, hourly and at shutdown",
+            "the Aggregator's clock couldn't be set",
+        ))
+        .exit(Exit::Failed, "a clock couldn't be read or set")
+        .exit(Exit::Config, NO_STATE)
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let [step] = context.args.as_slice() else {
+            return Err(Failure::new(Exit::Usage, "surface-clock takes one step")
+                .because("calibrate or keep")
+                .try_this("surface-clock --help"));
+        };
+        let state = std::env::var_os("STATE_DIRECTORY")
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                Failure::new(Exit::Config, NO_STATE).because("its systemd unit sets it")
+            })?;
+        let said = if step == "calibrate" {
+            calibrate(&state)
+        } else {
+            keep(&state)
+        };
+        let said = said.map_err(|error| {
+            Failure::new(Exit::Failed, format!("surface-clock couldn't {step}")).because(error)
+        })?;
+        println!("{said}");
+        Ok(())
+    })
 }
 
 #[cfg(test)]
