@@ -24,12 +24,12 @@ from desktop_session import (
     INBOX,
     LAUNCHER_OPEN,
     MISSION,
+    NOTICES,
     PI_PRESENCE,
     PI_QUEST,
     PI_WINDOW,
     STARTING,
     drawn_held_still,
-    for_you_read,
     kept,
     laid_out,
     retry,
@@ -933,6 +933,8 @@ def test_waiting_with_nowhere_to_go_steps_in_and_its_drawer_says_its_steps(
 SAFE_WORD = "$HOME/.local/state/pineapple"
 # Past the key language's wait (300 ms), so a second Return isn't taken for the first doubled.
 PAST_THE_WAIT = 0.5
+# The daemon looks every two seconds, so a resumed stop's notice is withdrawn well inside this.
+NOTICE_WITHDRAWN = dt.timedelta(seconds=15)
 
 
 def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> None:
@@ -990,14 +992,16 @@ def test_a_safe_word_stop_resumes_only_on_a_second_return(desktop: Desktop) -> N
         time.sleep(PAST_THE_WAIT)
         machine.send_key("ret")
         retry(lambda _: resumed() == "joel", timeout=dt.timedelta(seconds=10))
-    finally:
-        desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
-        # The live stop knocked with a critical notice, which would stand in front of every
-        # card after it and, put away unread, keep For You's tray lit, so it's read.
         if desktop.showing()["open"]:
             desktop.close_launcher()
-        desktop.as_account("qs ipc call notices putAway || true")
-        for_you_read(desktop)
+        # The live stop knocked with a critical notice, which stays until it's dealt with; once
+        # the stop is resumed the daemon withdraws it, so the alarm goes with what it was about,
+        # read rather than missed, and For You's tray stays out for the tests after.
+        machine.wait_until_fails(desktop.in_session(NOTICES), timeout=NOTICE_WITHDRAWN)
+    finally:
+        desktop.as_account(f"rm -f {stop} {SAFE_WORD}/acted.jsonl")
+        if desktop.showing()["open"]:
+            desktop.close_launcher()
 
 
 def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desktop) -> None:
