@@ -154,11 +154,15 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     if let Some(fold) = fold {
         held["fold"] = json!(fold);
     }
-    json!({
+    let mut record = json!({
         "key": key_of(address), "row": row.key, "place": PLACE, "kind": "session",
         "name": row.name, "glyph": row.glyph, "hue": row.hue, "depth": row.depth,
         "side": items(&row.side_items), "acts": acts, "held": held,
-    })
+    });
+    if let Some(talk) = &row.talk {
+        record["talk"] = talk.clone();
+    }
+    record
 }
 
 /// Every row of `shown`, a fold's members after it, in the order shown.
@@ -357,6 +361,7 @@ mod tests {
             returns: "switch",
             acts: vec!["switch", "talk"],
             leaves: String::new(),
+            talk: None,
             ranked: Ranked {
                 note: String::new(),
                 side: side.to_owned(),
