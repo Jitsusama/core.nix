@@ -8,8 +8,10 @@ programs can take about 0.27 s, during which every conversation in the
 host stands still; ten waking together stand still ten times.
 
 Run the command through exec instead, and let every connection opened
-within 30 s share that one run, so a burst runs it once. A run that
-resolved nothing isn't kept, so the next connection tries again, and
+within 30 s share that one run, so a burst runs it once. Its value is
+held in memory for those 30 s, so a command whose token lives shorter
+than that would hand out a stale one. A run that resolved nothing isn't
+kept, so the next connection tries again, and
 clearing the config value cache clears these runs too. A transport
 factory may now answer with a promise, and a connection shut down while
 its headers resolve stops there. Only MCP transports take this path:
