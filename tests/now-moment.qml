@@ -424,6 +424,14 @@ ShellRoot {
         // Stepped into once as things stand, since Desktop's own rows may
         // have come while the searches were answered, so what's counted is
         // what the one read makes again, not rows Desktop made first.
+        // Two looks done with, in For You's History beside the notices.
+        looksBefore = now.lookTexts;
+        const doneLook = id => JSON.stringify({ v: 1, id: id, kind: "page",
+            at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
+            title: `Looked at ${id}`, why: "Because.", state: "opened" });
+        now.lookTexts = { "d.json": doneLook("d"), "e.json": doneLook("e") };
+        now.historyRows();
+        weighedBefore = now.looksWeighed.times;
         historyBefore = stepIn().history;
         steppedBefore = heldMade();
         madeBefore = madeNow();
@@ -438,6 +446,10 @@ ShellRoot {
     property var steppedBefore: null
     // History's rows as stepped into before the read.
     property var historyBefore: []
+    // The looks as they were before the case's own, and how many times a
+    // look's side had been worked out as History held them.
+    property var looksBefore: ({})
+    property int weighedBefore: 0
     // Every notice's made row, by notice, as search holds them (Desktop's
     // are copied as they're listed, so can't be told apart this way).
     // Taken before a count and after its read, so making none adds to it.
@@ -481,6 +493,14 @@ ShellRoot {
             expect("one notice read, History makes only its row again",
                 fresh.length === 1 && fresh[0].notice === 2,
                 JSON.stringify(fresh.map(row => row.key)));
+            // For You's History holds the looks done with too, whose sides
+            // a notice read changes nothing of: 470 of Joel's worked out
+            // again took 53 to 113 ms of a step (2026-11-14).
+            const held = now.historyRows().filter(row => row.key.startsWith("on:look:"));
+            expect("one notice read, For You's History works out no look's side again",
+                held.length === 2 && now.looksWeighed.times === weighedBefore,
+                `${held.length} looks, ${now.looksWeighed.times - weighedBefore} sides again`);
+            now.lookTexts = looksBefore;
             expect("a search answered before the notices changed waits for its answer again",
                 pastNotices.awaits("notice") === true, JSON.stringify(pastNotices.answers.kept));
             expect("a search answered before the notices changed lists none of them meanwhile",

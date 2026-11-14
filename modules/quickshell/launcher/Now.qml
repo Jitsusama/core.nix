@@ -1134,6 +1134,7 @@ Provider {
         const text = lookTexts[one.file];
         if (one.file === "" || typeof text !== "string")
             return lookRow(one, now);
+        looksWeighed.times += 1;
         return keptAlike(looksKept, one.file, [text, lookSide(one, now, forYouSaid(now))],
             () => lookRow(one, now));
     }
@@ -1208,16 +1209,36 @@ Provider {
         // serves History's.
         const past = served.map(one => ({ at: one.doneAt, row: () => one }));
         const say = forYouSaid(now);
+        const day = new Date(now).toDateString();
+        if (from === undefined)
+            keepingBegun(historyLooks);
         const ours = from === undefined ? looks.history.map(one => ({
-            at: one.resolved ?? one.since, row: () => provider.keptLook(one, now) }))
+            at: one.resolved ?? one.since, row: () => keptAlike(historyLooks, one.file,
+                [one, day], () => provider.keptLook(one, now)) }))
             .concat(doneItems.map(one => ({ at: one.resolved, row: () => provider.doneRow(one) })),
                 given.done.map(one => ({ at: one.done.at,
                     row: () => provider.givenDone(one, say) })))
             : [];
         const rows = ours.concat(came.map(one => ({ at: one.at,
             row: () => provider.cameDoneRow(one) })), past);
-        return Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+        const made = Order.sorted(rows, Order.stream(one => one.at)).map(one => one.row());
+        if (from === undefined)
+            keptOnly(historyLooks);
+        return made;
     }
+    // Each look done with, its History row kept while the look and the
+    // day are the same: one is parsed again only as its text changes and
+    // split again only as the hour turns, and done with, its row reads
+    // nothing else but the day its moment is said against. Working out
+    // all 470 of Joel's sides again as one notice was read took 53 to
+    // 113 ms of the step, and kept, 18 to 50 (2026-11-14). A stopgap, as
+    // the first step still makes them all, until FEH1HE's to-do daemon
+    // serves each look's History row ready, as the notices' come, by
+    // Sat 14 Nov 22:00.
+    readonly property var historyLooks: keeper()
+    // How many times a look's side has been worked out, which a step
+    // that changed no look adds nothing to.
+    readonly property var looksWeighed: ({ times: 0 })
     // What a source gave that's done, in History as its source made it,
     // saying at its side how it went and when, "read 14:02", as every row
     // there does.
