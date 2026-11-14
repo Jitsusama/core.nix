@@ -119,16 +119,17 @@ ShellRoot {
         ];
         for (const [said, [open, held, typed, found], looks] of looking) {
             at(open, held, typed, found);
-            Expect.same(`${said}, the cards ${looks ? "look" : "don't look"}`, wireless.looking,
-                looks);
+            Expect.same(`${said}, the cards ${looks ? "look" : "don't look"}`,
+                wireless.looksForNetworks, looks);
         }
         standIn.terminalSees = { walked: [{ from: wireless }] };
         Expect.same("closed, a terminal's show walked into Wi-Fi, the cards look",
-            wireless.looking, true);
+            wireless.looksForNetworks, true);
         standIn.terminalSees = { walked: [] };
         at(true, [wireless], "", []);
         Wifi.radio = false;
-        Expect.same("in Wi-Fi with the radio off, the cards don't look", wireless.looking, false);
+        Expect.same("in Wi-Fi with the radio off, the cards don't look",
+            wireless.looksForNetworks, false);
         Wifi.radio = true;
     }
 }

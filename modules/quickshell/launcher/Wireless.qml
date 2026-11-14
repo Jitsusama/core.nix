@@ -102,7 +102,7 @@ Provider {
     // its, the launcher open; or while a terminal's `launcher show` walked
     // into Wi-Fi (Launcher.qml's terminalSees), so a network asked for cold
     // is in the list. Until then the launcher open anywhere had them look.
-    readonly property bool looking: {
+    readonly property bool looksForNetworks: {
         const launcher = provider.launcher;
         if (!on || launcher === null)
             return false;
@@ -120,7 +120,7 @@ Provider {
         interval: 10000
         repeat: true
         triggeredOnStart: true
-        running: provider.looking
+        running: provider.looksForNetworks
         onTriggered: {
             if (provider.terminalLooks && !provider.launcher.open)
                 provider.lookedFrom = Wifi.looks;
