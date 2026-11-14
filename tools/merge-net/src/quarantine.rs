@@ -49,6 +49,21 @@ pub fn excuses(listed: &BTreeSet<String>, failing: &BTreeSet<String>) -> bool {
     !failing.is_empty() && failing.is_subset(listed)
 }
 
+/// Whether `list` still holds what failed in `test`: the whole test, or,
+/// where `failing` names subtests, every one of them between its entries.
+/// A failure naming none is held by any entry for the test, as every
+/// entry held a whole test before entries named subtests.
+#[must_use]
+pub fn covers(list: &Value, test: &str, failing: &BTreeSet<String>) -> bool {
+    if whole(list).iter().any(|held| held == test) {
+        return true;
+    }
+    if failing.is_empty() {
+        return entries(list).any(|entry| entry["test"] == test);
+    }
+    failing.is_subset(&subtests_of(list, test))
+}
+
 /// List `test` in `entries` with `fields`, its owner and reason among
 /// them, excusing `subtests` of it, or the whole test when none are named.
 /// A test already listed gets an entry of its own for the subtests not
@@ -152,6 +167,32 @@ mod tests {
             !excuses(&listed, &set("")),
             "a run naming no failure can't be excused"
         );
+    }
+
+    #[test]
+    fn a_list_covers_a_failure_only_while_it_holds_every_failed_subtest() {
+        let list = json!([
+            {"test": "vm-a"},
+            {"test": "vm-b", "owner_pr": 1, "subtests": ["test_x"]},
+            {"test": "vm-b", "owner_pr": 2, "subtests": ["test_y"]},
+        ]);
+        assert!(
+            covers(&list, "vm-a", &set("test_q")),
+            "vm-a is listed whole"
+        );
+        assert!(
+            covers(&list, "vm-b", &set("test_x test_y")),
+            "vm-b's two entries hold both its failures between them"
+        );
+        assert!(
+            !covers(&list, "vm-b", &set("test_x test_z")),
+            "test_z isn't held"
+        );
+        assert!(
+            covers(&list, "vm-b", &set("")),
+            "a failure naming no subtest is held by any entry for its test"
+        );
+        assert!(!covers(&list, "vm-c", &set("")), "vm-c isn't listed");
     }
 
     #[test]

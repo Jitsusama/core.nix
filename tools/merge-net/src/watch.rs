@@ -216,9 +216,10 @@ pub trait World: Sync {
         bad: &Bad,
         still: &dyn Fn(&str, &str) -> Result<bool, String>,
     ) -> Result<Merged, String>;
-    /// The PR whose merge, at or before `head`, last took `test` off the
-    /// quarantine list, if one did.
-    fn unlisted_by(&self, test: &str, head: &str) -> Option<u64>;
+    /// The PR whose merge, at or before `head`, last took off the
+    /// quarantine list what fails in `test` now, the `failing` subtests or
+    /// where none are named the test, if one did.
+    fn unlisted_by(&self, test: &str, failing: &BTreeSet<String>, head: &str) -> Option<u64>;
     /// Put a flaky test on the quarantine list through a merged PR,
     /// excusing only `subtests` of it where any are named.
     fn quarantine(
@@ -1397,8 +1398,8 @@ fn failed_at_base(state: &State, base: &str, test: &str) -> bool {
 }
 
 /// List `test`, which failed twice at the round's `base` and fails at its
-/// `head`, as quarantined, owned by the PR that last took it off the list,
-/// unless main lists it now. No merge since is to blame, so nothing else
+/// `head`, as quarantined, owned by the PR that last took off the list what
+/// fails in it now, unless main lists it now. No merge since is to blame, so nothing else
 /// names an owner: on 10 November vm-desktop-launcher-reads-mail and
 /// keeps-up came off the list still failing, by #2603 and #2602, and failed
 /// at every head for hours with nobody told.
@@ -1410,14 +1411,15 @@ fn list_still_red(
     test: &str,
     log: &str,
 ) -> Result<(), String> {
-    let owner = world.unlisted_by(test, head);
+    let failing = failing_at(state, head, test);
+    let owner = world.unlisted_by(test, &failing, head);
     let reason = format!(
         "failed twice at {}, and at {} after it",
         short(base),
         short(head)
     );
     let listed = (!listed_on_main(world, head, test))
-        .then(|| world.quarantine(test, &failing_at(state, head, test), owner, head, &reason));
+        .then(|| world.quarantine(test, &failing, owner, head, &reason));
     state.find(&json!({
         "kind": "failed-before", "test": test, "commit": head, "since": base,
         "owner_pr": owner, "log": log,
@@ -1937,6 +1939,8 @@ mod tests {
         quarantine_owners: Mutex<Vec<Option<u64>>>,
         /// The PR that last took a test off the list.
         unlisted_by: Option<u64>,
+        /// The failing subtests each owner was asked for by.
+        unlisted_for: Mutex<Vec<BTreeSet<String>>>,
         held: Option<String>,
         /// A pause that comes while a revert's checks run.
         paused_while_reverting: Option<String>,
@@ -2167,7 +2171,8 @@ mod tests {
                 commit: Some("revert".to_owned()),
             })
         }
-        fn unlisted_by(&self, _: &str, _: &str) -> Option<u64> {
+        fn unlisted_by(&self, _: &str, failing: &BTreeSet<String>, _: &str) -> Option<u64> {
+            self.unlisted_for.lock().unwrap().push(failing.clone());
             self.unlisted_by
         }
         fn quarantine(
@@ -3800,11 +3805,18 @@ mod tests {
             head: "m2".into(),
             merges: names("m1 m2"),
             changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
             unlisted_by: Some(2603),
             ..Stand::default()
         }
         .exits("m2", "vm-a", &[1, 1]);
         round(&world, &state, "s").unwrap();
+        assert_eq!(
+            *world.unlisted_for.lock().unwrap(),
+            [names("test_b").into_iter().collect::<BTreeSet<_>>()],
+            "its owner wasn't asked for by the subtest failing now, so one who took off only \
+             their own entry goes unfound"
+        );
         assert_eq!(
             *world.put_in_quarantine.lock().unwrap(),
             names("vm-a"),
