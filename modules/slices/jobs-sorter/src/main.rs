@@ -71,6 +71,10 @@
 //! prefix ranks as the sessions it holds would in windows of their own, as
 //! `src/hosts.rs` says why and how.
 //!
+//! With `--sessions` and `--weigh`, a session's holder found in jobs goes
+//! back to a scope of its own in that slice, with the pi it runs, as
+//! `src/sessions.rs` says why and how.
+//!
 //! Terminals sit in each `--under` slice: Joel's apps' and, apart from
 //! them, the agents' sessions'. A terminal's busy work goes to `--jobs`,
 //! or to the cgroup named after `=` in its slice's `--under`, as the
@@ -88,6 +92,7 @@
 //!        [--background DIR] [--low-weight 10] [--weigh PREFIX]...
 //!        [--revive jobs.slice] [--door jobs.slice] [--calls pw-dump]
 //!        [--orchestrators DIR] [--niri niri] [--hosts PREFIX]
+//!        [--sessions agents.slice]
 
 mod calls;
 mod door;
@@ -102,6 +107,7 @@ mod probe;
 mod quests;
 mod real_time;
 mod revive;
+mod sessions;
 mod strays;
 mod swap_in;
 mod tiers;
@@ -142,6 +148,8 @@ struct Settings {
     calls: Option<PathBuf>,
     niri: Option<PathBuf>,
     hosts: Option<String>,
+    /// The slice a session found in jobs goes back to.
+    sessions: Option<String>,
     /// Where each `--under` slice's terminals send their busy work, when
     /// not to `jobs`, in the order the slices were named.
     sends: Vec<Option<String>>,
@@ -1407,6 +1415,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
         calls: None,
         niri: None,
         hosts: None,
+        sessions: None,
         sends: Vec::new(),
     };
     while let Some(flag) = args.next() {
@@ -1438,6 +1447,7 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
             "--hosts" => settings.hosts = Some(value()?),
+            "--sessions" => settings.sessions = Some(value()?),
             "--orchestrators" => settings.orchestrators = Some(PathBuf::from(value()?)),
             "--low-weight" => {
                 settings.low_weight = value()?.parse().map_err(|_| "--low-weight is a weight")?;
@@ -1457,6 +1467,11 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, String> 
     }
     if settings.homes.is_empty() {
         settings.homes.push("kitty-".into());
+    }
+    if settings.sessions.is_some() && settings.weigh.is_empty() {
+        return Err(
+            "--sessions names a session's scope by a --weigh prefix, and none is given".into(),
+        );
     }
     Ok(settings)
 }
@@ -1482,6 +1497,24 @@ mod settings_tests {
             given("--under app.slice --under agents.slice"),
             ["app.slice", "agents.slice"],
             "a slice named with --under isn't watched"
+        );
+    }
+
+    #[test]
+    fn a_session_goes_back_only_where_a_prefix_can_name_its_scope() {
+        let words = |line: &str| {
+            line.split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        let named = settings(words("--sessions agents.slice --weigh mycelium-pi-").into_iter());
+        assert_eq!(
+            named.map(|given| given.sessions),
+            Ok(Some("agents.slice".to_owned()))
+        );
+        assert!(
+            settings(words("--sessions agents.slice").into_iter()).is_err(),
+            "a session's scope was to be named with no prefix to name it by"
         );
     }
 
@@ -1522,6 +1555,44 @@ fn return_stray(scope: &Path, root: &Path, manager: &str, slice: &str, warned: &
         "Moved {name} ({} processes) back to {back}, which started it.",
         pids.len()
     );
+}
+
+/// Gives each session found under the jobs slice a scope of its own in
+/// `--sessions`' slice, named by the first `--weigh` prefix, or moves it
+/// into the one it has there already.
+fn return_sessions(root: &Path, settings: &Settings, warned: &mut bool) {
+    let (Some(slice), Some(prefix)) = (&settings.sessions, settings.weigh.first()) else {
+        return;
+    };
+    let jobs = settings.jobs.split('/').next().unwrap_or(&settings.jobs);
+    let procs: Vec<Sample> = real_time::processes_under(&root.join(jobs))
+        .into_iter()
+        .filter_map(|pid| parse_stat(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?))
+        .collect();
+    let cmdline = |pid: u32| fs::read(format!("/proc/{pid}/cmdline")).ok();
+    for (id, pids) in sessions::found(&procs, &settings.keep, cmdline) {
+        let name = format!("{prefix}{id}.scope");
+        let made = Command::new("busctl")
+            .args(sessions::scope_call(&name, slice, &pids))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success());
+        let scope = root.join(slice).join(&name);
+        if !made && scope.join("cgroup.procs").exists() {
+            send(&scope, &pids, warned);
+        } else if !made {
+            if !*warned {
+                eprintln!("Couldn't give {name} its scope back from jobs.");
+                *warned = true;
+            }
+            continue;
+        }
+        eprintln!(
+            "Gave {name} ({} processes) its scope back in {slice}, from jobs.",
+            pids.len()
+        );
+    }
 }
 
 /// Follows niri's focus with `niri`, waking `watch` as it moves. Windows
@@ -1691,6 +1762,9 @@ fn run() -> Result<(), String> {
         }
         for scope in under.iter().flat_map(|slice| strays(slice, &windows)) {
             return_stray(&scope, &root, &manager, &slice, &mut warned);
+        }
+        if pass.is_multiple_of(sessions::EVERY) {
+            return_sessions(&root, &settings, &mut warned);
         }
         sorter.told.say(&under);
         // After the terminals' work is moved, so what moved is split too.
@@ -1862,6 +1936,7 @@ mod tests {
             calls: None,
             niri: None,
             hosts: None,
+            sessions: None,
             sends: vec![None],
         }
     }

@@ -705,6 +705,11 @@ in
             "%t/pi/background"
             "--weigh"
             "mycelium-pi-"
+            # A session that reached jobs, moved there or started from there,
+            # goes back to a scope of its own here: on 14 November 37 window
+            # pis sat in jobs and waited longer for a CPU than they ran.
+            "--sessions"
+            "agents.slice"
             # A pi host's unit holds many sessions behind one node process,
             # each shown by a terminal running only mycelium's attach, so the
             # unit ranks as they would in windows of their own: low while
