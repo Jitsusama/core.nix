@@ -1633,10 +1633,12 @@ fn search(
     // head can't say now. On 14 November a net moving builds left such a
     // search kept, and the next took it up, found no builder for the newest
     // head, and quarantined vm-reboot-cannot-hang in #4312, seven minutes
-    // after it had passed there.
+    // after it had passed there. Whether main's newest head has fixed it
+    // since is asked once, by `settle`, just before its revert: asked here
+    // too, on 14 November each answer came at a head merged while the one
+    // before was run, and #4311's revert waited 29 minutes on two in a row.
     if let Some(commit) = &bad
-        && (state.found("fixed-forward", test, commit)
-            || fixed_forward(world, state, head, test, Some(commit))?)
+        && state.found("fixed-forward", test, commit)
     {
         return Ok(None);
     }
@@ -2031,6 +2033,9 @@ mod tests {
         /// The head main moves to while a revert's checks run.
         moves_while_reverting: Option<String>,
         moved: Mutex<Option<String>>,
+        /// The heads main's newest answers in turn, the last kept, as main
+        /// moves on while each answer is run.
+        newest: Mutex<Vec<String>>,
         /// The merges the machine runs already.
         running: Vec<String>,
         /// The subtest pytest names in each failed run's log.
@@ -2077,6 +2082,14 @@ mod tests {
                 return Err(error.clone());
             }
             *self.fetched_since_revert.lock().unwrap() = true;
+            let mut newest = self.newest.lock().unwrap();
+            if newest.len() > 1 {
+                return Ok(newest.remove(0));
+            }
+            if let Some(last) = newest.first() {
+                return Ok(last.clone());
+            }
+            drop(newest);
             Ok(self
                 .moved
                 .lock()
@@ -4104,6 +4117,41 @@ mod tests {
         let found = findings(&state);
         assert_eq!(found[0]["kind"], "fixed-forward");
         assert_eq!(found[0]["fixed_at"], "m4");
+    }
+
+    #[test]
+    fn main_s_newest_head_is_asked_once_between_a_search_finding_a_merge_and_its_revert() {
+        // Main moves on each time its newest head is asked, as it did on
+        // 14 November while each answer took a VM run.
+        let state = state("asked-once");
+        let world = Stand {
+            head: "m3".into(),
+            merges: names("m1 m2 m3"),
+            changed: changed("vm-a"),
+            newest: Mutex::new(names("m3 m4 m5")),
+            ..Stand::default()
+        }
+        .exits("m2", "vm-a", &[1, 1])
+        .exits("m3", "vm-a", &[1, 1])
+        .exits("m4", "vm-a", &[1, 1])
+        .exits("m5", "vm-a", &[1, 1]);
+        let found = search(&world, &state, "s", "m3", "vm-a", &|| SPLITS).unwrap();
+        settle(&world, &state, "s", "m3", found.unwrap()).unwrap();
+        let newest: Vec<_> = world
+            .built()
+            .into_iter()
+            .filter(|(commit, _)| commit == "m4" || commit == "m5")
+            .map(|(commit, _)| commit)
+            .collect();
+        assert!(
+            newest.len() == 2 && newest[0] == newest[1],
+            "main's newest head was asked again as soon as it had answered: {newest:?}"
+        );
+        assert_eq!(
+            *world.reverted.lock().unwrap(),
+            names("m2"),
+            "m2 wasn't reverted"
+        );
     }
 
     #[test]
