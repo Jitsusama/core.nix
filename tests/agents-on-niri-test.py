@@ -751,7 +751,7 @@ def test_a_sessions_close_asks_saying_what_stays_and_return_steers_it_closed(
     """Close, last among a session's acts, asks what it leaves, and Return steers it a close.
 
     The ask is answered as an armed row is (Joel, 2026-11-13): a Return more does it, its foot
-    saying so, and any other key, y among them, lets it go without reaching the line.
+    saying so, y leaves it standing, and any other key lets it go without reaching the line.
     """
     into_orchestration(shell)
     rows = shell.showing()["rows"]
@@ -774,8 +774,10 @@ def test_a_sessions_close_asks_saying_what_stays_and_return_steers_it_closed(
     asking = shell.showing()
     assert asking["question"] == "Close BOSSES? Its folder stays.", asking
     assert asking["hints"] == ["\u21b5 confirm"], asking
-    # y once asked closed it; now it lets the ask go, typing nothing, and nothing is steered.
+    # y once asked closed it; now it leaves the ask standing (VKCF3Z, 2026-11-14), so the n
+    # after it lets the ask go rather than being typed, and nothing is steered.
     shell.send_chars("y")
+    shell.send_chars("n")
     shell.launcher_until(
         lambda shown: shown["open"] and shown["question"] == "" and shown["typed"] == ""
     )
