@@ -132,6 +132,13 @@ impl Routes {
         }
     }
 
+    /// The session reached at `address`, running or parked, as Joel's
+    /// words on what it landed go to it first (feedback.rs).
+    pub fn by_address(&self, address: &str) -> Option<Heard> {
+        let map = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        map.by_address(address, "session")
+    }
+
     /// The session in `window`, named by its key or niri's id for it.
     pub fn in_window(&self, window: &Value) -> Option<Heard> {
         let map = self.0.lock().unwrap_or_else(PoisonError::into_inner);

@@ -22,6 +22,7 @@ use crate::carried::Carried;
 use crate::clock;
 use crate::closed;
 use crate::drawer;
+use crate::feedback;
 use crate::kept_places::KeptPlaces;
 use crate::landed::{self, Reading};
 use crate::recent;
@@ -30,7 +31,7 @@ use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::summary;
-use crate::talks;
+use crate::talks::{self, Talk};
 use crate::top;
 use crate::wants;
 use crate::windows;
@@ -87,6 +88,9 @@ pub struct Inputs {
     /// What of core's merges the running system carries, which a
     /// landing of core's waits on before To Try holds it.
     pub carried: Carried,
+    /// The lines kept of Joel's words on landings sent as talks, which
+    /// their drawers say how each went of.
+    pub fed_back: Vec<Value>,
 }
 
 impl Inputs {
@@ -339,6 +343,15 @@ impl Inputs {
             .filter_map(|(_, one)| Some((one["id"].as_str()?, one["title"].as_str()?)))
             .collect();
         landed::drawn(&mut records, &self.words, &titles);
+        if !self.fed_back.is_empty() {
+            let talks: HashMap<String, Talk> = self
+                .talks
+                .records()
+                .map(|(_, one)| talks::folded(one))
+                .map(|talk| (talk.id.clone(), talk))
+                .collect();
+            feedback::told(&mut records, &self.fed_back, &talks, &self.words);
+        }
         (records, held)
     }
 

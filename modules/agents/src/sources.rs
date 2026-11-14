@@ -57,6 +57,9 @@ pub enum Heard {
     /// Where the windows of sessions moving onto pi's host sat, all of
     /// them, as the shell says each time one's kept or let go.
     KeepPlaces(KeptPlaces),
+    /// The line kept of Joel's words on a landing sent as a talk, whose
+    /// drawer says how it went (feedback.rs).
+    FedBack(Value),
 }
 
 /// Where the files the rows are made from are kept.
@@ -235,6 +238,7 @@ impl Inputs {
                 }
                 self.kept_places = kept;
             }
+            Heard::FedBack(line) => self.fed_back.push(line),
         }
     }
 
@@ -383,6 +387,45 @@ mod tests {
             "written for the next start"
         );
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn what_joel_said_of_a_landing_is_served_on_its_drawer_as_its_talk_goes() {
+        let paths = paths_in(&std::env::temp_dir().join("agents-fed-back-unwritten"));
+        let mut inputs = Inputs::default();
+        inputs.hear(
+            Heard::Landings(json!({"records": [{"key": "landing:s:o#1", "session": "s",
+                "ref": "o#1", "at": "2026-11-11T01:00:00Z", "what": "One"}]})),
+            &paths,
+        );
+        inputs.hear(
+            Heard::FedBack(
+                json!({"at": 7, "landing": "landed:agents:s o#1 2026-11-11T01:00:00Z",
+                "words": "too dim", "by": "talk", "sent": "talk-7000", "to": "The Skiff"}),
+            ),
+            &paths,
+        );
+        inputs.hear(
+            Heard::Talks(
+                json!({"records": [{"key": "talk:S:talk-7000", "address": "S",
+                "id": "talk-7000", "lines": [{"stage": "delivered", "text": "too dim",
+                "at": "2026-11-11T01:02:00Z"}]}]}),
+            ),
+            &paths,
+        );
+        let (records, _) = inputs.landed();
+        let drawer = records
+            .iter()
+            .find(|one| one["kind"] == crate::landed::DRAWER)
+            .expect("its drawer");
+        assert_eq!(
+            (
+                &records[0]["landed"]["saying"],
+                &drawer["drawer"]["said"][0]["stage"]
+            ),
+            (&json!("delivered"), &json!("delivered")),
+            "the talk's stage on the landing's row and in its drawer"
+        );
     }
 
     #[test]
