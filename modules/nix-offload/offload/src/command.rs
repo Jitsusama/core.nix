@@ -725,7 +725,10 @@ mod tests {
             .unwrap();
         assert_eq!(followed.status.code(), Some(there::UNREACHED));
         let said = String::from_utf8_lossy(&followed.stderr);
-        assert!(said.contains(GONE), "it never said the run was gone: {said}");
+        assert!(
+            said.contains(GONE),
+            "it never said the run was gone: {said}"
+        );
     }
 
     /// What's written to it, kept where a test reads it.
