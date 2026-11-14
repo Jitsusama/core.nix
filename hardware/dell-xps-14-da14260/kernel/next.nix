@@ -48,6 +48,11 @@ in
       # is now a plain wake, and a missed interrupt is checked against the
       # controller's own register.
       "btintel-pcie-pm"
+      # Bluetooth's firmware sends its debug traces to the Wi-Fi side rather
+      # than to buffers on the host. Intel pointed at it for a controller
+      # that stopped the way this one does, after its exception dump came
+      # back unreadable.
+      "btintel-pcie-dbgc-to-wifi"
     ]
   );
 

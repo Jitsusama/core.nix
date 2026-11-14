@@ -314,6 +314,7 @@ or a local fix.
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
 | `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
+| `btintel-pcie-dbgc-to-wifi`          | Bluetooth's debug traces go to the Wi-Fi side          |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
 into purgeable and non-purgeable halves. Buffers that cost a backup and a
@@ -365,6 +366,13 @@ or a resume from S3 resets. A missed interrupt is checked against the
 controller's boot stage register rather than a cache only the interrupt
 updates. This kernel lacks the mailbox handshake the third commit
 finishes, so that step is left out.
+
+`btintel-pcie-dbgc-to-wifi` is mainline's 0d3f5d805bff, from the same
+merge. The firmware sends its debug traces to the Wi-Fi side's debug
+collector rather than to buffers the driver allocates on the host. Intel
+pointed at it, with d572ea4b621c, for a BE201 that stopped the way this
+laptop's controller did; Bluetooth's Exceptions, below, says how.
+d572ea4b621c needs a mailbox parser this kernel lacks, so it is left out.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.
@@ -494,6 +502,27 @@ So a paired mouse or keyboard couldn't wake the laptop from s2idle, though
 BlueZ allows both to. The bluetooth module turns that wakeup on for every
 PCI controller of Bluetooth's class, `0x0d1100`, as it does for USB ones.
 A wake by one has yet to be watched.
+
+### Bluetooth's Exceptions
+
+On 12 November the controller logged "Failed to get mac access: (-62)",
+timed its commands out, then raised a hardware exception whose dump read
+"Invalid exception dump signature: 0x665c9494". It was halted, and every
+command after failed at once with -19, so the stack's own timeout never
+reset it. Bluetooth was gone, mouse and all, for 20 hours until a reboot.
+The driver resets a halted controller only when the dump it reads holds an
+HCI event; this one held none. Two reports on linux-bluetooth show the
+same, a BE201 on 7 October and a Panther Lake BE211 on 7 November, on this
+firmware, 19-36.26.
+
+`btintel-pcie-resets-unread-dump.patch`, written here, passes the stack a
+Hardware Error event of the driver's own whenever the dump passed no event
+on, so the stack resets the controller as after a dump it could read. The
+reset is a function-level one, at most once in 5 seconds, as the driver
+limits it. `bluetooth-recovers-from-an-unread-exception` holds it in place.
+It has yet to be watched on a controller that stopped. Until then, or if a
+reset isn't enough, binding the driver again brings the controller back
+without a reboot, and a paired mouse may need pairing again after.
 
 ### The Speaker Tuning
 

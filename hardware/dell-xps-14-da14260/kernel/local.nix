@@ -77,6 +77,16 @@
       patch = ./local/bluetooth-uefi-power-tables.patch;
     }
     {
+      # Bluetooth's controller halted with an exception dump the driver
+      # couldn't read, so nothing reset it, and it stayed dead, mouse and
+      # all, until a reboot. The driver now resets it as it would after a
+      # dump it could read, within the same retry limit. Written here; the
+      # patch says why. Next's two Bluetooth patches take an offset after
+      # it, which patch allows.
+      name = "btintel-pcie-resets-unread-dump";
+      patch = ./local/btintel-pcie-resets-unread-dump.patch;
+    }
+    {
       # Dell's driver offers quiet and the SoC slider low-power, so the legacy
       # profile file offered neither, and power-saver ran as balanced.
       name = "soc-slider-takes-quiet";
