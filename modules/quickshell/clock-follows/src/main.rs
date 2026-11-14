@@ -36,8 +36,8 @@
 //!     clock-follows put-back <state folder> <timedatectl>
 //!
 //! Run bare, or as `show`, it says what its state folder holds: the
-//! clock's last move and any zone held, as text or, with `--json`, as
-//! JSON (docs/commands.md). It takes that shape through the terminal kit,
+//! clock's last move and whether it follows, in Joel's words or, with
+//! `--json`, as JSON (docs/commands.md; show.rs says it). It takes that shape through the terminal kit,
 //! which marks a failure's lines as errors for the journal.
 
 use std::fs;
@@ -48,8 +48,12 @@ use std::process::{Command, ExitCode};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use terminal_kit::{Context, Exit, Failure, Help, layout, time};
+use serde_json::Value;
+use terminal_kit::{Exit, Failure, Help};
+
+mod show;
+
+use show::{said, shown};
 
 /// The key whereabouts says where the laptop is by.
 const HERE: &str = "here:laptop";
@@ -343,47 +347,6 @@ fn kept_state() -> Option<PathBuf> {
     Some(states.join("clock-follows"))
 }
 
-/// What the state folder holds, as JSON: the last move and any zone held,
-/// each null where there's none.
-fn shown(state: &Path) -> Value {
-    let moved = read::<Moved>(&state.join("moved.json")).map(|moved| {
-        json!({
-            "from": moved.from,
-            "to": moved.to,
-            "place": moved.place,
-            "moved_at": i64::try_from(moved.when).ok().map(time::rfc3339),
-        })
-    });
-    let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
-    json!({ "schema": "clock-follows.show/1", "moved": moved, "held": held })
-}
-
-/// The same for a person, as facts, the move's time said as how long
-/// before `now` it was.
-fn said(state: &Path, now: u64, context: &Context) -> String {
-    let moved = read::<Moved>(&state.join("moved.json"));
-    let held = read::<Held>(&state.join("held.json")).and_then(|held| held.refused);
-    let ago = moved
-        .as_ref()
-        .map(|moved| format!("{} ago", time::span(now.saturating_sub(moved.when))));
-    let mut facts = Vec::new();
-    if let Some(moved) = &moved {
-        facts.push(("moved to", Some(moved.to.as_str())));
-        facts.push(("from", Some(moved.from.as_str())));
-        facts.push(("found in", moved.place.as_deref()));
-        facts.push(("when", ago.as_deref()));
-    } else {
-        facts.push(("moved", Some("not since it was last put back, or ever")));
-    }
-    facts.push((
-        "held",
-        Some(held.as_deref().unwrap_or("nothing, so the clock follows")),
-    ));
-    let mut lines = layout::facts(&facts, "unknown", &context.out, context.room).join("\n");
-    lines.push('\n');
-    lines
-}
-
 fn help() -> Help {
     Help::new(
         "clock-follows",
@@ -391,7 +354,7 @@ fn help() -> Help {
     )
     .command(
         "show [STATE]",
-        "its last move and any zone held; the bare run",
+        "where the clock last moved, if it follows; bare run",
     )
     .command(
         "follow SOCKET STATE PROGRAM",
@@ -400,7 +363,7 @@ fn help() -> Help {
     .command("put-back STATE PROGRAM", "puts the zone back where it was")
     .example(
         "clock-follows",
-        "what moved the clock last, and any zone held",
+        "where the clock last moved, and if it follows you",
     )
     .example("clock-follows --json", "the same, as JSON")
     .exit(Exit::Failed, "the zone couldn't be set, or its state kept")
@@ -673,41 +636,6 @@ mod tests {
             ),
             Decision::Unhold
         );
-    }
-
-    #[test]
-    fn the_state_is_shown_with_its_times_and_nulls() {
-        let state = std::env::temp_dir().join(format!("clock-follows-show-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&state);
-        fs::create_dir_all(&state).unwrap();
-        let nothing = shown(&state);
-        assert_eq!(nothing["schema"], "clock-follows.show/1");
-        assert_eq!(nothing["moved"], Value::Null, "nothing moved says null");
-        assert_eq!(nothing["held"], Value::Null);
-        let moved = Moved {
-            from: "America/Toronto".into(),
-            to: "America/Edmonton".into(),
-            place: None,
-            when: 1_794_556_320,
-        };
-        write(&state.join("moved.json"), &moved).unwrap();
-        write(
-            &state.join("held.json"),
-            &Held {
-                refused: Some("America/Vancouver".into()),
-            },
-        )
-        .unwrap();
-        let some = shown(&state);
-        assert_eq!(
-            some["moved"],
-            json!({
-                "from": "America/Toronto", "to": "America/Edmonton",
-                "place": null, "moved_at": "2026-11-13T07:52:00Z",
-            })
-        );
-        assert_eq!(some["held"], "America/Vancouver");
-        fs::remove_dir_all(&state).unwrap();
     }
 
     #[test]

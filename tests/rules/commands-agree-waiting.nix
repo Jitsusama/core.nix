@@ -79,11 +79,6 @@
     "exits"
     "helps"
   ];
-  code-health = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   collect = [ "helps" ];
   console-font = [
     "kit"
@@ -334,10 +329,6 @@
     "exits"
     "helps"
   ];
-  shell-weighs = [
-    "kit"
-    "helps"
-  ];
   shutdown-status = [
     "kit"
     "exits"
@@ -399,11 +390,6 @@
     "helps"
   ];
   update-to-main-the-launcher-is-in-use = [ "helps" ];
-  vm-first = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   warp = [
     "kit"
     "helps"

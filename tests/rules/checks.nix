@@ -159,6 +159,7 @@
         yubikey-keys = script "yubikey-keys" ../../modules/yubikey-signing/yubikey-keys.sh { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };
         clock-follows = pkgs.callPackage ../../modules/quickshell/clock-follows/package.nix { };
+        code-health = pkgs.callPackage ../../modules/code-health/package.nix { };
         collector = pkgs.callPackage ../../modules/collector/package.nix { };
         device-check = deviceCheck;
         device-check-disk = deviceCheck;
@@ -178,7 +179,9 @@
         pi-packages = pkgs.callPackage ../../modules/pi-packages/package.nix { };
         recent-files = recentFiles;
         session-backup = pkgs.callPackage ../../modules/session-backup/package.nix { };
+        shell-weighs = pkgs.callPackage ../../modules/quickshell/shell-weighs/package.nix { };
         spend-watch = pkgs.callPackage ../../modules/spend-watch/package.nix { };
+        vm-first = pkgs.callPackage ../../modules/nix-daemon/vm-first/package.nix { };
         xwayland-satellite = pkgs.callPackage ../../modules/niri/xwayland-satellite.nix { };
       };
     waiting = import ./commands-agree-waiting.nix;

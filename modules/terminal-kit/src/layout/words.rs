@@ -207,6 +207,14 @@ fn parted(line: &str, more: &str, between: &str) -> String {
 /// after a figure that isn't its unit can part from it.
 const UNIT: usize = 3;
 
+/// The short words English joins a sentence with, which follow a figure
+/// as often as a unit does (`Pro 6 on 5 GHz`) but never measure it, so a
+/// line may part a figure from them.
+const JOINING: [&str; 22] = [
+    "a", "an", "and", "are", "as", "at", "but", "by", "for", "if", "in", "is", "it", "nor", "of",
+    "on", "or", "so", "the", "to", "was", "yet",
+];
+
 /// What a break mustn't part: a figure and its unit (`412 GB`), and
 /// `\u{d7}` and what it joins (`1272 \u{d7} 768`), each as one piece. A
 /// bracket before a figure or a stop after its unit (`(16 KiB).`) doesn't
@@ -217,8 +225,8 @@ fn held(words: &str) -> Vec<String> {
             .starts_with(|first: char| first.is_ascii_digit())
     };
     let unit = |word: &str| {
-        !figure(word)
-            && width(word.trim_end_matches(|last: char| last.is_ascii_punctuation())) <= UNIT
+        let bare = word.trim_end_matches(|last: char| last.is_ascii_punctuation());
+        !figure(word) && width(bare) <= UNIT && !JOINING.contains(&bare)
     };
     let mut pieces: Vec<String> = Vec::new();
     let mut was: Option<&str> = None;
@@ -322,6 +330,22 @@ mod tests {
         assert_eq!(
             paragraph("one two three four", 4, Room::Unbounded),
             ["    one two three four"]
+        );
+    }
+
+    #[test]
+    fn a_figure_parts_from_a_joining_word_after_it() {
+        // "6 on" isn't a figure and its unit, so the name before it fits
+        // whole and the line breaks after the figure.
+        assert_eq!(
+            wrapped(
+                "tablet 1 connected to Den eero Pro 6 on 5.2 GHz channel 52.",
+                38
+            ),
+            [
+                "tablet 1 connected to Den eero Pro 6",
+                "on 5.2 GHz channel 52."
+            ]
         );
     }
 

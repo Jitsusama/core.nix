@@ -170,6 +170,8 @@ fn batch(answered: &[u8]) -> Result<Vec<String>, String> {
 
 /// Run git in a checkout, giving it `input` on its standard input from a
 /// thread of its own, so a long answer can't stall it while it's asked.
+/// What git says on stderr is kept for its failure, read on a thread of
+/// its own too, rather than spilt through the answer.
 fn git(checkout: &str, arguments: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>, String> {
     let failed = |error: &dyn std::fmt::Display| format!("git in {checkout}: {error}");
     let mut child = Command::new("git")
@@ -182,9 +184,16 @@ fn git(checkout: &str, arguments: &[&str], input: Option<Vec<u8>>) -> Result<Vec
             Stdio::null()
         })
         .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| failed(&error))?;
+    let complaint = child.stderr.take().map(|mut stderr| {
+        thread::spawn(move || {
+            let mut said = String::new();
+            let _ = stderr.read_to_string(&mut said);
+            said
+        })
+    });
     let writing = input
         .zip(child.stdin.take())
         .map(|(input, mut stdin)| thread::spawn(move || stdin.write_all(&input)));
@@ -201,8 +210,17 @@ fn git(checkout: &str, arguments: &[&str], input: Option<Vec<u8>>) -> Result<Vec
             .map_err(|error| failed(&error))?;
     }
     let status = child.wait().map_err(|error| failed(&error))?;
+    let complaint = complaint
+        .and_then(|reading| reading.join().ok())
+        .unwrap_or_default();
     if !status.success() {
-        return Err(failed(&format!("{arguments:?} {status}")));
+        let command = arguments.first().copied().unwrap_or_default();
+        let said = complaint
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .map_or_else(|| status.to_string(), |line| line.trim().to_owned());
+        return Err(failed(&format!("{command} failed: {said}")));
     }
     Ok(out)
 }
@@ -306,6 +324,16 @@ mod tests {
         assert!(
             batch(b"aaa blob 9\nshort\n").is_err(),
             "an answer shorter than its size was taken whole"
+        );
+    }
+
+    #[test]
+    fn a_failed_git_says_what_git_said() {
+        let refused = git("/nonexistent", &["ls-tree", "HEAD"], None)
+            .expect_err("git ran in a folder that isn't there");
+        assert!(
+            refused.starts_with("git in /nonexistent: ls-tree failed: fatal:"),
+            "git's own words weren't kept: {refused}"
         );
     }
 }

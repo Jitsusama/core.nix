@@ -12,6 +12,7 @@ publish = false
 jiff = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+terminal-kit = { path = "../terminal-kit" }
 
 [dev-dependencies]
 tempfile = "3"
