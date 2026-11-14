@@ -33,18 +33,22 @@ Provider {
     }
 
     // A verb the daemon offers on a row: its words the launcher's, by the
-    // act's key, and Return on it the daemon's ask, asked once first where
-    // the daemon serves it costly (a resume, which undoes someone's safe
-    // word). What the daemon refused is said in the foot, since the row it
-    // was on stays and nothing else would show why nothing moved, in the
+    // act's key, and Return on it the daemon's ask. One the daemon serves
+    // costly, a resume, which undoes someone's safe word, arms on its first
+    // Return, saying what a second does, as secret asks' Release It does;
+    // a command's flags can't say it, since resume's are every Resume's.
+    // What the daemon refused is said in the foot, since the row it was on
+    // stays and nothing else would show why nothing moved, in the
     // vocabulary's words for its code: its own message is for its journal.
     function verbOf(act) {
+        const arms = act.costly === true ? Words.of(act.key).said?.arms ?? "" : "";
         return thing(Object.assign({
             key: act.key,
             name: Words.name(act.key),
             verb: Words.verb(act.key),
             glyph: Words.glyph(act.key),
             hue: "action",
+            arms,
             run: () => daemon.ask(act.ask, answer => {
                 if (answer?.error)
                     provider.refused(act, answer.error);
