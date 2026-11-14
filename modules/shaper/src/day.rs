@@ -19,6 +19,7 @@ use crate::record;
 use crate::replay::{self, Sample};
 use serde::Serialize;
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -37,6 +38,12 @@ const FULL_LEAST_KBIT: f64 = 1_000.0;
 const LOOK_BACK_MS: u64 = 600_000;
 /// How far back the journal is read for the shaper's state at midnight.
 const JOURNAL_DAYS: u64 = 8;
+/// Where journald keeps a machine's files: on disk, and in memory until
+/// the next boot.
+const JOURNAL_DIRS: [&str; 2] = ["/var/log/journal", "/run/log/journal"];
+/// How long before a moment, in s, a journal file last changed may still
+/// hold an entry from it.
+const JOURNAL_MARGIN_S: u64 = 3_600;
 
 /// The bars a day is held to, and the date they were set.
 pub const BARS_SET: &str = "2026-11-12";
@@ -113,20 +120,26 @@ fn sorted(mut values: Vec<f64>) -> Vec<f64> {
     values
 }
 
-/// The mean of some values, or nothing carried when there are none.
-fn mean(values: &[f64]) -> f64 {
-    if values.is_empty() {
-        0.0
-    } else {
-        values.iter().sum::<f64>() / float(values.len() as u64)
-    }
-}
-
-/// What one direction's minutes carried, kbit/s, and its seconds' delays.
+/// What a minute's seconds carried each way, kbit/s, summed in the order
+/// they came, and each way's delays. A day is folded into these as its
+/// seconds go by, so it never holds more than a minute's worth of each.
 #[derive(Default)]
 struct Minute {
-    kbit: [Vec<f64>; 2],
+    kbit: [f64; 2],
+    seconds: u64,
     delay: [Vec<f64>; 2],
+}
+
+impl Minute {
+    /// What a way carried on average over the minute's seconds, or nothing
+    /// carried when it had none.
+    fn mean(&self, way: usize) -> f64 {
+        if self.seconds == 0 {
+            0.0
+        } else {
+            self.kbit[way] / float(self.seconds)
+        }
+    }
 }
 
 /// Which minutes the shaper was on in, given as minutes since 1970.
@@ -144,7 +157,7 @@ fn loaded(
     let mut count = 0;
     let mut delays = Vec::new();
     for minute in minutes.iter().filter(|&(&at, _)| keep(at)).map(|(_, m)| m) {
-        if mean(&minute.kbit[way]) >= LOADED * full {
+        if minute.mean(way) >= LOADED * full {
             count += 1;
             delays.extend(minute.delay[way].iter().copied());
         }
@@ -159,7 +172,7 @@ fn loaded(
 }
 
 fn way(minutes: &BTreeMap<u64, Minute>, way: usize, on: &dyn On) -> Way {
-    let means = sorted(minutes.values().map(|m| mean(&m.kbit[way])).collect());
+    let means = sorted(minutes.values().map(|m| m.mean(way)).collect());
     let full = rank(&means, 1.0 - BUSIEST)
         .unwrap_or(0.0)
         .max(FULL_LEAST_KBIT);
@@ -178,9 +191,12 @@ fn way(minutes: &BTreeMap<u64, Minute>, way: usize, on: &dyn On) -> Way {
 }
 
 /// The day between two moments, in ms since 1970, from the samples read
-/// up to it, with the shaper's minutes on when known.
+/// up to it, with the shaper's minutes on when known. The samples are read
+/// once, as they come, and folded into the day's minutes: a day's record
+/// is half a million of them, which held whole took the most memory a day
+/// file did.
 pub fn summarise(
-    samples: Vec<Sample>,
+    samples: impl IntoIterator<Item = Sample>,
     (from, to): (u64, u64),
     on: Option<&dyn On>,
     date: &str,
@@ -188,27 +204,28 @@ pub fn summarise(
 ) -> Day {
     let inside = |at: u64| at >= from && at < to;
     let (mut lost, mut heard) = (0_u64, 0_u64);
-    for sample in samples.iter().filter(|s| inside(s.at())) {
-        match sample {
-            Sample::Lost { .. } => lost += 1,
-            Sample::Stamp { .. } | Sample::Clock { .. } | Sample::Gateway { .. } => heard += 1,
-            Sample::Pool { .. } => {}
-        }
-    }
-    let mut minutes: BTreeMap<u64, Minute> = BTreeMap::new();
-    for stay in replay::stays(samples) {
-        for second in &stay.seconds {
-            let at = stay.began_ms + whole(second.t_s * 1_000.0);
-            if !inside(at) {
-                continue;
+    let counted = samples.into_iter().inspect(|sample| {
+        if inside(sample.at()) {
+            match sample {
+                Sample::Lost { .. } => lost += 1,
+                Sample::Stamp { .. } | Sample::Clock { .. } | Sample::Gateway { .. } => heard += 1,
+                Sample::Pool { .. } => {}
             }
-            let minute = minutes.entry(at / 60_000).or_default();
-            minute.kbit[0].push(second.up_kbit);
-            minute.kbit[1].push(second.down_kbit);
-            minute.delay[0].extend(second.up_delay_ms);
-            minute.delay[1].extend(second.down_delay_ms);
         }
-    }
+    });
+    let mut minutes: BTreeMap<u64, Minute> = BTreeMap::new();
+    replay::seconds(counted, |began_ms, second| {
+        let at = began_ms + whole(second.t_s * 1_000.0);
+        if !inside(at) {
+            return;
+        }
+        let minute = minutes.entry(at / 60_000).or_default();
+        minute.kbit[0] += second.up_kbit;
+        minute.kbit[1] += second.down_kbit;
+        minute.seconds += 1;
+        minute.delay[0].extend(second.up_delay_ms);
+        minute.delay[1].extend(second.down_delay_ms);
+    });
     let never = Never;
     let shaper: &dyn On = on.unwrap_or(&never);
     let probe_loss = (lost + heard > 0).then(|| float(lost) / float(lost + heard));
@@ -286,9 +303,59 @@ pub fn spells(lines: &str, now: u64) -> Spells {
     Spells(all)
 }
 
+/// The system's journal files that can hold an entry from `since`, in s
+/// since 1970, on, among those in `dirs`. The shaper is a system unit, so
+/// the users' files hold none of its lines. A file's last change is at or
+/// after its newest entry, but for one written into a page journald
+/// already had waiting to sync, which it does every few minutes; so a
+/// file last changed over an hour before `since` holds nothing after it.
+fn journal_files(dirs: &[PathBuf], since: u64) -> Vec<PathBuf> {
+    let after = UNIX_EPOCH + Duration::from_secs(since.saturating_sub(JOURNAL_MARGIN_S));
+    let mut files: Vec<PathBuf> = dirs
+        .iter()
+        .filter_map(|dir| fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("system")
+                && (name.ends_with(".journal") || name.ends_with(".journal~"))
+        })
+        .filter(|entry| {
+            entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .is_ok_and(|changed| changed >= after)
+        })
+        .map(|entry| entry.path())
+        .collect();
+    files.sort();
+    files
+}
+
+/// Reads the shaper's spells from the journal. journalctl opening every
+/// file costs it about half of each in the page cache, charged to the
+/// unit: a gigabyte over 58 files on 13 November, when the spells' week
+/// was in 11 of them. So it's handed those that can hold the week, or left
+/// to find them itself when none are found, as where it can't read them.
 fn journal(from: u64, to: u64, now: u64) -> Option<Spells> {
     let since = (from / 1_000).saturating_sub(JOURNAL_DAYS * 86_400);
+    let dirs: Vec<PathBuf> = fs::read_to_string("/etc/machine-id")
+        .map(|id| {
+            JOURNAL_DIRS
+                .iter()
+                .map(|dir| Path::new(dir).join(id.trim()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let files = journal_files(&dirs, since).into_iter().map(|file| {
+        let mut arg = OsString::from("--file=");
+        arg.push(file);
+        arg
+    });
     let out = Command::new("journalctl")
+        .args(files)
         .args(["-u", "shaper.service", "-o", "json", "--no-pager", "-q"])
         .args([
             "--output-fields=JOB_TYPE,JOB_RESULT,UNIT_RESULT".to_string(),
@@ -304,8 +371,9 @@ fn journal(from: u64, to: u64, now: u64) -> Option<Spells> {
         .then(|| spells(&String::from_utf8_lossy(&out.stdout), now))
 }
 
-/// The samples the record holds from a little before `from` up to `to`.
-fn samples(record: &Path, from: u64, to: u64) -> Vec<Sample> {
+/// The samples the record holds from a little before `from` up to `to`,
+/// read as they're asked for.
+fn samples(record: &Path, from: u64, to: u64) -> impl Iterator<Item = Sample> {
     let at = |ms: u64| UNIX_EPOCH + Duration::from_millis(ms);
     let first = from.saturating_sub(LOOK_BACK_MS);
     let mut files = vec![record::day_file(record, at(first))];
@@ -314,12 +382,11 @@ fn samples(record: &Path, from: u64, to: u64) -> Vec<Sample> {
     }
     files.dedup();
     files
-        .iter()
+        .into_iter()
         .filter_map(|path| File::open(path).ok())
         .flat_map(|file| BufReader::new(file).lines().map_while(Result::ok))
         .filter_map(|line| replay::parse(&line))
-        .filter(|s| s.at() + LOOK_BACK_MS >= from && s.at() < to)
-        .collect()
+        .filter(move |s| s.at() + LOOK_BACK_MS >= from && s.at() < to)
 }
 
 /// A local date's first moment and the next day's, in ms since 1970.
@@ -553,6 +620,42 @@ mod tests {
             got.probe_loss_meets_bar,
             Some(false),
             "1% isn't under 1%: {got:?}"
+        );
+    }
+
+    #[test]
+    fn only_the_system_s_journal_files_changed_since_are_read() {
+        let dir = std::env::temp_dir().join(format!("shaper-day-journal-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("a folder for the files");
+        let since = 1_800_000_000;
+        let at = |s: u64| UNIX_EPOCH + Duration::from_secs(s);
+        let files = [
+            ("system.journal", since + 600),
+            ("system@a-1-2.journal", since - 600),
+            ("system@b-3-4.journal", since - 7_200),
+            ("system@c-5.journal~", since + 60),
+            ("user-1000.journal", since + 600),
+            ("system.notes", since + 600),
+        ];
+        for (name, changed) in files {
+            let file = File::create(dir.join(name)).expect("a journal file");
+            file.set_modified(at(changed)).expect("its time set");
+        }
+        let got = journal_files(&[dir.clone(), dir.join("absent")], since);
+        fs::remove_dir_all(&dir).expect("the folder gone");
+        let names: Vec<String> = got
+            .iter()
+            .filter_map(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "system.journal",
+                "system@a-1-2.journal",
+                "system@c-5.journal~"
+            ],
+            "the system's files changed within the hour before since or after"
         );
     }
 

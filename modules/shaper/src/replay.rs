@@ -363,12 +363,12 @@ impl Reading {
         self.done = self.done.max(second);
     }
 
-    fn finish(mut self) -> Option<Stay> {
+    fn finish(&mut self) -> Option<Stay> {
         self.finish_before(u64::MAX);
         Some(Stay {
-            network: self.network,
+            network: std::mem::take(&mut self.network),
             began_ms: self.first? * 1_000,
-            seconds: self.seconds,
+            seconds: self.drain(),
         })
     }
 }
@@ -382,9 +382,11 @@ pub struct Stay {
     pub seconds: Vec<Second>,
 }
 
-/// Samples in the order they were written, as stays.
-pub fn stays(samples: impl IntoIterator<Item = Sample>) -> Vec<Stay> {
-    let mut all = Vec::new();
+/// Reads samples in the order they were written into a stay each, a new
+/// network's pool starting the next: `step` is handed the stay being read
+/// after each of its samples, and once more, `ended`, when nothing more can
+/// join it.
+fn read_stays(samples: impl IntoIterator<Item = Sample>, mut step: impl FnMut(&mut Reading, bool)) {
     let mut reading: Option<Reading> = None;
     for sample in samples {
         if let Sample::Pool {
@@ -392,16 +394,47 @@ pub fn stays(samples: impl IntoIterator<Item = Sample>) -> Vec<Stay> {
             ..
         } = &sample
         {
-            all.extend(reading.take().and_then(Reading::finish));
+            if let Some(mut done) = reading.take() {
+                step(&mut done, true);
+            }
             reading = Some(Reading::new(network.clone()));
             continue;
         }
-        reading
-            .get_or_insert_with(|| Reading::new("unknown".into()))
-            .take(&sample);
+        let stay = reading.get_or_insert_with(|| Reading::new("unknown".into()));
+        stay.take(&sample);
+        step(stay, false);
     }
-    all.extend(reading.and_then(Reading::finish));
+    if let Some(mut done) = reading {
+        step(&mut done, true);
+    }
+}
+
+/// Samples in the order they were written, as stays.
+pub fn stays(samples: impl IntoIterator<Item = Sample>) -> Vec<Stay> {
+    let mut all = Vec::new();
+    read_stays(samples, |stay, ended| {
+        if ended {
+            all.extend(stay.finish());
+        }
+    });
     all
+}
+
+/// Samples in the order they were written, each second handed to `each`
+/// as soon as it's done, with when its stay began in ms since 1970: the
+/// seconds `stays` gives, in its order, for a reader that folds them
+/// rather than holding a day of them.
+pub fn seconds(samples: impl IntoIterator<Item = Sample>, mut each: impl FnMut(u64, Second)) {
+    read_stays(samples, |stay, ended| {
+        if ended {
+            stay.finish_before(u64::MAX);
+        }
+        if let Some(first) = stay.first {
+            for second in stay.drain() {
+                each(first * 1_000, second);
+            }
+        }
+    });
 }
 
 /// The stays in day files, read in the order of their names, which is the
@@ -1135,6 +1168,42 @@ mod tests {
         assert_eq!(named, [("home", 120), ("cafe", 60)]);
         assert_eq!(stays[1].began_ms, NOV3 + 120_000);
         assert!(stays[1].seconds.iter().all(|s| near(s.up_kbit, 800.0)));
+    }
+
+    #[test]
+    fn each_second_is_handed_as_it_is_done_as_the_stays_hold_it() {
+        let mut lines = vec![pool(NOV3, "home")];
+        lines.extend(connection(NOV3, 120, constant(8_000, 40_000), quiet));
+        lines.push(pool(NOV3 + 120_000, "cafe"));
+        let counters = |at: u64| constant(800, 4_000)(at - (NOV3 + 120_000) + COUNTED_FROM);
+        lines.extend(connection(NOV3 + 120_000, 60, counters, quiet));
+        let read = std::cell::Cell::new(0_usize);
+        let samples = lines
+            .iter()
+            .filter_map(|l| parse(l))
+            .inspect(|_| read.set(read.get() + 1));
+        let mut handed: Vec<(u64, Second)> = Vec::new();
+        seconds(samples, |began_ms, second| {
+            // A second is done once a counter from the one after it comes,
+            // and each is heard four times, so a reader that folds them
+            // never waits on more than two seconds' samples.
+            assert!(
+                read.get() <= 4 * (handed.len() + 2) + 2,
+                "{} samples read before second {} was handed",
+                read.get(),
+                handed.len()
+            );
+            handed.push((began_ms, second));
+        });
+        let held: Vec<(u64, Second)> = read_lines(&lines)
+            .into_iter()
+            .flat_map(|stay| stay.seconds.into_iter().map(move |s| (stay.began_ms, s)))
+            .collect();
+        assert_eq!(handed.len(), 180, "every second of both stays");
+        assert_eq!(
+            handed, held,
+            "the seconds the stays hold, with their stays' starts"
+        );
     }
 
     #[test]
