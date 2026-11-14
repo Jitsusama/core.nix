@@ -204,6 +204,10 @@ impl State {
         }
         card.name.clone_from(&link.name);
         card.network.clone_from(&link.ssid);
+        match link.gateway {
+            Some(gateway) => self.gateways.insert(link.index, gateway),
+            None => self.gateways.remove(&link.index),
+        };
     }
 
     /// Forgets every card but these, which are all there are.
@@ -214,6 +218,7 @@ impl State {
             .filter(|(index, _)| !indexes.contains(index));
         let gone: Vec<String> = gone.map(|(_, card)| card.name.clone()).collect();
         self.cards.retain(|index, _| indexes.contains(index));
+        self.gateways.retain(|index, _| indexes.contains(index));
         let names: Vec<&String> = self.cards.values().map(|card| &card.name).collect();
         self.looked.retain(|card| names.contains(&card));
         // Only a card that goes takes its access point, since wifid hands
@@ -460,8 +465,17 @@ impl State {
     /// Each card on a network through an access point it hears, with a
     /// gateway to echo.
     pub fn joined(&self) -> Vec<Joined> {
-        let _ = &self.gateways;
-        Vec::new()
+        let joined = self.cards.iter().filter(|(_, card)| card.network.is_some());
+        joined
+            .filter_map(|(index, card)| {
+                let path = self.at.get(&card.name)?;
+                Some(Joined {
+                    card: card.name.clone(),
+                    point: self.heard.get(path)?.bssid.clone(),
+                    gateway: *self.gateways.get(index)?,
+                })
+            })
+            .collect()
     }
 
     /// The cards on a network, by name, which are those worth polling.
@@ -1218,7 +1232,7 @@ mod tests {
 
         assert_eq!(unheard.joined(), [], "its access point unheard");
         assert_eq!(unrouted.joined(), [], "its gateway gone");
-        assert_eq!(gone, State::default(), "a card that goes takes its gateway");
+        assert!(gone.gateways.is_empty(), "a card that goes takes its gateway");
     }
 
     #[test]

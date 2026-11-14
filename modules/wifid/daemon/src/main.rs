@@ -27,6 +27,7 @@ mod air;
 mod card;
 mod check;
 mod detail;
+mod echo;
 mod face;
 mod frequencies;
 mod link;

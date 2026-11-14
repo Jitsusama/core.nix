@@ -104,8 +104,17 @@ fn dns(link: &Value) -> Vec<IpAddr> {
 
 /// The gateway of the link's default IPv4 route.
 fn gateway(link: &Value) -> Option<Ipv4Addr> {
-    let _ = link;
-    None
+    let routes = link["Routes"].as_array()?;
+    let default = routes
+        .iter()
+        .find(|route| route["Family"] == 2 && route["DestinationPrefixLength"] == 0)?;
+    let octets: Option<Vec<u8>> = default["Gateway"]
+        .as_array()?
+        .iter()
+        .map(|octet| u8::try_from(octet.as_u64()?).ok())
+        .collect();
+    let octets: [u8; 4] = octets?.try_into().ok()?;
+    Some(Ipv4Addr::from(octets))
 }
 
 /// DHCP's option for DNS servers: IPv4 addresses, four bytes each.
