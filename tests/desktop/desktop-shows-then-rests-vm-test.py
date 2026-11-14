@@ -475,6 +475,9 @@ def test_the_shell_draws_nothing_behind_the_lock(desktop: Desktop) -> None:
     """
     machine = desktop.machine
     machine.wait_until_fails(desktop.in_session(LAUNCHER_OPEN), timeout=GOING)
+    # Locked while awake, the cat dozes off behind the lock ten seconds after the last key and
+    # draws its curl once, a frame of a change rather than of the lock, so it's left asleep first.
+    machine.wait_until_succeeds(desktop.in_session(CAT_ASLEEP), timeout=DOZING)
     desktop.as_account("lock-screen")
     try:
         # The frames owed as it locked, each called back within two seconds.
