@@ -10,8 +10,9 @@ the check's result, that its layer is one taking no keys, that it goes in fullsc
 gap it sits in is gone, that it dozes off after a minute with no keys and stretches as the
 screen unlocks, that niri draws it in whole pixels at 1.5 and at 2, each screen kept as the
 check's result, and that a move between workspaces has it hold its ground through niri's slide,
-a second move cutting it short holding on from where the first got to, and that on a workspace
-with no windows it sits on the floor until one opens there.
+a second move cutting it short holding on from where the first got to, that on a workspace
+with no windows it sits on the floor until one opens there, and that a row of a column closed
+under it has it fall at once.
 
 Long because every case shares the one shell, started with the cat's own doze and scenes, and
 the readers of what it reports; the moves between workspaces could go to a check of their own,
@@ -823,3 +824,44 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     assert gone <= STEPS_ON * was["size"], f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
     assert again, "the second move set it on its seat, moving it no more"
+
+
+def test_a_row_closed_under_it_has_it_fall_at_once(shell: Shell) -> None:
+    """A row of its column closed under it, it falls at once, never waiting for the keys to rest.
+
+    Its fall ahead of the window grown down over it, and its climb from there, are
+    MarginCatFalls.js's, frame by frame in Qt's engine; here, only that niri's own close reaches
+    it: it sets off well inside the rest, falling first, never shoved, and sits on the window
+    left (Joel, 2026-11-14 17:24: "it seems to hang out in the middle then walk across, that is
+    not believable").
+    """
+    since = shell.mark()
+    left = shell.opened("a row left in its column")
+    closed = shell.opened("a row closed under the cat")
+    sits_over(shell, closed, since)
+    since = shell.mark()
+    shell.as_account("niri msg action consume-or-expel-window-left")
+
+    def in_the_lower_row(said: str) -> bool:
+        at = placed(said)
+        column = json.loads(said.split(" over ", 1)[1])
+        return bool(
+            at is not None
+            and not at.get("walk")
+            and at.get("window") == closed["id"]
+            and column is not None
+            and column["top"] > at["size"] * 4
+        )
+
+    heard(shell, in_the_lower_row, since)
+    since = shell.mark()
+    gone = time.monotonic()
+    shell.close(closed)
+    heard(shell, walking, since)
+    set_off = time.monotonic() - gone
+    sits_over(shell, left, since)
+    walked = steps(shell, since)
+    way = walked[0]["walk"]["beats"]
+    assert set_off < RESTS / 2, f"the cat hung {set_off:.2f} s where its row was, then went"
+    assert way[:3] == ["rides", "lands", "shakes"], f"the cat's way off was {way}"
+    assert "shoved" not in way, f"the cat was shoved across a window: {way}"
