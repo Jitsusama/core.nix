@@ -105,7 +105,7 @@ fn from_ps(said: &str) -> BTreeMap<String, Vec<Held>> {
 }
 
 /// The seconds in how long `ps` says a process has run, as `[[dd-]hh:]mm:ss`.
-fn seconds_of(ran: &str) -> Option<u64> {
+pub fn seconds_of(ran: &str) -> Option<u64> {
     let (days, clock) = ran.split_once('-').unwrap_or(("0", ran));
     let mut seconds = days.parse::<u64>().ok()? * 86_400;
     let parts: Vec<&str> = clock.split(':').collect();

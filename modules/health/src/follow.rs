@@ -178,15 +178,21 @@ impl Follower {
     }
 
     /// Keep the agents gone without parking at `at`, by their presences
-    /// and the processes in the `proc` being minded.
+    /// and the processes in the `proc` being minded, or that `ps` shows.
     pub fn count_the_dead(&mut self, at: i64) {
-        let (Some(presences), Some(proc)) = (&self.presences, &self.proc) else {
+        let Some(presences) = &self.presences else {
             return;
         };
+        if self.proc.is_none() && !self.asks_ps {
+            return;
+        }
         if date_of(at, &self.zone) != self.day.date {
             return;
         }
-        let gone = agents::look(presences, proc);
+        let gone = match &self.proc {
+            Some(proc) => agents::look(presences, proc),
+            None => agents::asked(presences, at),
+        };
         let (zone, date) = (&self.zone, &self.day.date);
         self.day
             .agents
