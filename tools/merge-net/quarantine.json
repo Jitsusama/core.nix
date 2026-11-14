@@ -432,5 +432,16 @@
       "test_agents_reopens_each_session_where_it_sat_though_joel_opens_a_terminal"
     ],
     "test": "vm-desktop-launcher-finds-sessions"
+  },
+  {
+    "at": 1794677127,
+    "commit": "76e8850f89f6adf251f3dd342590e7acdf940bb8",
+    "owner_pr": 4364,
+    "reason": "has been broken since #4364, but fails with it reverted too, so a later merge breaks it as well; whoever finds that merge fixes it forward and takes it off this list",
+    "subtests": [
+      "test_a_sessions_action_is_in_needs_you_once_as_its_item",
+      "test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so"
+    ],
+    "test": "vm-desktop-launcher-waits-on-joel"
   }
 ]
