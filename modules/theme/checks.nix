@@ -25,7 +25,8 @@
   # asks Joel to remember which of two meanings it has here (Joel, 2026-11-07:
   # "icon pairs: we need them to be obvious and not require memory"). Heat
   # and temperature both say how hot, so they share the thermometer, and the
-  # margin's cat's own poses are all the margin's cat, so they share the paw.
+  # margin's cat's own poses are all the margin's cat, so they share the paw,
+  # as its yarn's drawings, lying and rolling, are all its yarn.
   each-mark-means-one-thing =
     let
       glyphs = import ./glyphs.nix { inherit lib; };
@@ -51,6 +52,11 @@
         [
           "heat"
           "temperature"
+        ]
+        [
+          "yarn"
+          "yarnRollingA"
+          "yarnRollingB"
         ]
       ];
       sharing = lib.filter (names: lib.length names > 1) (
@@ -107,6 +113,8 @@
         "walkingC"
         "walkingD"
         "yarn"
+        "yarnRollingA"
+        "yarnRollingB"
       ];
       said = "crooked ${builtins.toJSON crooked}, undrawn ${builtins.toJSON missing}";
     in
