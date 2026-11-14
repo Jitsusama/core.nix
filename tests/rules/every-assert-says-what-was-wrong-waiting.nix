@@ -186,7 +186,6 @@
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
-  "modules/nix-daemon/without-syncfs/tests/refuses.rs" = 2;
   "modules/nix-offload/offload/src/decide.rs" = 13;
   "modules/nix-offload/offload/src/held.rs" = 3;
   "modules/nix-offload/offload/src/machines.rs" = 5;
