@@ -170,6 +170,7 @@ in
     in
     pkgs.runCommandLocal "the-launcher-makes-texts-ready-lightly" { } ''
       cp ${../../../tests/fuzzy-light.qml} fuzzy-light.qml
+      cp ${../../../tests/lib/Memory.js} Memory.js
       ${copied [ "Fuzzy.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
@@ -189,6 +190,7 @@ in
     pkgs.runCommandLocal "the-launcher-makes-rows-lightly" { } ''
       cp ${../../../tests/member-light.qml} member-light.qml
       cp ${../launcher/Member.js} Member.js
+      cp ${../../../tests/lib/Memory.js} Memory.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}

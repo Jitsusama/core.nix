@@ -14,6 +14,7 @@
 import QtQuick
 import QtQuick.Window
 import "Member.js" as Member
+import "Memory.js" as Memory
 
 Window {
     visible: false
@@ -22,17 +23,6 @@ Window {
     readonly property int rows: 20000
     // The most the getter may add to a row over its own fields, in bytes.
     readonly property int most: 800
-
-    // The process's own anonymous memory, in bytes.
-    function anonymous() {
-        const request = new XMLHttpRequest();
-        request.open("GET", "file:///proc/self/smaps_rollup", false);
-        request.send();
-        const kilobytes = /Pss_Anon:\s+(\d+)/.exec(request.responseText);
-        if (!kilobytes)
-            throw new Error("/proc/self/smaps_rollup says no Pss_Anon");
-        return Number(kilobytes[1]) * 1024;
-    }
 
     // A provider's defaults, as Provider.qml's member() gives them.
     function defaults() {
@@ -59,13 +49,13 @@ Window {
     function weighed(make) {
         gc();
         gc();
-        const before = anonymous();
+        const before = Memory.anonymous();
         let kept = [];
         for (let at = 0; at < rows; at++)
             kept.push(make(at));
         gc();
         gc();
-        const each = Math.round((anonymous() - before) / rows);
+        const each = Math.round((Memory.anonymous() - before) / rows);
         kept = null;
         gc();
         gc();

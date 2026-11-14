@@ -12,6 +12,7 @@
 import QtQuick
 import QtQuick.Window
 import "Fuzzy.js" as Fuzzy
+import "Memory.js" as Memory
 
 Window {
     visible: false
@@ -20,17 +21,6 @@ Window {
     readonly property int texts: 20000
     // The most a kept text may raise the process's own memory, in bytes.
     readonly property int most: 3500
-
-    // The process's own anonymous memory, in bytes.
-    function anonymous() {
-        const request = new XMLHttpRequest();
-        request.open("GET", "file:///proc/self/smaps_rollup", false);
-        request.send();
-        const kilobytes = /Pss_Anon:\s+(\d+)/.exec(request.responseText);
-        if (!kilobytes)
-            throw new Error("/proc/self/smaps_rollup says no Pss_Anon");
-        return Number(kilobytes[1]) * 1024;
-    }
 
     // A test that throws ends as a failure, rather than leaving qml running.
     Component.onCompleted: {
@@ -43,14 +33,14 @@ Window {
     }
 
     function run() {
-        const before = anonymous();
+        const before = Memory.anonymous();
         // Shaped like what the launcher lists: names, addresses, titles,
         // folders and hyphenated words.
         for (let i = 0; i < texts; i++)
             Fuzzy.kept(i % 2 === 0 ? `Ada Lovelace-Byron ${i} ada.${i}@example.com`
                 : `A quest about the launcher, number ${i}, in ~/src/core.nix`);
         gc();
-        const each = Math.round((anonymous() - before) / texts);
+        const each = Math.round((Memory.anonymous() - before) / texts);
         console.info(`${texts} texts kept, ${each} bytes each`);
         if (each > most) {
             console.warn(`FAIL a kept text took ${each} bytes, more than ${most}`);
