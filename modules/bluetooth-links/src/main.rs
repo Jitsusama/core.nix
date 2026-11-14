@@ -572,9 +572,7 @@ fn sits_on(sysfs: &Path, name: &str) -> Halted {
             .ok()
             .and_then(|link| link.file_name().map(PathBuf::from))
             .and_then(named),
-        driver: fs::canonicalize(device.join("driver"))
-            .ok()
-            .and_then(named),
+        driver: fs::canonicalize(device.join("driver")).ok().and_then(named),
     }
 }
 
@@ -935,7 +933,11 @@ mod tests {
         );
         controller.silent = false;
         let back = watched(&mut watch, &mut controller, 7 + HEARD_EVERY - 1, 1);
-        assert_eq!(back, vec![Vec::<String>::new()], "its answering again went unheard");
+        assert_eq!(
+            back,
+            vec![Vec::<String>::new()],
+            "its answering again went unheard"
+        );
     }
 
     #[test]
