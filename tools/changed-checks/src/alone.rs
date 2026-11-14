@@ -42,15 +42,22 @@
 //! against 110 without, while a merge among the last 300 reached a mean of
 //! 37 traced alone, and every merge the net found broke one reached it.
 //! Traced alone, the 101 took 299 s, six at a time, a median of 11 s each.
-//! A keep traces none while a gate runs beside it on the builder, and one
-//! it didn't trace, as one the record lacks, is evaluated by every gate
-//! the union doesn't spare.
+//! While a gate runs beside it on the builder, a keep traces them one at
+//! a time, and keeps the record after each: keeps that traced none beside
+//! a gate recorded no VM test all evening on 13 November, as a gate nearly
+//! always ran when they reached them, and copying carried none on. Beside
+//! a gate it begins none after five minutes but the first, so the next
+//! head's record isn't held back: that evening gates judged from records
+//! 50 to 160 files behind main and evaluated 400 to 650 checks. The record
+//! says since when each it left has waited, and the next keep traces those
+//! first, the longest waiting first, so a busy main can't spend every keep
+//! on the same few. One it didn't trace, as one the record lacks, is
+//! evaluated by every gate the union doesn't spare.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -59,55 +66,17 @@ use serde_json::{Map, Value, json};
 use crate::checks::{self, Derivations};
 use crate::evaluating;
 use crate::gathered;
+use crate::gating;
 use crate::reads::{self, Reads};
 use crate::runs::{Evaluation, Run};
 
 /// How many checks are traced at once, each in a process of its own, far
 /// lighter than a chunk's.
-const AT_ONCE: usize = 16;
+pub const AT_ONCE: usize = 16;
 
 /// How long after every check was last traced alone a record may still be
 /// copied forward: tracing every one costs a keep about 400 s.
 const COPIED_FOR: Duration = Duration::from_hours(4);
-
-/// Where a gate holds a lock, shared, for as long as it runs, so a keep
-/// beside it begins no VM test's trace.
-pub fn gating_lock() -> PathBuf {
-    crate::cache().join("changed-checks/gating.lock")
-}
-
-/// Say that a gate runs here until what this gives is dropped; nothing
-/// when the lock can't be had, and the gate runs regardless.
-pub fn gating(lock: &Path) -> Option<fs::File> {
-    fs::create_dir_all(lock.parent()?).ok()?;
-    let held = fs::File::create(lock).ok()?;
-    held.lock_shared().ok()?;
-    Some(held)
-}
-
-/// Whether a gate runs here, as its lock says: a keep tries it whole and
-/// gives it back at once, so a gate starting then waits only that long.
-/// A lock tried whole holds against every other open of it, this
-/// process's too, so a keep's threads ask one at a time: asking together,
-/// each took another's try for a gate and the keep stopped. The try is let
-/// go of before the file closes: a program another thread starts holds a
-/// copy of the file until it runs, and the lock with it, which closing
-/// leaves held and letting go frees.
-fn a_gate_runs(lock: &Path) -> bool {
-    static ASKING: Mutex<()> = Mutex::new(());
-    let _alone = ASKING.lock().unwrap_or_else(PoisonError::into_inner);
-    let Ok(tried) = fs::File::create(lock) else {
-        return false;
-    };
-    match tried.try_lock() {
-        Ok(()) => {
-            let _ = tried.unlock();
-            false
-        }
-        Err(fs::TryLockError::WouldBlock) => true,
-        Err(fs::TryLockError::Error(_)) => false,
-    }
-}
 
 /// Where what each of a base's ordinary checks read is kept, beside its
 /// derivations; its traces and caches are named so a keep's sweep takes
@@ -134,19 +103,19 @@ pub fn keep(root: &str, base: &str, system: &str, noted: &mut Run) {
     }
 }
 
-/// What a record made since every check was last traced alone gives a keep
-/// of `base`: what each check main's change from its head reaches nothing
-/// of read there, where its derivation is the base's too, and when every
-/// check was last traced. Nothing when there's no such record, it was made
-/// from another tree, or every check was last traced `COPIED_FOR` ago.
+/// What the record of `head`, a head of main `base` came after, with its
+/// derivations `known`, gives a keep of `base`: what each check main's
+/// change from it reaches nothing of read there, where its derivation is
+/// the base's too, and when every check was last traced. Nothing when it
+/// was made from another tree, or every check was last traced
+/// `COPIED_FOR` ago.
 fn copied(
     root: &str,
     base: &str,
     system: &str,
     derivations: &Derivations,
+    (head, known): &(String, Derivations),
 ) -> Option<(BTreeMap<String, Reads>, u64)> {
-    let recorded = recorded(root, base, system).filter(|(head, _)| head != base)?;
-    let (head, known) = &recorded;
     let text = fs::read_to_string(keeping(&crate::cache(), head, system)).ok()?;
     let whole = serde_json::from_str::<Value>(&text)
         .ok()?
@@ -173,6 +142,20 @@ fn copied(
     Some((copied, whole))
 }
 
+/// Since when, in seconds since 1970, each VM test the record of `head`
+/// left untraced has waited to be: none when it says nothing of it.
+fn waiting(head: &str, system: &str) -> BTreeMap<String, u64> {
+    let text = fs::read_to_string(keeping(&crate::cache(), head, system)).unwrap_or_default();
+    serde_json::from_str::<Value>(&text)
+        .ok()
+        .and_then(|record| {
+            let waiting = record.get("waiting")?.as_object()?;
+            let since = |(name, at): (&String, &Value)| Some((name.clone(), at.as_u64()?));
+            Some(waiting.iter().filter_map(since).collect())
+        })
+        .unwrap_or_default()
+}
+
 /// Now, in seconds since 1970.
 fn now() -> u64 {
     SystemTime::now()
@@ -183,7 +166,9 @@ fn now() -> u64 {
 /// Trace each of the base's ordinary checks alone and keep at `at` what
 /// each one whose derivation is git's read, but the folders' checks.nix it
 /// read only because checks.nix gathers them all; then its VM tests, kept
-/// with them, unless a gate runs beside the keep.
+/// with them after each, the longest waiting first, and one at a time while
+/// a gate runs beside the keep, which begins none past a bound but the
+/// first (`gating.rs`).
 fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> Result<(), String> {
     let derivations = checks::read_kept(&checks::keeping(&crate::cache(), base, system))?
         .ok_or("its derivations aren't kept")?;
@@ -191,16 +176,37 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     // A check whose derivation takes the whole source in goes unrecorded,
     // so every gate evaluates it.
     let whole = checks::taking_whole(&source, &derivations)?;
-    let (copied, traced_whole) = copied(root, base, system, &derivations).unwrap_or_default();
+    let last = recorded(root, base, system).filter(|(head, _)| head != base);
+    let (copied, traced_whole) = last
+        .as_ref()
+        .and_then(|last| copied(root, base, system, &derivations, last))
+        .unwrap_or_default();
+    let waited = last
+        .as_ref()
+        .map(|(head, _)| waiting(head, system))
+        .unwrap_or_default();
     let traced_whole = if traced_whole == 0 {
         now()
     } else {
         traced_whole
     };
-    let (vm, ordinary): (Vec<&String>, Vec<&String>) = derivations
+    let (mut vm, ordinary): (Vec<&String>, Vec<&String>) = derivations
         .keys()
         .filter(|name| !whole.contains(name.as_str()) && !copied.contains_key(*name))
         .partition(|name| checks::is_vm_test(name));
+    // Those a keep left go first, the longest waiting first, then the rest
+    // by name.
+    vm.sort_by_key(|name| waited.get(name.as_str()).copied().unwrap_or(u64::MAX));
+    let started = now();
+    let left = |each: &BTreeMap<&str, Reads>| -> BTreeMap<&str, u64> {
+        vm.iter()
+            .filter(|name| !each.contains_key(name.as_str()))
+            .map(|name| {
+                let since = waited.get(name.as_str()).copied().unwrap_or(started);
+                (name.as_str(), since)
+            })
+            .collect()
+    };
     let copied: BTreeMap<&str, Reads> = copied
         .iter()
         .map(|(name, reads)| (name.as_str(), reads.clone()))
@@ -213,7 +219,14 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     let each = if ordinary.is_empty() {
         BTreeMap::new()
     } else {
-        traced(&ordinary, &derivations, tracing, &mut evaluation, || false)
+        let may_begin = || !crate::pressure::memory_stalled();
+        traced(
+            &ordinary,
+            &derivations,
+            tracing,
+            &mut evaluation,
+            (may_begin, || false, |_, _| ()),
+        )
     };
     if each.is_empty() && !ordinary.is_empty() {
         noted.evaluated(evaluation);
@@ -221,73 +234,89 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     }
     let mut each = ungathered(each);
     each.extend(copied);
-    let record =
-        |each: &BTreeMap<&str, Reads>| written(at, (&tree, traced_whole), &derivations, each);
-    record(&each)?;
-    let lock = gating_lock();
-    let stopped = AtomicBool::new(false);
-    let stop = || {
-        let runs = a_gate_runs(&lock);
-        if runs && !stopped.swap(true, Ordering::Relaxed) {
-            eprintln!(
-                "changed-checks: a gate runs here, so this keep traces no more VM tests alone"
-            );
-        }
-        runs
+    let record = |each: &BTreeMap<&str, Reads>| {
+        written(at, (&tree, traced_whole), &derivations, (each, &left(each)))
     };
-    if vm.is_empty() || stop() {
-        noted.evaluated(evaluation);
-        return Ok(());
+    record(&each)?;
+    if !vm.is_empty() {
+        let paced = gating::Paced::beside_gates();
+        // Kept after each, so a keep stopped part way loses one trace.
+        let vm_each = Mutex::new(BTreeMap::new());
+        let keep_each = |name, reads: &Reads| {
+            let mut vm_each = vm_each.lock().unwrap_or_else(PoisonError::into_inner);
+            vm_each.insert(name, reads.clone());
+            let mut whole = each.clone();
+            whole.extend(ungathered(vm_each.clone()));
+            if let Err(why) = record(&whole) {
+                eprintln!("changed-checks: couldn't keep what {name} read alone: {why}");
+            }
+        };
+        traced(
+            &vm,
+            &derivations,
+            tracing,
+            &mut evaluation,
+            (|| paced.may_begin(), || paced.stops(), keep_each),
+        );
+        let kept = vm_each
+            .into_inner()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len();
+        eprintln!(
+            "changed-checks: traced {kept} of the {} VM tests {system} had to trace alone at {}, \
+             leaving {} for a later keep",
+            vm.len(),
+            short(base),
+            vm.len() - kept
+        );
     }
-    let vm_each = traced(&vm, &derivations, tracing, &mut evaluation, stop);
     noted.evaluated(evaluation);
-    if vm_each.is_empty() {
-        return Ok(());
-    }
-    each.extend(ungathered(vm_each));
-    record(&each)
+    Ok(())
 }
 
 /// Trace each of `names` alone from `source`'s checks for `system`, its
 /// traces and caches named after `at`, noting what it took as a chunk of
 /// `evaluation`, and give what each whose derivation is `derivations`'
-/// read. Once `stop` says so, none is begun.
+/// read, handing each to `each_read` as it's traced. One is traced at a
+/// time, and more only while `may_begin` says so; none is begun once
+/// `stop` says to.
 fn traced<'a>(
     names: &[&'a String],
     derivations: &Derivations,
     (source, system, at): (&str, &str, &Path),
     evaluation: &mut Evaluation,
-    stop: impl Fn() -> bool + Sync,
+    (may_begin, stop, each_read): (
+        impl Fn() -> bool + Sync,
+        impl Fn() -> bool + Sync,
+        impl Fn(&'a str, &Reads) + Sync,
+    ),
 ) -> BTreeMap<&'a str, Reads> {
     let checks = format!("path:{source}#checks.{system}");
     let strace = reads::strace();
     let numbered: Vec<(usize, &String)> = names.iter().copied().enumerate().collect();
     let began = Instant::now();
-    let traced = checks::each_at_once(
-        &numbered,
-        AT_ONCE,
-        || !crate::pressure::memory_stalled(),
-        |(number, name)| {
-            if stop() {
-                return Ok::<_, String>(None);
-            }
-            let trace = at.with_extension(format!("trace{number}"));
-            let fresh = at.with_extension(format!("cache{number}"));
-            let traced = alone(&checks, &strace, source, &trace, &fresh, name);
-            let _ = fs::remove_file(&trace);
-            let _ = fs::remove_dir_all(&fresh);
-            Ok(traced)
-        },
-    )
+    let traced = checks::each_at_once(&numbered, AT_ONCE, may_begin, |&(number, name)| {
+        if stop() {
+            return Ok(None);
+        }
+        let trace = at.with_extension(format!("trace{number}"));
+        let fresh = at.with_extension(format!("cache{number}"));
+        let traced = alone(&checks, &strace, source, &trace, &fresh, name);
+        let _ = fs::remove_file(&trace);
+        let _ = fs::remove_dir_all(&fresh);
+        let reads = traced
+            .and_then(|(said, reads)| (derivations.get(name) == Some(&said)).then_some(reads));
+        if let Some(reads) = &reads {
+            each_read(name.as_str(), reads);
+        }
+        Ok::<_, String>(reads)
+    })
     .unwrap_or_default();
     evaluation.chunk(names.len(), began.elapsed());
     names
         .iter()
         .zip(traced)
-        .filter_map(|(name, traced)| {
-            let (said, reads) = traced?;
-            (derivations.get(*name) == Some(&said)).then_some((name.as_str(), reads))
-        })
+        .filter_map(|(name, reads)| Some((name.as_str(), reads?)))
         .collect()
 }
 
@@ -305,17 +334,19 @@ fn narrowed<'a>(
 }
 
 /// Keep at `at` the record of what `each` read of `tree`, whole, by rename,
-/// saying when every check was last traced alone.
+/// saying when every check was last traced alone and since when each VM
+/// test `left` names has waited to be.
 fn written(
     at: &Path,
     (tree, traced_whole): (&str, u64),
     derivations: &Derivations,
-    each: &BTreeMap<&str, Reads>,
+    (each, left): (&BTreeMap<&str, Reads>, &BTreeMap<&str, u64>),
 ) -> Result<(), String> {
     let writing = at.with_extension("writing");
     let failed = |error: std::io::Error| format!("{}: {error}", at.display());
     let mut record = kept(tree, derivations.keys(), each);
     record["whole"] = json!(traced_whole);
+    record["waiting"] = json!(left);
     fs::write(&writing, record.to_string()).map_err(failed)?;
     fs::rename(&writing, at).map_err(failed)
 }
@@ -629,67 +660,4 @@ pub fn past(
 /// A commit by its first 12 characters, as changed-checks names one.
 fn short(commit: &str) -> &str {
     commit.get(..12).unwrap_or(commit)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::scratch::Scratch;
-
-    #[test]
-    fn a_gate_holding_its_lock_is_seen_running_until_every_gate_lets_go() {
-        let scratch = Scratch::new("gating");
-        let lock = scratch.join("changed-checks/gating.lock");
-        assert!(!a_gate_runs(&lock), "no gate ran, yet one was seen");
-        let gate = gating(&lock).expect("the gate's lock");
-        assert!(a_gate_runs(&lock), "a gate ran unseen");
-        let other = gating(&lock).expect("a second gate shares it");
-        drop(gate);
-        assert!(a_gate_runs(&lock), "the second gate ran unseen");
-        drop(other);
-        // A program another test starts meanwhile holds a copy of the lock's
-        // file until it runs, and with it the lock, so it's let go once that
-        // copy is: seen held just after both let go here (13 November).
-        let let_go = (0..200).any(|_| {
-            let runs = a_gate_runs(&lock);
-            if runs {
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            !runs
-        });
-        assert!(let_go, "a gate was seen a second after both let go");
-    }
-
-    #[test]
-    fn a_keeps_threads_asking_together_never_take_one_another_for_a_gate() {
-        // Each of a keep's 16 tracing threads asks before it begins a VM
-        // test, and a lock tried whole is held, for that instant, against
-        // every other open of it, this process's too. Meanwhile the others
-        // start nix, and a program started holds a copy of each file open
-        // until it runs, with any lock on it.
-        let scratch = Scratch::new("gating-together");
-        let lock = scratch.join("changed-checks/gating.lock");
-        fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
-        let asked = std::sync::atomic::AtomicBool::new(false);
-        let seen = std::thread::scope(|scope| {
-            scope.spawn(|| {
-                while !asked.load(std::sync::atomic::Ordering::Relaxed) {
-                    let _ = std::process::Command::new("changed-checks-starts-nothing").status();
-                }
-            });
-            let asking: Vec<_> = (0..AT_ONCE)
-                .map(|_| scope.spawn(|| (0..200).filter(|_| a_gate_runs(&lock)).count()))
-                .collect();
-            let seen = asking
-                .into_iter()
-                .map(|thread| thread.join().expect("asked"))
-                .sum::<usize>();
-            asked.store(true, std::sync::atomic::Ordering::Relaxed);
-            seen
-        });
-        assert_eq!(
-            seen, 0,
-            "with no gate, a keep's threads saw one {seen} times"
-        );
-    }
 }
