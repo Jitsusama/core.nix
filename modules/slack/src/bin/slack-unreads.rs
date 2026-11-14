@@ -110,7 +110,7 @@ fn main() -> ExitCode {
         serve(
             credentials,
             socket,
-            PathBuf::from(waiting),
+            Path::new(waiting),
             rest.first()
                 .cloned()
                 .unwrap_or_else(|| "https://slack.com".into()),
@@ -124,7 +124,7 @@ fn main() -> ExitCode {
 fn serve(
     credentials: &str,
     socket: &str,
-    waiting: PathBuf,
+    waiting: &Path,
     origin: String,
     every: Duration,
 ) -> Result<(), Failure> {
@@ -152,7 +152,7 @@ fn serve(
         // taken without a restart.
         let Some(account) = Account::read(&credentials) else {
             daemon.say(None, millis());
-            ask_joel(&waiting, false);
+            ask_joel(waiting, false);
             std::thread::sleep(every);
             continue;
         };
@@ -203,8 +203,8 @@ fn serve(
             }
         };
         match said.as_ref().map(|said| said.state) {
-            Some(State::SignedOut) => ask_joel(&waiting, true),
-            Some(State::Ok) => ask_joel(&waiting, false),
+            Some(State::SignedOut) => ask_joel(waiting, true),
+            Some(State::Ok) => ask_joel(waiting, false),
             _ => {}
         }
         if let Some(said) = &said {

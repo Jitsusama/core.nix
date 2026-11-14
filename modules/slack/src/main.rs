@@ -79,8 +79,14 @@ fn main() -> ExitCode {
         &help(),
         env!("CARGO_PKG_VERSION"),
         |context| match context.args.as_slice() {
-            [credentials] => answer(PathBuf::from(credentials), "https://slack.com".into()),
-            [credentials, origin] => answer(PathBuf::from(credentials), origin.clone()),
+            [credentials] => {
+                answer(PathBuf::from(credentials), "https://slack.com".into());
+                Ok(())
+            }
+            [credentials, origin] => {
+                answer(PathBuf::from(credentials), origin.clone());
+                Ok(())
+            }
             _ => Err(Failure::new(
                 Exit::Usage,
                 "slack-people takes the sign-in's file and, for a stand-in, an origin",
@@ -92,7 +98,7 @@ fn main() -> ExitCode {
 
 /// Answers each line the shell writes, asking Slack as the account signed
 /// in at `credentials`, until the shell stops writing.
-fn answer(credentials: PathBuf, origin: String) -> Result<(), Failure> {
+fn answer(credentials: PathBuf, origin: String) {
     let slack = Slack::new(origin);
     let mut asker = Asker {
         slack,
@@ -171,7 +177,6 @@ fn answer(credentials: PathBuf, origin: String) -> Result<(), Failure> {
             break;
         }
     }
-    Ok(())
 }
 
 /// Whether the shell has gone, with nothing more to read.
