@@ -13,7 +13,10 @@ onLinux {
   # screen is locked. Its watch takes in the
   # light's buttons and anybody's answers, asks after anybody's command,
   # and says in JSON only the lights that have said everything, each with
-  # its lumens and the name and serial its HID device gives.
+  # its lumens and the name and serial its HID device gives. A call after
+  # rhythm's wind-down lights it warm and at 70% of its own brightness,
+  # whose setting it keeps by serial, and takes a setting Joel picked since
+  # as his own.
   the-litra-follows-the-cameras =
     pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''

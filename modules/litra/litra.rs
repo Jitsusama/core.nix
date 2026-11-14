@@ -4,7 +4,7 @@
 //! litra on | off | status [--format json]
 //! litra brightness PERCENT
 //! litra temperature KELVIN
-//! litra follow FOLDER [LOCKED]
+//! litra follow FOLDER [LOCKED [PROFILE KEPT]]
 //! litra watch
 //! ```
 //!
@@ -22,6 +22,17 @@
 //! a file in the folder changes, LOCKED is written, a light is plugged in,
 //! or it's told to stop, so it costs nothing in between.
 //!
+//! Given PROFILE, rhythm's profile, and KEPT, a file of its own, a call
+//! lit after tonight's wind-down and before six lights each light warm, at
+//! 2700 K, and a little lower, at 70% of its own brightness, since it
+//! shines on Joel's eyes from close up while the camera's white balance
+//! takes most of the warmth out of how he looks. The evening is decided as
+//! a call lights them, so nothing changes on a call already under way. A
+//! light's own setting is kept in KEPT by its serial, and the next call by
+//! day lights it at its own again; one Joel has set since the evening's
+//! counts as his own. With no profile, or none saying a wind-down, nothing
+//! changes. Nothing is set on a light while it's out.
+//!
 //! `watch` prints every light's state as one line of JSON, the same as
 //! `status --format json` gives, once at the start and again whenever it
 //! changes, for a shell to show it. hidraw gives each reader every report
@@ -35,7 +46,7 @@
 //! It needs only the standard library, which already links the C library
 //! these few calls come from.
 
-use std::ffi::{CString, c_char, c_int};
+use std::ffi::{CString, c_char, c_int, c_long};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -106,6 +117,8 @@ unsafe extern "C" {
     fn sigprocmask(how: c_int, set: *const SigSet, old: *mut SigSet) -> c_int;
     fn signalfd(fd: c_int, set: *const SigSet, flags: c_int) -> c_int;
     fn flock(fd: c_int, operation: c_int) -> c_int;
+    fn time(now: *mut i64) -> i64;
+    fn localtime_r(now: *const i64, tm: *mut Tm) -> *mut Tm;
 }
 
 /// Every light plugged in, as its node in `dev`, by the hidraw nodes `sys`
@@ -223,15 +236,22 @@ struct Setting {
 }
 
 impl Setting {
-    /// What a light that has said everything is set to.
+    /// What a light that has said its brightness and warmth is set to.
     fn of(state: &State) -> Option<Self> {
-        let _ = state;
-        None
+        Some(Self {
+            units: state.units?,
+            kelvin: state.kelvin?,
+        })
     }
 
-    /// The setting a call after the wind-down lights it at.
+    /// The setting a call after the wind-down lights it at: warm, and a
+    /// little lower, never below the least it gives.
     fn for_evening(self) -> Self {
-        self
+        let lower = u32::from(self.units) * EVENING_SHARE / 100;
+        Self {
+            units: u16::try_from(lower).unwrap_or(self.units).max(DIMMEST),
+            kelvin: WARMEST,
+        }
     }
 }
 
@@ -240,32 +260,98 @@ impl Setting {
 /// of it, since the evening left it there, and otherwise what it shows,
 /// which Joel set.
 fn own(seen: Setting, kept: Option<Setting>) -> Setting {
-    let _ = kept;
-    seen
+    match kept {
+        Some(kept) if kept.for_evening() == seen => kept,
+        _ => seen,
+    }
 }
 
-/// The own settings kept, by each light's serial, one a line.
+/// The own settings kept, by each light's serial, one a line: its serial,
+/// its units and its kelvin. A line short of any is passed over.
 fn read_kept(text: &str) -> Vec<(String, Setting)> {
-    let _ = text;
-    Vec::new()
+    text.lines()
+        .filter_map(|line| {
+            let mut words = line.trim().rsplitn(3, ' ');
+            let kelvin = words.next()?.parse().ok()?;
+            let units = words.next()?.parse().ok()?;
+            let serial = words.next()?.trim();
+            (!serial.is_empty()).then(|| (serial.to_owned(), Setting { units, kelvin }))
+        })
+        .collect()
 }
 
 /// The own settings kept, as `read_kept` reads them.
 fn written_kept(kept: &[(String, Setting)]) -> String {
-    let _ = kept;
-    String::new()
+    kept.iter()
+        .map(|(serial, own)| format!("{serial} {} {}\n", own.units, own.kelvin))
+        .collect()
 }
 
-/// Tonight's wind-down, in minutes after midnight, from rhythm's profile.
+/// A time of day, `HH:MM`, in minutes after midnight.
+fn minutes(text: &str) -> Option<u16> {
+    let (hour, minute) = text.split_once(':')?;
+    let (hour, minute): (u16, u16) = (hour.parse().ok()?, minute.parse().ok()?);
+    (hour < 24 && minute < 60).then_some(hour * 60 + minute)
+}
+
+/// Tonight's wind-down, in minutes after midnight, from rhythm's profile,
+/// which writes it as `"windDown": "HH:MM"`.
 fn wind_down(profile: &str) -> Option<u16> {
-    let _ = profile;
-    None
+    let (_, after) = profile.split_once("\"windDown\"")?;
+    let value = after.trim_start().strip_prefix(':')?.trim_start();
+    let (time, _) = value.strip_prefix('"')?.split_once('"')?;
+    minutes(time)
 }
 
-/// Whether a minute of the day is after the wind-down and before morning.
+/// Whether a minute of the day is after the wind-down and before morning,
+/// for a wind-down in the evening or one past midnight.
 fn evening(now: u16, wind_down: u16) -> bool {
-    let _ = (now, wind_down);
-    false
+    if wind_down < MORNING {
+        now >= wind_down && now < MORNING
+    } else {
+        now >= wind_down || now < MORNING
+    }
+}
+
+/// glibc's `struct tm`, which it fills whole; only the hour and minute
+/// are read.
+#[repr(C)]
+struct Tm {
+    second: c_int,
+    minute: c_int,
+    hour: c_int,
+    day: c_int,
+    month: c_int,
+    year: c_int,
+    weekday: c_int,
+    yearday: c_int,
+    summer: c_int,
+    offset: c_long,
+    zone: *const c_char,
+}
+
+/// The minute of the day here, by the machine's time zone.
+fn local_minute() -> Option<u16> {
+    // SAFETY: a plain call, and a `struct tm` of our own for it to fill,
+    // all of whose fields may be zero.
+    let tm = unsafe {
+        let now = time(std::ptr::null_mut());
+        let mut tm: Tm = std::mem::zeroed();
+        if localtime_r(&raw const now, &raw mut tm).is_null() {
+            return None;
+        }
+        tm
+    };
+    u16::try_from(tm.hour * 60 + tm.minute).ok()
+}
+
+/// Whether it's evening by tonight's wind-down in rhythm's profile; never
+/// while there's no profile to say when that is.
+fn tonight(profile: &Path) -> bool {
+    let down = fs::read_to_string(profile)
+        .ok()
+        .and_then(|text| wind_down(&text));
+    matches!((down, local_minute()), (Some(down), Some(now)) if evening(now, down))
 }
 
 struct Light {
@@ -545,15 +631,89 @@ fn wanted(folder: &Path, lock: Option<&Path>) -> bool {
     streaming(folder) && !lock.is_some_and(locked)
 }
 
-/// Sets every light plugged in on or off, saying what failed.
-fn light_all(on: bool) {
+/// Puts every light plugged in out, saying what failed.
+fn put_out_all() {
     for node in lights(Path::new("/sys"), Path::new("/dev")) {
-        if let Err(error) =
-            Light::open(&node).and_then(|mut light| light.tell(POWER, &[u8::from(on)]))
-        {
+        if let Err(error) = Light::open(&node).and_then(|mut light| light.tell(POWER, &[0])) {
             eprintln!("{}: {error}", node.display());
         }
     }
+}
+
+/// Lights every light plugged in, saying what failed. Given a file to keep
+/// each light's own setting in, each is lit at its own, or the evening's
+/// of it in the evening, and its own is kept by its serial.
+fn light_all(evening: bool, kept: Option<&Path>) {
+    let mut owns = kept
+        .and_then(|kept| fs::read_to_string(kept).ok())
+        .map(|text| read_kept(&text))
+        .unwrap_or_default();
+    let before = owns.clone();
+    for node in lights(Path::new("/sys"), Path::new("/dev")) {
+        let owns = kept.is_some().then_some(&mut owns);
+        if let Err(error) = light(&node, evening, owns) {
+            eprintln!("{}: {error}", node.display());
+        }
+    }
+    if let Some(kept) = kept
+        && owns != before
+        && let Err(error) = fs::write(kept, written_kept(&owns))
+    {
+        eprintln!("{}: {error}", kept.display());
+    }
+}
+
+/// Lights one light. Given its own settings, it's asked its setting while
+/// still out, since a question changes nothing, then lit and set to its
+/// own, or the evening's of it, so nothing is set while it's out. One
+/// already lit, by its button or for a call under way, is left as it is,
+/// and one that can't say its setting is only lit.
+fn light(node: &Path, evening: bool, owns: Option<&mut Vec<(String, Setting)>>) -> io::Result<()> {
+    let mut light = Light::open(node)?;
+    let mut state = State::default();
+    let seen = match owns {
+        Some(_) => {
+            let asked = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
+            let heard = find_out(&mut light, &mut state, asked);
+            if heard.is_ok() && state.on == Some(true) {
+                return Ok(());
+            }
+            heard.ok().and_then(|()| Setting::of(&state))
+        }
+        None => None,
+    };
+    light.tell(POWER, &[1])?;
+    let (Some(owns), Some(seen)) = (owns, seen) else {
+        return Ok(());
+    };
+    let about = about(Path::new("/sys"), node);
+    let serial = if about.serial.is_empty() {
+        node.display().to_string()
+    } else {
+        about.serial
+    };
+    let index = owns.iter().position(|(kept, _)| *kept == serial);
+    let mine = own(seen, index.map(|index| owns[index].1));
+    match index {
+        Some(index) => owns[index].1 = mine,
+        None => owns.push((serial, mine)),
+    }
+    let wanted = if evening { mine.for_evening() } else { mine };
+    if wanted.kelvin != seen.kelvin {
+        light.tell(TEMPERATURE, &wanted.kelvin.to_be_bytes())?;
+    }
+    if wanted.units != seen.units {
+        light.tell(BRIGHTNESS, &wanted.units.to_be_bytes())?;
+    }
+    if evening && wanted != seen {
+        eprintln!(
+            "{}: lit warm and a little lower for the evening, {}% at {} K",
+            node.display(),
+            percent(wanted.units),
+            wanted.kelvin
+        );
+    }
+    Ok(())
 }
 
 /// A descriptor that becomes readable when SIGTERM or SIGINT arrives,
@@ -623,7 +783,15 @@ fn folder_gone(events: &[u8]) -> bool {
     false
 }
 
-fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
+/// Where the evening's light comes from: rhythm's profile, which says when
+/// Joel winds down tonight, and the file each light's own setting is kept
+/// in.
+struct Evening<'a> {
+    profile: &'a Path,
+    kept: &'a Path,
+}
+
+fn follow(folder: &Path, lock: Option<&Path>, evening: Option<&Evening>) -> ExitCode {
     let (mut stop, mut changed) = match (stopping(), changes(folder, lock)) {
         (Ok(stop), Ok(changed)) => (stop, changed),
         (Err(error), _) | (_, Err(error)) => {
@@ -632,6 +800,10 @@ fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
         }
     };
     let mut lit = None;
+    // Whether the call lit is lit for the evening, decided as it's lit, so
+    // the wind-down passing mid-call, or a light plugged in, changes
+    // nothing on one already lit.
+    let mut for_evening = false;
     let mut lights_seen = Vec::new();
     let mut buffer = [0u8; 4096];
     loop {
@@ -640,7 +812,14 @@ fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
         // and so is one plugged back in under its old name.
         let now = plugged(Path::new("/sys"), Path::new("/dev"));
         if Some(wanted) != lit || now != lights_seen {
-            light_all(wanted);
+            if !wanted {
+                put_out_all();
+            } else {
+                if lit != Some(true) {
+                    for_evening = evening.is_some_and(|evening| tonight(evening.profile));
+                }
+                light_all(for_evening, evening.map(|evening| evening.kept));
+            }
             lit = Some(wanted);
             lights_seen = now;
         }
@@ -662,7 +841,7 @@ fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
         }
         if waiting[1].revents & POLLIN != 0 {
             let _ = stop.read(&mut buffer);
-            light_all(false);
+            put_out_all();
             return ExitCode::SUCCESS;
         }
         // A camera's watch replaces its file in two steps, and a light's
@@ -671,7 +850,7 @@ fn follow(folder: &Path, lock: Option<&Path>) -> ExitCode {
         std::thread::sleep(Duration::from_millis(100));
         match changed.read(&mut buffer) {
             Ok(length) if folder_gone(&buffer[..length]) => {
-                light_all(false);
+                put_out_all();
                 eprintln!("{} went away.", folder.display());
                 return ExitCode::FAILURE;
             }
@@ -857,7 +1036,7 @@ fn number(text: &str, unit: &[char]) -> Option<u16> {
 }
 
 const USAGE: &str = "usage: litra on | off | status [--format json] | brightness PERCENT | \
-                     temperature KELVIN | follow FOLDER [LOCKED] | watch";
+                     temperature KELVIN | follow FOLDER [LOCKED [PROFILE KEPT]] | watch";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -876,8 +1055,15 @@ fn main() -> ExitCode {
             let warmth = number(warmth, &['K', 'k']).unwrap_or_default();
             every(TEMPERATURE, &kelvin(warmth).to_be_bytes())
         }
-        ["follow", folder] => follow(Path::new(folder), None),
-        ["follow", folder, lock] => follow(Path::new(folder), Some(Path::new(lock))),
+        ["follow", folder] => follow(Path::new(folder), None, None),
+        ["follow", folder, lock] => follow(Path::new(folder), Some(Path::new(lock)), None),
+        ["follow", folder, lock, profile, kept] => {
+            let evening = Evening {
+                profile: Path::new(profile),
+                kept: Path::new(kept),
+            };
+            follow(Path::new(folder), Some(Path::new(lock)), Some(&evening))
+        }
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -1299,6 +1485,19 @@ mod tests {
         assert_eq!(wind_down(r#"{"windDown": "25:00"}"#), None);
         assert_eq!(wind_down(r#"{"windDown": null}"#), None);
         assert_eq!(wind_down(""), None);
+    }
+
+    #[test]
+    fn the_clock_reads_a_minute_of_the_day() {
+        let now = local_minute();
+        assert!(
+            now.is_some_and(|now| now < 24 * 60),
+            "the clock read {now:?}"
+        );
+        assert!(
+            !tonight(Path::new("/nonexistent/profile.json")),
+            "no profile, yet the evening"
+        );
     }
 
     #[test]

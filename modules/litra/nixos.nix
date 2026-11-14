@@ -4,7 +4,10 @@
 # run as the person at the machine, that lights it while any camera streams
 # and puts it out once none does, so a call is lit without a hand to the
 # button. It keeps the light out while the screen is locked, as it is before
-# the machine sleeps, by the file Quickshell's lock writes. systemd's hwdb
+# the machine sleeps, by the file Quickshell's lock writes. A call lit after
+# tonight's wind-down, by rhythm's profile, lights it warm and a little lower,
+# and the next by day at its own setting again, which it keeps in its state
+# folder. systemd's hwdb
 # opens the light's hidraw node to the person at the seat, so nothing else
 # needs to.
 #
@@ -14,7 +17,7 @@
 # A light plugged in while a camera streams is lit as udev opens it. The
 # watch sleeps on inotify between changes, so it costs nothing while
 # nothing changes; litra.rs says how.
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
   litra = pkgs.runCommandCC "litra" { nativeBuildInputs = [ pkgs.rustc ]; } ''
@@ -31,7 +34,12 @@ in
     description = "Lights the Litra Glow while a camera streams";
     wantedBy = [ "default.target" ];
     serviceConfig = {
-      ExecStart = "${litra}/bin/litra follow /run/camera-holders %t/quickshell-locked";
+      ExecStart = lib.concatStringsSep " " [
+        "${litra}/bin/litra follow /run/camera-holders %t/quickshell-locked"
+        "%S/rhythm/profile.json %S/litra/own-settings"
+      ];
+      # The one place it writes, past ProtectHome.
+      StateDirectory = "litra";
       Restart = "on-failure";
       RestartSec = 5;
       NoNewPrivileges = true;
