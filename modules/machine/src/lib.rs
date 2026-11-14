@@ -21,7 +21,8 @@
 //! a [`Root`], `/` in use and a fixture tree in the tests, so a record is
 //! a function of the files and the read before. What Firmware asks the
 //! machine to do is done through [`acts`], and what the shell asks of the
-//! disk guard through [`guard`].
+//! disk guard through [`guard`]. How long each kind of a read took, for
+//! health to say, is timed through [`spent`].
 //!
 //! A record names every figure its source has, as the source counts it,
 //! with its unit in its key (`_b` bytes, `_khz`, `_c` degrees Celsius,
@@ -59,6 +60,7 @@ pub mod processor_rows;
 pub mod rows;
 pub mod screen_acts;
 pub mod sleep;
+pub mod spent;
 pub mod status;
 pub mod steered;
 pub mod supply;
