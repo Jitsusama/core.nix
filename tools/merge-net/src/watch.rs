@@ -1583,8 +1583,14 @@ fn search(
         },
         None => None,
     };
+    // A merge already found fixed forward stays settled when main's newest
+    // head can't say now. On 14 November a net moving builds left such a
+    // search kept, and the next took it up, found no builder for the newest
+    // head, and quarantined vm-reboot-cannot-hang in #4312, seven minutes
+    // after it had passed there.
     if let Some(commit) = &bad
-        && fixed_forward(world, state, head, test, Some(commit))?
+        && (state.found("fixed-forward", test, commit)
+            || fixed_forward(world, state, head, test, Some(commit))?)
     {
         return Ok(None);
     }
@@ -3805,6 +3811,27 @@ mod tests {
         assert!(found.is_none(), "it found something to hold");
         assert!(world.built.lock().unwrap().is_empty(), "nothing runs");
         assert!(state.hold().is_none());
+    }
+
+    #[test]
+    fn a_merge_already_found_fixed_forward_is_not_reverted_when_the_newest_head_cant_say() {
+        let state = state("fixed-before-it-was-taken-up");
+        state
+            .find(&json!({ "kind": "fixed-forward", "test": "vm-a", "commit": "m1" }))
+            .unwrap();
+        let world = Stand {
+            head: "m2".into(),
+            merges: names("m1 m2"),
+            changed: changed("vm-a"),
+            ..Stand::default()
+        }
+        .exits("m1", "vm-a", &[1, 1])
+        .exits("m2", "vm-a", &[1, 1]);
+        let found = search(&world, &state, "s", "m2", "vm-a", &|| SPLITS).unwrap();
+        assert!(
+            found.is_none(),
+            "m1, found fixed forward before, was blamed again"
+        );
     }
 
     #[test]
