@@ -857,30 +857,31 @@ Provider {
     }
 
     // How many notices each program sent, and how many of them are unread,
-    // kept while the notices are one list (PastNotices.qml's every gives
-    // the same one until they change), so making a program's acts again
+    // kept while the notices' counts are one (PastNotices.qml's sentCounts
+    // gives the same until they change), so making a program's acts again
     // counts none of them; `read` counts the countings, for the check.
-    // Counted from the notices themselves, never their copies (sentBy's,
-    // lined for a list): copying Slack's for its count each time took
-    // 142 ms of a drawer's 151 making on Joel's (2026-11-13).
+    // Summed from each sender's count, never the notices' rows or their
+    // copies (sentBy's, lined for a list): copying Slack's for its count
+    // each time took 142 ms of a drawer's 151 making on Joel's
+    // (2026-11-13), and making every row past the page for it 97 ms of
+    // Google Calendar's acts (2026-11-14).
     readonly property var sentCounted: ({ of: null, by: Object.create(null), read: 0 })
     function sentCount(past, entry, same) {
-        const rows = past.every();
+        const senders = past.sentCounts();
         const kept = provider.sentCounted;
-        if (kept.of !== rows) {
-            kept.of = rows;
+        if (kept.of !== senders) {
+            kept.of = senders;
             kept.by = Object.create(null);
         }
         if (!(entry.id in kept.by)) {
             kept.read += 1;
             let count = 0;
             let unread = 0;
-            for (const row of rows) {
-                if (!same(row.sender))
+            for (const sender of Object.keys(senders)) {
+                if (!same(sender))
                     continue;
-                count += 1;
-                if (row.unread)
-                    unread += 1;
+                count += senders[sender].count;
+                unread += senders[sender].unread;
             }
             kept.by[entry.id] = { count, unread };
         }
