@@ -9,6 +9,7 @@ import QtQuick
 import "MarginCat.js" as MarginCat
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatWays.js" as Ways
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -503,8 +504,6 @@ QtObject {
             [0, 100].map(t => Paths.frame(late, t).y),
             [50, 150].map(t => Paths.frame(down, t).y));
         expect("and gets there as much sooner", Paths.frame(late, down.ends - 50).done, true);
-        expect("which is two and a half frames, as a GPU's niri showed at 60 and 120 Hz",
-            [MarginCat.behind(1000 / 60), MarginCat.behind(1000 / 120)], [42, 21]);
         const unseen = way => way.beats.filter(beat => beat.name !== "rides"
             && Math.max(beat.from.y, beat.to.y) < -8)
             .reduce((all, beat) => all + beat.ends - beat.begins, 0);
@@ -649,5 +648,79 @@ QtObject {
         expect("the theme's slowdown stretches all of a move",
             Math.round(Paths.moves(seat(100), seat(900), world({ way: 1, slowdown: 2 })).ends),
             Math.round(down.ends * 2));
+
+        // Heard late, a ride catches niri's edge up without a jump (VKCF3Z,
+        // 2026-11-13 a36e05f9): carried up within two frames in the pose it
+        // had, left in the air a fall that sits flush by the time the edge
+        // stops, never so far behind that what follows passes through it.
+        expect("heard 25 ms and a frame late of a slide, and 30 ms more of a resize",
+            [MarginCat.behind(1000 / 60, "slide"), MarginCat.behind(1000 / 60, "resize"),
+                MarginCat.behind(1000 / 120, "slide"), MarginCat.behind(1000 / 120, "resize")],
+            [42, 72, 33, 63]);
+        const hz120 = 1000 / 120;
+        const edgeAt = (dy, t) => 400 + dy * MarginCat.slid(t + 40, spring);
+        const riding = (dy, more) => {
+            const way = Ways.begun({ cell: 1, wide: 8, tall: 8 }, { x: 100, y: 400 });
+            Ways.rides(way, { x: 100, y: 400 + dy }, Object.assign({ ms: 191, frame: hz120,
+                edge: t => MarginCat.slid(t + 40, spring) }, more ?? {}));
+            return Ways.timed(way);
+        };
+        const each = (route, ends) => {
+            const all = [];
+            for (let t = 0; t < ends; t++)
+                all.push(Object.assign({ t }, Ways.frame(route, t)));
+            return all;
+        };
+        const runs = frames => frames.reduce((all, one) => {
+            const last = all[all.length - 1];
+            if (last && last.pose === one.pose)
+                last.ms += 1;
+            else
+                all.push({ pose: one.pose, ms: 1 });
+            return all;
+        }, []);
+        const lifted = riding(-300);
+        expect("carried up, it starts where it sat", Ways.frame(lifted, 0).y, 400);
+        // On the GPU rig at 120 Hz niri drew a resize's frames 16.3 ms apart,
+        // so its two frames are never shorter than two at 60 Hz.
+        const hz60 = 1000 / 60;
+        expect("halfway to the edge a 60 Hz frame in, though it walked at 120",
+            Math.round(Ways.frame(lifted, hz60).y), Math.round((400 + edgeAt(-300, hz60)) / 2));
+        expect("and on the edge two such frames in, and after",
+            [2 * hz60, 3 * hz60, 100].map(t => Math.round(Ways.frame(lifted, t).y)),
+            [2 * hz60, 3 * hz60, 100].map(t => Math.round(edgeAt(-300, t))));
+        expect("in the pose it had", each(lifted, 191).every(one => one.pose === null), true);
+        const dropped = riding(300, { away: true });
+        const stops = each(dropped, 191).find(one => 300 - (edgeAt(300, one.t) - 400) < 1).t;
+        expect("left in the air, it starts where it sat, and never sinks into the window",
+            [Ways.frame(dropped, 0).y, each(dropped, 191).every(one =>
+                one.y <= edgeAt(300, one.t) + 1e-6)], [400, true]);
+        expect("it sits flush by the time the edge stops",
+            Math.abs(Ways.frame(dropped, stops).y - edgeAt(300, stops)) < 0.5, true);
+        const falling = runs(each(dropped, 191)).filter(one => one.pose !== null);
+        expect("falling in the falling drawing, landing crouched, each seen two frames at 60 Hz",
+            [falling.map(one => one.pose), falling.every(one => one.ms >= 33)],
+            [["leaping", "pouncing"], true]);
+        const pressed = riding(300, { away: true, room: 20 });
+        expect("never more than its room behind, before what follows passes through it",
+            each(pressed, 191).every(one => edgeAt(300, one.t) - one.y <= 20 + 1e-6), true);
+        expect("a gap under two cells closes with no pose",
+            each(riding(1.5, { away: true }), 191).every(one => one.pose === null), true);
+        const late120 = { frame: hz120, ahead: MarginCat.behind(hz120, "slide") };
+        const sliding = way => Paths.moves(seat(100), seat(900), world(Object.assign({ way },
+            late120)));
+        const worldAt = (way, t) => 7 - 880 * way
+            * MarginCat.slid(t + late120.ahead + (way > 0 ? hz120 : 0), spring);
+        expect("a slide either way starts where it sat, or up, pressed under what came over it",
+            [Paths.frame(sliding(1), 0).y, Paths.frame(sliding(-1), 0).y].map(Math.round),
+            [7, Math.round(Math.max(7, worldAt(-1, 0) - 87))]);
+        const goneUp = sliding(-1);
+        const upFrames = [];
+        for (let t = 0; t < goneUp.beats[0].ends - late120.ahead; t++)
+            upFrames.push(worldAt(-1, t) - Paths.frame(goneUp, t).y);
+        expect("up a workspace, never further behind its column than the gap over the screen",
+            [upFrames.every(gap => gap >= -1e-6 && gap <= 87 + 1e-6),
+                upFrames.some(gap => gap > 1)],
+            [true, true]);
     }
 }
