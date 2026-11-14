@@ -31,6 +31,12 @@ ignore = [
 # driver's retry hands each try whether it's the last as a plain positional
 # bool, so what a script gives retry has to take one.
 "*-vm-test.py" = ["TC004", "FBT001"]
+# A test runs the programs its check gives it, on the PATH or by a path
+# the check names, with arguments the test itself writes, so neither a
+# program found on the PATH nor a call without a shell's quoting is a
+# risk there: each run said so in its own noqa, 58 times on 13 November.
+"tests/**/*.py" = ["S603", "S607"]
+"modules/*/tests/**/*.py" = ["S603", "S607"]
 # The desktop its areas drive asserts what a test needs, as pytest reports what each side
 # held, and hands the driver's retry a test taking a positional bool, as the driver calls it.
 "tests/desktop/desktop_session.py" = ["FBT001", "S101"]

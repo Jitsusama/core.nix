@@ -119,7 +119,7 @@ class Shell:
             socket = Path(os.environ["XDG_RUNTIME_DIR"]) / "clipboard-history.sock"
             emoji = os.environ.get("CLIPBOARD_EMOJI")
             with (self.log.parent / "clipboard-history.log").open("wb") as log:
-                history = subprocess.Popen(  # noqa: S603, the program the check gives
+                history = subprocess.Popen(
                     [
                         os.environ["CLIPBOARD"],
                         "--socket",
@@ -149,7 +149,7 @@ class Shell:
         # restarted shell would read wtype's next word, if it's the last one typed, by the
         # seat's keymap, "agents" as "123456". A key of another keymap first makes the word's
         # keymap new again, as a key Joel presses does on his keyboard. F24 does nothing here.
-        subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+        subprocess.run(["wtype", "-k", "F24"], check=True)
 
     def launch(self, mode: str) -> None:
         """Start the shell alone, its log opened in this mode, and wait until it answers, closed."""
@@ -157,8 +157,8 @@ class Shell:
         # profiler (tests/launcher-keys-lab-on-niri.py).
         given = os.environ.get("QS_GIVEN", "").split()
         with self.log.open(mode) as log:
-            self.process = subprocess.Popen(  # noqa: S603
-                ["qs", "-p", str(self.folder), *given],  # noqa: S607
+            self.process = subprocess.Popen(
+                ["qs", "-p", str(self.folder), *given],
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )
@@ -181,7 +181,7 @@ class Shell:
         socket = socket or daemons / f"{name}.sock"
         # Appended to, so one started again after a case stood in keeps what it said before.
         with (self.log.parent / f"{name}.log").open("ab") as log:
-            self.daemons[name] = subprocess.Popen(  # noqa: S603
+            self.daemons[name] = subprocess.Popen(
                 [program, str(socket), *given],
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -201,7 +201,7 @@ class Shell:
         daemons.mkdir(mode=0o700, exist_ok=True)
         given = [own / "waiting", own / "verdicts.json", own / "signins", own / "core.git"]
         with (self.log.parent / "to-do.log").open("ab") as log:
-            self.daemons["to-do"] = subprocess.Popen(  # noqa: S603, the program the check gives
+            self.daemons["to-do"] = subprocess.Popen(
                 [
                     os.environ["TO_DO"],
                     *map(str, given),
@@ -250,8 +250,8 @@ class Shell:
 
     def execute(self, command: str) -> tuple[int, str]:
         """Run a command in the nested session, and give how it exited and what it printed."""
-        done = subprocess.run(  # noqa: S603
-            ["bash", "-c", command],  # noqa: S607
+        done = subprocess.run(
+            ["bash", "-c", command],
             capture_output=True,
             text=True,
             check=False,
@@ -351,7 +351,7 @@ class Shell:
 
     def send_chars(self, text: str) -> None:
         """Type the text, a key at a time, at the desktop test's pace."""
-        subprocess.run(["wtype", "-d", str(KEY_PACE_MS), "--", text], check=True)  # noqa: S603, S607
+        subprocess.run(["wtype", "-d", str(KEY_PACE_MS), "--", text], check=True)
 
     def take_notices(self) -> None:
         """Take the notices by the keys, by what Super+N runs, since wtype never reaches it."""
@@ -521,7 +521,7 @@ class Shell:
         # than failing on it (2026-11-09, Passwords' copy on a busy builder).
         # Any other failure is the clipboard's own, and fails.
         done = subprocess.run(
-            ["wl-paste", "--no-newline"],  # noqa: S607
+            ["wl-paste", "--no-newline"],
             capture_output=True,
             text=True,
             check=False,

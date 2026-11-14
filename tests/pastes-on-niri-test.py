@@ -112,7 +112,7 @@ def launcher_let_go() -> bool:
     """Say whether niri lists the launcher's layer as taking no keys."""
     layers = json.loads(
         subprocess.run(
-            ["niri", "msg", "--json", "layers"],  # noqa: S607, the session's own niri
+            ["niri", "msg", "--json", "layers"],
             capture_output=True,
             text=True,
             check=True,
@@ -169,7 +169,7 @@ def test_a_paste_lands_from_the_history_while_the_shell_is_held(shell: Shell) ->
 
     since = shell.mark()
     returned = since
-    subprocess.run(["wtype", "-k", "Return"], check=True)  # noqa: S607, the check gives wtype
+    subprocess.run(["wtype", "-k", "Return"], check=True)
     # wtype ends once niri has read its keys, so Return was pressed by now.
     pressed = time.monotonic()
 

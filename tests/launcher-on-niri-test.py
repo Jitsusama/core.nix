@@ -89,7 +89,7 @@ def launcher_closed_after(shell: Shell) -> Iterator[None]:
 
 def now(*form: str) -> str:
     """Give the time now, as date gives it in this form."""
-    done = subprocess.run(["date", *form], capture_output=True, text=True, check=True)  # noqa: S603, S607
+    done = subprocess.run(["date", *form], capture_output=True, text=True, check=True)
     return done.stdout.strip()
 
 
@@ -3462,7 +3462,7 @@ def test_an_opening_is_usable_only_once_the_shell_is_free_after_its_chord(shell:
 def screen() -> bytes:
     """Give niri's screen as it stands, through its screencopy, as raw pixels."""
     return subprocess.run(
-        ["grim", "-t", "ppm", "-"],  # noqa: S607, the check gives grim
+        ["grim", "-t", "ppm", "-"],
         check=True,
         capture_output=True,
     ).stdout

@@ -85,7 +85,7 @@ def read(told: socket.socket) -> None:
 
 reports = listening(runtime / "report.sock")
 server = listening()
-shell = subprocess.Popen(  # noqa: S603
+shell = subprocess.Popen(
     [sys.argv[1], "-p", "shell.qml"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
 )
 # Quickshell says its log on its output, its errors among it.

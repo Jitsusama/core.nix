@@ -116,7 +116,7 @@ class Boot:
                 with kept.open("wb") as png:
                     # pnmtopng is on the driver's PATH, which its own screenshots use it from,
                     # and the shot is the test's own.
-                    subprocess.run(["pnmtopng", shot], stdout=png, check=True)  # noqa: S603, S607
+                    subprocess.run(["pnmtopng", shot], stdout=png, check=True)
                 return kept
         message = f"none of {len(shots)} shots showed {words}"
         raise AssertionError(message)
@@ -129,7 +129,7 @@ class Boot:
         """
         # The program and every argument are the test's own, from Nix and this file.
         return int(
-            subprocess.check_output(  # noqa: S603
+            subprocess.check_output(
                 [
                     self.magick,
                     path,
@@ -155,7 +155,7 @@ class Boot:
         """Count how many of a shot's pixels in crop are other than the background."""
         # The program and every argument are the test's own, from Nix and this file.
         return int(
-            subprocess.check_output(  # noqa: S603
+            subprocess.check_output(
                 [
                     self.magick,
                     path,
@@ -183,7 +183,7 @@ class Boot:
     def differing(self, one: Path, other: Path) -> int:
         """Count how many pixels differ between two shots."""
         # The program and every argument are the test's own, from Nix and this file.
-        compared = subprocess.run(  # noqa: S603
+        compared = subprocess.run(
             [self.magick, "compare", "-metric", "AE", "-fuzz", "4%", one, other, "null:"],
             capture_output=True,
             text=True,

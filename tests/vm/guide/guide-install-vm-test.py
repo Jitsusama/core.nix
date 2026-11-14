@@ -304,7 +304,7 @@ def overlay(qemu_img: str, file: str, *backing: str, size: str | None = None) ->
     """Make a qcow2 overlay over a stick's image, or a blank one of this size."""
     # qemu-img and the images are Nix's own store paths or the test's own files, so
     # nothing untrusted reaches the call.
-    subprocess.run(  # noqa: S603
+    subprocess.run(
         [qemu_img, "create", "-f", "qcow2", *backing, file, *([size] if size else [])],
         check=True,
     )
@@ -732,7 +732,7 @@ def writer_stick(
         # and payload are Nix's own store paths, and the rest the test's
         # own files, so nothing untrusted reaches the call.
         sources = ["--install", payload, "--rescue-bundle", bundle]
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [values["guide"], "write-stick", values["image"], again, *sources],
             input=(values["passphrase"] + "\n" + recovery_key + "\n").encode(),
             check=True,

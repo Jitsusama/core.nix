@@ -185,7 +185,7 @@ def owner() -> Json:
 
 def gone_owner() -> Json:
     """Give an owner whose process ran and ended this boot, as a session closed since reads."""
-    process = subprocess.Popen(["true"])  # noqa: S607
+    process = subprocess.Popen(["true"])
     process.wait()
     return {**owner(), "pid": process.pid}
 
@@ -261,7 +261,7 @@ def shell() -> Iterator[Shell]:
     STEER.mkdir(parents=True, exist_ok=True)
     with (logs / "mycelium.log").open("w") as log:
         # The node is the store's own, which the check names.
-        node = subprocess.Popen(  # noqa: S603
+        node = subprocess.Popen(
             [os.environ["MYCELIUM"], "--realm", REALM, "node", "--serves", str(serves)],
             stdout=log,
             stderr=log,
@@ -279,7 +279,7 @@ def shell() -> Iterator[Shell]:
         # The agents daemon makes Agents' rows from the node, the store's own as the check
         # names it, as the account's unit runs it, and the sessions to reopen from what
         # the harness kept; this sandbox has no to-do daemon, nor any windows daemon.
-        rows = subprocess.Popen(  # noqa: S603
+        rows = subprocess.Popen(
             [os.environ["AGENTS"], "--vocabulary", os.environ["WORDS"], "--node", str(NODE),
              "--to-do", str(ROWS.parent / "to-do.sock"),
              "--windows", str(ROWS.parent / "windows.sock"), "--spend", str(SPEND),
@@ -1430,7 +1430,7 @@ def shoot() -> Callable[[str], None]:
             return
         Path(folder).mkdir(exist_ok=True)
         # grim is the check's own, on its PATH, given a path the test made.
-        subprocess.run(["grim", str(Path(folder) / f"{name}.png")], check=True)  # noqa: S603, S607
+        subprocess.run(["grim", str(Path(folder) / f"{name}.png")], check=True)
 
     return shot
 
@@ -1668,7 +1668,7 @@ def test_super_s_line_shows_every_answer_to_two_lines_and_whom_each_waits_on(
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "insert")
     # A key of another keymap first, as Shell.restart presses, since the line's first letter
     # was read by the last keymap and lost, leaving "ow is it going?". F24 does nothing here.
-    subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+    subprocess.run(["wtype", "-k", "F24"], check=True)
     asked("how is it going?", "07:42")
     asked("what is being worked on?", "07:43")
     waiting = ["waiting on your orchestrator"] * 2

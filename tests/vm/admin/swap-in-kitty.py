@@ -26,7 +26,7 @@ folder, heaps = Path(given), int(count)
 listens_as = listening[0] if listening else str(os.getpid())
 for number in range(1, heaps + 1):
     # S603: every word of the command is this stand-in's own or the test's.
-    subprocess.Popen(  # noqa: S603
+    subprocess.Popen(
         [
             "/run/current-system/sw/bin/systemd-run",
             "--user",

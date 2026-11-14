@@ -110,7 +110,7 @@ def unlock(machine: QemuMachine, secret: str) -> None:
 def overlay(qemu_img: str, file: str, *backing: str, size: str | None = None) -> None:
     """Make a qcow2 overlay over an image, or a blank one of this size."""
     # qemu-img and the images are Nix's own store paths or the test's own files.
-    subprocess.run(  # noqa: S603
+    subprocess.run(
         [qemu_img, "create", "-f", "qcow2", *backing, file, *([size] if size else [])],
         check=True,
     )

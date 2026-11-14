@@ -25,7 +25,7 @@ def chardev(path: Path, *extra: str) -> list[str]:
 
 def started(ran: Path, *arguments: str) -> subprocess.Popen[str]:
     """Start the qemu with arguments, telling the stand-in where to say it ran."""
-    return subprocess.Popen(  # noqa: S603
+    return subprocess.Popen(
         [QEMU / "bin" / "qemu-system-x86_64", *arguments],
         env={**os.environ, "QEMU_RAN": str(ran)},
         stderr=subprocess.PIPE,
@@ -76,8 +76,8 @@ def test_a_socket_that_never_comes_fails_and_ends_what_the_script_started(
         f"sleep 300 & echo $! > {started_by_script}; "
         f'exec {QEMU / "bin" / "qemu-system-x86_64"} "$@"'
     )
-    qemu = subprocess.Popen(  # noqa: S603
-        ["bash", "-c", script, "bash", *chardev(missing)],  # noqa: S607
+    qemu = subprocess.Popen(
+        ["bash", "-c", script, "bash", *chardev(missing)],
         env={**os.environ, "QEMU_RAN": str(ran), "QEMU_SOCKETS_WAIT": "2"},
         stderr=subprocess.PIPE,
         text=True,

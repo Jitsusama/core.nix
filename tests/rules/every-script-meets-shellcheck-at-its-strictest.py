@@ -49,7 +49,7 @@ def findings(tree: Path, files: list[str]) -> dict[str, list[str]]:
     shellcheck = shutil.which("shellcheck")
     if shellcheck is None:
         sys.exit("shellcheck isn't on the PATH, which the check's derivation gives it.")
-    ran = subprocess.run(  # noqa: S603, shellcheck is the program the check is for
+    ran = subprocess.run(
         [shellcheck, f"--enable={CHECKS}", f"--include={CODES}", "--format=json1", *files],
         cwd=tree,
         capture_output=True,
