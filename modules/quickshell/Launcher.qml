@@ -6280,9 +6280,9 @@ Scope {
     // picker's "Replace notes.md?" is, one place on every surface (VKCF3Z,
     // 2026-11-05), the foot saying "↵ confirm". While it stands every key
     // is its answer (Prompt.qml's confirming), as an armed row's is: after
-    // its first 300 ms, Return does it and any other key lets it go (Joel,
-    // 2026-11-13: "having to say y/n for launcher items when others allow a
-    // double enter is stupid").
+    // its first 300 ms, Return does it, y leaves it standing (Confirm.answer)
+    // and any other key lets it go (Joel, 2026-11-13: "having to say y/n for
+    // launcher items when others allow a double enter is stupid").
     property var asked: null
     // The rows it covers, by their places, which wear visual's tint while
     // it stands, so every one it would end shows as included.

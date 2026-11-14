@@ -1,9 +1,10 @@
 // How the launcher asks once before what costs a lot and can't be put
 // back: what it asks, which keys answer, and how soon. It's answered as
 // an armed row is (Arming.js): the Return or d that asked was the first
-// press, a second Return does it, and any other key lets it go, never
-// y or n (Joel, 2026-11-13: "having to say y/n for launcher items when
-// others allow a double enter is stupid"). Where the ask is drawn is the
+// press, a second Return does it, and any other key lets it go but y,
+// which leaves it standing for a month (answer), never y or n answering
+// (Joel, 2026-11-13: "having to say y/n for launcher items when others
+// allow a double enter is stupid"). Where the ask is drawn is the
 // launcher's to say. Read apart from it so tests/query-keys.qml can hold
 // it in Qt's own engine.
 .pragma library
