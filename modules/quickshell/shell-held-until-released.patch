@@ -214,7 +214,7 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
  #include <qtmetamacros.h>
  
  #include "../../core/generation.hpp"
-@@ -99,8 +101,24 @@
+@@ -99,8 +101,27 @@
  }
  
  void PolkitAgentImpl::registerComplete(bool success) {
@@ -222,6 +222,9 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
 -	else qCWarning(logPolkit) << "failed to register listener on path" << this->qmlAgent->path();
 +	if (success) {
 +		this->bIsRegistered = true;
++		// Said once a held shell takes the agent over, so a handover's journal shows it did.
++		if (this->registerTries > 0)
++			qInfo() << "took polkit's agent after" << this->registerTries << "refusals";
 +		return;
 +	}
 +
