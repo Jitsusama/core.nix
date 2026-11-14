@@ -9,8 +9,8 @@ ir=$1
 template=$2
 out=$3
 sed -E "s#<chat_template value=\"[^\"]*\"#<chat_template value=\"$template\"#" "$ir" >"$out"
-if [ "$(grep -c '<chat_template value=' "$out")" != 1 ] ||
-  ! grep -qF "<chat_template value=\"$template\"" "$out"; then
+templates=$(grep -c '<chat_template value=' "$out" || true)
+if [ "$templates" != 1 ] || ! grep -qF "<chat_template value=\"$template\"" "$out"; then
   echo "$ir's chat template isn't ours alone"
   exit 1
 fi
