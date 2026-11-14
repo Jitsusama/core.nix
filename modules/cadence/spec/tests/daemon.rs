@@ -12,15 +12,6 @@ use std::process::Command;
 use daemon_client::Daemon;
 use serde_json::{Value, json};
 
-/// A shell on the test's PATH, since a build's sandbox has none at /bin.
-fn shell() -> PathBuf {
-    let path = std::env::var_os("PATH").expect("the test has a PATH");
-    std::env::split_paths(&path)
-        .map(|folder| folder.join("sh"))
-        .find(|sh| sh.exists())
-        .expect("a shell is on PATH")
-}
-
 /// cadence-spec started in a folder of its own, over a stand-in cadence
 /// running `body`, which notes what it was asked in `asked`.
 fn started(name: &str, body: &str) -> Daemon {
@@ -31,7 +22,7 @@ fn started(name: &str, body: &str) -> Daemon {
         &cadence,
         format!(
             "#!{}\necho \"$*\" > {}\n{body}\n",
-            shell().display(),
+            stand_in_shell().display(),
             folder.join("asked").display()
         ),
     )
@@ -69,6 +60,17 @@ fn watched(daemon: &Daemon) -> BTreeMap<String, Value> {
     held
 }
 
+/// The shell the stand-in runs in, from the test's PATH, since a build's
+/// sandbox may have none at /bin.
+fn stand_in_shell() -> PathBuf {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&path)
+        .map(|folder| folder.join("sh"))
+        .find(|found| found.is_file())
+        .unwrap_or_else(|| PathBuf::from("/bin/sh"))
+}
+
+/// What the stand-in cadence was last asked, or nothing yet.
 fn asked(folder: &Path) -> String {
     fs::read_to_string(folder.join("asked")).unwrap_or_default()
 }

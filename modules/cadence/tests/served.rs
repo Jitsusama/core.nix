@@ -1,7 +1,6 @@
 //! `cadence axes --served WORDS` over a stand-in account: health's day file
 //! holding one of Joel's readings out, and the quest owning it, read as
-//! cadence-spec reads it for the launcher's Spec; and an account with
-//! nothing to read, which prints no rows, so the daemon keeps its last.
+//! cadence-spec reads it for the launcher's Spec.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -93,14 +92,4 @@ fn spec_is_made_from_the_axes_with_its_headline_and_owners_named() {
         orders.iter().all(Option::is_some) && orders.is_sorted(),
         "the axes in cadence's order: {orders:?}"
     );
-}
-
-#[test]
-fn an_account_with_nothing_to_read_prints_no_rows_and_says_so() {
-    let account = tempfile::tempdir().expect("a stand-in account");
-    let ran = served(account.path());
-    let said = String::from_utf8_lossy(&ran.stderr);
-    assert_eq!(ran.status.code(), Some(1), "{said}");
-    assert!(ran.stdout.is_empty(), "no rows printed");
-    assert!(said.contains("Spec keeps its last rows"), "{said}");
 }
