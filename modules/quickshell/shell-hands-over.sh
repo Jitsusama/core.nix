@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2154 # XDG_RUNTIME_DIR and MAINPID come from the user manager.
 # Hands the shell over to a new one as a switch reloads its unit, so the
 # launcher answers all through it: the new shell loads held, drawing
 # nothing and serving no socket, while the old one still draws and answers;
@@ -10,12 +10,34 @@
 # and the reload fails, which a switch reports. A locked screen restarts
 # instead, since a lock is taken by one shell at a time and a held one
 # can't take it.
+#
+# Its help takes the shape every command of ours does (docs/commands.md), by
+# hand, since a script has no kit.
+
+case ${1:-} in
+  -h | --help)
+    cat << 'EOF'
+quickshell-hands-over  hands the shell to a new one
+
+EXAMPLES
+  quickshell-hands-over quickshell    as the unit reloads
+
+EXIT
+  0   handed over, or restarted when locked
+  1   the new shell failed; the old one stays
+EOF
+    exit 0
+    ;;
+  *) ;;
+esac
 
 ready="$XDG_RUNTIME_DIR/quickshell-held"
 locked="$XDG_RUNTIME_DIR/quickshell-locked"
 
 restart_if_locked() {
-  if [ "$(cat "$locked" 2>/dev/null)" = locked ]; then
+  local state=""
+  read -r state 2>/dev/null <"$locked" || true
+  if [ "$state" = locked ]; then
     echo "the screen is locked, so the shell restarts instead"
     exec systemctl --user --no-block restart quickshell.service
   fi
@@ -29,7 +51,7 @@ new=$!
 
 # The shell's own start, about a second on a lit machine, with room for a
 # busy one; past it, the old shell stays.
-for _ in $(seq 100); do
+for ((i = 0; i < 100; i++)); do
   [ -s "$ready" ] && break
   if ! kill -0 "$new" 2>/dev/null; then
     echo "the new shell ended as it loaded, so the old one stays"
@@ -48,17 +70,19 @@ fi
 # until the new one says it holds home kept, which took about 4 s on a
 # software-rendered nested niri; past 10 s it's handed over anyway, since
 # the new shell has loaded and only its first opening would be slower.
-for _ in $(seq 100); do
-  "$1" ipc --pid "$new" call launcher showing 2>/dev/null | jq -e .kept >/dev/null && break
+for ((i = 0; i < 100; i++)); do
+  shown="$("$1" ipc --pid "$new" call launcher showing 2>/dev/null || true)"
+  jq -e .kept <<<"$shown" >/dev/null 2>&1 && break
   sleep 0.1
 done
 
 # Ended open, the old launcher would vanish under Joel, so it's handed over
 # once he has closed it, for up to a minute, past which a switch has waited
 # long enough.
-for _ in $(seq 600); do
+for ((i = 0; i < 600; i++)); do
   shown="$("$1" ipc --pid "$old" call launcher showing 2>/dev/null || true)"
-  [ "$(jq -r .open <<<"$shown" 2>/dev/null)" = true ] || break
+  open="$(jq -r .open <<<"$shown" 2>/dev/null || true)"
+  [ "$open" = true ] || break
   sleep 0.1
 done
 
@@ -88,7 +112,7 @@ fi
 # Polled, as the old shell isn't this script's child to wait on. It ends in
 # a fifth of a second or so, and one still there after 3 s is killed, since
 # the new one draws nothing until it's gone.
-for _ in $(seq 300); do
+for ((i = 0; i < 300; i++)); do
   kill -0 "$old" 2>/dev/null || break
   sleep 0.01
 done
