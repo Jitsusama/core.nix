@@ -1,6 +1,9 @@
 //! What the daemon decides about the light: when the screen follows it, what
 //! the curve learns, what a shut lid stops, and when the keyboard's light
-//! comes on and goes out.
+//! comes on and goes out. While a program that keeps its own colours is in
+//! front (front.rs), the screen starts no move for the light, finishing
+//! only one under way, and the move the light asked for meanwhile waits
+//! for it to leave.
 //!
 //! It's given the brightness shown and the time, and says what to do, so it
 //! reads no screen, writes no file and speaks no D-Bus; the daemon does
@@ -58,6 +61,8 @@ pub struct Follow {
     /// What Joel set in each light in the evening, which the evening never
     /// dims past again.
     floor: Option<Curve>,
+    /// Whether a program that keeps its own colours is in front.
+    still: bool,
 }
 
 /// How the evening's share moves toward what the clock says.
@@ -90,6 +95,7 @@ impl Follow {
             clock: 1.0,
             hold: Hold::Unseen,
             floor: None,
+            still: false,
         }
     }
 
@@ -107,7 +113,7 @@ impl Follow {
 
     /// Whether a program that keeps its own colours is in front (front.rs).
     pub fn keep_still(&mut self, still: bool) {
-        let _ = still;
+        self.still = still;
     }
 
     /// Whether a brightness Joel picked holds for the rest of the evening.
@@ -236,6 +242,8 @@ impl Follow {
     pub fn wake(&self, now: Instant) -> Option<Instant> {
         if self.ramp.is_some() {
             Some(now + STEP)
+        } else if self.still {
+            None
         } else {
             self.steer.next()
         }
@@ -247,6 +255,9 @@ impl Follow {
     /// meanwhile shouldn't wait it out; light heard mid-move is weighed
     /// against where the move goes, so only a real change is due.
     pub fn start(&mut self, shown: f64, now: Instant) -> Option<f64> {
+        if self.still {
+            return None;
+        }
         let to = self.steer.due(now)?;
         self.ramp = Some(Ramp::new(shown, to, now));
         Some(to)

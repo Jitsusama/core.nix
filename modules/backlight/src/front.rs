@@ -11,19 +11,110 @@
 //! nothing is in front, and it's asked again every two seconds.
 
 use std::collections::HashMap;
+use std::env;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::Value;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::UnixStream;
+use tokio::sync::watch;
 
 /// How long after niri's stream ends, or can't be reached, it's asked
 /// again.
 pub const AGAIN: Duration = Duration::from_secs(2);
 
+/// The app ids of programs that keep their own colours, as their windows
+/// give them, lower case, besides GIMP's, which begin `gimp`: GIMP is the
+/// one installed, and the others are the image editors a machine might
+/// add, by the ids their own packages give.
+const KEEP_THEIR_COLOURS: [&str; 7] = [
+    "org.gimp.gimp",
+    "darktable",
+    "org.darktable.darktable",
+    "krita",
+    "org.kde.krita",
+    "inkscape",
+    "org.inkscape.inkscape",
+];
+
 /// Whether a window's app id is a program that keeps its own colours.
 #[must_use]
 pub fn keeps_its_colours(app_id: &str) -> bool {
-    let _ = app_id;
-    false
+    let id = app_id.to_ascii_lowercase();
+    id.starts_with("gimp") || KEEP_THEIR_COLOURS.contains(&id.as_str())
+}
+
+/// Hears niri for as long as the daemon runs, and gives what it says is in
+/// front; none where `NIRI_SOCKET` isn't set, as outside niri.
+pub fn listen() -> Option<watch::Receiver<Option<String>>> {
+    let Some(socket) = env::var_os("NIRI_SOCKET") else {
+        eprintln!("<5>NIRI_SOCKET isn't set, so no program in front holds the screens' colours");
+        return None;
+    };
+    let (tell, heard) = watch::channel(None);
+    tokio::spawn(follow(PathBuf::from(socket), tell));
+    Some(heard)
+}
+
+/// Waits for what's in front to change, or forever once nothing says.
+pub async fn changed(heard: &mut Option<watch::Receiver<Option<String>>>) -> Option<String> {
+    let Some(receiver) = heard else {
+        return std::future::pending().await;
+    };
+    if receiver.changed().await.is_ok() {
+        receiver.borrow_and_update().clone()
+    } else {
+        *heard = None;
+        std::future::pending().await
+    }
+}
+
+/// Hears niri's event stream, and asks again every [`AGAIN`] while niri's
+/// gone, saying so once each time it goes.
+async fn follow(socket: PathBuf, tell: watch::Sender<Option<String>>) {
+    let mut front = Front::default();
+    let mut said_gone = false;
+    while !tell.is_closed() {
+        match UnixStream::connect(&socket).await {
+            Ok(stream) => {
+                said_gone = false;
+                hear(stream, &mut front, &tell).await;
+            }
+            Err(why) if !said_gone => {
+                eprintln!("<4>niri isn't answering on {}: {why}", socket.display());
+                said_gone = true;
+            }
+            Err(_) => {}
+        }
+        if let Some(now) = front.lost() {
+            tell.send_replace(now);
+        }
+        tokio::time::sleep(AGAIN).await;
+    }
+}
+
+/// Hears each event of one stream until it ends.
+async fn hear(stream: UnixStream, front: &mut Front, tell: &watch::Sender<Option<String>>) {
+    // The writing half is held until the stream ends, since dropping it
+    // would shut the socket's writing side.
+    let (reading, mut writing) = stream.into_split();
+    if writing.write_all(b"\"EventStream\"\n").await.is_err() {
+        return;
+    }
+    let mut lines = BufReader::new(reading).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        let Ok(event) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
+        if let Some(why) = event.get("Err") {
+            eprintln!("<4>niri refused its event stream: {why}");
+            return;
+        }
+        if let Some(now) = front.hear(&event) {
+            tell.send_replace(now);
+        }
+    }
 }
 
 /// The windows niri has said, and which has the focus.
@@ -38,14 +129,64 @@ impl Front {
     /// Hears one of niri's events. Gives the program keeping its own
     /// colours now in front, or none, when that changed.
     pub fn hear(&mut self, event: &Value) -> Option<Option<String>> {
-        let _ = event;
-        None
+        if let Some(all) = event.get("WindowsChanged") {
+            self.windows.clear();
+            self.focused = None;
+            let windows = all.get("windows").and_then(Value::as_array);
+            for window in windows.into_iter().flatten() {
+                self.window(window);
+            }
+        } else if let Some(window) = event.get("WindowOpenedOrChanged") {
+            self.window(window.get("window")?);
+        } else if let Some(closed) = event.get("WindowClosed") {
+            let id = closed.get("id").and_then(Value::as_u64)?;
+            self.windows.remove(&id);
+            if self.focused == Some(id) {
+                self.focused = None;
+            }
+        } else if let Some(focus) = event.get("WindowFocusChanged") {
+            self.focused = focus.get("id").and_then(Value::as_u64);
+        } else {
+            return None;
+        }
+        self.said()
     }
 
     /// niri's stream ended, so nothing is known to be in front. Gives none
     /// when that changed.
     pub fn lost(&mut self) -> Option<Option<String>> {
-        None
+        self.windows.clear();
+        self.focused = None;
+        self.said()
+    }
+
+    /// Keeps a window niri described, and whether it has the focus.
+    fn window(&mut self, window: &Value) {
+        let Some(id) = window.get("id").and_then(Value::as_u64) else {
+            return;
+        };
+        let app_id = window.get("app_id").and_then(Value::as_str);
+        self.windows
+            .insert(id, app_id.unwrap_or_default().to_owned());
+        match window.get("is_focused").and_then(Value::as_bool) {
+            Some(true) => self.focused = Some(id),
+            Some(false) if self.focused == Some(id) => self.focused = None,
+            _ => {}
+        }
+    }
+
+    /// The program keeping its own colours in front now, when that's not
+    /// what was last said.
+    fn said(&mut self) -> Option<Option<String>> {
+        let now = self
+            .focused
+            .and_then(|id| self.windows.get(&id))
+            .filter(|app_id| keeps_its_colours(app_id))
+            .cloned();
+        (now != self.said).then(|| {
+            self.said.clone_from(&now);
+            now
+        })
     }
 }
 

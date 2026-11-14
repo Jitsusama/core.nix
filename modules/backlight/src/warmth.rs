@@ -34,6 +34,11 @@
 //! own after sunset and back before sunrise, and the screen takes the
 //! warmer of the room's and the night's. Where no sensor sees colour, the
 //! night is all that warms it.
+//!
+//! While a program that keeps its own colours is in front, such as GIMP
+//! (front.rs), the screen glides to its own white whatever the room and
+//! the night say, as when Joel says it shouldn't follow the room, and once
+//! that program leaves the front the night comes back over its minute.
 
 use std::time::{Duration, Instant};
 
@@ -107,6 +112,8 @@ pub struct Warmth {
     by_night: bool,
     /// How often the glide under way takes a step.
     pace: Duration,
+    /// Whether a program that keeps its own colours is in front.
+    kept: bool,
 }
 
 impl Warmth {
@@ -127,6 +134,7 @@ impl Warmth {
             night: WHITE,
             by_night: false,
             pace: EVERY,
+            kept: false,
         }
     }
 
@@ -140,7 +148,10 @@ impl Warmth {
 
     /// Whether a program that keeps its own colours is in front (front.rs).
     pub fn keep_white(&mut self, kept: bool, now: Instant) {
-        let _ = (kept, now);
+        if self.kept != kept {
+            self.kept = kept;
+            self.follow(now);
+        }
     }
 
     /// Joel said whether the screen should follow the room.
@@ -269,6 +280,9 @@ impl Warmth {
     fn wanted(&self) -> Option<u16> {
         if self.shut {
             return None;
+        }
+        if self.kept {
+            return Some(WHITE);
         }
         let room = if self.follows {
             self.lit().or(self.held)

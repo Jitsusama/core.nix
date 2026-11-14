@@ -10,6 +10,9 @@
 //! niri has on, looked at every few seconds, which costs a folder's read.
 //! A screen just on takes the night's white at once, since it's lighting
 //! up anyway; after that the night's own small steps are its glide.
+//!
+//! While a program that keeps its own colours is in front (front.rs), the
+//! screens take their own white at once, and the night's once it leaves.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -56,6 +59,8 @@ pub struct Beside {
     missed: BTreeMap<String, (u8, Instant)>,
     due: Option<Instant>,
     rests: Option<Instant>,
+    /// Whether a program that keeps its own colours is in front.
+    kept: bool,
 }
 
 impl Beside {
@@ -138,13 +143,16 @@ impl Beside {
     /// (front.rs), when the screens hold their own white whatever the
     /// night; they're looked at once when that changes.
     pub fn keep_white(&mut self, kept: bool, now: Instant) {
-        let _ = (kept, now);
+        if self.kept != kept {
+            self.kept = kept;
+            self.look_now(now);
+        }
     }
 
     /// Whether the screens hold their own white whatever the night.
     #[must_use]
     pub fn keeps_white(&self) -> bool {
-        false
+        self.kept
     }
 
     /// The relay started again at its own white, so every screen is set
