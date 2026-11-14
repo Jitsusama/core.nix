@@ -133,12 +133,11 @@ fn a_kept_base_is_taken_in_whole_and_never_over_one_kept() {
 }
 
 #[test]
-fn what_each_check_read_alone_is_shared_after_the_rest() {
+fn what_each_check_read_alone_is_shared_after_the_checks() {
     assert_eq!(
-        KEPT_AS.last(),
-        Some(&"alone.reads.json"),
-        "a builder keeps what each check read alone at most once in 20 minutes, so lacking it \
-         mustn't stop the base's checks and reads, copied before it, from being shared"
+        KEPT_AS.first(),
+        Some(&"json"),
+        "the other records are no use without the checks' derivations, so those go first"
     );
     let (read, _) = sharing_kept("abc123", "x86_64-linux", "alone.reads.json")
         .expect("what each check read alone isn't shared");
