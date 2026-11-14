@@ -5,7 +5,10 @@
 //! `--version` without starting anything, gives the body a `Context`
 //! holding the answer's form and a pen for each stream, and ends the
 //! process with the exit its body chose: a failure said in its three
-//! parts, as text or as JSON, and a panic as a bug, 70.
+//! parts, as text or as JSON, and a panic as a bug, 70. A command whose
+//! help declares subcommands of its own has its words walked down them
+//! first (tree.rs): each answers its own help, and a word none answers to
+//! is refused before the body starts.
 //!
 //! It depends on `serde_json` and `unicode-width` alone, since a parser crate
 //! would be most of a small command's dependencies: the command reads
@@ -18,6 +21,7 @@ pub mod help;
 pub mod ink;
 pub mod layout;
 pub mod time;
+pub mod tree;
 pub mod wait;
 
 use std::cell::{Cell, RefCell};
@@ -176,16 +180,26 @@ pub fn run(
     body: impl FnOnce(&Context) -> Result<(), Failure>,
 ) -> Ending {
     let forms: Vec<&str> = help.forms.iter().map(String::as_str).collect();
-    let mut stdout = String::new();
-    let context = match Context::new(environment.clone(), args, &forms) {
+    let mut context = match Context::new(environment.clone(), args, &forms) {
         Ok(context) => context,
         Err(failure) => return unread(environment, &failure),
     };
+    let walked = if help.subs.is_empty() {
+        None
+    } else {
+        asked_for_help(help, &mut context);
+        match tree::walk(help, &context.args) {
+            Ok(walked) => Some(walked),
+            Err(failure) => return failed(&context, environment, &failure),
+        }
+    };
     if context.shared.help {
-        stdout = if context.shared.format.is_json() {
-            format!("{}\n", help.json())
+        let shown = walked.as_ref().map(tree::Walked::shown);
+        let shown = shown.as_ref().unwrap_or(help);
+        let stdout = if context.shared.format.is_json() {
+            format!("{}\n", shown.json())
         } else {
-            help.text(&context.out, context.room)
+            shown.text(&context.out, context.room)
         };
         return Ending {
             exit: Exit::Done,
@@ -200,32 +214,58 @@ pub fn run(
             stderr: String::new(),
         };
     }
-    let outcome = caught(|| body(&context));
-    let (exit, stderr) = match outcome {
-        Ok(()) => (Exit::Done, String::new()),
-        Err(failure) => {
-            let verbose = context
-                .args
-                .iter()
-                .any(|arg| arg == "--verbose" || arg == "-v");
-            let said = if context.shared.format.is_json() {
-                format!("{}\n", failure.json(verbose))
-            } else {
-                for_the_journal(
-                    failure.text(&context.err, context.err_room, verbose),
-                    environment,
-                )
-            };
-            (failure.exit, said)
-        }
+    if let Some(walked) = walked {
+        context.args = walked.words;
+    }
+    match caught(|| body(&context)) {
+        Ok(()) => ended(&context, Exit::Done, String::new()),
+        Err(failure) => failed(&context, environment, &failure),
+    }
+}
+
+/// Takes `help` as the first word, as `eero help devices`, for `--help`
+/// on what follows it, unless a subcommand is called help.
+fn asked_for_help(help: &Help, context: &mut Context) {
+    let first = context.args.iter().position(|arg| !arg.starts_with('-'));
+    let own = help.subs.iter().any(|sub| sub.name == "help");
+    if let Some(at) = first
+        && context.args[at] == "help"
+        && !own
+    {
+        context.args.remove(at);
+        context.shared.help = true;
+    }
+}
+
+/// How a run ends that failed: the failure said on stderr in the answer's
+/// form, marked for the journal where stderr is the journal's.
+fn failed(context: &Context, environment: &Environment, failure: &Failure) -> Ending {
+    let verbose = context
+        .args
+        .iter()
+        .any(|arg| arg == "--verbose" || arg == "-v");
+    let said = if context.shared.format.is_json() {
+        format!("{}\n", failure.json(verbose))
+    } else {
+        for_the_journal(
+            failure.text(&context.err, context.err_room, verbose),
+            environment,
+        )
     };
-    if context.shared.format == Format::Jsonl {
+    ended(context, failure.exit, said)
+}
+
+/// How a run ends, with a stream's `end` line under `jsonl`.
+fn ended(context: &Context, exit: Exit, stderr: String) -> Ending {
+    let stdout = if context.shared.format == Format::Jsonl {
         let outcome = if exit == Exit::Done { "done" } else { "failed" };
-        stdout = format!(
+        format!(
             "{}\n",
             json!({"type": "end", "outcome": outcome, "exit": exit.code()})
-        );
-    }
+        )
+    } else {
+        String::new()
+    };
     Ending {
         exit,
         stdout,
@@ -481,6 +521,74 @@ mod tests {
             "{}",
             ending.stderr
         );
+    }
+
+    fn tree() -> Help {
+        Help::new("thing", "does a thing")
+            .subcommand(
+                Help::new("rows", "every row, or one")
+                    .alias("row")
+                    .argument("<name>", "a row's name")
+                    .example("thing rows disk", "the disk's row"),
+            )
+            .exit(Exit::NotFound, "no such row")
+    }
+
+    fn ran_tree(line: &str, body: impl FnOnce(&Context) -> Result<(), Failure>) -> Ending {
+        let args = line.split_whitespace().map(str::to_owned).collect();
+        run(
+            &tree(),
+            "1.0",
+            &Environment::of([false; 3], &[]),
+            args,
+            body,
+        )
+    }
+
+    #[test]
+    fn each_way_of_asking_for_a_subcommands_help_answers_it_alone() {
+        for line in ["rows --help", "rows -h", "help rows", "row disk --help"] {
+            let ending = ran_tree(line, |_| panic!("{line} started the command"));
+            assert_eq!(ending.exit, Exit::Done, "{line}: {}", ending.stderr);
+            assert!(
+                ending.stdout.starts_with("thing rows  every row, or one\n"),
+                "{line} didn't answer rows' help: {}",
+                ending.stdout
+            );
+            assert!(
+                ending.stdout.contains("66 no such row"),
+                "{line} lost its parent's exits: {}",
+                ending.stdout
+            );
+        }
+        let ending = ran_tree("help rows --json", |_| Ok(()));
+        let value: Value = serde_json::from_str(&ending.stdout).expect("help is JSON");
+        assert_eq!(
+            value["name"], "thing rows",
+            "the JSON named the wrong command"
+        );
+    }
+
+    #[test]
+    fn a_word_no_subcommand_answers_to_is_refused_before_the_body() {
+        for line in ["rwos", "rwos --help"] {
+            let ending = ran_tree(line, |_| panic!("{line} started the command"));
+            assert_eq!(ending.exit, Exit::Usage, "{line} wasn't refused");
+            assert!(
+                ending.stderr.contains("did you mean rows?"),
+                "{line} didn't name the nearest: {}",
+                ending.stderr
+            );
+        }
+    }
+
+    #[test]
+    fn the_body_reads_an_alias_as_the_name_it_stands_for() {
+        let ending = ran_tree("row disk", |context| {
+            assert_eq!(context.args, ["rows", "disk"], "the alias reached the body");
+            Ok(())
+        });
+        assert_eq!(ending.exit, Exit::Done, "{}", ending.stderr);
     }
 
     #[test]

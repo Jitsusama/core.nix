@@ -357,6 +357,38 @@ EXIT
   `-q/--quiet`, `-v/--verbose`, `-n/--dry-run`, `-y/--yes`, `--no-input`,
   `-o/--output`, `--format`, `--json`, `--color`.
 
+### Subcommands
+
+A command with subcommands answers help for each alone, at every depth:
+`eero devices --help`, `eero devices -h` and `eero help devices` all give
+`eero devices`'s first line, examples, arguments, options and exits, never
+the whole command's, as `git help commit` and `gh pr view --help` do.
+The kit walks the words down the tree the command declares
+(`Help::subcommand`), so no command walks its own.
+
+- **Resources read as paths**, as kubectl's do ([kubectl][kubectl]): one
+  command per resource, named as its collection, so `eero devices` lists
+  them and `eero devices Pixel` shows one, and what nests under a
+  resource follows its name, as `eero nodes Study devices`. One word per
+  resource rather than a singular and a plural beside it, because two
+  commands for one thing leave a person guessing which to type.
+- **The word after a collection is always a name**, before any
+  subcommand, so a node called `devices` is still `eero nodes devices`.
+- **The singular is an alias**, answered silently and listed once, beside
+  its collection: `devices (or device)`. An old spelling a caller still
+  types is a subcommand left out of help, so it keeps working and the help
+  reads one way.
+- **Actions sit on their resource**, as `eero internet sqm on` and
+  `eero speeds run`, rather than as verbs at the top, because a verb at
+  the top has to name its resource again.
+- **A word the tree doesn't hold** is refused with 64 and the nearest
+  word it does, before the command starts, even under `--help`. A name
+  the command doesn't know is the command's own to refuse, with 66 and
+  the nearest names.
+
+commands-agree's `subcommands` point walks every subcommand of every
+command on the kit and fails one whose help is its parent's.
+
 ## Errors
 
 An error is a conversation, not a trace (clig), and says three things in
@@ -534,6 +566,7 @@ it off, and a new command keeps every point from its first commit.
 [check]: ../tests/rules/commands-agree.py
 [waiting]: ../tests/rules/commands-agree-waiting.nix
 [clig]: https://clig.dev/
+[kubectl]: https://kubernetes.io/docs/reference/kubectl/#resource-types
 [nocolor]: https://no-color.org/
 [force]: https://force-color.org/
 [glossary]: glossary.md

@@ -568,7 +568,9 @@
     edge, no wrap losing its inset or parting a figure from its unit, and none wider than at 80,
     and sets each view it's given, such as disk-guard's bare run and status from a nearly full
     disk's stand-in, at those widths, exiting 0 with no line past the edge and no wrap losing
-    its inset or parting a figure, but the points each still waits on
+    its inset or parting a figure; and each subcommand a command's help lists, at every depth,
+    answers --help, -h and help before it with help of its own, not its parent's, and a word
+    no subcommand answers to exits 64; but the points each still waits on
   '';
   console-font-passes-clippy = ''
     clippy finds nothing in the console's font tool or its tests

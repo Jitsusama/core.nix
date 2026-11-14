@@ -130,11 +130,6 @@ impl View {
         };
         Ok(view)
     }
-
-    /// Whether a word names a view, so the dispatcher can hand it on.
-    pub fn named(word: &str) -> bool {
-        VIEWS.iter().any(|(name, _)| *name == word)
-    }
 }
 
 /// A view as text for a person, laid out in the room its stream has:

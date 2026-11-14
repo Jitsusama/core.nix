@@ -84,7 +84,7 @@ the shell holds every daemon's on ([`src/listeners.rs`][listeners]): the
 model is one record, kind and key `home-network`, under `network`, and a
 watch is answered with it and told every change. The shell holds it from
 its start. While anyone watches it ahead, as the Home Network and
-`eero watch` do while shown, the network is read at the fast pace, and
+a view under `--watch` do while shown, the network is read at the fast pace, and
 an ask `read` asks for it now, at most once every 5 seconds.
 
 After each read the daemon records what moves in
@@ -184,7 +184,14 @@ whether to ink and the exits, 69 when the daemon isn't keeping the
 record, 77 when eero needs signing in and 66 for a name the network
 hasn't got. The ink is still eero's own (`src/views/theme.rs`), set by
 the kit's choice; drawing it with the kit's pen waits.
-`eero watch <view>` ([`src/watch.rs`][watch]) listens on the socket and
+Its words are a tree of resources (`src/commands.rs`), walked by the
+kit (docs/commands.md, Subcommands): `eero devices Pixel` is one of a
+collection, the singular an alias, and `eero internet sqm on` and
+`eero speeds run` act on their resource. The old `eero sqm`,
+`eero speedtest` and `eero watch <view>` still answer, listed nowhere,
+and each translates to the words `views::View` always read, so every
+`eero.<view>/1` is byte for byte what it was.
+A view under `--watch` ([`src/watch.rs`][watch]) listens on the socket and
 draws the view again with each model, when its reading's age next
 reads differently, and on a terminal when its width has changed, which
 it looks at each second. A page fits the terminal it's set in, as
