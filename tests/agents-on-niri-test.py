@@ -1496,6 +1496,11 @@ def shoot() -> Callable[[str], None]:
     return shot
 
 
+def own_title(title: str) -> str:
+    """Give a pi window's title as Super+S's line shows it, without pi's letter leading it."""
+    return title.removeprefix("\u03c0 - ")
+
+
 @pytest.fixture(scope="module")
 def said_over(shell: Shell) -> Iterator[str]:
     """Give the title of a window Super+S's line is said over, with the void standing at the top."""
@@ -1542,10 +1547,10 @@ def test_super_s_line_wraps_what_is_typed_and_sends_it_with_its_window(
         lambda shown: shown["line"]["keys"] and shown["line"]["hears"] == "to the void"
     )
     # Under what's typed, the window it's said over, by its title, once niri has said it to
-    # the shell; the foot names who hears it, in words rather than a stray name (VKCF3Z,
-    # 2026-11-13 [00c78048]).
+    # the shell, without pi's letter, which its mark says; the foot names who hears it, in
+    # words rather than a stray name (VKCF3Z, 2026-11-13 [00c78048]).
     shell.launcher_until(
-        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [said_over]
+        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [own_title(said_over)]
     )
     about = shell.showing()["line"]["about"]
     assert about == "to the void", about
@@ -1866,7 +1871,7 @@ def test_return_on_the_void_in_agents_opens_super_s_line_over_the_window_left(
     )
     # Over the window the launcher went from, which goes with what's said.
     shell.launcher_until(
-        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [said_over]
+        lambda shown: [row["text"] for row in shown["line"]["attached"]] == [own_title(said_over)]
     )
     # Its talks kept: the case before's newest answer.
     standing = shell.showing()["line"]["standing"]
