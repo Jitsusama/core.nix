@@ -338,6 +338,12 @@ impl State {
         self.heard.retain(|heard, _| !heard.starts_with(path));
     }
 
+    /// How many looks have ended since wifid started, heard or failed, so
+    /// whoever asked for one knows when it's done.
+    pub fn looks(&self) -> u32 {
+        self.looks
+    }
+
     /// Takes in that the card of that name has looked for networks.
     pub fn looked(&mut self, card: &str) {
         self.looked.insert(card.to_string());

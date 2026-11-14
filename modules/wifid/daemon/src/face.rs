@@ -468,7 +468,9 @@ impl Connection {
                     self.unworded = true;
                     eprintln!("<4>an act came before any rows, so its answers carry no words");
                 }
-                tokio::spawn(acts::act(asks, id.clone(), said, self.told.clone(), words));
+                let state = self.face.state.clone();
+                let told = self.told.clone();
+                tokio::spawn(acts::act(asks, state, id.clone(), said, told, words));
                 None
             }
             "unwatch" => {

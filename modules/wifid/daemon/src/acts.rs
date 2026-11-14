@@ -21,10 +21,11 @@
 //! shell's foot says them as they are (2026-11-13).
 
 use serde_json::{Value, json};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::face::error;
 use crate::service::{Account, Ask, Refused, Stage, stopping};
+use crate::state::State;
 use crate::words::Words;
 
 /// How far ahead of the shell reading them a join's steps may get.
@@ -34,6 +35,8 @@ const STEPS: usize = 8;
 enum Asking {
     Once(Ask, oneshot::Receiver<Result<(), Refused>>),
     Steps(Ask, mpsc::Receiver<Result<Stage, Refused>>),
+    /// A move to the access point at that address, which may look first.
+    Roam(String),
 }
 
 /// What an `act` ask asks the main loop, or its error's code and why it
@@ -51,6 +54,9 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
             .ok_or(("bad-ask", format!("say {name} as true or false")))
     };
     let act = said.get("act").and_then(Value::as_str).unwrap_or("");
+    if act == "roam" {
+        return Ok(Asking::Roam(address(said)?));
+    }
     if act == "join" {
         let account = match said.get("account") {
             None | Some(Value::Null) => None,
@@ -79,10 +85,6 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
             done,
         },
         "scan" => Ask::Scan { done },
-        "roam" => Ask::Roam {
-            bssid: address(said)?,
-            done,
-        },
         "leave" => Ask::Leave {
             name: network()?,
             done,
@@ -120,6 +122,7 @@ fn address(said: &Value) -> Result<String, (&'static str, String)> {
 /// where there are any.
 pub async fn act(
     asks: mpsc::Sender<Ask>,
+    state: watch::Receiver<State>,
     id: Value,
     said: Value,
     told: mpsc::Sender<String>,
@@ -154,6 +157,12 @@ pub async fn act(
                 Err(why) => refused(&why),
             });
         }
+        Ok(Asking::Roam(bssid)) => {
+            tell(match roam(&asks, state, &bssid).await {
+                Ok(()) => json!({"id": id, "done": true}),
+                Err(why) => refused(&why),
+            });
+        }
         Ok(Asking::Steps(ask, mut steps)) => {
             if asks.send(ask).await.is_err() {
                 tell(refused(&stopping()));
@@ -178,6 +187,31 @@ pub async fn act(
                 }
             }
         }
+    }
+}
+
+/// Moves the card to the access point at `bssid`.
+async fn roam(
+    asks: &mpsc::Sender<Ask>,
+    _state: watch::Receiver<State>,
+    bssid: &str,
+) -> Result<(), Refused> {
+    once(asks, |done| Ask::Roam {
+        bssid: bssid.to_owned(),
+        done,
+    })
+    .await
+}
+
+/// Asks the main loop one thing and waits for its answer.
+async fn once(
+    asks: &mpsc::Sender<Ask>,
+    ask: impl FnOnce(oneshot::Sender<Result<(), Refused>>) -> Ask,
+) -> Result<(), Refused> {
+    let (done, answer) = oneshot::channel();
+    match asks.send(ask(done)).await {
+        Ok(()) => answer.await.unwrap_or_else(|_| Err(stopping())),
+        Err(_) => Err(stopping()),
     }
 }
 
@@ -227,12 +261,13 @@ mod tests {
     ) -> Vec<Value> {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
+        let (_state, watching) = watch::channel(State::default());
         tokio::spawn(async move {
             if let Some(ask) = taken.recv().await {
                 answer(ask);
             }
         });
-        act(asks, json!(7), said, told, words).await;
+        act(asks, watching, json!(7), said, told, words).await;
         let mut heard = Vec::new();
         while let Ok(line) = telling.try_recv() {
             heard.push(serde_json::from_str(&line).expect("JSON"));
@@ -303,6 +338,68 @@ mod tests {
         )
         .await;
         assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+    }
+
+    /// Roams to an access point the main loop hears only once it's looked
+    /// `near_after` times, if ever, each look it's asked for ending where
+    /// `ending`, and says what the connection was told and how many looks
+    /// were asked for.
+    async fn roamed(near_after: Option<u32>, ending: bool) -> (Vec<Value>, u32) {
+        let (asks, mut taken) = mpsc::channel(1);
+        let (told, mut telling) = mpsc::channel(16);
+        let (state, watching) = watch::channel(State::default());
+        let main_loop = tokio::spawn(async move {
+            let mut asked = 0;
+            while let Some(ask) = taken.recv().await {
+                match ask {
+                    Ask::Roam { done, .. } => {
+                        let near = near_after.is_some_and(|after| asked >= after);
+                        let answer = if near {
+                            Ok(())
+                        } else {
+                            Err(Refused::NotNearby)
+                        };
+                        done.send(answer).expect("answered");
+                    }
+                    Ask::Scan { done } => {
+                        asked += 1;
+                        done.send(Ok(())).expect("answered");
+                        if ending {
+                            state.send_modify(State::look_ended);
+                        }
+                    }
+                    other => panic!("asked {other:?}, not to roam or look"),
+                }
+            }
+            asked
+        });
+        let asked = json!({"act": "roam", "bssid": "6c:ae:f6:c1:84:26"});
+        act(asks, watching, json!(7), asked, told, None).await;
+        let looks = main_loop.await.expect("the main loop answered");
+        let mut heard = Vec::new();
+        while let Ok(line) = telling.try_recv() {
+            heard.push(serde_json::from_str(&line).expect("JSON"));
+        }
+        (heard, looks)
+    }
+
+    #[tokio::test]
+    async fn roaming_to_an_access_point_forgotten_looks_for_it_first() {
+        let (heard, looks) = roamed(Some(1), true).await;
+        assert_eq!(heard, vec![json!({"id": 7, "done": true})]);
+        assert_eq!(looks, 1, "one look asked for before roaming again");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_access_point_unheard_after_one_look_is_refused() {
+        for ending in [true, false] {
+            let (heard, looks) = roamed(None, ending).await;
+            assert_eq!(
+                heard[0]["error"]["refused"], "NotNearby",
+                "the look ending: {ending}"
+            );
+            assert_eq!(looks, 1, "one look asked for, the look ending: {ending}");
+        }
     }
 
     #[tokio::test]
