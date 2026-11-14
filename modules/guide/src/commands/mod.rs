@@ -11,18 +11,14 @@ pub mod stick;
 use std::fs::{File, OpenOptions};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
 
 use guide::{Fault, Secret};
+use terminal_kit::{Exit, Failure};
 
-pub fn reported(result: Result<(), Fault>) -> ExitCode {
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(fault) => {
-            eprintln!("{fault}");
-            ExitCode::FAILURE
-        }
-    }
+/// A command's fault as the terminal kit says a failure: ending 1, as the
+/// guide always has, its words the fault's.
+pub fn reported(result: Result<(), Fault>) -> Result<(), Failure> {
+    result.map_err(|fault| Failure::new(Exit::Failed, fault.to_string()))
 }
 
 /// A passphrase, as the next line of standard input.
