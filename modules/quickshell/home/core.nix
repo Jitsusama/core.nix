@@ -63,6 +63,7 @@
   "launcher/KeysHeld.js"
   "launcher/Awaited.js"
   "launcher/RowsPlace.js"
+  "launcher/Reached.js"
   "launcher/Becoming.js"
   "launcher/Recent.js"
   "launcher/Recents.js"

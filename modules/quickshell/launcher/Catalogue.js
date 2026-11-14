@@ -480,15 +480,6 @@ function followed(path, here) {
     return { trail, spot: path[path.length - 1] };
 }
 
-// Whether a walk to a place got there: what's held (`held`, its steps'
-// steady ids) ends on the place, all of `ids` deep. A place can refuse
-// its step, as Passwords does while it's walked from outside, and a row
-// can go between the ask and the walk, so a place asked open is said
-// opened only where it is (Y2YBTS, 2026-11-13).
-function reached(held, ids) {
-    return held.length === ids.length && held.every((step, at) => step === ids[at]);
-}
-
 // One entry: its id, what it is, its words and where it sits as Joel reads
 // it, what it says now, whether only Joel's Return does it, and the words
 // it asks for, for one that takes them.

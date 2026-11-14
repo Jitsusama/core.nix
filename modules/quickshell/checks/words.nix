@@ -182,6 +182,7 @@
     pkgs.runCommandLocal "the-launcher-catalogues-what-it-does" { } ''
       cp ${../../../tests/catalogue.qml} catalogue.qml
       cp ${../launcher/Catalogue.js} Catalogue.js
+      cp ${../launcher/Reached.js} Reached.js
       cp ${commands} commands.json
       export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

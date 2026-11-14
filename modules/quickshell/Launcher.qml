@@ -87,6 +87,7 @@ import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
 import "launcher/RowsPlace.js" as RowsPlace
+import "launcher/Reached.js" as Reached
 
 Scope {
     id: root
@@ -1440,8 +1441,8 @@ Scope {
         if (Catalogue.kindOf(target) === "place") {
             open = true;
             goTo({ trail: ids, spot: "" });
-            // Said opened only where the walk got (Catalogue.js's reached).
-            if (!Catalogue.reached(held.map(step => steadyId(step.row)), ids))
+            // Said opened only where the walk got (launcher/Reached.js).
+            if (!Reached.reached(held.map(step => steadyId(step.row)), ids))
                 return { done: false, said: `${said} didn't open` };
             return { done: true, said: `opened ${said}` };
         }
@@ -1669,7 +1670,7 @@ Scope {
             // A place that refused its step, as Passwords does while it's
             // walked from outside, is `unopened`, which the terminal says in
             // its own words, never that it opened.
-            if (!Catalogue.reached(held.map(step => steadyId(step.row)), ids))
+            if (!Reached.reached(held.map(step => steadyId(step.row)), ids))
                 return { unopened: true, in: names };
             return { done: true, opened: true, in: names };
         }
