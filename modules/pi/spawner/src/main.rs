@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 
-use terminal_kit::{Exit, Failure, Help};
+use terminal_kit::Help;
 
 /// A command's process id, sent once it has started: four bytes.
 const STARTED: u8 = b'p';
@@ -90,19 +90,18 @@ enum Request {
 fn help() -> Help {
     Help::new("pi-spawner", "starts pi's shell commands for it")
         .example("pi-spawner", "takes framed requests on stdin until pi goes")
-        .command("keeps", "says it leaves kept commands running when pi goes")
+        .subcommand(
+            Help::new("keeps", "says it leaves kept commands running when pi goes")
+                .example("pi-spawner keeps", "keeps, where it does"),
+        )
 }
 
 fn main() -> std::process::ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
-        if words == ["keeps"] {
+        // The kit refuses any other word, since keeps is its only one.
+        if context.args.first().is_some_and(|word| word == "keeps") {
             println!("keeps");
             return Ok(());
-        }
-        if let Some(word) = context.args.first() {
-            return Err(Failure::new(Exit::Usage, format!("it takes no {word}"))
-                .try_this("pi-spawner --help"));
         }
         serve();
         Ok(())

@@ -279,6 +279,22 @@ fn says_it_keeps() {
 }
 
 #[test]
+fn refuses_a_word_it_takes_none_of() {
+    let answer = Command::new(env!("CARGO_BIN_EXE_pi-spawner"))
+        .arg("keepsx")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the spawner runs");
+
+    assert_eq!(
+        answer.status.code(),
+        Some(64),
+        "it refuses with a usage exit"
+    );
+    assert!(answer.stdout.is_empty(), "it serves nothing");
+}
+
+#[test]
 #[cfg(target_os = "linux")]
 fn keeps_its_requests_from_other_processes_of_the_same_user() {
     let mut spawner = Spawner::start();
