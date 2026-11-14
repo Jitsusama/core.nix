@@ -114,6 +114,9 @@ let
   # string without a digit is refused at once, since trying every form Qt
   # reads took about 2 ms for each empty one, and the shell sorts by times
   # some items never have (qtdeclarative-dates-without-digits-refused.patch).
+  # JSON.parse keeps each string value once per parse, since the shell
+  # holds its daemons' answers parsed and they say the same words thousands
+  # of times (qtdeclarative-json-strings-kept-once.patch).
   # Its Wayland client focuses the window a sync asks for even while an
   # earlier change is still queued, since a leave and an enter close
   # together left the launcher holding the keys yet never active
@@ -141,6 +144,7 @@ let
             ./qtdeclarative-caches-without-syncing.patch
             ./qtdeclarative-heap-bins-for-each-size.patch
             ./qtdeclarative-dates-without-digits-refused.patch
+            ./qtdeclarative-json-strings-kept-once.patch
           ];
         });
       }

@@ -1,0 +1,62 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Keep each string value once per JSON.parse
+
+JSON.parse made a fresh string for every string value it read, so an
+answer saying the same word thousands of times held thousands of copies
+of it; a key already becomes one identifier shared engine-wide. The
+shell keeps its daemons' answers parsed, and 1,914 emoji records held
+7.6 MB where one string for each word holds 3.8. Each value made in a
+parse is now looked up by its text first and shared if made before.
+The table is no root of the collector's, so every string in it is also
+held in a scoped array until the parse ends: a value dropped by a
+repeated key would otherwise be collected and found again.
+
+---
+--- a/src/qml/jsruntime/qv4jsonobject.cpp
++++ b/src/qml/jsruntime/qv4jsonobject.cpp
+@@ -138,6 +138,8 @@
+     eatSpace();
+ 
+     Scope scope(engine);
++    ScopedArrayObject kept(scope, engine->newArrayObject());
++    keptStrings = kept.getPointer();
+     ScopedValue v(scope);
+     if (!parseValue(v)) {
+ #ifdef PARSER_DEBUG
+@@ -350,7 +352,17 @@
+             return false;
+         DEBUG << "value: string";
+         END;
+-        *val = Value::fromHeapObject(engine->newString(value));
++        // Daemons answer with the same words thousands of times over, and
++        // a fresh string for each held 7.6 MB for 1,914 emoji where one
++        // for each word holds 3.8. Strings made here are flat, never ropes.
++        Heap::String *&made = madeStrings[value];
++        if (made) {
++            *val = Value::fromHeapObject(made);
++        } else {
++            made = engine->newString(value);
++            *val = Value::fromHeapObject(made);
++            keptStrings->arraySet(keptCount++, *val);
++        }
+         return true;
+     }
+     case BeginArray: {
+--- a/src/qml/jsruntime/qv4jsonobject_p.h
++++ b/src/qml/jsruntime/qv4jsonobject_p.h
+@@ -98,6 +98,15 @@
+ 
+     int nestingLevel;
+     QJsonParseError::ParseError lastError;
++
++    // Each string value made so far in this parse, so an equal one later
++    // shares it rather than holding its own copy. Every one is also held in
++    // keptStrings, a scoped array, since the table is no root of the
++    // collector's and a value can be dropped from what's being built, as a
++    // repeated key's earlier value is.
++    QHash<QString, Heap::String *> madeStrings;
++    ArrayObject *keptStrings = nullptr;
++    uint keptCount = 0;
+ };
+ 
+ }
