@@ -79,11 +79,6 @@
     "exits"
     "helps"
   ];
-  code-health = [
-    "kit"
-    "exits"
-    "helps"
-  ];
   collect = [ "helps" ];
   console-font = [
     "kit"
