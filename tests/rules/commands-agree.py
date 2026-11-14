@@ -294,7 +294,7 @@ def ran(program: str, *args: str) -> subprocess.CompletedProcess[str] | None:
         environment = {"HOME": home, "PATH": os.environ.get("PATH", ""), "TERM": "dumb"}
         try:
             # The program is one the check was given built, from Nix.
-            return subprocess.run(  # noqa: S603
+            return subprocess.run(
                 [program, *args],
                 capture_output=True,
                 text=True,
@@ -400,7 +400,7 @@ def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | N
         for step in view.first:
             try:
                 # The program is the one the view runs, built from Nix.
-                done = subprocess.run(  # noqa: S603
+                done = subprocess.run(
                     [program, *(arg.replace(HERE, scratch) for arg in step)],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
@@ -418,7 +418,7 @@ def rendered(program: str, width: int, view: View = HELP) -> tuple[str, int] | N
                 os.close(follower)
                 return "", done.returncode
         # The program is one the check was given built, from Nix.
-        child = subprocess.Popen(  # noqa: S603
+        child = subprocess.Popen(
             [program, *(arg.replace(HERE, scratch) for arg in view.args)],
             stdin=subprocess.DEVNULL,
             stdout=follower,

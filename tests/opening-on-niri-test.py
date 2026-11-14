@@ -398,14 +398,14 @@ def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell)
     shell.process.terminate()
     shell.process.wait(timeout=10)
     # The launcher-say the check gives, as Joel's chords run it.
-    said = [subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"])]  # noqa: S603
+    said = [subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"])]
     time.sleep(PRESSED_AGAIN.total_seconds())
     # The same launcher-say again, the second chord.
-    said.append(subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"]))  # noqa: S603
+    said.append(subprocess.Popen([os.environ["LAUNCHER_SAY"], "toggle"]))
     # Started as Shell.launch does, but not waited on to answer closed, as these chords open it.
     with shell.log.open("ab") as log:
-        shell.process = subprocess.Popen(  # noqa: S603, the check's own shell folder
-            ["qs", "-p", str(shell.folder)],  # noqa: S607, qs from the check's PATH
+        shell.process = subprocess.Popen(
+            ["qs", "-p", str(shell.folder)],
             stdout=log,
             stderr=subprocess.STDOUT,
         )
@@ -415,7 +415,7 @@ def test_chords_said_as_the_shell_restarts_open_it_once_it_listens(shell: Shell)
         assert time.monotonic() < deadline, f"the shell never answered:\n{shell.tail()}"
         time.sleep(launcher_on_niri.POLL)
     # As Shell.restart does, so the next word wtype types is read by its own keymap.
-    subprocess.run(["wtype", "-k", "F24"], check=True)  # noqa: S607
+    subprocess.run(["wtype", "-k", "F24"], check=True)
     assert exits == [0, 0], f"launcher-say gave up on the restarting shell, exiting {exits}"
     shell.launcher_until(lambda shown: shown["open"], RESTARTED)
     time.sleep(STAYS.total_seconds())
@@ -519,9 +519,7 @@ def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Sh
     shutil.rmtree(cache, ignore_errors=True)
     step = shlex.split(os.environ["QUICKSHELL_STARTS_WARM"])
     assert step[:1] == ["run"], f"the activation's step runs nothing: {step}"
-    subprocess.run(  # noqa: S603, the account's own activation step
-        step[1:], check=True, timeout=launcher_on_niri.STARTING.total_seconds()
-    )
+    subprocess.run(step[1:], check=True, timeout=launcher_on_niri.STARTING.total_seconds())
     held = {path.name: path.stat().st_mtime_ns for path in cache.glob("*")}
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))

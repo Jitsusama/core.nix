@@ -61,14 +61,14 @@ class Splash:
         said = self.machine.send_monitor_command(f"screendump {raw} {device}")
         assert raw.exists(), f"QEMU wrote no picture of {device}: {said}"
         # The program and every argument are the test's own, from Nix and this file.
-        subprocess.run([self.magick, raw, path], check=True)  # noqa: S603
+        subprocess.run([self.magick, raw, path], check=True)
         raw.unlink()
         return path
 
     def read(self, path: Path) -> str:
         """Read the words on a picture."""
         # The program and every argument are the test's own, from Nix and this file.
-        return subprocess.check_output([self.tesseract, path, "-"], text=True)  # noqa: S603
+        return subprocess.check_output([self.tesseract, path, "-"], text=True)
 
     def bottom_left(self, path: Path, screen: Screen) -> str:
         """Read the words in a screen's bottom left quarter, enlarged for OCR.
@@ -78,7 +78,7 @@ class Splash:
         crop = f"{screen.width // 2}x{screen.height // 4}+0+{screen.height - screen.height // 4}"
         enlarged = path.with_name(f"{path.stem}-bottom-left.png")
         # The programs and every argument are the test's own, from Nix and this file.
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [
                 self.magick,
                 path,

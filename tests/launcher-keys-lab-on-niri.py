@@ -286,7 +286,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     with launcher_on_niri.running() as shell:
         shell.launcher_until(lambda shown: shown.get("kept"))
         if os.environ.get("LAB_PROFILE"):
-            profiler = subprocess.Popen(  # noqa: S603, the profiler the check gives
+            profiler = subprocess.Popen(
                 [
                     os.environ["QMLPROFILER"],
                     "-a",

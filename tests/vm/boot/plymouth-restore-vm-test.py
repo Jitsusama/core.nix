@@ -286,7 +286,7 @@ def kept(machine: QemuMachine, path: Path, name: str) -> None:
     with (machine.out_dir / f"{name}.png").open("wb") as png:
         # pnmtopng is on the driver's PATH, which its own screenshots use it from, and the
         # shot is the test's own.
-        subprocess.run(["pnmtopng", path], stdout=png, check=True)  # noqa: S603, S607
+        subprocess.run(["pnmtopng", path], stdout=png, check=True)
 
 
 @pytest.fixture(scope="module")

@@ -37,7 +37,7 @@ REFUSED = (
 def overlay(qemu_img: str, backing: str, file: str) -> None:
     """Put an overlay on the stick's image, which the machine writes to in its place."""
     # qemu-img and the image are Nix's own store paths, so nothing untrusted reaches the call.
-    subprocess.run(  # noqa: S603
+    subprocess.run(
         [qemu_img, "create", "-f", "qcow2", "-b", backing, "-F", "raw", file],
         check=True,
     )

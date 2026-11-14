@@ -66,7 +66,7 @@ def address(machine: QemuMachine) -> str:
 def btvirt(values: dict[str, Any]) -> Generator[None]:
     """Run BlueZ's emulator, whose TCP server each machine's controller connects to."""
     # btvirt is a Nix store path, so nothing untrusted reaches the call.
-    emulator = subprocess.Popen(  # noqa: S603
+    emulator = subprocess.Popen(
         [values["btvirt"], f"--tcp={values['port']}"],
         stderr=subprocess.PIPE,
         text=True,
@@ -103,7 +103,7 @@ def overlay(values: dict[str, Any]) -> Generator[str]:
         # qemu-img and the image are Nix's own store paths, so nothing untrusted reaches
         # the call.
         backing = ["-b", values["image"], "-F", "qcow2"]
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [values["qemuImg"], "create", "-f", "qcow2", *backing, disk.name],
             check=True,
         )

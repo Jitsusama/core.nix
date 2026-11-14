@@ -77,7 +77,7 @@ def overlay(values: dict[str, Any]) -> Generator[str]:
         # qemu-img and the image are Nix's own store paths, so nothing untrusted reaches
         # the call.
         backing = ["-b", values["image"], "-F", "qcow2"]
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             [values["qemuImg"], "create", "-f", "qcow2", *backing, disk.name],
             check=True,
         )

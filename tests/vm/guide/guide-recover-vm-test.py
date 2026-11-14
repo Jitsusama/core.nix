@@ -97,7 +97,7 @@ def opens(machine: QemuMachine, keys: str, name: str, pin: str) -> bool:
 def overlay(qemu_img: str, backing: str, kind: str, file: str) -> None:
     """Put an overlay on a store image, which the machine writes to in its place."""
     # qemu-img and the images are Nix's own store paths, so nothing untrusted reaches the call.
-    subprocess.run(  # noqa: S603
+    subprocess.run(
         [qemu_img, "create", "-f", "qcow2", "-b", backing, "-F", kind, file],
         check=True,
     )

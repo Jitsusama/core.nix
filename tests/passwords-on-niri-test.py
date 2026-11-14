@@ -84,7 +84,7 @@ def shell() -> Iterator[Shell]:
     managers.write_text(json.dumps({"managers": [{"name": "1password", "command": stand_in}]}))
     environment = {**os.environ, "PASSWORDS_COPIER": "wl-copy"}
     with (LOGS / "passwords.log").open("w") as log:
-        daemon = subprocess.Popen(  # noqa: S603
+        daemon = subprocess.Popen(
             [os.environ["PASSWORDS"], "daemon", str(SOCKET), str(managers)],
             stdout=log,
             stderr=log,

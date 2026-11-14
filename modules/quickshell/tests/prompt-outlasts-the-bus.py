@@ -27,7 +27,7 @@ def main() -> int:
     connection = open_dbus_connection(bus="SESSION")
     connection.send_and_get_reply(message_bus.RequestName(NAME))
     # busctl's path is the check's own, from Nix.
-    asker = subprocess.Popen(  # noqa: S603
+    asker = subprocess.Popen(
         [busctl, "--user", "call", NAME, "/", NAME, "Ask"],
         env={**os.environ, "SYSTEMD_BUS_TIMEOUT": timeout},
         stdout=subprocess.PIPE,
