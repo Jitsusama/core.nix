@@ -34,8 +34,10 @@ Scope {
     property bool talking: false
     // Whether the held list has the notices and the keys, until it goes with the stack.
     property bool holding: false
-    // What its signing line says on the right, given the notice and how many more wait.
-    property var whenOf: (notification, more) => ""
+    // What its signing line says on the right: how many more wait, given their number, and
+    // then when the notice came.
+    property var countOf: more => ""
+    property var whenOf: notification => ""
 
     // The notice it shows, by id, or -1, and whether it's up.
     readonly property int chosen: Line.chosen(shown, Notices.made, Quiet.on)
@@ -175,7 +177,8 @@ Scope {
                 words: root.notice?.words?.styled ?? ""
                 onLinked: href => root.linked(href)
                 from: sender.name
-                when: root.notice === null ? "" : root.whenOf(root.notice, root.more)
+                count: root.notice === null ? "" : root.countOf(root.more)
+                when: root.notice === null ? "" : root.whenOf(root.notice)
             }
         }
     }
