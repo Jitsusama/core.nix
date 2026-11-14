@@ -987,11 +987,13 @@ mod tests {
             keys,
             [
                 json!("row:agents-top:O"),
+                json!("row:agents-top:O:close"),
                 json!("row:agents:O"),
                 json!(served::SUMMARY),
                 json!("want:agents:O")
             ],
-            "an orchestrator's own question is Joel's, and moves its rows, the summary and its want"
+            "an orchestrator's own question is Joel's, and moves its rows, its Close, which \
+             costs now that a turn waits on him, the summary and its want"
         );
         assert_eq!(
             summary_of(&shown),

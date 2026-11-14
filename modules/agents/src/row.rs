@@ -347,7 +347,10 @@ impl Row {
     /// The act `id` as the launcher's rows hold it: its verb's key and the
     /// ask that does it, which the shell sends back as it is. Close says
     /// too what its ask names and what stays, so the launcher asks it as
-    /// served ("Close 8IDU4E? Its worktree and 1 to-do stay.").
+    /// served ("Close 8IDU4E? Its worktree and 1 to-do stay."), and
+    /// whether it costs enough to ask at all, by the session's turn.
+    /// The launcher's own `costly` on Close is a stopgap this serves in
+    /// place of (modules/keys/language.toml).
     pub fn act(&self, id: &str) -> Value {
         let address = self.key.trim_start_matches("agent:");
         let mut act = json!({"key": format!("verb:agent:{id}"),
@@ -355,6 +358,7 @@ impl Row {
         if id == "close" && !self.leaves.is_empty() {
             act["askedAs"] = json!(address);
             act["leaves"] = json!(self.leaves);
+            act["costly"] = json!(standing::closing_costs(self.state));
         }
         act
     }
@@ -630,7 +634,14 @@ mod tests {
         assert_eq!(
             row.act("close"),
             json!({"key": "verb:agent:close", "ask": {"ask": "close", "address": "P"},
-                "askedAs": "P", "leaves": "its folder and 1 to-do stay."})
+                "askedAs": "P", "leaves": "its folder and 1 to-do stay.", "costly": true})
+        );
+        let mut listening = working();
+        listening["presence"]["busy"] = json!(false);
+        assert_eq!(
+            made(&listening, Place::default(), &given()).act("close")["costly"],
+            json!(false),
+            "one listening closes at once, since :reopen brings it back"
         );
         assert_eq!(
             row.act("pause"),
