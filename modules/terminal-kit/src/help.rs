@@ -2,9 +2,7 @@
 //! levels, examples first, its groups under labels and every name in one
 //! column; and as JSON, `help/1`, the same declaration for the
 //! `commands-agree` check to read (docs/commands.md, Help). The shared
-//! flags are added to every command's options, so none forgets one. A
-//! subcommand declared with `subcommand` has a help of its own, which the kit
-//! finds and answers (tree.rs).
+//! flags are added to every command's options, so none forgets one.
 
 use serde_json::{Value, json};
 
@@ -31,19 +29,6 @@ pub struct Help {
     pub forms: Vec<String>,
     /// The codes it exits with past 0 and 64, in its own words.
     pub exits: Vec<(Exit, String)>,
-    /// The words it takes before any subcommand of its own, as `<name>`,
-    /// each optional; one ending `...` takes every word left.
-    pub arguments: Vec<Entry>,
-    /// Its subcommands that have a help of their own, in the order its
-    /// help lists them.
-    pub subs: Vec<Help>,
-    /// The other names it answers to as a subcommand, an old spelling
-    /// or the singular of a collection: the first is listed beside its
-    /// name, the rest only answered.
-    pub aliases: Vec<String>,
-    /// Whether its parent's help lists it; one that isn't is kept only so
-    /// an old caller's words still work.
-    pub listed: bool,
 }
 
 /// The widest a name's column grows before a long name's words go on the
@@ -76,57 +61,7 @@ impl Help {
             options: Vec::new(),
             forms: Vec::new(),
             exits: Vec::new(),
-            arguments: Vec::new(),
-            subs: Vec::new(),
-            aliases: Vec::new(),
-            listed: true,
         }
-    }
-
-    /// The same, taking a word before its subcommands, as `<name>`, and
-    /// what it is: the word after a collection is always a name, so a
-    /// name never reads as a subcommand.
-    #[must_use]
-    pub fn argument(mut self, name: &str, words: &str) -> Self {
-        self.arguments.push(entry(name, words));
-        self
-    }
-
-    /// The same, with a subcommand that has a help of its own, named by
-    /// its `Help`'s name.
-    #[must_use]
-    pub fn subcommand(mut self, help: Help) -> Self {
-        self.subs.push(help);
-        self
-    }
-
-    /// The same, answering to another name as a subcommand too.
-    #[must_use]
-    pub fn alias(mut self, name: &str) -> Self {
-        self.aliases.push(name.to_owned());
-        self
-    }
-
-    /// The same, left out of its parent's help: it still answers, so an
-    /// old caller's words keep working.
-    #[must_use]
-    pub fn unlisted(mut self) -> Self {
-        self.listed = false;
-        self
-    }
-
-    /// Its subcommands as its help lists them: those declared with
-    /// `command`, then each listed `subcommand`, its first alias beside
-    /// it.
-    pub fn every_command(&self) -> Vec<Entry> {
-        let subs = self.subs.iter().filter(|sub| sub.listed).map(|sub| {
-            let name = match sub.aliases.first() {
-                Some(alias) => format!("{} (or {alias})", sub.name),
-                None => sub.name.clone(),
-            };
-            entry(&name, &sub.about)
-        });
-        self.commands.iter().cloned().chain(subs).collect()
     }
 
     /// The same, with an example to copy and what it shows.
@@ -164,18 +99,11 @@ impl Help {
         self
     }
 
-    /// Its subcommands' names, to suggest the nearest of: an entry's
-    /// first word, and each listed sub's name.
+    /// Its subcommands' names, to suggest the nearest of.
     pub fn command_names(&self) -> Vec<&str> {
         self.commands
             .iter()
-            .filter_map(|entry| entry.name.split_whitespace().next())
-            .chain(
-                self.subs
-                    .iter()
-                    .filter(|sub| sub.listed)
-                    .map(|sub| sub.name.as_str()),
-            )
+            .map(|entry| entry.name.as_str())
             .collect()
     }
 
@@ -234,11 +162,9 @@ impl Help {
     pub fn text(&self, pen: &Pen, room: Room) -> String {
         let measure = room.measure();
         let options = self.every_option();
-        let commands = self.every_command();
-        let groups: [(&str, &[Entry]); 4] = [
+        let groups: [(&str, &[Entry]); 3] = [
             ("Examples", &self.examples),
-            ("Arguments", &self.arguments),
-            ("Commands", &commands),
+            ("Commands", &self.commands),
             ("Options", &options),
         ];
         let column = groups
@@ -326,9 +252,7 @@ impl Help {
             "name": self.name,
             "about": self.about,
             "examples": entries(&self.examples),
-            "arguments": entries(&self.arguments),
-            "commands": entries(&self.every_command()),
-            "aliases": self.aliases,
+            "commands": entries(&self.commands),
             "options": entries(&self.every_option()),
             "formats": formats,
             "exits": exits,

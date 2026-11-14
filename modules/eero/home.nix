@@ -8,7 +8,7 @@
 # network as one record (home-network.json is its shape), and tells each
 # change to whoever watches it on $XDG_RUNTIME_DIR/eero/socket, as the shell
 # does from its start. It reads each part as often as its figures move, the
-# network every 30 seconds while the Home Network or `eero --watch` looks and
+# network every 30 seconds while the Home Network or `eero watch` looks and
 # every five minutes when nothing does (src/schedule.rs
 # says each pace). It keeps 30 days of what moves in history.sqlite beside
 # the session, in the folder `eero sign-in` made, so the unit needs no
@@ -18,7 +18,7 @@
 # everything Joel uses.
 #
 # The views (`eero status`, `eero nodes`, `eero devices` and the rest) read
-# that record, and `eero <view> --watch` draws one again as the daemon tells
+# that record, and `eero watch <view>` draws one again as the daemon tells
 # its socket of each change. eero completes in zsh with the completion it
 # writes itself (completion.nix), which asks eero for the views, and for
 # the nodes, devices and profiles the record holds now.

@@ -9,21 +9,18 @@
 //! (live.rs, views/), and never eero's cloud themselves, so a view is
 //! instant and says how old what it shows is.
 //!
-//! Its words read as a tree of resources, as kubectl's do (commands.rs):
-//!
 //! ```text
-//! eero [view] [--watch] [--json]  a view of the home network, status bare
-//! eero devices [name]             a collection, or one of it by name
-//! eero internet sqm on|off        optimize for conferencing and gaming, or not
-//! eero speeds run                 start the eero's own speed test
+//! eero [view] [--json]            a view of the home network, status bare
+//! eero watch <view> [--json]      the view, drawn again as it changes
 //! eero sign-in <email or phone>   sign in once, typing the code eero sends
+//! eero speedtest                  start the eero's own speed test
+//! eero sqm on|off                 optimize for conferencing and gaming, or not
 //! eero daemon                     keep the home network for the shell
 //! ```
 //!
-//! The views: status, nodes [name], mesh, devices [name], profiles [name],
-//! internet, speeds, firmware, radios, traffic and events. Each collection
-//! answers to its singular too, and the old `eero watch <view>`,
-//! `eero sqm on|off` and `eero speedtest` still work, listed nowhere.
+//! The views: status, nodes, node <location|id>, mesh, devices,
+//! device <name|mac>, internet, speeds, firmware, radio, traffic, profiles,
+//! profile <name|id> and events.
 //!
 //! For the shell: `eero completion zsh` writes zsh's completion, and
 //! `eero names views|nodes|devices|profiles` what it offers of each. Both
@@ -40,7 +37,6 @@ mod acts;
 mod api;
 mod called;
 mod cloud;
-mod commands;
 mod daemon;
 mod day;
 mod desktop;
@@ -70,28 +66,80 @@ use std::io::{self, BufRead, Write};
 use std::process::ExitCode;
 
 use serde_json::{Value, json};
-use terminal_kit::{Context, Exit, Failure, Room, flags};
+use terminal_kit::{Context, Exit, Failure, Help, Room, flags};
 
 use cloud::Cloud;
 
 /// The kinds completion asks the names of.
 const KINDS: [&str; 4] = ["views", "nodes", "devices", "profiles"];
 
-fn main() -> ExitCode {
-    terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), run)
+fn help() -> Help {
+    let mut help = Help::new(
+        "eero",
+        "the home network's eero, read from its cloud at home or away",
+    )
+    .example("eero", "the home network at a glance")
+    .example(
+        "eero node Study",
+        "one node: backhaul, radios, ports, devices",
+    )
+    .example(
+        "eero watch devices",
+        "every device on now, drawn as it changes",
+    )
+    .example(
+        "eero devices --json",
+        "the same for a program, as eero.devices/1",
+    );
+    for (view, words) in views::VIEWS {
+        help = help.command(view, words);
+    }
+    help.command("watch", "a view, drawn again each time it changes")
+        .command("sign-in", "sign in once, typing the code eero sends")
+        .command("speedtest", "start the eero's own speed test")
+        .command("sqm", "optimize for conferencing and gaming: on or off")
+        .command("daemon", "keep the home network for the shell")
+        .command("completion", "zsh's completion, as zsh reads it")
+        .command(
+            "names",
+            "what completion offers of views, nodes and the rest",
+        )
+        .exit(
+            Exit::Failed,
+            "eero refused, or the daemon or a watch stopped",
+        )
+        .exit(Exit::BadInput, "the record isn't one this eero reads")
+        .exit(
+            Exit::NotFound,
+            "no node, device or profile goes by that name",
+        )
+        .exit(
+            Exit::Unavailable,
+            "eero-daemon isn't running, or eero's cloud is down",
+        )
+        .exit(
+            Exit::Refused,
+            "not signed in, or no terminal to type the code in",
+        )
+        .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
 
-/// Runs what the words ask, which the kit has walked down eero's tree
-/// (commands.rs), each old spelling put as the name it stands for.
-fn run(context: &Context) -> Result<(), Failure> {
-    let mut words: Vec<&str> = context.args.iter().map(String::as_str).collect();
-    let watching = words.contains(&"--watch");
-    words.retain(|word| *word != "--watch");
+fn main() -> ExitCode {
+    let help = help();
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
+        run(context, &help)
+    })
+}
+
+fn run(context: &Context, help: &Help) -> Result<(), Failure> {
+    let words: Vec<&str> = context.args.iter().map(String::as_str).collect();
     match words.as_slice() {
+        [] => view(context, &["status"]),
+        [word, ..] if views::View::named(word) => view(context, &words),
         ["watch"] => {
-            Err(Failure::new(Exit::Usage, "name a view to watch").try_this("eero devices --watch"))
+            Err(Failure::new(Exit::Usage, "name a view to watch").try_this("eero watch status"))
         }
-        ["watch", rest @ ..] => watch(context, &view_words(rest)),
+        ["watch", rest @ ..] => watch(context, rest),
         ["completion", "zsh"] => said(context.say(include_str!("completion.zsh"))),
         ["completion", ..] => Err(
             Failure::new(Exit::Usage, "completion is written for zsh alone")
@@ -107,32 +155,19 @@ fn run(context: &Context) -> Result<(), Failure> {
             "sign-in takes the email address or phone number eero knows you by",
         )
         .try_this("eero sign-in you@example.com")),
-        ["speeds", "run"] | ["speedtest"] => speedtest(context),
-        ["sqm", "on"] | ["internet", "sqm", "on"] => conferencing(context, true),
-        ["sqm", "off"] | ["internet", "sqm", "off"] => conferencing(context, false),
-        ["sqm", ..] | ["internet", "sqm", ..] => {
-            Err(Failure::new(Exit::Usage, "sqm takes on or off").try_this("eero internet sqm on"))
+        ["speedtest"] => speedtest(context),
+        ["sqm", "on"] => conferencing(context, true),
+        ["sqm", "off"] => conferencing(context, false),
+        ["sqm", ..] => {
+            Err(Failure::new(Exit::Usage, "sqm takes on or off").try_this("eero sqm on"))
         }
         ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
-        _ if watching => watch(context, &view_words(&words)),
-        _ => view(context, &view_words(&words)),
-    }
-}
-
-/// A view's words as `views::View` reads them: one of a collection named
-/// by its singular, as `eero devices Pixel` is `device Pixel`, and the
-/// status bare.
-fn view_words<'a>(words: &[&'a str]) -> Vec<&'a str> {
-    match words {
-        [] => vec!["status"],
-        ["nodes" | "node", name] => vec!["node", name],
-        ["devices" | "device", name] => vec!["device", name],
-        ["profiles" | "profile", name] => vec!["profile", name],
-        ["node"] => vec!["nodes"],
-        ["device"] => vec!["devices"],
-        ["profile"] => vec!["profiles"],
-        ["radios" | "radio"] => vec!["radio"],
-        _ => words.to_vec(),
+        [word, ..] if help.command_names().contains(word) => Err(Failure::new(
+            Exit::Usage,
+            format!("{word} takes no more words"),
+        )
+        .try_this("eero --help")),
+        [word, ..] => Err(flags::unknown("command", word, &help.command_names())),
     }
 }
 
@@ -162,7 +197,7 @@ fn view(context: &Context, words: &[&str]) -> Result<(), Failure> {
 
 fn watch(context: &Context, words: &[&str]) -> Result<(), Failure> {
     let view = views::View::parse(words)
-        .map_err(|why| Failure::new(Exit::Usage, why).try_this("eero status --watch"))?;
+        .map_err(|why| Failure::new(Exit::Usage, why).try_this("eero watch status"))?;
     let how = watch::Watch {
         view: &view,
         json: context.format().is_json(),
@@ -266,111 +301,4 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
         .collect();
     lines.push(String::new());
     said(context.say(&lines.join("\n")))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{commands, view_words};
-    use terminal_kit::tree;
-
-    /// The words a body is given for a command line, as the kit walks it.
-    fn walked(line: &str) -> Vec<String> {
-        let args: Vec<String> = line.split_whitespace().map(str::to_owned).collect();
-        let help = commands::help();
-        match tree::walk(&help, &args) {
-            Ok(walked) => walked.words,
-            Err(failure) => panic!("eero {line} was refused: {}", failure.what),
-        }
-    }
-
-    /// What a command line comes to as `views::View` reads it, `--watch`
-    /// taken out first as `run` takes it.
-    fn reads_as(line: &str) -> Vec<String> {
-        let words = walked(line);
-        let words: Vec<&str> = words
-            .iter()
-            .map(String::as_str)
-            .filter(|word| *word != "--watch")
-            .collect();
-        view_words(&words).into_iter().map(str::to_owned).collect()
-    }
-
-    #[test]
-    fn every_old_spelling_of_a_view_reads_as_it_always_did() {
-        // An old spelling reaching View::parse with the very words it
-        // always did is what keeps its JSON byte for byte the same.
-        for old in [
-            "status",
-            "nodes",
-            "node Study",
-            "mesh",
-            "devices",
-            "device Pixel",
-            "profiles",
-            "profile Kids",
-            "internet",
-            "speeds",
-            "firmware",
-            "radio",
-            "traffic",
-            "events",
-        ] {
-            let words: Vec<String> = old.split(' ').map(str::to_owned).collect();
-            assert_eq!(reads_as(old), words, "eero {old} no longer reads as it did");
-        }
-    }
-
-    #[test]
-    fn each_new_spelling_reads_as_the_old_one_it_replaces() {
-        for (new, old) in [
-            ("", "status"),
-            ("nodes Study", "node Study"),
-            ("devices Pixel", "device Pixel"),
-            ("profiles Kids", "profile Kids"),
-            ("radios", "radio"),
-            ("nodes Study --watch", "node Study"),
-        ] {
-            let words: Vec<String> = old.split(' ').map(str::to_owned).collect();
-            assert_eq!(
-                reads_as(new),
-                words,
-                "eero {new} doesn't read as eero {old}"
-            );
-        }
-    }
-
-    #[test]
-    fn each_eero_subcommands_help_is_titled_with_its_path() {
-        let help = commands::help();
-        for (line, path) in [
-            ("devices --help", "eero devices"),
-            ("device --help", "eero devices"),
-            ("nodes Study --help", "eero nodes"),
-            ("internet sqm --help", "eero internet sqm"),
-            ("speeds run --help", "eero speeds run"),
-            ("sqm --help", "eero sqm"),
-        ] {
-            let args: Vec<String> = line.split(' ').map(str::to_owned).collect();
-            let shown = tree::walk(&help, &args).map(|walked| walked.shown().name);
-            assert_eq!(
-                shown.ok().as_deref(),
-                Some(path),
-                "eero {line} shows the wrong help"
-            );
-        }
-    }
-
-    #[test]
-    fn a_word_eeros_tree_doesnt_hold_is_refused_as_usage() {
-        let help = commands::help();
-        for line in ["devises", "devices Pixel Study", "internet sqm maybe extra"] {
-            let args: Vec<String> = line.split(' ').map(str::to_owned).collect();
-            let exit = tree::walk(&help, &args).err().map(|failure| failure.exit);
-            assert_eq!(
-                exit,
-                Some(terminal_kit::Exit::Usage),
-                "eero {line} should be refused with 64"
-            );
-        }
-    }
 }

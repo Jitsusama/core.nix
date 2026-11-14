@@ -270,8 +270,7 @@
         # The made-up home network eero's golden pages are drawn from, as
         # the daemon keeps it, read long ago, so each page opens saying the
         # daemon may have stopped; each view is set from it, with a name
-        # for those of one node, device or profile, and two old spellings
-        # beside the new, since old callers keep them.
+        # for those of one node, device or profile.
         eero =
           let
             state = pkgs.runCommand "a-home-network" { } ''
@@ -284,28 +283,23 @@
             [ ]
             [ "nodes" ]
             [
-              "nodes"
-              "Study"
-            ]
-            [
               "node"
               "Study"
             ]
             [ "mesh" ]
             [ "devices" ]
             [
-              "devices"
+              "device"
               "unknown computer 1"
             ]
             [ "internet" ]
             [ "speeds" ]
             [ "firmware" ]
-            [ "radios" ]
             [ "radio" ]
             [ "traffic" ]
             [ "profiles" ]
             [
-              "profiles"
+              "profile"
               "profile 1"
             ]
             [ "events" ]
