@@ -14,6 +14,12 @@ refreshes the resize's action hurried, as a terminal drawing its new size does, 
 meets a refresh paced to the frame unless the commit itself hurries it. A second report, as the
 window's title changes in the middle of the animation, has to say a longer time since it began.
 
+niri starts the resize animation as it handles the commit, so the first report's time since it
+began is how long niri held the layout back, by niri's own clock. That is what is judged. The
+stand-in's own time from its commit to the report is printed beside it, but it also counts the
+time niri waits to be scheduled at all, which on a builder busy with other checks reached 47 ms
+with the refresh hurried.
+
 usage: tells-a-resize-at-once.py
 """
 
@@ -54,13 +60,11 @@ POOL_SIZE = 1280 * 800 * 4 * 2
 WIDTHS = (480, 720)
 WARM_UP = 1
 RESIZES = 6
-# The nested niri's frame, at 60 Hz, half of which a resize's layout has to reach IPC within,
-# at the median: a commit meeting a paced refresh waits for most of a frame.
-FRAME = 1 / 60
-WITHIN = FRAME / 2
-# The most milliseconds a resize's own report may say it began before: it begins as the commit
-# is handled, and its report goes out within a few frames even paced.
-BEGAN_WITHIN = 100.0
+# The nested niri's frame, at 60 Hz, half of which a resize's layout has to go out within of
+# niri handling its commit, at the median: a commit meeting a paced refresh waits for most of a
+# frame.
+FRAME_MS = 1000 / 60
+WITHIN_MS = FRAME_MS / 2
 # How long after a resize's report the title changes, in the middle of its animation (about
 # 230 ms at the theme's spring), and how much longer ago the second report must say it began.
 TITLE_AFTER = 0.06
@@ -292,8 +296,14 @@ def act(action: dict[str, Any]) -> None:
             sys.exit(f"niri refused {action}: {reply}")
 
 
-def resize(window: Window, reports: Reports, id_: int, round_: int, failures: list[str]) -> float:
-    """Resize the stand-in once, note what its reports got wrong, and say how late they came."""
+def resize(
+    window: Window, reports: Reports, id_: int, round_: int, failures: list[str]
+) -> tuple[float, float]:
+    """Resize the stand-in once, note what its reports got wrong, and say how late they came.
+
+    Answers how many milliseconds its layout reached IPC after the stand-in committed, and how
+    many niri said had passed since the resize began, each as of the first report.
+    """
     act({"SetColumnWidth": {"change": {"SetFixed": WIDTHS[round_ % len(WIDTHS)]}}})
     width = window.resized()
     committed = time.monotonic()
@@ -305,11 +315,12 @@ def resize(window: Window, reports: Reports, id_: int, round_: int, failures: li
         f"resize {round_} to {width}: its layout reached IPC {1000 * latency:.1f} ms after its "
         f"commit, saying {moving} began {began} ms ago"
     )
-    if moving != "Resize" or not isinstance(began, int | float) or not 0 <= began < BEGAN_WITHIN:
+    if moving != "Resize" or not isinstance(began, int | float) or began < 0:
         failures.append(
             f"resize {round_}'s layout said {moving!r} began {began!r} ms ago, not a resize that "
             "began as it was committed"
         )
+        began = float("inf")
 
     time.sleep(TITLE_AFTER)
     title = f"stand-in {round_}"
@@ -329,7 +340,7 @@ def resize(window: Window, reports: Reports, id_: int, round_: int, failures: li
             f"least {LONGER_BY_MS:.0f} ms longer ago than {began!r}"
         )
     time.sleep(SETTLES)
-    return latency
+    return 1000 * latency, began
 
 
 def main() -> None:
@@ -343,16 +354,20 @@ def main() -> None:
     for round_ in range(WARM_UP):
         resize(window, reports, id_, round_, [])
     failures: list[str] = []
-    latencies = [
+    timings = [
         resize(window, reports, id_, round_, failures)
         for round_ in range(WARM_UP, WARM_UP + RESIZES)
     ]
-    median = statistics.median(latencies)
-    print(f"a resize's layout reached IPC a median {1000 * median:.1f} ms after its commit")
-    if median > WITHIN:
+    latency = statistics.median(latency for latency, _ in timings)
+    held = statistics.median(began for _, began in timings)
+    print(
+        f"a resize's layout reached IPC a median {latency:.1f} ms after the stand-in's commit, "
+        f"and {held:.2f} ms after niri began the resize"
+    )
+    if held > WITHIN_MS:
         failures.append(
-            f"a resize's layout reached IPC a median {1000 * median:.1f} ms after its commit, "
-            f"more than {1000 * WITHIN:.1f} ms: the commit waited for a paced refresh"
+            f"a resize's layout went out a median {held:.2f} ms after niri began the resize, "
+            f"more than {WITHIN_MS:.1f} ms: the commit waited for a paced refresh"
         )
     if failures:
         sys.exit("\n".join(failures))

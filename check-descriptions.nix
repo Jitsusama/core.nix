@@ -1581,7 +1581,8 @@
   '';
   niri-tells-a-resize-at-once = ''
     the session's niri, nested in the sandbox, reports a window's resize over IPC within half a
-    frame of the commit taking it, saying a resize moves the tile and how long ago it began
+    frame of handling the commit taking it, by niri's own clock, saying a resize moves the tile
+    and how long ago it began
   '';
   a-mac-signs-what-it-builds = ''
     a Mac's Nix is given a line to sign with its own key, made before /etc under the name given
