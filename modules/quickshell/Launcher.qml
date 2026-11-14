@@ -10011,11 +10011,22 @@ Scope {
     // could save. Weighing walks the heap's chunks, and how long it took
     // is said too.
     property bool collectDue: false
+    // How many megabytes the heap may grow by after the closing's
+    // collection before a miss in its free lists starts the collector
+    // again. Qt starts one at any miss while what's held is over twice
+    // what's live, which it always is once the launcher has closed, so
+    // Emoji's openings ran one to six passes, 47 to 204 ms of them, and
+    // this leaves what the opening makes to the next closing's collection
+    // (modules/quickshell/heap/heap.cpp). An opening grows what's held by
+    // about 1 MB, so 32 is ample, and bounds what a launcher left open
+    // long may grow by before it collects.
+    readonly property real openingRoom: 32
     function collectClosed() {
         if (open || opening || parting !== "")
             return;
         const began = KeyTimes.now();
         gc();
+        Heap.leaveRoom(openingRoom);
         const collected = KeyTimes.now();
         const weight = Heap.weigh();
         const took = Math.round(collected - began);
@@ -10397,7 +10408,8 @@ Scope {
     function feltBegin(from, fromChord) {
         if (feltTicking.running)
             feltSaid();
-        feltTicks = Pacing.feltBegun(KeyTimes.now());
+        feltTicks = Pacing.feltBegun(KeyTimes.now(), Heap.collected());
+        feltCollectedFrom = feltTicks.collected;
         feltFrom = from;
         feltFromChord = fromChord;
         feltSpans = [];
@@ -10408,6 +10420,9 @@ Scope {
     // its longest stall says what it ran into (Pacing.stallSpent). Nothing
     // binds to it, so it's added to in place.
     property var feltSpans: []
+    // The collector's count when the opening began, so its line says what
+    // collecting took of it.
+    property real feltCollectedFrom: 0
     function feltSpan(name, from) {
         if (feltTicking.running)
             feltSpans.push({ name, from, to: KeyTimes.now() });
@@ -10437,7 +10452,7 @@ Scope {
     }
     function feltTicked() {
         const now = KeyTimes.now();
-        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace);
+        feltTicks = Pacing.feltTicked(feltTicks, now, feltPace, Heap.collected());
         if (feltTicks.usable >= 0 || !cardUp || now - feltFrom > feltGiveUp)
             feltSaid();
     }
@@ -10457,12 +10472,14 @@ Scope {
             ? `, ${Math.round(stallAt - feltFrom)} ms in: `
                 + Pacing.stallSpent(feltSpans, stallAt, stallAt + feltTicks.stall)
             : "";
+        const collecting = Pacing.collectorSaid(feltTicks.stallCollected,
+            Heap.collected() - feltCollectedFrom);
         feltSpans = [];
         console.info(usable >= 0
             ? `launcher: opening usable ${usable} ms from ${from}, its longest stall ${stalled} ms`
-                + ranInto
+                + ranInto + collecting
             : `launcher: opening not usable ${waited} ms from ${from}, its longest stall`
-                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first"));
+                + ` ${stalled} ms` + ranInto + (cardUp ? "" : ", closed first") + collecting);
     }
     Timer {
         id: feltTicking
