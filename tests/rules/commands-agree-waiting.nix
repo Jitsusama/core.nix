@@ -212,10 +212,6 @@
     "helps"
   ];
   pi-settings = [ "helps" ];
-  pi-spawner = [
-    "kit"
-    "helps"
-  ];
   pi-verbs = [ "helps" ];
   processor-telemetry = [
     "kit"
