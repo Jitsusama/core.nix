@@ -5,7 +5,7 @@ description: >
   networks they share, read from the node. Use when asked what the agents,
   sessions, swarm, teams, quests or machines are doing, what needs Joel,
   what's stuck, where the work is, what a network or a session is up to,
-  or which machine is busy.
+  which machine is busy, or which sessions cost most today.
 ---
 
 # The Mycelium
@@ -35,22 +35,31 @@ A network line has `name`, `short` (what a person types), `title`,
 `machines`, and `counts`: how many of its sessions stand as each of
 `needs-you`, `stuck`, `moving`, `quiet` and `dormant`. A session cell has
 `name` (its address), `title`, `standing` (one of those five), `doing`,
-`machine`, `quest` and `networks`; a machine cell has `state` (such as
-`ready`), `busy` (the share of the last ten seconds some task waited on a
-processor) and `runs` (how many sessions it runs).
+`asks` (what it asks the person, in its own words), `repo`, `machine`,
+`quest`, `networks`, `leads` (the networks it leads) and `usage`:
+`cost_today` in US dollars, `context` as `{used, limit}`, `turns_today`
+and `last_turn`. A machine cell has `state` (such as `ready`), `busy` (a
+percentage from 0 to 100 of the last ten seconds some task waited on a
+processor; past 50 is busy) and `runs` (how many sessions it runs).
 
 ## Answering
 
 Answer in words, short, worst first, the way the person would scan it:
 
 1. What needs him: each cell standing `needs-you`, by its title, with what
-   it's `doing`. Say plainly when nothing does.
+   it `asks` (or, without one, what it's `doing`). Say plainly when
+   nothing does.
 2. What's stuck, the same way.
 3. Where the work is: the networks with the most `moving` sessions, by
    title. The busiest has thickened into what the mycelium's pages call a
    cord.
 4. Only when asked or unusual: dormant counts, quiet networks, a machine
-   that's off or busy past half its time.
+   that's off or busy past 50.
+
+Asked what's costing most, name the few sessions with the highest
+`usage.cost_today`, in dollars, with the networks they work in. A session
+can join several networks, so a sum by network counts it more than once:
+say so if you give one.
 
 A few lines answer "what's it doing?"; one network or one cell gets a few
 more. Name networks by title or short name and cells by title, never by a
