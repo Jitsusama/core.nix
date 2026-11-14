@@ -13,9 +13,14 @@ use super::text::{Line, Role, Run, run, width};
 /// What the terminal kit leaves where it cuts a word or a name.
 const CUT: char = '\u{2026}';
 
-/// The longest a unit after a figure is, as `GB` and `ms` are, as the
-/// terminal kit holds one to its figure.
-const UNIT: usize = 3;
+/// The units eero's pages write after a figure, each held to it. A list
+/// rather than a length, since a short word such as `on` or `of` after a
+/// figure begins the next phrase and may part from it.
+const UNITS: [&str; 29] = [
+    "B", "kB", "MB", "GB", "TB", "b/s", "kb/s", "Mb/s", "Gb/s", "bit/s", "kbit/s", "Mbit/s",
+    "Gbit/s", "Hz", "kHz", "MHz", "GHz", "dB", "dBm", "%", "ns", "\u{b5}s", "ms", "s", "min", "h",
+    "d", "y", "bars",
+];
 
 /// A line as its letters, each with its role and the run it came from.
 type Letters = Vec<(char, Role, usize)>;
@@ -137,9 +142,9 @@ fn figure(word: &str) -> bool {
         .starts_with(|first: char| first.is_ascii_digit())
 }
 
-/// Whether a word is short enough to be the unit of a figure before it.
+/// Whether a word is the unit of a figure before it, with any stop after.
 fn unit(word: &str) -> bool {
-    !figure(word) && width(word.trim_end_matches(|last: char| last.is_ascii_punctuation())) <= UNIT
+    UNITS.contains(&word.trim_end_matches(['.', ',', ';', ':', ')', ']']))
 }
 
 /// A line wrapped to `measure` cells at its words. A break never parts a
@@ -304,6 +309,11 @@ mod tests {
             said(&wrapped(&joined, 34)),
             ["tablet 1 connected to Den eero", "Pro 6 on channel 52."],
             "a figure opens no line apart from the word it numbers"
+        );
+        assert_eq!(
+            said(&wrapped(&joined, 36)),
+            ["tablet 1 connected to Den eero Pro 6", "on channel 52."],
+            "a figure holds to its units alone, not to a short word after it"
         );
     }
 

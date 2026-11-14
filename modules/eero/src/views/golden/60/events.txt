@@ -1,16 +1,16 @@
 home · 5 events · 5 notices · read 1 min 7 s ago
 
 day         at        what happened
-2026-11-07  17:42:35  tablet 1 connected to Den eero
-                      Pro 6 on 5.2 GHz channel 52.
+2026-11-07  17:42:35  tablet 1 connected to Den eero Pro 6
+                      on 5.2 GHz channel 52.
             17:42:35  tablet 1 disconnected from Study eero
                       Pro 6.
-            17:31:41  phone 1 connected to Den eero
-                      Pro 6 on 5.8 GHz channel 149.
+            17:31:41  phone 1 connected to Den eero Pro 6
+                      on 5.8 GHz channel 149.
             17:31:41  phone 1 disconnected from Study eero
                       Pro 6.
-            17:02:11  phone 1 connected to Hall eero
-                      Pro 6 on 5.8 GHz channel 149.
+            17:02:11  phone 1 connected to Hall eero Pro 6
+                      on 5.8 GHz channel 149.
             02:24:13  The nodes updated to v7.17.4-5
                       They were on v7.17.3-9.
 
