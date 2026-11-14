@@ -1675,8 +1675,9 @@ fn keeping_a_base_keeps_what_each_of_its_checks_read_alone() {
 }
 
 #[test]
-fn a_keep_traces_no_vm_test_alone_while_a_gate_runs_beside_it() {
-    // A keep's tracing must never take a builder from a gate.
+fn a_keep_beside_a_gate_traces_its_vm_tests_alone_one_at_a_time() {
+    // On 13 November every live keep began its VM tests as a gate ran, so
+    // traced none, and copying a record forward carried none on.
     let stand_in = traced_alone("vm-alone-gating");
     let lock = stand_in.path("cache/changed-checks/gating.lock");
     fs::create_dir_all(lock.parent().expect("its folder")).expect("made");
@@ -1691,13 +1692,8 @@ fn a_keep_traces_no_vm_test_alone_while_a_gate_runs_beside_it() {
             .expect("JSON");
     assert!(!kept["checks"]["a"].is_null(), "{kept}");
     assert!(
-        kept["checks"]["vm-x"].is_null(),
-        "a VM test was traced while a gate ran: {kept}"
-    );
-    assert!(
-        text(&ran.stderr).contains("a gate runs here, so this keep traces no more VM tests alone"),
-        "{}",
-        text(&ran.stderr)
+        !kept["checks"]["vm-x"].is_null(),
+        "a gate running beside the keep left the VM test untraced: {kept}"
     );
     drop(gate);
 }

@@ -42,9 +42,12 @@
 //! against 110 without, while a merge among the last 300 reached a mean of
 //! 37 traced alone, and every merge the net found broke one reached it.
 //! Traced alone, the 101 took 299 s, six at a time, a median of 11 s each.
-//! A keep traces none while a gate runs beside it on the builder, and one
-//! it didn't trace, as one the record lacks, is evaluated by every gate
-//! the union doesn't spare.
+//! While a gate runs beside it on the builder, a keep traces them one at
+//! a time, and keeps the record after each: keeps that traced none beside
+//! a gate recorded no VM test all evening on 13 November, as a gate nearly
+//! always ran when they reached them, and copying carried none on. One it
+//! didn't trace, as one the record lacks, is evaluated by every gate the
+//! union doesn't spare.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -183,7 +186,7 @@ fn now() -> u64 {
 /// Trace each of the base's ordinary checks alone and keep at `at` what
 /// each one whose derivation is git's read, but the folders' checks.nix it
 /// read only because checks.nix gathers them all; then its VM tests, kept
-/// with them, unless a gate runs beside the keep.
+/// with them after each, one at a time while a gate runs beside the keep.
 fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> Result<(), String> {
     let derivations = checks::read_kept(&checks::keeping(&crate::cache(), base, system))?
         .ok_or("its derivations aren't kept")?;
@@ -213,7 +216,14 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     let each = if ordinary.is_empty() {
         BTreeMap::new()
     } else {
-        traced(&ordinary, &derivations, tracing, &mut evaluation, || false)
+        let room = || !crate::pressure::memory_stalled();
+        traced(
+            &ordinary,
+            &derivations,
+            tracing,
+            &mut evaluation,
+            (room, |_, _| ()),
+        )
     };
     if each.is_empty() && !ordinary.is_empty() {
         noted.evaluated(evaluation);
@@ -224,70 +234,79 @@ fn record(root: &str, base: &str, system: &str, at: &Path, noted: &mut Run) -> R
     let record =
         |each: &BTreeMap<&str, Reads>| written(at, (&tree, traced_whole), &derivations, each);
     record(&each)?;
-    let lock = gating_lock();
-    let stopped = AtomicBool::new(false);
-    let stop = || {
-        let runs = a_gate_runs(&lock);
-        if runs && !stopped.swap(true, Ordering::Relaxed) {
-            eprintln!(
-                "changed-checks: a gate runs here, so this keep traces no more VM tests alone"
-            );
-        }
-        runs
-    };
-    if vm.is_empty() || stop() {
-        noted.evaluated(evaluation);
-        return Ok(());
+    if !vm.is_empty() {
+        let lock = gating_lock();
+        let beside = AtomicBool::new(false);
+        let room = || {
+            if a_gate_runs(&lock) {
+                if !beside.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "changed-checks: a gate runs here, so this keep traces its VM tests \
+                         alone one at a time while it does"
+                    );
+                }
+                return false;
+            }
+            !crate::pressure::memory_stalled()
+        };
+        // Kept after each, so a keep stopped part way loses one trace.
+        let vm_each = Mutex::new(BTreeMap::new());
+        let keep_each = |name, reads: &Reads| {
+            let mut vm_each = vm_each.lock().unwrap_or_else(PoisonError::into_inner);
+            vm_each.insert(name, reads.clone());
+            let mut whole = each.clone();
+            whole.extend(ungathered(vm_each.clone()));
+            if let Err(why) = record(&whole) {
+                eprintln!("changed-checks: couldn't keep what {name} read alone: {why}");
+            }
+        };
+        traced(
+            &vm,
+            &derivations,
+            tracing,
+            &mut evaluation,
+            (room, keep_each),
+        );
     }
-    let vm_each = traced(&vm, &derivations, tracing, &mut evaluation, stop);
     noted.evaluated(evaluation);
-    if vm_each.is_empty() {
-        return Ok(());
-    }
-    each.extend(ungathered(vm_each));
-    record(&each)
+    Ok(())
 }
 
 /// Trace each of `names` alone from `source`'s checks for `system`, its
 /// traces and caches named after `at`, noting what it took as a chunk of
 /// `evaluation`, and give what each whose derivation is `derivations`'
-/// read. Once `stop` says so, none is begun.
+/// read, handing each to `each_read` as it's traced. One is traced at a
+/// time, and more only while `room` says so.
 fn traced<'a>(
     names: &[&'a String],
     derivations: &Derivations,
     (source, system, at): (&str, &str, &Path),
     evaluation: &mut Evaluation,
-    stop: impl Fn() -> bool + Sync,
+    (room, each_read): (impl Fn() -> bool + Sync, impl Fn(&'a str, &Reads) + Sync),
 ) -> BTreeMap<&'a str, Reads> {
     let checks = format!("path:{source}#checks.{system}");
     let strace = reads::strace();
     let numbered: Vec<(usize, &String)> = names.iter().copied().enumerate().collect();
     let began = Instant::now();
-    let traced = checks::each_at_once(
-        &numbered,
-        AT_ONCE,
-        || !crate::pressure::memory_stalled(),
-        |(number, name)| {
-            if stop() {
-                return Ok::<_, String>(None);
-            }
-            let trace = at.with_extension(format!("trace{number}"));
-            let fresh = at.with_extension(format!("cache{number}"));
-            let traced = alone(&checks, &strace, source, &trace, &fresh, name);
-            let _ = fs::remove_file(&trace);
-            let _ = fs::remove_dir_all(&fresh);
-            Ok(traced)
-        },
-    )
+    let traced = checks::each_at_once(&numbered, AT_ONCE, room, |&(number, name)| {
+        let trace = at.with_extension(format!("trace{number}"));
+        let fresh = at.with_extension(format!("cache{number}"));
+        let traced = alone(&checks, &strace, source, &trace, &fresh, name);
+        let _ = fs::remove_file(&trace);
+        let _ = fs::remove_dir_all(&fresh);
+        let reads = traced
+            .and_then(|(said, reads)| (derivations.get(name) == Some(&said)).then_some(reads));
+        if let Some(reads) = &reads {
+            each_read(name.as_str(), reads);
+        }
+        Ok::<_, String>(reads)
+    })
     .unwrap_or_default();
     evaluation.chunk(names.len(), began.elapsed());
     names
         .iter()
         .zip(traced)
-        .filter_map(|(name, traced)| {
-            let (said, reads) = traced?;
-            (derivations.get(*name) == Some(&said)).then_some((name.as_str(), reads))
-        })
+        .filter_map(|(name, reads)| Some((name.as_str(), reads?)))
         .collect()
 }
 
