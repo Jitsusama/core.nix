@@ -178,7 +178,10 @@ fn help() -> Help {
         "bluetooth-again",
         "lets each controller's driver go of it and take it back, through sudo",
     )
-    .exit(Exit::NotFound, "the machine has no Bluetooth controller on PCI")
+    .exit(
+        Exit::NotFound,
+        "the machine has no Bluetooth controller on PCI",
+    )
     .exit(
         Exit::Failed,
         "sudo refused, or a controller didn't come back",
@@ -212,9 +215,7 @@ fn answer(context: &Context, started: &[Controller]) -> io::Result<()> {
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
         if !context.args.is_empty() {
-            return Err(
-                Failure::new(Exit::Usage, "it takes no words").try_this("bluetooth-again")
-            );
+            return Err(Failure::new(Exit::Usage, "it takes no words").try_this("bluetooth-again"));
         }
         let sysfs = Path::new("/sys");
         let mut write = through_sudo(context.can_ask());
@@ -232,8 +233,7 @@ fn main() -> ExitCode {
             started.push(start(sysfs, &controller, &mut write)?);
         }
         answer(context, &started).map_err(|error| {
-            Failure::new(Exit::Failed, "it couldn't say what it started")
-                .because(error.to_string())
+            Failure::new(Exit::Failed, "it couldn't say what it started").because(error.to_string())
         })
     })
 }
@@ -248,10 +248,8 @@ mod tests {
 
     impl Sysfs {
         fn new(name: &str) -> Self {
-            let root = std::env::temp_dir().join(format!(
-                "bluetooth-again-{name}-{}",
-                std::process::id()
-            ));
+            let root =
+                std::env::temp_dir().join(format!("bluetooth-again-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&root);
             fs::create_dir_all(root.join("bus/pci/devices")).expect("a stand-in sysfs");
             fs::create_dir_all(root.join("bus/pci/drivers")).expect("a stand-in sysfs");
@@ -336,15 +334,19 @@ mod tests {
         let sysfs = Sysfs::new("held");
         sysfs.device("0000:00:14.7", "0x0d1100", Some("btintel_pcie"));
         let mut written = Vec::new();
-        let after = start(&sysfs.0, &intel(Some("btintel_pcie")), &mut |path, device| {
-            written.push((path.to_path_buf(), device.to_owned()));
-            match path.file_name().and_then(|name| name.to_str()) {
-                Some("unbind") => sysfs.release(device),
-                Some("bind") => sysfs.hold(device, "btintel_pcie"),
-                _ => {}
-            }
-            Ok(())
-        })
+        let after = start(
+            &sysfs.0,
+            &intel(Some("btintel_pcie")),
+            &mut |path, device| {
+                written.push((path.to_path_buf(), device.to_owned()));
+                match path.file_name().and_then(|name| name.to_str()) {
+                    Some("unbind") => sysfs.release(device),
+                    Some("bind") => sysfs.hold(device, "btintel_pcie"),
+                    _ => {}
+                }
+                Ok(())
+            },
+        )
         .expect("it starts again");
         let driver = sysfs.0.join("bus/pci/drivers/btintel_pcie");
         assert_eq!(
@@ -381,12 +383,16 @@ mod tests {
     fn a_controller_that_doesnt_come_back_fails() {
         let sysfs = Sysfs::new("gone");
         sysfs.device("0000:00:14.7", "0x0d1100", Some("btintel_pcie"));
-        let failure = start(&sysfs.0, &intel(Some("btintel_pcie")), &mut |path, device| {
-            if path.ends_with("unbind") {
-                sysfs.release(device);
-            }
-            Ok(())
-        })
+        let failure = start(
+            &sysfs.0,
+            &intel(Some("btintel_pcie")),
+            &mut |path, device| {
+                if path.ends_with("unbind") {
+                    sysfs.release(device);
+                }
+                Ok(())
+            },
+        )
         .expect_err("no driver took it back");
         assert_eq!(
             (failure.exit, failure.then.as_deref()),
