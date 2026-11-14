@@ -895,24 +895,6 @@ def test_landed_keeps_each_landing_and_what_to_try_waits_in_for_you_until_read(
     assert inside <= 2 * at_top, f"a change made {inside} rows in Landed, {at_top} at Agents' top"
 
 
-# How long the rows weighed must hold still before a count of them is read.
-WEIGHED_STILL = 1.0
-
-
-def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:
-    """Give how many rows the launcher has weighed, once that holds still for WEIGHED_STILL."""
-    deadline = time.monotonic() + timeout
-    last: int = shell.showing()["weighed"]
-    since = time.monotonic()
-    while time.monotonic() - since < WEIGHED_STILL:
-        assert time.monotonic() < deadline, f"the rows weighed never held still: {last}"
-        time.sleep(0.1)
-        now = shell.showing()["weighed"]
-        if now != last:
-            last, since = now, time.monotonic()
-    return last
-
-
 def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shell) -> None:
     """Stepping into Landed weighs the keys of one row of each run saying the same, not each.
 
@@ -922,10 +904,10 @@ def test_a_step_into_landed_weighs_the_keys_of_one_of_each_run_alike(shell: Shel
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
-    before = weighed_held_still(shell)
+    before = launcher_on_niri.weighed_held_still(shell)
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    weighed = weighed_held_still(shell) - before
+    weighed = launcher_on_niri.weighed_held_still(shell) - before
     assert weighed <= WEIGHED_INTO_LANDED, f"a step into Landed weighed {weighed} rows' keys"
     shell.close_launcher()
 
