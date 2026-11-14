@@ -3034,6 +3034,11 @@
     a list the launcher shows keeps its order and its selection as what's in it changes, but an
     answer given only while nothing else was goes once something comes
   '';
+  the-launcher-joins-only-what-changed = ''
+    joining the launcher's rows again makes ready only the rows of sources whose things or
+    stand-ins changed, lets go of a source that's gone, and indexes the rows by key, name and
+    what they're part of in one walk, saying each name plainly once while it's there
+  '';
   the-launcher-closes-only-for-keys-it-held = ''
     the open launcher holds its keys once its card is active and niri says no window has them,
     so an opening right after a closing stays open as the closing's late focus arrives; held, a
