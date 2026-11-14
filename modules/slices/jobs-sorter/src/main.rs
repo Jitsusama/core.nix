@@ -156,6 +156,12 @@ impl Settings {
             .map(|(slice, sends)| (slice.as_str(), sends.as_deref().unwrap_or(&self.jobs)))
             .collect()
     }
+
+    /// The prefixes of every window's scope: the terminals' (`--home`) and
+    /// the sessions' held apart from them (`--weigh`).
+    fn windows(&self) -> Vec<String> {
+        [self.homes.as_slice(), &self.weigh].concat()
+    }
 }
 
 /// One process, as /proc/<pid>/stat describes it.
@@ -1329,7 +1335,11 @@ fn unlimited(read: impl Fn(&str) -> Option<String>) -> bool {
         && read("cpu.max").is_none_or(|value| value.split_whitespace().next() == Some("max"))
 }
 
-/// Every scope under `under` but the terminals'.
+/// Every scope under `under` but the windows': the terminals' and the
+/// sessions' held apart from them. A session's scope is Joel's window
+/// whoever opened it: after the 16:28 reboot on 13 November, agents
+/// reopened the windows from jobs, and 65 holders were moved back there,
+/// leaving 46 window pis at jobs' weight and the OOM killer's first pick.
 #[expect(
     clippy::case_sensitive_file_extension_comparisons,
     reason = "a systemd unit's suffix is case-sensitive"
@@ -1642,7 +1652,7 @@ fn run() -> Result<(), String> {
     let mut holders: Vec<Option<u32>> = vec![None; settings.split.len()];
     let mut weights = weights_from(&settings);
     let mut pass: u32 = 0;
-    let windows = [settings.homes.as_slice(), &settings.weigh].concat();
+    let windows = settings.windows();
     let mut watch = settings.background.as_deref().and_then(watch_marks);
     let following = follow_focus(settings.niri.as_deref(), watch.as_mut());
     let mut ranks = Ranks {
@@ -1679,10 +1689,7 @@ fn run() -> Result<(), String> {
                 }
             }
         }
-        for scope in under
-            .iter()
-            .flat_map(|slice| strays(slice, &settings.homes))
-        {
+        for scope in under.iter().flat_map(|slice| strays(slice, &windows)) {
             return_stray(&scope, &root, &manager, &slice, &mut warned);
         }
         sorter.told.say(&under);
@@ -2011,6 +2018,31 @@ mod tests {
             "/jobs.slice",
         );
         assert_eq!(back.as_deref(), Some("/jobs.slice/jobs.service"));
+    }
+
+    #[test]
+    fn a_sessions_scope_is_never_a_stray_whoever_started_it() {
+        let under = std::env::temp_dir().join(format!("windows-stay-{}", std::process::id()));
+        for scope in [
+            "kitty-1-1.scope",
+            "mycelium-pi-815d37ae.scope",
+            "run-u7.scope",
+        ] {
+            fs::create_dir_all(under.join(scope)).unwrap();
+        }
+        let given = super::settings(
+            "--under agents.slice --weigh mycelium-pi-"
+                .split_whitespace()
+                .map(str::to_owned),
+        )
+        .unwrap();
+        let found = strays(&under, &given.windows());
+        fs::remove_dir_all(&under).unwrap();
+        assert_eq!(
+            found,
+            [under.join("run-u7.scope")],
+            "a window's scope was taken for work that strayed from jobs, or a stray was missed"
+        );
     }
 
     #[test]
