@@ -495,13 +495,17 @@ Scope {
     // catalogue walked then, is kept too (`lately`), so a check that
     // counts too many says which rows they were and when.
     readonly property var tally: ({ rows: 0, looked: 0, lately: [] })
-    readonly property int latelyKept: 16
+    readonly property int tallyKept: 16
     function tallied(fields) {
         tally.rows += 1;
-        const shown = launcher?.open ? "" : " shut";
-        const walked = launcher?.cataloguing ? " walked" : "";
-        tally.lately.push(`${fields?.key ?? fields?.name ?? ""}${shown}${walked}`);
-        if (tally.lately.length > latelyKept)
+        // A collection makes thousands of rows as it opens, so a row made
+        // open and unwalked is kept by its key alone, building no string.
+        const key = fields?.key ?? fields?.name ?? "";
+        const shut = !(launcher?.open ?? false);
+        const walked = launcher?.cataloguing ?? false;
+        tally.lately.push(shut || walked
+            ? `${key}${shut ? " shut" : ""}${walked ? " walked" : ""}` : key);
+        if (tally.lately.length > tallyKept)
             tally.lately.shift();
     }
 
