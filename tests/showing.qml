@@ -110,6 +110,14 @@ QtObject {
             Showing.adds({ title: "drafts", body: "Kept for later." }, folder),
             Showing.adds({ now: true }, folder)
         ], [true, true, true, true]);
+        // Its fold says what the row doesn't too, so a session whose glance has nothing yet
+        // still opens on its quest and machine under z a; a fold of no value doesn't.
+        expect("a fold the row doesn't say opens it", [
+            Showing.adds({ title: "drafts", facts: [],
+                nerd: [{ label: "Quest", value: "QEST-1" }] }, folder),
+            Showing.adds({ title: "drafts", facts: [], nerd: [{ label: "Quest", value: "" }] },
+                folder)
+        ], [true, false]);
         // A drawer borrowed by another row leaves out what that row says.
         const keyboard = { title: "ErgoDox EZ", eyebrow: "on USB \u00b7 keyboard", facts: [
             { label: "Layer", value: "Numb \u00b7 locked" }, { label: "Locks", value: "none" },
