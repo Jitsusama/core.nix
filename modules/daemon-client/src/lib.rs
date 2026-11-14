@@ -85,12 +85,15 @@ impl Client {
         writeln!(self.stream, "{asked}").expect("the ask is sent");
     }
 
-    /// The answer to an ask, passing over what a watch pushed meanwhile.
+    /// The answer to an ask, passing over what a watch pushed meanwhile:
+    /// its changes, and how the sources stand, which a watch is told by
+    /// its own id alone. An unwatch is asked by the watch's id, so taking
+    /// such a push for its answer would go on before the watch had gone.
     pub fn ask(&mut self, asked: &Value) -> Value {
         self.send(asked);
         loop {
             let said = self.heard();
-            if said["id"] == asked["id"] && said.get("changed").is_none() {
+            if said["id"] == asked["id"] && !pushed(&said) {
                 return said;
             }
         }
@@ -127,6 +130,15 @@ impl Client {
             }
         }
     }
+}
+
+/// Whether a line is a watch's push rather than an answer: a change, or
+/// how the sources stand, said with nothing but the watch's id.
+fn pushed(said: &Value) -> bool {
+    let standing = said
+        .as_object()
+        .is_some_and(|line| line.len() == 2 && line.contains_key("sources"));
+    said.get("changed").is_some() || standing
 }
 
 /// Waits until `done`, failing with `why` past the test's patience.
