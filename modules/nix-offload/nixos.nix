@@ -294,6 +294,11 @@ in
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
+      # Where runs say they want a lender to lend, a folder each by its
+      # folder's name (src/there.rs): beside the lender folders rather than
+      # in them, and named apart from them, since a fence gives its
+      # commands those folders only to read, and this one to write.
+      "d /run/offload-wants 0755 ${config.jitsusama.nix-offload.account} - -"
       # Every lender's cloud token, which the lines' account alone may
       # enter besides the lender's, and the files in it take its group.
       (
