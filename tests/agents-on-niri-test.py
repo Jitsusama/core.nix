@@ -924,7 +924,8 @@ def test_landed_read_again_with_nothing_changed_looks_at_no_landing(shell: Shell
     before = landings_looked(shell)
     shell.step_in()
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
-    shell.step_in()
+    # Return would read it, as it goes nowhere; the right arrow steps into its verbs alone.
+    shell.step_in("right")
     shell.launcher_until(lambda shown: "Say What You Make of It" in shown["rows"])
     launcher_on_niri.weighed_held_still(shell)
     looked = landings_looked(shell) - before
