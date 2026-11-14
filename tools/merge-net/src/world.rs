@@ -766,27 +766,30 @@ impl World for Real {
         crate::quarantine::subtests_of(&self.listed_at(head), test)
     }
 
-    // The newest merge to change the test's entry whose list lacks it took
-    // it off, and the first parent's diff is the merge's own.
-    fn unlisted_by(&self, test: &str, head: &str) -> Option<u64> {
-        let entry = format!("-S\"test\": \"{test}\"");
+    // Main's own changes to the list are walked newest first, as the first
+    // parent's diff is a merge's own, back to the newest whose list still
+    // held what fails; the change after it took that off. Asking only for
+    // a merge whose list lacked the whole test missed an owner taking off
+    // their own entry while another's stayed, or a subtest of their entry.
+    fn unlisted_by(&self, test: &str, failing: &BTreeSet<String>, head: &str) -> Option<u64> {
         let moved = self
             .git(&[
                 "log",
                 "--first-parent",
                 "--format=%H",
-                &entry,
                 head,
                 "--",
                 QUARANTINE,
             ])
             .ok()?;
-        let commit = moved.lines().find(|commit| {
-            !tests_in(&self.listed_at(commit))
-                .iter()
-                .any(|kept| kept == test)
-        })?;
-        crate::watch::pr_of(&self.subject(commit))
+        let mut after = None;
+        for commit in moved.lines() {
+            if crate::quarantine::covers(&self.listed_at(commit), test, failing) {
+                return after.and_then(|took: &str| crate::watch::pr_of(&self.subject(took)));
+            }
+            after = Some(commit);
+        }
+        None
     }
 
     fn revert(
@@ -895,18 +898,6 @@ impl World for Real {
     fn wait(&self, seconds: u64) {
         std::thread::sleep(Duration::from_secs(seconds));
     }
-}
-
-/// The tests a quarantine list names.
-pub fn tests_in(list: &Value) -> Vec<String> {
-    list.as_array()
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(|entry| entry["test"].as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 /// A revert's description, in the four sections every PR has.
@@ -1455,11 +1446,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_quarantine_list_names_its_tests() {
-        let list = json!([{ "test": "vm-a", "reason": "r" }, { "test": "vm-b" }]);
-        assert_eq!(tests_in(&list), ["vm-a", "vm-b"]);
-        assert_eq!(tests_in(&json!({})), [] as [std::string::String; 0]);
+    /// The tests a quarantine list names, in its order.
+    fn tests_in(list: &Value) -> Vec<String> {
+        list.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry["test"].as_str().map(str::to_owned))
+            .collect()
     }
 
     #[test]
@@ -1639,6 +1632,62 @@ mod tests {
             git_in(&root.join("origin.git"), &["rev-parse", branch]),
             at,
             "what was cut again wasn't pushed"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_relisting_is_owned_by_the_merge_that_took_off_what_fails_now() {
+        let (net, root) = a_net(
+            "unlisted",
+            &json!([
+                {"test": "vm-a", "owner_pr": 1, "subtests": ["test_x"]},
+                {"test": "vm-a", "owner_pr": 2, "subtests": ["test_y", "test_z"]},
+            ]),
+        );
+        let main = root.join("main");
+        let merged = |list: &Value, pr: u64| {
+            listed(&main, list);
+            let subject = format!("Merge pull request #{pr} from someone/fix");
+            git_in(&main, &["commit", "--amend", "-qm", &subject]);
+            git_in(&main, &["push", "-q", "origin", "HEAD:main"]);
+            net.git(&["fetch", "-q", "origin"]).unwrap();
+            git_in(&main, &["rev-parse", "HEAD"])
+        };
+        let second = json!({"test": "vm-a", "owner_pr": 2, "subtests": ["test_y", "test_z"]});
+        merged(&json!([second]), 11);
+        merged(&json!([second, {"test": "vm-b"}]), 12);
+        let head = merged(
+            &json!([
+                {"test": "vm-a", "owner_pr": 2, "subtests": ["test_y"]},
+                {"test": "vm-b"},
+            ]),
+            13,
+        );
+        let by = |failing: &str| {
+            let failing: BTreeSet<String> = failing.split_whitespace().map(str::to_owned).collect();
+            net.unlisted_by("vm-a", &failing, &head)
+        };
+        assert_eq!(
+            by("test_x"),
+            Some(11),
+            "#1 taking off its own entry, while #2's stays, wasn't found"
+        );
+        assert_eq!(
+            by("test_z"),
+            Some(13),
+            "a subtest taken off an entry that stays wasn't found"
+        );
+        assert_eq!(
+            by("test_y"),
+            None,
+            "test_y is held still, so nobody took it off"
+        );
+        let head = merged(&json!([{"test": "vm-b"}]), 14);
+        assert_eq!(
+            net.unlisted_by("vm-a", &BTreeSet::new(), &head),
+            Some(14),
+            "a test failing whole wasn't owned by the merge that took it off"
         );
         fs::remove_dir_all(&root).unwrap();
     }
