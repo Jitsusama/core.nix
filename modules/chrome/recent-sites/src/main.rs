@@ -16,6 +16,8 @@
 //! what Chrome has open is held to too (../session, which the programs
 //! daemon reads Chrome's open pages with).
 //!
+//! The older form, a profile's path bare after either, still reads, unlisted.
+//!
 //! `chrome-recent-sites downloads [--profile PATH]` prints the files Chrome
 //! downloaded that are still where it saved them, newest first, at most
 //! nine (downloads.rs): each one's path, its size in bytes, when it
@@ -131,13 +133,25 @@ fn from_history<T>(
     read
 }
 
-fn help() -> Help {
+/// The help the older form, a profile's path given bare, is read under: no
+/// subcommands, so the kit leaves the path to `asked`.
+fn older_help() -> Help {
     Help::new("chrome-recent-sites", "the sites Chrome visited lately")
         .example(
             "chrome-recent-sites",
             "what Chrome's Default profile visited",
         )
         .example("chrome-recent-sites downloads", "what it downloaded")
+        .option("--profile PATH", "a profile's folder; Default's by default")
+        .exit(Exit::Failed, "its history couldn't be read, or said")
+        .exit(
+            Exit::Config,
+            "no --profile given, and no HOME to find one in",
+        )
+}
+
+fn help() -> Help {
+    older_help()
         .subcommand(
             reads("sites", "a site a line, newest first, nine at most")
                 .alias("site")
@@ -152,12 +166,12 @@ fn help() -> Help {
                 .alias("download")
                 .example("chrome-recent-sites downloads", "what it downloaded"),
         )
-        .option("--profile PATH", "a profile's folder; Default's by default")
-        .exit(Exit::Failed, "its history couldn't be read, or said")
-        .exit(
-            Exit::Config,
-            "no --profile given, and no HOME to find one in",
-        )
+}
+
+/// Whether a word is a profile's path, as the older form gave one bare: a
+/// word with a `/` in it, which no subcommand has.
+fn is_path(word: &str) -> bool {
+    word.contains('/')
 }
 
 /// A subcommand that reads a profile's history.
@@ -192,6 +206,12 @@ fn asked(args: &[String]) -> Result<(bool, Option<PathBuf>), Failure> {
     match words.as_slice() {
         [] | ["sites" | "site"] => Ok((false, profile)),
         ["downloads" | "download"] => Ok((true, profile)),
+        // The older form, before --profile: the path bare, after downloads
+        // or alone.
+        [path] if profile.is_none() && is_path(path) => Ok((false, Some(PathBuf::from(path)))),
+        ["downloads", path] if profile.is_none() && is_path(path) => {
+            Ok((true, Some(PathBuf::from(path))))
+        }
         _ => Err(
             Failure::new(Exit::Usage, "a profile is named with --profile")
                 .because("sites and downloads take no other words")
@@ -201,7 +221,9 @@ fn asked(args: &[String]) -> Result<(bool, Option<PathBuf>), Failure> {
 }
 
 fn main() -> ExitCode {
-    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+    let older = env::args().skip(1).any(|word| is_path(&word));
+    let help = if older { older_help() } else { help() };
+    terminal_kit::main(&help, env!("CARGO_PKG_VERSION"), |context| {
         let (downloaded, profile) = asked(&context.args)?;
         let profile = match profile {
             Some(profile) => profile,
@@ -425,8 +447,30 @@ mod tests {
     }
 
     #[test]
+    fn the_older_bare_path_asks_as_profile_does() {
+        for (older, new) in [
+            ("/p/Default", "--profile /p/Default"),
+            ("downloads /p/Default", "downloads --profile /p/Default"),
+        ] {
+            assert_eq!(
+                asked(&words(older)).ok(),
+                asked(&words(new)).ok(),
+                "{older:?} should ask what {new:?} does"
+            );
+        }
+        assert!(is_path("/p/Default"), "a path is told from a word");
+        assert!(!is_path("downloads"), "a subcommand is no path");
+    }
+
+    #[test]
     fn a_stray_word_or_a_missing_folder_is_asked_wrongly() {
-        for line in ["sites p", "downloads p", "--profile"] {
+        for line in [
+            "sites p",
+            "downloads p",
+            "--profile",
+            "/a /b",
+            "--profile /a /b",
+        ] {
             assert_eq!(
                 asked(&words(line)).err().map(|failure| failure.exit),
                 Some(Exit::Usage),
