@@ -245,6 +245,9 @@ pub trait World: Sync {
     fn keep_runs(&self, commit: &str, check: &str);
     /// Whether runs of `check` at `commit` are dropped now.
     fn dropped(&self, commit: &str, check: &str) -> bool;
+    /// Whether another build of the net is installed, so this one starts
+    /// no more runs and leaves what's left to that one.
+    fn superseded(&self) -> bool;
 }
 
 /// How a test ended at a commit, over every run of it there.
@@ -550,7 +553,12 @@ pub fn attempt_all(
                         break;
                     };
                     let check = &checks[index];
-                    if world.held().is_some() {
+                    // A net another build replaced starts nothing more, so
+                    // it ends once the runs under way have, and the new
+                    // build runs what's left. On 14 November #4402 was
+                    // installed at 13:34, but the net took it up at 15:00,
+                    // once a round begun at 13:27 had ended.
+                    if world.held().is_some() || world.superseded() {
                         continue;
                     }
                     let outcome = attempt(world, state, commit, check);
@@ -2167,7 +2175,7 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::sync::Condvar;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
 
     /// The exit the stand-in gives for a run stopped before it ended.
@@ -2244,6 +2252,8 @@ mod tests {
         /// The failing subtests each owner was asked for by.
         unlisted_for: Mutex<Vec<BTreeSet<String>>>,
         held: Option<String>,
+        /// Whether another build of the net is installed.
+        superseded: AtomicBool,
         /// A pause that comes while a revert's checks run.
         paused_while_reverting: Option<String>,
         paused: Mutex<Option<String>>,
@@ -2549,6 +2559,9 @@ mod tests {
         fn dropped(&self, commit: &str, check: &str) -> bool {
             let run = (commit.to_owned(), check.to_owned());
             self.dropped.lock().unwrap().contains(&run)
+        }
+        fn superseded(&self) -> bool {
+            self.superseded.load(Ordering::Relaxed)
         }
     }
 
@@ -4929,6 +4942,38 @@ mod tests {
         assert!(
             held.contains("a reboot"),
             "a held net didn't say so where cadence reads it: {held}"
+        );
+    }
+
+    #[test]
+    fn a_net_another_build_replaced_starts_no_more_runs_and_leaves_its_head_to_that_one() {
+        let state = state("superseded");
+        let world = Stand {
+            head: "h".into(),
+            changed: changed("vm-a vm-b"),
+            superseded: AtomicBool::new(true),
+            ..Stand::default()
+        };
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Unfinished("h".into()),
+            "a replaced net's round should end unfinished, its tests unsent"
+        );
+        assert!(
+            world.built().is_empty(),
+            "a replaced net started runs the new build would start again: {:?}",
+            world.built()
+        );
+        assert_eq!(
+            state.under_way().as_deref(),
+            Some("h"),
+            "the new build should take up the head the round began on"
+        );
+        world.superseded.store(false, Ordering::Relaxed);
+        assert_eq!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into()),
+            "the build that follows should run the round's tests at its head"
         );
     }
 }

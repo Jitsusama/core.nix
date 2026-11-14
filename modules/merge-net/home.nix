@@ -44,8 +44,9 @@ in
   home.packages = [ net ];
 
   # A switch leaves the running net be, since stopping it mid-round loses
-  # every run in flight; it follows the build installed and ends between
-  # rounds once that is another, for Restart to start the new one.
+  # every run in flight; it follows the build installed and, once that is
+  # another, starts no more runs and ends when those under way have, for
+  # Restart to start the new one.
   systemd.user.services.merge-net = {
     Unit = {
       Description = "Runs the VM tests each merge to core's main changed, and reverts a merge that breaks one";
