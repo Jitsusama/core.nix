@@ -40,11 +40,67 @@ fn collection(
         .exit(Exit::NotFound, &format!("no {singular} goes by that name"))
 }
 
+/// What one node or profile holds, read as `eero nodes Study devices`:
+/// a view of its own, under the name before it.
+fn held(name: &str, about: &str, examples: &[(&str, &str)]) -> Help {
+    view(name, about, examples).exit(Exit::NotFound, "nothing goes by that name")
+}
+
+/// What a node holds: its devices and its radios.
+fn on_a_node() -> [Help; 2] {
+    [
+        held(
+            "devices",
+            "the devices on this node now",
+            &[
+                (
+                    "eero nodes Study devices",
+                    "each device on the study's node",
+                ),
+                (
+                    "eero nodes Study devices --json",
+                    "the same as eero.devices/1",
+                ),
+            ],
+        )
+        .alias("device"),
+        held(
+            "radios",
+            "this node's radios, band by band",
+            &[
+                ("eero nodes Study radios", "each radio on the study's node"),
+                ("eero nodes Study radios --json", "the same as eero.radio/1"),
+            ],
+        )
+        .alias("radio"),
+    ]
+}
+
+/// What a profile holds: its devices.
+fn in_a_profile() -> Help {
+    held(
+        "devices",
+        "the devices in this profile, on now or not",
+        &[
+            ("eero profiles Kids devices", "each device in Kids"),
+            (
+                "eero profiles Kids devices --json",
+                "the same as eero.devices/1",
+            ),
+        ],
+    )
+    .alias("device")
+}
+
 fn sqm() -> Help {
     Help::new("sqm", "optimize for conferencing and gaming, or not")
+        .example("eero internet sqm", "whether it's on now")
         .example("eero internet sqm on", "puts calls and games first")
         .example("eero internet sqm off", "treats all traffic alike")
-        .argument("on|off", "turn it on or off, on every network")
+        .argument(
+            "on|off",
+            "turn it on or off, on every network; bare, say which",
+        )
         .exit(Exit::Failed, "eero refused the change")
         .exit(Exit::Unavailable, "eero's cloud isn't answering")
         .exit(Exit::Refused, "not signed in")
@@ -110,6 +166,7 @@ pub fn help() -> Help {
 /// The home network's resources, as its help lists them, those it has
 /// many of first.
 fn resources() -> Vec<Help> {
+    let [devices, radios] = on_a_node();
     vec![
         view(
             "status",
@@ -130,9 +187,11 @@ fn resources() -> Vec<Help> {
                     "every node: state, backhaul, devices, firmware",
                 ),
                 ("eero nodes Study", "the node in the study, every figure"),
-                ("eero nodes Study --watch", "the same, drawn as it changes"),
+                ("eero nodes Study devices", "the devices on it now"),
             ],
-        ),
+        )
+        .subcommand(devices)
+        .subcommand(radios),
         view(
             "mesh",
             "the nodes as a tree from the gateway",
@@ -160,8 +219,10 @@ fn resources() -> Vec<Help> {
             &[
                 ("eero profiles", "each profile and what it blocks"),
                 ("eero profiles Kids", "one profile, every figure eero has"),
+                ("eero profiles Kids devices", "the devices in it"),
             ],
-        ),
+        )
+        .subcommand(in_a_profile()),
     ]
 }
 
@@ -245,8 +306,9 @@ fn more() -> Vec<Help> {
             .argument("zsh", "the shell it's written for"),
         Help::new("names", "what completion offers of a kind")
             .example("eero names devices", "each device's name, as zsh reads it")
-            .example("eero names nodes", "each node's location")
-            .argument("views|nodes|devices|profiles", "the kind")
+            .example("eero names next nodes Study", "what may follow those words")
+            .argument("views|nodes|devices|profiles|next", "the kind")
+            .argument("<words>...", "for next, the words typed so far")
             .exit(Exit::Unavailable, "eero-daemon isn't running"),
     ]
 }

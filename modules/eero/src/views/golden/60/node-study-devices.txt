@@ -1,0 +1,19 @@
+home · Study · 9 devices on now · read 1 min 7 s ago
+
+node   device              band      signal         rx
+Study  laptop computer 1   5 GHz    −75 dBm   432 Mb/s
+       generic 4           5 GHz    −20 dBm   433 Mb/s
+       audio 1             2.4 GHz  −29 dBm  48.0 Mb/s
+       media streamer 1    5 GHz    −43 dBm   325 Mb/s
+       unknown computer 1  5 GHz    −57 dBm  1.20 Gb/s
+       thermostat 1        5 GHz    −65 dBm   390 Mb/s
+       game console 1      2.4 GHz  −66 dBm  72.2 Mb/s
+       generic 1           5 GHz    −68 dBm   360 Mb/s
+       phone 1             5 GHz    −69 dBm  48.0 Mb/s
+
+3 devices not on now
+
+node   device              band     last on
+Study  game console 2      5 GHz    1 h 17 min ago
+Study  unknown computer 2  5 GHz    12 h 51 min ago
+Study  02:00:00:00:00:20   2.4 GHz  4 d ago

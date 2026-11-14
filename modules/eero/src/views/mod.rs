@@ -63,6 +63,10 @@ pub enum View {
     Status,
     Nodes,
     Node(String),
+    /// The devices on now on one node.
+    NodeDevices(String),
+    /// One node's radios.
+    NodeRadios(String),
     Mesh,
     Devices,
     Device(String),
@@ -73,6 +77,10 @@ pub enum View {
     Traffic,
     Profiles,
     Profile(String),
+    /// The devices in one profile, on now or not.
+    ProfileDevices(String),
+    /// Whether eero optimizes for conferencing and gaming.
+    Sqm,
     Events,
 }
 
@@ -108,6 +116,8 @@ impl View {
         let view = match words {
             ["status"] => Self::Status,
             ["nodes"] => Self::Nodes,
+            ["node", name, "devices"] => Self::NodeDevices((*name).to_owned()),
+            ["node", name, "radios"] => Self::NodeRadios((*name).to_owned()),
             ["node", rest @ ..] if rest.len() <= 1 => {
                 one("node", "location|id", rest.first(), Self::Node)?
             }
@@ -117,11 +127,13 @@ impl View {
                 one("device", "name|mac", rest.first(), Self::Device)?
             }
             ["internet"] => Self::Internet,
+            ["internet", "sqm"] => Self::Sqm,
             ["speeds"] => Self::Speeds,
             ["firmware"] => Self::Firmware,
             ["radio"] => Self::Radio,
             ["traffic"] => Self::Traffic,
             ["profiles"] => Self::Profiles,
+            ["profile", name, "devices"] => Self::ProfileDevices((*name).to_owned()),
             ["profile", rest @ ..] if rest.len() <= 1 => {
                 one("profile", "name|id", rest.first(), Self::Profile)?
             }
@@ -145,9 +157,17 @@ pub fn text(
         View::Status => home::page(model, clock),
         View::Nodes => nodes::all(model, clock),
         View::Node(name) => nodes::one(model, find_node(model, name)?, clock, ink),
+        View::NodeDevices(name) => {
+            let node = find_node(model, name)?;
+            devices::all(&on_one_node(model, node), clock, Some(node_name(node)))
+        }
+        View::NodeRadios(name) => {
+            let node = find_node(model, name)?;
+            radio::page(&on_one_node(model, node), clock, ink, Some(node_name(node)))
+        }
         View::Mesh => mesh::page(model, clock),
-        View::Radio => radio::page(model, clock, ink),
-        View::Devices => devices::all(model, clock),
+        View::Radio => radio::page(model, clock, ink, None),
+        View::Devices => devices::all(model, clock, None),
         View::Device(name) => devices::one(model, find_device(model, name, Some(clock))?, clock),
         View::Speeds => speeds::page(model, clock, ink),
         View::Internet => internet::page(model, clock, ink),
@@ -155,6 +175,14 @@ pub fn text(
         View::Traffic => traffic::page(model, clock, ink),
         View::Profiles => profiles::all(model, clock),
         View::Profile(name) => profiles::one(model, find_profile(model, name)?, clock, ink),
+        View::ProfileDevices(name) => {
+            let profile = find_profile(model, name)?;
+            let within = in_one_profile(model, profile);
+            let mut page = devices::all(&within, clock, Some(profile_name(profile)));
+            unseen(&mut page, &within, profile);
+            page
+        }
+        View::Sqm => internet::sqm(model, clock),
         View::Events => events::page(model, clock),
     };
     Ok(ink.page(page, room))
@@ -167,6 +195,8 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Status => home::json(model),
         View::Nodes => nodes::all_json(model),
         View::Node(name) => nodes::one_json(model, find_node(model, name)?),
+        View::NodeDevices(name) => devices::all_json(&on_one_node(model, find_node(model, name)?)),
+        View::NodeRadios(name) => radio::json(&on_one_node(model, find_node(model, name)?)),
         View::Mesh => mesh::json(model),
         View::Radio => radio::json(model),
         View::Devices => devices::all_json(model),
@@ -177,7 +207,105 @@ pub fn json(view: &View, model: &HomeNetwork) -> Result<String, String> {
         View::Traffic => traffic::json(model),
         View::Profiles => profiles::all_json(model),
         View::Profile(name) => profiles::one_json(model, find_profile(model, name)?),
+        View::ProfileDevices(name) => {
+            devices::all_json(&in_one_profile(model, find_profile(model, name)?))
+        }
+        View::Sqm => internet::sqm_json(model),
         View::Events => events::json(model),
+    }
+}
+
+/// The record as one node holds it: that node alone, and the devices on
+/// it now and last on it, so a view of the whole reads as one of the node
+/// and its JSON keeps the whole's schema.
+fn on_one_node(model: &HomeNetwork, node: &Node) -> HomeNetwork {
+    let on = |id: Option<&str>| id == Some(node.id.as_str());
+    HomeNetwork {
+        nodes: vec![node.clone()],
+        devices: model
+            .devices
+            .iter()
+            .filter(|device| on(device.node.as_deref()))
+            .cloned()
+            .collect(),
+        devices_off: model
+            .devices_off
+            .iter()
+            .filter(|device| on(device.node.as_deref()))
+            .cloned()
+            .collect(),
+        ..model.clone()
+    }
+}
+
+/// The record as one profile holds it: the devices in it, on now or not,
+/// under each node as the whole has them.
+fn in_one_profile(model: &HomeNetwork, profile: &Profile) -> HomeNetwork {
+    let held = |mac: &str| {
+        profile
+            .devices
+            .iter()
+            .any(|member| member.eq_ignore_ascii_case(mac))
+    };
+    HomeNetwork {
+        devices: model
+            .devices
+            .iter()
+            .filter(|device| held(&device.mac))
+            .cloned()
+            .collect(),
+        devices_off: model
+            .devices_off
+            .iter()
+            .filter(|device| held(&device.mac))
+            .cloned()
+            .collect(),
+        ..model.clone()
+    }
+}
+
+/// A profile holds devices eero hasn't seen lately, which the record
+/// keeps neither as on now nor as off, so its devices page counts them
+/// and says where the profile names them, rather than reading as if it
+/// held none.
+fn unseen(page: &mut Page, within: &HomeNetwork, profile: &Profile) {
+    let kept = |mac: &String| {
+        within
+            .devices
+            .iter()
+            .map(|device| &device.mac)
+            .chain(within.devices_off.iter().map(|device| &device.mac))
+            .any(|known| known.eq_ignore_ascii_case(mac))
+    };
+    let unseen = profile.devices.iter().filter(|mac| !kept(mac)).count();
+    if unseen == 0 {
+        return;
+    }
+    let name = profile_name(profile);
+    let typed = if name.contains(char::is_whitespace) {
+        format!("\"{name}\"")
+    } else {
+        name.to_owned()
+    };
+    // The command on a line of its own, so no width breaks it.
+    page.blank();
+    page.line(vec![muted(format!(
+        "{unseen} more eero hasn't seen lately"
+    ))]);
+    page.line(vec![muted(format!("eero profiles {typed} names them"))]);
+}
+
+/// A page's title naming what it's within, as `Home · Study · 3 devices
+/// on now`, or the whole's where it's within nothing.
+fn titled_within(model: &HomeNetwork, within: Option<&str>, about: String) -> Line {
+    match within {
+        Some(within) => {
+            let mut line = titled(model, Some(within.to_owned()));
+            line.push(muted(format!(" {} ", marks().separator)));
+            line.push(plain(about));
+            line
+        }
+        None => titled(model, Some(about)),
     }
 }
 

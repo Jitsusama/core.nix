@@ -1,0 +1,19 @@
+home · Study · 9 devices on now · read 1 min 7 s ago
+
+node   device              kind              band      ch   signal    SNR         rx  MCS  NSS         tx  MCS  NSS       down         up  address
+Study  laptop computer 1   laptop computer   5 GHz     52  −75 dBm  33 dB   432 Mb/s    4    2   961 Mb/s    9    2   130 kb/s  14.5 kb/s  10.0.0.26
+       generic 4           generic           5 GHz    149  −20 dBm  88 dB   433 Mb/s    9    1   867 Mb/s    9    2  2.23 kb/s  3.31 kb/s  10.0.0.25
+       audio 1             audio             2.4 GHz    6  −29 dBm  78 dB  48.0 Mb/s    –    –     –         –    –     0 b/s      0 b/s   10.0.0.112
+       media streamer 1    media streamer    5 GHz    149  −43 dBm  65 dB   325 Mb/s    7    1     –         –    –     0 b/s      0 b/s   10.0.0.33
+       unknown computer 1  unknown computer  5 GHz    149  −57 dBm  51 dB  1.20 Gb/s   11    2  1.20 Gb/s   11    2  11.5 Mb/s  9.86 Mb/s  10.0.0.20
+       thermostat 1        thermostat        5 GHz    149  −65 dBm  43 dB   390 Mb/s    9    1   433 Mb/s    9    1   132 b/s    106 b/s   10.0.0.30
+       game console 1      game console      2.4 GHz    6  −66 dBm  41 dB  72.2 Mb/s    7    1  65.0 Mb/s    7    1     0 b/s      0 b/s   10.0.0.47
+       generic 1           generic           5 GHz     52  −68 dBm  40 dB   360 Mb/s    7    1     –         –    –     0 b/s      0 b/s   10.0.0.28
+       phone 1             phone             5 GHz     52  −69 dBm   –     48.0 Mb/s    –    –     –         –    –     0 b/s      0 b/s   10.0.0.40
+
+3 devices not on now
+
+node   device              kind              band     last on          profile  made by
+Study  game console 2      game console      5 GHz    1 h 17 min ago   –        AzureWave Technology Inc.
+Study  unknown computer 2  unknown computer  5 GHz    12 h 51 min ago  –        Intel Corporate
+Study  02:00:00:00:00:20   generic           2.4 GHz  4 d ago          –        –

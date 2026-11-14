@@ -4,7 +4,7 @@
 use super::clock::Clock;
 use super::nodes::{band_rank, radio_row, radio_table};
 use super::text::{Ink, Page, plain};
-use super::{counted, head, node_name, titled};
+use super::{counted, head, node_name, titled_within};
 use crate::model::{HomeNetwork, Radio};
 
 #[derive(serde::Serialize)]
@@ -32,7 +32,9 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
     super::json::slice(model, "eero.radio/1", Figures { nodes })
 }
 
-pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
+/// Every radio the record holds, titled with the node it's within when
+/// it's one node's alone (`on_one_node`).
+pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink, within: Option<&str>) -> Page {
     let mut page = Page::default();
     let all: Vec<(&str, &Radio)> = model
         .nodes
@@ -47,7 +49,7 @@ pub fn page(model: &HomeNetwork, clock: &Clock, ink: &Ink) -> Page {
         &mut page,
         model,
         clock,
-        titled(model, Some(counted(all.len(), "radio"))),
+        titled_within(model, within, counted(all.len(), "radio")),
     );
     let mut bands: Vec<&str> = all.iter().map(|(_, radio)| radio.band.as_str()).collect();
     bands.sort_by_key(|band| band_rank(band));

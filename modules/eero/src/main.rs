@@ -14,7 +14,8 @@
 //! ```text
 //! eero [view] [--watch] [--json]  a view of the home network, status bare
 //! eero devices [name]             a collection, or one of it by name
-//! eero internet sqm on|off        optimize for conferencing and gaming, or not
+//! eero nodes <name> devices       what one holds, as radios, and a profile's devices
+//! eero internet sqm [on|off]      optimize for conferencing and gaming, or say it
 //! eero speeds run                 start the eero's own speed test
 //! eero sign-in <email or phone>   sign in once, typing the code eero sends
 //! eero daemon                     keep the home network for the shell
@@ -25,9 +26,10 @@
 //! answers to its singular too, and the old `eero watch <view>`,
 //! `eero sqm on|off` and `eero speedtest` still work, listed nowhere.
 //!
-//! For the shell: `eero completion zsh` writes zsh's completion, and
-//! `eero names views|nodes|devices|profiles` what it offers of each. Both
-//! are read by zsh, so their text is exactly what it reads.
+//! For the shell: `eero completion zsh` writes zsh's completion,
+//! `eero names next <words>` what may follow the words typed, down the
+//! tree, and `eero names views|nodes|devices|profiles` the names of each.
+//! All are read by zsh, so their text is exactly what it reads.
 //!
 //! It takes the shape every command of ours does (docs/commands.md),
 //! through the terminal kit: its help, a view as text or as JSON naming
@@ -41,6 +43,7 @@ mod api;
 mod called;
 mod cloud;
 mod commands;
+mod completing;
 mod daemon;
 mod day;
 mod desktop;
@@ -97,6 +100,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             Failure::new(Exit::Usage, "completion is written for zsh alone")
                 .try_this("eero completion zsh"),
         ),
+        ["names", "next", typed @ ..] => next(context, typed),
         ["names", kind] => names(context, kind),
         ["names", ..] => Err(Failure::new(Exit::Usage, "names takes one kind")
             .because(format!("the kinds are {}", flags::and(&KINDS)))
@@ -110,6 +114,8 @@ fn run(context: &Context) -> Result<(), Failure> {
         ["speeds", "run"] | ["speedtest"] => speedtest(context),
         ["sqm", "on"] | ["internet", "sqm", "on"] => conferencing(context, true),
         ["sqm", "off"] | ["internet", "sqm", "off"] => conferencing(context, false),
+        ["internet", "sqm"] if watching => watch(context, &words),
+        ["internet", "sqm"] => view(context, &words),
         ["sqm", ..] | ["internet", "sqm", ..] => {
             Err(Failure::new(Exit::Usage, "sqm takes on or off").try_this("eero internet sqm on"))
         }
@@ -126,6 +132,8 @@ fn view_words<'a>(words: &[&'a str]) -> Vec<&'a str> {
     match words {
         [] => vec!["status"],
         ["nodes" | "node", name] => vec!["node", name],
+        ["nodes" | "node", name, held @ ("devices" | "radios")] => vec!["node", name, held],
+        ["profiles" | "profile", name, "devices"] => vec!["profile", name, "devices"],
         ["devices" | "device", name] => vec!["device", name],
         ["profiles" | "profile", name] => vec!["profile", name],
         ["node"] => vec!["nodes"],
@@ -133,6 +141,16 @@ fn view_words<'a>(words: &[&'a str]) -> Vec<&'a str> {
         ["profile"] => vec!["profiles"],
         ["radios" | "radio"] => vec!["radio"],
         _ => words.to_vec(),
+    }
+}
+
+/// What completion offers after the words typed, as zsh reads it
+/// (completing.rs): a collection's names, read from the record, or the
+/// words the tree has next.
+fn next(context: &Context, typed: &[&str]) -> Result<(), Failure> {
+    match completing::next(&commands::help(), typed) {
+        completing::Next::Names(kind) => names(context, kind),
+        completing::Next::Words(words) => said(context.say(&views::names::for_zsh(&words))),
     }
 }
 

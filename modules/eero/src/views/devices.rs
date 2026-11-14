@@ -7,7 +7,7 @@ use super::figures::{count, figure, maybe, rate, said, signed, unknown, words, y
 use super::marks::marks;
 use super::text::{Align, Line, Page, Table, muted, plain, strong};
 use super::{
-    counted, device_name, facts, head, labelled, location, off_name, on_node, titled, when,
+    counted, device_name, facts, head, labelled, location, off_name, on_node, titled_within, when,
 };
 use crate::model::{Device, DeviceOff, HomeNetwork, Rate};
 
@@ -41,11 +41,14 @@ pub fn one_json(model: &HomeNetwork, device: &Device) -> Result<String, String> 
     super::json::slice(model, "eero.device/1", One { device })
 }
 
-pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
+/// Every device the record holds, titled with the node or profile it's
+/// within when it's one's alone (`on_one_node`, `in_one_profile`).
+pub fn all(model: &HomeNetwork, clock: &Clock, within: Option<&str>) -> Page {
     let mut page = Page::default();
-    let title = titled(
+    let title = titled_within(
         model,
-        Some(format!("{} on now", counted(model.devices.len(), "device"))),
+        within,
+        format!("{} on now", counted(model.devices.len(), "device")),
     );
     head(&mut page, model, clock, title);
     let mut table = table(true);
@@ -83,8 +86,11 @@ pub fn all(model: &HomeNetwork, clock: &Clock) -> Page {
         }
     }
     // The devices on now and those that aren't lead with the same
-    // columns, which line up from one table into the next.
-    page.shared_table(0, table);
+    // columns, which line up from one table into the next. A node or a
+    // profile with nothing on now has no table, rather than a bare header.
+    if !model.devices.is_empty() {
+        page.shared_table(0, table);
+    }
     off(&mut page, model, clock);
     page
 }

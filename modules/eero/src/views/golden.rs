@@ -170,6 +170,40 @@ golden! {
     profiles_give_a_filter_its_column_while_one_has_it:
         filtered, View::Profiles => "profiles-filtered.txt";
     events_and_what_was_told_run_as_one_timeline: model, View::Events => "events.txt";
+    a_nodes_devices_are_those_on_it_alone:
+        model, View::NodeDevices("Study".into()) => "node-study-devices.txt";
+    a_nodes_radios_are_its_own_alone:
+        model, View::NodeRadios("Study".into()) => "node-study-radios.txt";
+    a_profiles_devices_are_those_in_it_on_now_or_not:
+        profiled, View::ProfileDevices("profile 3".into()) => "profile-devices.txt";
+    sqm_says_whether_its_on_and_how_to_change_it: model, View::Sqm => "sqm.txt";
+}
+
+#[test]
+fn what_a_node_or_profile_holds_keeps_the_wholes_schema() {
+    // A program reading eero.devices/1 reads a node's or a profile's
+    // devices the same way, with only theirs in it.
+    let study = slice(&View::NodeDevices("Study".into()));
+    assert_eq!(study["schema"], "eero.devices/1", "{study}");
+    let whole = slice(&View::Devices);
+    let on_study = |devices: &Value| {
+        devices
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|device| device["node"] == "2002")
+            .count()
+    };
+    assert_eq!(
+        study["devices"].as_array().unwrap().len(),
+        on_study(&whole["devices"]),
+        "the study's devices aren't those the whole has on it: {study}"
+    );
+    let radios = slice(&View::NodeRadios("Study".into()));
+    assert_eq!(radios["schema"], "eero.radio/1", "{radios}");
+    assert_eq!(radios["nodes"].as_array().unwrap().len(), 1, "{radios}");
+    let profile = slice(&View::ProfileDevices("profile 1".into()));
+    assert_eq!(profile["schema"], "eero.devices/1", "{profile}");
 }
 
 /// The record with two devices on now in profile 3, since none of the
@@ -452,6 +486,7 @@ fn each_slice_names_its_view_as_its_schema() {
         (View::Profiles, "profiles"),
         (View::Profile("3002".into()), "profile"),
         (View::Events, "events"),
+        (View::Sqm, "internet-sqm"),
     ];
     for (view, word) in views {
         assert_eq!(

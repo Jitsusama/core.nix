@@ -26,6 +26,43 @@ pub fn json(model: &HomeNetwork) -> Result<String, String> {
     )
 }
 
+#[derive(serde::Serialize)]
+struct Sqm {
+    sqm: Option<bool>,
+}
+
+/// Whether eero optimizes for conferencing and gaming, as the record has
+/// it, under a schema of its own: `eero internet sqm on|off`'s answer,
+/// `eero.sqm/1`, is of each network eero read back, not the record.
+pub fn sqm_json(model: &HomeNetwork) -> Result<String, String> {
+    super::json::slice(
+        model,
+        "eero.internet-sqm/1",
+        Sqm {
+            sqm: model.internet.sqm,
+        },
+    )
+}
+
+/// `eero internet sqm`: whether eero optimizes for conferencing and
+/// gaming, and the words that change it.
+pub fn sqm(model: &HomeNetwork, clock: &Clock) -> Page {
+    let mut page = Page::default();
+    head(&mut page, model, clock, titled(model, Some("SQM".into())));
+    let on = model.internet.sqm;
+    let mut said = vec![plain("optimize for conferencing and gaming: ")];
+    said.extend(switch(on));
+    page.line(said);
+    page.blank();
+    let change = match on {
+        Some(true) => "eero internet sqm off",
+        Some(false) => "eero internet sqm on",
+        None => "eero internet sqm on|off",
+    };
+    page.line(vec![muted("change it with "), strong(change)]);
+    page
+}
+
 /// Labelled facts, each a line.
 type Facts<'a> = Vec<(&'a str, Line)>;
 

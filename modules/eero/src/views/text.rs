@@ -89,8 +89,12 @@ impl Page {
         self.blocks.push(Block::Line(line));
     }
 
+    /// A line of air, never two: a part that's left out, such as a table
+    /// with no rows, leaves the air on either side of it as one.
     pub fn blank(&mut self) {
-        self.line(Vec::new());
+        if !matches!(self.blocks.last(), Some(Block::Line(line)) if line.is_empty()) {
+            self.line(Vec::new());
+        }
     }
 
     /// Labels and their values, the labels in one muted column and every
